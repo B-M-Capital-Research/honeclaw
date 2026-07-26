@@ -114,7 +114,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 41"
+echo "[finance-automation-contracts] fixed sample count: 42"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -271,6 +271,19 @@ else
   record fail "41.committed-header-read-only-continuation" "a safe late lookup can again erase the canonical header or an unsafe late tool can cross the irreversible publication boundary"
 fi
 
+if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
+  && contains 'fn append_date_weekday_violations(' "$FUNCTION_AGENT" \
+  && contains 'fn current_turn_tool_result_urls(' "$FUNCTION_AGENT" \
+  && contains 'fn canonical_prefix_delta(' "$FUNCTION_AGENT" \
+  && contains 'MAX_MARKET_MOVE_FINAL_CORRECTIONS' "$FUNCTION_AGENT" \
+  && contains '原因本轮未完全核验' "$FUNCTION_AGENT" \
+  && contains 'market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause' "$FUNCTION_AGENT" \
+  && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT"; then
+  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until civil dates, broad scope, and same-target-date current source URLs pass; one same-Agent correction otherwise degrades to an explicit cause-evidence gap"
+else
+  record fail "42.market-move-prepublication-consistency" "an impossible weekday, substituted narrow scope, unsupported cause, or rejected draft can again cross the visible terminal boundary"
+fi
+
 if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
   record success "23.full-sector-template" "sector research keeps representative discovery, exact quotes, and the nine-section template"
 else
@@ -307,8 +320,8 @@ else
   record fail "28.agent-owned-natural-final" "production Interactive finance can regress into a finish/control handoff, second generation, rewrite, or speculative visible tool preamble"
 fi
 
-if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS' "$FUNCTION_AGENT" && contains 'finance_loop_forces_same_agent_natural_final_after_three_tool_batches' "$FUNCTION_AGENT" && contains 'finance_loop_enforces_intrinsic_web_limit_without_request_budget_then_forces_final' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'it is never a service-side publication' "$FUNCTION_AGENT" && contains 'if active_business_round && !evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源经实际尝试后明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '摘要只按原文范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
-  record success "29.same-agent-evidence-stage-advisory" "the Agent receives entity/quote/asset-route sequencing, while hard batch/call ceilings bound work and the structural ledger stays advisory without vetoing a complete natural answer"
+if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS' "$FUNCTION_AGENT" && contains 'finance_loop_forces_same_agent_natural_final_after_three_tool_batches' "$FUNCTION_AGENT" && contains 'finance_loop_enforces_intrinsic_web_limit_without_request_budget_then_forces_final' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'A narrow pre-publication market-move' "$FUNCTION_AGENT" && contains 'it never chooses or' "$FUNCTION_AGENT" && contains 'if active_business_round && !evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源经实际尝试后明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '摘要只按原文范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
+  record success "29.same-agent-evidence-stage-advisory" "the Agent receives entity/quote/asset-route sequencing, while hard batch/call ceilings bound work and the structural ledger stays advisory; only the narrow market-move consistency boundary can withhold an invalid body"
 else
   record fail "29.same-agent-evidence-stage-advisory" "security sequencing can regress into a no-search/crypto dead end, or the runtime can again turn its ledger into a publication veto"
 fi
@@ -531,8 +544,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 40 ]; then
-  echo "[ERROR] acceptance failed: expected all 40 successes"
+if [ "$success" -lt 42 ]; then
+  echo "[ERROR] acceptance failed: expected all 42 successes"
   exit 1
 fi
 

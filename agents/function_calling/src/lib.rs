@@ -5,6 +5,7 @@
 //! 渠道级流式输出由 `hone-channels` 的 runner 层处理。
 
 use async_trait::async_trait;
+use chrono::{Datelike, NaiveDate, Weekday};
 use futures::StreamExt;
 use hone_core::agent::{
     Agent, AgentContext, AgentResponse, RESTORED_INVOKED_SKILL_PROMPT_METADATA_KEY, ToolCallMade,
@@ -24,6 +25,7 @@ use hone_tools::data_fetch::{
     effective_data_fetch_security_target, validated_data_fetch_search_query,
     validated_data_fetch_symbols,
 };
+use regex::Regex;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,6 +50,8 @@ const MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES: usize = 6;
 const MAX_AGENT_OWNED_FINANCE_TOOL_CALLS: u32 = 24;
 const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
 const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
+const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
+const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 8_000;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
@@ -1593,6 +1597,7 @@ impl FunctionCallingAgent {
         let mut eligible_visible_candidate = String::new();
         let mut early_final_rejected = false;
         let mut canonical_prefix_committed = precommitted_service_prefix.is_some();
+        let mut forwarded_prefix_bytes = 0usize;
         let mut first_provider_delta_ms = None;
         let mut first_committed_prefix_ms = None;
 
@@ -1656,18 +1661,28 @@ impl FunctionCallingAgent {
                         let expected_prefix = eligible_final_prefix
                             .expect("early-final eligibility requires an exact prefix");
                         let candidate = eligible_visible_candidate.trim_start();
-                        let prefix_compatible = expected_prefix.starts_with(candidate)
-                            || candidate.starts_with(expected_prefix);
-                        if !prefix_compatible {
+                        let prefix_delta = canonical_prefix_delta(
+                            expected_prefix,
+                            candidate,
+                            forwarded_prefix_bytes,
+                        );
+                        if prefix_delta.is_err() {
                             self.reset_emitted_content(forwarded_final_delta).await;
                             forwarded_final_delta = false;
+                            forwarded_prefix_bytes = 0;
                             eligible_visible_candidate.clear();
                             early_final_rejected = true;
                         } else if precommitted_service_prefix.is_none()
                             && let Some(observer) = &self.stream_observer
                         {
-                            observer.on_final_content_delta(&visible).await;
-                            forwarded_final_delta = true;
+                            let prefix_delta =
+                                prefix_delta.expect("compatible prefix must produce a delta");
+                            if !prefix_delta.is_empty() {
+                                observer.on_final_content_delta(&prefix_delta).await;
+                                forwarded_prefix_bytes =
+                                    forwarded_prefix_bytes.saturating_add(prefix_delta.len());
+                                forwarded_final_delta = true;
+                            }
                             if first_committed_prefix_ms.is_none()
                                 && let Some(prefix) = observer.committed_visible_prefix()
                                 && committed_prefix_matches_required(&prefix, eligible_final_prefix)
@@ -1747,17 +1762,20 @@ impl FunctionCallingAgent {
             let expected_prefix =
                 eligible_final_prefix.expect("early-final eligibility requires an exact prefix");
             let candidate = eligible_visible_candidate.trim_start();
-            let prefix_compatible =
-                expected_prefix.starts_with(candidate) || candidate.starts_with(expected_prefix);
-            if !prefix_compatible {
+            let prefix_delta =
+                canonical_prefix_delta(expected_prefix, candidate, forwarded_prefix_bytes);
+            if prefix_delta.is_err() {
                 self.reset_emitted_content(forwarded_final_delta).await;
                 forwarded_final_delta = false;
                 eligible_visible_candidate.clear();
             } else if precommitted_service_prefix.is_none()
                 && let Some(observer) = &self.stream_observer
             {
-                observer.on_final_content_delta(&tail).await;
-                forwarded_final_delta = true;
+                let prefix_delta = prefix_delta.expect("compatible prefix must produce a delta");
+                if !prefix_delta.is_empty() {
+                    observer.on_final_content_delta(&prefix_delta).await;
+                    forwarded_final_delta = true;
+                }
                 if first_committed_prefix_ms.is_none()
                     && let Some(prefix) = observer.committed_visible_prefix()
                     && committed_prefix_matches_required(&prefix, eligible_final_prefix)
@@ -3866,6 +3884,380 @@ fn committed_prefix_matches_required(committed: &str, required: Option<&str>) ->
     required.is_some_and(|required| committed == required || committed.starts_with(required))
 }
 
+fn original_market_move_request(runtime_input: &str) -> &str {
+    let current_turn_and_context = [
+        "\n\n【本轮证券实体发现：主 Agent 工具循环】",
+        "\n\n【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】",
+        "\n\n【本轮最终回答契约：由主 Agent 一次完成】",
+    ]
+    .into_iter()
+    .filter_map(|marker| runtime_input.find(marker))
+    .min()
+    .map(|end| runtime_input[..end].trim())
+    .unwrap_or_else(|| runtime_input.trim());
+    current_turn_and_context
+        .rfind("【本轮用户输入】")
+        .map(|start| current_turn_and_context[start + "【本轮用户输入】".len()..].trim())
+        .unwrap_or(current_turn_and_context)
+}
+
+fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
+    if !runtime_input
+        .contains("【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】")
+    {
+        return false;
+    }
+    let normalized = original_market_move_request(runtime_input).to_ascii_lowercase();
+    [
+        "大跌",
+        "暴跌",
+        "大涨",
+        "暴涨",
+        "下跌原因",
+        "上涨原因",
+        "跌的原因",
+        "涨的原因",
+        "为什么跌",
+        "为什么涨",
+        "why did",
+        "why is",
+        "selloff",
+        "rally",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn chinese_weekday_label(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Mon => "周一",
+        Weekday::Tue => "周二",
+        Weekday::Wed => "周三",
+        Weekday::Thu => "周四",
+        Weekday::Fri => "周五",
+        Weekday::Sat => "周六",
+        Weekday::Sun => "周日",
+    }
+}
+
+fn parse_chinese_weekday(value: &str) -> Option<Weekday> {
+    match value {
+        "周一" => Some(Weekday::Mon),
+        "周二" => Some(Weekday::Tue),
+        "周三" => Some(Weekday::Wed),
+        "周四" => Some(Weekday::Thu),
+        "周五" => Some(Weekday::Fri),
+        "周六" => Some(Weekday::Sat),
+        "周日" | "周天" => Some(Weekday::Sun),
+        _ => None,
+    }
+}
+
+fn anchored_market_move_date(runtime_input: &str) -> Option<NaiveDate> {
+    let re =
+        Regex::new(r"最近同名候选日期是\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\s+周[一二三四五六日天]")
+            .expect("market-move candidate date regex");
+    re.captures(runtime_input)
+        .and_then(|captures| captures.get(1))
+        .and_then(|date| NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").ok())
+}
+
+fn date_from_capture(
+    captures: &regex::Captures<'_>,
+    year: usize,
+    month: usize,
+    day: usize,
+) -> Option<NaiveDate> {
+    let year = captures.get(year)?.as_str().parse::<i32>().ok()?;
+    let month = captures.get(month)?.as_str().parse::<u32>().ok()?;
+    let day = captures.get(day)?.as_str().parse::<u32>().ok()?;
+    NaiveDate::from_ymd_opt(year, month, day)
+}
+
+fn first_body_market_date(content: &str) -> Option<NaiveDate> {
+    let body = content.split_once('\n').map(|(_, body)| body).unwrap_or("");
+    let re = Regex::new(r"([0-9]{4})(?:年|-|/)([0-9]{1,2})(?:月|-|/)([0-9]{1,2})日?")
+        .expect("absolute market date regex");
+    re.captures_iter(body)
+        .find_map(|captures| date_from_capture(&captures, 1, 2, 3))
+}
+
+fn content_contains_date(content: &str, date: NaiveDate) -> bool {
+    [
+        date.format("%Y-%m-%d").to_string(),
+        date.format("%Y/%m/%d").to_string(),
+        date.format("%m/%d/%Y").to_string(),
+        format!("{}年{}月{}日", date.year(), date.month(), date.day()),
+    ]
+    .iter()
+    .any(|candidate| content.contains(candidate))
+}
+
+fn append_date_weekday_violations(content: &str, violations: &mut Vec<String>) {
+    let re = Regex::new(
+        r"([0-9]{4})(?:年|-|/)([0-9]{1,2})(?:月|-|/)([0-9]{1,2})日?\s*[（(]?(周[一二三四五六日天])",
+    )
+    .expect("date weekday pair regex");
+    for captures in re.captures_iter(content) {
+        let Some(date) = date_from_capture(&captures, 1, 2, 3) else {
+            violations.push("终稿包含无效的绝对日期".to_string());
+            continue;
+        };
+        let Some(label) = captures.get(4).map(|value| value.as_str()) else {
+            continue;
+        };
+        let Some(weekday) = parse_chinese_weekday(label) else {
+            continue;
+        };
+        if date.weekday() != weekday {
+            violations.push(format!(
+                "{} 的星期应为{}，不能写成{}",
+                date.format("%Y-%m-%d"),
+                chinese_weekday_label(date.weekday()),
+                label
+            ));
+        }
+    }
+}
+
+fn collect_tool_result_urls(value: &Value, urls: &mut BTreeMap<String, String>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_tool_result_urls(item, urls);
+            }
+        }
+        Value::Object(fields) => {
+            for url in fields.iter().filter_map(|(key, value)| {
+                matches!(
+                    key.to_ascii_lowercase().as_str(),
+                    "url" | "link" | "source_url" | "original_url"
+                )
+                .then(|| value.as_str())
+                .flatten()
+                .map(str::trim)
+                .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
+            }) {
+                urls.insert(url.to_string(), value.to_string());
+            }
+            for value in fields.values() {
+                collect_tool_result_urls(value, urls);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn current_turn_tool_result_urls(
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> BTreeMap<String, String> {
+    let mut urls = BTreeMap::new();
+    for message in &context.messages[turn_message_start.min(context.messages.len())..] {
+        if message.role != "tool" {
+            continue;
+        }
+        let Some(content) = message.content.as_deref() else {
+            continue;
+        };
+        if let Ok(value) = serde_json::from_str::<Value>(content) {
+            collect_tool_result_urls(&value, &mut urls);
+        }
+    }
+    urls
+}
+
+fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
+    let normalized = paragraph.to_ascii_lowercase();
+    if [
+        "原因本轮未完全核验",
+        "原因尚未核验",
+        "无法确认",
+        "未能确认",
+        "不能确认",
+        "证据不足",
+        "候选原因",
+        "如果",
+        "可能",
+        "或许",
+        "预计",
+        "假设",
+        "情景",
+        "bull",
+        "bear",
+        "base case",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+        || normalized.contains("推断：")
+    {
+        return false;
+    }
+    [
+        "已核验原因",
+        "原因（已核验",
+        "原因(已核验",
+        "主要原因",
+        "直接原因",
+        "原因是",
+        "原因包括",
+        "核心驱动",
+        "最强驱动",
+        "导致",
+        "直接导致",
+        "直接压制",
+        "拖累",
+        "打压",
+        "归因于",
+        "源于",
+        "触发",
+        "引发",
+        "催化剂",
+        "共振",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn broad_us_market_scope_coverage(content: &str) -> usize {
+    let normalized = content.to_ascii_lowercase();
+    [
+        ["标普", "s&p", "spy"],
+        ["纳斯达克", "nasdaq", "qqq"],
+        ["道琼斯", "dow jones", "dia"],
+        ["罗素", "russell", "iwm"],
+    ]
+    .iter()
+    .filter(|markers| markers.iter().any(|marker| normalized.contains(marker)))
+    .count()
+}
+
+fn market_move_final_violations(
+    runtime_input: &str,
+    content: &str,
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> Vec<String> {
+    if !is_market_move_final_check_enabled(runtime_input) {
+        return Vec::new();
+    }
+
+    let mut violations = Vec::new();
+    append_date_weekday_violations(content, &mut violations);
+
+    let target_date =
+        anchored_market_move_date(runtime_input).or_else(|| first_body_market_date(content));
+    match target_date {
+        Some(date) if !content_contains_date(content, date) => violations.push(format!(
+            "终稿没有保留用户星期表述对应的候选日期 {} {}",
+            date.format("%Y-%m-%d"),
+            chinese_weekday_label(date.weekday())
+        )),
+        None => violations.push("终稿没有披露本轮实际解释的绝对市场本地日期".to_string()),
+        _ => {}
+    }
+
+    let original = original_market_move_request(runtime_input).to_ascii_lowercase();
+    if ["美股", "美国股市", "u.s. market", "us market"]
+        .iter()
+        .any(|marker| original.contains(marker))
+        && broad_us_market_scope_coverage(content) < 2
+    {
+        violations.push(
+            "美股宽基问题至少要分开核验两个代表性宽基/风格指数，不能用单一板块或个股替代"
+                .to_string(),
+        );
+    }
+
+    let current_urls = current_turn_tool_result_urls(context, turn_message_start);
+    for paragraph in content.split("\n\n") {
+        if !paragraph_has_definitive_market_cause(paragraph) {
+            continue;
+        }
+        let matching_sources = current_urls
+            .iter()
+            .filter(|(url, _)| paragraph.contains(url.as_str()))
+            .collect::<Vec<_>>();
+        let has_current_url = !matching_sources.is_empty();
+        let has_target_date =
+            target_date.is_some_and(|date| content_contains_date(paragraph, date));
+        let source_record_has_target_date = target_date.is_some_and(|date| {
+            matching_sources
+                .iter()
+                .any(|(_, evidence)| content_contains_date(evidence, date))
+        });
+        if !has_current_url || !has_target_date || !source_record_has_target_date {
+            violations.push(
+                "每个确定性原因段落都必须在同一段内给出目标日期和本轮工具实际返回的原始 URL，且该 URL 的本轮结果记录本身也须覆盖目标日期；否则降级为“原因本轮未完全核验”"
+                    .to_string(),
+            );
+        }
+    }
+
+    violations.sort();
+    violations.dedup();
+    violations
+}
+
+fn bounded_market_move_draft(content: &str) -> String {
+    content
+        .chars()
+        .take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS)
+        .collect()
+}
+
+fn market_move_final_correction_prompt(violations: &[String], draft: &str) -> String {
+    format!(
+        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据已有真实工具结果修订完整终稿，不要向用户提及本检查。逐项修正：{}。日期与星期必须按本轮民用日历锚点一致；宽基、板块、个股不可互换；确定性原因必须在同一段同时出现目标绝对日期和本轮工具结果中的原始 URL，而且该 URL 的当前结果记录本身也必须带目标日期。若现有证据做不到，就保留已核验行情范围并明确写“原因本轮未完全核验”，不要把标题、摘要、较早日期或推断升级成已确认原因。修订稿仍须从精确数据时间首行开始。\n<unpublished_draft>\n{}\n</unpublished_draft>",
+        violations.join("；"),
+        bounded_market_move_draft(draft)
+    )
+}
+
+fn deterministic_market_move_gap_response(
+    runtime_input: &str,
+    rejected_content: &str,
+    required_prefix: &str,
+) -> String {
+    let first_line = if required_prefix.ends_with("；行情口径：") {
+        format!("{required_prefix}本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露")
+    } else {
+        required_prefix.to_string()
+    };
+    let target_date = anchored_market_move_date(runtime_input)
+        .or_else(|| first_body_market_date(rejected_content));
+    let target_line = target_date.map_or_else(
+        || "目标时段：当前原话未形成可安全发布的唯一绝对市场日期。".to_string(),
+        |date| {
+            format!(
+                "目标时段：{}（{}，市场本地民用日期候选；是否开市及具体交易时段仍以本轮行情证据为准）。",
+                date.format("%Y-%m-%d"),
+                chinese_weekday_label(date.weekday())
+            )
+        },
+    );
+    format!(
+        "{first_line}\n\n{target_line}\n\n本轮原因证据未能同时满足同一对象、同一目标日期和当前来源原文核对，因此不把候选新闻、标题摘要或其它交易日叙事写成已确认触发因素。**原因本轮未完全核验。**"
+    )
+}
+
+fn canonical_prefix_delta(
+    expected_prefix: &str,
+    visible_candidate: &str,
+    forwarded_bytes: usize,
+) -> Result<String, ()> {
+    if !(expected_prefix.starts_with(visible_candidate)
+        || visible_candidate.starts_with(expected_prefix))
+    {
+        return Err(());
+    }
+    let target_bytes = visible_candidate.len().min(expected_prefix.len());
+    if target_bytes < forwarded_bytes {
+        return Err(());
+    }
+    Ok(expected_prefix[forwarded_bytes..target_bytes].to_string())
+}
+
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
     const REQUIREMENT: &str = "第一条非空行必须严格以 `";
     let start = user_input.rfind(REQUIREMENT)? + REQUIREMENT.len();
@@ -4260,6 +4652,8 @@ impl Agent for FunctionCallingAgent {
         let mut tool_budget_exhausted = false;
         let mut service_prefix_commit_eligible = true;
         let mut active_business_failures = 0u32;
+        let mut pending_market_move_final_correction: Option<String> = None;
+        let mut market_move_final_corrections = 0u32;
         #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
         #[cfg(test)]
@@ -4417,6 +4811,18 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
+            if active_business_round
+                && let Some(feedback) = pending_market_move_final_correction.as_deref()
+            {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(feedback.to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             #[cfg(test)]
             if !active_business_round && let Some(feedback) = pending_finish_feedback.as_deref() {
                 messages.push(Message {
@@ -4469,16 +4875,67 @@ impl Agent for FunctionCallingAgent {
                             active_business_failures = 0;
                             response
                         }
-                        Ok(Ok(ActiveBusinessStreamOutcome::DirectFinal(response))) => {
+                        Ok(Ok(ActiveBusinessStreamOutcome::DirectFinal(mut response))) => {
                             // A complete Stop + Done body is always the same
                             // Agent's natural final answer. The evidence ledger
                             // controls only when the internal finish signal is
-                            // offered; it is never a service-side publication
-                            // veto. This prevents a provider's Required -> Auto
-                            // compatibility fallback from flashing a generic
-                            // error or replacing an otherwise complete answer.
+                            // offered. A narrow pre-publication market-move
+                            // check below verifies only civil-calendar
+                            // consistency, requested broad scope, and
+                            // current-turn source locality; it never chooses or
+                            // rewrites a cause.
                             active_business_failures = 0;
                             active_business_outcome = Some("direct_final");
+                            let violations = market_move_final_violations(
+                                user_input,
+                                &response.content,
+                                context,
+                                turn_message_start,
+                            );
+                            if !violations.is_empty() {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    iteration = iterations,
+                                    violations = %violations.join(" | "),
+                                    market_move_final_corrections,
+                                    "agent-owned market-move final failed mechanical pre-publication checks"
+                                );
+                                if market_move_final_corrections < MAX_MARKET_MOVE_FINAL_CORRECTIONS
+                                    && iterations < self.max_iterations
+                                {
+                                    if precommitted_service_prefix.is_none()
+                                        && let Some(prefix) = self
+                                            .stream_observer
+                                            .as_ref()
+                                            .and_then(|observer| {
+                                                observer.committed_visible_prefix()
+                                            })
+                                            .filter(|prefix| {
+                                                committed_prefix_matches_required(
+                                                    prefix,
+                                                    required_final_answer_prefix.as_deref(),
+                                                )
+                                            })
+                                    {
+                                        precommitted_service_prefix = Some(prefix);
+                                    }
+                                    market_move_final_corrections =
+                                        market_move_final_corrections.saturating_add(1);
+                                    pending_market_move_final_correction =
+                                        Some(market_move_final_correction_prompt(
+                                            &violations,
+                                            &response.content,
+                                        ));
+                                    continue;
+                                }
+                                if let Some(prefix) = required_final_answer_prefix.as_deref() {
+                                    response.content = deterministic_market_move_gap_response(
+                                        user_input,
+                                        &response.content,
+                                        prefix,
+                                    );
+                                }
+                            }
                             response
                         }
                         Ok(Ok(ActiveBusinessStreamOutcome::Empty)) => {
@@ -6015,6 +6472,7 @@ mod tests {
                     {
                         "title": "Capacity purchase announcement",
                         "url": "https://example.test/capacity",
+                        "published_date": "2026-07-24",
                         "content": "The buyer agreed to purchase $6.3B of unused capacity."
                     },
                     {
@@ -10787,8 +11245,8 @@ mod tests {
                 .lock()
                 .expect("stream events lock")
                 .as_slice(),
-            [format!("final:{answer}")],
-            "only the eligible Auto final reaches the canonical-header observer"
+            ["final:数据时间：北京时间 2026-07-19 09:31；行情口径："],
+            "only the canonical header reaches the observer before the accepted body is finalized"
         );
         assert_eq!(
             context
@@ -10938,7 +11396,7 @@ mod tests {
         );
         assert_eq!(
             observer.events.lock().expect("stream events").as_slice(),
-            [format!("final:{answer}")]
+            ["final:数据时间：北京时间 2026-07-19 09:31；行情口径："]
         );
         let requests = seen_messages.lock().expect("stream messages");
         let forced_prompt = requests
@@ -11063,7 +11521,7 @@ mod tests {
         );
         assert_eq!(
             observer.events.lock().expect("stream events").as_slice(),
-            [format!("final:{answer}")]
+            ["final:数据时间：北京时间 2026-07-19 09:31；行情口径："]
         );
         let requests = seen_messages.lock().expect("stream messages");
         let forced_prompt = requests
@@ -11972,9 +12430,9 @@ mod tests {
             [
                 format!("final:{compatible_fragment}"),
                 "reset".to_string(),
-                format!("final:{answer}"),
+                format!("final:{required_prefix}"),
             ],
-            "a wrong Session timestamp must reset the uncommitted candidate and stop early forwarding"
+            "a wrong Session timestamp resets the partial candidate; the accepted body stays buffered behind the canonical header"
         );
     }
 
@@ -12077,11 +12535,172 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause() {
+        let runtime_input = "美股周五为什么暴跌\n\n\
+            【本轮证券实体发现：主 Agent 工具循环】\n候选仅用于取证。\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
+            【本轮最终回答契约：由主 Agent 一次完成】";
+        let mut context = AgentContext::new("market-move-final-check".to_string());
+        context.add_tool_result(
+            "tc_web",
+            "web_search",
+            &json!({
+                "results": [{
+                    "title": "same-day report",
+                    "url": "https://example.test/capacity",
+                    "published_date": "2026-07-24",
+                    "content": "same-day market report"
+                }]
+            })
+            .to_string(),
+        );
+
+        let invalid = "数据时间：北京时间 2026-07-26 16:00；行情口径：可核验\n\n\
+            目标时段是 2026-07-24（周四）。标普与纳斯达克走势分化。\n\n\
+            核心驱动是候选新闻摘要。";
+        let violations = market_move_final_violations(runtime_input, invalid, &context, 0);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("星期应为周五"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL"))
+        );
+
+        let valid = "数据时间：北京时间 2026-07-26 16:00；行情口径：可核验\n\n\
+            目标时段是 2026-07-24（周五）。标普与纳斯达克走势分化。\n\n\
+            已核验原因：2026-07-24（周五）的同日来源支持该事件。\
+            [same-day report](https://example.test/capacity)";
+        assert!(market_move_final_violations(runtime_input, valid, &context, 0).is_empty());
+
+        let single_stock_runtime = "【近期用户原话，仅用于理解本轮指代】\n美股为什么大跌\n\n\
+            【本轮用户输入】\nHIMS 周五为什么大跌\n\n\
+            【本轮证券实体发现：主 Agent 工具循环】\n候选仅用于取证。\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。";
+        assert_eq!(
+            original_market_move_request(single_stock_runtime),
+            "HIMS 周五为什么大跌"
+        );
+        let single_stock_gap = "数据时间：北京时间 2026-07-26 16:00；行情口径：可核验\n\n\
+            目标时段是 2026-07-24（周五），HIMS 的行情范围已核验。\n\n\
+            原因本轮未完全核验。";
+        assert!(
+            market_move_final_violations(single_stock_runtime, single_stock_gap, &context, 0)
+                .is_empty(),
+            "an older broad-market reference must not impose broad-index coverage on the current single-stock question"
+        );
+    }
+
+    #[tokio::test]
+    async fn market_move_final_correction_keeps_only_header_visible_until_acceptance() {
+        let prefix = "数据时间：北京时间 2026-07-26 16:00；行情口径：";
+        let invalid = format!(
+            "{prefix}本轮仅使用可核验资料\n\n\
+             目标时段是 2026-07-24（周四）。标普与纳斯达克走势分化。\n\n\
+             核心驱动是候选新闻摘要。"
+        );
+        let corrected = format!(
+            "{prefix}本轮仅使用可核验资料\n\n\
+             目标时段是 2026-07-24（周五）。标普与纳斯达克走势分化。\n\n\
+             已核验原因：2026-07-24（周五）的同日来源支持该事件。\
+             [same-day report](https://example.test/capacity)"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"market","identity_match":"exact_symbol"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_web_market".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"2026-07-24 US market move"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_snapshot_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments:
+                    r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"market"}"#
+                        .to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(invalid)],
+            vec![ChatStreamEvent::ContentDelta(corrected.clone())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.to_string()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(WebSearchEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_agent_owned_finance_loop(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("market-move-final-correction".to_string());
+        let runtime_input = format!(
+            "美股周五为什么暴跌\n\n\
+             【本轮证券实体发现：主 Agent 工具循环】\n候选仅用于取证。\n\n\
+             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+             当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
+             【本轮最终回答契约：由主 Agent 一次完成】\
+             第一条非空行必须严格以 `{prefix}` 开头。"
+        );
+
+        let response = agent.run(&runtime_input, &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, corrected);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream observer events")
+                .as_slice(),
+            [format!("final:{prefix}")],
+            "the rejected body must never flash, reset, or duplicate the durable header"
+        );
+        assert_eq!(
+            observer.committed_visible_prefix(),
+            Some(prefix.to_string())
+        );
+        let correction_request = seen_messages
+            .lock()
+            .expect("seen messages")
+            .last()
+            .cloned()
+            .expect("correction request");
+        let correction_prompt = correction_request
+            .last()
+            .and_then(|message| message.content.as_deref())
+            .expect("correction prompt");
+        assert!(correction_prompt.contains("内部终稿机械一致性纠正"));
+        assert!(correction_prompt.contains("2026-07-24 的星期应为周五"));
+        assert!(
+            context
+                .messages
+                .last()
+                .and_then(|message| message.content.as_deref())
+                .is_some_and(|content| content == corrected)
+        );
+    }
+
     #[tokio::test]
     async fn committed_finance_header_rejects_a_late_tool_before_execution() {
         let required_prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
         let basis = "最新可得、非逐笔\n";
-        let committed_header = format!("{required_prefix}{basis}");
+        let committed_header = required_prefix.to_string();
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,

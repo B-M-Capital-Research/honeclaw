@@ -2771,10 +2771,12 @@ name = "hone-agent"
 version = "0.14.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "futures",
  "hone-core",
  "hone-llm",
  "hone-tools",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
