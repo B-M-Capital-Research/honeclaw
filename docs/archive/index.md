@@ -1729,3 +1729,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/whop-discord-fulfillment.md`; authenticated Whop product/settings readback; Whop member-preview claim-flow QA; repository Whop/Discord role-lifecycle audit; `git diff --check`
 - Current conclusion: the canonical Whop product now includes the native Discord app connected to `巴芒投研美股社群`, includes `VIP 付费用户`, logs to `#whop`, and removes the role on cancellation. Whop—not a custom webhook or the HONE bot—owns Discord account linking and role lifecycle. A non-owner test membership remains required to prove the real join/grant/revoke/reactivation sequence because creator preview intentionally simulates rather than mutates access.
 - Next entry point: `docs/runbooks/whop-discord-fulfillment.md`
+
+### Invisible Context-Overflow Auto-Recovery
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/context-overflow-invisible-auto-recovery.md`
+- Handoff: `docs/handoffs/2026-07-26-context-overflow-invisible-auto-recovery.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-26-07-make-context-window-recovery-invisible-and-current-turn-aware`; `docs/adr/0004-agent-owned-research-loop.md`
+- Related PRs / commits: `268561c4`, `620391d1`
+- Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh` case 44; Agent oversized-result and 12,000-row calendar regressions; Channel compact/current-turn-only/public-sanitizer regressions; `docs/runbooks/backend-deployment.md`
+- Current conclusion: current-turn tool growth is bounded inside the same read-only Agent without tool replay, repeated Session overflow falls through to current-turn-only recovery, and no context/compact/path/new-session diagnostic may cross a public boundary. Exact `620391d1` passed all repository gates and a fresh production replay with one successful answer, byte-identical two-row history, responsive concurrent health probes, and zero active chats.
+- Next entry point: `docs/handoffs/2026-07-26-context-overflow-invisible-auto-recovery.md`

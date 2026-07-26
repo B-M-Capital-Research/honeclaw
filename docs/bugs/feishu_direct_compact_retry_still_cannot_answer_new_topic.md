@@ -3,7 +3,16 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Closed
+
+## 2026-07-26 生产关闭结论
+
+- 提交 `268561c4` 先删除了所有用户可见 overflow 终点，并加入同 Agent 有界证据、forced compact 与 current-turn-only 三层只读恢复。首次精确生产回放真实触发有界证据路径，同时暴露原数组尾删实现会在每删一项后重序列化完整大 JSON；`hone-console-page` 单核约 99%，健康接口被饿死。该构建未被接受，运行时立即回滚到上一健康不可变包。
+- 后续提交 `620391d1` 删除逐项尾删，以固定线性过程压缩：远超预算的结果直接形成有效 JSON 预览，近预算结果只做固定次数的字符串缩短。12,000 行 earnings-calendar 回归与静态契约共同禁止 O(n²) helper 回归。
+- 完整门禁通过：Agent `138/138`、Channels `682 passed / 1 host OCR ignored`、workspace check/test、Web `294/294`、Edge Worker `45/45`、finance contracts `44/44`、全部 CI-safe regressions、rustfmt、diff 与 gitleaks。
+- 精确 `620391d1f137d433d89a34f944b5076463936d62` 的 501 文件 manifest 全部哈希通过；零活跃会话后 Web / Feishu 平滑切换。PostgreSQL、S3、`8077/8088`、origin/public 鉴权边界均健康。
+- fresh actor `codex-canary-620391d1-context-202607262213` 原样回放 47 字事故问题，`104.86s` 后唯一成功结束：无 reset/error/partial，无 context、`/compact`、绝对路径或新会话提示；回答首行仍保持既有财经格式。SSE 与两行历史中的 assistant 正文均为 4,177 字且逐字一致，SHA-256 为 `3d665ee8fe43262e72db2c46e06a63180dc85964548f230966e3e254e8ee295d`，active chats 回到 0。
+- 回放中十次并发健康探测均为 HTTP 200、约 `1–3ms`，console CPU 约 `0–0.3%`，证明首次回放的忙循环已关闭。本缺陷因此从 `Fixing` 更新为 `Closed`；若未来再次出现用户可见 context/compact/new-session 指引，或只读工具结果恢复令 Web worker 饥饿，应按同一缺陷直接回退状态。
 
 ## 2026-07-26 Web 精确复现与根因升级
 
