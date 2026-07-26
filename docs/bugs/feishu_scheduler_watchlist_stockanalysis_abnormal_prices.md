@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 本轮 2026-07-26 19:01-23:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 20:02-21:46 CST 多条 Feishu direct / scheduler final 正常收口，但继续把 `QQQ $684.23`、`SPY $738.93`、`GOOGL $319.74`、`NBIS $187.77`、`SNDK $1,436.56`、`MU $920.95` 等高风险价格锚写入市场判断、持仓盈亏、击球区和风险结论。
+    - 21:09 CST Feishu direct 存储持仓分析继续用 `SNDK $1,436.56`、`MU $920.95` 计算 A/B 账户盈亏和集中度；21:36 CST 观察池快报继续围绕 `SNDK -10.8%`、`AAOI -10.6%` 等旧收盘快照组织“今日盘面概述”。
+  - `data/runtime/logs/web.log.2026-07-26` / `cron_job_runs`
+    - 21:00-22:00 CST heartbeat / scheduler preview 继续使用 `RKLB $63.91`、`AAOI $100.15`、`QQQ $684.23`、`SPY $738.93`、`GOOGL $319.74` 等价格进入 noop / sent 预览和 duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / direct / heartbeat 金融判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-26 15:00-19:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-26`
     - 15:00-19:02 CST heartbeat / scheduler preview 继续使用 `SNDK $1,436.56`、`MU $920.95`、`AAOI $100.15`、`RKLB $63.91`、`CBRS $199.12`、`SPY $738.93`、`QQQ $684.23`、`HIMS $28.09` 等高风险或待校验行情锚。

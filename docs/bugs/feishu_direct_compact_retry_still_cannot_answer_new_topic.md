@@ -7,6 +7,7 @@
 
 ## 2026-07-26 生产关闭结论
 
+- 2026-07-26 19:01-23:02 CST 本轮 `bug` 巡检对照真实会话：19:37 与 21:00 CST 同一 Feishu direct 旧会话仍出现用户可见 `当前会话上下文过长...发送 <absolute-path>/compact` 失败文案；这些样本发生在最终 `620391d1` 精确修复与 22:13 fresh actor canary 关闭结论之前，按同一缺陷的 pre-fix 运行态证据处理，不重新打开。
 - 提交 `268561c4` 先删除了所有用户可见 overflow 终点，并加入同 Agent 有界证据、forced compact 与 current-turn-only 三层只读恢复。首次精确生产回放真实触发有界证据路径，同时暴露原数组尾删实现会在每删一项后重序列化完整大 JSON；`hone-console-page` 单核约 99%，健康接口被饿死。该构建未被接受，运行时立即回滚到上一健康不可变包。
 - 后续提交 `620391d1` 删除逐项尾删，以固定线性过程压缩：远超预算的结果直接形成有效 JSON 预览，近预算结果只做固定次数的字符串缩短。12,000 行 earnings-calendar 回归与静态契约共同禁止 O(n²) helper 回归。
 - 完整门禁通过：Agent `138/138`、Channels `682 passed / 1 host OCR ignored`、workspace check/test、Web `294/294`、Edge Worker `45/45`、finance contracts `44/44`、全部 CI-safe regressions、rustfmt、diff 与 gitleaks。

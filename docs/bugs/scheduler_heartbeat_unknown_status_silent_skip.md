@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-07-26 19:01-23:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-26`
+    - 同窗出现 `HeartbeatDiag=427`、`deliver_preview=41`、`duplicate_suppressed=20`、`execution_failed=8`、raw `<think>` preview 129 条。
+    - SQLite `cron_job_runs` 同窗 129 条 run，其中 heartbeat `completed/sent=21`、`execution_failed/skipped_error=7`、`noop/skipped_noop=86`。
+    - heartbeat `parse_kind` 分布继续漂移：`JsonNoop=57`、`PlainTextTriggered=20`、`PlainTextNoop=6`、`PlainTextSuppressed=5`、`JsonEmptyStatus=2`、`JsonUnknownStatus=1`、`JsonTriggered=1`、`JsonMalformed=1`。
+    - 代表样本包括 21:30 `全天原油价格3小时播报` 因非结构化输出失败、22:00 `德业股份加仓信号心跳检测` 因非法 JSON 失败、23:00 `ASTS 全面心跳检测` 与 `德业股份加仓信号心跳检测` 因非结构化输出失败；同窗还可见 `AAOI / RKLB / 美股盘中科技股机会` 等任务在自然语言、noop、triggered、sent 与 duplicate suppression 之间漂移。
+  - `data/sessions.sqlite3`
+    - 同窗新增 61 条 user / 31 条 assistant / 16 条 system compact，覆盖 15 个更新 session；普通 assistant final 未见全渠道未回复、错投、本机路径、panic、raw tool JSON 或 provider 原始错误批量外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-26 15:00-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-26`
     - 同窗出现 `HeartbeatDiag=521`、`deliver job_id=45`、`duplicate_suppressed=20`、`runner_error=17`、执行失败相关 25 条、raw `<think>` preview 148 条、工具预算 / 工具配额相关 34 条。

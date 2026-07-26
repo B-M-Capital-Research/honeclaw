@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-26 19:01-23:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-26` / `cron_job_runs`
+    - 21:00 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，preview 却把当前消息解释成“系统层心跳任务执行说明 / 不是需要生成 triggered/noop JSON 的轮次”，没有执行 AAOI 监控判断。
+    - 21:30 CST `美股盘中科技股机会心跳监控` deliver preview 变成“AI 基础设施赛道框架已收到”的框架点评，偏向用户输入确认和行业框架优化，而不是执行科技股机会心跳。
+    - 22:30 CST `ASTS 全面心跳检测` deliver preview 输出 Hone 自我介绍、能力边界和投研哲学，不是 ASTS 监控结论。
+    - 23:00 CST `RKLB 全面心跳检测` deliver preview 又把消息主体识别成“系统层的心跳监控契约和触发规则说明”，并明确说“不是一次用户主动发起的投研问题”，没有形成稳定 RKLB 监控判断。
+  - 会话质量对照：
+    - 同窗普通 Feishu direct / scheduler 多数有 assistant 收口，未见全渠道停摆、错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被系统契约、能力说明、旧上下文或非监控任务确认污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-26 15:00-19:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-26`
     - 15:01 CST `中际旭创关键事件心跳提醒` 已作为 heartbeat job 周期触发，deliver preview 却漂移成数据中心液冷行业框架，不是执行中际旭创关键事件监控。
