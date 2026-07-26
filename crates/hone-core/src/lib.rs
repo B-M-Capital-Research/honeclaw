@@ -9,6 +9,7 @@ pub mod audit;
 pub mod channel_process;
 pub mod cloud_runtime;
 pub mod config;
+pub mod context_window;
 pub mod error;
 pub mod heartbeat;
 pub mod logging;
@@ -29,6 +30,7 @@ pub use api_key_pool::ApiKeyPool;
 pub use audit::{LlmAuditRecord, LlmAuditSink};
 pub use channel_process::{ObservedChannelProcess, channel_binary_name, scan_channel_processes};
 pub use config::{ChatScope, HoneConfig};
+pub use context_window::is_context_overflow_error;
 pub use error::{HoneError, HoneResult};
 pub use heartbeat::{
     HEARTBEAT_INTERVAL_SECS, HEARTBEAT_STALE_AFTER_SECS, HeartbeatErrorRecord, HeartbeatMetrics,

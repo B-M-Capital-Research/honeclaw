@@ -55,7 +55,7 @@ use super::artifacts::{OssPromotion, attach_web_generated_files};
 use super::emitter::{DeferredUserOutputEmitter, SessionEventEmitter};
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
-    CONTEXT_OVERFLOW_FALLBACK_MESSAGE, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
+    CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand, EMPTY_SUCCESS_RETRY_LIMIT,
     TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
     is_retryable_transient_runner_failure, merge_message_metadata, persistable_turn_from_response,
@@ -1213,6 +1213,8 @@ impl AgentSession {
             restore_max_override,
             prepared_investment,
         );
+        let use_current_turn_only_context =
+            restore_max_override == Some(CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT);
         let restored = self.restore_runtime_context(
             session_id,
             persisted_user_input,
@@ -1221,6 +1223,14 @@ impl AgentSession {
             use_fast_interactive_context,
         );
         let mut context = restored.context;
+        if use_current_turn_only_context {
+            // The compact-summary retry can still overflow when the static
+            // prompt plus restored skill snapshots/history are too large.
+            // Keep the user's current request and the already prepared
+            // investment suffix, but remove every durable conversation record
+            // from this final automatic recovery attempt.
+            context.messages.clear();
+        }
         if options.turn_origin == AgentTurnOrigin::Interactive
             && restore_max_override == Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT)
         {
@@ -1243,7 +1253,7 @@ impl AgentSession {
             session_id,
             runtime_user_input,
             prompt_time_beijing,
-            !use_fast_interactive_context,
+            !use_fast_interactive_context && !use_current_turn_only_context,
         );
         let investment_context = if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);
@@ -1891,9 +1901,10 @@ impl AgentSession {
         let error = AgentSessionError {
             kind,
             // Session error events cross channel/Web boundaries. Preserve the
-            // raw diagnostic in the returned response and logs, but never put
-            // provider/Agent protocol details on a user-visible event.
-            message: persisted_message,
+            // raw diagnostic in logs (and, except for context overflow, the
+            // returned diagnostic), but never put provider/Agent protocol
+            // details on a user-visible event.
+            message: persisted_message.clone(),
         };
         self.emit(session_error_event(error.clone())).await;
         let response = AgentResponse {
@@ -1901,7 +1912,11 @@ impl AgentSession {
             tool_calls_made: Vec::new(),
             iterations: 0,
             success: false,
-            error: Some(message),
+            error: Some(if kind == AgentSessionErrorKind::ContextWindowOverflow {
+                persisted_message
+            } else {
+                message
+            }),
         };
         self.emit(AgentSessionEvent::Done {
             response: response.clone(),
@@ -2264,6 +2279,12 @@ impl AgentSession {
                 break;
             }
 
+            let use_current_turn_only_recovery = recovery_idx > 0;
+            let recovery_mode = if use_current_turn_only_recovery {
+                "current_turn_only"
+            } else {
+                "compact_history"
+            };
             tracing::warn!(
                 session_id = %session_id,
                 channel = %self.actor.channel,
@@ -2272,7 +2293,8 @@ impl AgentSession {
                 runner = %execution.runner_name,
                 attempt = recovery_idx + 1,
                 max_attempts = CONTEXT_OVERFLOW_RECOVERY_LIMIT,
-                "[AgentSession] context overflow detected, compacting and retrying"
+                recovery_mode,
+                "[AgentSession] context overflow detected, recovering automatically"
             );
             self.core.log_message_step(
                 &self.actor.channel,
@@ -2280,7 +2302,7 @@ impl AgentSession {
                 &session_id,
                 "agent.run.retry",
                 &format!(
-                    "context_overflow attempt={}/{}",
+                    "context_overflow attempt={}/{} mode={recovery_mode}",
                     recovery_idx + 1,
                     CONTEXT_OVERFLOW_RECOVERY_LIMIT
                 ),
@@ -2290,7 +2312,7 @@ impl AgentSession {
             self.emit(session_progress_event(
                 "agent.run.retry",
                 Some(format!(
-                    "{} context_overflow attempt={}/{}",
+                    "{} context_overflow attempt={}/{} mode={recovery_mode}",
                     execution.runner_name,
                     recovery_idx + 1,
                     CONTEXT_OVERFLOW_RECOVERY_LIMIT
@@ -2298,38 +2320,55 @@ impl AgentSession {
             ))
             .await;
 
-            match self.force_compact_for_context_overflow(&session_id).await {
-                Ok(compacted) => {
-                    tracing::info!(
-                        session_id = %session_id,
-                        channel = %self.actor.channel,
-                        user_id = %self.actor.user_id,
-                        channel_target = %self.channel_target,
-                        compacted,
-                        "[AgentSession] context overflow recovery compacted"
-                    );
+            if !use_current_turn_only_recovery {
+                match self.force_compact_for_context_overflow(&session_id).await {
+                    Ok(compacted) => {
+                        tracing::info!(
+                            session_id = %session_id,
+                            channel = %self.actor.channel,
+                            user_id = %self.actor.user_id,
+                            channel_target = %self.channel_target,
+                            compacted,
+                            "[AgentSession] context overflow recovery compacted"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            session_id = %session_id,
+                            channel = %self.actor.channel,
+                            user_id = %self.actor.user_id,
+                            channel_target = %self.channel_target,
+                            "[AgentSession] context overflow recovery compact failed: {}",
+                            err
+                        );
+                        // Keep the original provider error for diagnostics. The
+                        // public error boundary sanitizes it and must never
+                        // expose context-window or manual /compact guidance.
+                        break;
+                    }
                 }
-                Err(err) => {
-                    tracing::error!(
-                        session_id = %session_id,
-                        channel = %self.actor.channel,
-                        user_id = %self.actor.user_id,
-                        channel_target = %self.channel_target,
-                        "[AgentSession] context overflow recovery compact failed: {}",
-                        err
-                    );
-                    response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
-                    break;
-                }
+            } else {
+                tracing::info!(
+                    session_id = %session_id,
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    channel_target = %self.channel_target,
+                    "[AgentSession] context overflow recovery using current turn only"
+                );
             }
 
+            let restore_limit = if use_current_turn_only_recovery {
+                CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT
+            } else {
+                CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT
+            };
             let recovered = match self
                 .prepare_execution_for_turn(
                     &session_id,
                     persisted_user_input,
                     runtime_user_input,
                     &options,
-                    Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT),
+                    Some(restore_limit),
                     Some(&investment_context),
                 )
                 .await
@@ -2341,24 +2380,16 @@ impl AgentSession {
                         channel = %self.actor.channel,
                         user_id = %self.actor.user_id,
                         channel_target = %self.channel_target,
+                        recovery_mode,
                         "[AgentSession] context overflow recovery prepare failed: {}",
                         err
                     );
                     response.success = false;
-                    response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
+                    response.error = Some(err);
                     break;
                 }
             };
             execution = recovered.0;
-        }
-
-        if !response.success
-            && response
-                .error
-                .as_deref()
-                .is_some_and(is_context_overflow_error_text)
-        {
-            response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
         }
         let finalize_outcome = if agent_owned_interactive_output {
             finalize_agent_owned_interactive_response(
@@ -2529,7 +2560,7 @@ impl AgentSession {
                 .unwrap_or_else(|| "未知错误".to_string());
             let kind = if err.contains("agent_timeout") {
                 AgentSessionErrorKind::AgentTimeout
-            } else if err == CONTEXT_OVERFLOW_FALLBACK_MESSAGE {
+            } else if is_context_overflow_error_text(&err) {
                 AgentSessionErrorKind::ContextWindowOverflow
             } else {
                 AgentSessionErrorKind::AgentFailed
@@ -2542,6 +2573,14 @@ impl AgentSession {
                 elapsed_ms,
                 self.message_id.as_deref(),
             );
+            if kind == AgentSessionErrorKind::ContextWindowOverflow {
+                // `Done.response` and the returned session result can both
+                // cross a channel/API boundary. Keep the provider diagnostic
+                // in logs, but never expose context-window wording or manual
+                // compaction instructions through either path.
+                response.content.clear();
+                response.error = Some(user_visible_error_message(Some(err.as_str())));
+            }
             if let Some(prefix) = committed_visible_prefix.as_deref() {
                 // The runner still returns/logs the real failure, but the Web
                 // stream has crossed an irreversible user-visible boundary.

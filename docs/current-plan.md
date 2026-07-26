@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-26
-状态：有 8 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **上下文溢出无感自动恢复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/context-overflow-invisible-auto-recovery.md`
+  - 摘要：2026-07-26 Web 真实请求在已成功执行 9 个行情、财报日历和 Web 工具后被当前轮工具载荷撑爆；外层错误地只压缩持久历史并把整轮只读工具重新跑了一遍，约 105.9 秒后仍向用户泄露上下文窗口、`/compact` 与新会话提示。本任务在同一 Agent 内把已执行的只读工具结果机械压成有界证据副本并以 `tools=[]` 正常收口；无可用工具证据的 runner 溢出再依次走 forced compact 和 current-turn-only 恢复。财经首行与回答结构保持不变，写操作继续 execute-once，生产代码删除用户可见 overflow 终点。
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

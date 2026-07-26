@@ -28,10 +28,10 @@ use crate::runtime::sanitize_user_visible_output;
 
 pub(super) const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 pub(super) const TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT: usize = 1;
-pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
+pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 2;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
-pub(super) const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
+pub(super) const CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT: usize = 0;
 
 /// 决定一次 run 在送去 runner 前,restore_context 时保留多少条历史。
 ///

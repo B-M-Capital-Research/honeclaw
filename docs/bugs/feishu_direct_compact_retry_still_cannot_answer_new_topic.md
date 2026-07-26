@@ -3,7 +3,18 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixing
+
+## 2026-07-26 Web 精确复现与根因升级
+
+- 精确运行版本 `75ca1957` 于 `20:54:24` 收到 Web direct 请求：`最近AI概念股票疯狂回调，未来一个月结合宏观，及重要事件，重要财报等分析未来一个月可能的走势。`
+- 首轮不是“旧历史一开始就太长”：Agent 已成功执行 5 个代表标的 quote、1 个 earnings calendar 和 3 个 Web 搜索，随后当前轮 raw tool transcript 在下一次模型调用触发 context overflow。
+- Session 于 `20:55:02` 强制 compact 18 条、约 50,069 bytes 的持久历史，24.3 秒后得到 1,777 字摘要并保留 6 条最近消息；但恢复轮又成功执行 sector performance、gainers/losers、3 个 Web 搜索、5 个 quote 和 1 个 earnings calendar，随后再次 overflow。
+- `20:56:10` 整轮在约 `105,982ms` 后失败，并把硬编码的 `当前会话上下文过长...发送 /compact，或开启一个新会话` 作为 assistant failure 持久化并发布。用户截图与日志逐字一致。
+- 根因因此从“历史 restore 仍过大”升级为两层组合：
+  - strict FunctionCalling Agent 没有在当前轮工具结果增长时建立有界模型证据副本；财经工具 schema、系统合同与多组 raw tool results 共同超过 provider request window；
+  - 外层 overflow recovery 只会压缩 durable Session，无法缩小同一轮重新取得的工具结果，反而完整重跑只读研究，增加耗时与 provider/tool 成本。
+- 修复边界：同一 Agent 遇到 read-only 当前轮 overflow 时，保留完整工具审计但用机械有界、明确标注删减的工具证据副本进入一次 `tools=[]` 自然终稿；若尚无可用工具证据，则 forced compact 后再增加 current-turn-only 恢复。财经回答首行和结构不改，persistent/uncertain mutation 不重放，生产代码删除所有用户可见 context/compact/new-session overflow 指引。
 
 ## 2026-07-24 运行态复核
 

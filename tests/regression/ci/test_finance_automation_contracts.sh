@@ -91,6 +91,7 @@ TURN_BUILDER="crates/hone-channels/src/turn_builder.rs"
 BOT_CORE="crates/hone-channels/src/core/bot_core.rs"
 CORE_TOOL_EFFECT="crates/hone-core/src/tool_effect.rs"
 CORE_LIB="crates/hone-core/src/lib.rs"
+CORE_CONTEXT_WINDOW="crates/hone-core/src/context_window.rs"
 CORE_PROVIDER_SYMBOL="crates/hone-core/src/provider_symbol.rs"
 RESPONSE_FINALIZER="crates/hone-channels/src/response_finalizer.rs"
 RUNTIME="crates/hone-channels/src/runtime.rs"
@@ -118,7 +119,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 43"
+echo "[finance-automation-contracts] fixed sample count: 44"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -594,11 +595,28 @@ else
   record fail "43.interactive-no-generic-refusal-and-image-evidence" "Interactive can again ignore image evidence, commit an irreversible header too early, domain-refuse an ordinary question, alter the finance format, or turn a recoverable failure into a generic refusal"
 fi
 
+if contains 'CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" \
+  && contains 'bounded_context_overflow_tool_evidence' "$FUNCTION_AGENT" \
+  && contains 'context_overflow_after_oversized_read_only_results_uses_bounded_same_agent_final' "$FUNCTION_AGENT" \
+  && contains 'CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT' "$AGENT_CORE" \
+  && contains 'use_current_turn_only_context' "$AGENT_CORE" \
+  && contains 'context_overflow_compact_retry_then_current_turn_only_recovers_successfully' "$AGENT_TESTS" \
+  && contains 'exhausted_context_overflow_never_exposes_context_or_compact_guidance' "$AGENT_TESTS" \
+  && contains 'user_visible_error_message_hides_legacy_context_overflow_guidance' "$RUNTIME" \
+  && contains 'pub fn is_context_overflow_error' "$CORE_CONTEXT_WINDOW" \
+  && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$AGENT_CORE" \
+  && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$AGENT_HELPERS" \
+  && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$FUNCTION_AGENT"; then
+  record success "44.invisible-current-turn-aware-context-overflow-recovery" "oversized read-only evidence is bounded inside the same Agent, history recovery falls through to a current-turn-only attempt, and context/compact guidance cannot cross public error boundaries"
+else
+  record fail "44.invisible-current-turn-aware-context-overflow-recovery" "context overflow can again replay oversized evidence, depend only on history compaction, or expose manual compact/new-session guidance"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 43 ]; then
-  echo "[ERROR] acceptance failed: expected all 43 successes"
+if [ "$success" -lt 44 ]; then
+  echo "[ERROR] acceptance failed: expected all 44 successes"
   exit 1
 fi
 

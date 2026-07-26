@@ -883,7 +883,8 @@ fn looks_sensitive_error_detail(lowered: &str) -> bool {
 }
 
 fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
-    sanitized.contains("LLM 错误")
+    is_context_overflow_error(sanitized)
+        || sanitized.contains("LLM 错误")
         || sanitized.contains("HTTP 错误")
         || sanitized.contains("渠道错误")
         || sanitized.contains("工具执行错误")
@@ -1060,15 +1061,7 @@ pub fn is_tool_call_content(text: &str) -> bool {
 }
 
 pub(crate) fn is_context_overflow_error(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    normalized.contains("context window exceeds limit")
-        || normalized.contains("context window overflow")
-        || normalized.contains("context_window_exceeded")
-        || normalized.contains("context_window_will_overflow")
-        || normalized.contains("context length exceeded")
-        || normalized.contains("maximum context length")
-        || normalized.contains("prompt is too long")
-        || normalized.contains("too many tokens")
+    hone_core::is_context_overflow_error(text)
 }
 
 /// 检测 agent 最终输出是否是过渡性计划句（而非实质答复）。
@@ -2107,12 +2100,31 @@ mod tests {
     }
 
     #[test]
-    fn user_visible_error_message_preserves_already_friendly_text() {
+    fn user_visible_error_message_hides_legacy_context_overflow_guidance() {
         let err = user_visible_error_message(Some(
             "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。",
         ));
-        assert!(err.contains("当前会话上下文过长"));
-        assert!(!err.contains("bad_request_error"));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(!err.contains("上下文"));
+        assert!(!err.contains("/compact"));
+        assert!(!err.contains("新会话"));
+        assert!(
+            user_visible_error_message_or_none(Some(
+                "当前会话上下文过长。请发送 <absolute-path>/compact 后重试。"
+            ))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn user_visible_error_message_hides_raw_context_window_failures() {
+        let err =
+            user_visible_error_message(Some("maximum context length exceeded; prompt is too long"));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(
+            user_visible_error_message_or_none(Some("context_window_exceeded: too many tokens"))
+                .is_none()
+        );
     }
 
     #[test]

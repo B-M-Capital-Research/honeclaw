@@ -12,8 +12,8 @@ use hone_core::agent::{
 };
 use hone_core::tool_effect::{tool_call_has_persistent_side_effect, tool_call_is_known_read_only};
 use hone_core::{
-    LlmAuditRecord, LlmAuditSink, ToolExecutionObserver, provider_canonical_key,
-    provider_symbols_equivalent,
+    LlmAuditRecord, LlmAuditSink, ToolExecutionObserver, is_context_overflow_error,
+    provider_canonical_key, provider_symbols_equivalent, truncate_chars,
 };
 use hone_llm::provider::ChatStreamFinishReason;
 use hone_llm::{
@@ -52,6 +52,9 @@ const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
 const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
+const CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS: usize = 48_000;
+const CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS: usize = 6_000;
+const CONTEXT_OVERFLOW_RECOVERY_MIN_RESULT_CHARS: usize = 800;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
@@ -59,6 +62,7 @@ const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
     "agent_owned_finance_forced_final_returned_tool_call";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
+const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
 const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
@@ -1415,6 +1419,58 @@ impl FunctionCallingAgent {
             );
         }
         messages
+    }
+
+    fn build_context_overflow_final_messages(
+        &self,
+        user_input: &str,
+        tool_calls_made: &[ToolCallMade],
+        required_prefix: Option<&str>,
+        finance_answer: bool,
+    ) -> Vec<Message> {
+        let mut instruction = CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION.to_string();
+        if finance_answer {
+            instruction.push('\n');
+            instruction.push_str(&exact_prefix_instruction(required_prefix));
+            instruction.push('\n');
+            instruction.push_str(FINAL_ANSWER_EVIDENCE_CONTRACT);
+            instruction.push('\n');
+            instruction.push_str(DIRECT_FINAL_RELATIONSHIP_CHECK);
+        }
+        let system_prompt = if self.system_prompt.trim().is_empty() {
+            instruction
+        } else {
+            format!("{}\n\n{}", self.system_prompt, instruction)
+        };
+        vec![
+            Message {
+                role: "system".to_string(),
+                content: Some(system_prompt),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+            Message {
+                role: "user".to_string(),
+                content: Some(user_input.to_string()),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+            Message {
+                role: "user".to_string(),
+                content: Some(format!(
+                    "【本轮已执行工具的有界证据副本】\n{}",
+                    bounded_context_overflow_tool_evidence(tool_calls_made)
+                )),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+        ]
     }
 
     fn record_audit(
@@ -4816,6 +4872,148 @@ fn scrub_research_evidence_messages(messages: &mut [Message], strip_reasoning: b
     }
 }
 
+fn truncate_context_json_strings(value: &Value, max_chars: usize) -> Value {
+    match value {
+        Value::String(text) => Value::String(truncate_chars(text, max_chars)),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| truncate_context_json_strings(item, max_chars))
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, item)| (key.clone(), truncate_context_json_strings(item, max_chars)))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+fn pop_context_json_array_tail(value: &mut Value) -> bool {
+    match value {
+        Value::Array(items) => {
+            if items.len() > 1 {
+                items.pop();
+                true
+            } else {
+                items.iter_mut().any(pop_context_json_array_tail)
+            }
+        }
+        Value::Object(map) => map.values_mut().any(pop_context_json_array_tail),
+        _ => false,
+    }
+}
+
+fn bounded_context_json_value(value: &Value, max_chars: usize) -> (Value, bool) {
+    let original_chars = value.to_string().chars().count();
+    if original_chars <= max_chars {
+        return (value.clone(), false);
+    }
+
+    for string_limit in [1_000, 512, 256, 128, 64] {
+        let mut compact = truncate_context_json_strings(value, string_limit);
+        while compact.to_string().chars().count() > max_chars
+            && pop_context_json_array_tail(&mut compact)
+        {}
+        if compact.to_string().chars().count() <= max_chars {
+            return (compact, true);
+        }
+    }
+
+    let mut preview_chars = max_chars.saturating_sub(160).min(1_000);
+    loop {
+        let fallback = serde_json::json!({
+            "status": "tool_result_compacted",
+            "original_chars": original_chars,
+            "preview": truncate_chars(&value.to_string(), preview_chars),
+        });
+        if fallback.to_string().chars().count() <= max_chars || preview_chars == 0 {
+            return (fallback, true);
+        }
+        preview_chars /= 2;
+    }
+}
+
+fn compact_context_overflow_tool_records(
+    tool_calls_made: &[ToolCallMade],
+    result_budget: usize,
+    arguments_budget: usize,
+) -> Value {
+    Value::Array(
+        tool_calls_made
+            .iter()
+            .map(|call| {
+                let (arguments, arguments_compacted) =
+                    bounded_context_json_value(&call.arguments, arguments_budget);
+                let (result, result_compacted) =
+                    bounded_context_json_value(&call.result, result_budget);
+                serde_json::json!({
+                    "tool_call_id": call.tool_call_id,
+                    "tool_name": call.name,
+                    "arguments": arguments,
+                    "arguments_compacted": arguments_compacted,
+                    "result": result,
+                    "result_compacted": result_compacted,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn bounded_context_overflow_tool_evidence(tool_calls_made: &[ToolCallMade]) -> String {
+    if tool_calls_made.is_empty() {
+        return "[]".to_string();
+    }
+
+    let call_count = tool_calls_made.len();
+    let overhead = call_count.saturating_mul(384);
+    let available = CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS.saturating_sub(overhead);
+    let initial_result_budget = (available / call_count).clamp(
+        CONTEXT_OVERFLOW_RECOVERY_MIN_RESULT_CHARS,
+        CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS,
+    );
+    for (result_budget, arguments_budget) in [
+        (initial_result_budget, 512),
+        (
+            initial_result_budget
+                .saturating_mul(3)
+                .checked_div(4)
+                .unwrap_or_default()
+                .max(512),
+            256,
+        ),
+        (CONTEXT_OVERFLOW_RECOVERY_MIN_RESULT_CHARS, 128),
+    ] {
+        let records =
+            compact_context_overflow_tool_records(tool_calls_made, result_budget, arguments_budget);
+        let serialized = records.to_string();
+        if serialized.chars().count() <= CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS {
+            return serialized;
+        }
+    }
+
+    // Extremely high call counts still retain every call's source identity.
+    // The result body is deliberately unavailable instead of dropping a call
+    // or sending a partial JSON fragment that the model could misread.
+    Value::Array(
+        tool_calls_made
+            .iter()
+            .map(|call| {
+                serde_json::json!({
+                    "tool_call_id": call.tool_call_id,
+                    "tool_name": call.name,
+                    "arguments": {"status": "omitted_from_bounded_copy"},
+                    "arguments_compacted": true,
+                    "result": {"status": "omitted_from_bounded_copy"},
+                    "result_compacted": true,
+                })
+            })
+            .collect(),
+    )
+    .to_string()
+}
+
 enum ActiveBusinessStreamOutcome {
     Tools(ChatResponse),
     DirectFinal(ChatResponse),
@@ -5094,6 +5292,7 @@ impl Agent for FunctionCallingAgent {
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
+        let mut context_overflow_finalization = false;
         #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
         #[cfg(test)]
@@ -5140,8 +5339,12 @@ impl Agent for FunctionCallingAgent {
                     || tool_budget_exhausted
                     || market_move_bounded_final_ready
                     || blocked_tool_finalization.is_some());
+            let force_context_overflow_final = context_overflow_finalization;
 
-            if iterations >= self.max_iterations && blocked_tool_finalization.is_none() {
+            if iterations >= self.max_iterations
+                && blocked_tool_finalization.is_none()
+                && !force_context_overflow_final
+            {
                 // The iteration bound is a normal failed run, never implicit
                 // finish authority. A bounded finance final receives its own
                 // tools-disabled iteration before reaching this guard.
@@ -5176,17 +5379,20 @@ impl Agent for FunctionCallingAgent {
             if finish_research_available {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
-            if force_finance_final {
+            if force_finance_final || force_context_overflow_final {
                 round_tools.clear();
             }
             let has_tools = !round_tools.is_empty();
-            let tool_choice_mode =
-                if active_business_round && !evidence_floor_satisfied && !force_finance_final {
-                    ToolChoiceMode::Required
-                } else {
-                    ToolChoiceMode::Auto
-                };
-            let round_instruction = Some(if force_finance_final {
+            let tool_choice_mode = if force_context_overflow_final {
+                ToolChoiceMode::Auto
+            } else if active_business_round && !evidence_floor_satisfied && !force_finance_final {
+                ToolChoiceMode::Required
+            } else {
+                ToolChoiceMode::Auto
+            };
+            let round_instruction = Some(if force_context_overflow_final {
+                CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION
+            } else if force_finance_final {
                 AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
             } else if active_business_round {
                 #[cfg(not(test))]
@@ -5214,7 +5420,14 @@ impl Agent for FunctionCallingAgent {
             } else {
                 OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
             });
-            let mut messages = if active_business_round || self.agent_owned_finance_loop {
+            let mut messages = if force_context_overflow_final {
+                self.build_context_overflow_final_messages(
+                    user_input,
+                    &tool_calls_made,
+                    required_final_answer_prefix.as_deref(),
+                    investment_research_started || self.agent_owned_finance_loop,
+                )
+            } else if active_business_round || self.agent_owned_finance_loop {
                 // Keep only bounded historical user wording for pronoun and
                 // follow-up resolution. Old assistant/tool traces never enter
                 // a new research ledger, so stale prices or entities cannot be
@@ -5223,7 +5436,7 @@ impl Agent for FunctionCallingAgent {
             } else {
                 self.build_messages(context, round_instruction)
             };
-            if active_business_round {
+            if active_business_round && !force_context_overflow_final {
                 // Keep provider-issued reasoning signatures during live tool
                 // follow-up rounds (MiniMax/Mimo compatibility), while
                 // removing assistant prose drafts beside tool calls. The
@@ -5312,13 +5525,18 @@ impl Agent for FunctionCallingAgent {
             let mut active_business_outcome = active_business_round.then_some("tools");
             let eligible_active_final_prefix = (active_business_round
                 && self.agent_owned_finance_loop
-                && (evidence_floor_satisfied || force_finance_final)
+                && (evidence_floor_satisfied
+                    || force_finance_final
+                    || force_context_overflow_final)
                 && tool_choice_mode == ToolChoiceMode::Auto)
                 .then_some(required_final_answer_prefix.as_deref())
                 .flatten();
 
             // 如果有工具，使用 chat_with_tools；否则使用 chat
-            let result: ChatResponse = if has_tools || force_finance_final {
+            let result: ChatResponse = if has_tools
+                || force_finance_final
+                || force_context_overflow_final
+            {
                 if active_business_round {
                     let (active_deadline, active_timeout_error) =
                         active_business_deadline(overall_deadline, self.step_timeout);
@@ -5466,8 +5684,17 @@ impl Agent for FunctionCallingAgent {
                         }
                         Ok(Err(error)) => {
                             let error = error.to_string();
-                            let retrying = self.agent_owned_finance_loop
-                                && blocked_tool_finalization.is_none();
+                            let context_overflow_recovery = is_context_overflow_error(&error)
+                                && !context_overflow_finalization
+                                && !tool_calls_made.is_empty()
+                                && tool_calls_made.iter().all(|call| {
+                                    tool_call_is_known_read_only(&call.name, &call.arguments)
+                                });
+                            let tools_disabled_recovery = !is_context_overflow_error(&error)
+                                && self.agent_owned_finance_loop
+                                && blocked_tool_finalization.is_none()
+                                && !context_overflow_finalization;
+                            let retrying = context_overflow_recovery || tools_disabled_recovery;
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
@@ -5481,7 +5708,8 @@ impl Agent for FunctionCallingAgent {
                                     "active_business_outcome": "error",
                                     "terminal_authorized": false,
                                     "retrying": retrying,
-                                    "tools_disabled_recovery": retrying,
+                                    "tools_disabled_recovery": tools_disabled_recovery,
+                                    "context_overflow_bounded_recovery": context_overflow_recovery,
                                     "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
@@ -5492,7 +5720,11 @@ impl Agent for FunctionCallingAgent {
                             self.dbg(&format!(
                                 "[Agent] active business stream failed without terminal authorization: {error}"
                             ));
-                            if retrying {
+                            if context_overflow_recovery {
+                                context_overflow_finalization = true;
+                                continue;
+                            }
+                            if tools_disabled_recovery {
                                 blocked_tool_finalization = Some(error);
                                 continue;
                             }
@@ -5551,28 +5783,41 @@ impl Agent for FunctionCallingAgent {
                     {
                         Ok(response) => response,
                         Err(error) => {
+                            let error_text = error.to_string();
+                            let context_overflow_recovery = is_context_overflow_error(&error_text)
+                                && !context_overflow_finalization
+                                && !tool_calls_made.is_empty()
+                                && tool_calls_made.iter().all(|call| {
+                                    tool_call_is_known_read_only(&call.name, &call.arguments)
+                                });
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
                                 request_payload,
                                 None,
-                                Some(error.to_string()),
+                                Some(error_text.clone()),
                                 call_started.elapsed().as_millis(),
                                 serde_json::json!({
                                     "iteration": iterations,
                                     "has_tools": true,
+                                    "retrying": context_overflow_recovery,
+                                    "context_overflow_bounded_recovery": context_overflow_recovery,
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                                     "tool_choice_fallback": stream_tool_choice.fallback,
                                 }),
                                 None,
                             );
+                            if context_overflow_recovery {
+                                context_overflow_finalization = true;
+                                continue;
+                            }
                             return AgentResponse {
                                 content: String::new(),
                                 tool_calls_made,
                                 iterations,
                                 success: false,
-                                error: Some(error.to_string()),
+                                error: Some(error_text),
                             };
                         }
                     }
@@ -5594,22 +5839,38 @@ impl Agent for FunctionCallingAgent {
                         usage: r.usage,
                     },
                     Err(e) => {
+                        let error_text = e.to_string();
+                        let context_overflow_recovery = is_context_overflow_error(&error_text)
+                            && !context_overflow_finalization
+                            && !tool_calls_made.is_empty()
+                            && tool_calls_made.iter().all(|call| {
+                                tool_call_is_known_read_only(&call.name, &call.arguments)
+                            });
                         self.record_audit(
                             context,
                             "chat",
                             request_payload,
                             None,
-                            Some(e.to_string()),
+                            Some(error_text.clone()),
                             call_started.elapsed().as_millis(),
-                            serde_json::json!({ "iteration": iterations, "has_tools": false }),
+                            serde_json::json!({
+                                "iteration": iterations,
+                                "has_tools": false,
+                                "retrying": context_overflow_recovery,
+                                "context_overflow_bounded_recovery": context_overflow_recovery,
+                            }),
                             None,
                         );
+                        if context_overflow_recovery {
+                            context_overflow_finalization = true;
+                            continue;
+                        }
                         return AgentResponse {
                             content: String::new(),
                             tool_calls_made,
                             iterations,
                             success: false,
-                            error: Some(e.to_string()),
+                            error: Some(error_text),
                         };
                     }
                 }
@@ -5637,6 +5898,7 @@ impl Agent for FunctionCallingAgent {
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
                 "finance_tool_rounds": finance_tool_rounds,
                 "force_finance_final": force_finance_final,
+                "force_context_overflow_final": force_context_overflow_final,
                 "tool_budget_exhausted": tool_budget_exhausted,
                 "identity_route_limit": research_evidence.identity_route_limit,
                 "rejected_identity_routes": research_evidence.rejected_identity_routes,
@@ -5666,6 +5928,7 @@ impl Agent for FunctionCallingAgent {
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
                 "finance_tool_rounds": finance_tool_rounds,
                 "force_finance_final": force_finance_final,
+                "force_context_overflow_final": force_context_overflow_final,
                 "tool_budget_exhausted": tool_budget_exhausted,
                 "identity_route_limit": research_evidence.identity_route_limit,
                 "rejected_identity_routes": research_evidence.rejected_identity_routes,
@@ -5682,7 +5945,7 @@ impl Agent for FunctionCallingAgent {
             }
             self.record_audit(
                 context,
-                if has_tools || force_finance_final {
+                if has_tools || force_finance_final || force_context_overflow_final {
                     "chat_with_tools"
                 } else {
                     "chat"
@@ -5704,7 +5967,7 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    if force_finance_final {
+                    if force_finance_final || force_context_overflow_final {
                         return failed_agent_response(
                             tool_calls_made,
                             iterations,
@@ -6330,6 +6593,7 @@ mod tests {
         delivered_events: Arc<AtomicUsize>,
         stream_calls: Arc<AtomicUsize>,
         failed_stream_calls: Arc<Mutex<Vec<usize>>>,
+        failed_stream_errors: Arc<Mutex<HashMap<usize, String>>>,
         pending_stream_calls: Arc<Mutex<Vec<usize>>>,
         hang_after_first_event_stream_calls: Arc<Mutex<Vec<usize>>>,
     }
@@ -6345,6 +6609,7 @@ mod tests {
                 delivered_events: Arc::new(AtomicUsize::new(0)),
                 stream_calls: Arc::new(AtomicUsize::new(0)),
                 failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
+                failed_stream_errors: Arc::new(Mutex::new(HashMap::new())),
                 pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
                 hang_after_first_event_stream_calls: Arc::new(Mutex::new(Vec::new())),
             }
@@ -6355,6 +6620,14 @@ mod tests {
                 .lock()
                 .expect("failed stream calls lock")
                 .extend_from_slice(calls);
+            self
+        }
+
+        fn failing_on_stream_call_with_error(self, call: usize, error: &str) -> Self {
+            self.failed_stream_errors
+                .lock()
+                .expect("failed stream errors lock")
+                .insert(call, error.to_string());
             self
         }
 
@@ -6431,6 +6704,12 @@ mod tests {
                 .lock()
                 .expect("failed stream calls lock")
                 .contains(&stream_call);
+            let failed_stream_error = self
+                .failed_stream_errors
+                .lock()
+                .expect("failed stream errors lock")
+                .get(&stream_call)
+                .cloned();
             let should_pending = self
                 .pending_stream_calls
                 .lock()
@@ -6480,13 +6759,16 @@ mod tests {
             } else {
                 1
             };
-            let items: Vec<hone_core::HoneResult<ChatStreamEvent>> = if should_fail {
-                vec![Err(hone_core::HoneError::Llm(format!(
-                    "mock stream failure {stream_call}"
-                )))]
-            } else {
-                events.into_iter().map(Ok).collect()
-            };
+            let items: Vec<hone_core::HoneResult<ChatStreamEvent>> =
+                if let Some(error) = failed_stream_error {
+                    vec![Err(hone_core::HoneError::Llm(error))]
+                } else if should_fail {
+                    vec![Err(hone_core::HoneError::Llm(format!(
+                        "mock stream failure {stream_call}"
+                    )))]
+                } else {
+                    events.into_iter().map(Ok).collect()
+                };
             let delivered_events = self.delivered_events.clone();
             let should_hang_after_first = self
                 .hang_after_first_event_stream_calls
@@ -6766,6 +7048,32 @@ mod tests {
             }
             Ok(json!({
                 "evidence": args.get("text").and_then(|v| v.as_str()).unwrap_or_default()
+            }))
+        }
+    }
+
+    struct OversizedFinanceEvidenceTool;
+
+    #[async_trait]
+    impl Tool for OversizedFinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "oversized finance evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            FinanceEvidenceTool.parameters()
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            Ok(json!({
+                "data_type": "search",
+                "data": [{"symbol":"NVDA","name":"NVIDIA Corporation"}],
+                "provider_time": "2026-07-26T04:00:00-04:00",
+                "oversized_blob": "OVERSIZED_SENTINEL".repeat(10_000),
             }))
         }
     }
@@ -11081,6 +11389,7 @@ mod tests {
             delivered_events: Arc::new(AtomicUsize::new(0)),
             stream_calls: Arc::new(AtomicUsize::new(0)),
             failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
+            failed_stream_errors: Arc::new(Mutex::new(HashMap::new())),
             pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
             hang_after_first_event_stream_calls: Arc::new(Mutex::new(Vec::new())),
         };
@@ -15480,6 +15789,131 @@ mod tests {
             Some(true)
         );
         assert_eq!(error.metadata["terminal_authorized"].as_bool(), Some(false));
+    }
+
+    #[tokio::test]
+    async fn context_overflow_after_oversized_read_only_results_uses_bounded_same_agent_final() {
+        let prefix = "数据时间：北京时间 2026-07-26 21:00；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+        let answer = format!("{prefix}\n\n结论：基于已取得证据继续完成本轮分析。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_oversized_search".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NVDA","entity_route":"nvda","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ])
+        .failing_on_stream_call_with_error(
+            2,
+            "LLM 错误: invalid params, context window exceeds limit (2013)",
+        );
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(OversizedFinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_service_owned_initial_prefix(Some(prefix.to_string()), None);
+        let mut context = AgentContext::new("context-overflow-bounded-final".to_string());
+
+        let response = agent.run("分析 NVDA", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert!(
+            response.tool_calls_made[0].result["oversized_blob"]
+                .as_str()
+                .is_some_and(|value| value.chars().count() > 100_000),
+            "the complete tool result must remain available for audit"
+        );
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 0],
+            "context recovery must not execute or offer tools again"
+        );
+        let seen_messages = seen_messages.lock().expect("stream messages lock");
+        let recovery_messages = seen_messages.last().expect("bounded recovery request");
+        let recovery_payload = serde_json::to_string(recovery_messages).expect("serialize request");
+        assert!(recovery_payload.contains("本轮已执行工具的有界证据副本"));
+        let recovery_evidence = recovery_messages
+            .iter()
+            .filter_map(|message| message.content.as_deref())
+            .find(|content| content.contains("本轮已执行工具的有界证据副本"))
+            .expect("bounded evidence message");
+        assert!(recovery_evidence.contains("\"result_compacted\":true"));
+        assert!(recovery_payload.contains("tc_oversized_search"));
+        assert!(
+            recovery_payload.chars().count() < CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS + 40_000
+        );
+        assert!(
+            !recovery_payload.contains(&"OVERSIZED_SENTINEL".repeat(10_000)),
+            "the complete oversized result must not be replayed to the provider"
+        );
+        let records = audit.records.lock().expect("audit records lock");
+        let overflow = records
+            .iter()
+            .find(|record| {
+                record.metadata["context_overflow_bounded_recovery"].as_bool() == Some(true)
+            })
+            .expect("overflow recovery audit");
+        assert_eq!(overflow.metadata["retrying"], true);
+        assert!(records.iter().any(|record| {
+            record.metadata["force_context_overflow_final"].as_bool() == Some(true)
+        }));
+    }
+
+    #[test]
+    fn bounded_context_overflow_evidence_is_valid_and_keeps_every_call_identity() {
+        let calls = (0..24)
+            .map(|index| ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: json!({"data_type":"earnings_calendar","ticker":format!("T{index}")}),
+                result: json!({
+                    "data": (0..100)
+                        .map(|row| json!({
+                            "symbol": format!("T{index}_{row}"),
+                            "date": "2026-08-01",
+                            "description": "OVERSIZED_SENTINEL".repeat(100),
+                        }))
+                        .collect::<Vec<_>>()
+                }),
+                tool_call_id: Some(format!("call_{index}")),
+            })
+            .collect::<Vec<_>>();
+
+        let evidence = bounded_context_overflow_tool_evidence(&calls);
+
+        assert!(evidence.chars().count() <= CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS);
+        let parsed = serde_json::from_str::<Value>(&evidence).expect("valid bounded JSON");
+        let records = parsed.as_array().expect("records");
+        assert_eq!(records.len(), calls.len());
+        for index in 0..calls.len() {
+            let expected = format!("call_{index}");
+            assert!(
+                records
+                    .iter()
+                    .any(|record| { record["tool_call_id"].as_str() == Some(expected.as_str()) })
+            );
+        }
+        assert!(
+            records
+                .iter()
+                .any(|record| record["result_compacted"].as_bool() == Some(true))
+        );
     }
 
     #[tokio::test]

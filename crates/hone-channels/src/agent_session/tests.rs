@@ -57,10 +57,9 @@ use super::core::{
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
-    CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
-    is_retryable_transient_runner_error_text, persistable_turn_from_response,
-    prune_interactive_runtime_history, sanitize_assistant_context_content,
-    should_persist_tool_result, should_return_runner_result,
+    DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT, is_retryable_transient_runner_error_text,
+    persistable_turn_from_response, prune_interactive_runtime_history,
+    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
@@ -7944,8 +7943,8 @@ async fn context_overflow_auto_compacts_and_retries_successfully() {
 }
 
 #[tokio::test]
-async fn context_overflow_failure_is_rewritten_to_friendly_message() {
-    let root = make_temp_dir("hone_channels_context_overflow_retry_failure");
+async fn context_overflow_compact_retry_then_current_turn_only_recovers_successfully() {
+    let root = make_temp_dir("hone_channels_context_overflow_current_turn_only_success");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(
         vec![Ok(ChatResult {
@@ -7961,6 +7960,12 @@ async fn context_overflow_failure_is_rewritten_to_friendly_message() {
                 "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
                     .to_string(),
             )),
+            Ok(ChatResponse {
+                content: "只保留当前问题后的正常回复".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
         ],
     );
     let core = make_test_core(&root, llm.clone());
@@ -7971,13 +7976,72 @@ async fn context_overflow_failure_is_rewritten_to_friendly_message() {
         .run("请继续分析这个话题", AgentRunOptions::default())
         .await;
 
-    assert!(!result.response.success);
-    let err = result.response.error.expect("friendly error");
-    assert_eq!(err, CONTEXT_OVERFLOW_FALLBACK_MESSAGE);
-    assert!(!err.contains("bad_request_error"));
-    assert!(!err.contains("invalid params"));
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, "只保留当前问题后的正常回复");
     assert_eq!(llm.chat_calls(), 1);
-    assert_eq!(llm.chat_with_tools_calls(), 2);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn exhausted_context_overflow_never_exposes_context_or_compact_guidance() {
+    let root = make_temp_dir("hone_channels_context_overflow_exhausted_hidden");
+    std::fs::create_dir_all(&root).expect("create root");
+    let overflow = || {
+        Err(hone_core::HoneError::Llm(
+            "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+                .to_string(),
+        ))
+    };
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: "压缩后的摘要".to_string(),
+            usage: None,
+        })],
+        vec![overflow(), overflow(), overflow()],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "overflow-exhausted", None::<String>).expect("actor");
+    let session_id = actor.session_id();
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("请继续分析这个话题", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    let public_error = result.response.error.as_deref().expect("public error");
+    assert!(!public_error.contains("上下文"));
+    assert!(!public_error.contains("context"));
+    assert!(!public_error.contains("/compact"));
+    assert!(!public_error.contains("新会话"));
+    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
+
+    let visible_events = format!("{:?}", listener.events.lock().await.as_slice());
+    assert!(!visible_events.contains("上下文"));
+    assert!(
+        !visible_events
+            .to_ascii_lowercase()
+            .contains("context window")
+    );
+    assert!(!visible_events.contains("/compact"));
+    assert!(!visible_events.contains("<absolute-path>"));
+    let persisted = core
+        .session_storage
+        .get_messages(&session_id, None)
+        .expect("persisted messages");
+    let persisted_failure = persisted
+        .last()
+        .map(session_message_text)
+        .expect("persisted failure");
+    assert!(!persisted_failure.contains("上下文"));
+    assert!(!persisted_failure.to_ascii_lowercase().contains("context"));
+    assert!(!persisted_failure.contains("/compact"));
+    assert!(!persisted_failure.contains("新会话"));
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -8031,6 +8095,20 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("codex_error_info=context_window_exceeded".to_string()),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
         AgentRunnerResult {
             response: AgentResponse {
                 content: String::new(),
@@ -8129,12 +8207,13 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
     assert_eq!(llm.chat_calls(), 1);
 
     let recorded = recorded_contexts.lock().expect("recorded contexts lock");
-    assert_eq!(recorded.len(), 2);
+    assert_eq!(recorded.len(), 3);
     let recovered_context = &recorded[1];
+    let current_turn_only_context = &recorded[2];
     let recorded_runtime_inputs = recorded_runtime_inputs
         .lock()
         .expect("recorded runtime inputs lock");
-    assert_eq!(recorded_runtime_inputs.len(), 2);
+    assert_eq!(recorded_runtime_inputs.len(), 3);
     let recovered_transcript = recovered_context
         .iter()
         .map(|message| {
@@ -8161,6 +8240,12 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
             .filter(|message| message.role == "assistant")
             .all(|message| message.tool_calls.is_none())
     );
+    assert!(current_turn_only_context.is_empty());
+    assert!(recorded_runtime_inputs[2].contains("请直接回答我新的问题"));
+    assert!(!recorded_runtime_inputs[2].contains("【Compact Summary】"));
+    assert!(!recorded_runtime_inputs[2].contains("压缩后的摘要"));
+    assert!(!recorded_runtime_inputs[2].contains("旧回答"));
+    assert!(!recorded_runtime_inputs[2].contains("巨大的本地搜索结果"));
 
     let _ = std::fs::remove_dir_all(root);
 }
