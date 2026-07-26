@@ -449,16 +449,30 @@ pub(crate) struct AdminProfileQuery {
 fn profile_summaries_from_sources(
     profiles: &[hone_event_engine::global_digest::ProfileSource],
 ) -> Vec<serde_json::Value> {
-    profiles
-        .iter()
-        .map(|profile| {
-            json!({
-                "ticker": profile.ticker,
-                "dir": profile.dir_name,
-                "preview": profile.markdown.chars().take(200).collect::<String>(),
-            })
+    profiles.iter().map(profile_summary_json).collect()
+}
+
+/// 前端 `ProfileSummary` 的完整投影:`tickers` / `title` / `bytes` 缺一不可,
+/// 少了会让投资页在遍历 `profile.tickers` 时直接抛错白屏。
+pub(crate) fn profile_summary_json(
+    profile: &hone_event_engine::global_digest::ProfileSource,
+) -> serde_json::Value {
+    let title = profile
+        .markdown
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim().trim_start_matches('#').trim();
+            (!trimmed.is_empty() && line.trim_start().starts_with('#')).then(|| trimmed.to_string())
         })
-        .collect()
+        .unwrap_or_else(|| profile.dir_name.clone());
+    json!({
+        "ticker": profile.ticker,
+        "tickers": [profile.ticker],
+        "dir": profile.dir_name,
+        "title": title,
+        "bytes": profile.markdown.len(),
+        "preview": profile.markdown.chars().take(200).collect::<String>(),
+    })
 }
 
 // ─────────────────────────── 投资主线手动蒸馏 ─────────────────────

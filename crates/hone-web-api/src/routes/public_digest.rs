@@ -234,12 +234,6 @@ fn profile_summaries_from_sources(
 ) -> Vec<serde_json::Value> {
     profiles
         .iter()
-        .map(|profile| {
-            json!({
-                "ticker": profile.ticker,
-                "dir": profile.dir_name,
-                "preview": profile.markdown.chars().take(200).collect::<String>(),
-            })
-        })
+        .map(crate::routes::event_engine_admin::profile_summary_json)
         .collect()
 }

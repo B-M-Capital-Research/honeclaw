@@ -10,7 +10,7 @@ use serde_json::json;
 use hone_channels::outbound::collect_local_image_markers;
 use hone_memory::{
     message_is_compact_boundary, message_is_compact_skill_snapshot, message_is_compact_summary,
-    select_messages_after_compact_boundary, session_message_text,
+    select_context_messages, select_messages_after_compact_boundary, session_message_text,
 };
 
 use crate::routes::public_pushes::build_web_push_summary;
@@ -116,7 +116,9 @@ fn project_public_history(
 ) -> Vec<HistoryMsg> {
     let mut history = Vec::new();
     let mut legacy_job_name: Option<String> = None;
-    for message in select_messages_after_compact_boundary(messages, None) {
+    // 公共端历史必须跨 compact 边界:压缩只影响 LLM 上下文,用户翻聊天记录
+    // 时应能一直翻到会话最早的消息。
+    for message in select_context_messages(messages, None) {
         let content = session_message_text(message);
         let scheduler_source = message
             .metadata
@@ -519,6 +521,47 @@ mod tests {
             push.fallback_content.as_deref(),
             Some("盘前重点：留意 CPI。")
         );
+    }
+
+    #[test]
+    fn public_history_keeps_messages_before_compact_boundary_reachable() {
+        let mut messages = vec![
+            hone_memory::session_message_from_text(
+                "user",
+                "很早以前的问题",
+                "2026-07-01T10:00:00+08:00",
+                None,
+            ),
+            hone_memory::session_message_from_text(
+                "assistant",
+                "很早以前的回答",
+                "2026-07-01T10:01:00+08:00",
+                None,
+            ),
+            hone_memory::session_message_from_text(
+                "system",
+                "Conversation compacted",
+                "2026-07-02T10:00:00+08:00",
+                Some(hone_memory::build_compact_boundary_metadata("auto", 2, 2)),
+            ),
+        ];
+        messages.extend((0..30).map(|index| {
+            hone_memory::session_message_from_text(
+                if index % 2 == 0 { "user" } else { "assistant" },
+                &format!("compact-后消息-{index}"),
+                "2026-07-03T10:00:00+08:00",
+                None,
+            )
+        }));
+
+        let latest = public_history_page_from_messages(&messages, None, 20);
+        assert_eq!(latest.next_before, Some(12));
+
+        let older = public_history_page_from_messages(&messages, latest.next_before, 20);
+        assert_eq!(older.start, 0);
+        assert_eq!(older.next_before, None);
+        assert_eq!(older.messages[0].content, "很早以前的问题");
+        assert_eq!(older.messages[1].content, "很早以前的回答");
     }
 
     #[test]
