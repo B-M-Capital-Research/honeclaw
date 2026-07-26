@@ -7,7 +7,7 @@
   --hone-ink-950: #17201f;
   --hone-ink-800: #2d3735;
   --hone-ink-600: #606c68;
-  --hone-ink-400: #929c98;
+  --hone-ink-400: #68736f;
   --hone-paper-50: #fffdf8;
   --hone-paper-100: #f8f4ec;
   --hone-paper-200: #eee8dc;
@@ -22,6 +22,22 @@
   --hone-shadow-sm: 0 2px 10px rgba(30, 35, 32, 0.06);
   --hone-shadow-md: 0 18px 48px rgba(30, 35, 32, 0.12);
   --hone-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --hone-focus-ring: #17201f;
+}
+
+[data-theme="dark"] {
+  --hone-ink-950: #f3f5f2;
+  --hone-ink-800: #d8dcd7;
+  --hone-ink-600: #b5bcb6;
+  --hone-ink-400: #9ca69f;
+  --hone-paper-50: #171a18;
+  --hone-paper-100: #1e2220;
+  --hone-paper-200: #2b302d;
+  --hone-coral-500: #ff8a73;
+  --hone-coral-600: #ff9a86;
+  --hone-line: rgba(255, 255, 255, 0.13);
+  --hone-line-strong: rgba(255, 255, 255, 0.22);
+  --hone-focus-ring: #f5f0e5;
 }
 
 .pub-page,
@@ -45,7 +61,7 @@
 
 .public-chat-page :focus-visible,
 .pub-page :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--hone-coral-500) 72%, white);
+  outline: 3px solid var(--hone-focus-ring);
   outline-offset: 3px;
 }
 

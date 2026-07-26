@@ -255,8 +255,8 @@
 .public-community-card button:focus-visible,
 .public-community-more:focus-visible,
 .public-community-lightbox button:focus-visible {
-  outline: 3px solid rgba(255, 143, 50, 0.55);
-  outline-offset: 2px;
+  outline: 3px solid var(--hone-focus-ring);
+  outline-offset: 3px;
 }
 
 .public-community-lightbox {
@@ -332,6 +332,83 @@
   border: 0;
   border-radius: 12px;
   background: #fff;
+}
+
+.public-community-document-preview {
+  width: min(1100px, 100%);
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.public-community-document-preview > iframe {
+  width: 100% !important;
+  min-height: 0;
+  border-radius: 0 !important;
+}
+
+.public-community-document-status {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 13px;
+  border-top: 1px solid #dfe3e1;
+  background: #f6f8f6;
+  color: #4f5854;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.public-community-document-status.is-warning {
+  border-top-color: #e0c8b5;
+  background: #fff8f1;
+  color: #7d4b2d;
+}
+
+.public-community-document-fallback {
+  min-height: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 28px;
+  background: #f6f8f6;
+  color: #25302c;
+  text-align: center;
+}
+
+.public-community-document-fallback strong { font-size: 16px; }
+.public-community-document-fallback span {
+  color: #5c6661;
+  font-size: 13px;
+}
+
+.public-workspace-page :is(
+  .public-community-card header time,
+  .public-community-card header em,
+  .public-community-file small,
+  .public-community-image:disabled
+) {
+  color: var(--workspace-muted);
+}
+
+[data-theme="dark"] .public-workspace-page .public-community-avatar {
+  border-color: var(--workspace-line);
+  background: var(--workspace-soft);
+  color: var(--workspace-ink);
+}
+
+[data-theme="dark"] .public-workspace-page .public-community-body {
+  color: var(--workspace-ink);
+}
+
+[data-theme="dark"] .public-workspace-page .public-community-file {
+  border-color: var(--workspace-line);
+  background: var(--workspace-soft);
+  color: var(--workspace-ink);
 }
 
 .public-community-lightbox-viewport {

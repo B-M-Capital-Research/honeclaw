@@ -21,11 +21,13 @@ import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import {
   AgentWorkspaceHistoryDrawer,
+  AgentWorkspaceLoadingState,
   AgentWorkspaceMobileHeader,
   AgentWorkspaceMobileNav,
   AgentWorkspaceSidebar,
   AgentWorkspaceTopbar,
 } from "@/components/public-agent-workspace";
+import { PublicPrefsButton } from "@/components/public-prefs-button";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
   FinanceCalendarCard,
@@ -45,11 +47,6 @@ import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-re
 import { CONTENT } from "@/lib/public-content";
 import {
   initPublicPrefs,
-  publicFontScale,
-  publicTheme,
-  setPublicFontScale,
-  setPublicTheme,
-  type PublicTheme,
 } from "@/lib/public-prefs";
 import "./public-foundation.css";
 import "./public-site.css";
@@ -177,108 +174,6 @@ function AnimatedBackground() {
       <div class="circle circle-1"></div>
       <div class="circle circle-2"></div>
       <div class="circle circle-3"></div>
-    </div>
-  );
-}
-
-function PrefsButton() {
-  const [open, setOpen] = createSignal(false);
-  const themeOptions = createMemo<{ value: PublicTheme; label: string }[]>(() => [
-    { value: "auto", label: CONTENT.chat_page.prefs.theme_auto },
-    { value: "light", label: CONTENT.chat_page.prefs.theme_light },
-    { value: "dark", label: CONTENT.chat_page.prefs.theme_dark },
-  ]);
-  const close = () => setOpen(false);
-  let rootRef: HTMLDivElement | undefined;
-
-  // Close on outside click + Esc. Document-level listeners avoid the
-  // stacking-context pitfalls of a transparent backdrop sitting under a
-  // position:fixed header.
-  createEffect(() => {
-    if (!open()) return;
-    const onPointer = (e: PointerEvent) => {
-      if (rootRef && !rootRef.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("pointerdown", onPointer, true);
-    document.addEventListener("keydown", onKey);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointer, true);
-      document.removeEventListener("keydown", onKey);
-    });
-  });
-
-  return (
-    <div class="hone-prefs" ref={rootRef}>
-      <button
-        type="button"
-        class="hone-prefs-trigger"
-        aria-label={CONTENT.chat_page.prefs.aria_label}
-        aria-expanded={open()}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M4 19l5.5-13 5.5 13M6.5 14h6M16 19h4M16 13h4M16 7h4" />
-        </svg>
-      </button>
-      <Show when={open()}>
-        <div class="hone-prefs-panel" role="dialog">
-          <div class="hone-prefs-row">
-            <span class="hone-prefs-label">
-              {CONTENT.chat_page.prefs.font_size}
-            </span>
-            <div class="hone-prefs-segmented">
-              <For each={["s", "m", "l", "xl"] as const}>
-                {(size) => (
-                  <button
-                    type="button"
-                    class={
-                      "hone-prefs-seg" +
-                      (publicFontScale() === size ? " is-active" : "")
-                    }
-                    data-size={size}
-                    onClick={() => setPublicFontScale(size)}
-                  >
-                    A
-                  </button>
-                )}
-              </For>
-            </div>
-          </div>
-          <div class="hone-prefs-row">
-            <span class="hone-prefs-label">
-              {CONTENT.chat_page.prefs.theme}
-            </span>
-            <div class="hone-prefs-segmented">
-              <For each={themeOptions()}>
-                {(opt) => (
-                  <button
-                    type="button"
-                    class={
-                      "hone-prefs-seg hone-prefs-seg--text" +
-                      (publicTheme() === opt.value ? " is-active" : "")
-                    }
-                    onClick={() => setPublicTheme(opt.value)}
-                  >
-                    {opt.label}
-                  </button>
-                )}
-              </For>
-            </div>
-          </div>
-        </div>
-      </Show>
     </div>
   );
 }
@@ -2164,29 +2059,28 @@ function Composer(props: {
         }}
       />
 
-      <AttachMenu
-        open={menuOpen()}
-        onClose={() => setMenuOpen(false)}
-        onPickImage={() => imgInputRef?.click()}
-        onPickFile={() => fileInputRef?.click()}
-      />
+      <div class="public-chat-composer-frame">
+        <AttachMenu
+          open={menuOpen()}
+          onClose={() => setMenuOpen(false)}
+          onPickImage={() => imgInputRef?.click()}
+          onPickFile={() => fileInputRef?.click()}
+        />
 
-      <div
-        class="public-chat-composer-box"
-        style={{
-          position: "relative",
-          "max-width": "900px",
-          margin: "0 auto",
-          "border-radius": "var(--hone-radius-lg)",
-          border: focused() ? "2px solid var(--hone-ink-950)" : "2px solid var(--hone-paper-200)",
-          background: "#fff",
-          "box-shadow": focused()
-            ? "0 20px 60px rgba(23, 32, 31, 0.08)"
-            : "0 10px 30px rgba(23, 32, 31, 0.03)",
-          transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-          overflow: "hidden",
-        }}
-      >
+        <div
+          class="public-chat-composer-box"
+          style={{
+            position: "relative",
+            "border-radius": "var(--hone-radius-lg)",
+            border: focused() ? "2px solid var(--hone-ink-950)" : "2px solid var(--hone-paper-200)",
+            background: "#fff",
+            "box-shadow": focused()
+              ? "0 20px 60px rgba(23, 32, 31, 0.08)"
+              : "0 10px 30px rgba(23, 32, 31, 0.03)",
+            transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+            overflow: "hidden",
+          }}
+        >
         <AttachPreview
           items={props.attachments}
           onRemove={props.onRemoveAttachment}
@@ -2205,6 +2099,10 @@ function Composer(props: {
             type="button"
             class="pub-attach-btn"
             data-open={menuOpen() ? "true" : undefined}
+            aria-label="添加图片或文件"
+            title="添加图片或文件"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen()}
             style={{ width: "36px", height: "36px", "flex-shrink": "0" }}
             onClick={() => setMenuOpen(!menuOpen())}
           >
@@ -2320,6 +2218,7 @@ function Composer(props: {
             </svg>
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -2789,6 +2688,24 @@ export default function PublicChatPage() {
     setHistoryDrawerOpen(false);
     requestAnimationFrame(() => scrollToMessage(id));
   };
+
+  createEffect(() => {
+    if (authState() !== "ready") return;
+    const shouldStartNew = searchParams.new === "1";
+    const researchParam = searchParams.research;
+    const researchId = Array.isArray(researchParam)
+      ? researchParam[0]
+      : researchParam;
+    const shouldOpenPushes = searchParams.panel === "pushes";
+    if (!shouldStartNew && !researchId && !shouldOpenPushes) return;
+    if (shouldStartNew) startNewConversation();
+    if (researchId) openWorkspaceResearch(researchId);
+    if (shouldOpenPushes) openPushCenter();
+    setSearchParams(
+      { new: undefined, research: undefined, panel: undefined },
+      { replace: true },
+    );
+  });
 
   const clearRestoreRetry = () => {
     if (restoreRetryTimer !== undefined) {
@@ -3475,7 +3392,7 @@ export default function PublicChatPage() {
                   <PushUnreadDot count={pushUnreadCount()} />
                 </button>
               </Show>
-              <PrefsButton />
+              <PublicPrefsButton />
               <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
             </>
           }
@@ -3493,6 +3410,7 @@ export default function PublicChatPage() {
                 <AgentWorkspaceSidebar
                   userName={workspaceDisplayName()}
                   research={workspaceResearch()}
+                  researchLoading={authState() === "loading"}
                   activeMode="conversation"
                   activeSection="agent"
                   communityUnread={communityUnread()}
@@ -3512,11 +3430,14 @@ export default function PublicChatPage() {
                     unreadPushCount={pushUnreadCount()}
                     showSearch={false}
                     onQueryChange={() => {}}
+                    preferences={<PublicPrefsButton />}
                     onPushes={openPushCenter}
                   />
                   <AgentWorkspaceMobileHeader
                     userName={workspaceDisplayName()}
                     unreadPushCount={pushUnreadCount()}
+                    historyCount={workspaceResearch().length}
+                    preferences={<PublicPrefsButton />}
                     onMenu={() => setHistoryDrawerOpen(true)}
                     onPushes={openPushCenter}
                     onAccount={() => navigate("/me")}
@@ -3526,6 +3447,17 @@ export default function PublicChatPage() {
                       <span>会话暂时未同步，你仍可查看当前页面。</span>
                       <button type="button" onClick={() => restoreSession({ resetWindow: true, retryOnFailure: true, attempt: 1 })}>重新连接</button>
                     </div>
+                  </Show>
+                  <Show
+                    when={
+                      authState() === "loading" ||
+                      (restoreStatus()?.mode === "retrying" && !currentUser())
+                    }
+                  >
+                    <AgentWorkspaceLoadingState
+                      retrying={restoreStatus()?.mode === "retrying"}
+                      attempt={restoreStatus()?.attempt}
+                    />
                   </Show>
                   <div class="agent-workspace-body">
                     <div

@@ -1,10 +1,16 @@
 .public-workspace-page {
+  --workspace-bg: #ffffff;
+  --workspace-panel: #ffffff;
+  --workspace-soft: #f7f7f5;
+  --workspace-line: #e2e4df;
+  --workspace-ink: #151815;
+  --workspace-muted: #626762;
   width: 100%;
   min-height: 100dvh;
   display: flex;
   overflow: hidden;
-  background: #fff;
-  color: #111311;
+  background: var(--workspace-bg);
+  color: var(--workspace-ink);
   font-family: var(--font-sans, "Plus Jakarta Sans", "PingFang SC", sans-serif);
 }
 
@@ -13,7 +19,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-  background: #fff;
+  background: var(--workspace-bg);
 }
 .public-workspace-inner {
   width: min(1040px, calc(100% - 56px));
@@ -65,7 +71,7 @@
 .public-workspace-tabs button { min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #8b8e89; cursor: pointer; font-size: 12px; }
 .public-workspace-tabs button.is-active { background: #f2f3f0; color: #111; font-weight: 750; }
 .public-workspace-panel { border: 1px solid #e6e7e3; border-radius: 17px; background: #fff; }
-.public-workspace-state { display: grid; place-items: center; min-height: 220px; padding: 32px; border: 1px solid #e6e7e3; border-radius: 17px; color: #8b8e89; font-size: 13px; text-align: center; }
+.public-workspace-state { display: grid; place-items: center; min-height: 124px; padding: 24px; border: 1px solid var(--workspace-line); border-radius: 17px; color: var(--workspace-muted); font-size: 13px; line-height: 1.55; text-align: center; }
 .public-workspace-state.is-error { color: #a43b32; }
 .public-workspace-state button { margin-top: 12px; padding: 8px 13px; border: 1px solid #dddeda; border-radius: 8px; background: #fff; cursor: pointer; }
 
@@ -345,4 +351,149 @@
   .public-holdings-head button { width: 100%; }
   .public-holding-form-row { grid-template-columns: 1fr; }
   .public-holding-bubble button { flex: 1 1 calc(50% - 3px); }
+}
+
+/* Visual acceptance: one tokenized workspace palette, including dark mode. */
+.public-workspace-page :is(
+  .public-workspace-page-heading time,
+  .public-workspace-eyebrow,
+  .public-workspace-page-heading p,
+  .public-workspace-tabs button,
+  .public-insights-filter button,
+  .public-tracking-calendar-head p,
+  .public-tracking-weekdays span,
+  .public-tracking-agenda.is-desktop-list small,
+  .public-tracking-task-empty p,
+  .public-tracking-invest-link,
+  .public-invest-stats small,
+  .public-invest-stats strong em,
+  .public-invest-section-head button,
+  .public-invest-earnings small,
+  .public-invest-earnings-empty,
+  .public-mainline-meta-info,
+  .public-mainline-style-label,
+  .public-mainline-empty-text,
+  .public-mainline-fallback,
+  .public-mainline-empty,
+  .public-profile-ticker,
+  .public-profile-sub,
+  .public-profile-modal-muted,
+  .public-profile-modal-foot,
+  .public-profile-modal-close,
+  .public-vip-main > p,
+  .public-vip-side small,
+  .public-vip-qr-pop small,
+  .public-account-row span,
+  .public-account-note
+) {
+  color: var(--workspace-muted);
+}
+
+.public-tracking-day.is-muted {
+  color: var(--workspace-muted);
+}
+
+.public-mainline-refresh:disabled {
+  color: var(--workspace-muted);
+}
+
+.public-workspace-page :is(
+  .public-workspace-panel,
+  .public-workspace-state,
+  .public-community-timeline,
+  .public-community-card,
+  .public-insights-filter button,
+  .public-tracking-calendar,
+  .public-tracking-day,
+  .public-tracking-month-controls button,
+  .public-tracking-invest-link button,
+  .public-invest-stats > div,
+  .public-invest-earnings > button,
+  .public-mainline-style-card,
+  .public-mainline-card,
+  .public-mainline-empty,
+  .public-profile-view-btn,
+  .public-profile-row,
+  .public-profile-modal,
+  .public-vip-side,
+  .public-vip-qr,
+  .public-vip-qr-pop figure,
+  .public-account-actions button
+) {
+  border-color: var(--workspace-line);
+  background: var(--workspace-panel);
+}
+
+.public-workspace-page :is(
+  .public-workspace-page-heading h1,
+  .public-tracking-calendar-head h2,
+  .public-invest-stats strong,
+  .public-mainline-style-body,
+  .public-mainline-ticker,
+  .public-mainline-text,
+  .public-profile-title,
+  .public-profile-modal-title,
+  .public-profile-modal-body,
+  .public-vip-main h2,
+  .public-vip-side strong,
+  .public-account-row strong
+) {
+  color: var(--workspace-ink);
+}
+
+.public-workspace-state:only-child {
+  margin: 0;
+}
+
+[data-theme="dark"] .public-workspace-page {
+  --workspace-bg: #181b19;
+  --workspace-panel: #1d201e;
+  --workspace-soft: #252925;
+  --workspace-line: #393e3a;
+  --workspace-ink: #f1f3ef;
+  --workspace-muted: #b8beb8;
+}
+
+[data-theme="dark"] .public-workspace-page :is(
+  .public-workspace-tabs button.is-active,
+  .public-tracking-day.is-muted,
+  .public-mainline-card.is-pending,
+  .public-account-note,
+  .public-profile-modal-foot
+) {
+  background: var(--workspace-soft);
+  color: var(--workspace-ink);
+}
+
+[data-theme="dark"] .public-workspace-page :is(
+  .public-community-card,
+  .public-tracking-day,
+  .public-invest-earnings > button,
+  .public-account-actions button
+):hover {
+  background: #242825;
+}
+
+[data-theme="dark"] .public-workspace-page :is(
+  .public-mainline-refresh,
+  .public-workspace-primary-action,
+  .public-tracking-task-empty button,
+  .public-account-actions button.is-primary
+) {
+  border-color: #eef1ed;
+  background: #eef1ed;
+  color: #171917;
+}
+
+[data-theme="dark"] .public-vip-card {
+  border-color: color-mix(in srgb, var(--hone-coral-500) 45%, var(--workspace-line));
+  background: linear-gradient(180deg, rgba(240, 100, 73, 0.09), var(--workspace-panel) 58%);
+}
+
+[data-chat-fs="l"] .public-workspace-page :is(p, small, time, button, input, .public-workspace-state) {
+  font-size: max(13px, 1em);
+}
+
+[data-chat-fs="xl"] .public-workspace-page :is(p, small, time, button, input, .public-workspace-state) {
+  font-size: max(14px, 1em);
 }

@@ -15,6 +15,10 @@ const workspaceCss = readFileSync(
   new URL("./public-agent-workspace.css", import.meta.url),
   "utf8",
 );
+const shareCard = readFileSync(
+  new URL("../components/chat-share-card.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("public chat visual contract", () => {
   it("uses one responsive Agent workspace with real product destinations", () => {
@@ -84,10 +88,24 @@ describe("public chat visual contract", () => {
     // Agent 页只有对话视图，不再有 overview 分支
     expect(chat).not.toContain("AgentWorkspaceOverview");
     expect(chat).toContain('class="public-chat-shell is-conversation"');
+    expect(chat).toContain("<AgentWorkspaceLoadingState");
     expect(chat).toContain("<AgentWorkspaceHistoryDrawer");
-    expect(workspace).toContain('aria-label="会话历史"');
+    expect(workspace).toContain('aria-label="工作区菜单与对话记录"');
     expect(workspaceCss).toContain("agent-workspace-history-drawer");
     expect(workspaceCss).toContain("agent-workspace-restore-notice");
+    expect(workspaceCss).toContain("agent-workspace-loading");
+  });
+
+  it("anchors attachments to the centered composer and names the trigger", () => {
+    expect(chat).toContain('class="public-chat-composer-frame"');
+    expect(chat).toContain('aria-label="添加图片或文件"');
+    expect(chat).toContain('aria-haspopup="menu"');
+  });
+
+  it("keeps the exported share card readable under the dark application theme", () => {
+    expect(shareCard).toContain('"--hone-ink-950": "#17201f"');
+    expect(shareCard).toContain('"--hone-paper-100": "#f8f4ec"');
+    expect(shareCard).toContain('"--hone-line": "rgba(23, 32, 31, 0.11)"');
   });
 
   it("keeps quick actions on a horizontally scrollable mobile line", () => {
@@ -101,11 +119,27 @@ describe("public chat visual contract", () => {
 
   it("keeps assistant responses flat and user prompts softly filled", () => {
     const finalLayer = css.slice(css.indexOf("Final mobile chat overrides"));
+    const darkMobileLayer = finalLayer.slice(
+      finalLayer.indexOf('[data-theme="dark"] .public-chat-page--ready'),
+      finalLayer.indexOf(".public-chat-community-action"),
+    );
     expect(finalLayer).toContain("pub-msg-bubble--assistant");
     expect(finalLayer).toContain("background: transparent !important");
     expect(finalLayer).toContain("pub-msg-bubble--user");
     expect(finalLayer).toContain("background: #f1f1ef !important");
     expect(finalLayer).toContain('[data-theme="dark"]');
+    expect(darkMobileLayer).toContain(
+      "background: var(--agent-paper, var(--hone-paper-50)) !important",
+    );
+    expect(darkMobileLayer).toContain(
+      "background: var(--hone-paper-200) !important",
+    );
+    expect(darkMobileLayer).toContain(
+      "color: var(--agent-ink, var(--hone-ink-950)) !important",
+    );
+    expect(darkMobileLayer).not.toContain("#212121");
+    expect(darkMobileLayer).not.toContain("#303030");
+    expect(darkMobileLayer).not.toContain("#ececec");
   });
 
   it("removes the heavy composer shadow in the final mobile layer", () => {

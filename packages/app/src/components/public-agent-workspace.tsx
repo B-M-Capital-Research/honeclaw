@@ -1,4 +1,14 @@
-import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
 import { groupResearchByDate } from "@/lib/public-agent-workspace";
 import type {
@@ -79,6 +89,7 @@ export function AgentWorkspaceSidebar(props: {
   hasOlder?: boolean;
   loadingOlder?: boolean;
   onLoadOlder?: () => void;
+  researchLoading?: boolean;
   onNewResearch: () => void;
   onSelectResearch: (id: string) => void;
   onHome: () => void;
@@ -95,6 +106,9 @@ export function AgentWorkspaceSidebar(props: {
     const normalized = query().trim().toLowerCase();
     if (!normalized) return props.research;
     return props.research.filter((item) => item.title.toLowerCase().includes(normalized));
+  });
+  createEffect(() => {
+    if (props.activeMode === "overview") setQuery("");
   });
   return (
     <aside class="agent-workspace-sidebar" aria-label="HONE 工作台">
@@ -116,7 +130,21 @@ export function AgentWorkspaceSidebar(props: {
         <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="搜索对话记录" />
       </label>
       <section class="agent-workspace-history">
-        <Show when={filteredResearch().length > 0} fallback={<><div class="agent-workspace-history-label">最近</div><p>你的对话记录会出现在这里。</p></>}>
+        <Show
+          when={filteredResearch().length > 0}
+          fallback={
+            <>
+              <div class="agent-workspace-history-label">最近</div>
+              <p role="status">
+                {props.researchLoading
+                  ? "正在同步对话记录…"
+                  : query().trim()
+                    ? "没有匹配的对话记录，换一个关键词试试。"
+                    : "还没有对话记录，开始提问后会出现在这里。"}
+              </p>
+            </>
+          }
+        >
           <For each={groupResearchByDate(filteredResearch())}>{(group) => (
             <>
               <div class="agent-workspace-history-label">{group.label}</div>
@@ -149,6 +177,7 @@ export function AgentWorkspaceTopbar(props: {
   label?: string;
   placeholder?: string;
   showSearch?: boolean;
+  preferences?: JSX.Element;
   onQueryChange: (value: string) => void;
   onPushes: () => void;
 }) {
@@ -157,12 +186,41 @@ export function AgentWorkspaceTopbar(props: {
       <span>{props.label ?? "你的投资研究智能体"}</span>
       <div class="agent-workspace-topbar-actions">
         <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或社区内容"} /></label></Show>
+        {props.preferences}
         <button type="button" onClick={props.onPushes} aria-label="打开通知">
           <AgentWorkspaceIcon name="bell" />
           <Show when={props.unreadPushCount > 0}><i /></Show>
         </button>
       </div>
     </header>
+  );
+}
+
+export function AgentWorkspaceLoadingState(props: {
+  retrying?: boolean;
+  attempt?: number;
+}) {
+  return (
+    <div class="agent-workspace-loading" role="status" aria-live="polite">
+      <div class="agent-workspace-loading-copy">
+        <span class="agent-workspace-loading-mark" aria-hidden="true">
+          <AgentWorkspaceIcon name="agent" size={24} />
+        </span>
+        <div>
+          <strong>{props.retrying ? "正在重新连接研究空间" : "正在恢复研究空间"}</strong>
+          <p>
+            {props.retrying
+              ? `后端响应较慢，正在进行第 ${props.attempt ?? 2} 次同步。`
+              : "正在同步研究记录、推送与最近会话。"}
+          </p>
+        </div>
+      </div>
+      <div class="agent-workspace-loading-skeleton" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
+    </div>
   );
 }
 
@@ -292,6 +350,7 @@ export function AgentWorkspaceMobileHeader(props: {
   userName: string;
   unreadPushCount: number;
   historyCount?: number;
+  preferences?: JSX.Element;
   onPushes: () => void;
   onHistory?: () => void;
   onMenu?: () => void;
@@ -301,7 +360,7 @@ export function AgentWorkspaceMobileHeader(props: {
     props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
       ? "H"
       : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label="打开菜单" class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="会话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show><button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar">{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label="打开菜单" class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="对话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={`打开${props.userName}的账户`}>{avatar()}</button></div></header>;
 }
 
 /**
@@ -315,6 +374,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
   hasOlder: boolean;
   loadingOlder: boolean;
   communityUnread: boolean;
+  researchLoading?: boolean;
   onOpen: () => void;
   onClose: () => void;
   onSelectResearch: (id: string) => void;
@@ -401,7 +461,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
   return (
     <Show when={props.open}>
       <div class="agent-workspace-history-backdrop" onClick={props.onClose} />
-      <aside class="agent-workspace-history-drawer" aria-label="会话历史" aria-modal="true" role="dialog">
+      <aside class="agent-workspace-history-drawer" aria-label="工作区菜单与对话记录" aria-modal="true" role="dialog">
         <header>
           <HoneBrand />
           <button type="button" onClick={props.onClose} aria-label="关闭菜单">×</button>
@@ -417,7 +477,18 @@ export function AgentWorkspaceHistoryDrawer(props: {
         </label>
         <div class="agent-workspace-history-drawer-label">聊天记录</div>
         <div class="agent-workspace-history-drawer-list">
-          <Show when={filteredResearch().length > 0} fallback={<p>开始对话后，历史记录会出现在这里。</p>}>
+          <Show
+            when={filteredResearch().length > 0}
+            fallback={
+              <p role="status">
+                {props.researchLoading
+                  ? "正在同步对话记录…"
+                  : query().trim()
+                    ? "没有匹配的对话记录，换一个关键词试试。"
+                    : "开始提问后，对话记录会出现在这里。"}
+              </p>
+            }
+          >
             <For each={groupResearchByDate(filteredResearch())}>{(group) => (
               <>
                 <div class="agent-workspace-history-drawer-group">{group.label}</div>

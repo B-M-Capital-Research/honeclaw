@@ -241,6 +241,18 @@ export function ChatShareCard(props: ChatShareCardProps) {
       <div
         ref={(el) => props.registerRef?.(el)}
         style={{
+          // Exported/previewed cards are intentionally light artifacts. Pin
+          // every token they consume so a dark application theme cannot turn
+          // the white card into a low-contrast white-on-white surface.
+          "--hone-ink-950": "#17201f",
+          "--hone-ink-800": "#2d3735",
+          "--hone-ink-600": "#606c68",
+          "--hone-ink-400": "#68736f",
+          "--hone-paper-50": "#fffdf8",
+          "--hone-paper-100": "#f8f4ec",
+          "--hone-paper-200": "#eee8dc",
+          "--hone-line": "rgba(23, 32, 31, 0.11)",
+          "--hone-line-strong": "rgba(23, 32, 31, 0.18)",
           width: `${CARD_WIDTH}px`,
           background:
             "linear-gradient(180deg, #fffaf3 0%, #ffffff 12%, #ffffff 100%)",

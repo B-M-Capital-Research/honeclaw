@@ -20,6 +20,10 @@ describe("public workspace page contract", () => {
     expect(shell).toContain("<AgentWorkspaceMobileNav");
     expect(community).toContain('<PublicWorkspaceShell\n          active="insights"');
     expect(me).toContain('<PublicWorkspaceShell active="me"');
+    expect(shell).toContain("<PublicPrefsButton");
+    expect(shell).toContain("<PublicPushCenter");
+    expect(shell).toContain("getPublicChatBootstrap");
+    expect(shell).toContain("publicWorkspaceResearchFromHistory");
   });
 
   it("uses a continuous insight stream and separate desktop/mobile tracking views", () => {
@@ -40,5 +44,11 @@ describe("public workspace page contract", () => {
     expect(startup).not.toContain("HONE CONVERSATION");
     expect(startup).toContain('class="public-chat-startup-tabs"');
     expect(me).toContain("正在加载个人空间");
+  });
+
+  it("supports complete dark workspace surfaces and compact empty states", () => {
+    expect(css).toContain('[data-theme="dark"] .public-workspace-page');
+    expect(css).toContain("--workspace-muted: #b8beb8");
+    expect(css).toContain("min-height: 124px");
   });
 });

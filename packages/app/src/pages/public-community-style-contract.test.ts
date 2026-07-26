@@ -25,8 +25,10 @@ describe("public community interaction contract", () => {
   });
 
   it("sandboxes inline files and uses authenticated blob downloads", () => {
-    expect(page).toContain('sandbox="allow-downloads"');
+    expect(page).toContain('sandbox="allow-downloads allow-same-origin"');
     expect(page).toContain("getPublicCommunityResourceBlob");
+    expect(page).toContain("内嵌预览响应较慢");
+    expect(page).toContain("当前宿主无法显示这份 PDF");
     expect(page).not.toContain('target="_blank"');
   });
 

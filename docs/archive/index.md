@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-26
+Last updated: 2026-07-27
+
+## 2026-07-27
+
+### Public Workspace Visual Acceptance Fixes
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/public-workspace-visual-acceptance-fixes.md`
+- Handoff: `docs/handoffs/2026-07-27-public-workspace-visual-acceptance-fixes.md`
+- Decision / ADR: N/A; public auth, session ownership, API boundaries, and module boundaries are unchanged
+- Related PRs / commits: this change set
+- Related runbooks / regressions: 285 frontend tests with 863 assertions, TypeScript check, public frontend build, visual contract tests, desktop and 390 × 844 Chromium QA, delayed-bootstrap skeleton probe, authenticated PDF success/failure fixtures, dark-theme share and attachment checks, and a 16-image visual evidence set
+- Current conclusion: logged-in users can reach theme and font controls across the Public Workspace; research history and push center behave consistently across pages; new research, search empty states, recovery loading, attachment positioning/accessibility, focus visibility, contrast, PDF fallback, share preview, and community empty states now have explicit and verified behavior. A same-day evidence review also removed the mobile dark chat's mixed gray/green message palette: page, assistant, user bubble, and text now share one coherent workspace token hierarchy. The local source is ready, but the installed `/Applications/HONE.app` still loads the older deployed `hone-claw.com` bundle because no release or deployment was requested.
+- Next entry point: `docs/handoffs/2026-07-27-public-workspace-visual-acceptance-fixes.md`, `packages/app/src/pages/chat.tsx`, and `packages/app/src/components/public-workspace-shell.tsx`
 
 ## 2026-07-26
 
@@ -53,7 +67,6 @@ Last updated: 2026-07-26
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; Agent `124/124`; Channels `670/670`; Web API `128/128` with two credentialed tests ignored; Tools `143` with one optional test ignored; Web `280/280`; Edge Worker `45/45`; finance contracts `39/39`; complete workspace check/test, CI-safe regressions, formatting/diff checks; immutable deployment manifest and exact production replay
 - Current conclusion: the exact incident query previously withheld all visible text for about two minutes because synchronous context work and an unbounded Agent research fan-out preceded a buffered final. Production now ACKs one neutral typed Web-finance line at a safe irreversible boundary, enforces three finance batches plus 24-total/20-DataFetch/6-Web/6-route ceilings, and gives the same Agent a tool-disabled natural final at exhaustion. Exact deployment `2563f7ad` passed cloud/runtime/auth/static health and replayed the query with the first exact line at `179ms`; four model calls, 14 executed tools and two routes ended once at `117.189s`, with no reset/error/partial/failure suffix and byte-identical 8,167-byte visible/persisted output.
 - Next entry point: the latency subtask is closed. Continue the shared ticker plan only for the scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2; immutable `target/deploy-b06de76a` remains the immediate runtime rollback.
-
 ## 2026-07-19
 
 ### Public Community Private-R2 Edge Delivery

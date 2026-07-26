@@ -30,6 +30,7 @@ type ChatShareModalProps = {
     title: string;
     subtitle: string;
     preview_subtitle: string;
+    preview_scroll_hint: string;
     generate_image: string;
     back_to_select: string;
     download: string;
@@ -538,11 +539,19 @@ export function ChatShareModal(props: ChatShareModalProps) {
                 </div>
                 <Show when={previewUrl()}>
                   {(url) => (
-                    <div class="pub-share-preview-frame">
+                    <div
+                      class="pub-share-preview-frame"
+                      role="region"
+                      tabIndex={0}
+                      aria-label={props.strings.preview_scroll_hint}
+                    >
                       <img src={url()} alt={props.strings.title} />
                     </div>
                   )}
                 </Show>
+                <div class="pub-share-preview-scroll-hint">
+                  {props.strings.preview_scroll_hint}
+                </div>
                 <button
                   type="button"
                   class="pub-share-back"
@@ -695,6 +704,10 @@ const MODAL_CSS = `
     overflow: hidden;
     animation: pub-share-pop 0.22s var(--hone-ease);
   }
+  .pub-share-panel :focus-visible {
+    outline: 3px solid var(--hone-focus-ring);
+    outline-offset: 3px;
+  }
   @keyframes pub-share-pop {
     from { transform: translateY(12px) scale(0.97); opacity: 0; }
     to { transform: none; opacity: 1; }
@@ -707,8 +720,8 @@ const MODAL_CSS = `
     background: #fff;
   }
   .pub-share-header > div { min-width: 0; }
-  .pub-share-title { font-size: 17px; font-weight: 800; color: var(--hone-ink-950); }
-  .pub-share-subtitle { margin-top: 2px; font-size: 12.5px; color: var(--hone-ink-600); }
+  .pub-share-title { font-size: 19px; font-weight: 800; color: var(--hone-ink-950); }
+  .pub-share-subtitle { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--hone-ink-600); }
   .pub-share-close {
     width: 32px; height: 32px;
     flex: 0 0 32px;
@@ -768,6 +781,8 @@ const MODAL_CSS = `
     margin: 0 auto;
     border-radius: var(--hone-radius-md);
     overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     background: #fff;
     border: 1px solid var(--hone-line);
     box-shadow: 0 18px 50px rgba(23,32,31,0.16);
@@ -779,6 +794,14 @@ const MODAL_CSS = `
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: default;
+  }
+  .pub-share-preview-scroll-hint {
+    width: min(100%, 320px);
+    margin: 9px auto 0;
+    color: var(--hone-ink-600);
+    font-size: 12.5px;
+    line-height: 1.45;
+    text-align: center;
   }
   .pub-share-back {
     display: block;
@@ -811,7 +834,12 @@ const MODAL_CSS = `
     cursor: pointer;
     line-height: 1.45;
   }
-  .pub-share-item-label input { margin-top: 3px; flex: none; cursor: pointer; }
+  .pub-share-item-label input {
+    margin-top: 3px;
+    flex: none;
+    cursor: pointer;
+    accent-color: var(--hone-ink-950);
+  }
   .pub-share-item-role {
     flex: none;
     font-size: 11px; font-weight: 700;
@@ -835,6 +863,10 @@ const MODAL_CSS = `
     background: var(--hone-paper-100);
   }
   .pub-share-actions--single { grid-template-columns: 1fr; }
+  .pub-share-actions--single .pub-share-action {
+    width: min(260px, 100%);
+    justify-self: center;
+  }
   .pub-share-action {
     display: inline-flex; align-items: center; justify-content: center;
     gap: 8px;
@@ -879,6 +911,34 @@ const MODAL_CSS = `
   @keyframes pub-share-toast-in {
     from { opacity: 0; transform: translate(-50%, 6px); }
     to { opacity: 1; transform: translate(-50%, 0); }
+  }
+  [data-theme="dark"] .pub-share-panel,
+  [data-theme="dark"] .pub-share-header {
+    background: #1b1e1c;
+  }
+  [data-theme="dark"] .pub-share-preview-body,
+  [data-theme="dark"] .pub-share-actions {
+    background: #171a18;
+  }
+  [data-theme="dark"] .pub-share-font-toolbar,
+  [data-theme="dark"] .pub-share-preview-frame,
+  [data-theme="dark"] .pub-share-action {
+    background: #242825;
+    border-color: rgba(255,255,255,0.14);
+    color: #f1f3ef;
+  }
+  [data-theme="dark"] .pub-share-item[data-selected="true"],
+  [data-theme="dark"] .pub-share-close {
+    background: #2b302d;
+  }
+  [data-theme="dark"] .pub-share-busy {
+    background: rgba(23,26,24,0.88);
+    color: #f1f3ef;
+  }
+  [data-theme="dark"] .pub-share-action--primary {
+    background: #eef1ed;
+    border-color: #eef1ed;
+    color: #171917;
   }
   @media (max-width: 600px) {
     .pub-share-overlay {

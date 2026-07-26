@@ -20,7 +20,6 @@ import {
   markPublicCommunitySeen,
   publicCommunityResourceDownloadName,
   publicCommunityResourceUrl,
-  resolvePublicCommunityResourceUrl,
 } from "@/lib/api";
 import {
   clampFinanceCalendarPan,
@@ -102,6 +101,9 @@ function CommunityMediaPreview(props: {
   const [interacting, setInteracting] = createSignal(false);
   const [downloadState, setDownloadState] = createSignal<"idle" | "working" | "error">("idle");
   const [documentSource, setDocumentSource] = createSignal<string | null>(null);
+  const [documentState, setDocumentState] = createSignal<
+    "loading" | "ready" | "slow" | "error"
+  >("loading");
   const source = () =>
     publicCommunityResourceUrl(
       props.resource.resource_id,
@@ -120,6 +122,8 @@ function CommunityMediaPreview(props: {
   let removeGestures: (() => void) | undefined;
   let viewFrame = 0;
   let disposed = false;
+  let documentObjectUrl: string | undefined;
+  let documentSlowTimer: number | undefined;
   let pendingView: { zoom: number; x: number; y: number } | undefined;
 
   const boundedView = (nextZoom: number, x: number, y: number) => {
@@ -326,13 +330,22 @@ function CommunityMediaPreview(props: {
 
   onMount(() => {
     if (!isImage()) {
-      void resolvePublicCommunityResourceUrl(
+      documentSlowTimer = window.setTimeout(() => {
+        if (!disposed && documentState() === "loading") setDocumentState("slow");
+      }, 5_000);
+      void getPublicCommunityResourceBlob(
         props.resource.resource_id,
         props.resource.version,
         props.resource.delivery_path,
-      ).then((url) => {
-        if (!disposed) setDocumentSource(url);
-      });
+      )
+        .then((blob) => {
+          if (disposed) return;
+          documentObjectUrl = URL.createObjectURL(blob);
+          setDocumentSource(documentObjectUrl);
+        })
+        .catch(() => {
+          if (!disposed) setDocumentState("error");
+        });
     }
 
     const previousFocus = document.activeElement instanceof HTMLElement
@@ -383,6 +396,8 @@ function CommunityMediaPreview(props: {
 
   onCleanup(() => {
     disposed = true;
+    if (documentSlowTimer !== undefined) window.clearTimeout(documentSlowTimer);
+    if (documentObjectUrl) URL.revokeObjectURL(documentObjectUrl);
     removeGestures?.();
     resizeObserver?.disconnect();
     if (viewFrame) cancelAnimationFrame(viewFrame);
@@ -415,17 +430,50 @@ function CommunityMediaPreview(props: {
           <Show
             when={isImage()}
             fallback={
-              <Show
-                when={documentSource()}
-                fallback={<div class="public-workspace-state" role="status">正在准备安全预览…</div>}
-              >
-                <iframe
-                  title={props.resource.display_name || "社区文件预览"}
-                  src={documentSource()!}
-                  sandbox="allow-downloads"
-                  referrerPolicy="no-referrer"
-                />
-              </Show>
+              <div class="public-community-document-preview">
+                <Show
+                  when={documentState() !== "error"}
+                  fallback={
+                    <div class="public-community-document-fallback" role="alert">
+                      <strong>当前宿主无法显示这份 PDF</strong>
+                      <span>文件本身仍可访问，请使用下方“下载资源”继续查看。</span>
+                    </div>
+                  }
+                >
+                  <Show
+                    when={documentSource()}
+                    fallback={<div class="public-workspace-state" role="status">正在准备 PDF 安全预览…</div>}
+                  >
+                    <iframe
+                      title={props.resource.display_name || "社区文件预览"}
+                      src={documentSource()!}
+                      sandbox="allow-downloads allow-same-origin"
+                      referrerPolicy="no-referrer"
+                      onLoad={() => {
+                        if (documentSlowTimer !== undefined) {
+                          window.clearTimeout(documentSlowTimer);
+                          documentSlowTimer = undefined;
+                        }
+                        setDocumentState("ready");
+                      }}
+                      onError={() => setDocumentState("error")}
+                    />
+                  </Show>
+                </Show>
+                <div
+                  class="public-community-document-status"
+                  classList={{ "is-warning": documentState() === "slow" }}
+                  role="status"
+                >
+                  {documentState() === "slow"
+                    ? "内嵌预览响应较慢；若画面仍为空白，请直接下载资源。"
+                    : documentState() === "error"
+                      ? "内嵌预览不可用，请直接下载资源。"
+                    : documentState() === "ready"
+                      ? "PDF 已载入；若宿主未绘制页面，可直接下载资源。"
+                      : "正在校验并载入 PDF…"}
+                </div>
+              </div>
             }
           >
             <div
@@ -459,7 +507,9 @@ function CommunityMediaPreview(props: {
           <span>
             {isImage()
               ? "双指或滚轮缩放，放大后可拖动"
-              : "PDF 在安全沙箱中预览"}
+              : documentState() === "error"
+                ? "内嵌预览不可用，下载后可完整查看"
+                : "PDF 已通过安全沙箱载入"}
           </span>
           <Show when={isImage()}>
             <div class="public-community-zoom-controls" aria-label="图片缩放">
