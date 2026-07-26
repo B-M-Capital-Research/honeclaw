@@ -12,6 +12,7 @@ pub(super) fn attach_web_generated_files(
     response: &mut AgentResponse,
     working_directory: &str,
     run_started_at: SystemTime,
+    oss: Option<&OssPromotion<'_>>,
 ) -> usize {
     if !response.success || response.content.contains("[附件: ") {
         return 0;
@@ -27,11 +28,71 @@ pub(super) fn attach_web_generated_files(
     }
 
     for path in &files {
+        // 云端模式下沙箱盘是临时的：把生成物先传到对象存储，附件里记 oss:// 引用，
+        // 否则容器重启或多实例部署后下载链接就失效了。
+        let reference = oss
+            .and_then(|promotion| promotion.promote(path))
+            .unwrap_or_else(|| path.to_string_lossy().to_string());
         response
             .content
-            .push_str(&format!("\n[附件: {}]", path.to_string_lossy()));
+            .push_str(&format!("\n[附件: {reference}]"));
     }
     files.len()
+}
+
+/// 把沙箱里的生成物上传到对象存储，返回 `oss://` 引用。上传失败时返回 `None`，
+/// 调用方回退到本地路径 —— 宁可给一个当前实例能打开的链接，也不要丢附件。
+pub(super) struct OssPromotion<'a> {
+    pub store: &'a hone_core::cloud_runtime::OssObjectStore,
+    pub actor: &'a hone_core::ActorIdentity,
+    pub session_id: &'a str,
+}
+
+impl OssPromotion<'_> {
+    fn promote(&self, path: &Path) -> Option<String> {
+        let bytes = fs::read(path).ok()?;
+        let name = path.file_name()?.to_string_lossy().to_string();
+        let key = self.store.actor_upload_key(self.actor, self.session_id, &name);
+        let content_type = content_type_for(path);
+        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(self.store.put_object(&key, bytes, content_type))
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .ok()?
+                .block_on(self.store.put_object(&key, bytes, content_type))
+        };
+        match result {
+            Ok(()) => Some(self.store.object_uri(&key)),
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    "failed to upload generated attachment to OSS: {error}"
+                );
+                None
+            }
+        }
+    }
+}
+
+fn content_type_for(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "md" | "txt" => "text/plain; charset=utf-8",
+        "pdf" => "application/pdf",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
 }
 
 fn collect_recent_mentioned_files(
@@ -156,6 +217,7 @@ mod tests {
             &mut response,
             root.path().to_string_lossy().as_ref(),
             run_started_at,
+            None,
         );
 
         assert_eq!(attached, 1);
@@ -175,6 +237,7 @@ mod tests {
             &mut response,
             root.path().to_string_lossy().as_ref(),
             run_started_at,
+            None,
         );
 
         assert_eq!(attached, 0);

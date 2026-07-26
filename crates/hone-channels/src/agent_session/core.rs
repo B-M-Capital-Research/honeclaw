@@ -51,7 +51,7 @@ use crate::tool_trace::{
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
-use super::artifacts::attach_web_generated_files;
+use super::artifacts::{OssPromotion, attach_web_generated_files};
 use super::emitter::{DeferredUserOutputEmitter, SessionEventEmitter};
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
@@ -2487,10 +2487,28 @@ impl AgentSession {
                 .as_deref()
                 .is_some_and(|extra| extra.contains("openai_compatible_api=true"))
         {
+            let oss_store = self
+                .core
+                .config
+                .cloud
+                .effective_mode()
+                .is_cloud_authoritative()
+                .then(|| {
+                    hone_core::cloud_runtime::OssObjectStore::from_config(
+                        &self.core.config.cloud.oss,
+                    )
+                })
+                .flatten();
+            let promotion = oss_store.as_ref().map(|store| OssPromotion {
+                store,
+                actor: &self.actor,
+                session_id: &session_id,
+            });
             let attached = attach_web_generated_files(
                 &mut response,
                 &execution.runner_request.working_directory,
                 run_started_at,
+                promotion.as_ref(),
             );
             if attached > 0 {
                 self.core.log_message_step(

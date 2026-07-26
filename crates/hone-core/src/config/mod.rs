@@ -193,7 +193,15 @@ impl HoneConfig {
         }
     }
 
+    /// 云端权威模式下 PG / 对象存储已经接管持久化，这里就不再预建本地数据目录，
+    /// 免得容器里凭空多出一堆永远为空的 `data/*`，让人误以为还依赖本地盘。
+    /// 生成图片等仍需要本地暂存目录，由各自的写入路径按需创建。
     pub fn ensure_runtime_dirs(&self) {
+        if self.cloud.effective_mode().is_cloud_authoritative()
+            && self.cloud.postgres.is_configured()
+        {
+            return;
+        }
         self.storage.ensure_runtime_dirs();
     }
 }

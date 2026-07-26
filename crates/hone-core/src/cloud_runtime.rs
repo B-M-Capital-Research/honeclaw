@@ -4719,6 +4719,20 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// 云端模式下是否仍保留本地 SQLite 会话影子库。默认 false —— 容器磁盘是临时的，
+/// 影子库既留不住也没人读，却会把全部会话内容落到本地。仅在本地用 cloud 模式
+/// 调试、想要一份可直接 sqlite3 打开的副本时才打开。
+pub fn keep_cloud_session_sqlite_shadow() -> bool {
+    matches!(
+        std::env::var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     if !config.cloud.effective_mode().is_cloud_authoritative() {
         return Vec::new();
@@ -4737,6 +4751,12 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         deps.push(config.storage.sessions_dir.clone());
         deps.push(config.storage.session_sqlite_db_path.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
+    } else if config.storage.session_sqlite_shadow_write_enabled
+        && keep_cloud_session_sqlite_shadow()
+    {
+        // PG 已经是权威存储，但影子库被显式打开时仍会把会话写到本地盘，
+        // 必须报出来，否则 strict_no_local_storage 会给出假的「无本地依赖」。
+        deps.push(config.storage.session_sqlite_db_path.clone());
     }
     deps.retain(|dep| !dep.trim().is_empty());
     deps.sort();
@@ -5144,6 +5164,47 @@ mod tests {
                 .any(|dep| dep == &config.storage.llm_audit_db_path)
         );
         unsafe {
+            std::env::remove_var("HONE_CLOUD_MODE");
+        }
+    }
+
+    #[test]
+    fn cloud_session_sqlite_shadow_is_opt_in_and_reported_as_a_local_dependency() {
+        // 两个断言共用同一个进程级 env，必须放在一个测试里，避免并行互相清掉。
+        unsafe {
+            std::env::set_var("HONE_CLOUD_MODE", "cloud");
+            std::env::remove_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW");
+        }
+        let mut config = HoneConfig::default();
+        config.cloud.mode = "cloud".to_string();
+        config.cloud.postgres.host = "localhost".to_string();
+        config.cloud.postgres.user = "user".to_string();
+        config.cloud.postgres.password = "password".to_string();
+        config.cloud.postgres.database = "hone".to_string();
+        config.cloud.oss.access_key_id = "access".to_string();
+        config.cloud.oss.access_key_secret = "secret".to_string();
+        config.cloud.oss.bucket = "bucket".to_string();
+        config.cloud.oss.endpoint = "https://example.com".to_string();
+        config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
+        config.storage.session_sqlite_shadow_write_enabled = true;
+
+        // 默认：云端不保留影子库，也就没有本地依赖。
+        assert!(!keep_cloud_session_sqlite_shadow());
+        assert!(local_durable_dependencies(&config).is_empty());
+
+        // 显式打开后必须报成本地依赖，strict_no_local_storage 才拦得住。
+        unsafe {
+            std::env::set_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW", "1");
+        }
+        assert!(keep_cloud_session_sqlite_shadow());
+        assert!(
+            local_durable_dependencies(&config)
+                .iter()
+                .any(|dep| dep == "/tmp/hone/sessions.sqlite3")
+        );
+
+        unsafe {
+            std::env::remove_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW");
             std::env::remove_var("HONE_CLOUD_MODE");
         }
     }
