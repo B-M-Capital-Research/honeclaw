@@ -54,6 +54,18 @@ Last updated: 2026-07-27
 - Current conclusion: the failure class was not a single weak model answer. Exact-header finalization, requested-date/scope preservation, exact-symbol call compatibility, representative broad-market evidence, quote-field consistency, source quality, and repeated research rounds each contributed distinct failures. Exact `84ca1f21` now requires two verified full representative quotes, rejects `quote_short` as complete evidence, matches percentages/exchange/close semantics to structured fields, refuses snippet-only definitive causes, and ends after one source attempt. Four fresh rumor/broad/Friday/HIMS actors completed in `45.597–58.917s` with one successful terminal, no reset/error/partial/generic failure, byte-identical two-row history, correct `2026-07-24` scope/premise handling, honest cause gaps, and zero active chats.
 - Next entry point: use `docs/handoffs/2026-07-26-interactive-market-move-explanations.md` for this completed subphase. Continue the still-active umbrella only at `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.
 
+### Scheduler Entity-Guard Hardening
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (shared umbrella remains active only for live recheck)
+- Handoff: `docs/handoffs/2026-07-26-scheduler-entity-guard-hardening.md`
+- Decision / ADR: N/A; this is a guard hardening inside the existing ticker-resolution contract
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `cargo test -p hone-channels scheduler_and_heartbeat_skip_macro_regulatory_and_name_components --lib -- --nocapture`; `cargo test -p hone-channels heartbeat_subject_markers_count_as_security_context --lib -- --nocapture`; `cargo test -p hone-channels scheduled_ticker_subject_is_available_without_parsing_the_envelope --lib -- --nocapture`; `cargo test -p hone-channels operational_checks_and_scheduler_conditions_do_not_become_tickers --lib -- --nocapture`; `cargo test -p hone-channels collision_policy_accepts_real_short_tickers_only_with_strong_binding --lib -- --nocapture`; `cargo check -p hone-channels --tests`
+- Current conclusion: scheduler/heartbeat deterministic preflight no longer treats bare non-interactive `TitleCase` company names as closed-form securities, no longer splits institution-name fragments such as `ARK Invest` into ticker `ARK`, and no longer lets `PCE/CPI/GDP/FOMC/NFP/PMI/SEC/FDA/NASA/PDUFA/ARK` enter securities resolution without explicit ticker binding. The bug ledger is updated to code-level `Fixed`, but this automation did not restart runtime processes, so a future live scheduler/heartbeat window still needs to confirm the fix has loaded.
+- Next entry point: `docs/handoffs/2026-07-26-scheduler-entity-guard-hardening.md` and `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`
+
 ## 2026-07-22
 
 ### Interactive Finance First-Visible Latency Repair

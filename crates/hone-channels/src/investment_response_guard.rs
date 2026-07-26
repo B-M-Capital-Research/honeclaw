@@ -7723,6 +7723,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             continue;
         }
         if identifier_is_multiword_proper_name_tail(input, identifier.start, token)
+            || identifier_is_multiword_proper_name_component(
+                input,
+                identifier.start,
+                identifier.end,
+            )
             || identifier_is_compact_ampersand_name_part(input, identifier.start, identifier.end)
         {
             continue;
@@ -7876,6 +7881,13 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 || numeric_market.is_some()
                 || numeric_asset.is_some();
 
+            if origin != AgentTurnOrigin::Interactive
+                && mixed_case
+                && !explicit_ticker_label
+                && !explicit_ticker_binding
+            {
+                continue;
+            }
             if all_numeric && !explicit_context {
                 continue;
             }
@@ -8262,6 +8274,45 @@ fn identifier_is_multiword_proper_name_tail(input: &str, start: usize, token: &s
         .next()
         .unwrap_or_default();
     is_ascii_title_case_word(previous)
+}
+
+fn identifier_is_multiword_proper_name_component(input: &str, start: usize, end: usize) -> bool {
+    let token = &input[start..end];
+    let before = input[..start].trim_end();
+    let after = input[end..].trim_start();
+    let previous = before
+        .rsplit(|character: char| !character.is_ascii_alphabetic())
+        .next()
+        .unwrap_or_default();
+    let next = after
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .next()
+        .unwrap_or_default();
+    if is_ascii_title_case_word(token)
+        && (is_ascii_title_case_word(previous) || is_ascii_title_case_word(next))
+    {
+        return true;
+    }
+    token.len() <= 5
+        && token
+            .chars()
+            .all(|character| character.is_ascii_uppercase())
+        && matches!(
+            next.to_ascii_lowercase().as_str(),
+            "invest"
+                | "capital"
+                | "management"
+                | "partners"
+                | "advisor"
+                | "advisors"
+                | "ventures"
+                | "holdings"
+                | "group"
+                | "fund"
+                | "funds"
+                | "asset"
+                | "assets"
+        )
 }
 
 fn identifier_is_compact_ampersand_name_part(input: &str, start: usize, end: usize) -> bool {
@@ -9310,6 +9361,17 @@ fn identifier_requires_explicit_security_binding(token: &str) -> bool {
             | "OPEX"
             | "AUM"
             | "NAV"
+            | "PCE"
+            | "CPI"
+            | "GDP"
+            | "FOMC"
+            | "NFP"
+            | "PMI"
+            | "SEC"
+            | "FDA"
+            | "NASA"
+            | "PDUFA"
+            | "ARK"
             | "BUY"
             | "HOLD"
             | "BULL"
@@ -13170,6 +13232,55 @@ mod tests {
             !matches!(scope, EntityResolutionScope::Securities(_)),
             "scheduler metadata and theme acronyms must not become securities: {scope:?}"
         );
+    }
+
+    #[test]
+    fn scheduler_and_heartbeat_skip_macro_regulatory_and_name_components() {
+        let macro_mentions = plain_ticker_mentions(
+            "汇总 PCE、FOMC、GDP 与降息概率变化，生成美股风控摘要。",
+            AgentTurnOrigin::Scheduled,
+        );
+        assert!(macro_mentions.is_empty(), "{macro_mentions:?}");
+        assert!(
+            !matches!(
+                extract_entity_scope(
+                    "汇总 PCE、FOMC、GDP 与降息概率变化，生成美股风控摘要。",
+                    AgentTurnOrigin::Scheduled
+                ),
+                EntityResolutionScope::Securities(_)
+            ),
+            "macro digest must not be downgraded into deterministic securities"
+        );
+
+        let heartbeat_mentions = plain_ticker_mentions(
+            "AAOI 1.6T 光模块心跳检测，只在 SEC 8-K、FDA 批文或 NASA 合同出现时提醒。",
+            AgentTurnOrigin::Heartbeat,
+        );
+        assert_eq!(
+            heartbeat_mentions
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            ["AAOI"],
+            "{heartbeat_mentions:?}"
+        );
+
+        let institution_mentions = plain_ticker_mentions(
+            "跟踪 Nancy Pelosi、Cathie Wood / ARK Invest 的美股操作与公开披露。",
+            AgentTurnOrigin::Scheduled,
+        );
+        assert!(institution_mentions.is_empty(), "{institution_mentions:?}");
+
+        let company_name_mentions =
+            plain_ticker_mentions("Oracle 大事件监控", AgentTurnOrigin::Heartbeat);
+        assert!(
+            company_name_mentions.is_empty(),
+            "{company_name_mentions:?}"
+        );
+        assert!(matches!(
+            extract_entity_scope("Oracle 大事件监控", AgentTurnOrigin::Heartbeat),
+            EntityResolutionScope::AgentToolDiscovery(_)
+        ));
     }
 
     #[test]

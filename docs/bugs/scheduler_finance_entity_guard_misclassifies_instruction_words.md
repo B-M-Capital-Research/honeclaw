@@ -3,8 +3,28 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 代码级修复（2026-07-26 CST）
+
+- 本轮 `bug-2` 针对 scheduler / heartbeat 任务正文里的误抽与误拦补齐了三类 guard：
+  - 非交互式 bare `TitleCase` 公司名（如 `Oracle`、`Nancy`）不再进入 deterministic 证券预检，而是回退到主 Agent 的 `AgentToolDiscovery` 路径。
+  - `ARK Invest` 这类“全大写缩写 + 机构后缀”组件会被识别为机构名片段，不再拆成证券代码 `ARK`。
+  - `PCE`、`CPI`、`GDP`、`FOMC`、`NFP`、`PMI`、`SEC`、`FDA`、`NASA`、`PDUFA`、`ARK` 等宏观 / 监管 / 机构缩写提升为“必须显式 ticker 绑定”级别，不能仅凭 scheduler / heartbeat 的 generic subject binding 进入证券解析。
+- 新增回归覆盖：
+  - 宏观风控摘要不会把 `PCE/FOMC/GDP` 降级成 deterministic securities。
+  - `AAOI 1.6T 光模块心跳检测，只在 SEC 8-K、FDA 批文或 NASA 合同出现时提醒。` 只保留 `AAOI` 作为主体。
+  - `跟踪 Nancy Pelosi、Cathie Wood / ARK Invest 的美股操作与公开披露。` 不再抽出 `Nancy` 或 `ARK`。
+  - `Oracle 大事件监控` 不再走 fail-closed 的 deterministic 证券预检。
+- 本轮未重启现有 runtime，也没有做 live scheduler window 复核；当前按代码级 `Fixed` 记录，后续若 Sunday, July 26, 2026 之后的真实运行窗再次复发，再回退为 `New`。
+- 验证：
+  - `cargo test -p hone-channels scheduler_and_heartbeat_skip_macro_regulatory_and_name_components --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_subject_markers_count_as_security_context --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduled_ticker_subject_is_available_without_parsing_the_envelope --lib -- --nocapture`
+  - `cargo test -p hone-channels operational_checks_and_scheduler_conditions_do_not_become_tickers --lib -- --nocapture`
+  - `cargo test -p hone-channels collision_policy_accepts_real_short_tickers_only_with_strong_binding --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 
 ## 运行态复核（2026-07-26 11:02 CST）
 
