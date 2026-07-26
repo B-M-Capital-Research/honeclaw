@@ -3,9 +3,14 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-26 19:02 CST` 运行态复核确认当前镜像和调度台账均已追入真实窗口，状态从 `New` 调整为 `Fixed`：
+  - `data/sessions.sqlite3` 在 2026-07-26 15:00-19:02 CST 按真实 `timestamp` 新增 36 条 user / 34 条 assistant / 2 条 system compact，覆盖 29 个更新 session；`session_messages.max(timestamp)=2026-07-26T18:33:39.187222+08:00`，`sessions.max(last_message_at)=2026-07-26T18:33:39.187222+08:00`。
+  - 同一库 `cron_job_runs.max(executed_at)=2026-07-26T19:01:25.134807+08:00`，本窗有 heartbeat `completed + sent=7`、heartbeat `noop + skipped_noop=49`、heartbeat `execution_failed + skipped_error=4`，普通 scheduler `completed + sent=15`、`execution_failed + sent=2`。
+  - 同窗 `data/runtime/logs/web.log.2026-07-26` 仍记录 heartbeat 结构化状态退化、实体 guard、异常行情锚和执行意图污染等真实缺陷，但这些运行态事件已有对应 `cron_job_runs` 记录，不再复现“调度运行台账未随真实运行推进”的观测缺口。
+  - 结论：本缺陷当前不再占活跃修复队列；若后续再次出现 `session_messages` 可追入当前窗口但 `cron_job_runs.max(executed_at)` 落后真实 runtime 超过一个巡检窗口，再从 `Fixed` 回退。
 - `2026-07-26 11:02 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 2026-07-26 07:02-11:02 CST 按真实 `timestamp` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；近期 direct / scheduler session 仍有 assistant 收口，`session_messages.max(timestamp)=2026-07-26T10:30:51.751873+08:00`。
   - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、`data/sessions.sqlite3`、panic、provider 原始错误正文或 raw tool JSON；用户可见候选问题已归入 OpenAI-compatible stream decode、实体 guard、heartbeat 结构化状态、heartbeat 执行意图污染、scheduler 时间口径、内部工具口径和异常行情锚缺陷。

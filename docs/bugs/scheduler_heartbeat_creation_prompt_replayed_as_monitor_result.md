@@ -18,6 +18,13 @@
 
 ## 修复进展
 
+- `2026-07-26 15:00-19:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-26`
+    - 15:01 CST `中际旭创关键事件心跳提醒` 已作为 heartbeat job 周期触发，deliver preview 却漂移成数据中心液冷行业框架，不是执行中际旭创关键事件监控。
+    - 15:01 CST `闪迪关键事件心跳提醒` deliver preview 漂移成 NAND Flash 全产业链技术解释，并混入 NVDA / SNDK 行情口径。
+    - 15:30 CST `ASTS 重大异动心跳监控` deliver preview 写成 RKLB 心跳检查，任务主体从 ASTS 串到 RKLB；19:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 在工具上限后输出任务管理 / 实体确认表，而不是完成 SIVE / POET / Nokia / 1.6T DFB 监控判断。
+  - 判断：最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户问题、技术科普、任务管理或其它标的污染，导致模型没有执行当前 job 的监控判断。该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-26 07:02-11:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25` / `data/runtime/logs/web.log.2026-07-26`
     - 07:30 CST `持仓重大事件心跳检测` 已作为 heartbeat job 周期触发，raw preview 却把本轮处理成“10 年投资组合核心 + 卫星配置框架”问答，deliver preview 也输出组合比例方法论，而不是执行持仓重大事件监控。
