@@ -712,7 +712,10 @@ fn finance_calendar_assistant_message(
 fn sanitize_fmp_error(message: &str) -> String {
     let mut out = message.to_string();
     for key in ["apikey", "api_key", "apiKey"] {
-        while let Some(index) = out.find(&format!("{key}=")) {
+        let needle = format!("{key}=");
+        let mut search_from = 0;
+        while let Some(relative_index) = out[search_from..].find(&needle) {
+            let index = search_from + relative_index;
             let value_start = index + key.len() + 1;
             let value_end = out[value_start..]
                 .char_indices()
@@ -720,6 +723,7 @@ fn sanitize_fmp_error(message: &str) -> String {
                 .map(|idx| value_start + idx)
                 .unwrap_or(out.len());
             out.replace_range(value_start..value_end, "<redacted>");
+            search_from = value_start + "<redacted>".len();
         }
     }
     if out.chars().count() > 240 {
@@ -746,6 +750,19 @@ mod tests {
         assert!(parse_month_spec("2026-7").is_err());
         assert!(parse_month_spec("2026-13").is_err());
         assert!(parse_month_spec("bad").is_err());
+    }
+
+    #[test]
+    fn sanitize_fmp_error_redacts_each_key_without_reprocessing_replacement() {
+        let message = "request failed: https://example.test/stable/earnings?symbol=SPY&apikey=secret-one api_key=secret-two&apiKey=secret-three";
+
+        let sanitized = sanitize_fmp_error(message);
+
+        assert_eq!(
+            sanitized,
+            "request failed: https://example.test/stable/earnings?symbol=SPY&apikey=<redacted> api_key=<redacted>&apiKey=<redacted>"
+        );
+        assert!(!sanitized.contains("secret-"));
     }
 
     #[test]
