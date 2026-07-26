@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -22,6 +22,8 @@ New
 
 ## 修复记录
 
+- `2026-07-26 18:36 CST` 本缺陷及其相邻的涨跌归因错误链路已在精确提交 `84ca1f2114c059a157cd893c84067638c7618e84` 完成生产验收。最终实现同时收口 exact header 后只读续跑、精确 symbol 参数兼容、宽基行情证据 floor、完整行情字段一致性、snippet-only 原因拒绝和重复搜索轮次上限；`quote_short` 不再被当成能证明百分比/交易所/报价时间的完整行情。
+- 精确不可变部署包含 504 个经 manifest 校验的文件。四个 fresh actor 分别询问无来源传言、`美股为什么大跌`、`周五美股为什么暴跌`、`HIMS周五为什么大跌`，均在 `45.597–58.917s` 内唯一成功收口，无 reset/error/partial/通用失败，可见 SSE 与两行历史逐字节一致，active chats 回到 0。宽基样本正确锁定 `2026-07-24（周五）`，根据 SPY `+0.10%`、QQQ `-1.12%`、DIA `+0.48%` 或 IWM `-0.31%` 纠正“美股整体暴跌”的前提；无法取得合格同日原始因果证据时明确返回 `原因本轮未完全核验`，没有再编造原因。
 - `2026-07-26 16:05 CST` 精确提交 `27ea2f536ce16aab71c8cf2cfe48a92a13f89fb4` 已推送、构建、manifest 校验并部署；原 `committed terminal prefix mismatch` 恢复代码已进入生产，但 fresh actor `codex-canary-27ea2f53-broad-1785052687` 的 `美股为什么大跌` 仍只得到规范首行加通用研究失败。
 - 新样本的直接错误已收窄为相邻但不同的 `agent_owned_finance_persistent_tool_error`：provider 先输出 byte-exact canonical header，随后在同一 stream 继续请求已注册的只读 quote/Web 取证；adapter 在完整工具批次进入既有“注册 + 可解析 + 结构合法 + 已知只读”校验前就提前失败。
 - 当前代码修复不再把 exact header 本身视为 `Stop`：首行一旦投递即不可重置，但只有完整非空 `Stop + Done` 才是终稿；同流后续工具先组装完整批次再走既有安全校验。安全只读调用继续且不重复提交首行，未知/坏参数/非法 DataFetch/写调用仍在 frame、observer、registry 和 network 前零执行失败。正反 Agent 回归与财经契约 sample 41 已通过；在替换精确版本通过 live canary 前，本缺陷维持 `New/P2`。
@@ -129,6 +131,7 @@ New
 
 ## 当前实现效果
 
+- 精确 `84ca1f21` 生产运行时已连续通过四类全新涨跌问题：不再提交通用研究失败，不再把 `change` 当百分比，不再从普通 quote 推断“收盘/纽交所”，不再把搜索摘要升级为已核验原因，也不会为同一宽基证据重复搜索到超过验收时延。
 - 2026-07-25 10:02-10:05 CST 同一 Web direct 用户短问“美股股价下跌原因”连续两轮已执行数据与搜索工具、`answer_preserved=true` 后仍因 `committed terminal prefix mismatch` 只返回通用研究失败。
 - 2026-07-25 06:54-06:58 CST 同一 Web direct 宏观回调问题连续两轮落成 `AgentFailed / terminal_stream_incomplete=true`，只给通用研究失败；07:00 用户拆短并触发 compact 后才恢复正文输出。
 - 2026-07-24 02:50 CST CIFR 投研请求说明：即便工具调用已经完成、`answer_preserved=true`，仍可能因 `committed terminal prefix mismatch` 被覆盖成通用研究失败。
@@ -139,6 +142,7 @@ New
 
 ## 修复情况
 
+- `2026-07-26 18:36 CST` 生产态 `Fixed`：exact header 只作为不可逆可见边界，后续完整只读批次继续通过统一结构/只读校验；宽美股问题只有两个不同代表组的完整行情结果才开放证据 floor，`quote_short` 不计入；行情百分比、交易所与 close 语义逐字段核对；snippet-only 搜索不能证明确定原因；两个已核验宽基组加一次来源搜索后直接进入同 Agent 的 tools-disabled 有界终稿。
 - `2026-07-25 03:10 CST` 代码级修复：`recover_response_with_committed_prefix(...)` 现已覆盖“冲突时间首行”真实复发形态，不再把这类可恢复正文一律拼成 `prefix + 冲突首行` 后继续降级成通用研究失败。
 - `2026-07-25 07:02 CST` 真实运行态在 2026-07-24 23:30 代码级补强后复发，状态从 `Fixed` 回退为 `New`。最新样本未直接记录 `committed terminal prefix mismatch`，但 metadata 与用户可见症状仍是同一 Web direct terminal stream incomplete / finalization failure 家族，需要继续修复或拆分更精确根因。
 - `2026-07-24 03:02 CST` 真实运行态复发，状态曾从 `Fixed` 回退为 `New`。
@@ -156,6 +160,13 @@ New
 
 ## 验证
 
+- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`
+- `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`
+- `bun run test:web`（`286/286`）
+- `cd workers/public-community-edge && bun run typecheck && bun run test`（`45/45`）
+- `bash tests/regression/ci/test_finance_automation_contracts.sh`（`42/42`）
+- `bash tests/regression/run_ci.sh`
+- 精确 `84ca1f21` 四个 live actor：`codex-canary-84ca1f21-rumor-20260726103012`、`codex-canary-84ca1f21-broad-20260726103012`、`codex-canary-84ca1f21-friday-20260726103012`、`codex-canary-84ca1f21-hims-20260726103012`
 - `cargo test -p hone-channels committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content --lib -- --nocapture`
 - `cargo test -p hone-channels service_prefix_conflicting_time_header_is_recovered_without_generic_failure --lib -- --nocapture`
 - `cargo test -p hone-channels service_prefix_tail_only_final_response_is_recovered_without_generic_failure --lib -- --nocapture`
@@ -175,5 +186,5 @@ New
 
 ## 后续观察
 
-1. 继续观察同类 Web direct 长文解读 / 期权止盈问答，确认 live 路径不再把 answer-preserved 终稿降级成通用失败。
-2. 若后续仍出现 `committed terminal prefix mismatch` 且正文为空，再单独排查上游 terminal synthesis / recovery 何时丢失正文。
+1. 继续抽查真实用户的 broad-market、显式星期、单股和无合格来源样本；若相同 exact build 再出现通用失败、日期漂移、行情字段混用或 snippet 原因升级，应按本缺陷运行态复发重新打开。
+2. Discord 当前凭据被网关拒绝，已与健康的 Web/飞书精确运行时隔离；该渠道恢复需要单独更换有效凭据，不属于本缺陷修复范围。

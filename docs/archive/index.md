@@ -2,6 +2,20 @@
 
 Last updated: 2026-07-26
 
+## 2026-07-26
+
+### Interactive Market-Move Explanation Reliability
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (market-move subphase done; shared umbrella remains active only for the scheduler entity-guard P2)
+- Handoff: `docs/handoffs/2026-07-26-interactive-market-move-explanations.md`
+- Decision / ADR: `D-2026-07-26-01`, `D-2026-07-26-02`, `D-2026-07-26-03`, `D-2026-07-26-05`, and `docs/adr/0004-agent-owned-research-loop.md`
+- Related PRs / commits: `27ea2f53`, `cd78375`, `f0281adb`, `e46a6bf4`, `ec06485a`, `12f1a924`, `4139e12c`, `84ca1f21`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; workspace check/test excluding Apple clients; Agent `134/134`; Channels `680/680`; Web API `133 passed, 2 ignored`; Tools `143 passed, 1 ignored`; Web `286/286`; Edge Worker `45/45`; finance contracts `42/42`; complete CI-safe regressions; immutable deployment manifest and four exact production replays
+- Current conclusion: the failure class was not a single weak model answer. Exact-header finalization, requested-date/scope preservation, exact-symbol call compatibility, representative broad-market evidence, quote-field consistency, source quality, and repeated research rounds each contributed distinct failures. Exact `84ca1f21` now requires two verified full representative quotes, rejects `quote_short` as complete evidence, matches percentages/exchange/close semantics to structured fields, refuses snippet-only definitive causes, and ends after one source attempt. Four fresh rumor/broad/Friday/HIMS actors completed in `45.597–58.917s` with one successful terminal, no reset/error/partial/generic failure, byte-identical two-row history, correct `2026-07-24` scope/premise handling, honest cause gaps, and zero active chats.
+- Next entry point: use `docs/handoffs/2026-07-26-interactive-market-move-explanations.md` for this completed subphase. Continue the still-active umbrella only at `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.
+
 ## 2026-07-22
 
 ### Interactive Finance First-Visible Latency Repair
