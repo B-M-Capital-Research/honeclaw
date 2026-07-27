@@ -147,6 +147,7 @@ If Discord fulfillment itself must be stopped:
    removed; do not bulk-delete members or historical Whop products.
 4. Preserve the `whop` event-log evidence for diagnosis.
 
-Rollback of this integration does not alter HONE product entitlements. The
-repository currently has no Whop billing webhook or implemented entitlement
-ledger; that remains a separate product/backend project.
+Rollback of this Discord integration does not alter HONE product entitlements.
+HONE application access is now projected separately by the signed membership
+webhook described in `docs/runbooks/whop-hone-activation.md`; it never reads a
+Discord role as payment evidence.

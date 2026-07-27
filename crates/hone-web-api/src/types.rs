@@ -41,6 +41,20 @@ pub struct PublicSmsLoginRequest {
 }
 
 #[derive(Deserialize)]
+pub struct PublicEmailCodeRequest {
+    pub email_address: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicEmailLoginRequest {
+    pub email_address: Option<String>,
+    pub verify_code: Option<String>,
+    pub tos_version: Option<String>,
+    #[serde(default)]
+    pub remember: bool,
+}
+
+#[derive(Deserialize)]
 pub struct PublicChatRequest {
     pub message: Option<String>,
     pub attachments: Option<Vec<PublicChatAttachmentInput>>,
@@ -216,6 +230,9 @@ pub struct PublicAuthUserInfo {
     pub has_password: bool,
     pub tos_accepted_at: Option<String>,
     pub tos_version: Option<String>,
+    pub registration_policy: String,
+    pub email_hint: Option<String>,
+    pub whop_membership: Option<hone_memory::WhopMembershipRecord>,
 }
 
 #[derive(Serialize)]

@@ -126,6 +126,20 @@ Last updated: 2026-07-27
 - Current conclusion: scheduler/heartbeat deterministic preflight no longer treats bare non-interactive `TitleCase` company names as closed-form securities, no longer splits institution-name fragments such as `ARK Invest` into ticker `ARK`, and no longer lets `PCE/CPI/GDP/FOMC/NFP/PMI/SEC/FDA/NASA/PDUFA/ARK` enter securities resolution without explicit ticker binding. The bug ledger is updated to code-level `Fixed`, but this automation did not restart runtime processes, so a future live scheduler/heartbeat window still needs to confirm the fix has loaded.
 - Next entry point: `docs/handoffs/2026-07-26-scheduler-entity-guard-hardening.md` and `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`
 
+## 2026-07-26
+
+### Whop → HONE International Activation
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/whop-hone-activation.md`
+- Handoff: `docs/handoffs/whop-hone-activation.md`
+- Decision / ADR: `D-2026-07-26-04` and `D-2026-07-26-06` in `docs/decisions.md`
+- Related PRs / commits: none; completed as an uncommitted local change set
+- Related runbooks / regressions: `docs/runbooks/whop-hone-activation.md`; memory 26 focused tests; Web API 3 focused tests; complete workspace check/test excluding Apple clients; Web `292/292`, typecheck, and public build; Edge Worker `45/45` and typecheck; CI-safe regressions; explicit Rust formatting and diff checks; isolated signed-webhook HTTP regression; desktop and `390x844` browser acceptance
+- Current conclusion: international Whop buyers no longer need a phone number or Whop login to establish a HONE identity. Signed membership events create and update a purchase-email account, HONE owns email challenge login, active membership controls paid routes, and inactive buyers keep access to the account/billing view while paid APIs return `402`. Mainland invite/SMS behavior and Whop-native Discord role fulfillment remain independent. The email sender is deliberately fail-closed and unconfigured in this phase; production webhook configuration and live email delivery were not changed.
+- Next entry point: implement and inject `EmailVerificationSender`, then follow `docs/runbooks/whop-hone-activation.md` for production webhook setup and a non-owner purchase/cancel/repurchase plus Discord role acceptance.
+
 ## 2026-07-22
 
 ### Interactive Finance First-Visible Latency Repair

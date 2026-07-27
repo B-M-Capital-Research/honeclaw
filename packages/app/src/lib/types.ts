@@ -208,6 +208,35 @@ export type PublicAuthUserInfo = {
   has_password: boolean;
   tos_accepted_at?: string;
   tos_version?: string;
+  registration_policy: "cn_domestic" | "whop_international" | string;
+  email_hint?: string;
+  whop_membership?: WhopMembershipInfo;
+};
+
+export type WhopMembershipInfo = {
+  membership_id: string;
+  whop_user_id: string;
+  company_id: string;
+  product_id: string;
+  plan_id: string;
+  status:
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "completed"
+    | "canceled"
+    | "expired"
+    | "unresolved"
+    | "drafted"
+    | "canceling"
+    | string;
+  manage_url?: string;
+  renewal_period_start?: string;
+  renewal_period_end?: string;
+  cancel_at_period_end: boolean;
+  last_event_id: string;
+  last_event_at: string;
+  updated_at: string;
 };
 
 export type MetaInfo = {

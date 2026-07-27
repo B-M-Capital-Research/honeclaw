@@ -7,6 +7,10 @@ import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
 import { PublicSettingsPanel } from "@/components/public-settings-panel";
 import { getPublicAuthMe, publicLogout } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
+import {
+  publicUserHasProductAccess,
+  whopMembershipStatusLabel,
+} from "@/lib/public-membership";
 import type { PublicAuthUserInfo } from "@/lib/types";
 
 function formatDate(value?: string) {
@@ -29,25 +33,78 @@ const VIP_BENEFITS = [
   "HONE 畅享：任何问题在社区都能得到及时反馈",
 ];
 
-/* 会员身份卡：能登录 HONE 即为年度付费会员，陈列权益并给出客服入口。 */
-function MembershipCard() {
+function MembershipCard(props: { user: PublicAuthUserInfo }) {
   const [qrOpen, setQrOpen] = createSignal(false);
+  const membership = () => props.user.whop_membership;
+  const isWhop = () => props.user.registration_policy === "whop_international";
+  const active = () => publicUserHasProductAccess(props.user);
+  const badge = () => {
+    const current = membership();
+    if (!isWhop()) return "HONE 账号 · 已启用";
+    return `Whop 会员 · ${current ? whopMembershipStatusLabel(current) : "等待同步"}`;
+  };
+  const heading = () => {
+    if (!isWhop()) return "你的 HONE 账号已启用";
+    return active() ? "Whop 会员已连接 HONE" : "Whop 会员当前不可用";
+  };
   return (
     <section class="public-workspace-panel public-vip-card">
       <div class="public-vip-main">
         <div class="public-vip-head">
-          <span class="public-vip-badge">年度付费会员 · 生效中</span>
+          <span class="public-vip-badge">{badge()}</span>
         </div>
-        <h2>你已解锁 B&M 完整服务</h2>
-        <p>能登录 HONE 即代表你是年度付费会员，以下权益均已生效：</p>
-        <ul class="public-vip-list">
-          {VIP_BENEFITS.map((benefit) => (
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
-              <span>{benefit}</span>
-            </li>
-          ))}
-        </ul>
+        <h2>{heading()}</h2>
+        <Show
+          when={isWhop()}
+          fallback={
+            <p>
+              该账号通过国内手机号渠道验证。会员、付费和续费状态以国内购买渠道及客服记录为准。
+            </p>
+          }
+        >
+          <Show
+            when={active()}
+            fallback={
+              <p>
+                账号资料仍会保留，但 HONE 付费功能已暂停。你可以前往 Whop
+                查看账单、恢复订阅，状态同步后会自动恢复访问。
+              </p>
+            }
+          >
+            <p>购买邮箱已验证，当前 Whop 会员权益已同步到 HONE：</p>
+            <ul class="public-vip-list">
+              {VIP_BENEFITS.map((benefit) => (
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+                  <span>{benefit}</span>
+                </li>
+              ))}
+            </ul>
+          </Show>
+          <Show when={membership()?.renewal_period_end}>
+            {(periodEnd) => (
+              <p>
+                当前周期至 {formatDate(periodEnd())}
+                {membership()?.cancel_at_period_end
+                  ? "，到期后不再自动续费。"
+                  : "。"}
+              </p>
+            )}
+          </Show>
+          <Show when={membership()?.manage_url}>
+            {(manageUrl) => (
+              <p>
+                <a
+                  href={manageUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  在 Whop 管理订阅 →
+                </a>
+              </p>
+            )}
+          </Show>
+        </Show>
       </div>
       <div class="public-vip-side">
         <button type="button" class="public-vip-qr" onClick={() => setQrOpen(true)}>
@@ -89,21 +146,49 @@ function AccountView(props: {
             <p>自选与持仓、投资画像风格、账户信息都在这里管理。</p>
           </div>
         </header>
-        <PublicHoldingsPanel />
-        <PublicSettingsPanel />
-        <MembershipCard />
+        <Show when={publicUserHasProductAccess(props.user)}>
+          <PublicHoldingsPanel />
+          <PublicSettingsPanel />
+        </Show>
+        <MembershipCard user={props.user} />
         <div class="public-account-grid">
           <section class="public-workspace-panel public-account-card">
             <h2>账户信息</h2>
             <AccountRow label="账户" value={props.user.user_id} />
+            <AccountRow
+              label="验证渠道"
+              value={
+                props.user.registration_policy === "whop_international"
+                  ? `Whop 购买邮箱${props.user.email_hint ? ` · ${props.user.email_hint}` : ""}`
+                  : "国内手机号"
+              }
+            />
             <AccountRow label="注册时间" value={formatDate(props.user.created_at)} />
             <AccountRow label="最近登录" value={formatDate(props.user.last_login_at)} />
-            <AccountRow label="访问权限" value={props.user.daily_limit > 0 ? `每日 ${props.user.daily_limit} 次` : "已启用"} />
+            <AccountRow
+              label="访问权限"
+              value={
+                publicUserHasProductAccess(props.user)
+                  ? props.user.daily_limit > 0
+                    ? `已启用 · 每日 ${props.user.daily_limit} 次`
+                    : "已启用"
+                  : "已暂停"
+              }
+            />
           </section>
           <section>
             <div class="public-account-actions">
-              <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
-              <button type="button" onClick={() => navigate("/community")}>去社区看看</button>
+              <Show
+                when={publicUserHasProductAccess(props.user)}
+                fallback={
+                  <button type="button" class="is-primary" onClick={() => navigate("/plan")}>
+                    查看会员与续费
+                  </button>
+                }
+              >
+                <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
+                <button type="button" onClick={() => navigate("/community")}>去社区看看</button>
+              </Show>
               <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
             </div>
             <p class="public-account-note">账户页不展示内部已读状态、运行配置或系统权限。需要修改持仓、提醒和研究偏好时，直接在 Agent 对话中说明即可。</p>

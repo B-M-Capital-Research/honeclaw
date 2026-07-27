@@ -6,6 +6,7 @@
 mod aliyun_captcha;
 mod aliyun_sms;
 mod cloud_oss;
+pub mod email_verification;
 pub mod logging;
 mod public_auth;
 pub mod routes;
@@ -778,6 +779,9 @@ pub async fn start_server(
     let state = Arc::new(InnerAppState {
         core,
         web_auth,
+        email_verification_sender: Arc::new(
+            crate::email_verification::UnconfiguredEmailVerificationSender,
+        ),
         public_auth_limiter: Default::default(),
         push_tx,
         http_client,

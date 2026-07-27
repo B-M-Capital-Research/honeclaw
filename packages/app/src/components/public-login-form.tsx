@@ -348,6 +348,16 @@ export function PublicLoginForm(props: Props) {
             label={CONTENT.auth.login.submit_sms}
             onClick={submitLogin}
           />
+          <p
+            style={{
+              margin: "16px 0 0",
+              "text-align": "center",
+              color: "var(--hone-ink-500)",
+              "font-size": "12px",
+            }}
+          >
+            Whop 海外会员？ <a href="/activate/whop">使用购买邮箱开通或登录</a>
+          </p>
         </div>
       </div>
     </div>

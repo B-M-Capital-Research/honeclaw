@@ -31,8 +31,8 @@ use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
-    PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicSmsLoginRequest,
-    PublicSmsSendRequest, PublicUploadedAttachment,
+    PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicEmailCodeRequest,
+    PublicEmailLoginRequest, PublicSmsLoginRequest, PublicSmsSendRequest, PublicUploadedAttachment,
 };
 
 /// Upper bounds enforced when users upload files through the public chat.
@@ -60,7 +60,7 @@ const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
 
 /// 当前生效的协议版本。改动 /terms /privacy 文本时手动 bump,
 /// 并让已登录用户重新勾选接受(可后续增强)。
-pub(crate) const TOS_VERSION: &str = "2.1";
+pub(crate) const TOS_VERSION: &str = "2.2";
 
 pub(crate) async fn handle_captcha_config() -> Response {
     Json(crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env()).into_response()
@@ -342,6 +342,183 @@ fn sms_send_accepted_response() -> Response {
     .into_response()
 }
 
+pub(crate) async fn handle_email_send_code(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicEmailCodeRequest>,
+) -> Response {
+    if !state.email_verification_sender.is_configured() {
+        return crate::routes::json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "HONE 邮箱验证码服务尚未配置",
+        );
+    }
+    let email_address = match crate::routes::require_string(request.email_address, "邮箱") {
+        Ok(value) => value.trim().to_ascii_lowercase(),
+        Err(response) => return response,
+    };
+    let ip_key = public_client_key(&headers);
+    let email_key = format!("email-send:{email_address}");
+    for key in [&ip_key, &email_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
+    }
+    let code = match state.web_auth.begin_email_verification(&email_address, 10) {
+        Ok(value) => value,
+        Err(error) if error.to_string().contains("邮箱格式不合法") => {
+            return crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建邮箱验证码失败: {error}"),
+            );
+        }
+    };
+    if let Some(code) = code {
+        let message = crate::email_verification::EmailVerificationMessage {
+            to: email_address,
+            code,
+            expires_in_minutes: 10,
+        };
+        if let Err(error) = state
+            .email_verification_sender
+            .send_verification_code(message)
+            .await
+        {
+            let _ = state.public_auth_limiter.record_failure(&email_key);
+            return crate::routes::json_error(
+                StatusCode::BAD_GATEWAY,
+                format!("发送邮箱验证码失败: {error}"),
+            );
+        }
+    }
+    state.public_auth_limiter.record_success(&email_key);
+    Json(json!({
+        "ok": true,
+        "message": "如果该邮箱存在可用的 HONE 账号或 Whop 会员，验证码已发送"
+    }))
+    .into_response()
+}
+
+pub(crate) async fn handle_email_login(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicEmailLoginRequest>,
+) -> Response {
+    let email_address = match crate::routes::require_string(request.email_address, "邮箱") {
+        Ok(value) => value.trim().to_ascii_lowercase(),
+        Err(response) => return response,
+    };
+    let verify_code = request
+        .verify_code
+        .unwrap_or_default()
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if !(6..=12).contains(&verify_code.len()) {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "验证码格式不正确");
+    }
+    let tos_version = request.tos_version.unwrap_or_default();
+    if tos_version.trim() != TOS_VERSION {
+        return crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "需同意当前版本的用户协议与隐私政策",
+        );
+    }
+    let ip_key = public_client_key(&headers);
+    let email_key = format!("email-login:{email_address}");
+    for key in [&ip_key, &email_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
+    }
+    let user_id = match state
+        .web_auth
+        .verify_email_code(&email_address, &verify_code)
+    {
+        Ok(hone_memory::EmailVerificationResult::Verified { user_id }) => user_id,
+        Ok(hone_memory::EmailVerificationResult::Expired) => {
+            let _ = state.public_auth_limiter.record_failure(&email_key);
+            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "验证码已过期，请重新发送");
+        }
+        Ok(hone_memory::EmailVerificationResult::AttemptsExceeded) => {
+            let retry_after = state
+                .public_auth_limiter
+                .record_failure(&email_key)
+                .unwrap_or(60);
+            return json_rate_limited(retry_after);
+        }
+        Ok(hone_memory::EmailVerificationResult::Missing)
+        | Ok(hone_memory::EmailVerificationResult::Invalid) => {
+            let _ = state.public_auth_limiter.record_failure(&email_key);
+            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "验证码不正确或已过期");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("核验邮箱验证码失败: {error}"),
+            );
+        }
+    };
+    if let Err(error) = state.web_auth.record_tos_acceptance(&user_id, TOS_VERSION) {
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("记录协议接受失败: {error}"),
+        );
+    }
+    let ttl_days = if request.remember {
+        SESSION_TTL_DAYS_LONG
+    } else {
+        SESSION_TTL_DAYS_SHORT
+    };
+    let max_age_secs = if request.remember {
+        WEB_SESSION_MAX_AGE_LONG_SECS
+    } else {
+        WEB_SESSION_MAX_AGE_SHORT_SECS
+    };
+    let session = match state.web_auth.create_session_for_user(&user_id, ttl_days) {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "账号不可用，请联系管理员");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建登录态失败: {error}"),
+            );
+        }
+    };
+    let user = match state.web_auth.find_invite_user(&user_id) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取用户失败: {error}"),
+            );
+        }
+    };
+    state.public_auth_limiter.record_success(&ip_key);
+    state.public_auth_limiter.record_success(&email_key);
+    let mut response = Json(json!({
+        "user": to_public_auth_user(&state, &user_id, user),
+    }))
+    .into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        build_session_cookie(&session.session_token, &headers, max_age_secs),
+    );
+    response
+}
+
 fn aliyun_sms_phone_number(phone_number: &str) -> String {
     strip_china_country_code(phone_number).unwrap_or_else(|| phone_number.to_string())
 }
@@ -448,7 +625,7 @@ fn logout_success_response(headers: &HeaderMap) -> Response {
 }
 
 pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    match require_public_user(&state, &headers) {
+    match require_public_session_user(&state, &headers) {
         Ok(user) => {
             let user_id = user.user_id.clone();
             Json(json!({
@@ -1119,6 +1296,15 @@ pub(crate) fn require_public_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
+    let user = require_public_session_user(state, headers)?;
+    require_user_paid_access(state, &user)?;
+    Ok(user)
+}
+
+fn require_public_session_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<hone_memory::WebInviteUser, Response> {
     let Some(token) = read_session_token(headers) else {
         warn!("public auth rejected: missing session cookie");
         return Err(crate::routes::json_error(
@@ -1132,33 +1318,50 @@ pub(crate) fn require_public_user(
             warn!("public auth rejected: session token not found");
             Err(crate::routes::json_error(
                 StatusCode::UNAUTHORIZED,
-                "登录已过期，请重新输入邀请码",
+                "登录已过期，请重新登录",
             ))
         }
         Ok(WebSessionAuthResult::Expired { user_id }) => {
             warn!(%user_id, "public auth rejected: session expired");
             Err(crate::routes::json_error(
                 StatusCode::UNAUTHORIZED,
-                "登录已过期，请重新输入邀请码",
+                "登录已过期，请重新登录",
             ))
         }
         Ok(WebSessionAuthResult::UserRevoked { user_id }) => {
             warn!(%user_id, "public auth rejected: user revoked");
             Err(crate::routes::json_error(
                 StatusCode::UNAUTHORIZED,
-                "登录已过期，请重新输入邀请码",
+                "登录已过期，请重新登录",
             ))
         }
         Ok(WebSessionAuthResult::UserMissing { user_id }) => {
             warn!(%user_id, "public auth rejected: session user missing");
             Err(crate::routes::json_error(
                 StatusCode::UNAUTHORIZED,
-                "登录已过期，请重新输入邀请码",
+                "登录已过期，请重新登录",
             ))
         }
         Err(error) => Err(crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("验证登录态失败: {error}"),
+        )),
+    }
+}
+
+fn require_user_paid_access(
+    state: &AppState,
+    user: &hone_memory::WebInviteUser,
+) -> Result<(), Response> {
+    match state.web_auth.user_has_paid_access(&user.user_id) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(crate::routes::json_error(
+            StatusCode::PAYMENT_REQUIRED,
+            "Whop 会员当前不可用，请在账户页查看付款状态",
+        )),
+        Err(error) => Err(crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("读取会员权益失败: {error}"),
         )),
     }
 }
@@ -1174,7 +1377,10 @@ fn require_public_api_key_user(
         ));
     };
     match state.web_auth.find_invite_user_by_api_key(&api_key) {
-        Ok(Some(user)) => Ok(user),
+        Ok(Some(user)) => {
+            require_user_paid_access(state, &user)?;
+            Ok(user)
+        }
         Ok(None) => Err(crate::routes::json_error(
             StatusCode::FORBIDDEN,
             "API Key 无效或已停用",
@@ -1526,6 +1732,7 @@ fn to_public_auth_user(
     user_id: &str,
     user: hone_memory::WebInviteUser,
 ) -> PublicAuthUserInfo {
+    let external_profile = state.web_auth.external_profile(user_id).unwrap_or_default();
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::beijing_now().format("%F").to_string();
@@ -1559,7 +1766,21 @@ fn to_public_auth_user(
         has_password: user.password_hash.is_some(),
         tos_accepted_at: user.tos_accepted_at,
         tos_version: user.tos_version,
+        registration_policy: external_profile.registration_policy,
+        email_hint: external_profile
+            .email_address
+            .as_deref()
+            .map(mask_email_address),
+        whop_membership: external_profile.whop_membership,
     }
+}
+
+fn mask_email_address(email_address: &str) -> String {
+    let Some((local, domain)) = email_address.split_once('@') else {
+        return "***".to_string();
+    };
+    let first = local.chars().next().unwrap_or('*');
+    format!("{first}***@{domain}")
 }
 
 #[cfg(test)]

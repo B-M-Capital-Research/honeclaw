@@ -234,6 +234,9 @@ export default function PublicPlanPage() {
                 {C().member.trial_cta}
               </button>
               <p class="hone-hub-trial-hint">{C().member.trial_hint}</p>
+              <a class="hone-hub-trial-btn" href="/activate/whop">
+                {C().member.activation_cta}
+              </a>
               <p class="hone-hub-foot">{C().foot}</p>
             </section>
           </aside>
@@ -770,6 +773,10 @@ export default function PublicPlanPage() {
         }
         .hone-hub-buy { width: 100%; margin-top: 16px; }
         .hone-hub-trial-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
           width: 100%;
           min-height: 40px;
           margin-top: 9px;
@@ -780,6 +787,7 @@ export default function PublicPlanPage() {
           cursor: pointer;
           font-size: 13px;
           font-weight: 700;
+          text-decoration: none;
           transition: border-color 0.16s ease;
         }
         .hone-hub-trial-btn:hover { border-color: var(--hone-ink-950); }

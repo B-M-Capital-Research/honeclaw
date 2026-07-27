@@ -126,6 +126,7 @@ const CONTENT_ZH = {
       ],
       trial_cta: "先加免费体验群",
       trial_hint: "加客服微信，先进免费群感受氛围，合适再付费。",
+      activation_cta: "Whop 海外买家：开通 HONE 账号",
     },
     posters_label: "六张海报看懂完整服务",
     posters_hint: "点击任意海报可放大查看，长按或右键即可保存转发。",
@@ -519,7 +520,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/activate/whop`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；国内 `/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，海外 Whop 买家则在 `/activate/whop` 使用购买邮箱和 HONE 邮箱验证码激活，`/me` 展示服务端记录的会员与续费状态；桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "存储与云运行时",
@@ -1217,13 +1218,13 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "您需要使用经我们登记的手机号作为账号，并通过短信验证码完成身份验证。本服务目前为邀请制，未进入邀请名单的手机号无法登录。",
+                "中国大陆渠道用户使用经我们登记的中国大陆手机号作为账号，并通过短信验证码完成身份验证；海外 Whop 购买用户可使用购买邮箱和邮箱验证码完成身份验证。账号必须对应有效的邀请资格或会员权益。",
               ],
             },
             {
               kind: "p",
               parts: [
-                "您应妥善保管手机号码、短信验证码与登录设备，不得将账号借予他人使用。若发现账号被未经授权使用，您应立即通知我们。",
+                "您应妥善保管手机号码或邮箱、验证码与登录设备，不得将账号借予他人使用。若发现账号被未经授权使用，您应立即通知我们。",
               ],
             },
           ],
@@ -1297,7 +1298,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎等第三方服务以完成功能交付。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
+                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Whop 处理海外付款与会员状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
               ],
             },
             {
@@ -1449,7 +1450,11 @@ const CONTENT_ZH = {
               items: [
                 [
                   { strong: "账号信息：" },
-                  "手机号（作为账号识别与邀请资格判断）、短信验证码核验结果、历史邀请记录（作为邀请名单来源）；",
+                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Whop 用户、会员、产品、套餐、状态、续费周期和 webhook 事件标识；",
+                ],
+                [
+                  { strong: "付款信息：" },
+                  "海外付款由 Whop 处理。我们接收用于确认权益的订单或会员状态，但不接收或存储完整银行卡号；",
                 ],
                 [
                   { strong: "使用数据：" },
@@ -1475,6 +1480,7 @@ const CONTENT_ZH = {
               kind: "ul",
               items: [
                 ["身份认证、登录会话维持、账号风控与频率限制；"],
+                ["确认购买渠道、会员资格、续费状态与产品访问权限；"],
                 ["调用大型语言模型与外部数据源以完成您发起的查询；"],
                 ["记录会话上下文以提供连续对话能力；"],
                 ["系统故障排查、安全事件响应与服务优化。"],
@@ -1488,7 +1494,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中。短信验证码由第三方短信认证服务发送与核验，我们不会存储验证码明文。",
+                "您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中，并可按部署配置同步到服务端数据库。短信或邮箱验证码由相应发送服务交付；HONE 仅保存验证码摘要和有效期，不存储验证码明文。",
               ],
             },
             {
@@ -1505,12 +1511,14 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "为完成您发起的查询，我们可能将您输入的相关内容传递给以下类别的第三方服务方：",
+                "为完成身份验证、付款权益同步和您发起的查询，我们可能向以下类别的第三方服务方传递必要信息：",
               ],
             },
             {
               kind: "ul",
               items: [
+                ["短信与邮件服务商（用于发送登录验证码）；"],
+                ["Whop（用于处理海外付款并同步会员、产品和续费状态）；"],
                 ["大型语言模型提供方（用于生成回复）；"],
                 ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
               ],
@@ -1819,6 +1827,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       ],
       trial_cta: "Join the free group first",
       trial_hint: "Add support on WeChat to try the free group before you pay.",
+      activation_cta: "Already paid on Whop? Activate HONE",
     },
     posters_label: "Six posters that explain the full service",
     posters_hint: "Tap any poster to enlarge; long-press or right-click to save and share.",
@@ -2203,7 +2212,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin invite list, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/activate/whop`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; mainland-China `/chat` admission uses Aliyun behavior captcha plus phone/SMS verification from the admin invite list, while overseas Whop buyers activate through `/activate/whop` using their purchase email and a HONE email code, and `/me` renders server-recorded membership and renewal status; the client uses a collapsible desktop left rail plus full-height conversation workspace and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Storage and cloud runtime",
@@ -2944,13 +2953,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "You sign in with a phone number we have registered and verify your identity with an SMS code. HONE is currently invite-only, and phone numbers outside the invite list cannot sign in.",
+                "Users entering through mainland China channels sign in with a registered mainland China phone number and an SMS code. Overseas Whop buyers may verify with their purchase email and an email code. Every account must correspond to a valid invitation or membership entitlement.",
               ],
             },
             {
               kind: "p",
               parts: [
-                "Keep your phone number, SMS codes, and signed-in devices secure. Do not share your account with others. If you notice unauthorized access, notify us immediately.",
+                "Keep your phone number or email, verification codes, and signed-in devices secure. Do not share your account with others. If you notice unauthorized access, notify us immediately.",
               ],
             },
           ],
@@ -3030,7 +3039,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "The service may call third-party large language models (LLMs), market data, search engines, and similar providers to deliver features. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
+                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Whop for overseas payment processing and membership synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
               ],
             },
             {
@@ -3189,7 +3198,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 [
                   { strong: "Account info:" },
-                  " phone number (as account identifier and invite-list key), SMS verification result, and historical invite records used as the invite-list source;",
+                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Whop user, membership, product, plan, status, renewal-period, and webhook event identifiers;",
+                ],
+                [
+                  { strong: "Payment info:" },
+                  " overseas payments are processed by Whop. We receive order or membership status needed to confirm entitlements, but we do not receive or store full payment-card numbers;",
                 ],
                 [
                   { strong: "Usage data:" },
@@ -3223,6 +3236,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
                   "authentication, session maintenance, account risk control, and rate limiting;",
                 ],
                 [
+                  "confirming purchase channel, membership eligibility, renewal status, and product access;",
+                ],
+                [
                   "calling large language models and external data sources to fulfill your queries;",
                 ],
                 [
@@ -3241,7 +3257,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Your account and conversation data are stored in the service's local SQLite database by default. SMS codes are sent and checked by a third-party SMS verification provider; we do not store plaintext verification codes.",
+                "Your account and conversation data are stored in the service's local SQLite database by default and may be synchronized to a server database when configured for the deployment. SMS or email codes are delivered by the applicable provider; HONE stores only a code digest and expiration, not the plaintext code.",
               ],
             },
             {
@@ -3258,12 +3274,16 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "To fulfill your queries we may transmit relevant input to the following categories of third-party service providers:",
+                "To authenticate you, synchronize payment entitlements, and fulfill your queries, we may transmit necessary information to the following categories of third-party service providers:",
               ],
             },
             {
               kind: "ul",
               items: [
+                ["SMS and email providers (to deliver login codes);"],
+                [
+                  "Whop (to process overseas payments and synchronize membership, product, and renewal status);",
+                ],
                 ["large language model providers (to generate responses);"],
                 [
                   "market data and search data sources (to supplement queries with market or public information).",

@@ -555,11 +555,14 @@ Last updated: 2026-07-27
 ## D-2026-07-26-04 Let Whop Own Discord Membership Fulfillment
 
 - Status: Accepted
+- Refined by: `D-2026-07-26-06` adds a separate Whop-to-HONE
+  application-entitlement webhook and email activation flow. It does not make
+  the HONE Discord bot a role owner or change Whop's native Discord lifecycle.
 - Context: The canonical international membership is sold by Whop, and the
   target Discord server already has a dedicated paid-member role and a Whop
-  integration. The repository has no implemented Whop webhook or billing
-  entitlement ledger, while `hone-discord` is a messaging/agent bot rather than
-  a role-lifecycle service.
+  integration. At the time of this decision the repository had no Whop
+  application-entitlement ledger, while `hone-discord` was and remains a
+  messaging/agent bot rather than a role-lifecycle service.
 - Decision: Include Whop's native Discord app in product
   `prod_9jQsUKaifh6ZA`. Connect it to Discord guild
   `1391380994182877205`, include role `VIP 付费用户`, log to channel
@@ -581,6 +584,51 @@ Last updated: 2026-07-27
   cancellation removal; member preview shows the linked-account selector and
   `Claim Access`. A separate non-owner membership remains the required proof
   for a real grant/revoke lifecycle.
+
+## D-2026-07-26-06 Separate Payment Identity From HONE Authentication
+
+- Status: Accepted; implementation and local automated checks pass. Browser
+  acceptance and real email-provider / non-owner purchase acceptance remain
+  required before production release.
+- Context: International Whop checkout does not need to force a customer
+  through Whop OAuth in order to use HONE, while mainland-China acquisition
+  still needs a traceable phone identity. Payment, login, Discord linking, and
+  application authorization are different concerns and must not be collapsed
+  into one account-provider dependency.
+- Decision: Existing domestic users keep the admin-admitted phone plus SMS
+  path. An international Whop membership creates or updates a HONE external
+  identity keyed by normalized purchase email, and the customer proves control
+  of that email with a HONE-owned one-time-code flow. HONE does not use Whop
+  OAuth as its application login and does not require a phone on this
+  international path.
+- Entitlement boundary: Only a signature-verified Standard Webhooks v1 event
+  for the exact canonical company, product, and plan may change Whop
+  application entitlement. The body is verified before JSON parsing, the
+  delivery timestamp has a five-minute replay window, event IDs are
+  idempotent, and older membership events cannot overwrite newer state.
+  Checkout return parameters, email possession by itself, frontend state, and
+  Discord roles never grant HONE product access.
+- Access states: `active`, `trialing`, `past_due`, and the local
+  cancel-at-period-end projection `canceling` continue to grant current-period
+  access. Other Whop statuses retain account/session visibility through
+  `/me` but receive HTTP `402` from paid product APIs. Existing domestic
+  invite users remain independent of Whop because HONE does not yet own a
+  canonical Knowledge Planet entitlement feed.
+- Persistence: Local mode stores external identity, hashed email challenge,
+  and the latest membership projection beside `web_invite_users` in SQLite.
+  Cloud mode embeds the same backward-compatible external state in the
+  existing PG web-user record until a measured query/race requirement justifies
+  a dedicated indexed table. Neither path stores a plaintext email code or
+  full payment-card data.
+- Delivery and Discord: Email delivery is an injected
+  `EmailVerificationSender`; the default implementation is deliberately
+  unconfigured and fails closed. Whop's native Discord app remains the sole
+  owner of Discord account linking and `VIP 付费用户` role grant/removal under
+  D-2026-07-26-04; HONE's webhook owns application access only.
+- Follow-up: Before production, configure a transactional email provider and
+  the Whop webhook secret, add refund/dispute handling plus periodic
+  reconciliation, and run a non-owner buy → email activate → HONE access →
+  Discord claim → cancel/revoke → repurchase acceptance matrix.
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 
 - Status: Accepted and production-verified on exact commit `84ca1f2114c059a157cd893c84067638c7618e84`.

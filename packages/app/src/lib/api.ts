@@ -304,6 +304,30 @@ export async function publicSmsLogin(input: {
   return payload.user;
 }
 
+export async function publicSendEmailCode(emailAddress: string) {
+  const response = await apiFetch("/api/public/auth/email/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email_address: emailAddress }),
+  });
+  return parseJson<{ ok: boolean; message: string }>(response);
+}
+
+export async function publicEmailLogin(input: {
+  email_address: string;
+  verify_code: string;
+  remember: boolean;
+  tos_version: string;
+}) {
+  const response = await apiFetch("/api/public/auth/email/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
 export async function publicLogout() {
   try {
     const response = await apiFetch("/api/public/auth/logout", {

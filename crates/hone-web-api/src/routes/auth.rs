@@ -120,6 +120,9 @@ mod tests {
                 )
                 .expect("web auth"),
             ),
+            email_verification_sender: Arc::new(
+                crate::email_verification::UnconfiguredEmailVerificationSender,
+            ),
             push_tx,
             http_client: reqwest::Client::new(),
             log_buffer: LogBuffer::new(),

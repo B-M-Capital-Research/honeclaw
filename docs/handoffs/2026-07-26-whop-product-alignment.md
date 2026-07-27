@@ -93,3 +93,13 @@ For self-serve entitlement automation, begin with
 `docs/proposal/auto_p2_self-serve-billing-checkout.md`, add a verified Whop
 webhook flow, and map `plan_ZXfsAisr4UOaw` metadata to the HONE full-access
 entitlement.
+
+## 2026-07-26 Later Follow-up
+
+The application-entitlement gap described above is now implemented locally by
+the separate Whop → HONE email-activation task. See
+`docs/current-plans/whop-hone-activation.md`,
+`docs/runbooks/whop-hone-activation.md`, and `D-2026-07-26-06`. Transactional
+email delivery, production webhook configuration, refund/dispute
+reconciliation, browser acceptance, and a non-owner live purchase remain
+required before production release.

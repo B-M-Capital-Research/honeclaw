@@ -260,6 +260,7 @@ impl Drop for ActiveChatRunGuard {
 pub struct AppState {
     pub core: Arc<hone_channels::HoneBotCore>,
     pub web_auth: Arc<hone_memory::WebAuthStorage>,
+    pub email_verification_sender: Arc<dyn crate::email_verification::EmailVerificationSender>,
     pub public_auth_limiter: PublicAuthLimiter,
     pub push_tx: broadcast::Sender<PushEvent>,
     pub http_client: reqwest::Client,

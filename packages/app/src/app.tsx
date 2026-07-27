@@ -25,6 +25,7 @@ const PublicSitePlanPage = lazy(() => import("@/pages/public-plan"))
 const PublicBlogPage = lazy(() => import("@/pages/public-blog"))
 const PublicBlogPostPage = lazy(() => import("@/pages/public-blog-post"))
 const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
+const PublicWhopActivatePage = lazy(() => import("@/pages/public-whop-activate"))
 const PublicSiteTermsPage = lazy(() => import("@/pages/public-terms"))
 const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
 const PublicCommunityPage = lazy(() => import("@/pages/public-community"))
@@ -121,6 +122,7 @@ function PublicSurface() {
             <Route path="/blog" component={PublicBlogPage} />
             <Route path="/blog/:slug" component={PublicBlogPostPage} />
             <Route path="/me" component={PublicSiteMePage} />
+            <Route path="/activate/whop" component={PublicWhopActivatePage} />
             {/* 投资与跟踪已并入「我的」，旧链接保留跳转 */}
             <Route path="/portfolio" component={() => <Navigate href="/me" />} />
             <Route path="/invest" component={() => <Navigate href="/me" />} />

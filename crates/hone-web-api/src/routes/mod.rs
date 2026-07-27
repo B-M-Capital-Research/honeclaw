@@ -27,6 +27,7 @@ pub(crate) mod skills;
 pub(crate) mod task_runs;
 pub(crate) mod users;
 pub(crate) mod web_users;
+pub(crate) mod whop;
 
 mod common;
 
@@ -282,8 +283,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/captcha/config", get(public::handle_captcha_config))
         .route("/auth/sms/send", post(public::handle_sms_send_code))
         .route("/auth/sms/login", post(public::handle_sms_login))
+        .route("/auth/email/send", post(public::handle_email_send_code))
+        .route("/auth/email/login", post(public::handle_email_login))
         .route("/auth/logout", post(public::handle_logout))
         .route("/auth/me", get(public::handle_me))
+        .route(
+            "/integrations/whop/webhook",
+            post(whop::handle_whop_webhook),
+        )
         .route("/bootstrap", get(public::handle_bootstrap))
         .route("/history", get(public::handle_history))
         .route("/community", get(public_community::handle_list_community))
