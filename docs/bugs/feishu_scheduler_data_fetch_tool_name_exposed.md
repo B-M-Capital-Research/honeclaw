@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-27 11:01-15:03 CST 运行态继续复发，状态维持 `New`：
+  - 11:01-15:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 10 条 user / 8 条 assistant / 2 条 system compact，覆盖 5 个更新 session；近期 Feishu direct / scheduler 会话多数有 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是用户可见 provider / 来源口径。
+  - 14:14 CST Feishu direct `深度分析：lite` 正常收口，但 final 开头写出 `provider timestamp: 2026-07-25 04:00:01 +08:00`，把内部 provider 字段式时间戳作为用户态行情口径。
+  - 12:01 CST heartbeat `美股盘中科技股机会心跳监控` preview 写 `来源：provider 北京时间 07-25 04:00`，继续把 provider 来源词带入用户可见出站候选。
+  - 这些消息业务主体已完成并送达或进入出站候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-27 07:02-11:02 CST 运行态继续复发，状态维持 `New`：
   - 07:02-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 30 条 user / 19 条 assistant / 10 条 system compact，覆盖 13 个更新 session；近期 Feishu direct / scheduler 会话均有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是 scheduler 用户可见内部工具 / provider 口径。

@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-27 11:01-15:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 11:30 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，`run_id=48766` 却把当前输入解释成“心跳监控契约的文本配置说明”，并输出“AAOI 心跳任务已在你的持仓记录中激活”，偏向配置确认而不是执行 AAOI 事件监控判断。
+    - 12:30 CST 同一 `AAOI 全面心跳检测` `run_id=48791` 的 preview 串到 `RKLB 报价 $63.91` 和 RKLB 财报 / 均线判断，任务主体从 AAOI 漂移到 RKLB。
+    - 13:30 CST 同一 `AAOI 全面心跳检测` `run_id=48815` 又串到 `TEM 报价 $42.69`、Personalis 收购和 TEM 财报验证节点。
+    - 14:00 CST `RKLB 全面心跳检测` `run_id=48818` 输出 Hone 产品能力自我介绍、公司长期画像、组合管理、定时任务和多渠道协同，不是 RKLB 监控结论。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 10 条 user / 8 条 assistant / 2 条 system compact，覆盖 5 个更新 session；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被配置说明、产品能力介绍或其它标的上下文污染，导致模型没有稳定执行当前 job 监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-27 03:01-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 03:30 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，preview 却使用 `ASML 最新可得报价 $1,757.09` 并输出 ASML 公司介绍和持仓建议，没有执行 AAOI 监控判断。

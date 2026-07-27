@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-27 11:01-15:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 13:41 CST Feishu direct `预测下cohr 这次的财报表现` 正常收口，但继续使用 `COHR 最新可得报价 $282.39`、前收 `$313.22` 和 `NYSE 实时快照` 进入财报预判。
+    - 13:50 CST Feishu direct `预测下lite 这次的财报情况` 正常收口，但写出 `LITE 最新可得报价 $762.99`、`市值 $5,936 亿`、`PE 126.74`，并据此做估值和买点判断。
+    - 14:08 CST Feishu direct `深度分析：intc` 正常收口，但使用 `INTC 最新可得报价 $92.32` 与市值 `$4640 亿` 作为估值锚。
+  - `cron_job_runs`
+    - 11:30-15:00 heartbeat / scheduler preview 继续使用 `AAOI $100.15`、`RKLB $63.91`、`TEM $42.69`、`MU $920.95`、`LITE $762.99`、`SPY $738.93`、`QQQ $684.23` 等旧价或数量级高风险价格进入 sent / noop / duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 direct、scheduler 和 heartbeat 金融判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-27 07:02-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 08:30 CST Feishu scheduler `Hone_AI_Morning_Briefing` 正常收口，但继续用 `GEV $1014.75`、`MU $920.95`、`COHR $282.39`、`CIEN $390.96` 等明显高风险数量级价格进入行情核验与早报判断。

@@ -22,6 +22,15 @@ New
 
 ## 最新进展
 
+- 2026-07-27 11:01-15:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 12:00 CST `AAOI 全面心跳检测` `run_id=48773` 的 preview 标题明确写 `本轮 AAOI 心跳检查 — noop`，正文也写“本轮新增可核验事实：无”，但 cron 仍记录 `heartbeat=1`、`completed/sent/delivered=1`。
+    - 12:01 CST `RKLB 全面心跳检测` `run_id=48778` 写 `本轮无新增触发`，但仍为 `completed/sent/delivered=1`。
+    - 14:30 / 15:00 CST `RKLB 全面心跳检测` `run_id=48835/48842` 均写 `本轮无新增触发` 或 `无进一步恶化`，仍发送完整报告。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化或无触发增量，出站层仍将正文送达。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-27 07:02-11:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 07:30 CST heartbeat job `RKLB 全面心跳检测` 的 `response_preview` 写“本轮无新触发 / 无新增可核验价格变化或基本面增量”，但 `run_id=48659` 仍记录 `heartbeat=1`、`completed/sent/delivered=1`。
