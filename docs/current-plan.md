@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-27
-状态：有 9 个活跃任务
+状态：有 8 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **v0.15.2 正式发布与生产部署**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/v0.15.2-formal-release-deploy.md`
-  - 摘要：同步当前 `main`，把尚未部署的 `v0.15.1` 累积安全基线连同 `0.15.2` 版本元数据构建为新的不可变运行目录，通过既有 supervisor 受控替换生产 `0.14.1`，重新生成并核验 macOS/iOS Apple 资产，最后推送 annotated tag 与 GitHub Release
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

@@ -4,6 +4,18 @@ Last updated: 2026-07-27
 
 ## 2026-07-27
 
+### v0.15.2 Formal Release And Production Deployment
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/v0.15.2-formal-release-deploy.md`
+- Handoff: `docs/handoffs/2026-07-27-v0.15.2-formal-release-deploy.md`
+- Decision / ADR: N/A; this release activates the already accepted `v0.15.1` cumulative security baseline without changing module topology, answer format, channel ownership, or cloud storage authority
+- Related PRs / commits: release commit `8491a3c2aabac28e9cd8411a8b2adbc61c7799c5`; annotated tag `v0.15.2`; GitHub Actions Release run `30230535235`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `docs/runbooks/desktop-release-app-runtime.md`; full workspace check/test excluding Apple clients; Web `302/302`; Edge Worker `45/45`; finance contracts `44/44`; complete CI-safe regressions; main CI `30230221660`; Apple Clients `30230221669`; 500-file immutable manifest; production cloud/auth/channel probes; downloaded Apple checksum, DMG, App, Simulator, and Xcode inspection
+- Current conclusion: production moved from the old exact `0.14.1` runtime to `target/deploy-8491a3c2` and now reports `0.15.2`, healthy PostgreSQL/R2, authoritative cloud storage, zero local durable dependencies and active chat runs, and running Web/Feishu channels. The non-draft, non-prerelease GitHub Release contains all eight expected assets; downloaded Apple artifacts are checksum-valid and version/architecture-correct. The prior immutable runtime remains available for rollback. macOS remains ad-hoc signed/not notarized, iOS remains Simulator/Xcode-only, and the already stopped Discord credential state is unchanged.
+- Next entry point: `https://github.com/B-M-Capital-Research/honeclaw/releases/tag/v0.15.2`, then `docs/handoffs/2026-07-27-v0.15.2-formal-release-deploy.md` for deployment evidence, checksums, rollback, and Apple distribution limitations.
+
 ### Security Audit Remediation And v0.15.1 Release
 
 - Status: done
