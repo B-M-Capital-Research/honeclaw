@@ -4,6 +4,18 @@ Last updated: 2026-07-27
 
 ## 2026-07-27
 
+### v0.15.3 Feishu Native Table Fix Release
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/v0.15.3-formal-release.md`
+- Handoff: `docs/handoffs/2026-07-27-v0.15.3-formal-release.md`
+- Decision / ADR: N/A; this patch corrects Feishu card serialization without changing module, runner, route, tool, channel-binary, crate, or storage topology
+- Related PRs / commits: release commit `9b75868fb202da58ef0559d57834510f0af7a694`; annotated tag `v0.15.3`; GitHub Actions Release run `30249078543`
+- Related runbooks / regressions: workspace check excluding Apple clients; `hone-feishu` `69/69`; `hone-channels` prompt `55/55`; two shared raw-table regressions; release-note validation; commit-state rustfmt and diff checks; successful Linux/macOS/Apple/Homebrew jobs; checksum manifests and eight-asset inventory
+- Current conclusion: `v0.15.3` is published as a non-draft, non-prerelease GitHub Release. Standard Markdown and parseable legacy raw tables now become root-level Feishu JSON 2.0 tables; malformed or constrained paths do not expose component source. All expected CLI and Apple assets plus checksum manifests are available. Production was not deployed or restarted.
+- Next entry point: `https://github.com/B-M-Capital-Research/honeclaw/releases/tag/v0.15.3`, then `docs/handoffs/2026-07-27-v0.15.3-formal-release.md`; use the normal deployment workflow before the controlled direct/scheduler Feishu client recheck.
+
 ### Feishu Native Table Rendering
 
 - Status: done
@@ -11,7 +23,7 @@ Last updated: 2026-07-27
 - Plan: `docs/archive/plans/feishu-native-table-rendering.md`
 - Handoff: `docs/handoffs/2026-07-27-feishu-native-table-rendering.md`
 - Decision / ADR: N/A; this corrects the existing Feishu card protocol implementation without changing module ownership or cross-module architecture
-- Related PRs / commits: local working-tree change set; not committed or pushed
+- Related PRs / commits: release commit `9b75868fb202da58ef0559d57834510f0af7a694`; annotated tag `v0.15.3`; GitHub Actions Release run `30249078543`
 - Related runbooks / regressions: `hone-feishu` markdown `18/18`, outbound `6/6`, and full `69/69`; `hone-channels` prompt `55/55`; existing shared sanitizer and scheduler raw-table regressions; scoped Rust format and diff checks
 - Current conclusion: standard Markdown tables and parseable legacy raw-table payloads are now emitted as root-level Feishu JSON 2.0 `table` elements before message splitting. Direct, scheduler, and placeholder final updates share the renderer; malformed, over-limit, and Markdown-only paths remain readable without exposing `<table .../>` source. No runtime restart, deployment, or live Feishu send was performed.
 - Next entry point: deploy through the normal release/runtime workflow, then replay one direct and one scheduler Markdown table in a controlled Feishu account and append the client result to `docs/bugs/feishu_raw_table_component_code_leak.md`.

@@ -16,6 +16,7 @@
   - `docs/archive/plans/feishu-table-sanitization.md`
   - `docs/handoffs/2026-07-27-feishu-native-table-rendering.md`
   - `docs/archive/index.md`
+- related_prs: release commit `9b75868fb202da58ef0559d57834510f0af7a694`; annotated tag `v0.15.3`; GitHub Actions Release run `30249078543`
 
 ## Goal
 

@@ -15,7 +15,7 @@
   - `docs/archive/plans/feishu-native-table-rendering.md`
   - `docs/archive/plans/feishu-table-sanitization.md`
   - `docs/archive/index.md`
-- related_prs: N/A（本地工作树改动，未提交或推送）
+- related_prs: release commit `9b75868fb202da58ef0559d57834510f0af7a694`; annotated tag `v0.15.3`; GitHub Actions Release run `30249078543`
 
 ## Summary
 
@@ -40,13 +40,14 @@
 - 两条既有 shared sanitizer / scheduler raw-table 回归通过。
 - 本次 Rust 文件 scoped `rustfmt --check` 与相关文件 `git diff --check` 通过。
 - `bash scripts/ci/check_fmt_changed.sh` 仍因 `HEAD^...HEAD` 中无关既有文件的格式差异失败；未修改那些用户变更。
+- 隔离 release commit 建立后，提交态 `bash scripts/ci/check_fmt_changed.sh` 通过。
 
 ## Risks / Follow-ups
 
 - 尚未部署、重启或进行真实 Feishu 实发。新版本加载后，应分别用 direct 与 scheduler 的标准 Markdown 表格复核桌面端和移动端显示。
 - 若真实客户端不支持当前原生表格字段组合，可保留结构化解析，把最终输出切换为已有测试的列表降级；不要恢复 `<table .../>` 内联文本。
-- 工作树存在大量无关用户改动和一个无关冲突，提交时需只选择本 handoff 列出的任务文件。
+- 原工作树仍存在大量无关用户改动和一个无关冲突；发布通过独立干净 clone 隔离完成，没有改写这些内容。
 
 ## Next Entry Point
 
-先查看 `bins/hone-feishu/src/markdown.rs` 的 `render_feishu_card_content` 与相关测试，再从 `bins/hone-feishu/src/outbound.rs` 的 placeholder 更新入口确认所有最终发送路径仍使用同一渲染器；真实复核结果追加到 `docs/bugs/feishu_raw_table_component_code_leak.md`。
+从 `v0.15.3` Release 进入正常部署流程；运行时加载新版本后，用 direct 与 scheduler 各发送一条标准 Markdown 表格，并把真实客户端复核结果追加到 `docs/bugs/feishu_raw_table_component_code_leak.md`。
