@@ -6,7 +6,9 @@ use hone_channels::prompt::PromptOptions;
 use hone_channels::runtime::sanitize_user_visible_output;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
-use hone_scheduler::SchedulerEvent;
+use hone_scheduler::{
+    SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+};
 use serde_json::json;
 use teloxide::prelude::{Bot, ChatId};
 use tracing::{error, info};
@@ -39,7 +41,7 @@ pub(crate) async fn handle_scheduler_events(
         let core_clone = core.clone();
         tokio::spawn(async move {
             let storage = core_clone.cron_job_storage();
-            let result = run_scheduled_task(&core_clone, &event).await;
+            let result = run_scheduled_task(&core_clone, &event, &storage).await;
             if !result.should_deliver {
                 info!(
                     "[Telegram] 心跳任务未命中，本轮不发送: job={} target={}",
@@ -109,6 +111,32 @@ pub(crate) async fn handle_scheduler_events(
             let segments = TelegramSplitter
                 .split_html(&response, core_clone.config.telegram.max_message_length);
             let total_segments = segments.len();
+            if !scheduler_event_is_active(&storage, &event) {
+                info!(
+                    "[Telegram] 定时任务已取消，抑制发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: "noop".to_string(),
+                        message_send_status: "skipped_cancelled".to_string(),
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: execution_detail_with_delivery_key(
+                            json!({"skipped": "job_cancelled"}),
+                            &event.delivery_key,
+                        ),
+                    },
+                );
+                return;
+            }
             let sent = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
             let _ = storage.record_execution_event(
                 &event.actor,
@@ -145,13 +173,15 @@ pub(crate) async fn handle_scheduler_events(
 async fn run_scheduled_task(
     core: &Arc<hone_channels::HoneBotCore>,
     event: &SchedulerEvent,
+    storage: &hone_memory::CronJobStorage,
 ) -> scheduler::ScheduledTaskExecution {
     let prompt_options = PromptOptions::default();
-    scheduler::execute_scheduler_event(
+    scheduler::execute_scheduler_event_with_storage(
         core.clone(),
         event,
         prompt_options,
         AgentRunOptions::default(),
+        storage,
     )
     .await
 }

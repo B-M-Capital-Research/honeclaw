@@ -75,6 +75,14 @@ impl NotificationPrefsTool {
         FilePrefsStorage::new(&self.prefs_dir)
             .map_err(|e| HoneError::Tool(format!("打开 prefs 目录失败: {e}")))
     }
+
+    fn cron_storage(&self) -> HoneResult<hone_memory::CronJobStorage> {
+        if let Some(postgres) = self.postgres.clone() {
+            return hone_memory::CronJobStorage::new_cloud(postgres)
+                .map_err(|e| HoneError::Tool(format!("打开云端 cron 存储失败: {e}")));
+        }
+        Ok(hone_memory::CronJobStorage::new(&self.cron_jobs_dir))
+    }
 }
 
 pub fn load_notification_quiet_hours(
@@ -275,7 +283,9 @@ impl Tool for NotificationPrefsTool {
 
     fn description(&self) -> &str {
         "管理当前用户的市场事件推送偏好(仅影响自己)。支持:get 查看当前设置、\
-         enable/disable 总开关、set_min_severity 调整最低严重度 (low/medium/high)、\
+         enable/disable 事件推送总开关、disable_all 取消当前用户的所有自动提醒\
+         （关闭事件即时/摘要推送，并删除全部定时任务和心跳任务）、\
+         set_min_severity 调整最低严重度 (low/medium/high)、\
          set_portfolio_only 只推持仓相关、allow_kinds 设置白名单、block_kinds 设置黑名单、\
          clear_allow/clear_block 清空对应列表、reset 恢复默认。\
          per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 Asia/Shanghai、America/New_York)、\
@@ -296,6 +306,8 @@ impl Tool for NotificationPrefsTool {
          自己写的公司画像(走 company_portrait skill)按需蒸馏,**不再支持手动通过本工具编辑**。\
          若用户问\"为什么我的 thesis 是 X / 想改 Y\",指引他更新对应公司画像即可,\
          新建画像/新增持仓后通常在下一次小时级检查里尝试更新;覆盖完整后约每 7 天刷新一次。\
+         用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”时，\
+         必须直接调用 disable_all；不要只调用 disable，也不要再让用户逐项确认。\
          kind tag 必须选自:earnings_upcoming / earnings_released / earnings_call_transcript / \
          news_critical / price_alert / weekly52_high / weekly52_low / dividend / split / \
          sec_filing / analyst_grade / macro_event / social_post。"
@@ -312,6 +324,7 @@ impl Tool for NotificationPrefsTool {
                     "get".into(),
                     "enable".into(),
                     "disable".into(),
+                    "disable_all".into(),
                     "set_min_severity".into(),
                     "set_portfolio_only".into(),
                     "allow_kinds".into(),
@@ -341,7 +354,7 @@ impl Tool for NotificationPrefsTool {
                     set_price_high_pct 传数字 (0<x≤50,例 3.5);\
                     set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
                     clear_quiet_hours 不需要 value。\
-                    get/clear_allow/clear_block/enable/disable/reset 不需要 value。"
+                    get/clear_allow/clear_block/enable/disable/disable_all/reset 不需要 value。"
                     .to_string(),
                 required: false,
                 r#enum: None,
@@ -403,6 +416,22 @@ impl Tool for NotificationPrefsTool {
             }
             "disable" => {
                 prefs.enabled = false;
+            }
+            "disable_all" => {
+                let removed_jobs = self.cron_storage()?.remove_all_jobs(&actor)?;
+                prefs.enabled = false;
+                prefs.digest_slots = Some(Vec::new());
+                storage
+                    .save(&actor, &prefs)
+                    .map_err(|e| HoneError::Tool(format!("保存 prefs 失败: {e}")))?;
+                return Ok(json!({
+                    "status": "ok",
+                    "action": "disable_all",
+                    "prefs": prefs_to_json(&prefs),
+                    "removed_count": removed_jobs.len(),
+                    "removed_jobs": removed_jobs,
+                    "remaining_count": 0,
+                }));
             }
             "set_min_severity" => {
                 let raw = value.as_str().ok_or_else(|| {
@@ -553,6 +582,75 @@ mod tests {
         let _ = tool.execute(json!({"action":"disable"})).await.unwrap();
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["enabled"], json!(false));
+    }
+
+    #[tokio::test]
+    async fn disable_all_stops_event_pushes_and_removes_only_current_actor_jobs() {
+        let dir = tempdir().unwrap();
+        let prefs_dir = dir.path().join("prefs");
+        let cron_dir = dir.path().join("cron");
+        let actor = ActorIdentity::new("feishu", "u1", None::<&str>).unwrap();
+        let other_actor = ActorIdentity::new("feishu", "u2", None::<&str>).unwrap();
+        let tool = NotificationPrefsTool::new(
+            &prefs_dir,
+            Some(actor.clone()),
+            &cron_dir,
+            digest_defaults_fixture(),
+        );
+        let cron_storage = hone_memory::CronJobStorage::new(&cron_dir);
+        for (name, repeat) in [("daily report", "daily"), ("price heartbeat", "heartbeat")] {
+            let response = cron_storage.add_job(
+                &actor,
+                name,
+                Some(9),
+                Some(0),
+                repeat,
+                "task",
+                &actor.user_id,
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            );
+            assert_eq!(response["success"], true);
+        }
+        let other_response = cron_storage.add_job(
+            &other_actor,
+            "other actor report",
+            Some(10),
+            Some(0),
+            "daily",
+            "task",
+            &other_actor.user_id,
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        assert_eq!(other_response["success"], true);
+
+        let response = tool
+            .execute(json!({"action": "disable_all"}))
+            .await
+            .expect("disable all automatic reminders");
+        assert_eq!(response["status"], "ok");
+        assert_eq!(response["action"], "disable_all");
+        assert_eq!(response["removed_count"], 2);
+        assert_eq!(response["prefs"]["enabled"], false);
+        assert_eq!(response["prefs"]["digest_slots"], json!([]));
+        assert!(cron_storage.list_jobs(&actor).is_empty());
+        assert_eq!(cron_storage.list_jobs(&other_actor).len(), 1);
+
+        let repeated = tool
+            .execute(json!({"action": "disable_all"}))
+            .await
+            .expect("disable all remains idempotent");
+        assert_eq!(repeated["status"], "ok");
+        assert_eq!(repeated["removed_count"], 0);
     }
 
     #[tokio::test]

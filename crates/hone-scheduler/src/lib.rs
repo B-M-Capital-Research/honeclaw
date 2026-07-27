@@ -38,6 +38,23 @@ pub struct SchedulerEvent {
     pub bypass_quiet_hours: bool,
 }
 
+/// Return whether a queued scheduler event still belongs to a durable task.
+///
+/// Cancellation deletes the actor-owned job, so queued or in-flight events
+/// must re-check this immediately before model work and delivery. One-shot
+/// jobs are disabled when dispatched, but remain registered with `last_run_at`
+/// set; they are still allowed to finish that single claimed run.
+pub fn scheduler_event_is_active(storage: &CronJobStorage, event: &SchedulerEvent) -> bool {
+    storage
+        .get_job(&event.job_id, Some(&event.actor))
+        .is_some_and(|(_, job)| {
+            job.enabled
+                || (event.schedule_repeat.eq_ignore_ascii_case("once")
+                    && job.schedule.repeat.eq_ignore_ascii_case("once")
+                    && job.last_run_at.is_some())
+        })
+}
+
 /// Ensure cron execution history can finalize the pre-written `running/pending` row.
 ///
 /// `CronJobStorage::record_execution_event` matches terminal records to started
@@ -533,5 +550,106 @@ mod tests {
         );
         assert_eq!(detail["delivery_key"], "delivery-abc");
         assert_eq!(detail["parse_kind"], "JsonTriggered");
+    }
+
+    #[test]
+    fn scheduler_event_activity_fails_closed_after_actor_scoped_cancellation() {
+        let dir = make_temp_dir("hone_scheduler_event_activity");
+        let storage = CronJobStorage::new(&dir);
+        let actor = ActorIdentity::new("feishu", "ou_cancelled", None::<String>).expect("actor");
+        let added = storage.add_job(
+            &actor,
+            "daily report",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "ou_cancelled",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        let job: CronJob = serde_json::from_value(added["job"].clone()).expect("job");
+        let event = SchedulerEvent {
+            actor: actor.clone(),
+            job_id: job.id.clone(),
+            job_name: job.name.clone(),
+            task_prompt: job.task_prompt.clone(),
+            channel: job.channel.clone(),
+            channel_scope: job.channel_scope.clone(),
+            channel_target: job.channel_target.clone(),
+            delivery_key: "cancel-test".to_string(),
+            push: job.push.clone(),
+            tags: job.tags.clone(),
+            heartbeat: false,
+            schedule_hour: job.schedule.hour,
+            schedule_minute: job.schedule.minute,
+            schedule_repeat: job.schedule.repeat.clone(),
+            schedule_date: job.schedule.date.clone(),
+            last_delivered_previews: Vec::new(),
+            bypass_quiet_hours: false,
+        };
+
+        assert!(scheduler_event_is_active(&storage, &event));
+        storage
+            .remove_all_jobs(&actor)
+            .expect("cancel all actor jobs");
+        assert!(!scheduler_event_is_active(&storage, &event));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dispatched_once_event_remains_active_for_its_claimed_run() {
+        let dir = make_temp_dir("hone_scheduler_once_event_activity");
+        let storage = CronJobStorage::new(&dir);
+        let actor = ActorIdentity::new("telegram", "once-user", None::<String>).expect("actor");
+        let date = hone_core::beijing_now()
+            .date_naive()
+            .format("%F")
+            .to_string();
+        let added = storage.add_job(
+            &actor,
+            "one-time report",
+            Some(9),
+            Some(0),
+            "once",
+            "task",
+            "123",
+            None,
+            Some(date),
+            None,
+            true,
+            None,
+            false,
+        );
+        let job: CronJob = serde_json::from_value(added["job"].clone()).expect("job");
+        let event = SchedulerEvent {
+            actor: actor.clone(),
+            job_id: job.id.clone(),
+            job_name: job.name.clone(),
+            task_prompt: job.task_prompt.clone(),
+            channel: job.channel.clone(),
+            channel_scope: job.channel_scope.clone(),
+            channel_target: job.channel_target.clone(),
+            delivery_key: "once-test".to_string(),
+            push: job.push.clone(),
+            tags: job.tags.clone(),
+            heartbeat: false,
+            schedule_hour: job.schedule.hour,
+            schedule_minute: job.schedule.minute,
+            schedule_repeat: job.schedule.repeat.clone(),
+            schedule_date: job.schedule.date.clone(),
+            last_delivered_previews: Vec::new(),
+            bypass_quiet_hours: false,
+        };
+
+        storage.mark_job_run(&actor, &job.id);
+        assert!(scheduler_event_is_active(&storage, &event));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

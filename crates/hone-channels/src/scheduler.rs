@@ -5,7 +5,8 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Timelike};
-use hone_scheduler::SchedulerEvent;
+use hone_memory::CronJobStorage;
+use hone_scheduler::{SchedulerEvent, scheduler_event_is_active};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -1794,6 +1795,18 @@ pub struct ScheduledTaskExecution {
     pub session_id: Option<String>,
 }
 
+fn cancelled_scheduler_execution(session_id: Option<String>) -> ScheduledTaskExecution {
+    ScheduledTaskExecution {
+        should_deliver: false,
+        content: String::new(),
+        error: None,
+        metadata: json!({
+            "skipped": "job_cancelled",
+        }),
+        session_id,
+    }
+}
+
 fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<String> {
     match parse_kind {
         HeartbeatParseKind::Empty => Some("heartbeat 输出为空，任务已标记失败".to_string()),
@@ -3403,8 +3416,28 @@ pub async fn execute_scheduler_event(
     core: Arc<HoneBotCore>,
     event: &SchedulerEvent,
     prompt_options: PromptOptions,
-    mut run_options: AgentRunOptions,
+    run_options: AgentRunOptions,
 ) -> ScheduledTaskExecution {
+    let storage = core.cron_job_storage();
+    execute_scheduler_event_with_storage(core, event, prompt_options, run_options, &storage).await
+}
+
+pub async fn execute_scheduler_event_with_storage(
+    core: Arc<HoneBotCore>,
+    event: &SchedulerEvent,
+    prompt_options: PromptOptions,
+    mut run_options: AgentRunOptions,
+    storage: &CronJobStorage,
+) -> ScheduledTaskExecution {
+    if !scheduler_event_is_active(storage, event) {
+        tracing::info!(
+            job_id = %event.job_id,
+            job = %event.job_name,
+            "[SchedulerDiag] queued scheduler event skipped because the job was cancelled"
+        );
+        return cancelled_scheduler_execution(None);
+    }
+
     // quiet_hours 拦截:除非任务显式 bypass,否则在用户的勿扰区间内全部跳过执行,
     // 避免 cron 任务在半夜把模型唤醒推送。落 metadata.skipped='quiet_hours' 供巡检。
     if !event.bypass_quiet_hours
@@ -3440,6 +3473,21 @@ pub async fn execute_scheduler_event(
         let result = run_scheduled_task(core.clone(), event, prompt_options, run_options).await;
         let response = result.response;
         let session_id = result.session_id;
+        if !scheduler_event_is_active(storage, event) {
+            if response.success && !response.content.trim().is_empty() {
+                rollback_skipped_scheduler_assistant_turn(
+                    &core.session_storage,
+                    &session_id,
+                    &response.content,
+                );
+            }
+            tracing::info!(
+                job_id = %event.job_id,
+                job = %event.job_name,
+                "[SchedulerDiag] completed scheduler result suppressed because the job was cancelled"
+            );
+            return cancelled_scheduler_execution(Some(session_id));
+        }
         return if response.success {
             let sanitized = sanitize_scheduler_delivery_text(&response.content);
             if is_empty_success_fallback(&sanitized) {
@@ -3615,7 +3663,17 @@ pub async fn execute_scheduler_event(
     run_options.model_override = Some(core.auxiliary_model_name());
     let heartbeat_model = run_options.model_override.clone().unwrap_or_default();
 
-    match run_heartbeat_task(core, event, prompt_options, run_options).await {
+    let heartbeat_result = run_heartbeat_task(core, event, prompt_options, run_options).await;
+    if !scheduler_event_is_active(storage, event) {
+        tracing::info!(
+            job_id = %event.job_id,
+            job = %event.job_name,
+            "[SchedulerDiag] completed heartbeat result suppressed because the job was cancelled"
+        );
+        return cancelled_scheduler_execution(None);
+    }
+
+    match heartbeat_result {
         Ok(content) => {
             let raw_preview = truncate_for_log(content.trim(), 280);
             let raw_chars = content.chars().count();
@@ -3926,8 +3984,9 @@ mod tests {
     use hone_core::config::HoneConfig;
     use hone_core::{ActorIdentity, quiet::QuietHours};
     use hone_memory::{
-        SessionStorage, build_compact_summary_metadata, session_message_from_text,
-        session_message_text,
+        SessionStorage, build_compact_summary_metadata,
+        cron_job::{CronJob, CronJobData, CronSchedule},
+        session_message_from_text, session_message_text,
     };
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
@@ -7019,6 +7078,40 @@ mod tests {
         }
     }
 
+    fn persist_event_job(core: &HoneBotCore, event: &SchedulerEvent) {
+        core.cron_job_storage()
+            .save_jobs(
+                &event.actor,
+                &CronJobData {
+                    actor: Some(event.actor.clone()),
+                    user_id: event.actor.user_id.clone(),
+                    jobs: vec![CronJob {
+                        id: event.job_id.clone(),
+                        name: event.job_name.clone(),
+                        schedule: CronSchedule {
+                            hour: event.schedule_hour,
+                            minute: event.schedule_minute,
+                            repeat: event.schedule_repeat.clone(),
+                            weekday: None,
+                            date: event.schedule_date.clone(),
+                        },
+                        task_prompt: event.task_prompt.clone(),
+                        push: event.push.clone(),
+                        enabled: true,
+                        channel: event.channel.clone(),
+                        channel_scope: event.channel_scope.clone(),
+                        channel_target: event.channel_target.clone(),
+                        tags: event.tags.clone(),
+                        created_at: None,
+                        last_run_at: None,
+                        bypass_quiet_hours: event.bypass_quiet_hours,
+                    }],
+                    pending_updates: Vec::new(),
+                },
+            )
+            .expect("persist scheduler event job");
+    }
+
     #[test]
     fn load_actor_quiet_hours_returns_none_when_file_absent() {
         let dir = tempfile::tempdir().unwrap();
@@ -7059,6 +7152,7 @@ mod tests {
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
         let event = make_event(actor, /* bypass */ false);
+        persist_event_job(&core, &event);
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =
@@ -7083,6 +7177,7 @@ mod tests {
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
         let event = make_event(actor, /* bypass */ true);
+        persist_event_job(&core, &event);
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =
@@ -7103,6 +7198,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         // 不写 prefs 文件 → quiet_hours None → 不拦截
         let event = make_event(actor, /* bypass */ false);
+        persist_event_job(&core, &event);
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =
@@ -7111,6 +7207,30 @@ mod tests {
             result.metadata.get("skipped").and_then(|v| v.as_str()),
             Some("quiet_hours"),
             "无 quiet_hours 不应 skip"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_scheduler_event_skips_cancelled_job_before_model_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "cancelled", None::<String>).unwrap();
+        let event = make_event(actor, /* bypass */ false);
+        let result = execute_scheduler_event(
+            core,
+            &event,
+            PromptOptions::default(),
+            AgentRunOptions::default(),
+        )
+        .await;
+
+        assert!(!result.should_deliver);
+        assert!(result.error.is_none());
+        assert!(result.session_id.is_none());
+        assert_eq!(
+            result.metadata.get("skipped").and_then(Value::as_str),
+            Some("job_cancelled")
         );
     }
 }

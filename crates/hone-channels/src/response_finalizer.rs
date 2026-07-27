@@ -350,6 +350,7 @@ fn recover_user_facing_tool_outcome(tool_calls: &[ToolCallMade]) -> Option<Strin
         .rev()
         .find_map(|call| match call.name.as_str() {
             "cron_job" => recover_cron_job_confirmation(call),
+            "notification_prefs" => recover_notification_prefs_confirmation(call),
             "portfolio" => recover_portfolio_confirmation(call),
             _ => None,
         })
@@ -384,8 +385,35 @@ fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {
             .get("removed_job_id")
             .and_then(|value| value.as_str())
             .map(|job_id| format!("已删除定时任务：{job_id}。")),
+        Some("remove_all") => call
+            .result
+            .get("removed_count")
+            .and_then(Value::as_u64)
+            .map(|removed_count| {
+                if removed_count == 0 {
+                    "你当前没有需要删除的定时或心跳任务。".to_string()
+                } else {
+                    format!("已删除全部 {removed_count} 个定时或心跳任务。")
+                }
+            }),
         _ => None,
     }
+}
+
+fn recover_notification_prefs_confirmation(call: &ToolCallMade) -> Option<String> {
+    if tool_action(call).as_deref() != Some("disable_all")
+        || call.result.get("status").and_then(Value::as_str) != Some("ok")
+    {
+        return None;
+    }
+    let removed_count = call
+        .result
+        .get("removed_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    Some(format!(
+        "已关闭事件推送，并删除 {removed_count} 个定时或心跳任务；当前不会再触发自动提醒。"
+    ))
 }
 
 fn recover_cron_job_list_confirmation(call: &ToolCallMade) -> Option<String> {
@@ -994,4 +1022,55 @@ fn sanitize_filename_component(raw: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn tool_call(name: &str, action: &str, result: Value) -> ToolCallMade {
+        ToolCallMade {
+            name: name.to_string(),
+            arguments: json!({"action": action}),
+            result,
+            tool_call_id: Some("call-1".to_string()),
+        }
+    }
+
+    #[test]
+    fn recovers_remove_all_confirmation_without_changing_answer_structure() {
+        let call = tool_call(
+            "cron_job",
+            "remove_all",
+            json!({
+                "success": true,
+                "action": "remove_all",
+                "removed_count": 3,
+                "remaining_count": 0,
+            }),
+        );
+        assert_eq!(
+            recover_user_facing_tool_outcome(&[call]).as_deref(),
+            Some("已删除全部 3 个定时或心跳任务。")
+        );
+    }
+
+    #[test]
+    fn recovers_disable_all_confirmation_for_every_automatic_source() {
+        let call = tool_call(
+            "notification_prefs",
+            "disable_all",
+            json!({
+                "status": "ok",
+                "action": "disable_all",
+                "removed_count": 2,
+                "remaining_count": 0,
+            }),
+        );
+        assert_eq!(
+            recover_user_facing_tool_outcome(&[call]).as_deref(),
+            Some("已关闭事件推送，并删除 2 个定时或心跳任务；当前不会再触发自动提醒。")
+        );
+    }
 }

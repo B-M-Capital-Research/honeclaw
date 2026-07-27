@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-27
-状态：有 8 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **自动提醒全量取消与 Feishu 表格生产生效**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/reminder-cancellation-and-feishu-table-activation.md`
+  - 摘要：定位并封闭“用户要求取消所有自动提醒后仍有 scheduler / event-engine / heartbeat 任务继续投递”的全部漏口，验证远端 `v0.15.3` 原生 Feishu 表格实现覆盖 direct / placeholder / scheduler 出站路径，补回归、推送新的精确提交并通过不可变构建受控替换仍运行 `0.15.2` 的生产进程
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

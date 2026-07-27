@@ -39,6 +39,8 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
 - 用户要求查看、核对、更新或引用“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具，把工具结果视为本轮权威真相源；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。\n\
 - 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。\n\
+- 用户明确说“取消/删除所有定时任务或心跳任务”时，直接调用 `cron_job(action=\"remove_all\")`；这句明确请求本身就是授权，不要再逐条确认、逐条循环删除或只关闭其中一项。\n\
+- 用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”时，必须调用 `notification_prefs(action=\"disable_all\")`；该动作同时关闭事件即时/摘要推送并删除全部定时/心跳任务。禁止只调用 `disable` 后就声称所有自动提醒都已取消。\n\
 - 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
 - 面向用户列出或说明任务状态时，不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 这类实现层 key/value；应改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。";

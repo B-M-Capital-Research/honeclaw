@@ -72,7 +72,7 @@ impl Tool for CronJobTool {
     }
 
     fn description(&self) -> &str {
-        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。\n\n**与 quiet_hours 的关系**：用户在 notification_prefs 设了 quiet_hours 后，所有 cron 任务**默认遵守**该勿扰区间——区间内到点的任务会被静音跳过（cron_job_runs 落 metadata.skipped='quiet_hours'）。若某条 cron 必须严守原时刻不能被静音（如盘前 06:55 复盘），update 时传 bypass_quiet_hours=true。add 暂不接受该字段，新建任务默认遵守 quiet_hours。"
+        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除单个任务）、remove_all（删除当前用户全部定时和心跳任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。用户已经明确说“取消/删除所有定时任务或心跳任务”时，直接调用 remove_all；当前这句话就是授权，不要再逐个确认或循环删除。若用户说的是“取消所有自动提醒/关闭所有自动推送”，应改用 notification_prefs(action=\"disable_all\")，它会同时关闭事件推送并删除全部定时/心跳任务。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。\n\n**与 quiet_hours 的关系**：用户在 notification_prefs 设了 quiet_hours 后，所有 cron 任务**默认遵守**该勿扰区间——区间内到点的任务会被静音跳过（cron_job_runs 落 metadata.skipped='quiet_hours'）。若某条 cron 必须严守原时刻不能被静音（如盘前 06:55 复盘），update 时传 bypass_quiet_hours=true。add 暂不接受该字段，新建任务默认遵守 quiet_hours。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -86,6 +86,7 @@ impl Tool for CronJobTool {
                     "list".into(),
                     "add".into(),
                     "remove".into(),
+                    "remove_all".into(),
                     "update".into(),
                 ]),
                 items: None,
@@ -334,8 +335,18 @@ impl Tool for CronJobTool {
                     }));
                 }
 
-                let result = storage.remove_job(actor, &matched_job.id);
+                let result = storage.remove_job(actor, &matched_job.id)?;
                 Ok(result)
+            }
+            "remove_all" => {
+                let removed_jobs = storage.remove_all_jobs(actor)?;
+                Ok(serde_json::json!({
+                    "success": true,
+                    "action": "remove_all",
+                    "removed_count": removed_jobs.len(),
+                    "removed_jobs": removed_jobs,
+                    "remaining_count": 0,
+                }))
             }
             "update" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -628,6 +639,59 @@ mod tests {
         assert_eq!(add_response["success"].as_bool(), Some(true));
         assert_eq!(add_response["job"]["channel"], "telegram");
         assert_eq!(add_response["job"]["channel_target"], "-1001234567890");
+    }
+
+    #[tokio::test]
+    async fn remove_all_is_actor_scoped_and_idempotent() {
+        let data_dir = make_temp_dir("hone_cron_tool_remove_all");
+        let actor = ActorIdentity::new("feishu", "u1", None::<String>).expect("actor");
+        let other_actor = ActorIdentity::new("feishu", "u2", None::<String>).expect("other actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor.clone()), "u1", false);
+        let other_tool = CronJobTool::new(&data_dir, Some(other_actor.clone()), "u2", false);
+
+        for (name, repeat) in [("daily report", "daily"), ("price heartbeat", "heartbeat")] {
+            tool.execute(serde_json::json!({
+                "action": "add",
+                "name": name,
+                "hour": 9,
+                "minute": 0,
+                "repeat": repeat,
+                "task_prompt": "task"
+            }))
+            .await
+            .expect("add actor job");
+        }
+        other_tool
+            .execute(serde_json::json!({
+                "action": "add",
+                "name": "other actor report",
+                "hour": 10,
+                "minute": 0,
+                "repeat": "daily",
+                "task_prompt": "task"
+            }))
+            .await
+            .expect("add other actor job");
+
+        let removed = tool
+            .execute(serde_json::json!({"action": "remove_all"}))
+            .await
+            .expect("remove all actor jobs");
+        assert_eq!(removed["success"], true);
+        assert_eq!(removed["action"], "remove_all");
+        assert_eq!(removed["removed_count"], 2);
+        assert_eq!(removed["remaining_count"], 0);
+
+        let storage = hone_memory::CronJobStorage::new(&data_dir);
+        assert!(storage.list_jobs(&actor).is_empty());
+        assert_eq!(storage.list_jobs(&other_actor).len(), 1);
+
+        let repeated = tool
+            .execute(serde_json::json!({"action": "remove_all"}))
+            .await
+            .expect("remove all remains idempotent");
+        assert_eq!(repeated["success"], true);
+        assert_eq!(repeated["removed_count"], 0);
     }
 
     #[tokio::test]

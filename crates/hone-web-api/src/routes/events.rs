@@ -226,7 +226,7 @@ pub(crate) async fn handle_scheduler_events(
                     }),
                 },
             );
-            let result = run_scheduled_task(&state_clone, &event).await;
+            let result = run_scheduled_task(&state_clone, &event, &storage).await;
             if !result.should_deliver {
                 let failure_trace = scheduler_failure_trace_required(&result);
                 let response = if failure_trace {
@@ -408,6 +408,7 @@ pub(crate) async fn handle_scheduler_events(
 async fn run_scheduled_task(
     state: &Arc<AppState>,
     event: &SchedulerEvent,
+    storage: &hone_memory::CronJobStorage,
 ) -> scheduler::ScheduledTaskExecution {
     let actor = &event.actor;
     let is_admin = state.core.is_admin_actor(actor);
@@ -425,7 +426,13 @@ async fn run_scheduled_task(
     let timeout = scheduler_execution_timeout_for(state.core.config.agent.overall_timeout());
     let result = match tokio::time::timeout(
         timeout,
-        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options),
+        scheduler::execute_scheduler_event_with_storage(
+            state.core.clone(),
+            event,
+            prompt_options,
+            run_options,
+            storage,
+        ),
     )
     .await
     {

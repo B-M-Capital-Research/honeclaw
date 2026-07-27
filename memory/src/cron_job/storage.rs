@@ -186,50 +186,60 @@ impl CronJobStorage {
         jobs
     }
 
-    /// 加载 actor 的定时任务数据
-    pub fn load_jobs(&self, actor: &ActorIdentity) -> CronJobData {
+    /// Fallibly load one actor's scheduled-task data.
+    ///
+    /// Mutation paths must use this method so a cloud or local read failure
+    /// cannot be mistaken for an empty task list and reported as success.
+    pub fn try_load_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<CronJobData> {
         if let Some(postgres) = self.cloud_postgres() {
             let actor_key = actor.storage_key();
-            return match run_cloud_cron(async move {
+            let records = run_cloud_cron(async move {
                 postgres.list_cron_job_records_for_actor(&actor_key).await
-            }) {
-                Ok(records) => CronJobData {
-                    actor: Some(actor.clone()),
-                    user_id: actor.user_id.clone(),
-                    jobs: records
-                        .into_iter()
-                        .filter_map(cron_pair_from_cloud_record)
-                        .map(|(_, job)| job)
-                        .collect(),
-                    pending_updates: Vec::new(),
-                },
-                Err(error) => {
-                    warn!(
-                        actor = %actor.storage_key(),
-                        "failed to load cloud cron jobs: {error}"
-                    );
-                    CronJobData {
-                        actor: Some(actor.clone()),
-                        user_id: actor.user_id.clone(),
-                        jobs: Vec::new(),
-                        pending_updates: Vec::new(),
-                    }
-                }
-            };
+            })?;
+            return Ok(CronJobData {
+                actor: Some(actor.clone()),
+                user_id: actor.user_id.clone(),
+                jobs: records
+                    .into_iter()
+                    .filter_map(cron_pair_from_cloud_record)
+                    .map(|(_, job)| job)
+                    .collect(),
+                pending_updates: Vec::new(),
+            });
         }
 
         let path = self.get_actor_file(actor);
-        if path.exists()
-            && let Ok(content) = std::fs::read_to_string(&path)
-            && let Ok(data) = serde_json::from_str::<CronJobData>(&content)
-        {
-            return data;
+        if path.exists() {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|error| HoneError::Storage(error.to_string()))?;
+            let data = serde_json::from_str::<CronJobData>(&content)
+                .map_err(|error| HoneError::Serialization(error.to_string()))?;
+            return Ok(data);
         }
-        CronJobData {
+        Ok(CronJobData {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
             jobs: Vec::new(),
             pending_updates: Vec::new(),
+        })
+    }
+
+    /// 加载 actor 的定时任务数据
+    pub fn load_jobs(&self, actor: &ActorIdentity) -> CronJobData {
+        match self.try_load_jobs(actor) {
+            Ok(data) => data,
+            Err(error) => {
+                warn!(
+                    actor = %actor.storage_key(),
+                    "failed to load cron jobs: {error}"
+                );
+                CronJobData {
+                    actor: Some(actor.clone()),
+                    user_id: actor.user_id.clone(),
+                    jobs: Vec::new(),
+                    pending_updates: Vec::new(),
+                }
+            }
         }
     }
 
@@ -479,21 +489,47 @@ impl CronJobStorage {
 
         let job_value = serde_json::to_value(&job).unwrap_or_default();
         data.jobs.push(job);
-        let _ = self.save_jobs(actor, &data);
+        if let Err(error) = self.save_jobs(actor, &data) {
+            return serde_json::json!({
+                "success": false,
+                "error": format!("保存定时任务失败: {error}")
+            });
+        }
 
         serde_json::json!({"success": true, "job": job_value})
     }
 
     /// 删除定时任务
-    pub fn remove_job(&self, actor: &ActorIdentity, job_id: &str) -> serde_json::Value {
-        let mut data = self.load_jobs(actor);
+    pub fn remove_job(
+        &self,
+        actor: &ActorIdentity,
+        job_id: &str,
+    ) -> hone_core::HoneResult<serde_json::Value> {
+        let mut data = self.try_load_jobs(actor)?;
         let original_len = data.jobs.len();
         data.jobs.retain(|j| j.id != job_id);
         if data.jobs.len() == original_len {
-            return serde_json::json!({"success": false, "error": format!("未找到任务 {job_id}")});
+            return Ok(
+                serde_json::json!({"success": false, "error": format!("未找到任务 {job_id}")}),
+            );
         }
-        let _ = self.save_jobs(actor, &data);
-        serde_json::json!({"success": true, "removed_job_id": job_id})
+        data.pending_updates
+            .retain(|pending| pending.job_id != job_id);
+        self.save_jobs(actor, &data)?;
+        Ok(serde_json::json!({"success": true, "removed_job_id": job_id}))
+    }
+
+    /// Atomically remove every scheduled and heartbeat task owned by one actor.
+    ///
+    /// This is intentionally actor-scoped and idempotent. Persistence errors
+    /// are propagated so callers never tell a user that cancellation succeeded
+    /// while durable jobs are still present.
+    pub fn remove_all_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<Vec<CronJob>> {
+        let mut data = self.try_load_jobs(actor)?;
+        let removed = std::mem::take(&mut data.jobs);
+        data.pending_updates.clear();
+        self.save_jobs(actor, &data)?;
+        Ok(removed)
     }
 
     /// 列出 actor 的所有定时任务
@@ -839,11 +875,13 @@ impl CronJobStorage {
         job_id: &str,
         actor: &ActorIdentity,
     ) -> hone_core::HoneResult<Option<(ActorIdentity, CronJob)>> {
-        let mut data = self.load_jobs(actor);
+        let mut data = self.try_load_jobs(actor)?;
         let Some(index) = data.jobs.iter().position(|job| job.id == job_id) else {
             return Ok(None);
         };
         let removed = data.jobs.remove(index);
+        data.pending_updates
+            .retain(|pending| pending.job_id != job_id);
         self.save_jobs(actor, &data)?;
         Ok(Some((actor.clone(), removed)))
     }

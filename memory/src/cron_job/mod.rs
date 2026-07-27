@@ -567,6 +567,69 @@ mod tests {
     }
 
     #[test]
+    fn remove_all_jobs_is_actor_scoped_clears_pending_updates_and_is_idempotent() {
+        let dir = make_temp_dir("hone_cron_storage_remove_all");
+        let storage = CronJobStorage::new(&dir);
+        let actor_one = actor("feishu", "u1", None);
+        let actor_two = actor("feishu", "u2", None);
+
+        let first_job_id =
+            job_id_from_add_result(&add_enabled_job(&storage, &actor_one, "daily report"));
+        assert_job_result_success(&add_enabled_job(&storage, &actor_one, "price heartbeat"));
+        assert_job_result_success(&add_enabled_job(&storage, &actor_two, "other actor report"));
+
+        let mut actor_one_data = storage
+            .try_load_jobs(&actor_one)
+            .expect("load actor one jobs");
+        actor_one_data.pending_updates.push(PendingUpdate {
+            token: "pending-1".to_string(),
+            job_id: first_job_id,
+            updates: serde_json::json!({"hour": 10}),
+            created_at: hone_core::beijing_now_rfc3339(),
+        });
+        storage
+            .save_jobs(&actor_one, &actor_one_data)
+            .expect("save pending update");
+
+        let removed = storage
+            .remove_all_jobs(&actor_one)
+            .expect("remove all actor one jobs");
+        assert_eq!(removed.len(), 2);
+        let remaining_actor_one = storage.try_load_jobs(&actor_one).expect("reload actor one");
+        assert!(remaining_actor_one.jobs.is_empty());
+        assert!(remaining_actor_one.pending_updates.is_empty());
+        assert_eq!(storage.list_jobs(&actor_two).len(), 1);
+
+        let repeated = storage
+            .remove_all_jobs(&actor_one)
+            .expect("remove all should be idempotent");
+        assert!(repeated.is_empty());
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remove_all_jobs_does_not_report_success_when_durable_data_is_unreadable() {
+        let dir = make_temp_dir("hone_cron_storage_remove_all_corrupt");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "u1", None);
+        std::fs::write(storage.get_actor_file(&actor), "{not valid json")
+            .expect("write corrupt cron data");
+
+        let error = storage
+            .remove_all_jobs(&actor)
+            .expect_err("corrupt durable data must fail cancellation");
+        assert!(
+            error.to_string().contains("expected")
+                || error.to_string().contains("Serialization")
+                || error.to_string().contains("序列化错误"),
+            "unexpected error: {error}"
+        );
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn sixth_enabled_job_is_rejected_but_disabled_job_is_allowed() {
         let dir = make_temp_dir("hone_cron_storage_limit_add");
         let storage = CronJobStorage::new(&dir);

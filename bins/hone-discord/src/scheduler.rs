@@ -4,7 +4,9 @@ use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler as channel_scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
-use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
+use hone_scheduler::{
+    SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+};
 use serde_json::{Value, json};
 use serenity::all::ChannelId;
 use serenity::http::Http;
@@ -38,11 +40,12 @@ pub(crate) async fn handle_scheduler_events(
                 model_override: None,
                 ..AgentRunOptions::default()
             };
-            let result = channel_scheduler::execute_scheduler_event(
+            let result = channel_scheduler::execute_scheduler_event_with_storage(
                 core_clone.clone(),
                 &event,
                 prompt_options,
                 run_options,
+                &storage,
             )
             .await;
             if !result.should_deliver {
@@ -123,6 +126,32 @@ pub(crate) async fn handle_scheduler_events(
 
             let segments =
                 split_into_segments(&response, core_clone.config.discord.max_message_length);
+            if !scheduler_event_is_active(&storage, &event) {
+                info!(
+                    "[Discord] 定时任务已取消，抑制发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: "noop".to_string(),
+                        message_send_status: "skipped_cancelled".to_string(),
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: execution_detail_with_delivery_key(
+                            json!({"skipped": "job_cancelled"}),
+                            &event.delivery_key,
+                        ),
+                    },
+                );
+                return;
+            }
             let send_result = send_or_edit_segments(
                 http_clone.as_ref(),
                 ChannelId::new(channel_id),

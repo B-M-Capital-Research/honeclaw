@@ -12,7 +12,9 @@ use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_memory::session_message_text;
-use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
+use hone_scheduler::{
+    SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+};
 use serde_json::json;
 use tracing::{error, info, warn};
 
@@ -69,7 +71,7 @@ pub(crate) async fn handle_scheduler_events(
                 handler_completed.clone(),
                 watchdog_recovered.clone(),
             );
-            let result = run_scheduled_task(&state_clone, &event).await;
+            let result = run_scheduled_task(&state_clone, &event, &storage).await;
             handler_completed.store(true, Ordering::SeqCst);
             if watchdog_recovered.load(Ordering::SeqCst) {
                 warn!(
@@ -237,6 +239,33 @@ pub(crate) async fn handle_scheduler_events(
                                 "receive_id": receive_id,
                                 "scheduler": result.metadata,
                             }),
+                            &event.delivery_key,
+                        ),
+                    },
+                );
+                return;
+            }
+
+            if !scheduler_event_is_active(&storage, &event) {
+                info!(
+                    "[Feishu] 定时任务已取消，抑制发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: "noop".to_string(),
+                        message_send_status: "skipped_cancelled".to_string(),
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: execution_detail_with_delivery_key(
+                            json!({"skipped": "job_cancelled"}),
                             &event.delivery_key,
                         ),
                     },
@@ -470,6 +499,7 @@ fn persist_scheduler_timeout_failure_turn(
 async fn run_scheduled_task(
     state: &Arc<AppState>,
     event: &SchedulerEvent,
+    storage: &hone_memory::CronJobStorage,
 ) -> scheduler::ScheduledTaskExecution {
     let actor = &event.actor;
     let is_admin = state.core.is_admin_actor(actor);
@@ -487,7 +517,13 @@ async fn run_scheduled_task(
     let timeout = scheduler_execution_timeout(state);
     match tokio::time::timeout(
         timeout,
-        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options),
+        scheduler::execute_scheduler_event_with_storage(
+            state.core.clone(),
+            event,
+            prompt_options,
+            run_options,
+            storage,
+        ),
     )
     .await
     {
