@@ -322,7 +322,7 @@ const FEISHU_FORMAT_GUIDANCE: &str = "【输出格式-飞书】\n\
 - 当前渠道使用卡片渲染 Markdown，请保持简单：短段落 + 列表；表格尽量扁平，超过限制则改为列表或代码块。\n\
 - 正文和列表请只写普通 Markdown；确实需要表格时，只写标准 Markdown 表格（`| 列1 | 列2 |`）。\n\
 - 不要手写飞书卡片标签或扩展组件，例如 `<table .../>`、`<chart .../>`、`<row>`、`<record .../>`、`<button ...>`。\n\
-- 运行时会自动把标准 Markdown 表格转换成飞书兼容的表格卡片语法；如果你手写原始飞书标签，渠道可能会降级为普通文本。";
+- 运行时会自动把标准 Markdown 表格转换成飞书 JSON 2.0 原生表格组件；如果你手写原始飞书标签，渠道会降级为普通文本。";
 
 #[cfg(test)]
 mod tests {
@@ -595,6 +595,14 @@ mod tests {
         assert!(guidance.contains("blockquote expandable"));
         assert!(guidance.contains("tg-time"));
         assert!(guidance.contains("&lt;、&gt;、&amp;"));
+    }
+
+    #[test]
+    fn feishu_format_guidance_requires_standard_markdown_tables() {
+        let guidance = channel_format_guidance("feishu");
+        assert!(guidance.contains("只写标准 Markdown 表格"));
+        assert!(guidance.contains("不要手写飞书卡片标签"));
+        assert!(guidance.contains("JSON 2.0 原生表格组件"));
     }
 
     #[test]

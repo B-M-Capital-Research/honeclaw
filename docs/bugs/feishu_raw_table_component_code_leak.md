@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-Fixed
+Fixed (code-level; live recheck pending)
 
 ## GitHub Issue
 
@@ -22,6 +22,10 @@ Fixed
 
 ## 证据来源
 
+- 2026-07-27 用户再次反馈并提供飞书截图：
+  - “四、机构评级与目标价”与“五、本周关键日历”下方直接显示 `<table columns={[...]}` / `data={[...]}/>` 源码。
+  - 本次标签结构完整，列名为 `dataIndex` / `title`，行数据为 `col0`、`col1` 等，和 `bins/hone-feishu/src/markdown.rs` 把标准 Markdown 表格转换成 raw table 字符串的输出完全一致。
+  - 这说明 2026-07-19 的共享输出清洗只覆盖“模型正文已经含 raw table”的情况，无法覆盖清洗之后由飞书出站层新生成的 raw table。
 - `data/sessions.sqlite3` -> `session_messages`
   - 巡检窗口：2026-07-19 07:01-11:01 CST。
   - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
@@ -49,9 +53,11 @@ Fixed
 
 ## 当前实现效果
 
-- 用户真实收到过 raw table 组件代码，并明确感知为“代码”污染。
-- 同一用户在 09:13 CST 反馈后，assistant 仅说明这是后端渲染管道问题，并建议找管理员。
-- 本轮窗口其他 Feishu/Web direct 会话均有 assistant 收口；assistant final 污染扫描未命中空回复、`<think>`、本机路径、`data_fetch`、`cron_job`、tool 字段或 provider 原始错误。
+- 标准 Markdown 表格现在会被解析成飞书卡片 JSON 2.0 根节点的原生 `table` 元素，不再先改写成 Markdown 正文中的 `<table .../>` 字符串。
+- 历史完整 raw table 标签会迁移成相同的原生表格；损坏标签会替换为可读错误提示，不再显示组件源码。
+- 单卡超过飞书上限的表格会按完整表格边界拆到后续卡片；Markdown-only / 旧流式路径会降级成可读列表。
+- direct、scheduler 与 placeholder 最终更新路径共用同一原生卡片渲染入口。
+- 本轮只完成代码级修复与自动化验证，未重启线上进程，也未向真实用户发送测试消息。
 
 ## 用户影响
 
@@ -62,17 +68,24 @@ Fixed
 
 ## 根因判断
 
-- 初步判断出站渲染层对 raw table 组件缺少统一净化 / 降级边界，或表格组件生成与 Feishu 客户端支持能力之间存在协议不匹配。
+- 2026-07-27 已确认直接根因：`bins/hone-feishu/src/markdown.rs::convert_table_to_feishu` 把标准 Markdown 表格序列化成 `<table columns={...} data={...}/>` 字符串，随后 `render_outbound_messages` 把该字符串放进 JSON 2.0 卡片的 `markdown.content`。飞书原生表格要求使用卡片根节点的 `{"tag":"table","columns":[...],"rows":[...]}` 元素，内联 raw table 字符串不会被 Markdown 元素解释，因而原样展示。
+- 既有 `normalize_raw_feishu_table_tag` 还把结构完整的 raw tag 当作合法结果保留，导致护栏只能转义损坏标签，不能阻止完整标签在飞书端显示源码。
 - 该问题可能发生在 scheduler / heartbeat 消息先生成 table 组件、再被 Feishu 普通文本或卡片正文承载的路径上。
 - 用户反馈“更新过后每次发过来都有这些代码”，说明问题可能不是单次模型输出，而是某次表格投递策略或渲染代码变更后的稳定退化。
 
 ## 下一步建议
 
-1. 用 2026-07-19 之后的真实 Feishu scheduler / direct 出站样本复核，确认用户侧不再看到 raw `<table .../>` 组件代码。
-2. 如果后续仍复发，再补更强的结构化降级，把组件里的列/行数据重写成纯文本列表，而不是只做占位提示。
+1. 新版本部署后，用一条 direct 标准 Markdown 表格和一条 scheduler 表格做真实 Feishu 复核，确认客户端显示原生表格且不再出现 raw `<table .../>`。
+2. 若真实客户端仍存在兼容性问题，保留当前结构化数据解析，只把原生表格输出切换为已经覆盖测试的可读列表降级，不恢复内联组件源码。
 
 ## 修复记录
 
+- 2026-07-27 根因级修复：
+  - `bins/hone-feishu/src/markdown.rs` 在消息拆分前解析标准 Markdown 表格和历史 raw table，生成卡片根节点 JSON 2.0 `table` 元素；列使用兼容性更高的纯文本类型。
+  - 单卡遵守最多 5 个原生表格、最多 50 列的协议边界；表格按原子块拆分，损坏或 Markdown-only 场景降级为可读文本，不再向用户展示 raw tag。
+  - `bins/hone-feishu/src/outbound.rs` 的 placeholder 最终更新复用同一渲染器，避免更新路径重新把表格塞回 `markdown.content`。
+  - `crates/hone-channels/src/prompt.rs` 明确要求模型只输出标准 Markdown 表格，由运行时转换成飞书 JSON 2.0 原生表格组件。
+  - 回归覆盖用户截图中的 `dataIndex` / `col0` 结构、标准 Markdown 表格、历史 raw table、损坏标签、单卡 5 表上限与 placeholder 更新。
 - 2026-07-19 代码级修复：
   - `crates/hone-channels/src/runtime.rs` 新增 raw table 组件识别与统一降级；当用户可见正文出现 `<table .../>` 且含 `columns=` / `dataIndex` / `data={` 这类内部组件字段时，统一替换为 `表格内容展示异常，请稍后重试。`，避免把 Feishu table 组件源码直接投给用户。
   - 该修复走共享 `sanitize_user_visible_output(...)`，因此 direct reply 与 scheduler delivery 共用同一边界，不需要分别加一套 Feishu 专属清洗逻辑。
@@ -82,6 +95,13 @@ Fixed
 
 ## 验证
 
-- `cargo test -p hone-channels sanitize_user_visible_output_rewrites_raw_table_component_copy --lib -- --nocapture`
-- `cargo test -p hone-channels scheduler_delivery_text_rewrites_raw_table_component_copy --lib -- --nocapture`
-- `cargo check -p hone-channels --tests`
+- 通过：`cargo test -p hone-feishu markdown -- --nocapture`（18 个相关测试）
+- 通过：`cargo test -p hone-feishu outbound -- --nocapture`（6 个相关测试）
+- 通过：`cargo test -p hone-feishu -- --nocapture`（69 个测试）
+- 通过：`cargo test -p hone-channels prompt --lib -- --nocapture`（55 个相关测试）
+- 通过：`cargo check -p hone-feishu --tests`
+- 通过：`cargo check -p hone-channels --tests`
+- 通过：既有 `sanitize_user_visible_output_rewrites_raw_table_component_copy` 与 `scheduler_delivery_text_rewrites_raw_table_component_copy` 回归。
+- 通过：本次 Rust 文件的 scoped `rustfmt --check` 与相关文件 `git diff --check`。
+- 仓库包装命令 `bash scripts/ci/check_fmt_changed.sh` 仍会检查 `HEAD^...HEAD` 中与本修复无关的既有 Rust 文件，并因那些基线格式差异失败；它没有报告本次新增的 `markdown.rs` / `outbound.rs` 工作树改动。未为此改写用户的无关变更。
+- 未执行：真实 Feishu 实发、运行时重启与部署。

@@ -3,8 +3,9 @@
 - title: 飞书表格语法护栏
 - status: done
 - created_at: 2026-04-13
-- updated_at: 2026-04-13
+- updated_at: 2026-07-27
 - owner: shared
+- superseded_by: `docs/archive/plans/feishu-native-table-rendering.md`
 - related_files:
   - `crates/hone-channels/src/prompt.rs`
   - `bins/hone-feishu/src/markdown.rs`
@@ -33,3 +34,8 @@
 
 - 当前工程护栏只对 raw `<table .../>` 做规范化/降级；其它飞书原始标签（如 `<chart .../>`、`<row>`）目前主要仍靠提示词约束。
 - 损坏 raw table 的降级策略是“保留为转义后的普通文本”；如果后续需要更强 UX，可再考虑统一替换为结构化错误提示。
+
+## Superseded
+
+- 2026-07-27 用户截图证明“完整 canonical raw table”放入 `markdown.content` 也会直接显示源码，因此本计划中“合法 raw table 规范化后保留”的结论已失效。
+- 后续实现改为根节点 JSON 2.0 原生 `table`，详见 `docs/archive/plans/feishu-native-table-rendering.md`。

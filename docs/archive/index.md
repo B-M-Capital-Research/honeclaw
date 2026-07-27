@@ -4,6 +4,18 @@ Last updated: 2026-07-27
 
 ## 2026-07-27
 
+### Feishu Native Table Rendering
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/feishu-native-table-rendering.md`
+- Handoff: `docs/handoffs/2026-07-27-feishu-native-table-rendering.md`
+- Decision / ADR: N/A; this corrects the existing Feishu card protocol implementation without changing module ownership or cross-module architecture
+- Related PRs / commits: local working-tree change set; not committed or pushed
+- Related runbooks / regressions: `hone-feishu` markdown `18/18`, outbound `6/6`, and full `69/69`; `hone-channels` prompt `55/55`; existing shared sanitizer and scheduler raw-table regressions; scoped Rust format and diff checks
+- Current conclusion: standard Markdown tables and parseable legacy raw-table payloads are now emitted as root-level Feishu JSON 2.0 `table` elements before message splitting. Direct, scheduler, and placeholder final updates share the renderer; malformed, over-limit, and Markdown-only paths remain readable without exposing `<table .../>` source. No runtime restart, deployment, or live Feishu send was performed.
+- Next entry point: deploy through the normal release/runtime workflow, then replay one direct and one scheduler Markdown table in a controlled Feishu account and append the client result to `docs/bugs/feishu_raw_table_component_code_leak.md`.
+
 ### v0.15.2 Formal Release And Production Deployment
 
 - Status: done

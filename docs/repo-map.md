@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-07-22
+Last updated: 2026-07-27
 
 ## Purpose
 
@@ -144,7 +144,7 @@ Last updated: 2026-07-22
   - Local mode stores global skill enabled/disabled overrides in `data/runtime/skill_registry.json`
   - Cloud mode stores the same registry in PG `cloud_skill_registry`; `HoneBotCore::new` injects the cloud runtime into `hone_tools::skill_registry`
 - Channel settings surfaces: `bins/hone-desktop/src/sidecar/settings.rs` for Tauri/Desktop commands and `crates/hone-web-api/src/routes/channel_settings.rs` for normal Web mode. Both read and write the canonical config for enable flags, credentials, `chat_scope`, allowlists, and iMessage `target_handle`, then regenerate the effective runtime config.
-- Feishu channel split: `bins/hone-feishu/src/{handler.rs,scheduler.rs,outbound.rs}`
+- Feishu channel split: `bins/hone-feishu/src/{handler.rs,scheduler.rs,outbound.rs}`; `markdown.rs` parses standard Markdown tables and legacy raw table strings before message splitting, emits JSON 2.0 native root-level `table` elements (maximum five per card), and uses readable Markdown-list fallback for malformed, over-limit, or Markdown-only streaming paths
 - Feishu image upload client: `bins/hone-feishu/src/client.rs`
 - Telegram scheduler split: `bins/hone-telegram/src/scheduler.rs`
 - Telegram outbound text/image interleave handling: `bins/hone-telegram/src/listener.rs`

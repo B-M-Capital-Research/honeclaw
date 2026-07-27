@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-27
-状态：有 8 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **v0.15.3 飞书原生表格修复正式发布**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/v0.15.3-formal-release.md`
+  - 摘要：从干净的 `origin/main` 隔离发布标准 Markdown 到飞书 JSON 2.0 原生表格修复，完成版本同步、双语 release notes、必要门禁、`main` 推送与 annotated `v0.15.3` tag；不包含生产部署
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

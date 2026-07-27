@@ -3,7 +3,7 @@ use hone_scheduler::SchedulerEvent;
 use serde_json::json;
 
 use crate::client::{FeishuApiClient, FeishuSendResult};
-use crate::markdown::{preprocess_markdown_for_feishu, render_outbound_messages};
+use crate::markdown::{render_feishu_card_content, render_outbound_messages};
 use crate::types::RenderedMessage;
 
 #[derive(Clone)]
@@ -82,21 +82,7 @@ pub(crate) async fn update_or_send_plain_text(
     text: &str,
 ) -> hone_core::HoneResult<usize> {
     if let Some(message_id) = placeholder_message_id {
-        let processed = preprocess_markdown_for_feishu(text, true);
-        let card_content = json!({
-            "schema": "2.0",
-            "config": {"wide_screen_mode": true},
-            "body": {
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": processed,
-                        "text_size": "heading"
-                    }
-                ]
-            }
-        })
-        .to_string();
+        let card_content = render_feishu_card_content(text);
         match facade
             .update_message(message_id, "interactive", &card_content)
             .await
@@ -448,20 +434,7 @@ fn rendered_post_text_lines(zh_cn: &serde_json::Value) -> Vec<String> {
 }
 
 fn placeholder_card_content(markdown: &str) -> String {
-    json!({
-        "schema": "2.0",
-        "config": {"wide_screen_mode": true},
-        "body": {
-            "elements": [
-                {
-                    "tag": "markdown",
-                    "content": preprocess_markdown_for_feishu(markdown, true),
-                    "text_size": "heading"
-                }
-            ]
-        }
-    })
-    .to_string()
+    render_feishu_card_content(markdown)
 }
 
 fn file_label_from_path(path: &str) -> String {
@@ -578,6 +551,19 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
         let markdown = parsed["body"]["elements"][0]["content"].as_str().unwrap();
         assert_eq!(markdown, "**日报**\n第一行 补充\n第二行");
+    }
+
+    #[test]
+    fn placeholder_card_content_uses_native_table_element() {
+        let content = placeholder_card_content("| 标的 | 事件 |\n|---|---|\n| BE | 财报 |");
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let table = &parsed["body"]["elements"][0];
+        assert_eq!(table["tag"], "table");
+        assert_eq!(table["columns"][0]["display_name"], "标的");
+        assert_eq!(table["rows"][0]["col0"], "BE");
+        assert_eq!(table["rows"][0]["col1"], "财报");
+        assert!(!content.contains("<table"));
+        assert!(!content.contains("dataIndex"));
     }
 
     #[test]
