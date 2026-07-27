@@ -119,6 +119,32 @@ pub fn tool_call_is_known_read_only(name: &str, arguments: &Value) -> bool {
     }
 }
 
+/// Return a safe read-after-write call for persistent mutations whose final
+/// state can be observed through the same actor-scoped tool. This never
+/// replays the mutation: callers execute the returned read only after an
+/// ambiguous mutation failure, then let the Agent describe the observed state.
+pub fn persistent_tool_reconciliation_call(
+    name: &str,
+    arguments: &Value,
+) -> Option<(&'static str, Value)> {
+    if !tool_call_has_persistent_side_effect(name, arguments) {
+        return None;
+    }
+    match canonical_hone_tool_name(name) {
+        Some("cron_job") => Some(("cron_job", serde_json::json!({"action": "list"}))),
+        Some("portfolio") | Some("portfolio_tool") => {
+            Some(("portfolio", serde_json::json!({"action": "view"})))
+        }
+        Some("notification_prefs") => Some((
+            "notification_prefs",
+            serde_json::json!({"action": "get_overview"}),
+        )),
+        // deep_research, restart_hone and executable skill scripts do not have
+        // a side-effect-free actor-scoped state read that can prove completion.
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +196,44 @@ mod tests {
             "hone/skill_tool",
             &json!({"skill_name":"image_understanding","execute_script":true})
         ));
+    }
+
+    #[test]
+    fn ambiguous_mutations_reconcile_with_reads_without_replaying_writes() {
+        for (name, write, expected_name, expected_read) in [
+            (
+                "mcp__hone__portfolio",
+                json!({"action":"add","ticker":"CRWV"}),
+                "portfolio",
+                json!({"action":"view"}),
+            ),
+            (
+                "hone/cron_job",
+                json!({"action":"delete","job_id":"job-1"}),
+                "cron_job",
+                json!({"action":"list"}),
+            ),
+            (
+                "notification_prefs",
+                json!({"action":"set","enabled":false}),
+                "notification_prefs",
+                json!({"action":"get_overview"}),
+            ),
+        ] {
+            let (read_name, read_args) =
+                persistent_tool_reconciliation_call(name, &write).expect("reconciliation read");
+            assert_eq!(read_name, expected_name);
+            assert_eq!(read_args, expected_read);
+            assert!(tool_call_is_known_read_only(read_name, &read_args));
+            assert!(!tool_call_has_persistent_side_effect(read_name, &read_args));
+        }
+
+        assert!(
+            persistent_tool_reconciliation_call("portfolio", &json!({"action":"view"})).is_none()
+        );
+        assert!(
+            persistent_tool_reconciliation_call("restart_hone", &json!({"action":"restart"}))
+                .is_none()
+        );
     }
 }

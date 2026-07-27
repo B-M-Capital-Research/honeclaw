@@ -10,7 +10,10 @@ use futures::StreamExt;
 use hone_core::agent::{
     Agent, AgentContext, AgentResponse, RESTORED_INVOKED_SKILL_PROMPT_METADATA_KEY, ToolCallMade,
 };
-use hone_core::tool_effect::{tool_call_has_persistent_side_effect, tool_call_is_known_read_only};
+use hone_core::tool_effect::{
+    persistent_tool_reconciliation_call, tool_call_has_persistent_side_effect,
+    tool_call_is_known_read_only,
+};
 use hone_core::{
     LlmAuditRecord, LlmAuditSink, ToolExecutionObserver, is_context_overflow_error,
     provider_canonical_key, provider_symbols_equivalent, truncate_chars,
@@ -63,6 +66,7 @@ const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
+const PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION: &str = "【内部写后核验收口】上一项持久化操作返回了不确定错误，系统没有重放该写操作，而是通过同一用户范围内的只读查询取得了操作后的权威状态。当前轮次不再提供工具。请只根据原请求和只读核验结果回答操作是否已经生效；已生效就明确确认，未生效就明确说明当前状态，无法从核验结果判断的字段只披露该具体缺口。不得再次调用或建议重放写操作，不得使用“可能已执行”“状态不确定”“请重试”等模糊结论，也不要向用户提及内部错误、工具、核验机制或本说明。";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
 const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
@@ -844,11 +848,11 @@ impl ResearchEvidenceLedger {
                         self.post_identity_asset_route_attempts.saturating_add(1);
                     self.observe_route_symbols(tool_call, &symbols, false, true);
                 }
-                Some("snapshot") => {
-                    // DataFetch snapshot is the canonical combined
-                    // quote/profile route. One real attempt therefore proves
-                    // both structural steps even when the provider reports a
-                    // field-level error that the Agent must disclose.
+                Some("snapshot" | "earnings_outlook") => {
+                    // DataFetch snapshot and earnings_outlook are canonical
+                    // combined quote/profile routes. One real attempt therefore
+                    // proves both structural steps even when the provider
+                    // reports a field-level error that the Agent must disclose.
                     self.post_identity_quote_attempts =
                         self.post_identity_quote_attempts.saturating_add(1);
                     self.post_identity_asset_route_attempts =
@@ -3168,7 +3172,10 @@ fn fallback_data_candidate_priority(data_type: Option<&str>, item: &Value) -> us
         .and_then(Value::as_str)
         .unwrap_or_default();
     let base: usize = match data_type {
-        Some("quote" | "quote_short" | "crypto_quote" | "extended_hours" | "snapshot") => 5,
+        Some(
+            "quote" | "quote_short" | "crypto_quote" | "extended_hours" | "snapshot"
+            | "earnings_outlook",
+        ) => 5,
         Some("financials") | None => 20,
         Some("news") => 50,
         Some("profile") => 80,
@@ -5284,6 +5291,7 @@ impl Agent for FunctionCallingAgent {
         let mut market_move_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
+        let mut persistent_mutation_finalization = false;
         #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
         #[cfg(test)]
@@ -5335,6 +5343,7 @@ impl Agent for FunctionCallingAgent {
             if iterations >= self.max_iterations
                 && blocked_tool_finalization.is_none()
                 && !force_context_overflow_final
+                && !persistent_mutation_finalization
             {
                 // The iteration bound is a normal failed run, never implicit
                 // finish authority. A bounded finance final receives its own
@@ -5356,6 +5365,7 @@ impl Agent for FunctionCallingAgent {
             // first Web-only rounds. The same Agent enters the active final path
             // only once DataFetch activates or the bounded final is due.
             let active_business_round = finance_protocol_active || force_finance_final;
+            let force_persistent_mutation_final = persistent_mutation_finalization;
             #[cfg(test)]
             let finish_research_available = legacy_finish_terminal
                 && research_evidence.completion_signal_available(active_business_round);
@@ -5370,7 +5380,10 @@ impl Agent for FunctionCallingAgent {
             if finish_research_available {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
-            if force_finance_final || force_context_overflow_final {
+            if force_finance_final
+                || force_context_overflow_final
+                || force_persistent_mutation_final
+            {
                 round_tools.clear();
             }
             let has_tools = !round_tools.is_empty();
@@ -5383,6 +5396,8 @@ impl Agent for FunctionCallingAgent {
             };
             let round_instruction = Some(if force_context_overflow_final {
                 CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION
+            } else if force_persistent_mutation_final {
+                PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION
             } else if force_finance_final {
                 AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
             } else if active_business_round {
@@ -5508,7 +5523,15 @@ impl Agent for FunctionCallingAgent {
             }
             let request_payload = serde_json::json!({
                 "messages": messages.clone(),
-                "tools": if has_tools || force_finance_final { Some(round_tools.clone()) } else { None },
+                "tools": if has_tools
+                    || force_finance_final
+                    || force_context_overflow_final
+                    || force_persistent_mutation_final
+                {
+                    Some(round_tools.clone())
+                } else {
+                    None
+                },
                 "tool_choice_mode": format!("{tool_choice_mode:?}"),
             });
             let call_started = std::time::Instant::now();
@@ -5527,6 +5550,7 @@ impl Agent for FunctionCallingAgent {
             let result: ChatResponse = if has_tools
                 || force_finance_final
                 || force_context_overflow_final
+                || force_persistent_mutation_final
             {
                 if active_business_round {
                     let (active_deadline, active_timeout_error) =
@@ -5958,7 +5982,10 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    if force_finance_final || force_context_overflow_final {
+                    if force_finance_final
+                        || force_context_overflow_final
+                        || force_persistent_mutation_final
+                    {
                         return failed_agent_response(
                             tool_calls_made,
                             iterations,
@@ -6467,6 +6494,153 @@ impl Agent for FunctionCallingAgent {
                                                     );
                                                 }
                                             }
+                                            if timeout_error.is_none()
+                                                && let Some((read_tool_name, read_args)) =
+                                                    persistent_tool_reconciliation_call(
+                                                        tool_name, &tool_args,
+                                                    )
+                                            {
+                                                // The write may have committed
+                                                // before the error became
+                                                // visible. Never replay it.
+                                                // Instead issue the central
+                                                // actor-scoped read contract,
+                                                // record the observed state,
+                                                // and give the same Agent one
+                                                // tools-disabled final turn.
+                                                let read_call_id =
+                                                    format!("{tool_call_id}__read_after_write");
+                                                let read_call = ToolCall {
+                                                    id: read_call_id.clone(),
+                                                    call_type: "function".to_string(),
+                                                    function: FunctionCall {
+                                                        name: read_tool_name.to_string(),
+                                                        arguments: serde_json::to_string(
+                                                            &read_args,
+                                                        )
+                                                        .unwrap_or_else(|_| "{}".to_string()),
+                                                    },
+                                                };
+                                                context.add_assistant_message(
+                                                    "",
+                                                    Some(vec![
+                                                        serde_json::to_value(&read_call).expect(
+                                                            "serialize reconciliation read",
+                                                        ),
+                                                    ]),
+                                                );
+                                                if let Some(observer) = &self.tool_observer {
+                                                    let (observer_deadline, observer_timeout_error) =
+                                                        step_deadline(
+                                                            overall_deadline,
+                                                            self.step_timeout,
+                                                        );
+                                                    if let Err(error) = await_unit_before_deadline(
+                                                        observer_deadline,
+                                                        observer_timeout_error,
+                                                        observer.on_tool_start(
+                                                            read_tool_name,
+                                                            &read_args,
+                                                            None,
+                                                        ),
+                                                    )
+                                                    .await
+                                                    {
+                                                        return failed_agent_response(
+                                                            tool_calls_made,
+                                                            iterations,
+                                                            canonical_agent_timeout(&error)
+                                                                .unwrap_or(observer_timeout_error),
+                                                        );
+                                                    }
+                                                }
+                                                let (read_deadline, read_timeout_error) =
+                                                    step_deadline(
+                                                        overall_deadline,
+                                                        self.step_timeout,
+                                                    );
+                                                match await_before_deadline(
+                                                    read_deadline,
+                                                    read_timeout_error,
+                                                    self.tools.execute_tool(
+                                                        read_tool_name,
+                                                        read_args.clone(),
+                                                    ),
+                                                )
+                                                .await
+                                                {
+                                                    Ok(observed_state) => {
+                                                        let read_result = serde_json::json!({
+                                                            "status": "observed_after_ambiguous_write",
+                                                            "mutation_replayed": false,
+                                                            "observed_state": observed_state,
+                                                        });
+                                                        tool_calls_made.push(ToolCallMade {
+                                                            name: read_tool_name.to_string(),
+                                                            arguments: read_args.clone(),
+                                                            result: read_result.clone(),
+                                                            tool_call_id: Some(
+                                                                read_call_id.clone(),
+                                                            ),
+                                                        });
+                                                        context.add_tool_result(
+                                                            &read_call_id,
+                                                            read_tool_name,
+                                                            &serde_json::to_string(&read_result)
+                                                                .unwrap_or_default(),
+                                                        );
+                                                        if let Some(observer) = &self.tool_observer
+                                                        {
+                                                            let (
+                                                                observer_deadline,
+                                                                observer_timeout_error,
+                                                            ) = step_deadline(
+                                                                overall_deadline,
+                                                                self.step_timeout,
+                                                            );
+                                                            if let Err(error) =
+                                                                await_unit_before_deadline(
+                                                                    observer_deadline,
+                                                                    observer_timeout_error,
+                                                                    observer.on_tool_finish(
+                                                                        read_tool_name,
+                                                                        &read_args,
+                                                                        true,
+                                                                    ),
+                                                                )
+                                                                .await
+                                                            {
+                                                                return failed_agent_response(
+                                                                    tool_calls_made,
+                                                                    iterations,
+                                                                    canonical_agent_timeout(&error)
+                                                                        .unwrap_or(
+                                                                            observer_timeout_error,
+                                                                        ),
+                                                                );
+                                                            }
+                                                        }
+                                                        total_tool_calls =
+                                                            total_tool_calls.saturating_add(1);
+                                                        *tool_call_counts
+                                                            .entry(read_tool_name.to_string())
+                                                            .or_insert(0) += 1;
+                                                        persistent_mutation_finalization = true;
+                                                        break;
+                                                    }
+                                                    Err(read_error) => {
+                                                        return failed_agent_response(
+                                                            tool_calls_made,
+                                                            iterations,
+                                                            canonical_agent_timeout(&read_error)
+                                                                .or(timeout_error)
+                                                                .unwrap_or(
+                                                                    "persistent_tool_failure: read-after-write reconciliation failed",
+                                                                ),
+                                                        );
+                                                    }
+                                                }
+                                            }
                                             if let Some(timeout_error) = timeout_error {
                                                 return failed_agent_response(
                                                     tool_calls_made,
@@ -6477,17 +6651,10 @@ impl Agent for FunctionCallingAgent {
                                             if tool_call_has_persistent_side_effect(
                                                 tool_name, &tool_args,
                                             ) {
-                                                // A write-capable tool may have
-                                                // committed before its error was
-                                                // observed. Do not let the same
-                                                // internal Agent loop replay it;
-                                                // the failed trace gives the
-                                                // outer Session the same
-                                                // no-reexecution evidence.
                                                 return failed_agent_response(
                                                     tool_calls_made,
                                                     iterations,
-                                                    "persistent_tool_failure: execution state is uncertain; automatic replay suppressed",
+                                                    "persistent_tool_failure: no safe read-after-write reconciliation is available",
                                                 );
                                             }
                                         }
@@ -6504,6 +6671,9 @@ impl Agent for FunctionCallingAgent {
                                     context.add_tool_result(tool_call_id, tool_name, &result_str);
                                 }
                             }
+                        }
+                        if persistent_mutation_finalization {
+                            continue;
                         }
                         if finance_round_is_read_only
                             && investment_research_started
@@ -7443,8 +7613,14 @@ mod tests {
             vec![]
         }
 
-        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if args.get("action").and_then(Value::as_str) == Some("view") {
+                return Ok(json!({
+                    "holdings": [{"symbol":"CRWV"}],
+                    "watchlist": []
+                }));
+            }
             Err(hone_core::HoneError::Tool(
                 "portfolio write acknowledgement lost".to_string(),
             ))
@@ -10963,6 +11139,38 @@ mod tests {
             true,
         );
         assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn security_level_earnings_outlook_satisfies_quote_and_asset_route_floor() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        let search = evidence_call(
+            "search",
+            r#"{"data_type":"search","query":"COHR","entity_route":"coherent","identity_match":"exact_symbol"}"#,
+        );
+        ledger.observe_business_call(&search, true);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"COHR","name":"Coherent Corp."}]}),
+            true,
+        );
+        let outlook = evidence_call(
+            "earnings",
+            r#"{"data_type":"earnings_outlook","ticker":"COHR","entity_route":"coherent"}"#,
+        );
+        assert!(data_fetch_call_is_structurally_valid(&outlook));
+        ledger.observe_business_call(&outlook, true);
+
+        assert!(ledger.evidence_floor_satisfied(true));
+        let route = ledger
+            .identity_routes
+            .get("route:coherent")
+            .expect("earnings route");
+        assert_eq!(route.quote_symbols, BTreeSet::from(["COHR".to_string()]));
+        assert_eq!(
+            route.asset_route_symbols,
+            BTreeSet::from(["COHR".to_string()])
+        );
     }
 
     #[test]
@@ -15221,7 +15429,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persistent_tool_error_stops_same_loop_replay() {
+    async fn persistent_tool_error_reconciles_by_read_without_replaying_write() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -15229,14 +15437,13 @@ mod tests {
                 name: Some("portfolio".to_string()),
                 arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
             }],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_portfolio_add_2".to_string()),
-                name: Some("portfolio".to_string()),
-                arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
-            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "CRWV 已加入持仓。".to_string(),
+            )],
         ]);
         let stream_calls = llm.stream_calls.clone();
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
         let calls = Arc::new(AtomicUsize::new(0));
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(FailingPortfolioTool {
@@ -15248,17 +15455,37 @@ mod tests {
 
         let response = agent.run("把 CRWV 加入持仓", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(stream_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(response.tool_calls_made.len(), 1);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "CRWV 已加入持仓。");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(response.tool_calls_made.len(), 2);
         assert_eq!(response.tool_calls_made[0].result["status"], "failed");
         assert_eq!(response.tool_calls_made[0].result["timeout"], false);
         assert_eq!(
-            response.error.as_deref(),
-            Some(
-                "persistent_tool_failure: execution state is uncertain; automatic replay suppressed"
-            )
+            response.tool_calls_made[1].arguments,
+            json!({"action":"view"})
+        );
+        assert_eq!(
+            response.tool_calls_made[1].result["mutation_replayed"],
+            false
+        );
+        assert_eq!(
+            response.tool_calls_made[1].result["observed_state"]["holdings"][0]["symbol"],
+            "CRWV"
+        );
+        assert_eq!(
+            seen_tool_counts.lock().expect("tool counts").as_slice(),
+            [1, 0]
+        );
+        let final_messages = seen_messages.lock().expect("seen messages");
+        assert!(
+            final_messages[1].iter().any(|message| {
+                message.content.as_deref().is_some_and(|content| {
+                    content.contains(PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION)
+                })
+            }),
+            "the tools-disabled final must be told to use the observed state"
         );
     }
 

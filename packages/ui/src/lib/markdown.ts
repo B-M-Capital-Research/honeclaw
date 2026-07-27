@@ -2,6 +2,15 @@ import DOMPurify from "dompurify"
 import { Marked } from "marked"
 import { codeToHtml } from "shiki"
 
+function escapeHtmlText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
 const parser = new Marked({
   async: true,
   breaks: true,
@@ -31,6 +40,14 @@ parser.use({
   renderer: {
     code(token: any) {
       return token._highlightedHtml ?? `<pre><code>${token.text}</code></pre>`
+    },
+    // Assistant output frequently uses paired tildes around estimates,
+    // ranges, or incomplete streamed text. Treat GFM deletion as plain inline
+    // content so an accidental delimiter cannot strike an entire investment
+    // paragraph. Preserve its text as inert content; DOMPurify still applies
+    // to the complete rendered document below.
+    del(token: any) {
+      return escapeHtmlText(token.text ?? "")
     },
   },
 })

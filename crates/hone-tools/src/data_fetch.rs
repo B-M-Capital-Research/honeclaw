@@ -66,6 +66,7 @@ pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
             | "extended_hours"
             | "profile"
             | "snapshot"
+            | "earnings_outlook"
             | "financials"
             | "news"
             | "crypto_quote"
@@ -310,6 +311,10 @@ impl DataFetchTool {
             "earnings_calendar" => Err(
                 "earnings_calendar 需要显式窗口，通过 build_earnings_calendar_url 构造".to_string(),
             ),
+            "earnings_outlook" => Err(
+                "earnings_outlook 通过证券级财报、预期、目标价、评级和行情聚合获取，不映射单一端点"
+                    .to_string(),
+            ),
             "snapshot" => {
                 Err("snapshot 通过聚合 quote/profile/news 获取，不映射单一端点".to_string())
             }
@@ -348,6 +353,22 @@ impl DataFetchTool {
             from.format("%Y-%m-%d"),
             to.format("%Y-%m-%d")
         )
+    }
+
+    fn build_earnings_outlook_url(&self, component: &str, ticker: &str) -> Result<String, String> {
+        let symbol = encode_fmp_symbols(ticker, false)?;
+        let stable = self.stable_base_url();
+        match component {
+            "earnings" => Ok(format!("{stable}/stable/earnings?symbol={symbol}")),
+            "analyst_estimates" => Ok(format!(
+                "{stable}/stable/analyst-estimates?symbol={symbol}&period=quarter&page=0&limit=8"
+            )),
+            "price_target_consensus" => Ok(format!(
+                "{stable}/stable/price-target-consensus?symbol={symbol}"
+            )),
+            "ratings_snapshot" => Ok(format!("{stable}/stable/ratings-snapshot?symbol={symbol}")),
+            _ => Err(format!("不支持的 earnings_outlook 组件: {component}")),
+        }
     }
 
     fn stable_base_url(&self) -> String {
@@ -488,6 +509,96 @@ impl DataFetchTool {
 
         payload
     }
+
+    fn build_earnings_outlook_response(
+        &self,
+        ticker: &str,
+        quote: Result<Value, String>,
+        earnings: Result<Value, String>,
+        analyst_estimates: Result<Value, String>,
+        price_target_consensus: Result<Value, String>,
+        ratings_snapshot: Result<Value, String>,
+        financials: Result<Value, String>,
+    ) -> Value {
+        let mut errors = serde_json::Map::new();
+        let mut component = |name: &str, result: Result<Value, String>| match result {
+            Ok(value) => value,
+            Err(err) => {
+                errors.insert(name.to_string(), Value::String(err));
+                Value::Null
+            }
+        };
+
+        let quote_value = component("quote", quote);
+        let earnings_value = component("earnings", earnings);
+        let estimates_value = component("analyst_estimates", analyst_estimates);
+        let target_value = component("price_target_consensus", price_target_consensus);
+        let ratings_value = component("ratings_snapshot", ratings_snapshot);
+        let financials_value = component("financials", financials);
+        let current_price = first_positive_number(&quote_value, &["price"]);
+        let target_quality = price_target_consensus_quality(&target_value, current_price);
+
+        let coverage = [
+            ("quote", &quote_value),
+            ("earnings", &earnings_value),
+            ("analyst_estimates", &estimates_value),
+            ("price_target_consensus", &target_value),
+            ("ratings_snapshot", &ratings_value),
+            ("financials", &financials_value),
+        ]
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                name.to_string(),
+                Value::String(
+                    if has_meaningful_fmp_value(value) {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                    .to_string(),
+                ),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+
+        let all_failed = [
+            &quote_value,
+            &earnings_value,
+            &estimates_value,
+            &target_value,
+            &ratings_value,
+            &financials_value,
+        ]
+        .into_iter()
+        .all(|value| !has_meaningful_fmp_value(value));
+
+        let mut payload = serde_json::json!({
+            "data_type": "earnings_outlook",
+            "ticker": ticker,
+            "data": {
+                "quote": quote_value,
+                "earnings": earnings_value,
+                "analyst_estimates": estimates_value,
+                "price_target_consensus": target_value,
+                "ratings_snapshot": ratings_value,
+                "financials": financials_value,
+            },
+            "coverage": Value::Object(coverage),
+            "hone_target_consensus_quality": target_quality,
+            "evidence_policy": "Use only component fields whose Hone quality flags authorize that claim type. Missing or quarantined components must be disclosed; do not infer them from another component."
+        });
+
+        if !errors.is_empty() {
+            payload["errors"] = Value::Object(errors);
+        }
+        if all_failed {
+            payload["error"] = Value::String(
+                "earnings_outlook 聚合失败：所有证券级财报证据组件均未获取成功".to_string(),
+            );
+        }
+        payload
+    }
 }
 
 fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> String {
@@ -535,7 +646,7 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
         "news" => Some(FMP_TTL_NEWS),
         "profile" | "search" | "etf_holdings" => Some(FMP_TTL_PROFILE),
         "financials" => Some(FMP_TTL_FINANCIALS),
-        "earnings_calendar" => Some(FMP_TTL_EARNINGS),
+        "earnings_calendar" | "earnings_outlook" => Some(FMP_TTL_EARNINGS),
         _ => None,
     }
 }
@@ -634,9 +745,13 @@ fn normalize_quote_timestamp_metadata(mut value: Value) -> Value {
         Value::Array(items) => {
             for item in items {
                 attach_quote_timestamp_metadata(item);
+                attach_quote_evidence_quality(item);
             }
         }
-        Value::Object(_) => attach_quote_timestamp_metadata(&mut value),
+        Value::Object(_) => {
+            attach_quote_timestamp_metadata(&mut value);
+            attach_quote_evidence_quality(&mut value);
+        }
         _ => {}
     }
     value
@@ -664,6 +779,183 @@ fn attach_quote_timestamp_metadata(value: &mut Value) {
             "source": "provider Unix timestamp converted by Hone; use `beijing` for the user-visible quote time; this metadata does not establish a market session"
         }),
     );
+}
+
+fn attach_quote_evidence_quality(value: &mut Value) {
+    let Value::Object(fields) = value else {
+        return;
+    };
+    let mut warnings = Vec::new();
+    let symbol_ok = fields
+        .get("symbol")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty());
+    let price = finite_number(fields.get("price"));
+    let price_ok = price.is_some_and(|value| value > 0.0);
+
+    let previous_close = finite_number(fields.get("previousClose"));
+    let change = finite_number(fields.get("change"));
+    let change_percent = finite_number(fields.get("changesPercentage"));
+    let change_consistent = match (price, previous_close, change) {
+        (Some(price), Some(previous_close), Some(change)) if previous_close > 0.0 => {
+            approximately_equal(price - previous_close, change, 0.02, 0.002)
+        }
+        _ => true,
+    };
+    if !change_consistent {
+        warnings.push("quote_change_mismatch");
+    }
+    let change_percent_consistent = match (previous_close, change, change_percent) {
+        (Some(previous_close), Some(change), Some(change_percent)) if previous_close > 0.0 => {
+            approximately_equal(change / previous_close * 100.0, change_percent, 0.2, 0.01)
+        }
+        _ => true,
+    };
+    if !change_percent_consistent {
+        warnings.push("quote_change_percentage_mismatch");
+    }
+
+    let day_low = finite_number(fields.get("dayLow"));
+    let day_high = finite_number(fields.get("dayHigh"));
+    let day_range_consistent = ordered_positive_range(day_low, day_high)
+        && price.map_or(true, |price| {
+            value_within_optional_range(price, day_low, day_high)
+        });
+    if !day_range_consistent {
+        warnings.push("quote_day_range_mismatch");
+    }
+    let year_low = finite_number(fields.get("yearLow"));
+    let year_high = finite_number(fields.get("yearHigh"));
+    let year_range_consistent = ordered_positive_range(year_low, year_high)
+        && price.map_or(true, |price| {
+            value_within_optional_range(price, year_low, year_high)
+        });
+    if !year_range_consistent {
+        warnings.push("quote_year_range_mismatch");
+    }
+
+    let market_cap_consistent = match (
+        price,
+        finite_number(fields.get("sharesOutstanding")),
+        finite_number(fields.get("marketCap")),
+    ) {
+        (Some(price), Some(shares), Some(market_cap))
+            if price > 0.0 && shares > 0.0 && market_cap > 0.0 =>
+        {
+            let ratio = market_cap / (price * shares);
+            (0.5..=2.0).contains(&ratio)
+        }
+        _ => true,
+    };
+    if !market_cap_consistent {
+        warnings.push("quote_market_cap_dimensional_mismatch");
+    }
+    if !symbol_ok {
+        warnings.push("quote_symbol_missing");
+    }
+    if !price_ok {
+        warnings.push("quote_price_invalid");
+    }
+
+    fields.insert(
+        "hone_evidence_quality".to_string(),
+        serde_json::json!({
+            "usable_for_price_claims": symbol_ok && price_ok,
+            "usable_for_change_claims": symbol_ok
+                && price_ok
+                && change_consistent
+                && change_percent_consistent,
+            "usable_for_range_claims": symbol_ok
+                && price_ok
+                && day_range_consistent
+                && year_range_consistent,
+            "usable_for_market_cap_claims": symbol_ok && price_ok && market_cap_consistent,
+            "warnings": warnings,
+            "policy": "A false flag quarantines only that claim type. Preserve raw provider fields for audit; do not publish a precise claim from a quarantined field group."
+        }),
+    );
+}
+
+fn price_target_consensus_quality(value: &Value, current_price: Option<f64>) -> Value {
+    let row = value
+        .as_array()
+        .and_then(|items| items.first())
+        .or_else(|| value.as_object().map(|_| value));
+    let low = row.and_then(|row| first_positive_number(row, &["targetLow", "low"]));
+    let high = row.and_then(|row| first_positive_number(row, &["targetHigh", "high"]));
+    let consensus = row.and_then(|row| {
+        first_positive_number(
+            row,
+            &["targetConsensus", "consensus", "priceTargetConsensus"],
+        )
+    });
+    let median = row.and_then(|row| {
+        first_positive_number(row, &["targetMedian", "median", "priceTargetMedian"])
+    });
+
+    let range_consistent = ordered_positive_range(low, high);
+    let consensus_in_range = consensus
+        .map(|value| value_within_optional_range(value, low, high))
+        .unwrap_or(true);
+    let median_in_range = median
+        .map(|value| value_within_optional_range(value, low, high))
+        .unwrap_or(true);
+    let has_target = consensus.or(median).is_some();
+    let usable = has_target && range_consistent && consensus_in_range && median_in_range;
+    let anchor = consensus.or(median);
+    let ratio = anchor
+        .zip(current_price)
+        .and_then(|(target, current)| (current > 0.0).then_some(target / current));
+    let magnitude_warning = ratio.is_some_and(|ratio| !(0.25..=4.0).contains(&ratio));
+    let mut warnings = Vec::new();
+    if !has_target {
+        warnings.push("target_consensus_missing");
+    }
+    if !range_consistent || !consensus_in_range || !median_in_range {
+        warnings.push("target_consensus_internal_range_mismatch");
+    }
+    if magnitude_warning {
+        warnings.push("target_consensus_extreme_vs_current_quote");
+    }
+
+    serde_json::json!({
+        "usable_for_target_claims": usable,
+        "requires_independent_corroboration": magnitude_warning,
+        "target_to_current_price_ratio": ratio,
+        "warnings": warnings,
+        "policy": "Internal range failures quarantine target claims. An extreme target/current ratio remains visible but requires an independent source before publication."
+    })
+}
+
+fn first_positive_number(value: &Value, keys: &[&str]) -> Option<f64> {
+    let row = value
+        .as_array()
+        .and_then(|items| items.first())
+        .unwrap_or(value);
+    keys.iter()
+        .find_map(|key| finite_number(row.get(*key)))
+        .filter(|value| *value > 0.0)
+}
+
+fn finite_number(value: Option<&Value>) -> Option<f64> {
+    value
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+}
+
+fn approximately_equal(left: f64, right: f64, absolute: f64, relative: f64) -> bool {
+    (left - right).abs() <= absolute.max(left.abs().max(right.abs()) * relative)
+}
+
+fn ordered_positive_range(low: Option<f64>, high: Option<f64>) -> bool {
+    match (low, high) {
+        (Some(low), Some(high)) => low > 0.0 && high > 0.0 && low <= high,
+        _ => true,
+    }
+}
+
+fn value_within_optional_range(value: f64, low: Option<f64>, high: Option<f64>) -> bool {
+    low.is_none_or(|low| value >= low) && high.is_none_or(|high| value <= high)
 }
 
 fn has_meaningful_fmp_value(value: &Value) -> bool {
@@ -869,7 +1161,7 @@ impl Tool for DataFetchTool {
             ToolParameter {
                 name: "data_type".to_string(),
                 param_type: "string".to_string(),
-                description: "数据类型".to_string(),
+                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回各组件覆盖状态和数值质量标记。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论。".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "quote".into(),
@@ -877,6 +1169,7 @@ impl Tool for DataFetchTool {
                     "extended_hours".into(),
                     "profile".into(),
                     "snapshot".into(),
+                    "earnings_outlook".into(),
                     "financials".into(),
                     "news".into(),
                     "gainers_losers".into(),
@@ -901,7 +1194,7 @@ impl Tool for DataFetchTool {
             ToolParameter {
                 name: "entity_route".to_string(),
                 param_type: "string".to_string(),
-                description: "公司/证券研究的内部路线键。先完整分析用户点名的标的，为每个标的选一个稳定且不同的短键（如 coreweave、nvidia），并在该标的的 search/refinement/quote/profile/snapshot 等调用中原样复用；不得把两个标的共用一条路线。宽泛市场数据可省略。".to_string(),
+                description: "公司/证券研究的内部路线键。先完整分析用户点名的标的，为每个标的选一个稳定且不同的短键（如 coreweave、nvidia），并在该标的的 search/refinement/quote/profile/snapshot/earnings_outlook 等调用中原样复用；不得把两个标的共用一条路线。宽泛市场数据可省略。".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -989,6 +1282,62 @@ impl Tool for DataFetchTool {
             return Ok(self.build_snapshot_response(ticker, quote, profile, news));
         }
 
+        if data_type == "earnings_outlook" {
+            let earnings_url = match self.build_earnings_outlook_url("earnings", ticker) {
+                Ok(url) => url,
+                Err(err) => return Ok(serde_json::json!({ "error": err })),
+            };
+            let estimates_url = self
+                .build_earnings_outlook_url("analyst_estimates", ticker)
+                .expect("validated earnings symbol");
+            let targets_url = self
+                .build_earnings_outlook_url("price_target_consensus", ticker)
+                .expect("validated earnings symbol");
+            let ratings_url = self
+                .build_earnings_outlook_url("ratings_snapshot", ticker)
+                .expect("validated earnings symbol");
+            let (
+                quote,
+                earnings,
+                analyst_estimates,
+                price_target_consensus,
+                ratings_snapshot,
+                financials,
+            ) = tokio::join!(
+                self.fetch_data_type("quote", ticker),
+                self.fetch_from_url_cached(
+                    &earnings_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook_earnings"
+                ),
+                self.fetch_from_url_cached(
+                    &estimates_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook_analyst_estimates"
+                ),
+                self.fetch_from_url_cached(
+                    &targets_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook_price_target_consensus"
+                ),
+                self.fetch_from_url_cached(
+                    &ratings_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook_ratings_snapshot"
+                ),
+                self.fetch_data_type("financials", ticker),
+            );
+            return Ok(self.build_earnings_outlook_response(
+                ticker,
+                quote.map(normalize_quote_timestamp_metadata),
+                earnings,
+                analyst_estimates,
+                price_target_consensus,
+                ratings_snapshot,
+                financials,
+            ));
+        }
+
         if data_type == "earnings_calendar" {
             let (from, to) = match self.resolve_earnings_window(&args) {
                 Ok(window) => window,
@@ -1046,8 +1395,9 @@ mod tests {
         DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
         nonempty_fmp_error_message, normalize_extended_hours_bar,
-        normalize_quote_timestamp_metadata, sanitize_fmp_error_detail, should_cache_fmp_value,
-        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
+        normalize_quote_timestamp_metadata, price_target_consensus_quality,
+        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
+        validated_data_fetch_search_query, validated_data_fetch_symbols,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -1081,6 +1431,74 @@ mod tests {
             quote_time.get("session").is_none(),
             "a regular quote timestamp must not be promoted into extended-hours session evidence"
         );
+    }
+
+    #[test]
+    fn quote_quality_quarantines_only_inconsistent_claim_groups() {
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "MU",
+            "price": 920.95,
+            "previousClose": 900.0,
+            "change": 20.95,
+            "changesPercentage": 0.23,
+            "dayLow": 910.0,
+            "dayHigh": 930.0,
+            "yearLow": 60.0,
+            "yearHigh": 180.0,
+            "marketCap": 1_000_000_000_000_f64,
+            "sharesOutstanding": 1_100_000_000_f64
+        }]));
+        let quality = &normalized[0]["hone_evidence_quality"];
+
+        assert_eq!(quality["usable_for_price_claims"], true);
+        assert_eq!(quality["usable_for_change_claims"], false);
+        assert_eq!(quality["usable_for_range_claims"], false);
+        assert_eq!(quality["usable_for_market_cap_claims"], true);
+        assert!(
+            quality["warnings"]
+                .as_array()
+                .expect("quality warnings")
+                .iter()
+                .any(|warning| warning == "quote_year_range_mismatch")
+        );
+    }
+
+    #[test]
+    fn target_consensus_extreme_ratio_requires_independent_corroboration() {
+        let quality = price_target_consensus_quality(
+            &json!([{
+                "targetLow": 120.0,
+                "targetHigh": 180.0,
+                "targetConsensus": 158.0,
+                "targetMedian": 160.0
+            }]),
+            Some(920.95),
+        );
+
+        assert_eq!(quality["usable_for_target_claims"], true);
+        assert_eq!(quality["requires_independent_corroboration"], true);
+        assert!(
+            quality["warnings"]
+                .as_array()
+                .expect("target warnings")
+                .iter()
+                .any(|warning| warning == "target_consensus_extreme_vs_current_quote")
+        );
+    }
+
+    #[test]
+    fn target_consensus_internal_range_mismatch_is_quarantined() {
+        let quality = price_target_consensus_quality(
+            &json!([{
+                "targetLow": 180.0,
+                "targetHigh": 120.0,
+                "targetConsensus": 158.0
+            }]),
+            Some(150.0),
+        );
+
+        assert_eq!(quality["usable_for_target_claims"], false);
+        assert_eq!(quality["requires_independent_corroboration"], false);
     }
 
     fn tool_with_test_key() -> DataFetchTool {
@@ -1200,6 +1618,16 @@ mod tests {
                 .expect("extended-hours ttl")
                 .as_secs(),
             30
+        );
+        assert_eq!(
+            tool.build_earnings_outlook_url("earnings", "COHR")
+                .expect("earnings URL"),
+            "https://example.com/stable/earnings?symbol=COHR"
+        );
+        assert_eq!(
+            tool.build_earnings_outlook_url("analyst_estimates", "COHR")
+                .expect("estimates URL"),
+            "https://example.com/stable/analyst-estimates?symbol=COHR&period=quarter&page=0&limit=8"
         );
     }
 
@@ -1413,6 +1841,7 @@ mod tests {
             .expect("data_type parameter");
         let enum_values = data_type.r#enum.as_ref().expect("enum values");
         assert!(enum_values.iter().any(|value| value == "snapshot"));
+        assert!(enum_values.iter().any(|value| value == "earnings_outlook"));
         assert!(enum_values.iter().any(|value| value == "quote_short"));
         assert!(enum_values.iter().any(|value| value == "extended_hours"));
         assert!(enum_values.iter().any(|value| value == "search"));
@@ -1533,6 +1962,41 @@ mod tests {
         assert!(payload["data"]["news"].is_null());
         assert_eq!(payload["errors"]["profile"], "profile failed");
         assert_eq!(payload["errors"]["news"], "news failed");
+        assert!(payload.get("error").is_none());
+    }
+
+    #[test]
+    fn earnings_outlook_keeps_partial_coverage_and_quality_visible() {
+        let tool = tool_with_test_key();
+        let payload = tool.build_earnings_outlook_response(
+            "COHR",
+            Ok(normalize_quote_timestamp_metadata(json!([{
+                "symbol": "COHR",
+                "price": 282.39
+            }]))),
+            Ok(json!([{"symbol":"COHR","date":"2026-08-12"}])),
+            Err("estimates unavailable".to_string()),
+            Ok(json!([{
+                "symbol":"COHR",
+                "targetLow":220.0,
+                "targetHigh":360.0,
+                "targetConsensus":300.0
+            }])),
+            Ok(json!([{"symbol":"COHR","rating":"Buy"}])),
+            Ok(json!([{"symbol":"COHR","revenue":1_500_000_000_u64}])),
+        );
+
+        assert_eq!(payload["data_type"], "earnings_outlook");
+        assert_eq!(payload["coverage"]["quote"], "available");
+        assert_eq!(payload["coverage"]["analyst_estimates"], "unavailable");
+        assert_eq!(
+            payload["errors"]["analyst_estimates"],
+            "estimates unavailable"
+        );
+        assert_eq!(
+            payload["hone_target_consensus_quality"]["usable_for_target_claims"],
+            true
+        );
         assert!(payload.get("error").is_none());
     }
 

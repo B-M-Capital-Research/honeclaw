@@ -1146,9 +1146,14 @@ pub(crate) fn forbidden_investment_tool_calls(
     let mut violations = Vec::new();
     for entity in &contract.entities {
         let forbidden_types: &[&str] = if entity_is_fund(entity) {
-            &["financials", "earnings_calendar"]
+            &["financials", "earnings_calendar", "earnings_outlook"]
         } else if entity_is_crypto(entity) {
-            &["financials", "earnings_calendar", "etf_holdings"]
+            &[
+                "financials",
+                "earnings_calendar",
+                "earnings_outlook",
+                "etf_holdings",
+            ]
         } else {
             continue;
         };
@@ -1664,9 +1669,11 @@ pub(crate) fn build_agent_discovered_investment(
     let has_news = calls.iter().any(|call| {
         data_fetch_call_type(call).is_some_and(|data_type| data_type.eq_ignore_ascii_case("news"))
     });
-    let has_earnings_calendar = calls.iter().any(|call| {
-        data_fetch_call_type(call)
-            .is_some_and(|data_type| data_type.eq_ignore_ascii_case("earnings_calendar"))
+    let has_earnings_outlook = calls.iter().any(|call| {
+        data_fetch_call_type(call).is_some_and(|data_type| {
+            data_type.eq_ignore_ascii_case("earnings_calendar")
+                || data_type.eq_ignore_ascii_case("earnings_outlook")
+        })
     });
     for entity in &mut entities {
         if entity_is_index(entity) {
@@ -1783,7 +1790,7 @@ pub(crate) fn build_agent_discovered_investment(
         deep_analysis,
         deep_comparison: selected_deep_research && comparison,
         requires_verified_price: true,
-        needs_outlook_evidence: has_earnings_calendar,
+        needs_outlook_evidence: has_earnings_outlook,
         requires_recent_web_evidence,
         comparison,
         origin,
@@ -2102,7 +2109,7 @@ fn apply_verified_index_route(contract: &mut InvestmentResponseContract, index: 
     }
 }
 
-fn should_fetch_earnings_calendar(entity: &ResolvedSecurityEntity) -> bool {
+fn should_fetch_earnings_outlook(entity: &ResolvedSecurityEntity) -> bool {
     entity.profile_verified && entity_is_equity(entity)
 }
 
@@ -3540,17 +3547,20 @@ pub(crate) async fn prepare_verified_investment_turn(
         }
     }
     if contract.needs_outlook_evidence && contract.entities.len() <= 5 {
-        let from = hone_core::beijing_now().date_naive();
-        let to = from + chrono::Duration::days(120);
         for entity in &contract.entities {
-            if !should_fetch_earnings_calendar(entity) {
+            if !should_fetch_earnings_outlook(entity) {
                 continue;
             }
             let symbol = &entity.symbol;
-            let calendar = registry.execute_tool("data_fetch", json!({"data_type": "earnings_calendar", "ticker": symbol, "from": from.format("%Y-%m-%d").to_string(), "to": to.format("%Y-%m-%d").to_string()})).await;
+            let outlook = registry
+                .execute_tool(
+                    "data_fetch",
+                    json!({"data_type": "earnings_outlook", "ticker": symbol}),
+                )
+                .await;
             evidence.push((
-                "未来 120 天财报日历（仅当前标的）",
-                matching_symbol_objects_or_error(&result_or_error_value(calendar), symbol),
+                "证券级财报展望（当前行情、财报时间/预期、分析师预期、目标价共识、评级与财务；按 coverage 和 Hone 质量标记逐项使用）",
+                result_or_error_value(outlook),
             ));
         }
     }
@@ -11146,7 +11156,7 @@ mod tests {
         portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
         quote_has_positive_matching_price, quote_timestamp_is_usable, resolve_entity_match,
         resolve_numeric_probe_result, response_intent, response_requires_verified_price,
-        set_verified_asset_type, should_fetch_earnings_calendar, should_run_entity_stage,
+        set_verified_asset_type, should_fetch_earnings_outlook, should_run_entity_stage,
         text_contains_source_domain, ticker_mentions_cover_request,
         unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
         web_source_markers,
@@ -13935,10 +13945,10 @@ mod tests {
         let mut verified_intl = intl;
         set_verified_asset_type(&mut verified_intl, AssetEvidenceRoute::Fund);
         assert!(verified_intl.profile_verified);
-        assert!(!should_fetch_earnings_calendar(&verified_intl));
+        assert!(!should_fetch_earnings_outlook(&verified_intl));
         let mut verified_nbis = nbis;
         set_verified_asset_type(&mut verified_nbis, AssetEvidenceRoute::Equity);
-        assert!(should_fetch_earnings_calendar(&verified_nbis));
+        assert!(should_fetch_earnings_outlook(&verified_nbis));
     }
 
     #[test]
@@ -13966,7 +13976,7 @@ mod tests {
         assert!(entity_is_crypto(&entity));
         set_verified_asset_type(&mut entity, AssetEvidenceRoute::Crypto);
         assert!(entity.profile_verified);
-        assert!(!should_fetch_earnings_calendar(&entity));
+        assert!(!should_fetch_earnings_outlook(&entity));
 
         let contract = InvestmentResponseContract {
             entities: vec![entity],
@@ -13986,7 +13996,12 @@ mod tests {
             result: json!({"data":[]}),
             tool_call_id: None,
         };
-        for forbidden in ["financials", "earnings_calendar", "etf_holdings"] {
+        for forbidden in [
+            "financials",
+            "earnings_calendar",
+            "earnings_outlook",
+            "etf_holdings",
+        ] {
             assert!(
                 !forbidden_investment_tool_calls(&contract, &[call(forbidden)]).is_empty(),
                 "{forbidden}"
@@ -14285,6 +14300,10 @@ mod tests {
         );
         assert!(
             !forbidden_investment_tool_calls(&contract, &[call("earnings_calendar", "INTL")])
+                .is_empty()
+        );
+        assert!(
+            !forbidden_investment_tool_calls(&contract, &[call("earnings_outlook", "INTL")])
                 .is_empty()
         );
         assert!(

@@ -396,10 +396,36 @@ else
   record fail "36.function-calling-overall-deadline-and-failed-trace" "the function-calling request can again reset/ignore its overall timeout or lose the failed-tool trace needed to prevent unsafe replay"
 fi
 
-if contains 'const AGENT_STEP_TIMEOUT_ERROR: &str' "$FUNCTION_AGENT" && contains 'fn step_deadline(' "$FUNCTION_AGENT" && contains 'async fn await_unit_before_deadline' "$FUNCTION_AGENT" && contains '.with_step_timeout(Some(self.timeouts.step))' "$TOOL_REASONING_RUNNER" && contains 'observer.on_tool_start' "$FUNCTION_AGENT" && contains 'observer.on_tool_finish' "$FUNCTION_AGENT" && contains 'BLOCKED_TOOL_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" && contains 'agent_owned_finance_loop_blocks_persistent_tool_and_still_answers' "$FUNCTION_AGENT" && contains 'finance_discovery_round_blocks_executable_skill_and_still_answers' "$FUNCTION_AGENT" && contains 'Some("skill_tool")' "$CORE_TOOL_EFFECT" && contains 'tool_call_has_persistent_side_effect' "$FUNCTION_AGENT" && contains 'persistent_tool_failure: execution state is uncertain; automatic replay suppressed' "$FUNCTION_AGENT" && contains 'tool_call_has_persistent_side_effect' "$CORE_TOOL_EFFECT" && contains 'tool_call_is_known_read_only' "$CORE_TOOL_EFFECT" && contains 'tool_call_has_persistent_side_effect(&call.name, &call.arguments)' "$TOOL_TRACE" && contains 'configured_step_deadline_replaces_legacy_active_phase_cap' "$FUNCTION_AGENT" && contains 'initial_stream_respects_configured_step_deadline' "$FUNCTION_AGENT" && contains 'hanging_tool_observer_is_bounded_before_execution' "$FUNCTION_AGENT" && contains 'persistent_tool_error_stops_same_loop_replay' "$FUNCTION_AGENT" && contains '("failed", format!("执行失败：{label}"))' "$TOOL_REASONING_RUNNER" && contains 'runner_tool_finish_distinguishes_success_from_failure' "$RUNNER_TESTS"; then
-  record success "37.function-calling-step-observer-and-replay-boundary" "step deadlines cover stalled phases; finance write/script calls are blocked before observers and execution, then the same Agent answers; actually failed writes still stop without replay"
+if contains 'const AGENT_STEP_TIMEOUT_ERROR: &str' "$FUNCTION_AGENT" \
+  && contains 'fn step_deadline(' "$FUNCTION_AGENT" \
+  && contains 'async fn await_unit_before_deadline' "$FUNCTION_AGENT" \
+  && contains '.with_step_timeout(Some(self.timeouts.step))' "$TOOL_REASONING_RUNNER" \
+  && contains 'observer.on_tool_start' "$FUNCTION_AGENT" \
+  && contains 'observer.on_tool_finish' "$FUNCTION_AGENT" \
+  && contains 'BLOCKED_TOOL_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" \
+  && contains 'PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" \
+  && contains 'agent_owned_finance_loop_blocks_persistent_tool_and_still_answers' "$FUNCTION_AGENT" \
+  && contains 'finance_discovery_round_blocks_executable_skill_and_still_answers' "$FUNCTION_AGENT" \
+  && contains 'Some("skill_tool")' "$CORE_TOOL_EFFECT" \
+  && contains 'tool_call_has_persistent_side_effect' "$FUNCTION_AGENT" \
+  && contains 'persistent_tool_reconciliation_call' "$FUNCTION_AGENT" \
+  && contains 'timeout_error.is_none()' "$FUNCTION_AGENT" \
+  && contains 'persistent_tool_failure: no safe read-after-write reconciliation is available' "$FUNCTION_AGENT" \
+  && contains 'tool_call_has_persistent_side_effect' "$CORE_TOOL_EFFECT" \
+  && contains 'tool_call_is_known_read_only' "$CORE_TOOL_EFFECT" \
+  && contains 'pub fn persistent_tool_reconciliation_call(' "$CORE_TOOL_EFFECT" \
+  && contains 'ambiguous_mutations_reconcile_with_reads_without_replaying_writes' "$CORE_TOOL_EFFECT" \
+  && contains 'tool_call_has_persistent_side_effect(&call.name, &call.arguments)' "$TOOL_TRACE" \
+  && contains 'configured_step_deadline_replaces_legacy_active_phase_cap' "$FUNCTION_AGENT" \
+  && contains 'initial_stream_respects_configured_step_deadline' "$FUNCTION_AGENT" \
+  && contains 'hanging_tool_observer_is_bounded_before_execution' "$FUNCTION_AGENT" \
+  && contains 'persistent_tool_error_reconciles_by_read_without_replaying_write' "$FUNCTION_AGENT" \
+  && contains 'persistent_tool_timeout_keeps_uncertain_trace_and_stops_the_agent' "$FUNCTION_AGENT" \
+  && contains '("failed", format!("执行失败：{label}"))' "$TOOL_REASONING_RUNNER" \
+  && contains 'runner_tool_finish_distinguishes_success_from_failure' "$RUNNER_TESTS"; then
+  record success "37.function-calling-step-observer-and-replay-boundary" "step deadlines cover stalled phases; finance write/script calls are blocked before execution; ambiguous non-timeout write failures reconcile through one actor-scoped read without replay, while timeouts stop fail-closed"
 else
-  record fail "37.function-calling-step-observer-and-replay-boundary" "a phase can hang, a blocked write/script can execute or cause refusal, a failed write can replay, or failed progress can render as completed"
+  record fail "37.function-calling-step-observer-and-replay-boundary" "a phase can hang, a blocked write/script can execute, a failed write can replay, reconciliation can escape actor-scoped read contracts, a timeout can keep executing, or failed progress can render as completed"
 fi
 
 if contains 'struct ResearchIdentityRouteEvidence' "$FUNCTION_AGENT" \

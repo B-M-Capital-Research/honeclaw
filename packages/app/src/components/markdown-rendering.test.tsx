@@ -13,4 +13,17 @@ describe("Markdown rendering", () => {
     ).toEqual(["First", "Second"]);
     expect(root.querySelector("ul > li")?.textContent).toBe("Bullet");
   });
+
+  test("keeps paired tildes from striking an entire assistant paragraph", async () => {
+    const html = await parseMarkdown(
+      "Base Case：~~收入约 10 亿美元，估值区间保持不变~~",
+    );
+    const root = document.createElement("div");
+    root.innerHTML = html;
+
+    expect(root.querySelector("del")).toBeNull();
+    expect(root.textContent).toContain(
+      "Base Case：收入约 10 亿美元，估值区间保持不变",
+    );
+  });
 });
