@@ -4,6 +4,18 @@ Last updated: 2026-07-27
 
 ## 2026-07-27
 
+### Automatic Reminder Cancellation And Feishu Table Production Activation
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/reminder-cancellation-and-feishu-table-activation.md`
+- Handoff: `docs/handoffs/2026-07-27-reminder-cancellation-and-feishu-table-activation.md`
+- Decision / ADR: N/A; this closes missing durability and delivery checks inside the existing actor-scoped scheduler contract and records the resulting invariant without changing module ownership or prompt answer format
+- Related PRs / commits: fix commit `caa45733819a404ebc7e383f8b830b0a26bcff80` on `main`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; targeted reminder/storage/tool/scheduler/channel regressions; `hone-feishu` `69/69`; full workspace check/test excluding Apple clients; Web `302/302`; Edge Worker `45/45`; finance contracts `44/44`; complete CI-safe regressions; 500-payload immutable manifest and production cloud/auth/process/connection probes
+- Current conclusion: `remove_all` and `disable_all` now make actor-scoped automatic-reminder cancellation durable and idempotent, propagate storage failures, and suppress cancelled queued work both before model execution and before outbound channel delivery while preserving claimed one-shot semantics. Production Web/Feishu moved from `0.15.2` to exact `caa45733` (`0.15.3`), activating the already released Feishu native Markdown/raw-table renderer. Cloud authority, PostgreSQL/OSS, ports, origin/public auth boundaries, Feishu TLS connections, and zero active chats are healthy. Prompt answer formatting was not changed, Discord's pre-existing credential stop remains unchanged, and the prior immutable package remains available for rollback.
+- Next entry point: `docs/handoffs/2026-07-27-reminder-cancellation-and-feishu-table-activation.md`, `docs/bugs/cancel_all_automatic_reminders_leaves_scheduled_jobs_active.md`, and `docs/invariants.md`; if a real client reproduces either issue, capture the actor/job identity or exact Feishu payload without sending a broad canary.
+
 ### v0.15.3 Feishu Native Table Fix Release
 
 - Status: done

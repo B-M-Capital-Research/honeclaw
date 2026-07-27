@@ -1,7 +1,7 @@
 # Reminder Cancellation And Feishu Table Production Activation
 
 - title: Reminder Cancellation And Feishu Table Production Activation
-- status: in_progress
+- status: done
 - created_at: 2026-07-27
 - updated_at: 2026-07-27
 - owner: Codex
@@ -12,6 +12,7 @@
   - `bins/hone-feishu/src/markdown.rs`
   - `bins/hone-feishu/src/outbound.rs`
   - `docs/bugs/`
+  - `docs/invariants.md`
 - related_docs:
   - `docs/handoffs/2026-07-27-feishu-native-table-rendering.md`
   - `docs/runbooks/backend-deployment.md`
@@ -33,15 +34,14 @@ Guarantee that a user request to cancel all automatic reminders removes or disab
 
 ## Validation
 
-- Targeted scheduler, event-engine, channel, and Feishu tests for both defects
-- `bash scripts/ci/check_fmt_changed.sh`
-- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`
-- `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`
-- `bun run test:web`
-- `cd workers/public-community-edge && bun run typecheck && bun run test`
-- `bash tests/regression/run_ci.sh`
-- Exact immutable deployment manifest verification
-- Production version/process-path, active-chat, cloud-storage, channel, auth-boundary, and Feishu delivery probes
+- Targeted reminder/storage/tool/scheduler/channel tests passed; `hone-feishu` passed `69/69`, including standard Markdown, historical raw component syntax, direct, placeholder, scheduler, and shared-renderer cases.
+- `bash scripts/ci/check_fmt_changed.sh` passed.
+- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed.
+- `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed.
+- Web passed `302/302`; Public Community Edge typecheck and `45/45` tests passed.
+- `bash tests/regression/run_ci.sh` passed, including `44/44` finance contracts.
+- Exact `caa45733819a404ebc7e383f8b830b0a26bcff80` immutable package passed all `500` payload checks; manifest SHA-256 is `4ee22285a327e22a8884770cf492893d39887103ea3c272f85f36b18e164edec`.
+- Production reports `0.15.3`, cloud-authoritative PostgreSQL/OSS health, zero local durable dependencies, zero active chats, expected origin/public `401` JSON boundaries, exact new process paths, and established Feishu TLS connections.
 
 ## Documentation Sync
 
@@ -51,7 +51,14 @@ Guarantee that a user request to cancel all automatic reminders removes or disab
 
 ## Risks / Open Questions
 
-- “Automatic reminder” may cover explicit cron jobs, event-engine subscriptions, heartbeat tasks, or legacy scheduler records; fixing only the visible list/delete API would leave another trigger source active.
-- Bulk cancellation must remain actor-scoped and must not delete another user's reminders.
-- Production still runs `0.15.2`; Feishu table behavior cannot be judged from source state until the new exact build is deployed.
+- Bulk cancellation remains actor-scoped and idempotent; storage write/read failures no longer report success.
+- Claimed one-shot jobs retain their one valid execution, while jobs cancelled before work or before outbound delivery are suppressed.
+- No live user-target Feishu message was sent during deployment; native table behavior is covered by `69/69` local Feishu tests and the production worker is connected.
 - Discord remains in its pre-existing stopped credential state and is outside this repair.
+
+## Completion
+
+- Fix commit `caa45733819a404ebc7e383f8b830b0a26bcff80` is on `origin/main`.
+- Production Web and Feishu now run `target/deploy-caa45733`; `target/deploy-8491a3c2` remains the immediate rollback.
+- The established prompt answer format is unchanged; only two explicit tool-routing instructions were added.
+- Handoff: `docs/handoffs/2026-07-27-reminder-cancellation-and-feishu-table-activation.md`.
