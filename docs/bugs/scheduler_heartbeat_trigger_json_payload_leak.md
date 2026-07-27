@@ -7,6 +7,13 @@
 
 ## 最新进展
 
+- `2026-07-27 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 10:30 CST heartbeat job `TEM大事件心跳监控` 的 `cron_job_runs.run_id=48744` 已记录 `completed + sent + delivered=1`，`response_preview` 直接以 fenced `json` 开头。
+    - 同条 preview 向用户态暴露 `status`、`triggered`、`symbol`、`company_name`、`exchange`、`trigger_condition`、`current_price`、`price_change_pct`、`quote_time_beijing`、`market_date` 等协议字段，而不是整理后的自然语言提醒。
+    - 同窗普通 assistant final 未见 raw JSON 大面积外泄；问题集中在 heartbeat 已触发提醒的出站格式边界。
+  - 判断：这是既有 heartbeat 协议载荷泄露的同根复发。业务链路已送达提醒，未造成全链路失败、错投或数据破坏；但用户可见格式明显退化并暴露内部结构字段，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-26 15:00-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-26`
     - 15:00 CST `Monitor_Watchlist_11` deliver preview 在“工具预算上限”说明后直接进入 fenced JSON，包含 `status`、`triggered`、`symbol`、`trigger_condition`、`current_price` 等协议字段。

@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-27 07:02-11:02 CST 运行态继续复发，状态维持 `New`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 30 条 user / 19 条 assistant / 10 条 system compact，覆盖 13 个更新 session；近期 Feishu direct / scheduler 会话均有 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是 scheduler 用户可见内部工具 / provider 口径。
+  - 09:06 CST Feishu direct `中際旭創介紹價值鏈，以及港股ipo價值分析` 正常收口，但 final 写出 `本轮 DataFetch 无中际旭创（A股 300308.SZ / 港股 03308.HK）实时行情覆盖`，把内部工具名作为用户态行情来源说明。
+  - 08:30 CST heartbeat / scheduler preview 继续外露 `provider` 来源词，例如 `美股盘中科技股机会心跳监控` 写 `来源：provider 北京时间 07-25 04:00`；这些属于用户可见来源 / 字段口径边界。
+  - 这些消息业务主体已完成并送达或进入出站候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-27 03:01-07:02 CST 运行态继续复发，状态维持 `New`：
   - 03:01-07:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 条 user / 6 条 assistant / 6 条 system compact，覆盖 5 个更新 session；近期 Feishu scheduler 会话均有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是 scheduler 用户可见内部 skill / 字段口径。

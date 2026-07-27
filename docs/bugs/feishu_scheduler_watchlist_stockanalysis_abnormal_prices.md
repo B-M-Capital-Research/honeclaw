@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-27 07:02-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 08:30 CST Feishu scheduler `Hone_AI_Morning_Briefing` 正常收口，但继续用 `GEV $1014.75`、`MU $920.95`、`COHR $282.39`、`CIEN $390.96` 等明显高风险数量级价格进入行情核验与早报判断。
+    - 08:45 CST Feishu scheduler `A股盘前高景气产业链推演` 正常收口，但以 `MU $920.95`、`AMD $521.95`、`MRVL $194.23`、`DELL $437.31` 等美股旧价锚定 A 股映射判断。
+    - 09:00 CST `核心观察池早间简报` 继续使用 `GOOGL $319.74`、`AAPL $333.02`、`MU $920.95`、`SNDK $1,436.56`、`STX $851.69`、`WDC $519.80` 等价格进入击球区排序；`早9点市场复盘(XME及加密ETF)` 继续使用 `SPY 738.93`、`QQQ 684.23` 等高风险指数锚。
+  - `cron_job_runs`
+    - 07:30-11:00 heartbeat preview 继续使用 `RKLB $63.91`、`AAOI $100.15`、`TEM $42.69`、`MU $920.95`、`SNDK $1,436.56`、`SPY $738.93`、`QQQ $684.23` 等旧价或数量级高风险价格进入 sent / noop / duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / direct / heartbeat 金融判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-27 03:01-07:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 04:32 CST Feishu scheduler `OWALERT_PostMarket` 正常收口，但继续用 `MU / SNDK / GOOGL / COHR / RKLB` 等旧收盘 quote 组织“今日表现”“盘后扫描”和次日关注判断。

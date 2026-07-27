@@ -3,7 +3,7 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 代码级修复（2026-07-26 CST）
@@ -25,6 +25,17 @@
   - `cargo test -p hone-channels operational_checks_and_scheduler_conditions_do_not_become_tickers --lib -- --nocapture`
   - `cargo test -p hone-channels collision_policy_accepts_real_short_tickers_only_with_strong_binding --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
+
+## 运行态复核（2026-07-27 11:02 CST）
+
+- 本轮 2026-07-27 07:02-11:02 CST 真实运行态再次复发，状态从代码级 `Fixed` 回退为 `New/P2`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` 的任务正文要求调取 SNDK 行情、评级变化及 NAND Flash 存储行业动态；assistant final 只返回“已识别证券代码 `NAND`，但当前数据供应商没有返回同代码行情覆盖”，未生成 SNDK 简报主体。
+    - `cron_job_runs.run_id=48684` 记录 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`，说明失败提示已作为用户可见 scheduler 结果发送。
+    - 09:30 CST Feishu scheduler `持仓股收盘复盘与美股新闻整理` 又把正文里的 `Nasdaq` 落成多个证券实体候选，返回要求补交易所后缀或公司全名；`run_id=48723` 同样为 `execution_failed + sent + delivered=1`。
+  - 判断：
+    - 最新样本晚于 2026-07-26 代码级修复，仍是 scheduler 任务正文中的行业词、指数名或上下文词进入证券实体 guard / resolver 后误抽、误拦，导致业务正文被阻断；与既有 `PCE` / `ARK` / `Nancy` / `SEC` / `NAND` 误抽同根，不新建重复缺陷。
+    - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文生成并发送失败提示，但同窗 direct / scheduler 仍有正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
 
 ## 运行态复核（2026-07-26 11:02 CST）
 

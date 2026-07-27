@@ -22,6 +22,15 @@ New
 
 ## 最新进展
 
+- 2026-07-27 07:02-11:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 07:30 CST heartbeat job `RKLB 全面心跳检测` 的 `response_preview` 写“本轮无新触发 / 无新增可核验价格变化或基本面增量”，但 `run_id=48659` 仍记录 `heartbeat=1`、`completed/sent/delivered=1`。
+    - 08:00 CST `珠海冠宇加仓信号心跳检测` 写 `结论：NOOP——休市无新报价，无新催化，止跌信号仍不成立`，但 `run_id=48673` 仍为 `completed/sent/delivered=1`。
+    - 08:00 / 09:00 / 09:30 / 11:00 CST `AAOI / RKLB` heartbeat 多次在 preview 中写 `noop`、无变化或无新增触发，仍进入 sent / delivered 或先进入 deliver preview 再 duplicate suppression。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化或无触发增量，出站层仍将正文送达或进入送达候选。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-27 03:01-07:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 05:00 CST heartbeat job `德业股份加仓信号心跳检测` 的 `response_preview` 明确写 `结论：NOOP——休市无新报价，上轮数据无更新`，但 cron 仍记录 `heartbeat=1`、`execution_status=completed`、`message_send_status=sent`、`delivered=1`。
