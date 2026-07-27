@@ -22,6 +22,13 @@
 
 ## 最新进展
 
+- 本轮 2026-07-27 15:03-19:04 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 15:00-19:00 CST heartbeat preview 继续使用 `RKLB $63.91`、`AAOI $100.15`、`TSLA $313.03`、`MU $920.95`、`HIMS $28.09`、`SPY $738.93`、`QQQ $684.23` 等高风险或待校验行情锚进入 sent / noop / duplicate suppression 基线。
+    - 17:30 CST `Monitor_Watchlist_11` 在工具调用上限后只拿到 HIMS / MU 两个 quote，仍用 `MU $920.95` 进入触发判断并生成送达候选；随后被 duplicate suppression 压制，但坏锚已经进入 heartbeat 出站候选。
+    - 19:00 CST `AAOI 全面心跳检测` `run_id=48921` 使用 `AAOI $100.15` 和 7/24 旧收盘快照给出估值支撑、财报前加仓胜率等判断，并 `completed/sent/delivered=1`。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / heartbeat 判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-27 11:01-15:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 13:41 CST Feishu direct `预测下cohr 这次的财报表现` 正常收口，但继续使用 `COHR 最新可得报价 $282.39`、前收 `$313.22` 和 `NYSE 实时快照` 进入财报预判。

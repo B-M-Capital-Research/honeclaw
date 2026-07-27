@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-27 15:03-19:04 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗新增 5 条 user / 1 条 assistant / 2 条 system compact，覆盖 1 个更新 session；最近 assistant 到 `2026-07-27T17:12:24.128983+08:00`。
+    - SQLite `cron_job_runs` 同窗 80 条 heartbeat run，其中 `completed/sent=11`、`execution_failed/skipped_error=7`、`noop/skipped_noop=62`。
+    - heartbeat `parse_kind` 分布继续漂移：`JsonNoop=41`、空 `12`、`PlainTextTriggered=10`、`PlainTextNoop=9`、`PlainTextSuppressed=6`、`JsonTriggered=2`。
+    - 代表样本包括 15:00 / 15:30 `AAOI 全面心跳检测`、16:00 `RKLB 全面心跳检测`、16:30 `Monitor_Watchlist_11`、17:00 / 18:00 `全天原油价格3小时播报` 均因 `PlainTextSuppressed` / “heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`；同窗 18:00 `TSLA 正负触发条件心跳监控` 另以 `persistent_tool_failure: execution state is uncertain` 跳过发送。
+  - 判断：最新证据仍落在既有 heartbeat 状态输出退化 / runner 收口失败范围内，没有形成新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-27 11:01-15:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗新增 10 条 user / 8 条 assistant / 2 条 system compact，覆盖 5 个更新 session；最近 assistant 到 `2026-07-27T14:56:16.674026+08:00`。

@@ -22,6 +22,13 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-27`
+  - 巡检时间窗：2026-07-27 15:03-19:04 CST。
+  - `cron_job_runs.run_id=48903` / 18:00 CST `TSLA 正负触发条件心跳监控` 落成 `execution_failed + skipped_error + delivered=0`。
+  - runtime 同时记录 `persistent_tool_failure: execution state is uncertain; automatic replay suppressed`，说明 runner 在工具副作用 / 可重放边界 fail-closed，本轮没有生成用户可见 TSLA heartbeat 正文。
+  - 同窗 16:30、17:30、18:30、19:00 的 TSLA heartbeat 又能进入 sent / noop / duplicate suppression 分支，且 direct 样本正常收口，因此这更像单轮 evidence / persistent-tool 收口失败，不是全渠道不可用。
+  - 判断：该样本与本单同属 heartbeat required-evidence / runner fail-closed 导致监控轮次跳过的表现；目前只有单条 TSLA 样本且未证明应触发提醒，不拆新缺陷。维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
   - 巡检时间窗：2026-07-22 19:01-23:02 CST。
   - `session_id=Actor_web__direct__web-user-0545ade83537`

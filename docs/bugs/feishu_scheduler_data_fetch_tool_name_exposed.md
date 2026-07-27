@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-27 15:03-19:04 CST 运行态继续复发，状态维持 `New`：
+  - 15:03-19:04 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 5 条 user / 1 条 assistant / 2 条 system compact，覆盖 1 个更新 session；Feishu direct 用户问题已正常收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是 heartbeat 用户可见内部字段 / provider 口径。
+  - 16:30 CST `TSLA 正负触发条件心跳监控` preview 写出 `hon_quote_time: 2026-07-25 04:00:01 +08:00`；19:00 CST 同任务 `run_id=48928` 又写出 `hone_quote_time: 2026-07-25 04:00:01 +08:00`。
+  - 这些 heartbeat 消息业务主体已送达或进入出站候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-27 11:01-15:03 CST 运行态继续复发，状态维持 `New`：
   - 11:01-15:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 10 条 user / 8 条 assistant / 2 条 system compact，覆盖 5 个更新 session；近期 Feishu direct / scheduler 会话多数有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是用户可见 provider / 来源口径。
