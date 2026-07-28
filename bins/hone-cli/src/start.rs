@@ -182,6 +182,7 @@ pub(crate) fn child_envs(paths: &ResolvedRuntimePaths) -> Vec<(String, String)> 
 
 pub(crate) async fn wait_for_http_ready(url: &str) -> Result<(), String> {
     let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| e.to_string())?;
@@ -266,6 +267,7 @@ async fn fetch_active_chat_run_count(
 
 async fn wait_for_active_chat_drain(url: &str, auth_token: Option<&str>, timeout: Duration) {
     let client = match reqwest::Client::builder()
+        .no_proxy()
         .timeout(ACTIVE_CHAT_DRAIN_REQUEST_TIMEOUT)
         .build()
     {
