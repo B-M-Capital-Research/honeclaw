@@ -22,6 +22,17 @@ New
 
 ## 最新进展
 
+- 2026-07-28 10:01-14:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 10:30 CST `珠海冠宇加仓信号心跳检测` `run_id=49289` 的 preview 明确写 `结论：NOOP——缩量反弹延续，未见放量止跌或新催化`，但 cron 仍记录 `heartbeat=1`、`completed/sent/delivered=1`。
+    - 11:00 / 11:30 CST `RKLB 全面心跳检测` `run_id=49300/49307` 分别写 `noop`、`无新增触发事实`，仍为 `completed/sent/delivered=1`。
+    - 11:30 CST `ASTS 全面心跳检测` `run_id=49310` 写 `ASTS 30分钟心跳检查（11:30）— noop` 与 `无新增触发事实`，仍发送完整报告。
+    - 13:00 / 13:30 CST `TEM大事件心跳监控` `run_id=49336/49344` 写 `TEM 30分钟心跳检查 — noop`，仍 `completed/sent/delivered=1`。
+    - 14:00 CST `ASTS 全面心跳检测` `run_id=49356` 写 `ASTS 30分钟心跳检查（14:00）— noop`；14:00 `TSLA 正负触发条件心跳监控` `run_id=49359` 写 `触发判断：noop`，两条均送达。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化或无触发增量，出站层仍将正文送达。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-27 15:03-19:04 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 16:00 CST `珠海冠宇加仓信号心跳检测` `run_id=48862` 的 preview 明确写 `结论：NOOP`，但 cron 仍记录 `heartbeat=1`、`completed/sent/delivered=1`。

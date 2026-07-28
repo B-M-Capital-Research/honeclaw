@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-28 10:01-14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 12:30 CST `AAOI 全面心跳检测` `run_id=49327` 已作为 AAOI heartbeat job 周期触发，preview 却围绕 `RKLB NASDAQ 报价 $66.94`、RKLB 关注条目和“你目前可能还没有持有 RKLB”展开，任务主体从 AAOI 串到 RKLB 持仓确认。
+    - 13:31 CST `ASTS 全面心跳检测` `run_id=49352` 已作为 ASTS heartbeat job 周期触发，preview 却改为 `STRL NASDAQ 报价 $634.63`、Sterling Infrastructure 公司介绍和 Q2 财报分析，完全偏离 ASTS 监控判断。
+    - 13:00 CST `RKLB 全面心跳检测` `run_id=49338` 混入 AAOI 报价与持仓组合条目，仍未稳定聚焦单个 RKLB job 的触发条件。
+  - 会话质量对照：
+    - 同窗 Feishu direct / scheduler 有 assistant 收口，未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被其它标的、旧持仓上下文或公司分析任务污染，导致模型没有稳定执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-27 11:01-15:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 11:30 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，`run_id=48766` 却把当前输入解释成“心跳监控契约的文本配置说明”，并输出“AAOI 心跳任务已在你的持仓记录中激活”，偏向配置确认而不是执行 AAOI 事件监控判断。

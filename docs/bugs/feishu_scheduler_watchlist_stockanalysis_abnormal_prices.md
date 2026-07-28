@@ -1677,3 +1677,14 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-28 14:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-28 10:01-14:02 CST。
+  - 13:54 CST Feishu direct 持仓截图回复使用 `AMD $494.95`、`MU $900.20`、`AVGO $383.22`、`SOXL $128.15` 等高风险行情锚，并据此组织半导体杠杆 ETF / 个股持仓分析。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 13:31 CST heartbeat `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` 用户可见 preview 使用 `SK Hynix（000660.KS）` 最新价 `₩1,599,000` 与单日跌幅 `-11.95%`，同段又写“日内最大跌幅一度触及 -6.0%，随后继续扩大至约 -11.9%”，数值口径仍缺少 sanity check。
+- 本轮判断
+  - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。

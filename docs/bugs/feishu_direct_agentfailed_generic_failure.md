@@ -15,6 +15,11 @@
   - `2026-07-28T09:35:59.446539+08:00` 用户继续追问 `Moonshot AI 商业模式和商业价值`。
   - `2026-07-28T09:36:46.837926+08:00` assistant final 只返回 `抱歉，这次处理失败了。请稍后再试。`。
   - 同条 assistant `metadata_json` 标记 `error_kind=AgentFailed`、`run_failed=true`。
+- 2026-07-28 10:01-14:02 CST 复核继续确认同类可见失败：
+  - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+  - `2026-07-28T10:30:34.750477+08:00` 用户问 `GLW应该现在加仓？还是等财报出来，结果分别是怎样的，股票怎么动？`
+  - `2026-07-28T10:33:15.769625+08:00` assistant final 只返回 `抱歉，这次处理失败了。请稍后再试。`，同条 `metadata_json` 标记 `error_kind=AgentFailed`、`run_failed=true`。
+  - 用户 10:35 重试后又触发 `feishu_direct_partial_reply_before_tool_completion.md` 记录的原始 `<function_calls>` 外泄；本单只记录首次 `AgentFailed` 通用失败表现，不重复登记 raw tool final。
 - 本轮对照：
   - 同窗按真实 `timestamp` 有 33 条 user、20 条 assistant、8 条 system compact。
   - 最近 assistant 到 `2026-07-28T10:01:08.570449+08:00`，且普通 scheduler / Feishu direct 有多条正常收口样本。

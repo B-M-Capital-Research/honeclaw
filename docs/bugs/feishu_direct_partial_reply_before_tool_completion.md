@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 16:12 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
@@ -26,6 +26,21 @@
   - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
   - 本轮不是单纯表达质量问题：用户明确要求批量补建公司画像，但系统把工具轨迹和不完整错误当成最终回复，任务完成情况不可判定，影响直聊工作流正确性。
   - 严重等级维持 `P2`：它会导致用户无法确认画像维护任务是否完成，但当前证据没有显示跨用户错投、全渠道不可用或数据破坏，因此不升为 `P1`。
+
+## 2026-07-28 运行态复发证据
+
+- 本轮巡检确认该缺陷在最近四小时真实 Feishu direct 会话中复发，状态从代码级 `Fixed` 回退为 `New`。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 巡检窗口：2026-07-28 10:01-14:02 CST。
+  - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+  - `ordinal=15` / `2026-07-28T10:35:05.966249+08:00`：用户重试同一问题，要求判断 `GLW` 现在加仓还是等财报后，并分别分析财报结果对应股价走势。
+  - `ordinal=16` / `2026-07-28T10:35:43.598694+08:00`：assistant final 只输出 `正在核验 GLW 实体与当前行情`，随后把 `<function_calls>`、`<invoke name="data_fetch">`、`<invoke name="web_search">` 和 `<absolute-path>` 占位式协议片段作为正文落库。
+  - 同条 assistant `metadata_json` 仍记录 `assistant.tool_calls`，说明工具调用应保留在元数据 / 执行层，而不应进入用户可见 final。
+- 结论：
+  - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
+  - 本轮不是单纯文案不佳：用户明确要求 GLW 加仓与财报情景分析，但系统把工具调用协议和核验过渡句当作最终回复，业务答案完全缺失。
+  - 严重等级维持 `P2`：问题会导致 Feishu direct 分析任务不可用并暴露内部工具协议；但本窗只有单会话复发，同窗其它 direct / scheduler 可正常收口，未见跨用户错投、全渠道不可用、数据破坏或敏感凭据泄露，因此不升为 `P1`。
+  - 无活跃 P1，不创建 GitHub Issue。
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
     - `2026-04-22T22:43:47.623958+08:00` 用户提问：`分析LRCX公司，基本面，护城河，财务，估值，及最新的一些情况`
