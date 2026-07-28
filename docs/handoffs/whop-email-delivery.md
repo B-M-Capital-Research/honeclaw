@@ -6,6 +6,7 @@
 - updated_at: 2026-07-28
 - owner: Codex
 - related_files:
+  - `.env.example`
   - `crates/hone-web-api/src/email_verification.rs`
   - `crates/hone-web-api/src/lib.rs`
 - related_docs:
@@ -90,10 +91,9 @@ not been restarted as part of this task.
 - This is a direct `main` source publication, not a formal release, and must
   not create a tag.
 - The ignored local `.env` does not travel with Git. The external deployer
-  must securely inject `HONE_CLOUDFLARE_ACCOUNT_ID`,
-  `HONE_CLOUDFLARE_EMAIL_API_TOKEN`, and `HONE_EMAIL_FROM`, then use the
-  external supervisor and `docs/runbooks/backend-deployment.md` for the
-  production restart.
+  must securely inject the complete Whop webhook and Cloudflare Email Sending
+  configuration defined by `.env.example`, then use the external supervisor
+  and `docs/runbooks/backend-deployment.md` for the production restart.
 - If the local token cannot be transferred through an approved secret channel,
   create a separate production token scoped only to `Email Sending: Edit`;
   never expose either token in chat or repository history.
@@ -107,9 +107,9 @@ not been restarted as part of this task.
 
 ## Next Entry Point
 
-The external deployer should pull the published `main`, inject the three email
-runtime variables, and restart the backend with the repository root as its
-working directory (or explicitly export the complete environment). Confirm
-origin health and the `Cloudflare 邮箱验证码服务已装配` startup log before using
-a real non-owner Whop buyer for `/activate/whop` → inbox code → `/me`
-production acceptance.
+The external deployer should pull the published `main`, inject the complete
+runtime configuration defined by `.env.example`, and restart the backend with
+the repository root as its working directory (or explicitly inject the same
+set through the supervisor). Confirm origin health and the
+`Cloudflare 邮箱验证码服务已装配` startup log before using a real non-owner
+Whop buyer for `/activate/whop` → inbox code → `/me` production acceptance.

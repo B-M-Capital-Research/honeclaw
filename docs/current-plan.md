@@ -19,7 +19,7 @@
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/whop-email-delivery.md`
-  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已从 `/activate/whop` 成功进入 `/me`。代码通过 `main` 直接交付，生产部署不在本机执行；当前仅剩外部部署方注入三个运行时变量、受控重启，以及真实非 owner Whop buyer 的最终生产验收
+  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已从 `/activate/whop` 成功进入 `/me`。本次 Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值统一放忽略的 `.env`。代码通过 `main` 直接交付，生产部署不在本机执行；当前仅剩取得并注入 Whop webhook secret、由外部部署方注入完整运行时配置并受控重启，以及真实非 owner Whop buyer 的最终生产验收
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

@@ -6,6 +6,7 @@
 - updated_at: 2026-07-28
 - owner: Codex
 - related_files:
+  - `.env.example`
   - `crates/hone-web-api/src/email_verification.rs`
   - `crates/hone-web-api/src/lib.rs`
   - `docs/runbooks/whop-hone-activation.md`
@@ -69,11 +70,12 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
 ## Risks / Open Questions
 
 - 生产启用仍需外部部署方在 secret manager 或 supervisor 中注入
-  `HONE_CLOUDFLARE_ACCOUNT_ID`、`HONE_CLOUDFLARE_EMAIL_API_TOKEN` 和
-  `HONE_EMAIL_FROM`，再按 `docs/runbooks/backend-deployment.md` 受控
-  重启；不得从临时 shell 直接替换生产进程。
+  `.env.example` 定义的完整 Whop webhook 与 Cloudflare Email Sending
+  必需配置，再按 `docs/runbooks/backend-deployment.md` 受控重启；不得从
+  临时 shell 直接替换生产进程。
 - 生产最终验收仍应使用真实 Whop 非 owner buyer，并从实际收件箱输入同一
   封邮件中的验证码；本地真实收件已由用户回传验证码确认。
 - 本机忽略的 `.env` 不会随 Git 推送；外部部署方必须通过安全渠道取得
-  token，或创建只含 `Email Sending: Edit` 的独立生产 token。更换
-  supervisor 工作目录或迁移主机时必须通过 secret 管理重新注入三个变量。
+  两个 secret，或创建只含 `Email Sending: Edit` 的独立生产 token。
+  更换 supervisor 工作目录或迁移主机时必须通过 secret 管理重新注入
+  `.env.example` 定义的完整配置。

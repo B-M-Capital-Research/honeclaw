@@ -27,20 +27,16 @@ Whop documents the payload and test-event workflow at
 
 ## Runtime Configuration
 
-Set the webhook secret only in the backend runtime environment:
+The single source of truth for this integration's runtime variable names,
+required/optional status, and canonical non-secret IDs is
+[`.env.example`](../../.env.example). Copy it to the repository-root `.env`
+and fill the required secret values. The backend loads `KEY=value` entries
+from that file when its working directory is the repository root; do not add
+the shell-only `export` prefix.
 
-```bash
-export HONE_WHOP_WEBHOOK_SECRET='whsec_...'
-```
-
-The canonical IDs are compiled as safe defaults. They may be overridden for an
-isolated staging business:
-
-```bash
-export HONE_WHOP_COMPANY_ID='biz_...'
-export HONE_WHOP_PRODUCT_ID='prod_...'
-export HONE_WHOP_PLAN_ID='plan_...'
-```
+The canonical Whop IDs are compiled as safe defaults, but keeping them explicit
+in `.env` makes the deployed integration auditable from one file. Override them
+only for an isolated staging business.
 
 Never put the webhook secret, Whop company API key, buyer email, email code, or
 raw webhook body in committed config, screenshots, logs, or this runbook.
@@ -65,14 +61,9 @@ Cloudflare setup:
    records. Wait until the sending domain shows enabled/healthy.
 4. Create an account-scoped API token with only `Email Sending: Edit` for the
    account that owns the zone. Do not use the Global API Key.
-5. Put the following values in the backend host's ignored `.env` or process
-   supervisor environment:
-
-```text
-HONE_CLOUDFLARE_ACCOUNT_ID=<32-character account id>
-HONE_CLOUDFLARE_EMAIL_API_TOKEN=<Email Sending: Edit token>
-HONE_EMAIL_FROM=verify@hone-claw.com
-```
+5. Fill the Cloudflare Email Sending section of the repository-root ignored
+   `.env`, using [`.env.example`](../../.env.example) as the complete variable
+   checklist.
 
 These values are runtime secrets/configuration and do not travel with a Git
 push. The deployment owner must inject them through the production secret
@@ -83,8 +74,9 @@ scope. Never paste the token into a deployment command, chat, ticket, or
 repository file.
 
 The supervisor must start the backend from the repository root so the CLI can
-load the reviewed ignored `.env`, or explicitly export the complete runtime
-environment. When all three variables are missing, the email endpoint remains
+load the reviewed ignored `.env`, or inject the complete set represented by
+[`.env.example`](../../.env.example) through the supervisor environment.
+When all three Cloudflare variables are missing, the email endpoint remains
 fail-closed with `503`; a partial configuration makes startup fail rather than
 silently disabling delivery. A configured startup logs
 `Cloudflare 邮箱验证码服务已装配` without exposing credential values.
