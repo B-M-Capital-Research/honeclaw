@@ -1704,3 +1704,17 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-29 02:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-28 22:00-2026-07-29 02:01 CST。
+  - 23:03 Feishu direct `MU 与 SNDK 当前价格参考` 使用 `MU $815.40`、`SNDK $1,093.12`，并据此给出分批买入参考。
+  - 00:28 Feishu direct `SNDK 建仓价格建议` 使用 `SNDK $1,099.93`，并据此给出 `$1,050-$1,100` 建仓区间。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 22:31 `关注股重大事件心跳检测` 用户可见 JSON preview 使用 `LITE $602.30`、`SK Hynix -14.65%`、`COHR -15.29%` 等高风险行情锚。
+  - 23:00 `Monitor_Watchlist_11` 使用 `MU $803.60` 并继续进入送达正文。
+  - 00:31 同一关注股 heartbeat 使用 `SK Hynix ₩1,550,000` 与 `-14.65%`。
+- 本轮判断
+  - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前 README 已按 P0 能力治理跟踪该风险，本轮未发现需要额外创建 P1 issue 的条件。

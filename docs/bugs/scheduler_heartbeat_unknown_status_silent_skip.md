@@ -6589,3 +6589,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：部分非结构化输出被失败跳过，部分自然语言被当作 triggered / completed 送达。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 ordinary direct / scheduler 仍有多条正常收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-29 02:01 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-28 22:00-2026-07-29 02:01 CST。
+  - 同窗 heartbeat run 共 90 条：`completed/sent=32`、`execution_failed/skipped_error=2`、`noop/skipped_noop=56`。
+  - 可分类 `parse_kind` 继续漂移：`JsonNoop + skipped_noop=34`、`PlainTextTriggered + skipped_noop=12`、`PlainTextTriggered + completed/sent=32`、`PlainTextNoop + skipped_noop=7`、`JsonTriggered + skipped_noop=2`、`PlainTextSuppressed + execution_failed=1`、`JsonEmptyStatus + skipped_noop=1`。
+  - 代表样本：`run_id=49633` / `ASTS 全面心跳检测` 在 02:00 落成 `execution_failed/skipped_error`，错误为 `heartbeat 输出不是结构化 JSON，任务已标记失败`；`run_id=49634` / `TSLA 正负触发条件心跳监控` 同轮明写 `触发判断：noop` 却以 `PlainTextTriggered + completed/sent` 送达。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定，同一窗口内同时出现非结构化失败、noop 被误判为 triggered 送达、以及 JSON/noop 跳过。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 ordinary direct / scheduler 仍有多条正常收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

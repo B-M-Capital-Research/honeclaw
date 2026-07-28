@@ -901,3 +901,16 @@ New
 - 本轮判断
   - `hone_quote_time` 是内部行情字段名，不应作为用户可见口径外露；这是既有内部工具 / provider 字段外露缺陷复发。
   - 为何不影响功能链路，因此定级为 P3：消息正常生成并送达，主体仍包含可读监控内容；问题集中在文案边界和产品感。状态维持 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-29 02:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-28 22:00-2026-07-29 02:01 CST。
+  - 23:02 Feishu scheduler / direct actor `核心观察股池晚间快报` 用户可见 final 开头写出 `DataFetch` 和 `Unix timestamp` 来源口径。
+  - 00:28 Feishu direct `SNDK 建仓价格建议` 用户可见 final 写出 `来源 provider Unix 1785256070`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 23:01 `ASTS 全面心跳检测` 用户可见 preview 写出 `hone_quote_time.beijing`。
+  - 23:02 `RKLB 全面心跳检测` 用户可见 preview 写出“本轮数据工具已达调用上限”“建立公司画像”等内部执行 / 画像流程口径。
+- 本轮判断
+  - 这是既有 Feishu scheduler / direct 内部工具名、provider 字段、工具预算和画像流程口径外露的同根复发，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复多数完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
