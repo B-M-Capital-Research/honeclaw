@@ -1,9 +1,9 @@
 # P0 Experience Core Capabilities
 
 - title: P0 Experience Core Capabilities
-- status: in_progress
+- status: done
 - created_at: 2026-07-27
-- updated_at: 2026-07-27
+- updated_at: 2026-07-28
 - owner: Codex
 - related_files:
   - `crates/hone-core/src/provider_symbol.rs`
@@ -14,7 +14,7 @@
   - `packages/app/src/`
   - `tests/regression/`
 - related_docs:
-  - `docs/current-plan.md`
+  - `docs/handoffs/2026-07-28-p0-experience-core-capabilities.md`
   - `docs/current-plans/ticker-resolution-architecture.md`
   - `docs/invariants.md`
   - `docs/decisions.md`
@@ -78,5 +78,7 @@ Turn the user-supplied workbook's nineteen experience records into a small set o
 - 2026-07-27: Added a central read-after-write reconciliation contract for ambiguous `portfolio`, `cron_job`, and `notification_prefs` mutation failures. The write remains execute-once; only the corresponding actor-scoped read may run, followed by one tools-disabled same-Agent completion from observed state.
 - 2026-07-27: Shared Web Markdown rendering now preserves accidental paired-tilde spans as inert text instead of striking whole finance paragraphs. The current calendar code already binds month labels, preview payloads, overflow presentation, and mobile rendering to selected state; old screenshot-specific calendar/style patches were not added. Anonymous production smoke reached the public site and login boundary; authenticated workspace visual inspection remains unavailable without a test actor and is not being bypassed.
 - 2026-07-27: The abnormal-price bug was promoted to `P0 / In Progress`. Internal dimensional checks cover a large class of incoherent provider payloads but do not prove a provider-wide split-adjustment payload that is internally self-consistent; this limitation will remain explicit in the final workbook rather than being mislabeled solved.
-- 2026-07-27: Generated the private replacement workbook at `/Users/fengming2/Downloads/hone体验问题-状态汇总.xlsx` without committing user screenshots. It reconciles all `19` rows and `20` source images, contains status overview / issue status / capability matrix / original evidence sheets, passed a LibreOffice open-recalculate-export cycle, formula-error scan, and visual review of all `18` rendered PDF pages. SHA-256: `6b08ba7ff500718373d877cd7ed6e68d15ba65cccc995cd14efe7f9f3f792b0b`.
+- 2026-07-27: Generated the private replacement workbook outside the repository without committing user screenshots. It reconciles all `19` rows and `20` source images, contains status overview / issue status / capability matrix / original evidence sheets, passed a LibreOffice open-recalculate-export cycle, formula-error scan, and visual review of all `18` rendered PDF pages. SHA-256: `6b08ba7ff500718373d877cd7ed6e68d15ba65cccc995cd14efe7f9f3f792b0b`.
 - 2026-07-27: All repository gates passed: changed-diff check, workspace `cargo check`, full workspace Rust tests excluding Apple clients, Web `303/303` plus typecheck, Public Community Edge `45/45` plus typecheck, and every CI-safe regression. Regression contract 37 now explicitly locks the new write-once / actor-scoped read-once / timeout-fail-closed reconciliation boundary.
+- 2026-07-28: Commit `c2edceb7269476c39a3eb23efd25d14d4675aa93` was pushed to `main`, built into `target/deploy-c2edceb7`, and verified against a `500`-payload SHA-256 manifest. Two independent active-chat checks returned zero before both managed supervisors received SIGINT. Web and Feishu restarted from the exact package; ports `8077/8088`, repository-root supervisor working directories, authoritative cloud storage, PostgreSQL, R2, JSON `401` auth boundaries, public routes/security headers, two Feishu established connections, and repeated zero-active-chat checks passed.
+- 2026-07-28: The first post-restart R2 probe exposed a host-network fault: the active Clash global proxy node rejected TLS for both the old and new binaries, while Clash's direct delay test was healthy. Switching the reversible `GLOBAL` selector to `DIRECT` restored R2 immediately; this establishes an environment incident rather than a code regression and is recorded as an operational follow-up.

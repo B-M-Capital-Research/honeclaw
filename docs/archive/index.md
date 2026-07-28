@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
+
+## 2026-07-28
+
+### P0 Experience Core Capabilities
+
+- Status: done
+- Date: 2026-07-28
+- Plan: `docs/archive/plans/p0-experience-core-capabilities.md`
+- Handoff: `docs/handoffs/2026-07-28-p0-experience-core-capabilities.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-27-01-make-evidence-admission-and-mutation-completion-capability-level`
+- Related PRs / commits: `c2edceb7269476c39a3eb23efd25d14d4675aa93`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, `tests/regression/ci/test_finance_automation_contracts.sh`
+- Current conclusion: nineteen workbook records were reduced to reusable evidence, mutation-completion, channel-projection, session/task, and responsive-workspace capabilities. Three were solved in this task, four prior systemic fixes were reverified, six are covered by current contracts, one remains an explicit provider-wide residual risk, four brittle one-off proposals were deferred, and one non-product request needs no action. Exact `c2edceb7` is live for Web and Feishu with authoritative PostgreSQL/R2 storage, healthy auth/public routes, established Feishu connectivity, and zero active chats.
+- Next entry point: `docs/handoffs/2026-07-28-p0-experience-core-capabilities.md`
 
 ## 2026-07-27
 
