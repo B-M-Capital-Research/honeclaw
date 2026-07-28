@@ -9,6 +9,7 @@
   - `.env.example`
   - `crates/hone-web-api/src/email_verification.rs`
   - `crates/hone-web-api/src/lib.rs`
+  - `crates/hone-web-api/src/routes/whop.rs`
 - related_docs:
   - `docs/current-plans/whop-email-delivery.md`
   - `docs/runbooks/whop-hone-activation.md`
@@ -37,6 +38,9 @@ not been restarted as part of this task.
 - Added all-or-nothing runtime configuration through
   `HONE_CLOUDFLARE_ACCOUNT_ID`, `HONE_CLOUDFLARE_EMAIL_API_TOKEN`, and
   `HONE_EMAIL_FROM`.
+- Updated Whop Standard Webhooks verification to use the complete current
+  `ws_...` secret as the HMAC key and intentionally reject legacy
+  `whsec_...` credentials.
 - Injected the sender during Web API startup while preserving the existing
   fail-closed unconfigured path.
 - Updated the repository map, activation runbook, and long-term provider

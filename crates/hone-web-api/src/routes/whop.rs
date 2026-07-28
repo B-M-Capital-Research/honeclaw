@@ -192,13 +192,14 @@ fn verify_standard_webhook(headers: &HeaderMap, body: &[u8], secret: &str) -> Re
     if now.abs_diff(timestamp_secs) > WEBHOOK_TIMESTAMP_TOLERANCE_SECS as u64 {
         return Err("Whop webhook timestamp 已过期".to_string());
     }
-    let encoded_secret = secret
-        .trim()
-        .strip_prefix("whsec_")
+    let secret = secret.trim();
+    let secret_value = secret
+        .strip_prefix("ws_")
         .ok_or_else(|| "Whop webhook secret 格式不合法".to_string())?;
-    let secret_bytes =
-        decode_base64(encoded_secret).map_err(|_| "Whop webhook secret 格式不合法".to_string())?;
-    let mut mac = HmacSha256::new_from_slice(&secret_bytes)
+    if secret_value.is_empty() {
+        return Err("Whop webhook secret 格式不合法".to_string());
+    }
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
         .map_err(|_| "Whop webhook secret 长度不合法".to_string())?;
     mac.update(webhook_id.as_bytes());
     mac.update(b".");
@@ -277,10 +278,10 @@ mod tests {
     use hmac::Mac;
     use serde_json::json;
 
-    fn signed_headers(body: &[u8], secret_bytes: &[u8]) -> (HeaderMap, String) {
+    fn signed_headers(body: &[u8], secret: &str) -> HeaderMap {
         let webhook_id = "msg_test123";
         let timestamp = chrono::Utc::now().timestamp().to_string();
-        let mut mac = HmacSha256::new_from_slice(secret_bytes).expect("hmac");
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac");
         mac.update(webhook_id.as_bytes());
         mac.update(b".");
         mac.update(timestamp.as_bytes());
@@ -297,16 +298,24 @@ mod tests {
             "webhook-signature",
             HeaderValue::from_str(&format!("v1,{signature}")).expect("signature"),
         );
-        (headers, format!("whsec_{}", STANDARD.encode(secret_bytes)))
+        headers
     }
 
     #[test]
-    fn standard_webhook_signature_accepts_raw_body_and_rejects_tampering() {
+    fn standard_webhook_signature_accepts_ws_secret_and_rejects_legacy_or_tampered_input() {
         let body = br#"{"type":"membership.activated"}"#;
-        let secret_bytes = b"0123456789abcdef0123456789abcdef";
-        let (headers, secret) = signed_headers(body, secret_bytes);
-        verify_standard_webhook(&headers, body, &secret).expect("valid signature");
+        let secret = format!("ws_{}", "test-only-not-a-secret-".repeat(3));
+        let headers = signed_headers(body, &secret);
+        verify_standard_webhook(&headers, body, &secret).expect("valid current Whop signature");
         assert!(verify_standard_webhook(&headers, b"{}", &secret).is_err());
+        assert!(
+            verify_standard_webhook(
+                &headers,
+                body,
+                "whsec_MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+            )
+            .is_err()
+        );
     }
 
     #[test]

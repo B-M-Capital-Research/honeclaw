@@ -9,6 +9,7 @@
   - `.env.example`
   - `crates/hone-web-api/src/email_verification.rs`
   - `crates/hone-web-api/src/lib.rs`
+  - `crates/hone-web-api/src/routes/whop.rs`
   - `docs/runbooks/whop-hone-activation.md`
 - related_docs:
   - `docs/handoffs/whop-email-delivery.md`
@@ -57,6 +58,8 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
 - 用户在隔离验收结束后回传了实际收到的验证码，确认真实收件箱已收到
   HONE 邮件；验证码本身未写入代码、文档或日志。由于隔离运行时已清理，
   该验证码未被回放到已经销毁的 challenge。
+- Whop 当前签名 secret 使用原始 `ws_...` 格式；verifier 已按当前格式使用
+  完整 secret 作为 HMAC key，并明确拒绝旧 `whsec_...` 格式。
 - 代码交付边界为直接推送 `main`，不创建 release tag；生产部署、密钥注入
   和后端重启由外部部署方执行，不在本机临时 shell 中操作。
 

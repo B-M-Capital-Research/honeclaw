@@ -120,12 +120,14 @@ In Whop Developer → Webhooks:
 1. Create a company webhook at the exact public endpoint above.
 2. Select API version `v1`.
 3. Select the three membership events listed above.
-4. Copy the returned `whsec_...` value into the backend secret environment.
+4. Copy the returned raw `ws_...` value into the backend secret environment.
 5. Restart the backend and send a Whop test event.
 
 The endpoint verifies the Standard Webhooks signature over the untouched raw
-body, checks a five-minute delivery window, requires matching header/body event
-IDs, and then checks company, product, and plan before writing anything.
+body using the complete `ws_...` value as the HMAC key, checks a five-minute
+delivery window, requires matching header/body event IDs, and then checks
+company, product, and plan before writing anything. Legacy `whsec_...`
+credentials are intentionally rejected.
 
 ## Acceptance Matrix
 
