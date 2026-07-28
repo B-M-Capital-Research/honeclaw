@@ -8,6 +8,13 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-28 18:01-22:03 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+      - `2026-07-28T20:45:00.437050+08:00` Feishu scheduler `美股盘后AI及高景气产业链推演` 触发，任务要求生成美股盘前全产业链景气报告。
+      - `2026-07-28T20:48:35.403436+08:00` assistant final 仅返回“抱歉，这次处理失败了。请稍后再试。”；随后追加 `scheduler_failure=true` 的“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”
+    - `cron_job_runs.run_id=49512` 记录 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=skipped_error`、`failure_kind=internal_error_suppressed`。
+    - 本轮没有可用近窗 runtime `.log` 进一步确认是否为 `max_iterations_exceeded`，但用户可见形态、普通 scheduler 复杂投研任务、已有失败元数据和“已有任务主体被通用失败吞掉”的表现与本单恢复缺口一致；先补入同根运行态证据，不新建重复缺陷。
+    - 严重等级维持 `P2`：它阻断单轮普通 scheduler 正文生成，但同窗 direct / scheduler 仍有多条正常 assistant 收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`。
   - `2026-07-24 07:01-11:02 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
     - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
       - `2026-07-24T10:30:02.309769+08:00` Feishu scheduler `SemiAnalysis 新文章跟踪` 触发，任务要求检查 SemiAnalysis 是否有新发文章并总结标题、核心事实、产业链和投资含义。

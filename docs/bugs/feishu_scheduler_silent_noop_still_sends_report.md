@@ -22,6 +22,16 @@ New
 
 ## 最新进展
 
+- 2026-07-28 18:01-22:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat run 共 80 条：`completed/sent=20`、`noop/skipped_noop=55`、`execution_failed/skipped_error=5`。
+    - 19:00 CST `德业股份加仓信号心跳检测` `run_id=49459` 明确写 `结论：NOOP——大跌 -5.69% 但量能未显著放大`，仍 `completed/sent/delivered=1`。
+    - 21:30 CST 同 job `run_id=49534` 再次写 `NOOP`，仍送达；22:00 `run_id=49547` 写 `结论：NOOP——今日续跌 -5.69%...无新催化`，仍 `completed/sent/delivered=1`。
+    - 22:00 CST `珠海冠宇加仓信号心跳检测` `run_id=49549` 写 `结论：NOOP——价格小幅收跌（-0.14%），量能持续萎缩（均量 40%），无新催化`，仍 `completed/sent/delivered=1`。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化或无触发增量，出站层仍将正文送达。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-28 14:01-18:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 81 条：`completed/sent=22`、`noop/skipped_noop=47`、`execution_failed/skipped_error=12`。

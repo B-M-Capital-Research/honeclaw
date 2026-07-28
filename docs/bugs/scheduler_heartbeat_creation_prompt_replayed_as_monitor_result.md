@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-28 18:01-22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 19:00 CST `ASTS 全面心跳检测` `run_id=49460` 送达宏观 AI 资本开支 / 芯片价值链分析，`response_preview` 明确“不涉及单一证券报价”，与 ASTS 心跳监控主体不匹配。
+    - 19:31 / 21:01 CST `TSLA 正负触发条件心跳监控` `run_id=49473/49513` 继续串成 DeepSeek / NVDA 估值叙事，并外露 NVDA 行情口径，不是 TSLA 正负触发条件监控结果。
+    - 22:00 CST `ASTS 全面心跳检测` `run_id=49543` 送达 DeepSeek 可投资机会分析；22:00 CST `RKLB 全面心跳检测` `run_id=49548` 又串成 ASTX / SOFI 换仓建议与持仓表。
+    - 22:00 CST `AAOI 全面心跳检测` 的 duplicate suppression 预览仍把“你的数据处理方式如下”“portfolio / cron_job / 心跳任务”等产品说明当作监控候选。
+  - 判断：
+    - 最新证据仍是 heartbeat 执行期把历史对话、任务创建 / 产品说明或其它标的分析当作当前监控结果；与既有执行意图污染同根，不新建重复缺陷。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-28 14:01-18:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 15:00 CST `AAOI 全面心跳检测` `run_id=49383` 已作为 AAOI heartbeat job 周期触发，preview 却直接回答“为什么主要是心跳任务在推送”，展开事件引擎和 Cron Job 机制说明，而不是执行 AAOI 监控判断。

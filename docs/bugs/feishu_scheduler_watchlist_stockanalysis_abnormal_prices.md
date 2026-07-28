@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 2026-07-28 18:01-22:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `In Progress`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 22:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $809.47`、`LITE $622.74`、`COHR $245.53` 等高风险数量级价格进入触发判断；同窗多条 preview 仍依赖旧快照或工具上限后的残缺价格。
+    - 21:30 / 22:00 CST `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=49535/49542` 使用 `MU -6.64%`、`LITE $622.74 / previous_close $711.96 / -12.53%` 等强数值锚生成触发 JSON 并 `completed/sent/delivered=1`。
+    - 22:00 CST `TSLA 正负触发条件心跳监控` `run_id=49545` 使用 `S&P 500 7394.52`、`NASDAQ 24629.90`、50 日均线 `7471 / 26480` 等高风险指数锚进入三大指数下跌结论。
+    - 22:00 CST `RKLB 全面心跳检测` `run_id=49548` 在 quote 工具调用受限时引用 `ASTS $58.29 / SOFI $16.88` 旧快照并套到 ASTX 持仓市值讨论。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口，并伴随 heartbeat 任务主体串线。它会污染 direct、scheduler 和 heartbeat 金融判断质量；当前主投递链路未整体阻断，因此仍未形成新的 P1 issue。头部状态保持 `P0 / In Progress`，本轮仅补充运行态证据。
+
 - 2026-07-28 14:01-18:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `In Progress`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 15:31 CST `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=49390` 继续用 `SK Hynix ₩1,550,000`、`previous_close ₩1,816,000` 与 `-14.65%` 等强数值锚生成触发 JSON，并 `completed/sent/delivered=1`。

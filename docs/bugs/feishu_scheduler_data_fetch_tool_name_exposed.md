@@ -22,6 +22,14 @@ New
 
 ## 最新进展
 
+- 2026-07-28 18:01-22:03 CST 运行态继续复发，状态维持 `New`：
+  - 18:01-22:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 42 条 user / 31 条 assistant / 8 条 system compact；近期 Feishu direct / scheduler 会话多数有 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是用户可见 provider / 工具字段口径。
+  - 20:00 CST Feishu direct 换仓分析正常收口，但 final 开头写出 `provider timestamp 1785182400`，把内部 provider 字段式时间戳作为用户态行情口径。
+  - 20:32 CST Feishu scheduler `老王说事与巴芒投资美股财报季个股判断` 正常收口，但写出 `来源 provider timestamp`。
+  - 21:30 CST `美股开盘道氏理论点位简报` 写出 `本轮同代码 DataFetch quote，hone_quote_time.beijing = 2026-07-28 21:30`；21:35 `科技核心股池 · 晚间击球区快报` 写 `本轮 DataFetch 最新可得报价`；21:45 `每日美股大盘风控简报` 写 `DataFetch quote`。
+  - 这些消息业务主体已完成并送达或进入出站候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-28 14:01-18:02 CST 运行态继续复发，状态维持 `New`：
   - 14:01-18:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 3 条 user / 3 条 assistant，覆盖 3 个更新 session；Feishu direct 用户问题均有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是用户可见 provider / 工具字段口径。
