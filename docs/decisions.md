@@ -621,8 +621,9 @@ Last updated: 2026-07-28
   a dedicated indexed table. Neither path stores a plaintext email code or
   full payment-card data.
 - Delivery and Discord: Email delivery is an injected
-  `EmailVerificationSender`; the default implementation is deliberately
-  unconfigured and fails closed. Whop's native Discord app remains the sole
+  `EmailVerificationSender`; `D-2026-07-28-01` selects Cloudflare Email
+  Sending while preserving the deliberately unconfigured fail-closed default.
+  Whop's native Discord app remains the sole
   owner of Discord account linking and `VIP 付费用户` role grant/removal under
   D-2026-07-26-04; HONE's webhook owns application access only.
 - Follow-up: Before production, configure a transactional email provider and
@@ -669,3 +670,48 @@ Last updated: 2026-07-28
 - Projection decision: Content semantics stay canonical while channels remain native projections. Feishu keeps native JSON 2.0 tables and Web keeps the shared Markdown renderer. The renderer treats accidental GFM deletion spans as inert text so paired tildes cannot strike an entire finance paragraph; this does not change the established prompt or answer section contract.
 - Product triage boundary: A workbook row may be `no_action`, `verified_existing`, `resolved_systemically`, or `deferred_no_safe_general_solution`. Non-product assets and suggestions whose only implementation is a risky single-point patch are not mandatory code changes. The final workbook must preserve all source rows and give each one a status, capability domain, rationale, evidence, and production state, plus an overall summary.
 - Verification and rollout: Focused tests cover field-level quote quarantine, target-price dimensional warnings, partial earnings coverage, route-floor admission, execute-once mutation plus read reconciliation, and safe Markdown rendering. Full Rust/Web/Edge/regression gates and the visually inspected replacement workbook passed on 2026-07-27. Commit `c2edceb7` was pushed and first assembled into a verified immutable package. Concurrent runtime changes required a second exact build; the resulting supervisor restart exposed that cloud-backed `/api/meta` plus proxy-eligible loopback requests could kill an otherwise healthy child after the readiness deadline. Commits `e07eadb3` and `f5663107` moved readiness to a lightweight local endpoint and force loopback supervisor clients to bypass proxies. Exact `f5663107` is now live as a verified `502`-payload package and remained healthy beyond the old self-exit window. Process paths and working directories, ports `8077/8088`, authoritative PostgreSQL/R2 storage, zero local durable dependencies, local/origin/public JSON `401` auth boundaries, public routes/security headers, live Feishu connectivity, and repeated zero active chats passed. A separate transient R2 failure reproduced with both old and new binaries and was traced to the host's failed Clash global node; selecting Clash `DIRECT` restored storage health immediately.
+
+## D-2026-07-28-01 Use Cloudflare Email Sending For Purchase-Email Verification
+
+- Status: Accepted and externally configured. On 2026-07-28 the owner approved
+  Workers Paid at `$5/month + usage`; Billing shows the subscription active,
+  `hone-claw.com` Email Sending is enabled with configured DNS, and an
+  account-scoped `Email Sending: Edit` token is installed in the ignored local
+  runtime environment. Two controlled sends are `Delivered`, and the owner
+  confirmed real inbox receipt by returning a verification code without that
+  value entering repository artifacts. Source is published directly through
+  `main`; production enablement still requires the external deployment owner
+  to inject the runtime secrets and perform an operator-controlled restart.
+- Context: HONE already uses Cloudflare DNS and the public site, while the Whop
+  international activation flow requires arbitrary-recipient transactional
+  email. Cloudflare Email Service now exposes a native REST API, so adding a
+  separate Resend/SendGrid account or moving the backend into a Worker is not
+  required. The logged-in dashboard must still confirm that the existing
+  account has Email Sending entitlement; any paid-plan upgrade remains an
+  owner decision.
+- Decision: The concrete `EmailVerificationSender` calls Cloudflare's
+  structured REST endpoint from the Rust backend. It uses one
+  account-scoped token with only `Email Sending: Edit`, an onboarded
+  `hone-claw.com` sender address, and the existing bounded `reqwest` client.
+  SMTP and a Worker forwarding hop are excluded because neither improves the
+  trust boundary for this backend and both add another runtime dependency.
+- Configuration boundary: `HONE_CLOUDFLARE_ACCOUNT_ID`,
+  `HONE_CLOUDFLARE_EMAIL_API_TOKEN`, and `HONE_EMAIL_FROM` are runtime-only
+  values. All three absent preserves the existing fail-closed `503`; a partial
+  or structurally invalid configuration fails startup. No token, purchase
+  email, plaintext code, provider body, or raw API response may enter
+  committed files or logs.
+- Delivery boundary: Each call has one recipient plus plain-text and HTML
+  content. A `2xx` envelope is not sufficient by itself: Cloudflare must report
+  the recipient as delivered or queued, or return a non-empty provider message
+  ID; any permanent bounce is a failure. The message-ID path is required by the
+  live Email Sending beta response, which delivered the message while omitting
+  the delivery arrays. Provider failures expose only HTTP status and numeric
+  Cloudflare error code, never the response body.
+- Verification and rollout: Unit coverage must prove the exact endpoint,
+  bearer header, bounded payload, configuration validation, success-state
+  interpretation, and provider-body redaction using a local mock server.
+  Production acceptance additionally requires a healthy sending domain,
+  scoped-token installation, controlled backend restart, Cloudflare activity
+  evidence, real inbox receipt, code login to `/me`, and unchanged Whop
+  entitlement enforcement.
