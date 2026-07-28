@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, LazyLock},
 };
 
@@ -3206,7 +3206,10 @@ fn extract_all_ticker_hit_zones_from_source(source: &str) -> Vec<(String, String
     recovered
 }
 
-fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent) -> Vec<String> {
+fn recover_watchlist_hit_zone_pairs(
+    core: &HoneBotCore,
+    event: &SchedulerEvent,
+) -> Vec<(String, String)> {
     if !scheduled_prompt_needs_stable_local_context(event) {
         return Vec::new();
     }
@@ -3221,7 +3224,10 @@ fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent
         return Vec::new();
     };
 
-    let mut sources = Vec::new();
+    let mut sources: Vec<String> = Vec::new();
+    if !event.task_prompt.trim().is_empty() {
+        sources.push(event.task_prompt.clone());
+    }
     if let Some(message) = hone_memory::latest_compact_summary(&session.messages) {
         let text = hone_memory::session_message_text(message);
         if !text.trim().is_empty() {
@@ -3252,9 +3258,107 @@ fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent
         }
     }
     recovered
+}
+
+fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent) -> Vec<String> {
+    recover_watchlist_hit_zone_pairs(core, event)
         .into_iter()
         .map(|(ticker, zone)| format!("- {ticker}: {zone}"))
         .collect()
+}
+
+fn parse_watchlist_hit_zone_bounds(zone: &str) -> Option<(f64, f64)> {
+    let values = regex::Regex::new(r"\$?\s*(\d[\d,]*(?:\.\d+)?)")
+        .expect("valid watchlist hit-zone numeric regex")
+        .captures_iter(zone)
+        .filter_map(|captures| {
+            captures
+                .get(1)
+                .map(|matched| matched.as_str().replace(',', ""))
+        })
+        .filter_map(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .collect::<Vec<_>>();
+    if values.len() < 2 {
+        return None;
+    }
+    let lower = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let upper = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (lower.is_finite() && upper.is_finite() && lower <= upper).then_some((lower, upper))
+}
+
+fn watchlist_price_anchor_guard_zones(
+    core: &HoneBotCore,
+    event: &SchedulerEvent,
+) -> BTreeMap<String, (String, f64, f64)> {
+    let mut zones = BTreeMap::new();
+    for (ticker, zone) in recover_watchlist_hit_zone_pairs(core, event) {
+        let Some((lower, upper)) = parse_watchlist_hit_zone_bounds(&zone) else {
+            continue;
+        };
+        zones.entry(ticker).or_insert((zone, lower, upper));
+    }
+    zones
+}
+
+fn detect_unstable_watchlist_price_anchor(
+    text: &str,
+    zones: &BTreeMap<String, (String, f64, f64)>,
+) -> Option<(String, f64, String, f64, f64)> {
+    if zones.is_empty() {
+        return None;
+    }
+    let price_re = regex::Regex::new(
+        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+    )
+    .expect("valid watchlist price anchor regex");
+    for captures in price_re.captures_iter(text) {
+        let Some(ticker) = captures.name("ticker").map(|matched| matched.as_str()) else {
+            continue;
+        };
+        let Some((zone, lower, upper)) = zones.get(ticker) else {
+            continue;
+        };
+        let Some(price) = captures
+            .name("price")
+            .map(|matched| matched.as_str().replace(',', ""))
+            .and_then(|value| value.parse::<f64>().ok())
+        else {
+            continue;
+        };
+        if price > upper * 3.0 || price * 3.0 < *lower {
+            return Some((ticker.to_string(), price, zone.clone(), *lower, *upper));
+        }
+    }
+    None
+}
+
+fn unstable_watchlist_price_failure_message(event: &SchedulerEvent) -> String {
+    if event.heartbeat {
+        "本轮心跳检查命中了数量级异常的价格锚，已跳过精确价格提醒，等待下一轮重新核验。".to_string()
+    } else {
+        "本轮定时任务未能完成：观察池行情出现数量级异常，系统已跳过精确价格版本，并将在下一次触发时重试。"
+            .to_string()
+    }
+}
+
+fn unstable_watchlist_price_metadata(
+    ticker: &str,
+    price: f64,
+    zone: &str,
+    lower: f64,
+    upper: f64,
+    original: &str,
+) -> Value {
+    json!({
+        "failure_kind": "watchlist_price_anchor_unstable",
+        "ticker": ticker,
+        "observed_price": price,
+        "zone": zone,
+        "zone_lower": lower,
+        "zone_upper": upper,
+        "suppressed_preview": truncate_for_log(original.trim(), 200),
+    })
 }
 
 fn build_scheduled_prompt_with_recovered_local_context(
@@ -3429,6 +3533,7 @@ pub async fn execute_scheduler_event_with_storage(
     mut run_options: AgentRunOptions,
     storage: &CronJobStorage,
 ) -> ScheduledTaskExecution {
+    let watchlist_guard_zones = watchlist_price_anchor_guard_zones(&core, event);
     if !scheduler_event_is_active(storage, event) {
         tracing::info!(
             job_id = %event.job_id,
@@ -3552,6 +3657,34 @@ pub async fn execute_scheduler_event_with_storage(
                     session_id: Some(session_id),
                 }
             } else {
+                if let Some((ticker, price, zone, lower, upper)) =
+                    detect_unstable_watchlist_price_anchor(&sanitized, &watchlist_guard_zones)
+                {
+                    let suppressed_preview = truncate_for_log(sanitized.trim(), 200);
+                    tracing::warn!(
+                        "[SchedulerDiag] unstable_watchlist_price_anchor job_id={} job={} ticker={} price={} zone=\"{}\" preview=\"{}\"",
+                        event.job_id,
+                        event.job_name,
+                        ticker,
+                        price,
+                        zone,
+                        suppressed_preview.replace('\n', "\\n"),
+                    );
+                    rollback_skipped_scheduler_assistant_turn(
+                        &core.session_storage,
+                        &session_id,
+                        &sanitized,
+                    );
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: String::new(),
+                        error: Some(unstable_watchlist_price_failure_message(event)),
+                        metadata: unstable_watchlist_price_metadata(
+                            &ticker, price, &zone, lower, upper, &sanitized,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
                 if let Some(guarded_content) =
                     guard_commodity_causality_for_event(&sanitized, event)
                 {
@@ -3603,6 +3736,27 @@ pub async fn execute_scheduler_event_with_storage(
                         metadata: json!({
                             "recovered_from_failure_kind": suppressed_failure_kind,
                         }),
+                        session_id: Some(session_id),
+                    };
+                }
+                if let Some((ticker, price, zone, lower, upper)) =
+                    detect_unstable_watchlist_price_anchor(
+                        &recovered_content,
+                        &watchlist_guard_zones,
+                    )
+                {
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: String::new(),
+                        error: Some(unstable_watchlist_price_failure_message(event)),
+                        metadata: unstable_watchlist_price_metadata(
+                            &ticker,
+                            price,
+                            &zone,
+                            lower,
+                            upper,
+                            &recovered_content,
+                        ),
                         session_id: Some(session_id),
                     };
                 }
@@ -3773,6 +3927,37 @@ pub async fn execute_scheduler_event_with_storage(
                         Value::String(truncate_for_log(execution.content.trim(), 200)),
                     );
                 }
+            }
+            if execution.should_deliver
+                && let Some((ticker, price, zone, lower, upper)) =
+                    detect_unstable_watchlist_price_anchor(
+                        &execution.content,
+                        &watchlist_guard_zones,
+                    )
+            {
+                tracing::warn!(
+                    "[HeartbeatDiag] unstable_watchlist_price_anchor job_id={} job={} target={} ticker={} price={} zone=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    ticker,
+                    price,
+                    zone,
+                );
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: unstable_watchlist_price_metadata(
+                        &ticker,
+                        price,
+                        &zone,
+                        lower,
+                        upper,
+                        &execution.content,
+                    ),
+                    session_id: None,
+                };
             }
             if execution.should_deliver
                 && let Some(matched_preview) = heartbeat_duplicate_preview_match(
@@ -3964,15 +4149,17 @@ mod tests {
         HeartbeatExecutionProfile, HeartbeatOutcome, HeartbeatParseKind, HeartbeatRecoveryReason,
         SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE, ScheduledTaskExecution,
         build_heartbeat_recovery_prompt, build_scheduled_prompt,
-        build_scheduled_prompt_with_recovered_local_context, execute_scheduler_event,
-        guard_commodity_causality_for_event, guard_direct_trade_instruction_for_event,
-        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
-        heartbeat_execution_from_content, heartbeat_execution_from_content_at,
-        heartbeat_execution_from_content_at_beijing, heartbeat_execution_from_runner_error,
-        heartbeat_max_tool_calls, heartbeat_recovery_reason, heartbeat_recovery_reason_label,
-        heartbeat_runner_selection, heartbeat_tool_call_limits_for_profile,
-        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
-        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        build_scheduled_prompt_with_recovered_local_context,
+        detect_unstable_watchlist_price_anchor, execute_scheduler_event,
+        extract_all_ticker_hit_zones_from_source, guard_commodity_causality_for_event,
+        guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
+        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
+        heartbeat_execution_from_content_at, heartbeat_execution_from_content_at_beijing,
+        heartbeat_execution_from_runner_error, heartbeat_max_tool_calls, heartbeat_recovery_reason,
+        heartbeat_recovery_reason_label, heartbeat_runner_selection,
+        heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
+        is_empty_success_fallback, is_stale_market_data_success_fallback, load_actor_quiet_hours,
+        parse_watchlist_hit_zone_bounds, persist_suppressed_scheduler_failure_turn,
         rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
         scheduler_suppressed_failure_kind,
     };
@@ -3999,6 +4186,19 @@ mod tests {
             execution.metadata["near_threshold_suppressed"].as_bool(),
             Some(true)
         );
+    }
+
+    fn watchlist_guard_zones_from_source(
+        source: &str,
+    ) -> std::collections::BTreeMap<String, (String, f64, f64)> {
+        let mut zones = std::collections::BTreeMap::new();
+        for (ticker, zone) in extract_all_ticker_hit_zones_from_source(source) {
+            let Some((lower, upper)) = parse_watchlist_hit_zone_bounds(&zone) else {
+                continue;
+            };
+            zones.insert(ticker, (zone, lower, upper));
+        }
+        zones
     }
 
     #[test]
@@ -5010,6 +5210,35 @@ mod tests {
             1
         );
         assert_eq!(sanitized.matches("TEM：订单和现金流仍是主线").count(), 1);
+    }
+
+    #[test]
+    fn watchlist_price_anchor_guard_detects_quantity_mismatch_against_hit_zone() {
+        let zones = watchlist_guard_zones_from_source(
+            "观察池击球区：MU $90-$115；SNDK $42-$55；LITE $52-$68。",
+        );
+        let detected = detect_unstable_watchlist_price_anchor(
+            "MU 当前价格 $920.95，SNDK 当前价格 $1436.56，LITE 当前价格 $62.30。",
+            &zones,
+        )
+        .expect("quantity mismatch should be detected");
+        assert_eq!(detected.0, "MU");
+        assert!(detected.1 > 900.0);
+        assert_eq!(detected.2, "$90-$115");
+    }
+
+    #[test]
+    fn watchlist_price_anchor_guard_allows_in_range_prices() {
+        let zones = watchlist_guard_zones_from_source(
+            "观察池击球区：MU $90-$115；SNDK $42-$55；LITE $52-$68。",
+        );
+        assert!(
+            detect_unstable_watchlist_price_anchor(
+                "MU 当前价格 $102.40，SNDK 当前价格 $49.80，LITE 当前价格 $62.30。",
+                &zones,
+            )
+            .is_none()
+        );
     }
 
     #[test]

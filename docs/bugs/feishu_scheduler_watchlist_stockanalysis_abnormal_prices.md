@@ -22,6 +22,12 @@
 
 ## 最新进展
 
+- 2026-07-28 `bug-2` 代码级止血：
+  - `crates/hone-channels/src/scheduler.rs` 新增 watchlist 价格锚 fail-closed 守卫：当 scheduler / heartbeat 输出中的精确价格相对当前任务或已恢复本地击球区出现明显数量级错位时，不再继续外发该版本。
+  - 普通 scheduler 命中该守卫后，会改为用户可见失败提示“观察池行情出现数量级异常，已跳过精确价格版本”；heartbeat 命中后直接 suppress，不再把异常价格提醒送达用户。
+  - 新增回归 `watchlist_price_anchor_guard_detects_quantity_mismatch_against_hit_zone`、`watchlist_price_anchor_guard_allows_in_range_prices`；`cargo test -p hone-channels ...` 两条定向单测和 `cargo check -p hone-channels --tests` 通过。
+  - 本次止血只覆盖 typed scheduler / heartbeat 出站路径；interactive direct 的同根异常价格锚仍可能存在，因此本单状态继续保持 `P0 / In Progress`，待后续把 direct 证据准入一起收敛后再评估关闭。
+
 - 2026-07-28 18:01-22:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `In Progress`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 22:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $809.47`、`LITE $622.74`、`COHR $245.53` 等高风险数量级价格进入触发判断；同窗多条 preview 仍依赖旧快照或工具上限后的残缺价格。

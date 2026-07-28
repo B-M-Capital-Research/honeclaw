@@ -80,3 +80,22 @@ The private replacement workbook remains outside the repository. It preserves al
 ## Next Entry Point
 
 For finance evidence anomalies, start with `docs/bugs/feishu_scheduler_watchlist_stockanalysis_abnormal_prices.md` and retain the raw provider payload plus field-level usability metadata. For new experience feedback, classify it against the five capability domains and the no-one-off-patch boundary in `docs/decisions.md#d-2026-07-27-01-make-evidence-admission-and-mutation-completion-capability-level` before changing code.
+
+## 2026-07-28 Follow-up: Watchlist Price Anchor Fail-Closed
+
+- status: done
+- owner: Codex bug-2 automation
+- related_files:
+  - `crates/hone-channels/src/scheduler.rs`
+  - `docs/bugs/feishu_scheduler_watchlist_stockanalysis_abnormal_prices.md`
+  - `docs/bugs/README.md`
+- verification:
+  - `cargo test -p hone-channels watchlist_price_anchor_guard_detects_quantity_mismatch_against_hit_zone -- --nocapture`
+  - `cargo test -p hone-channels watchlist_price_anchor_guard_allows_in_range_prices -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- risks:
+  - This follow-up only hardens typed scheduler / heartbeat delivery.
+  - Interactive direct finance answers can still reuse the same bad price family until the direct evidence-admission path gets an equivalent guard.
+
+- Added a runtime fail-closed guard for watchlist tasks: if a delivered scheduler / heartbeat price is off by an obvious order of magnitude versus the task or restored local hit zone, scheduler now degrades to a failure message and heartbeat suppresses delivery.
+- Left the P0 bug open on purpose. The change blocks the most dangerous scheduled push path, but it does not yet close the direct-answer path that still surfaced in the latest bug evidence.
