@@ -641,3 +641,14 @@
 - 本轮判断
   - 最新样本仍是 scheduler / heartbeat 任务正文、监管缩写或公司名候选解析被实体 guard fail-closed 的同根问题。
   - 影响是部分 heartbeat 监控任务失败或跳过；同窗 Feishu direct ORCL 问答可通过 `data_fetch quote/news/snapshot/financials` 正常收口，说明不是全局 ORCL 数据不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-28 10:02 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-28 06:02-10:02 CST。
+  - `run_id=49245`，Feishu scheduler `闪迪(SNDK)每日行情与行业简报`，`executed_at=2026-07-28T08:30:04.706143+08:00`。
+  - 任务正文要求调取 `SNDK` 最新行情、新闻、评级和 `NAND Flash` 存储行业动态。
+  - 本轮终态为 `execution_status=execution_failed`、`message_send_status=sent`、`delivered=1`，用户可见内容只说已识别证券代码 `NAND`，但数据供应商没有同代码行情覆盖，要求检查交易所后缀或稍后重试。
+- 本轮判断
+  - `NAND Flash` 是行业 / 技术词，不是用户要求作为证券核验的标的；该样本与此前 `NAND`、`PCE`、`SEC`、`REPEAT`、`EBITDA` 误抽同根。
+  - 影响是 SNDK 日报没有生成，用户收到误导性失败提示；同窗仍有其它 scheduler / direct 正常收口，维持功能性 `P2 / New`，非 P1。

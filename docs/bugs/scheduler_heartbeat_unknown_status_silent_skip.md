@@ -6554,3 +6554,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败和去重之间漂移；没有新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗仍有普通 Feishu direct 成功收口，未见错投或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-28 10:02 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-28 06:02-10:02 CST。
+  - 同窗 heartbeat run 共 80 条：`completed/sent=23`、`execution_failed/skipped_error=7`、`noop/skipped_noop=50`。
+  - 代表性失败样本：`AAOI 全面心跳检测` 在 `06:30`、`09:00`、`10:00` 多次落成 `execution_failed/skipped_error`，`ASTS 全面心跳检测` 在 `06:30`、`07:30` 也落成同类失败，错误均为 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
+  - 同窗另有 `TSLA 正负触发条件心跳监控`、`TEM大事件心跳监控` 等 heartbeat 虽进入 `completed/sent`，但 preview 明写 `noop` 或完全偏离监控任务，说明结构化状态、触发判定和投递语义仍在漂移。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：部分非结构化输出被失败跳过，部分自然语言被当作 triggered / completed 送达。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 ordinary direct / scheduler 仍有多条正常收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

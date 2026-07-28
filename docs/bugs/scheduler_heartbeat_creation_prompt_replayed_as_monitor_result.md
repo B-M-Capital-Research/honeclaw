@@ -365,3 +365,16 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被旧用户短问、投资方法论或工具限额叙事污染；不是新的独立根因。
   - 因已有 heartbeat job 可能发送无关内容或被 duplicate suppression 用坏基线压掉，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-07-28 10:02 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-28 06:02-10:02 CST。
+  - `run_id=49280`，`job_id=j_f9642c78`，`job_name=TSLA 正负触发条件心跳监控`，`executed_at=2026-07-28T10:00:56.496610+08:00`。
+  - 该 heartbeat 终态为 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`。
+  - 用户可见 `response_preview` 以 `## 光子链路（Photonic Link）是什么` 开头，正文解释 AI 数据中心光互连技术，而不是检查 TSLA 正负触发条件。
+  - `detail_json.scheduler.parse_kind=PlainTextTriggered`，`raw_preview` 也说明模型正在综合 photonic links 搜索结果。
+- 本轮判断
+  - 最新样本不是“无法创建监控”话术，而是已创建 TSLA heartbeat 执行期被其它直聊 / 技术解释语义污染并外发无关内容。
+  - 这与既有“heartbeat 执行意图被旧用户输入、任务配置或非监控上下文污染”同属一条功能性监控链路缺陷，不新建重复文档。
+  - 影响是用户收到与监控条件完全无关的提醒，维持 `P2 / New`；同窗其它 direct / scheduler 有正常收口，未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。

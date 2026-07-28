@@ -124,3 +124,14 @@ New
   - 回归覆盖：新增正反两条单元测试，覆盖“静默任务 + 全部静默”命中 skip，以及普通复盘任务不被误判为 skip。
   - 验证：`cargo test -p hone-channels silent_noop_signal_ --lib -- --nocapture`、`cargo test -p hone-channels skip_delivery_signal_detected --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
   - 说明：本轮未重启当前 Feishu / scheduler live 服务，因此状态先记为代码级 `Fixed`；若后续 2026-07-21 之后的真实运行窗仍出现同类“全部静默但照样投递”样本，再按新证据重新打开。
+
+## 最新运行态复核（2026-07-28 10:02 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-28 06:02-10:02 CST。
+  - 同窗 heartbeat run 共 80 条：`completed/sent=23`、`noop/skipped_noop=50`、`execution_failed/skipped_error=7`。
+  - `run_id=49188`，`TEM大事件心跳监控`，`executed_at=2026-07-28T06:30:11.228527+08:00`，终态 `completed/sent/delivered=1`，用户可见 preview 标题含 `TEM 30分钟心跳检查（06:30）— noop`，正文仍作为消息送达。
+  - `TSLA 正负触发条件心跳监控` 在 `06:30`、`07:00`、`08:00`、`08:30` 多次 `completed/sent/delivered=1`，preview 写出 `触发判断：noop` 或等价未触发判断后仍送达。
+- 本轮判断
+  - 这次证据来自 heartbeat=1 路径，但用户需求语义同样是未触发时静默；现象与“NOOP / 未触发仍发送报告”同根，不新建重复文档。
+  - 影响是用户收到本应静默的噪音提醒，功能语义仍受损；同窗无错投、数据破坏、敏感信息泄露或全渠道不可用，维持 `P2 / New`，非 P1。
