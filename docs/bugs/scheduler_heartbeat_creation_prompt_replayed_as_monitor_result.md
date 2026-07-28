@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-29 02:00-06:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 02:00 CST `AAOI 全面心跳检测` `run_id=49636` 已作为 AAOI heartbeat job 触发，preview 却输出“你问的是我的能力边界”和 Hone 功能说明，不是 AAOI 监控判断。
+    - 02:30 CST `ASTS 全面心跳检测` `run_id=49641` 输出“我的核心能力有以下七块”，继续把 heartbeat 执行期当成产品能力问答。
+    - 03:30 CST `RKLB 全面心跳检测` `run_id=49659` 再次输出实时市场事件引擎、公司深度研究、长期画像等能力说明，而不是 RKLB 监控结果。
+    - 04:30 CST `AAOI 全面心跳检测` `run_id=49683` 串到 NVDA 行情和均线表；06:00 CST `AAOI 全面心跳检测` `run_id=49714` 再次输出投研助理能力介绍。
+  - 会话质量对照：
+    - 同窗普通 Feishu direct / scheduler session 有 assistant 收口，未见全渠道停摆、错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被产品能力说明、旧上下文或其它标的行情污染，导致模型没有稳定执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见 P1 级链路故障，不创建 GitHub Issue。
+
 - `2026-07-28 18:01-22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 19:00 CST `ASTS 全面心跳检测` `run_id=49460` 送达宏观 AI 资本开支 / 芯片价值链分析，`response_preview` 明确“不涉及单一证券报价”，与 ASTS 心跳监控主体不匹配。

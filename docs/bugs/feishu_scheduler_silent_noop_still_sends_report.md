@@ -22,6 +22,17 @@ New
 
 ## 最新进展
 
+- 2026-07-29 02:00-06:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat run 共 85 条：`completed/sent=18`、`execution_failed/skipped_error=7`、`noop/skipped_noop=60`；其中至少 11 条 `delivered=1` 的 heartbeat preview 明写 `noop`、`无新增触发`、`无新触发`、`无触发` 或“保持静默”。
+    - 02:00 CST `TSLA 正负触发条件心跳监控` `run_id=49634` 写 `触发判断：noop`，仍 `completed/sent/delivered=1`。
+    - 03:00 CST `全天原油价格3小时播报` `run_id=49655` 写“本轮无法完成原油价格播报，保持静默”，仍 `completed/sent/delivered=1`。
+    - 03:00 / 03:30 CST `AAOI 全面心跳检测` `run_id=49649/49662` 标题或结论含 `noop`，仍送达。
+    - 04:30 CST `TEM大事件心跳监控` `run_id=49679`、`TSLA 正负触发条件心跳监控` `run_id=49678` 继续写 `noop` / 无触发后送达。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1 路径，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化、无触发或保持静默，出站层仍将正文送达。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；同窗无错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-28 18:01-22:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 80 条：`completed/sent=20`、`noop/skipped_noop=55`、`execution_failed/skipped_error=5`。
