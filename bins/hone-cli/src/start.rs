@@ -203,6 +203,10 @@ pub(crate) async fn wait_for_http_ready(url: &str) -> Result<(), String> {
     Err(http_ready_failure_message(url, last_observation.as_deref()))
 }
 
+fn backend_readiness_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/api/runtime/active-chat-runs")
+}
+
 fn active_chat_drain_timeout(agent_overall_timeout: Duration) -> Duration {
     agent_overall_timeout
         .saturating_add(ACTIVE_CHAT_DRAIN_GRACE)
@@ -568,8 +572,8 @@ pub(crate) async fn run_start(
     let mut backend =
         spawn_binary("hone-console-page", &paths, &[], source_root.as_deref()).await?;
     ensure_child_alive("hone-console-page", &mut backend).await?;
-    let meta_url = format!("http://127.0.0.1:{}/api/meta", paths.web_port);
-    if let Err(error) = wait_for_http_ready(&meta_url).await {
+    let readiness_url = backend_readiness_url(paths.web_port);
+    if let Err(error) = wait_for_http_ready(&readiness_url).await {
         let _ = backend.kill().await;
         let _ = backend.wait().await;
         return Err(error);
@@ -854,6 +858,14 @@ mod tests {
         assert!(message.contains("hone-console-page"));
         assert!(message.contains("status="));
         assert!(message.contains("日志"));
+    }
+
+    #[test]
+    fn backend_readiness_probe_avoids_cloud_backed_meta_health() {
+        assert_eq!(
+            backend_readiness_url(8077),
+            "http://127.0.0.1:8077/api/runtime/active-chat-runs"
+        );
     }
 
     fn long_running_command() -> Command {

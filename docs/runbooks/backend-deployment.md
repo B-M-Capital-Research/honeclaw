@@ -119,6 +119,15 @@ credentials and fall back to local authority. The child processes may use an
 immutable runtime-root directory; the CLI supervisor working directory is the
 important load boundary.
 
+`hone-cli start` treats the local
+`/api/runtime/active-chat-runs` response as process readiness. Do not replace
+that startup probe with `/api/meta`: metadata intentionally performs live
+PostgreSQL and object-storage checks, so a slow external dependency can exceed
+the short process-readiness timeout and make the supervisor terminate an
+otherwise listening backend. This lightweight startup boundary does not relax
+deployment acceptance; operators must still verify the full `/api/meta` cloud
+authority fields below after the process is ready.
+
 When the intended production authority is cloud, restart is not complete until
 the live `/api/meta` response confirms all of the following:
 
