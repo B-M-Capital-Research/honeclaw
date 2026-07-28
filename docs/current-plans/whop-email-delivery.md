@@ -60,8 +60,18 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
   该验证码未被回放到已经销毁的 challenge。
 - Whop 当前签名 secret 使用原始 `ws_...` 格式；verifier 已按当前格式使用
   完整 secret 作为 HMAC key，并明确拒绝旧 `whsec_...` 格式。
-- 代码交付边界为直接推送 `main`，不创建 release tag；生产部署、密钥注入
-  和后端重启由外部部署方执行，不在本机临时 shell 中操作。
+- 精确提交 `482c34d54aef4f0d9726acea0b753d751a5973be` 已构建为
+  `target/deploy-482c34d5`；五个运行二进制与 498 个 runtime payload
+  均通过清单校验，manifest SHA-256 为
+  `e09f7716a0a07f5c2e9fbe4195cbdc0de1474afb62a6da77d37e3b5aee91a518`，
+  两个 runtime secret 均未嵌入包内。
+- 生产在连续两次零活跃会话后受控切换到该精确包。启动日志确认
+  `Cloudflare 邮箱验证码服务已装配`；PostgreSQL/R2 authoritative、零本地
+  durable dependency、端口 `8077/8088`、单 Feishu 进程和公网路由均健康。
+- 本地与公网签名探针均证明：使用当前 secret 的有效签名无副作用事件返回
+  `200 ignored=true`，复用签名篡改正文或完全不带签名均返回 `401`；探针
+  不写入会员状态。
+- 代码交付边界仍为直接推送 `main`，不创建 release tag。
 
 ## Documentation Sync
 
@@ -72,13 +82,8 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
 
 ## Risks / Open Questions
 
-- 生产启用仍需外部部署方在 secret manager 或 supervisor 中注入
-  `.env.example` 定义的完整 Whop webhook 与 Cloudflare Email Sending
-  必需配置，再按 `docs/runbooks/backend-deployment.md` 受控重启；不得从
-  临时 shell 直接替换生产进程。
 - 生产最终验收仍应使用真实 Whop 非 owner buyer，并从实际收件箱输入同一
   封邮件中的验证码；本地真实收件已由用户回传验证码确认。
-- 本机忽略的 `.env` 不会随 Git 推送；外部部署方必须通过安全渠道取得
-  两个 secret，或创建只含 `Email Sending: Edit` 的独立生产 token。
-  更换 supervisor 工作目录或迁移主机时必须通过 secret 管理重新注入
-  `.env.example` 定义的完整配置。
+- 本机忽略的 `.env` 不会随 Git 推送。更换 supervisor 工作目录、轮换
+  secret 或迁移主机时，必须通过安全 secret 管理重新注入 `.env.example`
+  定义的完整配置；聊天中出现过的 webhook secret 应在方便时轮换。

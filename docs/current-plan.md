@@ -19,7 +19,7 @@
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/whop-email-delivery.md`
-  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已从 `/activate/whop` 成功进入 `/me`。本次 Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值统一放忽略的 `.env`；Whop verifier 已切换为当前原始 `ws_...` secret 格式并拒绝旧格式。代码通过 `main` 直接交付，生产部署不在本机执行；当前仅剩由外部部署方注入完整运行时配置并受控重启，以及真实非 owner Whop buyer 的最终生产验收
+  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略且权限为 `0600` 的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已从 `/activate/whop` 成功进入 `/me`。Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值只保留在忽略的 `.env`。Whop verifier 已切换为当前原始 `ws_...` secret 格式并拒绝旧格式；精确提交 `482c34d5` 已构建为不可变包并在零活跃会话后受控部署，生产公网有效签名的无副作用事件返回 `200`、篡改正文与无签名请求返回 `401`，邮箱、PostgreSQL、R2、Web 与 Feishu 均健康。当前仅剩真实非 owner Whop buyer 的同一挑战验证码最终生产验收
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

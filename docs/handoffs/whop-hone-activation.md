@@ -18,7 +18,9 @@
   - `docs/invariants.md`
   - `docs/repo-map.md`
   - `docs/runbooks/whop-hone-activation.md`
-- related_prs: implementation `4632dfa9`; current production runtime `f5663107`
+- related_prs: implementation `4632dfa9`; email/signature follow-ups
+  `92cad045`, `c12e95a6`, and `482c34d5`; current production runtime
+  `482c34d54aef4f0d9726acea0b753d751a5973be`
 
 ## Summary
 
@@ -27,10 +29,11 @@ users keep the existing invited phone/SMS path. International Whop buyers receiv
 account from a verified membership webhook and use the purchase email plus a HONE-owned
 email challenge; they do not need a phone number or a Whop login.
 
-The email sender is intentionally an unconfigured interface in this phase. Its API fails
-closed with `503` until a transactional email implementation is injected. The code is now
-included in production, but no production Whop webhook secret or email provider is configured,
-so international entitlement activation remains unavailable.
+The follow-up Cloudflare Email Sending implementation and current Whop `ws_...`
+signature contract are now configured and deployed in production. Missing or partial
+runtime configuration still fails closed, while the configured production path accepts
+valid raw-body signatures and sends the bounded HONE-owned email challenge. A real
+non-owner buyer full-chain production acceptance remains outstanding.
 
 ## What Changed
 
@@ -80,30 +83,34 @@ so international entitlement activation remains unavailable.
   canceled state retained the account and exposed only renewal/logout actions.
 - With the canceled session, `/api/public/auth/me` returned `200` while the paid
   `/api/public/history` route returned `402`. Browser console warning/error count was zero.
-- Real email delivery was not tested because the requested sender implementation is
-  deliberately absent.
+- At the original `4632dfa9` implementation checkpoint, real email delivery was
+  not tested because the sender was deliberately absent; the follow-up section
+  below records the later Cloudflare delivery and production enablement.
 
-## 2026-07-28 Production Package Inclusion
+## 2026-07-28 Production Email And Signature Enablement
 
-- Implementation commit `4632dfa9` is included in exact production runtime `f5663107`.
-- The final immutable package is `target/deploy-f5663107`; all `502` payload hashes match
-  manifest SHA-256 `b908de852668a47ea350e8f00dfb8ef09c47e7dcfa494a68a24c4994d32428bd`.
-- Local, origin, and public `/activate/whop` return `200`; anonymous auth remains JSON `401`.
-- `HONE_WHOP_WEBHOOK_SECRET` and a transactional email sender are absent. Unsigned local,
-  origin, and public webhook probes return intentional JSON `503`, so the deployed code cannot
-  create production entitlement until configuration and live acceptance are completed.
-- The surrounding runtime is healthy: version `0.15.3`, PostgreSQL/R2 authoritative, zero
-  local durable dependencies, ports `8077/8088`, established Feishu connectivity, and zero
-  active chats.
+- Current exact production runtime is
+  `482c34d54aef4f0d9726acea0b753d751a5973be`.
+- Immutable package `target/deploy-482c34d5` has five runtime binaries and 498
+  runtime payloads; every manifest entry matches SHA-256 manifest
+  `e09f7716a0a07f5c2e9fbe4195cbdc0de1474afb62a6da77d37e3b5aee91a518`.
+- Complete Cloudflare email and Whop webhook configuration is loaded from the
+  ignored owner-only runtime environment. Startup logs
+  `Cloudflare 邮箱验证码服务已装配`.
+- Local and public valid-signature no-side-effect probes return `200 ignored`;
+  an altered body or missing headers returns `401`. Unknown-email send remains
+  a uniform `200`, and anonymous auth remains JSON `401`.
+- The surrounding runtime is healthy: version `0.15.3`, PostgreSQL/R2
+  authoritative, zero local durable dependencies, ports `8077/8088`, one live
+  Feishu process, and repeated zero active chats.
 
 ## Risks / Follow-ups
 
-- Implement and inject a transactional `EmailVerificationSender`, then validate real delivery,
-  spam placement, retry behavior, and the full purchase-email login.
-- Configure the production endpoint and `HONE_WHOP_WEBHOOK_SECRET` using a Whop/company
-  credential with webhook-management permission; never commit the secret.
 - Run a non-owner live purchase → webhook → email login → Discord connection → VIP role
   acceptance, followed by cancel, expiry, repurchase, and role-removal checks.
+- Rotate the webhook secret because it appeared in the private task conversation;
+  keep the replacement only in approved secret storage and the ignored runtime
+  environment.
 - Add refund/dispute coverage and periodic reconciliation before relying on webhook delivery as
   the only long-term membership repair mechanism.
 - The current cloud-compatible implementation preserves external state inside the existing
@@ -112,6 +119,7 @@ so international entitlement activation remains unavailable.
 
 ## Next Entry Point
 
-Start with `docs/runbooks/whop-hone-activation.md`. Implement a concrete sender behind
-`crates/hone-web-api/src/email_verification.rs`, inject it where `AppState` is constructed,
-then execute the runbook's production configuration and live buyer acceptance matrix.
+Start with `docs/runbooks/whop-hone-activation.md` and execute the real non-owner
+buyer acceptance matrix against the already configured production runtime. Rotate
+the webhook secret before or immediately after that acceptance when operationally
+convenient.

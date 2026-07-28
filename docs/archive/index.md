@@ -149,10 +149,21 @@ Last updated: 2026-07-28
 - Plan: `docs/archive/plans/whop-hone-activation.md`
 - Handoff: `docs/handoffs/whop-hone-activation.md`
 - Decision / ADR: `D-2026-07-26-04` and `D-2026-07-26-06` in `docs/decisions.md`
-- Related PRs / commits: implementation `4632dfa9`; current production runtime `f5663107`
+- Related PRs / commits: implementation `4632dfa9`; Cloudflare email
+  `92cad045`; portable verification `c12e95a6`; current Whop signing and
+  production runtime `482c34d54aef4f0d9726acea0b753d751a5973be`
 - Related runbooks / regressions: `docs/runbooks/whop-hone-activation.md`; memory 26 focused tests; Web API 3 focused tests; complete workspace check/test excluding Apple clients; Web `292/292`, typecheck, and public build; Edge Worker `45/45` and typecheck; CI-safe regressions; explicit Rust formatting and diff checks; isolated signed-webhook HTTP regression; desktop and `390x844` browser acceptance
-- Current conclusion: international Whop activation code is included in exact production runtime `f5663107`, and `/activate/whop` is publicly reachable. The production webhook secret and transactional email sender are still deliberately absent; local, origin, and public webhook probes return JSON `503`, so no entitlement is activated and email login remains unavailable. Mainland invite/SMS behavior and Whop-native Discord role fulfillment remain independent.
-- Next entry point: implement and inject `EmailVerificationSender`, then follow `docs/runbooks/whop-hone-activation.md` for production webhook setup and a non-owner purchase/cancel/repurchase plus Discord role acceptance.
+- Current conclusion: exact runtime `482c34d5` now has the Cloudflare email
+  sender and current raw `ws_...` Whop signing secret configured. Local and
+  public no-side-effect signed probes return `200 ignored`; missing or
+  body-tampered signatures return `401`. Public activation/email/auth routes,
+  authoritative PostgreSQL/R2 storage, ports `8077/8088`, and the single
+  Feishu process are healthy. Mainland invite/SMS behavior and Whop-native
+  Discord role fulfillment remain independent.
+- Next entry point: follow `docs/runbooks/whop-hone-activation.md` for a real
+  non-owner purchase → same inbox challenge → `/me`, then cancel/repurchase and
+  Discord role acceptance; rotate the chat-exposed webhook secret through
+  approved secret management.
 
 ## 2026-07-22
 

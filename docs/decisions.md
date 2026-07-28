@@ -673,15 +673,16 @@ Last updated: 2026-07-28
 
 ## D-2026-07-28-01 Use Cloudflare Email Sending For Purchase-Email Verification
 
-- Status: Accepted and externally configured. On 2026-07-28 the owner approved
+- Status: Accepted and production-verified on exact runtime
+  `482c34d54aef4f0d9726acea0b753d751a5973be`. On 2026-07-28 the owner approved
   Workers Paid at `$5/month + usage`; Billing shows the subscription active,
   `hone-claw.com` Email Sending is enabled with configured DNS, and an
   account-scoped `Email Sending: Edit` token is installed in the ignored local
   runtime environment. Two controlled sends are `Delivered`, and the owner
   confirmed real inbox receipt by returning a verification code without that
   value entering repository artifacts. Source is published directly through
-  `main`; production enablement still requires the external deployment owner
-  to inject the runtime secrets and perform an operator-controlled restart.
+  `main`; complete runtime configuration is loaded from the ignored owner-only
+  environment and the controlled production restart has completed.
 - Context: HONE already uses Cloudflare DNS and the public site, while the Whop
   international activation flow requires arbitrary-recipient transactional
   email. Cloudflare Email Service now exposes a native REST API, so adding a
@@ -715,3 +716,10 @@ Last updated: 2026-07-28
   scoped-token installation, controlled backend restart, Cloudflare activity
   evidence, real inbox receipt, code login to `/me`, and unchanged Whop
   entitlement enforcement.
+  Exact runtime `482c34d5` passed targeted Whop/email tests, immutable package
+  hashing, zero-active-chat cutover, Cloudflare sender assembly, authoritative
+  PostgreSQL/R2 health, and public route/auth/security checks. Current-secret
+  signed no-side-effect probes passed locally and publicly; missing and
+  body-tampered signatures returned `401`. A real non-owner buyer completing
+  purchase through same-challenge inbox login remains the final business
+  acceptance item.

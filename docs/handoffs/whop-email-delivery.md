@@ -23,9 +23,11 @@ purchase-email verification. It remains inactive when all three runtime
 variables are absent and refuses partial/invalid configuration at startup.
 The owner approved Workers Paid, the sending domain and scoped token are
 configured, and controlled delivery/browser acceptance passed. The working
-tree is published directly to `main` without a release tag. Production
-deployment is owned by the external deployment environment; its backend has
-not been restarted as part of this task.
+tree is published directly to `main` without a release tag. Exact commit
+`482c34d5` is now deployed in production with the current `ws_...` signing
+contract and complete Cloudflare/Whop runtime configuration. The only remaining
+acceptance item is a real non-owner Whop buyer completing the same production
+challenge from purchase through inbox code entry.
 
 ## What Changed
 
@@ -88,22 +90,42 @@ not been restarted as part of this task.
   equivalent known challenge in the isolated SQLite acceptance database; it
   did not mutate production membership. The owner-provided real code arrived
   after the isolated runtime had been cleaned up, so it was not replayed.
-- Production deployment/restart was not executed from this workspace.
+- `cargo test -p hone-web-api whop`: 2 passed on exact `482c34d5`; valid current
+  signing, legacy-secret rejection, and raw-body tamper rejection are covered.
+- `cargo test -p hone-web-api email_verification`: 6 passed, and
+  `cargo check -p hone-web-api --all-targets` passed with one pre-existing
+  unused-function warning.
+- Immutable production package `target/deploy-482c34d5` contains five runtime
+  binaries and 498 runtime payloads. All manifest entries verified; manifest
+  SHA-256 is
+  `e09f7716a0a07f5c2e9fbe4195cbdc0de1474afb62a6da77d37e3b5aee91a518`.
+- Production was switched after two consecutive zero-active-chat checks.
+  Startup assembled the Cloudflare sender; PostgreSQL and R2 are authoritative
+  and healthy, local durable dependencies are zero, and ports `8077/8088`
+  remain available.
+- Both local and public no-side-effect signed probes returned
+  `200 {"ignored":true,"ok":true}`. Reusing the signature with a modified body
+  and omitting signature headers returned `401`; no membership was written.
+- Public `/`, `/chat`, `/roadmap`, and `/activate/whop` returned `200`; anonymous
+  auth returned JSON `401`; the unknown-email response remained the uniform
+  `200`; security headers remained intact.
+- Cloudflare token verification returned HTTP `200` with `success=true`.
+- Three post-cutover probes found PostgreSQL/R2 healthy, zero active chats, and
+  exactly one live Feishu process. The Web process remained alive beyond the
+  prior supervisor self-exit window.
 
 ## Risks / Follow-ups
 
 - This is a direct `main` source publication, not a formal release, and must
   not create a tag.
-- The ignored local `.env` does not travel with Git. The external deployer
-  must securely inject the complete Whop webhook and Cloudflare Email Sending
-  configuration defined by `.env.example`, then use the external supervisor
-  and `docs/runbooks/backend-deployment.md` for the production restart.
-- If the local token cannot be transferred through an approved secret channel,
-  create a separate production token scoped only to `Email Sending: Edit`;
-  never expose either token in chat or repository history.
 - Final production acceptance still needs a real non-owner Whop purchase and
-  same-challenge code entry after the production restart; local real inbox
-  receipt itself is confirmed.
+  same-challenge code entry; local real inbox receipt itself is confirmed.
+- The ignored local `.env` does not travel with Git. Host migration, secret
+  rotation, or supervisor working-directory changes must re-inject the complete
+  `.env.example` contract through approved secret management.
+- Because the webhook secret appeared in the private task conversation, rotate
+  it when operationally convenient and update the ignored runtime environment
+  before another controlled restart.
 - Never paste the token into chat, logs, screenshots, committed files, shell
   history, or a supervisor command line.
 - The working tree also contains the pre-existing untracked `.idea/` directory;
@@ -111,9 +133,8 @@ not been restarted as part of this task.
 
 ## Next Entry Point
 
-The external deployer should pull the published `main`, inject the complete
-runtime configuration defined by `.env.example`, and restart the backend with
-the repository root as its working directory (or explicitly inject the same
-set through the supervisor). Confirm origin health and the
-`Cloudflare 邮箱验证码服务已装配` startup log before using a real non-owner
-Whop buyer for `/activate/whop` → inbox code → `/me` production acceptance.
+Use a real non-owner Whop buyer for `/activate/whop` → purchase-email challenge
+→ same inbox code → `/me` production acceptance. Then cover cancel, expiry,
+repurchase, and Discord role lifecycle. If the secret is rotated first, follow
+`docs/runbooks/backend-deployment.md` for the same zero-active-chat controlled
+restart and repeat the signed no-side-effect probe.
