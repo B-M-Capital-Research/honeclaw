@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 2026-07-28 14:01-18:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `In Progress`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 15:31 CST `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=49390` 继续用 `SK Hynix ₩1,550,000`、`previous_close ₩1,816,000` 与 `-14.65%` 等强数值锚生成触发 JSON，并 `completed/sent/delivered=1`。
+    - 18:00 CST 同 job `run_id=49441` 再次围绕 `000660.KS` 跌幅扩大至 `-14.65%`、较 52 周高点回撤约 `-48.1%` 生成触发 JSON；该类价格 / 跌幅仍缺少独立行情源或 corporate action sanity 证明。
+    - 16:00 CST `TSLA 正负触发条件心跳监控` `run_id=49394` 串用 `NVDA hone_quote_time` 与 DeepSeek / NVDA 估值锚；18:00 CST `RKLB 全面心跳检测` `run_id=49434` 串用 `ASTS $58.29 / SOFI $16.88` 和 `ASTX` 持仓成本组织换仓建议。
+    - 15:00-18:00 heartbeat preview 还继续使用 `RKLB $66.94`、`ASTS $58.29`、`LITE $711.96`、`ASML $1,655.26` 等价格进入 sent / noop / duplicate suppression 基线，其中部分样本同时存在任务主体串线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口，并伴随 heartbeat 任务主体串线。它会污染 direct、scheduler 和 heartbeat 金融判断质量；当前主投递链路未整体阻断，因此仍未形成新的 P1 issue。头部状态保持 `P0 / In Progress`，本轮仅补充运行态证据。
+
 - 2026-07-27 P0 能力治理阶段：
   - 用户提供的体验问题工作簿再次证明异常价格、目标价数量级冲突和跨路径证据缺失会直接破坏投资结论可信度；本缺陷从历史质量性 P3 提升为 P0 输入，并纳入 `docs/current-plans/p0-experience-core-capabilities.md`。
   - 第一阶段新增证券级 `earnings_outlook` 组合证据，以及 quote 的价格 / 涨跌 / 区间 / 市值分组一致性标记和目标价相对当前价的极端量级复核要求。typed scheduled/heartbeat 财报链路不再用全市场窗口日历冒充单一证券展望。

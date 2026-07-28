@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-28 14:01-18:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 15:00 CST `AAOI 全面心跳检测` `run_id=49383` 已作为 AAOI heartbeat job 周期触发，preview 却直接回答“为什么主要是心跳任务在推送”，展开事件引擎和 Cron Job 机制说明，而不是执行 AAOI 监控判断。
+    - 16:00 CST `TSLA 正负触发条件心跳监控` `run_id=49394` 的 preview 围绕 DeepSeek 如何影响 NVIDIA 估值叙事展开，任务主体从 TSLA 正负触发条件漂移到 NVDA / DeepSeek 分析。
+    - 17:00 CST 同一 TSLA heartbeat `run_id=49415` 又串成 ASML 当前报价和 ASML 财报分析。
+    - 17:30 CST `ASTS 全面心跳检测` `run_id=49428` 与 18:00 CST `RKLB 全面心跳检测` `run_id=49434` 均串到 ASTS / SOFI / ASTX 换仓逻辑，而不是稳定执行当前 job 的标的监控判断。
+  - 会话质量对照：
+    - 同窗 Feishu direct 有 assistant 收口，未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被其它标的、旧持仓上下文、产品机制说明或公司分析任务污染，导致模型没有稳定执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-28 10:01-14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 12:30 CST `AAOI 全面心跳检测` `run_id=49327` 已作为 AAOI heartbeat job 周期触发，preview 却围绕 `RKLB NASDAQ 报价 $66.94`、RKLB 关注条目和“你目前可能还没有持有 RKLB”展开，任务主体从 AAOI 串到 RKLB 持仓确认。
