@@ -296,7 +296,7 @@ fn resolve_opencode_command_prefers_bundled_env_override() {
 }
 
 #[test]
-fn configured_codex_model_id_omits_variant_suffix() {
+fn configured_codex_model_id_combines_model_and_effort_for_acp() {
     let config = CodexAcpConfig {
         model: "gpt-5.5".to_string(),
         variant: "high".to_string(),
@@ -304,12 +304,12 @@ fn configured_codex_model_id_omits_variant_suffix() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.5")
+        Some("gpt-5.5[high]")
     );
 }
 
 #[test]
-fn configured_codex_model_id_strips_legacy_variant_suffix() {
+fn configured_codex_model_id_normalizes_legacy_variant_suffix() {
     let config = CodexAcpConfig {
         model: "gpt-5.4/medium".to_string(),
         variant: "medium".to_string(),
@@ -317,8 +317,44 @@ fn configured_codex_model_id_strips_legacy_variant_suffix() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.4")
+        Some("gpt-5.4[medium]")
     );
+}
+
+#[test]
+fn configured_codex_model_id_normalizes_bracketed_effort() {
+    let config = CodexAcpConfig {
+        model: "gpt-5.6-sol[high]".to_string(),
+        variant: "xhigh".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    assert_eq!(
+        configured_codex_model_id(&config).as_deref(),
+        Some("gpt-5.6-sol[xhigh]")
+    );
+}
+
+#[test]
+fn configured_codex_model_id_uses_embedded_effort_when_variant_is_empty() {
+    let config = CodexAcpConfig {
+        model: "gpt-5.6-sol[xhigh]".to_string(),
+        variant: String::new(),
+        ..CodexAcpConfig::default()
+    };
+    assert_eq!(
+        configured_codex_model_id(&config).as_deref(),
+        Some("gpt-5.6-sol[xhigh]")
+    );
+}
+
+#[test]
+fn configured_codex_model_id_skips_ambiguous_bare_model_without_effort() {
+    let config = CodexAcpConfig {
+        model: "gpt-5.6-sol".to_string(),
+        variant: String::new(),
+        ..CodexAcpConfig::default()
+    };
+    assert_eq!(configured_codex_model_id(&config).as_deref(), None);
 }
 
 #[test]

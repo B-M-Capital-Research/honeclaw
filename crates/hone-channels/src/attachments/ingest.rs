@@ -148,6 +148,7 @@ pub async fn ingest_raw_attachments(
     core: &HoneBotCore,
     request: AttachmentIngestRequest,
 ) -> Vec<ReceivedAttachment> {
+    let extract_image_text = should_preextract_image_text(core, &request.actor);
     let upload_dir = attachment_upload_dir(&request.actor, &request.session_id);
     if let Err(err) = tokio::fs::create_dir_all(&upload_dir).await {
         warn!(
@@ -165,7 +166,8 @@ pub async fn ingest_raw_attachments(
     };
     for (index, attachment) in request.attachments.into_iter().enumerate() {
         let _storage_guard = attachment_storage_quota_lock().lock().await;
-        let mut received = ingest_one_raw_attachment(&upload_dir, index, attachment).await;
+        let mut received =
+            ingest_one_raw_attachment(&upload_dir, index, attachment, extract_image_text).await;
         if received.error.is_none()
             && let (Some(oss), Some(local_path)) = (&cloud_oss, received.local_path.as_ref())
         {
@@ -231,6 +233,7 @@ async fn ingest_one_raw_attachment(
     upload_dir: &Path,
     index: usize,
     attachment: RawAttachment,
+    extract_image_text: bool,
 ) -> ReceivedAttachment {
     let filename = if attachment.filename.trim().is_empty() {
         "attachment.bin".to_string()
@@ -300,7 +303,12 @@ async fn ingest_one_raw_attachment(
         } else {
             None
         };
-        received = enrich_attachment_with_extract_dir(received, extract_dir.clone()).await;
+        received = enrich_attachment_with_extract_dir_and_options(
+            received,
+            extract_dir.clone(),
+            extract_image_text,
+        )
+        .await;
         if actor_upload_storage_bytes(upload_dir) > MAX_ACTOR_UPLOAD_STORAGE_BYTES {
             if let Some(local_path) = received.local_path.take() {
                 let _ = tokio::fs::remove_file(local_path).await;
@@ -511,15 +519,23 @@ pub async fn enrich_attachment(attachment: ReceivedAttachment) -> ReceivedAttach
 }
 
 pub async fn enrich_attachment_with_extract_dir(
+    attachment: ReceivedAttachment,
+    extract_dir: Option<PathBuf>,
+) -> ReceivedAttachment {
+    enrich_attachment_with_extract_dir_and_options(attachment, extract_dir, true).await
+}
+
+async fn enrich_attachment_with_extract_dir_and_options(
     mut attachment: ReceivedAttachment,
     extract_dir: Option<PathBuf>,
+    extract_image_text: bool,
 ) -> ReceivedAttachment {
     let Some(local_path) = attachment.local_path.clone() else {
         return attachment;
     };
     let path = PathBuf::from(local_path);
 
-    if attachment.kind == AttachmentKind::Image {
+    if attachment.kind == AttachmentKind::Image && extract_image_text {
         match super::vision::extract_image_text(&path).await {
             Ok(preview) => {
                 attachment.extracted_files.push(ExtractedFileInfo {
@@ -555,6 +571,11 @@ pub async fn enrich_attachment_with_extract_dir(
     }
 
     attachment
+}
+
+fn should_preextract_image_text(core: &HoneBotCore, actor: &ActorIdentity) -> bool {
+    let configured_runner = core.config.agent.runner.trim().to_ascii_lowercase();
+    configured_runner != "codex_acp" || core.actor_uses_strict_runner_fallback(actor)
 }
 
 pub fn build_user_input(content: &str, attachments: &[ReceivedAttachment]) -> String {
@@ -814,7 +835,7 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 
     if has_image {
         lines.push(
-            "- 图片：先使用本轮【图片文字提取】中的真实内容回答；它属于当前附件证据，不需要为了读取同一图片再调用 skill_tool。不要因为图片文件名后缀是 `.bin` 就忽略它，附件分类为图片时应按图片处理。文字提取为空时，仍可结合用户问题和其它本轮权威工具给出可执行框架，并只对图片中无法确认的数字做一句最小确认；不要列举目录、OSS、数据库、工具链或技能加载状态。"
+            "- 图片：先使用本轮【图片文字提取】中的真实内容回答；它属于当前附件证据。文字提取为空且当前 runner 支持原生图片读取时，直接读取附件本地路径；不要因为图片文件名后缀是 `.bin` 就忽略它。否则结合用户问题和其它本轮权威工具给出可执行框架，并只对图片中无法确认的数字做一句最小确认。不要列举目录、OSS、数据库、工具链或技能加载状态。"
                 .to_string(),
         );
     }
@@ -1291,9 +1312,45 @@ mod tests {
         assert!(prompt.contains("本地路径=/tmp/uploads/image_key.bin"));
         assert!(prompt.contains("【图片文字提取】"));
         assert!(prompt.contains("CRWV | 72.07 | 持仓 139"));
-        assert!(prompt.contains("不需要为了读取同一图片再调用 skill_tool"));
+        assert!(prompt.contains("runner 支持原生图片读取"));
+        assert!(prompt.contains("直接读取附件本地路径"));
         assert!(prompt.contains("不要因为图片文件名后缀是 `.bin` 就忽略它"));
         assert!(prompt.contains("不要列举目录、OSS、数据库、工具链或技能加载状态"));
+    }
+
+    #[test]
+    fn codex_acp_admin_skips_redundant_local_image_ocr() {
+        let mut config = HoneConfig::default();
+        config.agent.runner = "codex_acp".to_string();
+        config.admins.discord_user_ids = vec!["admin".to_string()];
+        let core = HoneBotCore::new(config);
+        let admin = ActorIdentity::new("discord", "admin", None::<String>).expect("admin actor");
+        let public = ActorIdentity::new("discord", "public", None::<String>).expect("public actor");
+
+        assert!(!should_preextract_image_text(&core, &admin));
+        assert!(should_preextract_image_text(&core, &public));
+    }
+
+    #[tokio::test]
+    async fn native_image_path_does_not_invoke_optional_ocr_helper() {
+        let attachment = ReceivedAttachment {
+            filename: "positions.jpg".to_string(),
+            content_type: Some("image/jpeg".to_string()),
+            size: 12,
+            url: "https://example.com/positions.jpg".to_string(),
+            kind: AttachmentKind::Image,
+            local_path: Some("/tmp/does-not-need-to-exist.jpg".to_string()),
+            error: None,
+            extracted_files: vec![],
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: None,
+        };
+
+        let enriched =
+            enrich_attachment_with_extract_dir_and_options(attachment, None, false).await;
+        assert!(enriched.extracted_files.is_empty());
+        assert!(enriched.extraction_error.is_none());
     }
 
     #[test]
@@ -1720,6 +1777,7 @@ mod tests {
                 data: Some(b"small".to_vec()),
                 error: None,
             },
+            true,
         )
         .await;
 

@@ -185,13 +185,12 @@ pub(crate) async fn extract_image_text(path: &Path) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
         let helper = image_ocr_helper().await?;
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(20),
-            Command::new(&helper).arg(path).output(),
-        )
-        .await
-        .map_err(|_| "图片文字提取超时".to_string())?
-        .map_err(|err| format!("图片文字提取启动失败: {err}"))?;
+        let mut command = Command::new(&helper);
+        command.arg(path).kill_on_drop(true);
+        let output = tokio::time::timeout(std::time::Duration::from_secs(20), command.output())
+            .await
+            .map_err(|_| "图片文字提取超时".to_string())?
+            .map_err(|err| format!("图片文字提取启动失败: {err}"))?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parsed: ImageOcrOutput = serde_json::from_str(stdout.trim())
             .map_err(|err| format!("图片文字提取结果无法解析: {err}"))?;
@@ -257,18 +256,17 @@ async fn image_ocr_helper() -> Result<PathBuf, String> {
             .await
             .map_err(|err| format!("图片文字提取 helper 写入失败: {err}"))?;
         let temporary_helper = cache_dir.join(format!("hone-image-ocr-{}", std::process::id()));
-        let compile = tokio::time::timeout(
-            std::time::Duration::from_secs(45),
-            Command::new("/usr/bin/swiftc")
-                .arg("-O")
-                .arg(&source_path)
-                .arg("-o")
-                .arg(&temporary_helper)
-                .output(),
-        )
-        .await
-        .map_err(|_| "图片文字提取 helper 编译超时".to_string())?
-        .map_err(|err| format!("图片文字提取 helper 编译启动失败: {err}"))?;
+        let mut command = Command::new("/usr/bin/swiftc");
+        command
+            .arg("-O")
+            .arg(&source_path)
+            .arg("-o")
+            .arg(&temporary_helper)
+            .kill_on_drop(true);
+        let compile = tokio::time::timeout(std::time::Duration::from_secs(45), command.output())
+            .await
+            .map_err(|_| "图片文字提取 helper 编译超时".to_string())?
+            .map_err(|err| format!("图片文字提取 helper 编译启动失败: {err}"))?;
         if !compile.status.success() {
             let detail = String::from_utf8_lossy(&compile.stderr);
             return Err(format!(

@@ -1877,3 +1877,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh` case 44; Agent oversized-result and 12,000-row calendar regressions; Channel compact/current-turn-only/public-sanitizer regressions; `docs/runbooks/backend-deployment.md`
 - Current conclusion: current-turn tool growth is bounded inside the same read-only Agent without tool replay, repeated Session overflow falls through to current-turn-only recovery, and no context/compact/path/new-session diagnostic may cross a public boundary. Exact `620391d1` passed all repository gates and a fresh production replay with one successful answer, byte-identical two-row history, responsive concurrent health probes, and zero active chats.
 - Next entry point: `docs/handoffs/2026-07-26-context-overflow-invisible-auto-recovery.md`
+
+### Codex ACP Discord Runtime Recovery
+
+- Status: done
+- Date: 2026-07-29
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (parent remains active)
+- Handoff: `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
+- Decision / ADR: `docs/adr/0002-agent-runtime-acp-refactor.md` (no decision change)
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `cargo test -p hone-channels --lib`; focused attachment and Codex ACP tests; admin-scoped no-side-effect ACP probe; real Discord image-turn timing and Discord API readback
+- Current conclusion: Hone now sends the adapter-required `gpt-5.6-sol[xhigh]` selector, reaches `session/prompt`, and lets admin Codex ACP turns read images natively instead of blocking the first Discord placeholder on redundant Apple Vision helper compilation. The motivating real turn completed successfully with 19 tool calls and a 671-character reply; after deployment, a fresh Discord follow-up received its placeholder in 1.121 seconds and completed successfully in 112.473 seconds, with Discord API readback confirming the final edit. The source launchd runtime was rebuilt and restarted cleanly.
+- Next entry point: `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`

@@ -157,14 +157,15 @@ pub(crate) fn configured_codex_model_id(config: &CodexAcpConfig) -> Option<Strin
         return None;
     }
 
-    let variant = config.variant.trim();
-    if !variant.is_empty() {
-        let suffix = format!("/{variant}");
-        if let Some(stripped) = model.strip_suffix(&suffix) {
-            return Some(stripped.to_string());
-        }
-    }
-    Some(model.to_string())
+    let (model, embedded_effort) = split_codex_model_and_effort(model);
+    let configured_effort = config.variant.trim();
+    let effort = if configured_effort.is_empty() {
+        embedded_effort?
+    } else {
+        configured_effort
+    };
+
+    Some(format!("{model}[{effort}]"))
 }
 
 pub(crate) fn configured_codex_reasoning_effort(config: &CodexAcpConfig) -> Option<String> {
@@ -174,6 +175,28 @@ pub(crate) fn configured_codex_reasoning_effort(config: &CodexAcpConfig) -> Opti
     } else {
         Some(variant.to_string())
     }
+}
+
+fn split_codex_model_and_effort(model: &str) -> (&str, Option<&str>) {
+    if let Some(without_closing_bracket) = model.strip_suffix(']')
+        && let Some((base, effort)) = without_closing_bracket.rsplit_once('[')
+        && !base.is_empty()
+        && !effort.is_empty()
+    {
+        return (base, Some(effort));
+    }
+
+    if let Some((base, effort)) = model.rsplit_once('/')
+        && !base.is_empty()
+        && matches!(
+            effort,
+            "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+        )
+    {
+        return (base, Some(effort));
+    }
+
+    (model, None)
 }
 
 pub(crate) fn validate_codex_version_matrix(
@@ -572,6 +595,12 @@ async fn run_codex_acp(
             )
             .await?;
             next_id += 1;
+        } else if !config.model.trim().is_empty() {
+            tracing::warn!(
+                session_id = %request.session_id,
+                model = %config.model.trim(),
+                "codex_acp model override skipped because no reasoning effort was configured"
+            );
         }
 
         let prompt_text = build_codex_acp_prompt_text(

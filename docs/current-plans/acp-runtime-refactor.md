@@ -3,13 +3,15 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-07-13
+- updated_at: 2026-07-29
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
   - `crates/hone-channels/src/runners/acp_common/`
   - `crates/hone-channels/src/core/`
   - `crates/hone-channels/src/runners/codex_acp.rs`
+  - `crates/hone-channels/src/attachments/ingest.rs`
+  - `crates/hone-channels/src/attachments/vision.rs`
   - `crates/hone-channels/src/runtime.rs`
   - `crates/hone-channels/src/scheduler.rs`
   - `crates/hone-channels/src/agent_session/`
@@ -26,6 +28,7 @@
   - `docs/handoffs/2026-04-13-acp-prompt-dual-timeout.md`
   - `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`
   - `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
+  - `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
 
 ## Goal
 
@@ -47,11 +50,13 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - ACP runners now treat their own session/compact logic as the source of truth: Hone skips its auto SessionCompactor for `codex_acp` / `opencode_acp`, and prompt construction suppresses Hone-side compact summaries for self-managed runners.
 - `acp_common` now detects codex literal `Context compacted` chunks and opencode usage-drop / markdown-summary compact signatures, drops those leak paths from user-visible output, and sets session metadata so the next turn can reseed the system prompt when needed.
 - `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
-- `codex_acp` now treats `agent.codex_acp.variant` as Codex CLI `model_reasoning_effort` instead of appending it to the model id; legacy `model/variant` strings are stripped back to the base model before starting the ACP session.
+- `codex_acp` keeps passing `agent.codex_acp.variant` to Codex CLI as `model_reasoning_effort`, and also normalizes the ACP `session/set_model` selector to the adapter-required `model[effort]` form. Legacy `model/variant` and already-normalized `model[variant]` inputs converge to the same selector instead of sending a bare model id that the adapter rejects.
+- Admin actors routed to `codex_acp` now use the adapter's native image capability directly instead of synchronously compiling and running the optional Apple Vision OCR helper before the first Discord placeholder. Strict public fallback actors retain local OCR pre-extraction. Timed-out OCR helper and Swift compiler children use kill-on-drop so they cannot remain behind as detached work.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 - 2026-06-24: Fixed ACP child-process lifecycle leaks where `codex_acp` / `opencode_acp` error or timeout paths could leave their stdio `hone-mcp` grandchildren running after the turn exits. ACP CLI children now run in their own process group and are cleaned up through a shared guard that terminates the group before returning from the runner.
 - 2026-07-13 follow-up: the simplification task removed the in-process `function_calling` agent and sequential `multi-agent` runner, moved current defaults to Codex ACP with GPT-5.6 Sol / xhigh, and reduced duplicated prompt layers. This plan remains the parent ACP architecture record.
 - 2026-07-13 completion: the simplification follow-up is done and archived at `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`; verification and migration details are in `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`.
+- 2026-07-29 follow-up: a real Discord admin turn proved that `codex-acp 1.1.7` creates the intended `gpt-5.6-sol[xhigh]` session but rejected Hone's subsequent bare `gpt-5.6-sol` legacy `session/set_model` request before `session/prompt`. The selector is now normalized and covered. A second real image turn then exposed a separate 95.5-second pre-placeholder delay: two optional Apple Vision OCR helper compilation timeouts ran before ACP even started. Codex ACP admin image turns now bypass that redundant pre-extraction and use native image reads; Kimi/Hone session compaction remains unchanged and out of scope.
 
 ## Validation
 
@@ -89,6 +94,22 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - `pgrep -fl 'hone-mcp' || true` returned no `hone-mcp` processes after cleanup and tests
   - Note: repository-wide `cargo fmt --check` still reports pre-existing formatting diffs in `crates/hone-channels/src/runtime.rs` and `crates/hone-core/src/cloud_runtime.rs`; those files were not changed by this task.
   - Note: one unrelated Clash Verge `<defunct>` process remains because killing its parent `verge-mihomo` returned `operation not permitted`; it is outside the Hone process tree.
+- 2026-07-29:
+  - live Discord evidence: ACP `initialize` and `session/new` succeeded with adapter `1.1.7` and current model `gpt-5.6-sol[xhigh]`
+  - failing request: legacy `session/set_model` sent `gpt-5.6-sol` and returned `Unsupported format of modelId: gpt-5.6-sol. Expected: modelId[effort].`
+  - fixed request: `session/set_model` sent `gpt-5.6-sol[xhigh]`, returned success, and was followed by `session/prompt`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/attachments/ingest.rs crates/hone-channels/src/attachments/vision.rs crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`
+  - `cargo test -p hone-channels attachments::ingest::tests --lib` (`25 passed`)
+  - `cargo test -p hone-channels configured_codex_model_id --lib` (`5 passed`)
+  - `cargo test -p hone-channels codex_acp --lib` (`5 passed`, including the native-image routing regression)
+  - `cargo test -p hone-channels --lib` (`695 passed`, `1 ignored`)
+  - `cargo check -p hone-channels --tests`
+  - `cargo build --bin hone-cli --bin hone-console-page --bin hone-discord --bin hone-mcp`
+  - admin-scoped no-side-effect ACP probe returned `ACP_MODEL_OK` with `tool_calls=0`; ACP event trace showed successful `initialize -> session/new -> session/set_model(gpt-5.6-sol[xhigh]) -> session/prompt -> final`
+  - real Discord image turn: Discord snowflake timestamp `2026-07-29 00:36:37.913 +08:00`; pre-fix placeholder creation at `00:38:13.282` proved a 95.4-second attachment preprocessing delay; ACP then completed successfully in `296318ms` with native reads of both images, 19 tool calls, and a 671-character final reply sent at `00:43:11`
+  - source launchd service gracefully restarted after the attachment fix (`runs=6`, PID `94657` at validation); Discord re-logged as `Hone-TEST`, ports `8077` and `8088` were listening, stderr remained empty, and no `swiftc` / `hone-image-ocr` process remained
+  - first post-deployment Discord follow-up was sent at `00:46:28.111`; the bot placeholder was created at `00:46:29.232` (`1.121s` later), ACP completed `session/set_model(gpt-5.6-sol[xhigh]) -> session/prompt`, and the turn finished successfully in `112473ms` after 53 portfolio/data/search tool calls with a 680-character answer
+  - Discord API readback confirmed the same placeholder was edited to the final answer at `00:48:22.320` and no processing-placeholder text remained
 
 ## Documentation Sync
 
@@ -109,3 +130,4 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Runner-specific transcript metadata can still grow session files; any future expansion should be validated against real session size and restore cost.
 - ACP compact detection currently depends on codex literal markers plus opencode usage-drop heuristics; if upstream protocols change those signals, the detection path needs fresh live validation.
 - ACP CLI cleanup must account for grandchildren such as `hone-mcp`; killing only the direct ACP process can leave orphaned MCP servers when the upstream CLI does not close them itself.
+- Codex ACP model selection is a protocol compatibility boundary: adapter releases may change the accepted selector shape even when `session/new` continues to report the intended model. Keep focused tests for bare, legacy slash, and bracketed config forms, and validate against the minimum supported adapter plus the currently installed release.
