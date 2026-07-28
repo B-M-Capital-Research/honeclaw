@@ -11,9 +11,9 @@ Last updated: 2026-07-28
 - Plan: `docs/archive/plans/p0-experience-core-capabilities.md`
 - Handoff: `docs/handoffs/2026-07-28-p0-experience-core-capabilities.md`
 - Decision / ADR: `docs/decisions.md#d-2026-07-27-01-make-evidence-admission-and-mutation-completion-capability-level`
-- Related PRs / commits: `c2edceb7269476c39a3eb23efd25d14d4675aa93`
+- Related PRs / commits: `c2edceb7269476c39a3eb23efd25d14d4675aa93`, `e07eadb3a7af01bc71e1240ddd351c8805313eff`, `f56631072a38f32f8f02efa49c5a268156612219`
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, `tests/regression/ci/test_finance_automation_contracts.sh`
-- Current conclusion: nineteen workbook records were reduced to reusable evidence, mutation-completion, channel-projection, session/task, and responsive-workspace capabilities. Three were solved in this task, four prior systemic fixes were reverified, six are covered by current contracts, one remains an explicit provider-wide residual risk, four brittle one-off proposals were deferred, and one non-product request needs no action. Exact `c2edceb7` is live for Web and Feishu with authoritative PostgreSQL/R2 storage, healthy auth/public routes, established Feishu connectivity, and zero active chats.
+- Current conclusion: nineteen workbook records were reduced to reusable evidence, mutation-completion, channel-projection, session/task, and responsive-workspace capabilities. Three were solved in this task, four prior systemic fixes were reverified, six are covered by current contracts, one remains an explicit provider-wide residual risk, four brittle one-off proposals were deferred, and one non-product request needs no action. The `c2edceb7` capability fix is live inside exact runtime `f5663107`; its lightweight no-proxy supervisor readiness path remains stable beyond the previous self-exit window, with authoritative PostgreSQL/R2 storage, healthy auth/public routes, established Feishu connectivity, and zero active chats.
 - Next entry point: `docs/handoffs/2026-07-28-p0-experience-core-capabilities.md`
 
 ## 2026-07-27
@@ -149,9 +149,9 @@ Last updated: 2026-07-28
 - Plan: `docs/archive/plans/whop-hone-activation.md`
 - Handoff: `docs/handoffs/whop-hone-activation.md`
 - Decision / ADR: `D-2026-07-26-04` and `D-2026-07-26-06` in `docs/decisions.md`
-- Related PRs / commits: none; completed as an uncommitted local change set
+- Related PRs / commits: implementation `4632dfa9`; current production runtime `f5663107`
 - Related runbooks / regressions: `docs/runbooks/whop-hone-activation.md`; memory 26 focused tests; Web API 3 focused tests; complete workspace check/test excluding Apple clients; Web `292/292`, typecheck, and public build; Edge Worker `45/45` and typecheck; CI-safe regressions; explicit Rust formatting and diff checks; isolated signed-webhook HTTP regression; desktop and `390x844` browser acceptance
-- Current conclusion: international Whop buyers no longer need a phone number or Whop login to establish a HONE identity. Signed membership events create and update a purchase-email account, HONE owns email challenge login, active membership controls paid routes, and inactive buyers keep access to the account/billing view while paid APIs return `402`. Mainland invite/SMS behavior and Whop-native Discord role fulfillment remain independent. The email sender is deliberately fail-closed and unconfigured in this phase; production webhook configuration and live email delivery were not changed.
+- Current conclusion: international Whop activation code is included in exact production runtime `f5663107`, and `/activate/whop` is publicly reachable. The production webhook secret and transactional email sender are still deliberately absent; local, origin, and public webhook probes return JSON `503`, so no entitlement is activated and email login remains unavailable. Mainland invite/SMS behavior and Whop-native Discord role fulfillment remain independent.
 - Next entry point: implement and inject `EmailVerificationSender`, then follow `docs/runbooks/whop-hone-activation.md` for production webhook setup and a non-owner purchase/cancel/repurchase plus Discord role acceptance.
 
 ## 2026-07-22

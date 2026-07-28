@@ -3,7 +3,7 @@
 - title: Whop → HONE 国际邮箱激活与付费权益
 - status: done
 - created_at: 2026-07-26
-- updated_at: 2026-07-26
+- updated_at: 2026-07-28
 - owner: Codex
 - related_files:
   - `memory/src/web_auth.rs`
@@ -18,7 +18,7 @@
   - `docs/invariants.md`
   - `docs/repo-map.md`
   - `docs/runbooks/whop-hone-activation.md`
-- related_prs: none; this handoff records an uncommitted local change set
+- related_prs: implementation `4632dfa9`; current production runtime `f5663107`
 
 ## Summary
 
@@ -28,8 +28,9 @@ account from a verified membership webhook and use the purchase email plus a HON
 email challenge; they do not need a phone number or a Whop login.
 
 The email sender is intentionally an unconfigured interface in this phase. Its API fails
-closed with `503` until a transactional email implementation is injected. No production
-Whop webhook, secret, email provider, code push, or deployment was changed by this task.
+closed with `503` until a transactional email implementation is injected. The code is now
+included in production, but no production Whop webhook secret or email provider is configured,
+so international entitlement activation remains unavailable.
 
 ## What Changed
 
@@ -81,6 +82,19 @@ Whop webhook, secret, email provider, code push, or deployment was changed by th
   `/api/public/history` route returned `402`. Browser console warning/error count was zero.
 - Real email delivery was not tested because the requested sender implementation is
   deliberately absent.
+
+## 2026-07-28 Production Package Inclusion
+
+- Implementation commit `4632dfa9` is included in exact production runtime `f5663107`.
+- The final immutable package is `target/deploy-f5663107`; all `502` payload hashes match
+  manifest SHA-256 `b908de852668a47ea350e8f00dfb8ef09c47e7dcfa494a68a24c4994d32428bd`.
+- Local, origin, and public `/activate/whop` return `200`; anonymous auth remains JSON `401`.
+- `HONE_WHOP_WEBHOOK_SECRET` and a transactional email sender are absent. Unsigned local,
+  origin, and public webhook probes return intentional JSON `503`, so the deployed code cannot
+  create production entitlement until configuration and live acceptance are completed.
+- The surrounding runtime is healthy: version `0.15.3`, PostgreSQL/R2 authoritative, zero
+  local durable dependencies, ports `8077/8088`, established Feishu connectivity, and zero
+  active chats.
 
 ## Risks / Follow-ups
 

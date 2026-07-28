@@ -21,6 +21,8 @@
   - `docs/runbooks/backend-deployment.md`
 - related_prs:
   - fix commit `c2edceb7269476c39a3eb23efd25d14d4675aa93` on `main`
+  - supervisor readiness fix `e07eadb3a7af01bc71e1240ddd351c8805313eff` on `main`
+  - loopback proxy-bypass fix `f56631072a38f32f8f02efa49c5a268156612219` on `main`
 
 ## Summary
 
@@ -51,18 +53,20 @@ The private replacement workbook remains outside the repository. It preserves al
   - formula-error scan
   - visual review of all `18` rendered PDF pages
 - Immutable deployment:
-  - exact source `c2edceb7269476c39a3eb23efd25d14d4675aa93`
-  - path `target/deploy-c2edceb7`
-  - `500` payloads: five binaries, twenty-seven skill files, `soul.md`, and 467 public Web files
-  - manifest SHA-256 `137462339b0aa131f57e4e56238074873dba4951f3778285d61faef5c4a6741e`
+  - P0 capability fix source `c2edceb7269476c39a3eb23efd25d14d4675aa93`; final runtime source `f56631072a38f32f8f02efa49c5a268156612219`
+  - path `target/deploy-f5663107`
+  - `502` payloads: five binaries, twenty-seven skill files, `soul.md`, and 469 public Web files
+  - manifest SHA-256 `b908de852668a47ea350e8f00dfb8ef09c47e7dcfa494a68a24c4994d32428bd`
   - every recorded payload hash verified
 - Production:
   - two independent pre-restart active-chat checks returned zero
   - Web and Feishu supervisors stopped through SIGINT and released ports before restart
   - exact-package process paths and repository-root supervisor working directories verified
-  - ports `8077/8088`, cloud mode, PostgreSQL, R2, authoritative storage, zero local durable dependencies, and repeated zero active chats passed
+  - the first concurrent-head restart revealed that cloud-backed `/api/meta` plus proxy-eligible loopback requests could make the supervisor kill a healthy child after roughly seventy seconds; `e07eadb3`/`f5663107` replaced that readiness path and bypass proxies for loopback supervisor clients
+  - the exact final runtime remained healthy across repeated probes beyond the previous self-exit window
+  - ports `8077/8088`, version `0.15.3`, cloud mode, PostgreSQL, R2, authoritative storage, zero local durable dependencies, and repeated zero active chats passed
   - local/origin/public unauthenticated auth boundaries returned JSON `401`
-  - `/`, `/chat`, and `/roadmap` returned `200`; HSTS, CSP frame denial, `X-Frame-Options`, nosniff, and strict-origin referrer policy were present
+  - `/`, `/chat`, `/roadmap`, and `/activate/whop` returned `200`; HSTS, CSP frame denial, `X-Frame-Options`, nosniff, and strict-origin referrer policy were present
   - Feishu held at least one established TCP connection across repeated probes
 
 ## Risks / Follow-ups
@@ -71,6 +75,7 @@ The private replacement workbook remains outside the repository. It preserves al
 - Four suggestions remain deferred because their only current implementation would be a brittle one-off rule or broad product redesign. Revisit only when a typed cross-market mapping, typed entity-span contract, or measured information-architecture requirement exists.
 - No authenticated business canary or user-visible Feishu message was sent because no designated test actor was provided. Automated channel contracts and live transport health passed.
 - The first post-restart R2 probe failed because the host's selected Clash global node rejected TLS. Both the old and new binaries reproduced it; Clash direct connectivity passed, and changing the reversible `GLOBAL` selector to `DIRECT` restored R2 immediately. Re-selecting a broken global node can make object storage unhealthy again.
+- The final package includes the Whop activation code, but production does not configure `HONE_WHOP_WEBHOOK_SECRET` or a transactional email sender. Local, origin, and public webhook probes therefore return intentional JSON `503`; no Whop entitlement can be activated until the runbook configuration and live acceptance are completed.
 
 ## Next Entry Point
 
