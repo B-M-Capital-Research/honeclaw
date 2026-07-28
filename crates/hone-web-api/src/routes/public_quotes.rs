@@ -4,8 +4,8 @@
 //! 用于投资页展示现价与日涨跌。未配置 FMP key、持仓为空或上游全部失败时
 //! 返回 `available: false`，前端据此隐藏行情区，不打断页面其余内容。
 
-use std::sync::{Mutex, OnceLock};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::Json;

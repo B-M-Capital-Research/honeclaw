@@ -130,12 +130,18 @@ pub(crate) async fn handle_create_holding(
         );
     }
 
-    let holding = match build_holding(&symbol, &request, existing.iter().find(|h| h.symbol == symbol)) {
+    let holding = match build_holding(
+        &symbol,
+        &request,
+        existing.iter().find(|h| h.symbol == symbol),
+    ) {
         Ok(holding) => holding,
         Err(response) => return response,
     };
     match store.upsert_holding(&actor, holding) {
-        Ok(portfolio) => (StatusCode::CREATED, portfolio_response(&portfolio.holdings)).into_response(),
+        Ok(portfolio) => {
+            (StatusCode::CREATED, portfolio_response(&portfolio.holdings)).into_response()
+        }
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
 }
@@ -245,7 +251,9 @@ fn build_holding(
             .unwrap_or_else(|| "stock".to_string()),
         // 用户端按比例管理，不再维护股数；旧记录的股数保留以免影响其它渠道读数。
         shares: current.map(|item| item.shares).unwrap_or(0.0),
-        avg_cost: avg_cost.or_else(|| current.map(|item| item.avg_cost)).unwrap_or(0.0),
+        avg_cost: avg_cost
+            .or_else(|| current.map(|item| item.avg_cost))
+            .unwrap_or(0.0),
         underlying: current.and_then(|item| item.underlying.clone()),
         option_type: current.and_then(|item| item.option_type.clone()),
         strike_price: current.and_then(|item| item.strike_price),

@@ -333,6 +333,13 @@ mod tests {
 
     const TEST_ACCOUNT_ID: &str = "0123456789abcdef0123456789abcdef";
 
+    fn test_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("build loopback-only test client")
+    }
+
     #[derive(Clone)]
     struct MockEmailApi {
         captured: Arc<Mutex<Option<(HeaderMap, Value)>>>,
@@ -413,7 +420,7 @@ mod tests {
         )
         .await;
         let sender = CloudflareEmailVerificationSender::new_with_api_base_url(
-            reqwest::Client::new(),
+            test_http_client(),
             TEST_ACCOUNT_ID.to_string(),
             "test-api-token".to_string(),
             "verify@hone-claw.com".to_string(),
@@ -475,7 +482,7 @@ mod tests {
         )
         .await;
         let sender = CloudflareEmailVerificationSender::new_with_api_base_url(
-            reqwest::Client::new(),
+            test_http_client(),
             TEST_ACCOUNT_ID.to_string(),
             "test-api-token".to_string(),
             "verify@hone-claw.com".to_string(),
@@ -514,7 +521,7 @@ mod tests {
         )
         .await;
         let sender = CloudflareEmailVerificationSender::new_with_api_base_url(
-            reqwest::Client::new(),
+            test_http_client(),
             TEST_ACCOUNT_ID.to_string(),
             "test-api-token".to_string(),
             "verify@hone-claw.com".to_string(),
