@@ -14,13 +14,19 @@
 
 ## 状态
 
-- Fixing
+- Fixed
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-07-29 `bug-2` 代码级修复：
+  - `crates/hone-channels/src/scheduler.rs` 放宽了观察池本地稳定上下文的启用条件：`Monitor_Watchlist_*`、`watchlist` / `观察池` / `关注股` heartbeat 与重大事件监控，即使任务正文没有显式写出“击球区”，也会恢复 compact summary / session summary 中的本地观察池区间。
+  - 这样现有 `watchlist_price_anchor_guard` 不再只覆盖“正文显式带击球区”的观察池日报，也能在 `Monitor_Watchlist_11`、`关注股重大事件心跳检测` 一类任务里拿到 `MU/LITE/RKLB` 等本地基准区间，从而 suppress `MU $820+`、`LITE $600+` 这类数量级明显错位的价格锚。
+  - 新增回归 `heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words`，并复跑既有 `watchlist_price_anchor_guard_detects_quantity_mismatch_against_hit_zone`、`watchlist_price_anchor_guard_allows_in_range_prices`；`cargo check -p hone-channels --tests` 通过。
+  - 按本轮约束未重启 live runtime，先记代码级 `Fixed`；待后续运行态巡检确认 `detail_json` 开始命中 `watchlist_price_anchor_guarded` / `watchlist_price_anchor_unstable` 后，再评估是否推进为 `Closed`。
 
 - 2026-07-29 14:01-18:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `P0 / Fixing`：
   - `data/sessions.sqlite3` / `cron_job_runs`

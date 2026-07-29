@@ -3051,11 +3051,20 @@ fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
         || haystack.contains("hit-zone");
     let has_watch_pool = event.job_name.contains("观察池")
         || event.job_name.contains("观察股池")
+        || event.job_name.contains("关注股")
         || event.task_prompt.contains("观察池")
         || event.task_prompt.contains("观察股池")
+        || event.task_prompt.contains("关注股")
         || haystack.contains("watchlist")
         || haystack.contains("watch pool");
-    has_hit_zone && has_watch_pool
+    let has_watchlist_monitoring_shape = haystack.contains("monitor_watchlist")
+        || event.job_name.contains("重大事件")
+        || event.task_prompt.contains("重大事件")
+        || event.task_prompt.contains("触发条件")
+        || event.task_prompt.contains("阈值")
+        || event.task_prompt.contains("跌破")
+        || event.task_prompt.contains("突破");
+    has_watch_pool && (has_hit_zone || has_watchlist_monitoring_shape)
 }
 
 fn extract_watchlist_tickers(task_prompt: &str) -> Vec<String> {
@@ -7236,6 +7245,63 @@ mod tests {
         assert!(prompt.contains("- GOOGL: $255-$275"));
         assert!(prompt.contains("- TSM: 保守$290-$310 / 合理$320-$340 / 激进$345-$355"));
         assert!(!prompt.contains("- LITE: 待确认"));
+    }
+
+    #[test]
+    fn heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words() {
+        let root = std::env::temp_dir().join(format!(
+            "scheduler_heartbeat_watchlist_prompt_{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let prefs_dir = root.join("prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor =
+            ActorIdentity::new("feishu", "ou_watch_heartbeat", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        core.session_storage
+            .append_session_messages(
+                &session_id,
+                vec![session_message_from_text(
+                    "system",
+                    "【Compact Summary】\n观察池击球区：MU $90-$115；LITE $52-$68；RKLB $18-$25。",
+                    hone_core::beijing_now_rfc3339(),
+                    Some(build_compact_summary_metadata("test")),
+                )],
+            )
+            .expect("append summary");
+
+        let event = SchedulerEvent {
+            actor,
+            job_id: "job-monitor-watchlist".to_string(),
+            job_name: "Monitor_Watchlist_11".to_string(),
+            task_prompt: "监控观察池里是否有标的跌破预设阈值或出现重大事件，若满足条件再提醒。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_watch_heartbeat".to_string(),
+            delivery_key: "delivery-watch-heartbeat".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        assert!(prompt.contains("【已恢复的本地击球区参考】"));
+        assert!(prompt.contains("- MU: $90-$115"));
+        assert!(prompt.contains("- LITE: $52-$68"));
+        assert!(prompt.contains("- RKLB: $18-$25"));
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {
