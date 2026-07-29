@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-30 02:01-06:04 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 02:30 `TSLA 正负触发条件心跳监控` `run_id=50179` 作为既有 heartbeat job 触发，用户可见 preview 却把输入当成直聊数字 `1`，回答“无法确认具体需求”，并展示“检查 TSLA / 研究 NVDA / 买入卖出 / 我的持仓”等直聊入口选项。
+    - 02:30 `AAOI 全面心跳检测` `run_id=50173` 作为 AAOI heartbeat job 触发，却使用 `ASTS NASDAQ` 行情口径，正文串成 AST SpaceMobile BlueBird 卫星在轨和收入路径分析，没有执行 AAOI 监控条件。
+    - 04:31 `ASTS 全面心跳检测` `run_id=50214` 在工具预算耗尽后只输出 RKLB / ASTS / AAOI 的 50 日均线表，任务执行主体和核验目标混杂。
+    - 06:01 `AAOI 全面心跳检测` `run_id=50247` 继续从 heartbeat 检查漂移成“AAOI 是否值得买”的公司分析和买点判断。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、其它标的、工具预算说明或普通投研问答污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-07-29 18:01-22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 18:30 `ASTS 全面心跳检测` 作为 heartbeat job 触发，用户可见 preview 却回答“你没有指定哪只股票，我需要先确认标的”，列出 ASTS/RKLB/AAOI/CIEN 等近期标的，没有执行 ASTS 监控条件。

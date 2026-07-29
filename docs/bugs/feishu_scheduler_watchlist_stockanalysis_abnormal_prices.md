@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-07-30 02:01-06:04 CST 真实运行态补充待复核证据；头部仍按 2026-07-29 / 2026-07-30 代码级修复记为 `Fixed`，但暂不关闭：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 本轮窗口内有非文档提交 `e0015577 fix: extend watchlist price anchor guard coverage`，继续扩展观察池价格锚 guard 覆盖；但巡检时未确认 live runtime 已重启加载该提交。
+    - 同窗后续 run 的 `detail_json.scheduler.watchlist_price_anchor_guarded` / `watchlist_price_anchor_unstable` 仍未见命中记录。
+    - 04:31 CST `ASTS 全面心跳检测` `run_id=50214` 在工具预算耗尽后输出“已核验标的：50 日均线对比”，使用 `RKLB $58.60 / 50 日均线 $100.66` 等强价格锚，且任务主体从 ASTS 混到 RKLB / AAOI。
+    - 05:00 / 05:30 CST `关注股重大事件心跳检测` `run_id=50223/50241` 继续以 fenced JSON 送达 `LITE` 失守 200 日均线 `$593.45`、盘后 `$597.15` 等强技术锚。
+    - 06:01 CST 同 job `run_id=50246` 继续送达 `MU` 常规 `$739`、盘后 `$721.20` 等高风险数量级价格锚，并伴随协议 JSON 外泄。
+  - 判断：最新证据仍是 live 运行态里的行情源 / 数值 sanity check / 历史锚点复用缺口，并伴随 heartbeat JSON 载荷泄露和任务主体串线。由于本轮证据可能来自未重启 live runtime，不把代码级 `Fixed` 回退；但在后续巡检看到 guard 命中 / 异常锚消失前，不应推进 `Closed`。
+
 - 2026-07-29 `bug-2` 代码级修复：
   - `crates/hone-channels/src/scheduler.rs` 放宽了观察池本地稳定上下文的启用条件：`Monitor_Watchlist_*`、`watchlist` / `观察池` / `关注股` heartbeat 与重大事件监控，即使任务正文没有显式写出“击球区”，也会恢复 compact summary / session summary 中的本地观察池区间。
   - 这样现有 `watchlist_price_anchor_guard` 不再只覆盖“正文显式带击球区”的观察池日报，也能在 `Monitor_Watchlist_11`、`关注股重大事件心跳检测` 一类任务里拿到 `MU/LITE/RKLB` 等本地基准区间，从而 suppress `MU $820+`、`LITE $600+` 这类数量级明显错位的价格锚。

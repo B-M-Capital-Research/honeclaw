@@ -5,7 +5,14 @@
 - **严重等级**: P2
 - **状态**: New
 
-## 最新进展（2026-07-21 07:03 CST）
+## 最新进展
+
+- 2026-07-30 06:04 CST 巡检补充同根运行态证据，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=50204` / `job_name=Oil_Price_Monitor_Closing` / `executed_at=2026-07-30T04:01:03.222632+08:00` 已记录 `completed + sent + delivered=1`。
+    - `detail_json.scheduler.commodity_causality_guarded=true`，说明普通 scheduler 出站商品归因 guard 已命中；`raw_preview` 仍生成 `USO $129.28`、`今日暴涨 +7.30%`、`Brent $85-$93 区间`、油价急升反向压制高估值科技股、以及“今晚尾盘不必因油价做防守”等未完成同窗来源核验的价格 / 因果判断。
+    - 用户可见 `deliver_preview` / `response_preview` 被改写为安全说明：本轮原油 / 大宗商品播报包含未完成同窗来源核验的原因归因，已移除宏观、地缘、供需、库存等主因叙述；本轮未保留原正文中的价格或归因句。
+  - 结论：出站 guard 已阻断未核验归因直接外发，但当前主任务仍未真正完成“查询最新原油价格并汇报全天走势”的交付，且 raw 生成仍持续产出高风险价格 / 因果判断。该问题继续影响普通原油 scheduler 的可用性与可审计性，维持功能性质量缺陷 `P2 / New`；当前没有错投、敏感信息泄露、全渠道不可用或活跃 P1 证据，不创建 GitHub Issue。
 
 - 2026-07-21 07:03 CST 巡检补充同根复发证据，状态维持 `New`：
   - `data/sessions.sqlite3` -> `session_messages`
