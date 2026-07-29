@@ -166,3 +166,17 @@
 - 本轮判断
   - 这是同一 function-calling 在已取得工具结果后仍耗尽迭代、最终只给通用失败的链路；与旧样本的 `10` 次预算不同，本窗已触到 `18` 次上限，说明单纯提高预算不足以保证复杂 scheduler 收口。
   - 影响是单轮普通 scheduler 业务正文缺失；同窗其它 direct / scheduler 可正常收口，未见错投、数据破坏或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-30 02:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-29 22:01:29-2026-07-30 02:03 CST。
+  - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+  - 23:00 CST Feishu scheduler `核心观察股池晚间快报` 触发，任务要求使用最新美股市场价格，按 25 支观察池列出当前价格、击球区、下一次财报时间并做分类总结。
+  - 23:04 CST assistant final 只返回通用失败文案；随后追加 scheduler failure 补偿，说明本轮定时任务未能完成并将在下一次触发时重试。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=50101` 终态为 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`。
+  - `detail_json.failure_kind=internal_error_suppressed`，没有业务正文或部分降级摘要落库。
+- 本轮判断
+  - 这条样本只证明普通 scheduler 仍会在复杂观察池任务中退化成通用失败，用户没有拿到降级摘要或部分结果；当前 SQLite 证据不能确认是否仍是 `max_iterations_exceeded`，但表现落在既有 function-calling / 普通 scheduler 通用失败链路内。
+  - 暂按既有文档追加待查证据，不新建重复缺陷、不调整严重等级或状态。影响仍是单轮 scheduler 任务失败；同窗 Feishu direct 图片分析、SGOV/BIL 问答和多个普通 scheduler 可正常收口，未见错投、数据破坏或全渠道不可用，维持功能性 `P2 / New`，非 P1。

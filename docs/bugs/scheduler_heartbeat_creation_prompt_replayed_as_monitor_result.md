@@ -473,3 +473,14 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被旧短问、任务配置或澄清语义污染；不是新的独立根因。
   - 因已有 heartbeat job 会发送无关内容并污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-07-30 02:03 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-29 22:01:29-2026-07-30 02:03 CST。
+  - `run_id=50153` / `AAOI 全面心跳检测` 在 01:30 作为已创建 AAOI heartbeat 触发，终态为 `completed/sent/delivered=1`。
+  - 用户可见 `response_preview` 输出 Hone 能力介绍、市场事件监听、公司长期画像和提醒创建说明，而不是执行 AAOI 最新动态 / 触发条件检查。
+  - `detail_json.scheduler.parse_kind=PlainTextTriggered`，raw preview 显示模型把本轮理解成用户在问 Hone 能做什么。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧短问、产品能力说明或非当前监控上下文污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容并污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。

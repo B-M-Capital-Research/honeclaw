@@ -6641,3 +6641,15 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定，不是新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 ordinary direct / scheduler 仍有多条正常收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-30 02:03 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-29 22:01:29-2026-07-30 02:03 CST。
+  - 同窗 heartbeat run 共 80 条：`completed/sent=22`、`execution_failed/skipped_error=5`、`noop/skipped_noop=53`。
+  - `run_id=50098` / `TSLA 正负触发条件心跳监控` 在 23:00 落成 `execution_failed/skipped_error`，错误为 `heartbeat 输出不是结构化 JSON，任务已标记失败`；`detail_json.parse_kind=PlainTextSuppressed`，raw preview 以 `<think>` 开头并把本轮理解成用户问“你好”。
+  - `run_id=50163` / 同一 TSLA heartbeat 在 02:00 再次落成同类失败，raw preview 把本轮理解成用户只发了 `1`，而不是执行 TSLA 正负触发条件检查。
+  - 同窗另有 22 条 `PlainTextTriggered + completed/sent`，包括 noop 正文、fenced JSON 正文和无关能力说明进入投递路径，说明结构化状态、触发判定和投递语义仍在漂移。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定，不是新的独立根因。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 Feishu direct 图片分析和 SGOV/BIL 问答均有 assistant 收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
