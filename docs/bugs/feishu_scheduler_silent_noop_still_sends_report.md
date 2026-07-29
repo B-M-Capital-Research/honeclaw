@@ -22,6 +22,15 @@ New
 
 ## 最新进展
 
+- 2026-07-29 06:01-10:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - `AAOI 全面心跳检测` 在 07:30 写出“本轮检查结论：noop”，仍落成 `heartbeat=1`、`completed/sent/delivered=1`。
+    - `珠海冠宇加仓信号心跳检测` 在 09:00 写出“结论：NOOP”，仍 `completed/sent/delivered=1`。
+    - `TEM大事件心跳监控` 在 09:30 标题写 `TEM 30分钟心跳检查（09:30）— noop`，仍 `completed/sent/delivered=1`。
+  - 判断：
+    - 这次证据继续来自 heartbeat=1 路径，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化或无触发增量，出站层仍将正文送达。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；同窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-29 02:00-06:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 85 条：`completed/sent=18`、`execution_failed/skipped_error=7`、`noop/skipped_noop=60`；其中至少 11 条 `delivered=1` 的 heartbeat preview 明写 `noop`、`无新增触发`、`无新触发`、`无触发` 或“保持静默”。

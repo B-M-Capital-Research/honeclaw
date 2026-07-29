@@ -8,6 +8,10 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-29 06:01-10:02 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
+    - 08:33 CST Feishu scheduler `美股AI产业链盘后报告` 的任务要求生成美股盘后全产业链景气报告，assistant final 只返回“抱歉，这次处理失败了。请稍后再试。”，随后追加 scheduler failure 补偿。
+    - 09:00 CST `特斯拉与火箭实验室新闻日报`、`早9点市场复盘(XME及加密ETF)`、`核心观察池早间简报` 均落成 `execution_failed/skipped_error`，只保留“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。”，没有业务正文。
+    - 本轮日志未确认全部都是 `max_iterations_exceeded`，因此仅按既有 function-calling / 普通 scheduler 通用失败恢复缺口补证，不拆新根因；同窗其它 direct 与多个 scheduler 可正常收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，非 P1。
   - `2026-07-28 18:01-22:03 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
       - `2026-07-28T20:45:00.437050+08:00` Feishu scheduler `美股盘后AI及高景气产业链推演` 触发，任务要求生成美股盘前全产业链景气报告。

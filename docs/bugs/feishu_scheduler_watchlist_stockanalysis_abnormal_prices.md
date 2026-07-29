@@ -1732,3 +1732,13 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前 README 已按 P0 能力治理跟踪该风险，本轮未发现需要额外创建 P1 issue 的条件。
+
+## 最新运行态复核（2026-07-29 10:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-29 06:01-10:02 CST。
+  - 08:45 Feishu scheduler `A股盘前高景气产业链推演` 用户可见 final 使用 `MU $820.53`、`AMD $454.62`、`COHR -10.31%` 等高风险行情锚，并据此判断 AI 硬件链全线破位和 A 股开盘压力。
+  - 09:30 Feishu scheduler `持仓股收盘复盘与美股新闻整理` 触发后，assistant final 只核验到 `CBOE Volatility Index（^VIX）` 相关字段，未完成真实持仓股复盘；同窗其它报告继续沿用高风险科技股价格数量级。
+- 本轮判断
+  - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失、持仓主体核验漂移和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或影响持仓复盘质量；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前 README 已按 P0 能力治理跟踪该风险，本轮未发现需要额外创建 P1 issue 的条件。
