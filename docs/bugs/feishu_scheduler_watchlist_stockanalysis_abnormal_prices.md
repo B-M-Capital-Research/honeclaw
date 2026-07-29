@@ -1752,6 +1752,20 @@
   - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失、持仓主体核验漂移和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或影响持仓复盘质量；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前 README 已按 P0 能力治理跟踪该风险，本轮未发现需要额外创建 P1 issue 的条件。
 
+## 最新运行态复核（2026-07-29 22:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-29 18:01-22:03 CST。
+  - 21:30 `ASTS 全面心跳检测` 串成 `SBUX NASDAQ $103.75` 星巴克分析，说明行情锚和任务主体同时错配。
+  - 20:32 普通 scheduler `每日仓位复盘` 在失败态仍把 `TSM 392.31`、`GOOGL 333.71` 等 provider quote 作为已核验事实写入用户可见内容。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 同窗 heartbeat 82 条、普通 scheduler 27 条；未见 `detail_json.scheduler.watchlist_price_anchor_guarded` 命中记录。
+  - 18:01 `关注股重大事件心跳检测` 继续使用 `LITE $665 / 昨收 $711.96 / 常规收盘 $651.93` 等未经本轮独立交叉校验的强价格锚生成触发 JSON 并送达。
+  - 21:30 / 22:00 多条 heartbeat 继续使用 `MU $832.76/$820.53`、`AAOI 50DMA $148.72`、`RKLB 50DMA $100.66`、`LITE $622.68/$655.21`、`COHR $234.18` 等强数值锚进入 noop / sent / JSON 载荷或判断表。
+- 本轮判断
+  - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失、主体核验漂移和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或影响持仓复盘质量；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前缺陷保持 `P0 / Fixing`，本轮未发现需要额外创建 P1 issue 的条件。
+
 ## 最新运行态复核（2026-07-29 14:02 CST）
 
 - `data/sessions.sqlite3`

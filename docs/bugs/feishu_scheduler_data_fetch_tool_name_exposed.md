@@ -933,3 +933,14 @@ New
 - 本轮判断
   - 这是既有 Feishu scheduler / direct 内部工具名、provider 字段和行情实现口径外露的同根复发，不新建重复缺陷。
   - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-29 22:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-29 18:01-22:03 CST。
+  - 20:31 Feishu scheduler / direct actor `每日名人基金美股操作跟踪` 用户可见 final 写出 `provider timestamp`，把上游时间字段口径直接作为用户态来源说明。
+  - 21:32 Feishu scheduler / direct actor `美股开盘道氏理论点位简报` 用户可见 final 写出 `本轮同代码 DataFetch quote` 与 `hone_quote_time.beijing = 2026-07-29 21:30`。
+  - 21:45 Feishu scheduler / direct actor `每日美股大盘风控简报` 用户可见 final 写出 `QQQ/SPY 来自 DataFetch quote`。
+- 本轮判断
+  - 这是既有 Feishu scheduler / direct 内部工具名、provider 字段和行情实现口径外露的同根复发，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。

@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-29 18:01-22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 18:30 `ASTS 全面心跳检测` 作为 heartbeat job 触发，用户可见 preview 却回答“你没有指定哪只股票，我需要先确认标的”，列出 ASTS/RKLB/AAOI/CIEN 等近期标的，没有执行 ASTS 监控条件。
+    - 18:30 `RKLB 全面心跳检测` 输出“$63.89 不是值得重仓的理想买点”，变成买点建议而非 heartbeat 触发判断。
+    - 21:30 `ASTS 全面心跳检测` 的 raw / deliver preview 串到 `SBUX NASDAQ $103.75`、星巴克财报和估值分析，任务主体从 ASTS 完全漂移到 SBUX。
+    - 22:01 `AAOI 全面心跳检测` raw preview 又基于 ASTS 与 Starlink DTC 新闻组织分析，随后因非结构化 heartbeat 输出失败。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被旧用户问题、其它标的或普通投研问答污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或直接漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-07-29 14:01-18:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `ASTS 全面心跳检测` 在 15:00 `run_id=49909` 作为 heartbeat job 触发，用户可见 preview 却回答“能买吗？能买什么？”并列出近期标的，未执行 ASTS 监控条件。
