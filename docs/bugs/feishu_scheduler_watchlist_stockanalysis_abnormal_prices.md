@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-07-29 14:01-18:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `P0 / Fixing`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 80 条 heartbeat run 中未见普通 scheduler 新增；`detail_json` 仍未见 `scheduler.watchlist_price_anchor_guarded` 命中记录。
+    - 14:30 / 17:30 / 18:00 `Monitor_Watchlist_11` 继续使用 `MU $820.53` 作为距离触发价判断锚，并在部分轮次把其写入 fenced JSON 或用户可见 preview。
+    - 15:00 / 17:00 `关注股重大事件心跳检测` 使用 `SK Hynix ₩1,401,000`、日内低点 `₩1,246,000`、昨收 `₩1,550,000`、200 日均线 `₩1,168,502` 等强数值锚生成触发 JSON 并 `completed/sent/delivered=1`。
+    - 16:30 `TSLA 正负触发条件心跳监控` `run_id=49945` 使用 50 / 200 日均线 `$397.12 / $413.43` 和市值约 `$9870 亿` 进入 noop 报告；17:00 `AAOI 全面心跳检测` `run_id=49952` 使用 `AAOI $88.14`、50 日均线 `$148.72`、200 日均线 `$89.17`、EV/Sales `20x+` 给出买点判断。
+    - 18:01 `关注股重大事件心跳检测` `run_id=49975` 使用 `LITE` 盘前 `$665`、昨收 `$711.96`、常规收盘 `$651.93` 等未经本轮独立交叉校验的强价格锚生成触发 JSON。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口，并伴随 heartbeat JSON 载荷泄露和任务主体串线。它会污染 direct、scheduler 和 heartbeat 金融判断质量；当前主投递链路未整体阻断，因此仍不形成新的 P1 issue。头部状态保持 `P0 / Fixing`，本轮仅补充运行态证据。
+
 - 2026-07-29 02:00-06:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `P0 / Fixing`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 本轮窗口内有非文档提交 `416eb653 fix: fail closed on unstable watchlist price anchors`，但 03:09 CST 之后的 live run 仍未在 `detail_json.scheduler.watchlist_price_anchor_guarded` 看到命中记录。
