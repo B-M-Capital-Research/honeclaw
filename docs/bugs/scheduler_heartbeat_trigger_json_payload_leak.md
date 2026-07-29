@@ -558,3 +558,15 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，用户能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-29 14:02 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口：2026-07-29 10:01-14:02 CST。
+  - `run_id=49818` / `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` 在 10:30 `completed/sent/delivered=1`，用户可见 preview 直接以 fenced JSON 开头，包含 `status`、`triggered`、`symbol`、`event` 等协议字段。
+  - `run_id=49858` / 同一任务在 11:31 再次以 fenced JSON 开头并送达。
+  - `run_id=49898` / 同一任务在 13:00 继续以 fenced JSON 开头并送达。
+  - `run_id=49909` / 同一任务在 13:30 继续以 fenced JSON 开头并送达。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，用户能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
