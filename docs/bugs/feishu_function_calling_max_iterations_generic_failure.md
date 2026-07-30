@@ -7,6 +7,16 @@
 
 ## 最新进展
 
+- `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `session_messages` / `cron_job_runs`
+    - 20:00 Feishu scheduler `美股盘前要闻、持仓评级与机会观察` 任务要求生成盘前综合简报，覆盖宏观、持仓 / 关注股新闻、评级变化、财报预期和操作优先级；20:03 assistant final 仅返回“抱歉，这次处理失败了。请稍后再试。”，随后追加 scheduler failure 补偿。
+    - 同条 `cron_job_runs` 为 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=skipped_error`、`failure_kind=internal_error_suppressed`，用户没有拿到业务正文。
+    - 20:45 `美股盘后AI及高景气产业链推演` 同样要求生成全产业链景气报告；20:48 assistant final 仅返回通用失败，随后追加“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”
+    - 同窗其它普通 scheduler 仍有多条正常收口，说明不是 Feishu scheduler 全局不可用。
+  - 判断：
+    - 最新样本仍是 function-calling / 普通 scheduler 在内部失败后缺少可恢复业务答案，用户只能收到通用失败或 failure fallback；近窗 runtime `.log` 无 mtime 更新，无法确认是否为 `max_iterations_exceeded`，因此只按既有 function-calling / 普通 scheduler 通用失败恢复缺口补证，不拆新根因。
+    - 严重等级维持 `P2`：会阻断具体 scheduler 业务任务，但同窗其它 direct / scheduler 可收口，未形成全渠道不可用或 P1。
+
 - `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 07:03 普通 scheduler `美股持仓收盘后早报` `run_id=50272` 落成 `execution_failed + sent + delivered=1`，`detail_json.scheduler.failure_kind=internal_error_suppressed`；用户侧收到的 preview / error 仅是已核验标的清单和报价片段，没有完整早报结论。

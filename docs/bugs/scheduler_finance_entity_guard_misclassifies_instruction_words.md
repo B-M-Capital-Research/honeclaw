@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-30 22:03 CST）
+
+- `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` / `session_messages` / `cron_job_runs`
+    - 20:00 CST Feishu scheduler `每日名人基金美股操作跟踪` 的任务正文要求跟踪 Nancy Pelosi / Cathie Wood / ARK Invest / Berkshire / Li Lu / Dan Bin 等公开披露和美股相关操作。
+    - 20:01 assistant final 只返回“已识别证券代码 `13F`，但当前数据供应商没有返回同代码行情覆盖”，未生成名人基金 / 公开披露追踪主体内容。
+    - `cron_job_runs` 同条记录落成 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`，说明失败提示已作为用户可见 scheduler 结果发送。
+  - 判断：
+    - 最新样本仍是 scheduler 任务正文中的披露表单 / 金融语境词进入证券实体 guard / resolver 后误抽为 ticker，导致业务正文被阻断；与既有 `13F` / `NAND` / `ARK` / `Nancy` / `PCE` / `SEC` 误抽同根，不新建重复缺陷。
+    - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文生成并发送失败提示，但同窗 direct / scheduler 仍有正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-30 10:01 CST）
 
 - `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：

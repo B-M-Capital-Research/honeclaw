@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- 2026-07-30 22:03 CST 巡检补充同根复发证据，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 18:00 `全天原油价格3小时播报` 已 `completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`，用户可见内容仍只有安全说明：“未完成同窗来源核验的原因归因已移除，本轮未保留原正文中的价格或归因句”。
+    - 21:30 普通 scheduler `Oil_Price_Monitor_Premarket` 已 `completed + sent + delivered=1`，同样只送达 guard 安全说明，未完成用户要求的“查询最新原油价格并汇报是否突破 / 回落阈值”。
+    - 22:00 `全天原油价格3小时播报` 又因“heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`，本轮无可审计油价摘要。
+    - 对照：21:30 同一 Feishu session 的 assistant final 曾正常生成 `USO $127.06`、WTI / Brent 价格和盘前油价速报，说明不是全局工具不可用，而是 scheduler / heartbeat 出站 guard 与结构化 contract 仍让任务交付在“安全说明 / skipped_error”之间漂移。
+  - 结论：出站 guard 已阻断未核验归因直接外发，但当前主任务仍未真正完成“查询最新原油价格并汇报全天走势 / 阈值”的交付；同窗还出现结构化 contract 失败漏发。该问题继续影响原油 scheduler / heartbeat 的可用性与可审计性，维持功能性质量缺陷 `P2 / New`；当前没有错投、敏感信息泄露、全渠道不可用或活跃 P1 证据，不创建 GitHub Issue。
+
 - 2026-07-30 18:02 CST 巡检补充同根复发证据，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 15:01 `全天原油价格3小时播报` `run_id=50443` 与 17:00 同 job `run_id=50482` 因 “heartbeat 输出不是结构化 JSON” 落成 `execution_failed + skipped_error`，本轮原油价格播报没有完成，也没有可审计的用户可见油价摘要。
