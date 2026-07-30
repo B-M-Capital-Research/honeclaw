@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展
+
+- `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:03 普通 scheduler `美股持仓收盘后早报` `run_id=50272` 落成 `execution_failed + sent + delivered=1`，`detail_json.scheduler.failure_kind=internal_error_suppressed`；用户侧收到的 preview / error 仅是已核验标的清单和报价片段，没有完整早报结论。
+    - 08:31 普通 scheduler `每日有色化工标的新闻追踪` `run_id=50306` 同样落成 `execution_failed + sent + delivered=1`，只返回 `本轮未能发现足够的可核验代表证券，不会用通用标的凑数`，用户任务要求的中国宏桥、紫金矿业、盐湖股份等新闻 / 公告摘要未生成。
+    - 08:45 `A股盘前高景气产业链推演` `run_id=50313` 落成 `execution_failed + skipped_error`，用户侧只保留通用失败提示 `定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。`
+  - 判断：
+    - 最新样本仍是 function-calling / 普通 scheduler 在内部失败后缺少可恢复业务答案，用户只能收到通用失败、半截事实或安全失败片段；未确认新的独立根因。
+    - 严重等级维持 `P2`：会阻断具体 scheduler 业务任务，但同窗其它 direct / scheduler 可收口，未形成全渠道不可用或 P1。
+
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`

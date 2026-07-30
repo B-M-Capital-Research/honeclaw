@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-30 10:01 CST）
+
+- `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `session_messages` / `cron_job_runs`
+    - 08:30 `闪迪(SNDK)每日行情与行业简报` 用户任务明确要求调取 `SNDK` 最新行情、新闻催化、评级变化和 `NAND Flash` 存储行业动态。
+    - 08:30 assistant final / `run_id=50299` 只返回 `已识别证券代码“NAND”，但当前数据供应商没有返回同代码行情覆盖。本轮不会将它映射到其它证券；请检查交易所后缀，或稍后重试。`
+    - 该 run 落成 `execution_failed + sent + delivered=1`，`detail_json.scheduler.failure_kind=internal_error_suppressed`；SNDK 简报主体未生成。
+  - 判断：
+    - 最新样本与 2026-07-29 08:30 同名任务同根：finance entity guard 把行业词 `NAND Flash` 中的 `NAND` 当作证券代码要求行情覆盖，反而阻断了明确 ticker `SNDK` 的业务任务。
+    - 严重等级维持 `P2`：这会导致普通 scheduler 主任务未完成并外发失败提示；同窗其它 scheduler 可收口，未扩大到 P1。
+
 ## 代码级修复（2026-07-26 CST）
 
 - 本轮 `bug-2` 针对 scheduler / heartbeat 任务正文里的误抽与误拦补齐了三类 guard：

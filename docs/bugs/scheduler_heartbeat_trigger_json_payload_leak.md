@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-30` / `data/sessions.sqlite3`
+    - 07:30 `Monitor_Watchlist_11` `run_id=50282` 的 deliver preview 以 fenced JSON 送达 `status: alert_checked`、`data_time_beijing`、`quote_sources` 等协议字段。
+    - 08:00 `Monitor_Watchlist_11` runtime deliver preview 继续以 fenced JSON 送达 `status: alert_checked` 与多只标的 `price: null` / source 字段。
+    - 08:30 `Monitor_Watchlist_11` runtime deliver preview 再次投递 fenced JSON，包含 `status: alert_checked`、`quote_sources`、`HIMS` / `MU` 等原始结构化字段。
+  - 判断：
+    - 最新样本仍是 heartbeat 出站把中间 JSON 协议或机器字段直接作为用户可见内容；主功能没有整体阻断，且未见错投 / 敏感数据 / 全渠道不可用，因此继续按质量性 `P3 / New` 跟踪。
+    - 为什么不影响功能链路：监控任务仍能执行并送达，用户可以大致看懂部分字段；受损的是输出格式和可读性，所以不提升到 P2。
+
 - `2026-07-30 02:01-06:04 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 03:00 CST heartbeat job `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` 的 `run_id=50182` 已记录 `completed + sent + delivered=1`，`response_preview` 直接以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。

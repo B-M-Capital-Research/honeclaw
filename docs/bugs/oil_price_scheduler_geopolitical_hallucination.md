@@ -7,6 +7,13 @@
 
 ## 最新进展
 
+- 2026-07-30 10:01 CST 巡检补充同根复发证据，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:00 `全天原油价格3小时播报` runtime / `run_id=50270` 成功送达，preview 写 WTI 约 `$84.47`、Brent 约 `$89.43`，并把来源混合为 Forbes / Oilprice.com / Barchart.com / CNBC 的多个时间点。
+    - 08:01 同 job `run_id=50292` 再次成功送达，preview 写 WTI 近月约 `$84.9`、布伦特约 `$78.8`，并组织成库存、美元、需求和地缘线索的解释。
+    - 08:30 同 job `run_id=50307` 因 `PlainTextSuppressed` / “heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`，原油播报任务本轮未完成。
+  - 结论：这是同一“原油 heartbeat / scheduler 外发未核验价格、多来源时间口径混杂、或因结构化 contract 失败漏发”的运行态复发，不新建重复文档。该问题会影响用户对油价与相关风险判断，维持功能性质量缺陷 `P2 / New`；当前没有错投、敏感信息泄露、全渠道不可用或活跃 P1 证据，不创建 GitHub Issue。
+
 - 2026-07-30 06:04 CST 巡检补充同根运行态证据，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=50204` / `job_name=Oil_Price_Monitor_Closing` / `executed_at=2026-07-30T04:01:03.222632+08:00` 已记录 `completed + sent + delivered=1`。
