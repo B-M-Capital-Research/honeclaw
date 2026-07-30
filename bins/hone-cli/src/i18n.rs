@@ -266,8 +266,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_cli.note_3",
-        "安装：`npm install -g @openai/codex`；已安装可用 `codex --upgrade` 更新。",
-        "Install: `npm install -g @openai/codex`; if already installed, `codex --upgrade` will update.",
+        "安装：`npm install -g @openai/codex`；已安装可用 `codex update` 更新。",
+        "Install: `npm install -g @openai/codex`; if already installed, `codex update` will update.",
     ),
     (
         "runner.codex_cli.note_4",
@@ -291,8 +291,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_acp.note_3",
-        "安装：`npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`；最低验证版本为 0.144.1 / 1.1.2。",
-        "Install: `npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`; validated floors are 0.144.1 / 1.1.2.",
+        "安装：`npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`；最低验证版本为 0.146.0 / 1.1.7。",
+        "Install: `npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`; validated floors are 0.146.0 / 1.1.7.",
     ),
     (
         "runner.codex_acp.note_4",

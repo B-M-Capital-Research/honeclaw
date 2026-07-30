@@ -1250,6 +1250,10 @@ mod tests {
         assert_eq!(OnboardRunnerKind::HoneCloud.config_value(), "hone_cloud");
         assert!(OnboardRunnerKind::HoneCloud.binary_probe().is_none());
         assert!(OnboardRunnerKind::CodexCli.binary_probe().is_some());
+        assert_eq!(
+            OnboardRunnerKind::CodexAcp.binary_probe(),
+            Some(("codex-acp", "--version"))
+        );
     }
 
     #[test]

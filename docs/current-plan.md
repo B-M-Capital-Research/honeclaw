@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-07-29
+最后更新：2026-07-31
 状态：有 9 个活跃任务
 
 ## 说明
@@ -56,4 +56,4 @@
 - **ACP 对齐的 Agent Runtime 全栈重构**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/acp-runtime-refactor.md`
-  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session；当前继续收口 ACP transcript 边界、compact 防泄漏、system prompt reseed 语义，以及 ACP 子进程 / `hone-mcp` 生命周期泄漏修复。session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex/opencode 可互相切换恢复，`codex_cli` 也纳入同一 normalized 持久化契约；旧 `function_calling` 与 `multi-agent` 已退休，`gemini_acp` 已禁用并给出迁移提示。2026-07-29 已修复 Codex ACP `session/set_model` 的 `model[effort]` 协议兼容，并让管理员 Codex ACP 图片消息跳过冗余 Apple Vision OCR 预提取；部署后的 Discord 跟进消息在 1.121 秒内出现处理占位，112.473 秒完成 53 次行情 / 持仓工具调用并成功回写最终答复
+  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，当前继续收口 ACP transcript 边界、compact 防泄漏、system prompt reseed 语义，以及 ACP 子进程 / `hone-mcp` 生命周期泄漏修复。session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex/opencode 可互相切换恢复，`codex_cli` 也纳入同一 normalized 持久化契约；旧 `function_calling` 与 `multi-agent` 已退休，`gemini_acp` 已禁用并给出迁移提示。2026-07-29 管理员 Codex ACP 图片消息已跳过冗余 Apple Vision OCR 预提取；2026-07-30 本机 CLI 升级到 Codex `0.146.0` / Codex ACP `1.1.7`，model/effort 改为进程配置，并由真实 Discord 双轮验证把一个 Hone 逻辑会话固定到同一个原生 Codex session，通过 `session/resume` 连续两轮且由 Codex harness 自主管理历史与压缩

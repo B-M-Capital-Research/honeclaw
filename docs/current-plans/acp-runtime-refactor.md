@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-07-29
+- updated_at: 2026-07-31
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -39,7 +39,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - ACP runners already bridge into Hone MCP.
 - `gemini_acp` 的初始化与 usage 信号链路已被完整复盘，但该 runner 现已禁用并输出迁移提示，不再作为收敛目标保留在默认运行路径里。
 - Runner timeout config is being converged to two top-level knobs under `agent`: `step_timeout_seconds` and `overall_timeout_seconds`.
-- ACP `session/prompt` now uses `idle=step_timeout_seconds` and `overall=overall_timeout_seconds`; `session/load timeout` now falls back to `session/new` instead of directly failing the turn.
+- ACP `session/prompt` now uses `idle=step_timeout_seconds` and `overall=overall_timeout_seconds`. Codex continuation no longer uses `session/load`; a marked persistent session must resume successfully and may not silently fall back to `session/new`.
 - `codex_acp` transcript is being reworked so intermediate model output is preserved in restorable transcript segments without flattening everything into one assistant blob.
 - Common code now only carries generic `message.metadata`; runner-specific transcript fields must stay in each runner / channel implementation instead of being centralized under a shared ACP schema.
 - `codex_acp` and `opencode_acp` now share the same normalized cross-turn history model: top-level history restores as `user/assistant` turns, while tool calls/results and progress/final answer are represented inside assistant `content[]` parts instead of as runner-specific prompt JSON.
@@ -57,6 +57,9 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-07-13 follow-up: the simplification task removed the in-process `function_calling` agent and sequential `multi-agent` runner, moved current defaults to Codex ACP with GPT-5.6 Sol / xhigh, and reduced duplicated prompt layers. This plan remains the parent ACP architecture record.
 - 2026-07-13 completion: the simplification follow-up is done and archived at `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`; verification and migration details are in `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`.
 - 2026-07-29 follow-up: a real Discord admin turn proved that `codex-acp 1.1.7` creates the intended `gpt-5.6-sol[xhigh]` session but rejected Hone's subsequent bare `gpt-5.6-sol` legacy `session/set_model` request before `session/prompt`. The selector is now normalized and covered. A second real image turn then exposed a separate 95.5-second pre-placeholder delay: two optional Apple Vision OCR helper compilation timeouts ran before ACP even started. Codex ACP admin image turns now bypass that redundant pre-extraction and use native image reads; Kimi/Hone session compaction remains unchanged and out of scope.
+- 2026-07-30 live continuity diagnosis: Codex ACP still intentionally creates one fresh upstream ACP session per Hone turn. A controlled two-turn Discord probe kept one deterministic Hone session, created two distinct Codex rollout/session IDs, injected the first `user/assistant` pair into the second turn's `### Restored Conversation Transcript ###`, and recovered the exact sentinel. Native Codex session views therefore show separate one-turn rollouts even though semantic conversation continuity is preserved by Hone's local transcript restore. Evidence and local adapter compatibility findings are recorded in `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`.
+- 2026-07-30 compatibility follow-up: replaced the unrelated Homebrew `zed-industries/codex-acp 0.11.1` with npm `@agentclientprotocol/codex-acp 1.1.7`, installed npm `@openai/codex 0.146.0`, raised Hone's validated floors, and moved Codex model/reasoning selection into process `-c` overrides before `session/new`. This avoids adapter-specific `session/set_model` model-id formatting and makes version probes use the same `CODEX_PATH` as real turns.
+- 2026-07-30 persistent-session follow-up: the preceding fresh-session diagnosis is retained as historical evidence of the old behavior, but its contract is superseded by `D-2026-07-30-01`. Hone now creates one native Codex session for each deterministic Hone logical session, stores a mode-marked native ID, resumes it on every later turn with `session/resume`, and seeds local transcript only once when entering persistent mode. Codex owns history and automatic compaction; a resume failure fails closed instead of silently forking the Codex page.
 
 ## Validation
 
@@ -110,6 +113,41 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - source launchd service gracefully restarted after the attachment fix (`runs=6`, PID `94657` at validation); Discord re-logged as `Hone-TEST`, ports `8077` and `8088` were listening, stderr remained empty, and no `swiftc` / `hone-image-ocr` process remained
   - first post-deployment Discord follow-up was sent at `00:46:28.111`; the bot placeholder was created at `00:46:29.232` (`1.121s` later), ACP completed `session/set_model(gpt-5.6-sol[xhigh]) -> session/prompt`, and the turn finished successfully in `112473ms` after 53 portfolio/data/search tool calls with a 680-character answer
   - Discord API readback confirmed the same placeholder was edited to the final answer at `00:48:22.320` and no processing-placeholder text remained
+- 2026-07-30:
+  - Real `codex_acp` two-turn probe through `channel=discord`: one Hone session, two fresh Codex ACP sessions, exact prior-turn sentinel recovered on turn two.
+  - ACP JSONL inspection confirmed the second `session/prompt` contained the prior `user/assistant` pair in `### Restored Conversation Transcript ###`.
+  - Native Codex rollout inspection confirmed each upstream ACP session contains one native `user_message -> agent_message` turn, matching the intentional fresh-session contract.
+  - `cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`
+  - `cargo test -p hone-channels codex_prompt_text_includes_restored_transcript_when_session_is_recreated -- --nocapture`
+  - `cargo test -p hone-discord group_session_id_is_channel_scoped -- --nocapture`
+  - No business code changed. Temporary `config.yaml` overrides used for the live probe were restored exactly.
+- 2026-07-30 compatibility follow-up:
+  - `codex --version` reported `codex-cli 0.146.0`; ACP initialize reported adapter `1.1.7`.
+  - `cargo test -p hone-channels codex_acp -- --nocapture`
+  - `cargo test -p hone-channels configured_codex -- --nocapture`
+  - `cargo test -p hone-channels codex_version_matrix -- --nocapture`
+  - `cargo test -p hone-core agent_runner_kind_keeps_wire_values_and_probe_mapping -- --nocapture`
+  - `cargo test -p hone-cli onboard_runner_kind_config_values_and_probe_requirements -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `cargo check -p hone-cli --tests`
+  - `bash tests/regression/manual/test_codex_acp_initialize.sh`
+  - `bash tests/regression/manual/test_codex_acp_event_stream.sh`
+  - Repeated the two-turn Discord probe with the installed binaries. Both turns used `gpt-5.6-sol[xhigh]`, no `session/set_model` call occurred, and turn two returned `UPGRADED-DISCORD-CTX-20260730`.
+  - Temporary Discord admin configuration was restored exactly after the probe.
+- 2026-07-30 persistent-session follow-up:
+  - Raw cross-process ACP probe resumed an existing Codex ID with `session/resume`; the adapter emitted no historical `session/update` between request and response.
+  - Real Discord two-turn probe kept one Hone logical session and one native Codex ID `019fb3c2-f2f7-7140-8140-7520409d79be`.
+  - Codex Desktop's task index listed that same native ID as one local task.
+  - ACP evidence: one `session/new`, one `session/resume`, two `session/prompt`; neither current prompt contained a restored-transcript block.
+  - Native Codex rollout evidence: one rollout file, two `user_message`, two `agent_message`, two completed tasks; turn two returned `ONE-CODEX-SESSION-20260730`.
+  - `cargo test -p hone-channels codex_acp_reuses_only_persistent_remote_session_metadata -- --nocapture`
+  - `cargo test -p hone-channels codex_prompt_text_includes_restored_transcript_when_persistent_session_is_initialized -- --nocapture`
+  - `cargo test -p hone-channels self_managed_runner_context_overflow_is_not_locally_compacted_or_retried -- --nocapture`
+  - `cargo test -p hone-channels --lib` passed 699 tests with one host-dependent OCR test ignored after rebasing onto current `origin/main`.
+  - `cargo check -p hone-channels --tests` and `cargo check -p hone-cli --tests`
+  - `bash tests/regression/manual/test_codex_acp_initialize.sh`
+  - `bash tests/regression/manual/test_codex_acp_event_stream.sh`
+  - Temporary Discord administrator configuration was restored exactly after the probe.
 
 ## Documentation Sync
 
@@ -130,4 +168,6 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Runner-specific transcript metadata can still grow session files; any future expansion should be validated against real session size and restore cost.
 - ACP compact detection currently depends on codex literal markers plus opencode usage-drop heuristics; if upstream protocols change those signals, the detection path needs fresh live validation.
 - ACP CLI cleanup must account for grandchildren such as `hone-mcp`; killing only the direct ACP process can leave orphaned MCP servers when the upstream CLI does not close them itself.
-- Codex ACP model selection is a protocol compatibility boundary: adapter releases may change the accepted selector shape even when `session/new` continues to report the intended model. Keep focused tests for bare, legacy slash, and bracketed config forms, and validate against the minimum supported adapter plus the currently installed release.
+- Codex ACP's model list and session/model-id representation remain adapter-version-specific. Hone now avoids that dependency by supplying the base model and reasoning effort as Codex process config before `session/new`; future adapter upgrades must rerun initialize, event-stream, and two-turn continuity probes.
+- A persistent native Codex session is scoped to one deterministic Hone logical session, not globally to the whole Hone installation. Any future session-key change must preserve actor/channel isolation.
+- Deleting or invalidating a marked native Codex session currently makes resume fail explicitly. Recovery must remain an operator-visible mapping repair; do not add an automatic `session/new` fallback that silently fragments page history.

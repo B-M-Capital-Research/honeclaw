@@ -278,9 +278,26 @@ PROBE_DATA_DIR="$WORK_DIR/data"
 mkfifo "$IN_PIPE" "$OUT_PIPE"
 touch "$STDOUT_LOG" "$STDERR_LOG"
 
-MODEL_ID="$MODEL"
-if [[ -n "$MODEL" && -n "$VARIANT" && "$MODEL" != */"$VARIANT" ]]; then
-  MODEL_ID="${MODEL}/${VARIANT}"
+BASE_MODEL="$MODEL"
+if [[ -n "$BASE_MODEL" && -n "$VARIANT" ]]; then
+  slash_suffix="/$VARIANT"
+  bracket_suffix="[$VARIANT]"
+  if [[ "$BASE_MODEL" == *"$slash_suffix" ]]; then
+    BASE_MODEL="${BASE_MODEL:0:${#BASE_MODEL}-${#slash_suffix}}"
+  elif [[ "$BASE_MODEL" == *"$bracket_suffix" ]]; then
+    BASE_MODEL="${BASE_MODEL:0:${#BASE_MODEL}-${#bracket_suffix}}"
+  fi
+fi
+
+ACP_ARGS=(
+  -c 'sandbox_mode="workspace-write"'
+  -c 'approval_policy="never"'
+)
+if [[ -n "$BASE_MODEL" ]]; then
+  ACP_ARGS+=(-c "model=\"$BASE_MODEL\"")
+fi
+if [[ -n "$VARIANT" ]]; then
+  ACP_ARGS+=(-c "model_reasoning_effort=\"$VARIANT\"")
 fi
 
 MCP_ENV="$(python3 - "$CONFIG_PATH" "$CHANNEL" "$ACTOR_USER_ID" "$CHANNEL_TARGET" "$CHANNEL_SCOPE" "$ALLOW_CRON" "$PROBE_DATA_DIR" <<'PY'
@@ -308,14 +325,13 @@ echo "[INFO] config: $CONFIG_PATH"
 echo "[INFO] runner: $RUNNER"
 echo "[INFO] codex command: $CODEX_COMMAND"
 echo "[INFO] codex-acp command: $CODEX_ACP_COMMAND"
-echo "[INFO] model id: ${MODEL_ID:-<default>}"
+echo "[INFO] model: ${BASE_MODEL:-<default>}"
+echo "[INFO] reasoning effort: ${VARIANT:-<default>}"
 echo "[INFO] actor: channel=$CHANNEL user_id=$ACTOR_USER_ID scope=$CHANNEL_SCOPE target=$CHANNEL_TARGET"
 echo "[INFO] probe workspace: $WORK_DIR"
 
 echo "[INFO] starting codex ACP"
-"$CODEX_ACP_COMMAND" \
-  -c 'sandbox_mode="workspace-write"' \
-  -c 'approval_policy="never"' \
+env CODEX_PATH="$CODEX_COMMAND" "$CODEX_ACP_COMMAND" "${ACP_ARGS[@]}" \
   <"$IN_PIPE" >"$OUT_PIPE" 2>"$STDERR_LOG" &
 ACP_PID=$!
 
@@ -353,23 +369,10 @@ if [[ -z "$SESSION_ID" ]]; then
   exit 1
 fi
 
-if [[ -n "$MODEL_ID" ]]; then
-  echo "[INFO] setting codex ACP model: $MODEL_ID"
-  send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"modelId\":\"$MODEL_ID\"}}"
-  if ! wait_for_pattern '"id":3,"result"' 30; then
-    echo "[FAIL] codex acp session/set_model did not succeed" >&2
-    echo "--- stdout ---" >&2
-    cat "$STDOUT_LOG" >&2 || true
-    echo "--- stderr ---" >&2
-    cat "$STDERR_LOG" >&2 || true
-    exit 1
-  fi
-fi
-
 echo "[INFO] prompting codex ACP to emit a pre-tool chunk, call hone/skill_tool, and finish cleanly"
-send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"prompt\":$PROMPT_JSON}}"
+send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"prompt\":$PROMPT_JSON}}"
 
-if ! wait_for_pattern '"id":4,"result"' 180; then
+if ! wait_for_pattern '"id":3,"result"' 180; then
   echo "[FAIL] codex acp prompt did not complete successfully" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
@@ -402,7 +405,7 @@ for raw in log_path.read_text().splitlines():
     except json.JSONDecodeError:
         continue
 
-    if payload.get("id") == 4 and isinstance(payload.get("result"), dict):
+    if payload.get("id") == 3 and isinstance(payload.get("result"), dict):
         prompt_result = payload["result"]
 
     update = payload.get("params", {}).get("update")
@@ -470,9 +473,9 @@ lines.extend(
         "",
         "what_success_looks_like:",
         "1. session/new returns a sessionId.",
-        "2. optional session/set_model returns result.",
+        "2. configured model and reasoning effort are applied before session/new.",
         "3. session/update notifications may stream agent_message_chunk and tool_call/tool_call_update events.",
-        "4. the terminal success marker is the id=4 session/prompt result with stopReason=end_turn.",
+        "4. the terminal success marker is the id=3 session/prompt result with stopReason=end_turn.",
         "5. any earlier agent_message_chunk is only intermediate content, not the terminal result by itself.",
     ]
 )

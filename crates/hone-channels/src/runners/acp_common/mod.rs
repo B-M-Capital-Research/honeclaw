@@ -11,7 +11,7 @@
 //! | `tool_state`  | Tool call 状态机(capture start/finish + assistant/tool message pair) |
 //! | `log`         | `acp-events.log` 写入 + tracing 诊断格式化 |
 //! | `ingest`      | 把 `session/update` 翻译成 runner event + compact 检测 |
-//! | `protocol`    | JSON-RPC 线上协议(`session/new` / `session/prompt` / permission / timeout) |
+//! | `protocol`    | JSON-RPC 线上协议(`session/new` / `session/resume` / `session/prompt` / permission / timeout) |
 //! | `version`     | `CliVersion` 解析(每个 runner 校版本下限用) |
 //!
 //! 外部 runner 原来通过 `super::acp_common::{...}` 消费本 module,切完之后
@@ -44,7 +44,7 @@ pub(crate) use log::{
 };
 pub(crate) use process::{AcpChildGuard, configure_acp_command_process_group};
 pub(crate) use protocol::{
-    create_acp_session, set_acp_session_model, wait_for_response,
+    create_acp_session, resume_acp_session, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 pub(crate) use state::{

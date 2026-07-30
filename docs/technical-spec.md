@@ -1,6 +1,6 @@
 # Hone-Financial Technical Specification
 
-Last updated: 2026-05-15
+Last updated: 2026-07-30
 Status: Aligned with the current implementation
 
 ## 1. Document Purpose
@@ -223,8 +223,11 @@ This rule is already applied to:
 
 - Uses `codex-acp` over stdio / JSON-RPC
 - Defaults to `gpt-5.6-sol` with `xhigh` reasoning effort
-- Requires `@openai/codex >= 0.144.1` and `@agentclientprotocol/codex-acp >= 1.1.2` before starting a turn
-- Creates a fresh ACP session per Hone turn and seeds it from Hone's restored context
+- Requires `@openai/codex >= 0.146.0` and `@agentclientprotocol/codex-acp >= 1.1.7` before starting a turn
+- Applies the configured model and reasoning effort through Codex process config before `session/new`; Codex ACP `session/set_model` is not used
+- Maps one deterministic Hone logical session to one persistent native Codex session: the cold start uses `session/new`, later turns use `session/resume`
+- Seeds Hone's restored transcript only on that cold start; subsequent history and compaction belong to the Codex harness
+- Never uses `session/load` for continuation because it can replay historical ACP updates into the current stream
 
 #### `opencode_acp`
 

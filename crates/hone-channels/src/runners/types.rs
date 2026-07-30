@@ -121,4 +121,13 @@ pub trait AgentRunner: Send + Sync {
     fn manages_own_context(&self) -> bool {
         false
     }
+
+    /// Runner 是否把当前逻辑会话绑定到一个持久的原生会话，并依赖原生
+    /// harness 处理 context overflow / compaction。
+    ///
+    /// 返回 true 时，AgentSession 不应通过改写 Hone 本地历史重放当前 turn；
+    /// 这既无法缩小原生会话，也可能造成重复执行。当前仅 Codex ACP 使用。
+    fn relies_on_native_context_compaction(&self) -> bool {
+        false
+    }
 }

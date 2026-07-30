@@ -225,13 +225,28 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
 }
 
 #[test]
-fn codex_acp_does_not_reuse_remote_session_metadata() {
+fn codex_acp_reuses_only_persistent_remote_session_metadata() {
     let mut metadata = HashMap::new();
     metadata.insert(
         "codex_acp_session_id".to_string(),
         Value::String("old-remote-session".to_string()),
     );
 
+    assert!(reusable_codex_acp_session_id(&metadata).is_none());
+
+    metadata.insert(
+        "codex_acp_session_mode".to_string(),
+        Value::String("persistent_resume_v1".to_string()),
+    );
+    assert_eq!(
+        reusable_codex_acp_session_id(&metadata).as_deref(),
+        Some("old-remote-session")
+    );
+
+    metadata.insert(
+        "codex_acp_session_id".to_string(),
+        Value::String("  ".to_string()),
+    );
     assert!(reusable_codex_acp_session_id(&metadata).is_none());
 }
 
@@ -296,7 +311,7 @@ fn resolve_opencode_command_prefers_bundled_env_override() {
 }
 
 #[test]
-fn configured_codex_model_id_combines_model_and_effort_for_acp() {
+fn configured_codex_model_id_returns_base_model_for_process_config() {
     let config = CodexAcpConfig {
         model: "gpt-5.5".to_string(),
         variant: "high".to_string(),
@@ -304,12 +319,12 @@ fn configured_codex_model_id_combines_model_and_effort_for_acp() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.5[high]")
+        Some("gpt-5.5")
     );
 }
 
 #[test]
-fn configured_codex_model_id_normalizes_legacy_variant_suffix() {
+fn configured_codex_model_id_strips_legacy_variant_suffix() {
     let config = CodexAcpConfig {
         model: "gpt-5.4/medium".to_string(),
         variant: "medium".to_string(),
@@ -317,12 +332,12 @@ fn configured_codex_model_id_normalizes_legacy_variant_suffix() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.4[medium]")
+        Some("gpt-5.4")
     );
 }
 
 #[test]
-fn configured_codex_model_id_normalizes_bracketed_effort() {
+fn configured_codex_model_id_strips_bracketed_effort() {
     let config = CodexAcpConfig {
         model: "gpt-5.6-sol[high]".to_string(),
         variant: "xhigh".to_string(),
@@ -330,7 +345,7 @@ fn configured_codex_model_id_normalizes_bracketed_effort() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.6-sol[xhigh]")
+        Some("gpt-5.6-sol")
     );
 }
 
@@ -343,18 +358,25 @@ fn configured_codex_model_id_uses_embedded_effort_when_variant_is_empty() {
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.6-sol[xhigh]")
+        Some("gpt-5.6-sol")
+    );
+    assert_eq!(
+        configured_codex_reasoning_effort(&config).as_deref(),
+        Some("xhigh")
     );
 }
 
 #[test]
-fn configured_codex_model_id_skips_ambiguous_bare_model_without_effort() {
+fn configured_codex_model_id_keeps_bare_model_without_effort() {
     let config = CodexAcpConfig {
         model: "gpt-5.6-sol".to_string(),
         variant: String::new(),
         ..CodexAcpConfig::default()
     };
-    assert_eq!(configured_codex_model_id(&config).as_deref(), None);
+    assert_eq!(
+        configured_codex_model_id(&config).as_deref(),
+        Some("gpt-5.6-sol")
+    );
 }
 
 #[test]
@@ -386,6 +408,11 @@ fn codex_acp_effective_args_include_reasoning_effort() {
     let args = codex_acp_effective_args(&config, true);
     assert!(
         args.windows(2)
+            .any(|w| w[0] == "-c" && w[1] == "model=\"gpt-5.6-sol\""),
+        "expected model override in args, got: {args:?}"
+    );
+    assert!(
+        args.windows(2)
             .any(|w| w[0] == "-c" && w[1] == "model_reasoning_effort=\"high\""),
         "expected reasoning effort override in args, got: {args:?}"
     );
@@ -409,6 +436,8 @@ fn codex_acp_effective_args_include_dangerous_bypass_overrides() {
             "-c",
             "sandbox_permissions=[\"disk-full-read-access\"]",
             "-c",
+            "model=\"gpt-5.6-sol\"",
+            "-c",
             "model_reasoning_effort=\"xhigh\"",
             "-c",
             "shell_environment_policy.inherit=all",
@@ -430,6 +459,8 @@ fn codex_acp_effective_args_lock_down_workspace_and_ignore_dangerous_bypass() {
             "sandbox_mode=\"workspace-write\"",
             "-c",
             "approval_policy=\"never\"",
+            "-c",
+            "model=\"gpt-5.6-sol\"",
             "-c",
             "model_reasoning_effort=\"xhigh\"",
         ]
@@ -658,13 +689,13 @@ fn codex_version_matrix_accepts_minimum_validated_pair() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 144,
-            patch: 1,
+            minor: 146,
+            patch: 0,
         },
         CliVersion {
             major: 1,
             minor: 1,
-            patch: 2,
+            patch: 7,
         },
     );
     result.expect("minimum Codex/Codex ACP versions should be accepted");
@@ -675,8 +706,8 @@ fn codex_version_matrix_accepts_newer_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 144,
-            patch: 1,
+            minor: 146,
+            patch: 0,
         },
         CliVersion {
             major: 1,
@@ -692,13 +723,13 @@ fn codex_version_matrix_rejects_old_codex() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 144,
-            patch: 0,
+            minor: 145,
+            patch: 9,
         },
         CliVersion {
             major: 1,
             minor: 1,
-            patch: 2,
+            patch: 7,
         },
     );
     assert_error_contains(result, "npm install -g @openai/codex@latest");
@@ -709,13 +740,13 @@ fn codex_version_matrix_rejects_old_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 144,
-            patch: 1,
+            minor: 146,
+            patch: 0,
         },
         CliVersion {
             major: 1,
             minor: 1,
-            patch: 1,
+            patch: 6,
         },
     );
     assert_error_contains(result, "@agentclientprotocol/codex-acp@latest");
@@ -968,7 +999,7 @@ async fn acp_updates_build_restorable_transcript_sequence() {
 }
 
 #[test]
-fn codex_prompt_text_includes_restored_transcript_when_session_is_recreated() {
+fn codex_prompt_text_includes_restored_transcript_when_persistent_session_is_initialized() {
     let mut context = AgentContext::new("session-1".to_string());
     context.add_user_message("AAOI 是什么公司");
     context.add_assistant_message("我先查本地画像。", None);
