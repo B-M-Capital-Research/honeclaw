@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-30 14:01-18:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat run 共 80 条：`noop/skipped_noop=54`、`completed/sent=20`、`execution_failed/skipped_error=6`；普通 scheduler 无新增 run。
+    - heartbeat `parse_kind` 继续分裂：`PlainTextTriggered + completed/sent=20`，54 条 noop 与 6 条 execution_failed 未写出稳定结构化 `parse_kind`。
+    - 14:32 `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=50440` 因 stream transport decode error 落成 `execution_failed + skipped_error`。
+    - 15:01 `全天原油价格3小时播报` `run_id=50443`、16:00 `AAOI 全面心跳检测` `run_id=50461`、16:30 `AAOI 全面心跳检测` `run_id=50477`、17:00 `全天原油价格3小时播报` `run_id=50482`、18:00 `ASTS 全面心跳检测` `run_id=50507` 均因“heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`。
+    - 同窗多条 `德业股份 / 珠海冠宇 / ASTS / RKLB / TEM` 自然语言 preview 明写 `NOOP`、`noop`、`无新增触发事实` 或 `不推送`，仍进入 `completed + sent + delivered=1`。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内；问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因。严重等级维持 `P2`，同窗未见错对象投递、敏感信息泄露、全渠道不可用或 P1 级链路故障，不创建 GitHub Issue。
+
 - `2026-07-30 10:01-14:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 83 条：`completed/sent=27`、`execution_failed/skipped_error=4`、`noop/skipped_noop=49`；普通 scheduler 3 条均 `completed/sent=1`。

@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-30 14:01-18:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:31 `AAOI 全面心跳检测` `run_id=50459` 作为 AAOI heartbeat job 触发，却使用 `ASTS NASDAQ` 行情口径并输出 ASTS 航天 / BlueBird 相关分析，没有执行 AAOI 监控条件。
+    - 17:01 `ASTS 全面心跳检测` `run_id=50488` 作为 ASTS heartbeat job 触发，却串入旧直聊持仓语境，围绕“成本约 $53、亏了 20% 左右”做持仓澄清。
+    - 17:31 `AAOI 全面心跳检测` `run_id=50499` 再次使用 `ASTS NASDAQ` 行情口径并输出 BlueBird 11-13 / Falcon 9 发射窗口分析，任务主体从 AAOI 漂移到 ASTS。
+    - 18:00 `RKLB 全面心跳检测` `run_id=50502` 串入“成本约 $53、浮亏约 20%”直聊语境；18:01 `AAOI 全面心跳检测` `run_id=50505` 使用 RKLB / ASTS 行情口径组织航天股下跌分析，仍未执行 AAOI 监控。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、其它标的或持仓问答污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-07-30 10:01-14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 11:01 `TSLA 正负触发条件心跳监控` `run_id=50367` 作为 TSLA heartbeat job 触发，却转成“你的投资组合里目前没有 NVDA 仓位”的持仓澄清，没有执行 TSLA 正负触发条件监控。
