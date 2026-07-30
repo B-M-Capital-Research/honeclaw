@@ -22,6 +22,18 @@ New
 
 ## 最新进展
 
+- 2026-07-30 22:01-2026-07-31 02:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - SQLite 近窗 heartbeat run 共 42 条：`completed/sent=9`、`noop/skipped_noop=30`、`execution_failed/skipped_error=3`。
+    - 23:30 `德业股份加仓信号心跳检测` `run_id=50645` 写 `结论：NOOP`，仍 `completed/sent/delivered=1`。
+    - 00:00 `ASTS 全面心跳检测` `run_id=50660` 写 `本轮无新增触发事实，noop`，仍 `completed/sent/delivered=1`。
+  - `data/runtime/logs/web.log.2026-07-30`
+    - 01:30 `德业股份加仓信号心跳检测`、`珠海冠宇加仓信号心跳检测`、`RKLB 全面心跳检测`、`ASTS 全面心跳检测` 均在 deliver preview 中明写 `NOOP/noop/不推送/无新增触发事实`，仍进入 sent / deliver preview。
+    - 02:00 `德业股份加仓信号心跳检测`、`AAOI 全面心跳检测`、`珠海冠宇加仓信号心跳检测` 继续写 `NOOP/noop/不推送加仓结论` 后送达。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1 路径，但坏语义与本单相同：模型 / preview 已明确 `NOOP`、无变化、无触发或不推送，出站层仍向用户发送完整正文。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；同窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-30 18:00-22:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 90 条：`completed/sent=25`、`noop/skipped_noop=59`、`execution_failed/skipped_error=6`；其中 11 条 `delivered=1` 的 heartbeat preview 明写 `NOOP`、`noop`、`不推送`、`无新增触发事实` 或“本轮无新价格变化”。

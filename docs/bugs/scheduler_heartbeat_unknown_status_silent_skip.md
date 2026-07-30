@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-30 22:01-2026-07-31 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 上轮后 SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T00:02:54.581379+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T00:01:49.091443+08:00`；runtime 日志继续推进到 `2026-07-31 02:01 CST`。
+    - SQLite 近窗 heartbeat run 共 42 条：`completed/sent=9`、`execution_failed/skipped_error=3`、`noop/skipped_noop=30`；普通 scheduler 5 条中 3 条完成送达、1 条 noop、1 条在途。
+    - 22:30 `珠海冠宇加仓信号心跳检测` 因“heartbeat 输出包含未知状态”落成 `execution_failed + skipped_error`。
+    - 00:00 `TEM大事件心跳监控` 与 `Monitor_Watchlist_11` 因“heartbeat 输出不是合法 JSON”落成 `execution_failed + skipped_error`。
+  - `data/runtime/logs/web.log.2026-07-30`
+    - 02:00 `ASTS 全面心跳检测` 以 `<think>` 开头的自由文本落成 `PlainTextSuppressed`，随后报“heartbeat 输出不是结构化 JSON，任务已标记失败”。
+    - 01:30 / 02:00 多条 `德业股份 / 珠海冠宇 / ASTS / AAOI / RKLB` heartbeat 仍以 `PlainTextTriggered` 送达自然语言，其中多条正文明确写 `NOOP/noop/不推送/无新增触发事实`。
+  - 判断：最新证据仍落在 heartbeat 结构化状态输出退化与后置归类漂移的同一范围内；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 90 条：`completed/sent=25`、`execution_failed/skipped_error=6`、`noop/skipped_noop=59`。

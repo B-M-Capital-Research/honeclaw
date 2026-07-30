@@ -7,6 +7,16 @@
 
 ## 最新进展
 
+- `2026-07-30 22:01-2026-07-31 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 22:30 CST heartbeat job `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=50625` 已 `completed + sent + delivered=1`，`response_preview` 在数据时间 / 行情口径后直接进入 fenced `json`，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 23:30 CST 同 job `run_id=50641` 再次以 fenced `json` 开头送达。
+    - 00:01 CST 同 job `run_id=50662` 再次以 fenced `json` 开头送达，继续暴露机器结构字段。
+  - `data/runtime/logs/web.log.2026-07-30`
+    - 01:00 `Monitor_Watchlist_11` deliver preview 在工具限制说明后直接拼入 fenced JSON，包含 `status=alert_checked`、`data_time_beijing`、`quote_sources` 等协议字段。
+    - 01:31 `关注股重大事件`、02:00 `Monitor_Watchlist_11`、02:01 `RKLB 全面心跳检测` 继续以 fenced JSON 或协议字段形态进入 deliver preview。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并送达，用户可从字段中读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 18:01 CST heartbeat job `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` 已 `completed + sent + delivered=1`，`response_preview` 在数据时间 / 行情口径后直接进入 fenced `json`。

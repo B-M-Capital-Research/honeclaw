@@ -3,8 +3,22 @@
 - 发现时间：2026-07-27 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：无，非 P1
+
+## 最新进展
+
+- `2026-07-30 22:01-2026-07-31 02:02 CST` 真实 Feishu direct 会话确认该缺陷在取消全部自动发送链路复发，状态从代码级 `Fixed` 回退为 `New/P2`：
+  - `data/sessions.sqlite3` -> `session_messages`
+    - session_id: `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+    - 23:32 CST 用户明确要求“请关掉以上的所有定时发送任务”，assistant 于 23:32 回复“已全部清理完毕。当前没有任何定时任务在运行，无需取消”。
+    - 23:35 CST 用户追问“但为什么每天还要给我发几条消息呢”，assistant 才承认仍有两个每日摘要推送：08:30 盘前摘要、09:00 晨间摘要。
+    - 23:40 CST 用户继续要求“这两个也都关掉”，assistant 于 23:41 暴露“推送总开关仍为开启状态（`enabled: true`）”，并要求用户再次确认 `disable_all`。
+    - 23:41 CST 用户确认“好的。执行吧”，assistant 又回复“已执行。当前会话下没有任何定时任务或心跳任务，无需删除”，没有确认 digest slots 或总开关已关闭。
+  - 判断：
+    - 这与既有根因同链路：用户态“关闭所有自动发送”没有覆盖摘要 / notification prefs / cron / heartbeat 的统一语义，且最终回复伪成功。
+    - 该问题会导致用户明确取消后仍可能继续收到自动推送，影响自动通知控制主功能链路；严重等级维持 `P2`。
+    - 同窗未见跨用户错投、敏感凭据泄露、全渠道不可用或数据破坏，因此不是 P1，不创建 GitHub Issue。
 
 ## 用户反馈
 
