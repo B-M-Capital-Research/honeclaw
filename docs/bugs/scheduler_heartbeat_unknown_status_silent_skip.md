@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-30 10:01-14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat run 共 83 条：`completed/sent=27`、`execution_failed/skipped_error=4`、`noop/skipped_noop=49`；普通 scheduler 3 条均 `completed/sent=1`。
+    - heartbeat `parse_kind` 继续分裂：`JsonNoop + noop/skipped_noop=34`、`PlainTextTriggered + completed/sent=27`、`PlainTextTriggered + noop/skipped_noop=15`、`PlainTextSuppressed + execution_failed/skipped_error=3`、`JsonMalformed + execution_failed/skipped_error=1`。
+    - 12:00 `全天原油价格3小时播报` `run_id=50382`、13:00 `RKLB 全面心跳检测` `run_id=50405`、13:00 `Monitor_Watchlist_11` `run_id=50406` 均因 `PlainTextSuppressed` / “heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`。
+    - 14:00 `珠海冠宇加仓信号心跳检测` `run_id=50424` 因 `JsonMalformed` / “heartbeat 输出不是合法 JSON”落成 `execution_failed + skipped_error`。
+    - 同窗多条 `RKLB / ASTS / TEM / 德业股份 / 珠海冠宇 / AAOI` 自然语言 preview 明写 `noop`、`NOOP` 或 `无新增触发事实`，仍进入 `completed + sent + delivered=1`。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内；问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因。严重等级维持 `P2`，同窗未见错对象投递、敏感信息泄露、全渠道不可用或 P1 级链路故障，不创建 GitHub Issue。
+
 - `2026-07-30 06:02-10:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat run 共 80 条：`completed/sent=21`、`execution_failed/skipped_error=1`、`noop/skipped_noop=58`；普通 scheduler 16 条中 `completed/sent=11`、`execution_failed/sent=3`、`execution_failed/skipped_error=1`、`running/pending=1`。

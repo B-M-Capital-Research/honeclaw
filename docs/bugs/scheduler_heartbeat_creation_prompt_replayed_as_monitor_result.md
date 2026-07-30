@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-30 10:01-14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 11:01 `TSLA 正负触发条件心跳监控` `run_id=50367` 作为 TSLA heartbeat job 触发，却转成“你的投资组合里目前没有 NVDA 仓位”的持仓澄清，没有执行 TSLA 正负触发条件监控。
+    - 12:00 同一 TSLA heartbeat `run_id=50383` 继续使用 NVDA 成本与价格表分析，任务主体从 TSLA 漂移到 NVDA。
+    - 13:00 `AAOI 全面心跳检测` `run_id=50408` 作为 AAOI heartbeat job 触发，却输出“我的核心能力”与事件引擎 / 公司研究能力介绍，没有执行 AAOI 监控条件。
+    - 13:30 `RKLB 全面心跳检测` `run_id=50414` 使用 `ASTS NASDAQ` 行情口径并输出 AST SpaceMobile 公司概况，任务主体从 RKLB 串到 ASTS。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、其它标的或产品能力介绍污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-07-30 06:02-10:01 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 07:30 `AAOI 全面心跳检测` `run_id=50275` 作为既有 heartbeat job 触发，用户可见 preview 却把系统配置和历史推送记录当成普通直聊输入，回答“如果你有具体想做的事情，直接告诉我”，并列出调整阈值、查询股票、组合调整等入口选项。
