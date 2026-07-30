@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-31 02:02-06:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T06:00:01.696518+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T06:00:45.824834+08:00`；近窗 runtime `.log` 无 mtime 更新。
+    - 同窗 heartbeat run 共 80 条：`completed/sent=21`、`execution_failed/skipped_error=5`、`noop/skipped_noop=54`；普通 scheduler 4 条中 3 条完成送达，1 条在采样点仍 `running/pending`。
+    - `detail_json.scheduler.parse_kind` 继续分裂：`JsonNoop=37`、`PlainTextNoop=10`、`PlainTextTriggered=7`、`PlainTextSuppressed=3`，另有 21 条未写入 parse_kind；2 条 provider HTTP 529 归类为 `provider_http_error`。
+    - 02:30 `AAOI 全面心跳检测`、04:30 `Monitor_Watchlist_11`、06:00 `ASTS 全面心跳检测` 均因“heartbeat 输出不是结构化 JSON”落成 `execution_failed + skipped_error`。
+    - 03:00 `ASTS 全面心跳检测` 与 `TEM大事件心跳监控` 因 OpenAI-compatible HTTP 529 短时高负载落成 `execution_failed + skipped_error`；同窗普通 scheduler final 仍能收口，暂按 provider 短时失败并入 heartbeat runner 稳定性观察，不拆新缺陷。
+  - 判断：最新证据仍落在 heartbeat 结构化状态输出退化与后置归类漂移范围内；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-07-30 22:01-2026-07-31 02:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 上轮后 SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T00:02:54.581379+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T00:01:49.091443+08:00`；runtime 日志继续推进到 `2026-07-31 02:01 CST`。
