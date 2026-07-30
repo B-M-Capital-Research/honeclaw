@@ -3317,11 +3317,47 @@ fn detect_unstable_watchlist_price_anchor(
     if zones.is_empty() {
         return None;
     }
-    let price_re = regex::Regex::new(
+    let anchored_price_re = regex::Regex::new(
         r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
     )
     .expect("valid watchlist price anchor regex");
-    for captures in price_re.captures_iter(text) {
+    let price_re = regex::Regex::new(
+        r"(?is)(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+    )
+    .expect("valid watchlist price token regex");
+    let ticker_re = regex::Regex::new(r"\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b")
+        .expect("valid watchlist ticker capture regex");
+    let has_stricter_price_anchor_label = |context: &str| {
+        let lower = context.to_ascii_lowercase();
+        [
+            "均线", "dma", "盘后", "盘前", "昨收", "前收", "收盘", "常规", "latest", "current",
+            "现价", "价格", "高点", "低点", "high", "low",
+        ]
+        .iter()
+        .any(|marker| context.contains(marker) || lower.contains(marker))
+    };
+    let looks_like_non_price_metric = |context: &str, suffix: &str| {
+        let lower = context.to_ascii_lowercase();
+        [
+            "市值",
+            "market cap",
+            "ev/sales",
+            "ev/ebitda",
+            "enterprise value",
+            "估值",
+            " pe",
+            "pb",
+            "ps",
+        ]
+        .iter()
+        .any(|marker| context.contains(marker) || lower.contains(marker))
+            || suffix.trim_start().starts_with('亿')
+            || suffix.trim_start().starts_with('万')
+            || suffix.trim_start().starts_with('x')
+            || suffix.trim_start().starts_with('X')
+    };
+
+    for captures in anchored_price_re.captures_iter(text) {
         let Some(ticker) = captures.name("ticker").map(|matched| matched.as_str()) else {
             continue;
         };
@@ -3337,6 +3373,85 @@ fn detect_unstable_watchlist_price_anchor(
         };
         if price > upper * 3.0 || price * 3.0 < *lower {
             return Some((ticker.to_string(), price, zone.clone(), *lower, *upper));
+        }
+    }
+
+    let segment_boundaries = ['\n', '。', '；', ';'];
+    for segment in text
+        .split(|ch| segment_boundaries.contains(&ch))
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+    {
+        let ordered_tickers = ticker_re
+            .find_iter(segment)
+            .filter_map(|matched| {
+                let ticker = matched.as_str();
+                zones.contains_key(ticker).then_some(ticker.to_string())
+            })
+            .fold(Vec::<String>::new(), |mut acc, ticker| {
+                if acc.last() != Some(&ticker) {
+                    acc.push(ticker);
+                }
+                acc
+            });
+        if ordered_tickers.is_empty() {
+            continue;
+        }
+
+        let prices = price_re
+            .captures_iter(segment)
+            .filter_map(|captures| {
+                let price_match = captures.get(0)?;
+                let local_prefix = segment[..price_match.start()]
+                    .chars()
+                    .rev()
+                    .take(24)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect::<String>();
+                let local_suffix = segment[price_match.end()..]
+                    .chars()
+                    .take(8)
+                    .collect::<String>();
+                if looks_like_non_price_metric(&local_prefix, &local_suffix) {
+                    return None;
+                }
+                captures
+                    .name("price")
+                    .map(|matched| matched.as_str().replace(',', ""))
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .map(|price| (price, has_stricter_price_anchor_label(&local_prefix)))
+            })
+            .collect::<Vec<_>>();
+        if prices.is_empty() {
+            continue;
+        }
+
+        let ticker_price_pairs = if ordered_tickers.len() == 1 {
+            prices
+                .into_iter()
+                .map(|(price, stricter)| (ordered_tickers[0].clone(), price, stricter))
+                .collect::<Vec<_>>()
+        } else if ordered_tickers.len() == prices.len() {
+            ordered_tickers
+                .into_iter()
+                .zip(prices.into_iter())
+                .map(|(ticker, (price, stricter))| (ticker, price, stricter))
+                .collect()
+        } else {
+            continue;
+        };
+
+        for (ticker, price, stricter) in ticker_price_pairs {
+            let Some((zone, lower, upper)) = zones.get(&ticker) else {
+                continue;
+            };
+            let threshold = if stricter { 1.5 } else { 3.0 };
+            if price > upper * threshold || price * threshold < *lower {
+                return Some((ticker, price, zone.clone(), *lower, *upper));
+            }
         }
     }
     None
@@ -5248,6 +5363,34 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn watchlist_price_anchor_guard_detects_followup_technical_anchor_for_single_ticker() {
+        let zones = watchlist_guard_zones_from_source("观察池击球区：RKLB $45-$65。");
+        let detected = detect_unstable_watchlist_price_anchor(
+            "RKLB 当前价格 $58.60，50 日均线 $100.66，仍未形成有效突破。",
+            &zones,
+        )
+        .expect("follow-up technical anchor should be detected");
+        assert_eq!(detected.0, "RKLB");
+        assert_eq!(detected.1, 100.66);
+        assert_eq!(detected.2, "$45-$65");
+    }
+
+    #[test]
+    fn watchlist_price_anchor_guard_pairs_multi_ticker_price_series() {
+        let zones = watchlist_guard_zones_from_source(
+            "观察池击球区：LITE $620-$680；COHR $55-$75；MU $90-$115。",
+        );
+        let detected = detect_unstable_watchlist_price_anchor(
+            "LITE/COHR/MU 盘后小幅反弹 $658.42/$244.47/$103.30。",
+            &zones,
+        )
+        .expect("ordered ticker/price series should be checked");
+        assert_eq!(detected.0, "COHR");
+        assert_eq!(detected.1, 244.47);
+        assert_eq!(detected.2, "$55-$75");
     }
 
     #[test]

@@ -22,6 +22,13 @@
 
 ## 最新进展
 
+- 2026-07-30 `bug-2` 代码级修复补强：
+  - `crates/hone-channels/src/scheduler.rs` 的 `watchlist_price_anchor_guard` 现在先保留原有的 `ticker + 价格` 数量级拦截，再额外扫描同一观察池片段里的后续技术位 / 盘后 / 昨收等价格锚；单 ticker 片段会继续检查后续 `$...` 数值，多 ticker 串行价格片段会按 ticker 顺序逐个配对校验。
+  - 守卫对带 `均线 / DMA / 盘前 / 盘后 / 昨收 / 前收 / 收盘 / 常规` 等价格标签的锚点使用更严格的异常阈值，同时显式跳过 `市值 / market cap / EV/Sales / PE/PB/PS` 这类非股价字段，避免把估值或市值数值误判成价格。
+  - 新增回归 `watchlist_price_anchor_guard_detects_followup_technical_anchor_for_single_ticker` 与 `watchlist_price_anchor_guard_pairs_multi_ticker_price_series`，覆盖 `RKLB $58.60 / 50 日均线 $100.66` 和 `LITE/COHR/MU ... $658.42/$244.47/$103.30` 这两类此前会漏过的真实运行态形态；连同既有两条 watchlist guard 回归一起通过。
+  - 验证：`cargo test -p hone-channels watchlist_price_anchor_guard --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 结论：截至当前日期 2026-07-30，这是新的代码级 `Fixed` 补强；由于未重启 live runtime，状态继续保持 `Fixed` 而不是 `Closed`，仍需后续巡检确认 `watchlist_price_anchor_unstable` 开始命中且异常锚消失。
+
 - 2026-07-30 02:01-06:04 CST 真实运行态补充待复核证据；头部仍按 2026-07-29 / 2026-07-30 代码级修复记为 `Fixed`，但暂不关闭：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 本轮窗口内有非文档提交 `e0015577 fix: extend watchlist price anchor guard coverage`，继续扩展观察池价格锚 guard 覆盖；但巡检时未确认 live runtime 已重启加载该提交。
