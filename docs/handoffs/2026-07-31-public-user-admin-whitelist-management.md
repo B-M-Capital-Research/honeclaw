@@ -1,7 +1,7 @@
 # Public User Admin Whitelist Management Handoff
 
 - title: Public user administrator and whitelist management
-- status: in_progress
+- status: done
 - created_at: 2026-07-31
 - updated_at: 2026-07-31
 - owner: Codex
@@ -18,16 +18,16 @@
   - `packages/app/src/lib/api.ts`
   - `packages/app/src/lib/types.ts`
 - related_docs:
-  - `docs/current-plans/public-user-admin-whitelist-management.md`
+  - `docs/archive/plans/public-user-admin-whitelist-management.md`
   - `docs/runbooks/public-user-admin.md`
   - `docs/repo-map.md`
   - `docs/invariants.md`
   - `docs/decisions.md`
-- related_prs: none
+- related_prs: implementation/deployment commit `5eacfe98c0b2b3bdaac11fc23830c0ab91b14f3d` on `main`
 
 ## Summary
 
-The shared public mobile/PC client now has a PostgreSQL-authoritative administrator role and an administrator-only “我的 → 管理” surface for domestic membership whitelist management. The production PostgreSQL row for `13871396421` is uniquely matched, active, and verified as an administrator. Source changes are complete locally but have not been committed, pushed, built into Apple clients, or deployed.
+The shared public mobile/PC client now has a PostgreSQL-authoritative administrator role and an administrator-only “我的 → 管理” surface for domestic membership whitelist management. The production PostgreSQL row for `13871396421` is uniquely matched, active, and verified as an administrator. Commit `5eacfe98` is on `main`, Cloudflare Pages serves the matching client, and production Web/Feishu run the exact immutable build.
 
 ## What Changed
 
@@ -45,24 +45,23 @@ The shared public mobile/PC client now has a PostgreSQL-authoritative administra
 - `cargo test -p hone-core cloud_runtime::tests`: 20 passed.
 - `cargo test -p hone-cli`: 85 passed.
 - Focused `cargo test -p hone-web-api public_admin`: 3 passed.
-- Full `cargo test -p hone-web-api`: 158 passed, 2 ignored, with one pre-existing unrelated failure in `public_chat_user_input_uses_shared_attachment_context`.
-- `bun run typecheck`: passed.
-- `bun test --preload ./happydom.ts ./src`: 312 passed.
-- `VITE_HONE_APP_SURFACE=public bun run build`: passed.
+- Full `cargo test -p hone-web-api`: 159 passed, 2 credentialed tests ignored.
+- `bun run typecheck:web`, `bun run test:web`, and `bun run build:web:public`: passed.
 - Browser QA at 390×844 and 1280×900 confirmed the management panel has no horizontal overflow and the mobile table becomes readable cards.
 - `hone-cli cloud web-admin --phone 13871396421 --action grant --json` confirmed one active target and `verified_is_admin=true` without modifying the already-correct row.
+- `bash tests/regression/run_ci.sh`: passed; finance automation contracts are 44/44.
+- Cloudflare Pages production entry is `assets/index-D7gVoQjr.js`; its API chunk contains `/api/public/admin/invites`, `X-Hone-Admin-Action`, and `whitelist`, while the `/me` chunk contains `is_admin`.
+- Immutable runtime `target/deploy-5eacfe98` verifies 505 payload files; manifest SHA-256 is `28c2d27fe58d78a0aa6e83542f640ed15858ed199ca3aa1e7e68ac3235d97f13`.
+- Production Web and Feishu processes load binaries from `target/deploy-5eacfe98`; the origin tunnel remains in its separate supervised lane. Final `/api/meta` reports version `0.15.3`, cloud mode, PostgreSQL/R2 healthy, `cloud_storage_authoritative=true`, zero local durable dependencies, and zero active chats.
+- Local, origin, and public anonymous auth probes return expected `401 application/json`; the production administrator route is mounted and also fails closed with anonymous `401`.
 
 ## Risks / Follow-ups
 
-- The database role is already active, but production will not show the module until this exact source is committed, built, and deployed.
 - Do not test six real additions merely to exercise the limit. Use automated tests for exhaustion and only a controlled account for live verification.
 - Public administrator responses deliberately exclude invite codes, API keys, password state, and internal quota details.
-- The plan remains active until production deployment and live authorization checks are complete; do not archive it yet.
+- The existing Chrome profile was logged out. No SMS was sent and no synthetic production session or real whitelist mutation was created solely for acceptance; the administrator can complete the final visual check on the next normal login.
+- Retain `target/deploy-482c34d5` as the immediate Web rollback package. The current tunnel uses a separate supervisor and must not be folded into backend restart commands.
 
 ## Next Entry Point
 
-1. Review the scoped diff, then commit and push only these feature and documentation changes.
-2. Build/deploy the public Web backend/frontend; build Apple clients only if a new client release is requested.
-3. Sign in as `13871396421` and confirm “我的 → 管理” appears.
-4. Confirm an ordinary user receives `403` from `/api/public/admin/invites` and does not see the panel.
-5. Perform one controlled create/disable cycle, then verify backend health and target-session revocation.
+On the next normal login as `13871396421`, confirm “我的 → 管理” appears. If a live mutation canary is desired, use one explicitly controlled phone, perform one create/disable cycle, and verify its sessions are revoked; do not consume the daily allowance with synthetic entries.

@@ -4,6 +4,18 @@ Last updated: 2026-07-31
 
 ## 2026-07-31
 
+### Public User Administrator And Whitelist Management
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/archive/plans/public-user-admin-whitelist-management.md`
+- Handoff: `docs/handoffs/2026-07-31-public-user-admin-whitelist-management.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-31-03-keep-public-user-administration-separate-and-database-authoritative`
+- Related PRs / commits: implementation/deployment commit `5eacfe98c0b2b3bdaac11fc23830c0ab91b14f3d` on `main`; no release or tag
+- Related runbooks / regressions: `docs/runbooks/public-user-admin.md`, `docs/runbooks/backend-deployment.md`; CLI 85, memory 132, core cloud-runtime 20, Web API 159 plus two credentialed ignores, Web typecheck/tests/public build, finance contracts 44/44, and the complete CI-safe regression suite
+- Current conclusion: production public users now have a PostgreSQL-authoritative administrator role. `13871396421` is uniquely verified as an active administrator; `/me` exposes a responsive management panel only for the server-projected role, while every list/create/disable request rechecks PostgreSQL. Successful creates are atomically limited to five per administrator per Beijing day and audited; disable clears sessions and protects self/administrator targets. Cloudflare Pages and exact immutable runtime `5eacfe98` are live, PostgreSQL/R2 remain authoritative and healthy, local/origin/public auth boundaries fail closed, Feishu and the origin tunnel remain supervised, and active chats are zero. No prompt answer format was changed and no synthetic production whitelist mutation was performed.
+- Next entry point: `docs/handoffs/2026-07-31-public-user-admin-whitelist-management.md`; on the administrator's next normal login, visually confirm “我的 → 管理”, and use only an explicitly controlled member for any live create/disable canary.
+
 ### Codex ACP Static-System, Minimal-Turn, And Native-Skill Follow-up
 
 - Status: done

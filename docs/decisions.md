@@ -756,7 +756,7 @@ Last updated: 2026-07-31
 
 ## D-2026-07-31-03 Keep Public-User Administration Separate And Database-Authoritative
 
-- Status: Accepted; production role marking is verified, while the new API/UI remains pending deployment.
+- Status: Accepted and deployed in exact production runtime `5eacfe98`.
 - Context: The remote public user experience is one responsive Web application shared by browser, macOS WebView, and iOS WKWebView. It already uses the domestic Web invite list as its login admission source, but the administrator console token and channel administrator lists are different trust domains and cannot authorize a public user.
 - Identity decision: Cloud-mode public-user administrator authority is the explicit PostgreSQL `cloud_web_invite_users.is_admin` column. It is not embedded in membership JSON and is not inferred from the phone number or frontend state. `/api/public/auth/me` projects the flag for display only; each public-admin request authenticates the cookie session and rechecks PostgreSQL.
 - Mutation decision: `cloud_web_admin_actions` is the audit and daily-count ledger. Public whitelist creation locks the administrator row, locks the normalized target phone scope, checks duplicates and the Beijing-date count, inserts the user, and appends the audit row in one transaction. Only successful creates count, and the hard ceiling is five per administrator per Beijing natural day. Disable is also transactional, clears active sessions, appends an audit row, and rejects self/administrator targets.

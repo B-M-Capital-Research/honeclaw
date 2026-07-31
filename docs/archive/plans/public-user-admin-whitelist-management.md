@@ -1,7 +1,7 @@
 # Public User Admin Whitelist Management
 
 - title: Public user administrator and whitelist management
-- status: in_progress
+- status: done
 - created_at: 2026-07-31
 - updated_at: 2026-07-31
 - owner: Codex
@@ -47,23 +47,24 @@ Make PostgreSQL the authority for public-user administrator roles, mark domestic
 
 ## Progress
 
-- Backend role authority, audit log, atomic Beijing-day creation limit, public administrator routes, and shared responsive UI are implemented locally.
+- Backend role authority, audit log, atomic Beijing-day creation limit, public administrator routes, and shared responsive UI are implemented and deployed.
 - The production PostgreSQL schema has been ensured and the unique active user for `13871396421` is verified with `is_admin=true`.
 - A dry-run-first `hone-cli cloud web-admin` command is available for future grants and revocations.
-- Affected Rust checks and tests pass. The full `hone-web-api` suite has one pre-existing unrelated attachment-context assertion failure; all 158 other tests pass and the focused public-admin tests pass.
-- Frontend typecheck, all 312 tests, public production build, and mobile/desktop visual QA pass.
-- No commit, push, release, application build, or production deployment is included in this task yet.
+- Commit `5eacfe98c0b2b3bdaac11fc23830c0ab91b14f3d` is pushed to `main`; Cloudflare Pages serves the matching administrator API/client markers.
+- Affected Rust checks and tests pass: CLI 85, memory 132, core cloud-runtime 20, Web API 159 plus two credentialed ignores. The previously stale attachment-context assertion is aligned on the merged upstream baseline.
+- Frontend typecheck, all tests, public production build, mobile/desktop visual QA, and the complete CI-safe regression suite pass; finance contracts are 44/44.
+- Production Web and Feishu run from immutable `target/deploy-5eacfe98`; the 505-file manifest verifies, PostgreSQL/R2 remain healthy and authoritative, active chats are zero, and local/origin/public auth boundaries return expected JSON.
 
 ## Documentation Sync
 
 - Update `docs/repo-map.md` for the new public-admin route/data flow.
 - Update `docs/invariants.md` for PostgreSQL role authority, server-side authorization, atomic Beijing-day limit, audit, and self-disable rules.
 - Record the cross-module architecture in `docs/decisions.md` and the role-tagging operation in `docs/runbooks/public-user-admin.md`.
-- Keep this plan indexed in `docs/current-plan.md` while code or production verification remains active.
-- On completion, create/update `docs/handoffs/2026-07-31-public-user-admin-whitelist-management.md`, archive this plan, and add an entry to `docs/archive/index.md`.
+- The completed plan is removed from `docs/current-plan.md`, archived here, and indexed from `docs/archive/index.md`.
+- Deployment evidence and remaining operational cautions are preserved in `docs/handoffs/2026-07-31-public-user-admin-whitelist-management.md`.
 
 ## Risks / Open Questions
 
 - Existing admin-console invite APIs use a separate administrator token and must keep their current behavior; the five-per-day rule applies specifically to user-facing public administrators.
-- The database role is active, but the current production binary/client will not expose or enforce the new management surface until this exact source change is committed, built, and deployed.
-- Live production mutation verification should use a controlled test member because a successful create consumes one of the administrator's five slots for that Beijing day.
+- Live production mutation verification should use a controlled test member because a successful create consumes one of the administrator's five slots for that Beijing day. This deployment intentionally performed no real create/disable mutation.
+- The existing Chrome profile had no authenticated HONE session. The deployment did not send an SMS or manufacture a user session merely for UI acceptance; production role readback, route mounting, bundle markers, authorization regressions, and anonymous fail-closed behavior were verified instead.
