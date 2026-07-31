@@ -241,13 +241,8 @@ fn digest_event_detail(event: &MarketEvent) -> Option<String> {
             // 截断的 LLM 摘要 —— 让 10-Q / 10-K / DEF 14A 这些走 digest 路径
             // 的 filing 也能看到 长期主线投资者视角的核心要点。原文链接仍在
             // 事件 url 里,用户点进去可读全文。
-            let summary = event
-                .payload
-                .get("llm_summary")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())?;
-            Some(truncate_chars(summary, 120))
+            let summary = event.normalized_llm_summary()?;
+            Some(truncate_chars(summary.as_ref(), 120))
         }
         _ => None,
     }
@@ -378,6 +373,28 @@ mod tests {
         let title = digest_event_title(&event);
         assert!(title.contains("TSLA filed 10-Q · 这份 filing 最值得"));
         assert!(title.contains("…"), "应被截断,期待省略号; got: {title}");
+    }
+
+    #[test]
+    fn digest_secfiling_unwraps_json_summary() {
+        let mut event = market_event_fixture(
+            EventKind::SecFiling {
+                form: "10-Q".into(),
+            },
+            Severity::Medium,
+        );
+        event.title = "TEM filed 10-Q".into();
+        event.payload = serde_json::json!({
+            "llm_summary": "{\"summary\":\"这份 filing 最值得关注的是诊断业务增长。\"}"
+        });
+
+        let title = digest_event_title(&event);
+        assert_eq!(
+            title,
+            "TEM filed 10-Q · 这份 filing 最值得关注的是诊断业务增长。"
+        );
+        assert!(!title.contains('{'));
+        assert!(!title.contains("\"summary\""));
     }
 
     #[test]

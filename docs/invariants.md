@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## Source of Truth and Document Priority
 
@@ -120,6 +120,13 @@ Last updated: 2026-07-30
 - Desktop runtime config materialization must normalize historical canonical configs so `storage.session_sqlite_shadow_write_enabled` remains `true`; old generated runtime snapshots or seeded configs must not silently disable JSON -> SQLite session mirror writes
 - `SessionStorage` should best-effort backfill existing JSON sessions into the SQLite index during startup whenever an index is configured, including `session_runtime_backend=sqlite` even if `session_sqlite_shadow_write_enabled=false`; this keeps mirror lag recoverable after any historical window where shadow write was disabled, while preserving the configured runtime read authority
 - In cloud-authoritative mode, PG `cloud_sessions` remains the session truth source, but if `storage.session_sqlite_shadow_write_enabled=true` and `storage.session_sqlite_db_path` is configured, successful session writes should still best-effort dual-write the local `sessions.sqlite3` mirror and allow synthetic `cloud_sessions/<id>.json` source paths so bug triage / recovery tooling does not silently go stale
+
+## Notification Delivery Constraints
+
+- Notification digest slot labels are actor-visible semantics, not decorative metadata. When `quiet_hours.to` coincides with a configured digest slot, the quiet flush must merge into that slot and reuse its label; it must not silently replace a named “盘前/盘后” digest with the generic “晨间静音合集”.
+- Actor-scoped deterministic notification controls—timezone, named digest slots, quiet hours, generic/directional price thresholds, and the large-position boundary—must use the validation and atomic patch contract in `hone-event-engine::prefs`. Agent tools and HTTP APIs must not maintain divergent range, time, overlap, or kind-tag validation. A conversational request that changes interdependent quiet/slot fields together must use one composite patch, not sequential writes that validate against stale intermediate state.
+- Nullable actor overrides have explicit inherit semantics. A delivery patch distinguishes `Keep`, `Inherit`, and `Set`; for digest slots specifically, `None` means inherit global slots, `Some([])` means disable digest, and `Some(slots)` means use the complete actor-owned slot list.
+- The ordinary `notification_prefs` Agent tool may expose deterministic time and numeric controls, but it must not expose free-form prompt, model, classifier, or investment-mainline fields. Its published JSON Schema must describe the array/object/number/null values that execution actually accepts.
 
 ## Agent Runtime Constraints
 

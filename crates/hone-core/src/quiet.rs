@@ -32,15 +32,34 @@ pub fn quiet_window_active(
     now: DateTime<Utc>,
 ) -> bool {
     let (h, m) = local_hm(tz_name, fallback_offset_hours, now);
-    let now_min = h as i32 * 60 + m as i32;
-    let Ok(from_t) = NaiveTime::parse_from_str(from, "%H:%M") else {
+    let local_hhmm = format!("{h:02}:{m:02}");
+    local_time_in_quiet_window(
+        &local_hhmm,
+        &QuietHours {
+            from: from.to_string(),
+            to: to.to_string(),
+            exempt_kinds: Vec::new(),
+        },
+    )
+}
+
+/// 判断一个已经换算到用户本地时区的 `"HH:MM"` 是否落在 quiet 区间。
+///
+/// 与 [`quiet_window_active`] 共用 `[from, to)` 和跨午夜语义，供偏好校验、
+/// 日程概览等不持有绝对时间的调用方复用。
+pub fn local_time_in_quiet_window(local_hhmm: &str, quiet_hours: &QuietHours) -> bool {
+    let Ok(local_time) = NaiveTime::parse_from_str(local_hhmm, "%H:%M") else {
         return false;
     };
-    let Ok(to_t) = NaiveTime::parse_from_str(to, "%H:%M") else {
+    let Ok(from_time) = NaiveTime::parse_from_str(&quiet_hours.from, "%H:%M") else {
         return false;
     };
-    let from_min = from_t.hour() as i32 * 60 + from_t.minute() as i32;
-    let to_min = to_t.hour() as i32 * 60 + to_t.minute() as i32;
+    let Ok(to_time) = NaiveTime::parse_from_str(&quiet_hours.to, "%H:%M") else {
+        return false;
+    };
+    let now_min = local_time.hour() as i32 * 60 + local_time.minute() as i32;
+    let from_min = from_time.hour() as i32 * 60 + from_time.minute() as i32;
+    let to_min = to_time.hour() as i32 * 60 + to_time.minute() as i32;
     if from_min == to_min {
         return false;
     }
@@ -150,5 +169,19 @@ mod tests {
         assert!(!is_kind_exempt(&kinds, "EARNINGS_RELEASED"));
         assert!(!is_kind_exempt(&kinds, "price_alert"));
         assert!(!is_kind_exempt(&[], "earnings_released"));
+    }
+
+    #[test]
+    fn local_time_helper_uses_half_open_cross_midnight_window() {
+        let quiet_hours = QuietHours {
+            from: "23:00".into(),
+            to: "07:30".into(),
+            exempt_kinds: Vec::new(),
+        };
+        assert!(local_time_in_quiet_window("23:00", &quiet_hours));
+        assert!(local_time_in_quiet_window("07:29", &quiet_hours));
+        assert!(!local_time_in_quiet_window("07:30", &quiet_hours));
+        assert!(!local_time_in_quiet_window("21:00", &quiet_hours));
+        assert!(!local_time_in_quiet_window("bogus", &quiet_hours));
     }
 }

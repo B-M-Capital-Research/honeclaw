@@ -401,8 +401,7 @@ llm:
       params:
         max_tokens: 800
         temperature: 0.2
-        response_format:
-          type: json_object
+        # SEC enrichment 的 prompt/renderer 契约是纯文本；不要在这里强制 json_object。
     earnings_quality:
       provider: openrouter
       model: "x-ai/grok-4.3"

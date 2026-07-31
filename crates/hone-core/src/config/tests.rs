@@ -353,6 +353,15 @@ fn assert_config_example_llm_profiles(config: &HoneConfig) {
             "config.example.yaml should include llm.profiles.{profile_name}"
         );
     }
+    let filing_summary = config
+        .llm
+        .profiles
+        .get("filing_summary")
+        .expect("config.example.yaml should include llm.profiles.filing_summary");
+    assert!(
+        filing_summary.params.response_format.is_none(),
+        "filing_summary prompt/render contract is plain text; forcing JSON exposes the envelope to channels"
+    );
     assert_config_example_profile_refs(config);
     assert_config_example_profile_providers_exist(config);
 }

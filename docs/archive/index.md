@@ -16,6 +16,30 @@ Last updated: 2026-07-31
 - Current conclusion: one persistent Codex thread no longer receives Hone's complete static system prompt on every message. The first native prompt sends it once; a structured native `contextCompaction` event schedules exactly one successful reseed. Ordinary trusted Interactive resumes contain only current Beijing time and current normalized user/attachment content—no Hone session/history metadata, receive-routing metadata, related-skill hints, entity-loop instructions, answer contracts, or generic user-input wrapper. Enabled Hone skills are exposed as per-skill symlinks under the actor workspace's `.agents/skills`; Codex natively discovered all 16 without errors and read `Market Analysis` on demand without a Hone MCP skill-loading call.
 - Next entry point: use `codex_acp_should_seed_system_prompt` and `acp_needs_sp_reseed` in `crates/hone-channels/src/runners/codex_acp.rs`, structured compaction handling in `crates/hone-channels/src/runners/acp_common/ingest.rs`, minimal current-turn assembly in `crates/hone-channels/src/turn_builder.rs` / `agent_session/core.rs`, and native skill projection in `crates/hone-channels/src/execution.rs` / `sandbox.rs`.
 
+### Conversational Notification Time And Numeric Controls
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/archive/plans/notification-prefs-time-numeric-controls.md`
+- Handoff: `docs/handoffs/2026-07-31-notification-prefs-time-numeric-controls.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-31-01-keep-conversational-notification-controls-deterministic-and-domain-owned`
+- Related PRs / commits: committed directly to `main` in the 2026-07-31 notification repair change set; no release or tag
+- Related runbooks / regressions: full `hone-core`, `hone-event-engine`, and `hone-tools` library suites; focused notification-prefs Web API tests; Web typecheck and 309 Web tests; local source runtime rebuild/restart
+- Current conclusion: normal channel Agents can set or independently inherit actor-scoped timezone, named digest slots and macro floor, quiet hours, generic/up/down price thresholds, and large-position weight. A typed three-state patch, a composite multi-field action, and shared event-engine validator keep Agent/API behavior atomic and aligned; the tool publishes its real union input schema. Prompt, model, classifier, and investment-mainline edits remain outside this conversational surface.
+- Next entry point: `docs/handoffs/2026-07-31-notification-prefs-time-numeric-controls.md`
+
+### SEC Filing Summary JSON Cross-Channel Normalization
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/archive/plans/sec-filing-summary-json-normalization.md`
+- Handoff: `docs/handoffs/2026-07-31-sec-filing-summary-json-normalization.md`
+- Decision / ADR: N/A; this restores the existing plain-text summary contract without changing channel ownership, routing, storage authority, or module boundaries
+- Related PRs / commits: committed directly to `main` in the 2026-07-31 notification repair change set; no release or tag
+- Related runbooks / regressions: full `hone-event-engine` lib tests, full `hone-core` lib tests plus the final config-example guard, `hone-web-api` check, exact changed-file rustfmt, cross-channel immediate renderer and Digest JSON-wrapper regressions, local source runtime rebuild/restart
+- Current conclusion: SEC filing provider responses are normalized before persistence and again when existing events are rendered. Plain text, JSON objects/strings, and JSON code blocks produce user-facing prose; invalid structures fail closed to the filing fallback. Discord, Telegram, Feishu, iMessage, immediate delivery, and Digest share the corrected behavior. The source runtime is active with `filing_summary.response_format` removed from the effective config.
+- Next entry point: `docs/handoffs/2026-07-31-sec-filing-summary-json-normalization.md`; inspect `delivery_log.body`, `events.payload_json.llm_summary`, and `MarketEvent::normalized_llm_summary` if another structured-response envelope becomes visible.
+
 ## 2026-07-30
 
 ### Codex ACP Session Continuity Diagnosis And Persistent-Session Follow-up
@@ -1917,3 +1941,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-channels --lib`; focused attachment and Codex ACP tests; admin-scoped no-side-effect ACP probe; real Discord image-turn timing and Discord API readback
 - Current conclusion: Hone now sends the adapter-required `gpt-5.6-sol[xhigh]` selector, reaches `session/prompt`, and lets admin Codex ACP turns read images natively instead of blocking the first Discord placeholder on redundant Apple Vision helper compilation. The motivating real turn completed successfully with 19 tool calls and a 671-character reply; after deployment, a fresh Discord follow-up received its placeholder in 1.121 seconds and completed successfully in 112.473 seconds, with Discord API readback confirming the final edit. The source launchd runtime was rebuilt and restarted cleanly.
 - Next entry point: `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
+
+### Event Engine Market-Session Digest Labels
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/archive/plans/event-engine-market-session-digest-labels.md`
+- Handoff: `docs/handoffs/2026-07-31-event-engine-market-session-digest-labels.md`
+- Decision / ADR: N/A; behavior is recorded in `docs/invariants.md`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `cargo test -p hone-event-engine quiet_flush_ --lib`; `cargo test -p hone-event-engine --lib`
+- Current conclusion: both local Discord actor preferences now map 07:30 to `postmarket / 盘后要闻` and 21:00 to `premarket / 盘前要闻`, with quiet hours ending at 07:30. A quiet flush coinciding with a named digest slot reuses that label, so the morning postmarket rollup is no longer drained or renamed before the configured slot. The rebuilt source runtime is healthy and Discord has reconnected.
+- Next entry point: after the next natural 21:00 and 07:30 slots, query `data/events.sqlite3` as described in the handoff to confirm the live user-visible headers and event windows.

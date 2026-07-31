@@ -26,12 +26,13 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::quiet::local_time_in_quiet_window;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use serde::{Deserialize, Serialize};
 
@@ -166,6 +167,38 @@ impl Default for NotificationPrefs {
     }
 }
 
+/// 对一个可继承的 actor 偏好字段做增量更新。
+///
+/// `Keep` 用于一次请求里不碰该字段；`Inherit` 清除 actor override；
+/// `Set` 写入具体值。该三态不能用 `Option<T>` 表达，因为 `None` 已经是
+/// “恢复继承”的业务含义。
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreferenceUpdate<T> {
+    Keep,
+    Inherit,
+    Set(T),
+}
+
+impl<T> Default for PreferenceUpdate<T> {
+    fn default() -> Self {
+        Self::Keep
+    }
+}
+
+/// 可由普通 Agent 对话或管理 API 调整的确定性通知字段。
+///
+/// 提示词、模型、分类策略不属于此补丁；它们继续由系统配置和专用管理流程维护。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NotificationDeliveryPatch {
+    pub timezone: PreferenceUpdate<String>,
+    pub digest_slots: PreferenceUpdate<Vec<DigestSlot>>,
+    pub price_high_pct_override: PreferenceUpdate<f64>,
+    pub price_high_pct_up_override: PreferenceUpdate<f64>,
+    pub price_high_pct_down_override: PreferenceUpdate<f64>,
+    pub large_position_weight_pct: PreferenceUpdate<f64>,
+    pub quiet_hours: PreferenceUpdate<QuietHours>,
+}
+
 impl NotificationPrefs {
     /// 个性化推送实际使用的投资风格：用户手写的优先，其次是系统蒸馏的。
     pub fn effective_mainline_style(&self) -> Option<&str> {
@@ -223,6 +256,177 @@ impl NotificationPrefs {
             .iter()
             .any(|pat| source_matches(source, pat))
     }
+
+    /// 在副本上应用确定性通知补丁并整体校验；只有全部合法时才替换当前值。
+    ///
+    /// 这保证一条自然语言指令即使同时修改多个关联字段，也不会留下部分生效状态。
+    pub fn apply_delivery_patch(&mut self, patch: NotificationDeliveryPatch) -> HoneResult<()> {
+        let mut candidate = self.clone();
+        apply_optional_update(&mut candidate.timezone, patch.timezone);
+        apply_optional_update(&mut candidate.digest_slots, patch.digest_slots);
+        apply_optional_update(
+            &mut candidate.price_high_pct_override,
+            patch.price_high_pct_override,
+        );
+        apply_optional_update(
+            &mut candidate.price_high_pct_up_override,
+            patch.price_high_pct_up_override,
+        );
+        apply_optional_update(
+            &mut candidate.price_high_pct_down_override,
+            patch.price_high_pct_down_override,
+        );
+        apply_optional_update(
+            &mut candidate.large_position_weight_pct,
+            patch.large_position_weight_pct,
+        );
+        apply_optional_update(&mut candidate.quiet_hours, patch.quiet_hours);
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    /// 校验一份可持久化通知偏好。Agent 与 HTTP API 必须共用此入口。
+    pub fn validate(&self) -> HoneResult<()> {
+        validate_kind_tags("blocked_kinds", &self.blocked_kinds)?;
+        if let Some(allow_kinds) = &self.allow_kinds {
+            validate_kind_tags("allow_kinds", allow_kinds)?;
+        }
+        if let Some(immediate_kinds) = &self.immediate_kinds {
+            validate_kind_tags("immediate_kinds", immediate_kinds)?;
+        }
+
+        if let Some(timezone) = &self.timezone {
+            let timezone = timezone.trim();
+            if timezone.is_empty() || timezone.parse::<chrono_tz::Tz>().is_err() {
+                return Err(HoneError::Config(format!(
+                    "未知 IANA 时区 {timezone:?};示例:Asia/Shanghai、America/New_York、Europe/London"
+                )));
+            }
+        }
+
+        if let Some(slots) = &self.digest_slots {
+            let mut slot_ids = HashSet::with_capacity(slots.len());
+            let mut slot_times = HashSet::with_capacity(slots.len());
+            for slot in slots {
+                let slot_id = slot.id.trim();
+                if slot_id.is_empty() {
+                    return Err(HoneError::Config(
+                        "digest_slots 的 id 不能为空;示例:premarket、postmarket".into(),
+                    ));
+                }
+                if !slot_ids.insert(slot_id) {
+                    return Err(HoneError::Config(format!(
+                        "digest_slots 含重复 id {slot_id:?};每个槽位必须有稳定且唯一的 id"
+                    )));
+                }
+                validate_hhmm("digest_slots.time", &slot.time)?;
+                if !slot_times.insert(slot.time.as_str()) {
+                    return Err(HoneError::Config(format!(
+                        "digest_slots 含重复时刻 {:?};同一时刻只保留一个具名槽位",
+                        slot.time
+                    )));
+                }
+                if let Some(label) = &slot.label {
+                    let label = label.trim();
+                    if label.is_empty() {
+                        return Err(HoneError::Config(
+                            "digest_slots.label 不能为空字符串;不需要名称时请传 null".into(),
+                        ));
+                    }
+                    if label.chars().count() > 64 {
+                        return Err(HoneError::Config(
+                            "digest_slots.label 最多 64 个字符".into(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        validate_optional_percentage(
+            "price_high_pct_override",
+            self.price_high_pct_override,
+            50.0,
+        )?;
+        validate_optional_percentage(
+            "price_high_pct_up_override",
+            self.price_high_pct_up_override,
+            50.0,
+        )?;
+        validate_optional_percentage(
+            "price_high_pct_down_override",
+            self.price_high_pct_down_override,
+            50.0,
+        )?;
+        validate_optional_percentage(
+            "large_position_weight_pct",
+            self.large_position_weight_pct,
+            100.0,
+        )?;
+
+        if let Some(quiet_hours) = &self.quiet_hours {
+            validate_hhmm("quiet_hours.from", &quiet_hours.from)?;
+            validate_hhmm("quiet_hours.to", &quiet_hours.to)?;
+            if quiet_hours.from == quiet_hours.to {
+                return Err(HoneError::Config(
+                    "quiet_hours 的 from 与 to 不能相等(空区间);若想全天关闭推送请使用总开关"
+                        .into(),
+                ));
+            }
+            validate_kind_tags("quiet_hours.exempt_kinds", &quiet_hours.exempt_kinds)?;
+            if let Some(slots) = &self.digest_slots {
+                let overlapping_slots = slots
+                    .iter()
+                    .filter(|slot| local_time_in_quiet_window(&slot.time, quiet_hours))
+                    .map(|slot| format!("{} ({})", slot.id, slot.time))
+                    .collect::<Vec<_>>();
+                if !overlapping_slots.is_empty() {
+                    return Err(HoneError::Config(format!(
+                        "quiet_hours {}–{} 会吞掉 digest slot [{}];请调整槽位或勿扰时段",
+                        quiet_hours.from,
+                        quiet_hours.to,
+                        overlapping_slots.join(", ")
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn apply_optional_update<T>(target: &mut Option<T>, update: PreferenceUpdate<T>) {
+    match update {
+        PreferenceUpdate::Keep => {}
+        PreferenceUpdate::Inherit => *target = None,
+        PreferenceUpdate::Set(value) => *target = Some(value),
+    }
+}
+
+fn validate_kind_tags(field: &str, tags: &[String]) -> HoneResult<()> {
+    if let Some(invalid_tag) = first_invalid_kind_tag(tags.iter().map(String::as_str)) {
+        return Err(HoneError::Config(format!(
+            "{field} 含未知 tag '{invalid_tag}';合法清单:{}",
+            ALL_KIND_TAGS.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+fn validate_hhmm(field: &str, value: &str) -> HoneResult<()> {
+    chrono::NaiveTime::parse_from_str(value, "%H:%M")
+        .map(|_| ())
+        .map_err(|_| HoneError::Config(format!("{field} 必须是 HH:MM (24h),收到 {value:?}")))
+}
+
+fn validate_optional_percentage(field: &str, value: Option<f64>, max: f64) -> HoneResult<()> {
+    if let Some(value) = value
+        && !(value.is_finite() && value > 0.0 && value <= max)
+    {
+        return Err(HoneError::Config(format!(
+            "{field} 必须在 (0, {max}] 范围,收到 {value}"
+        )));
+    }
+    Ok(())
 }
 
 fn source_matches(source: &str, pattern: &str) -> bool {
@@ -917,5 +1121,166 @@ mod tests {
             loaded.enabled,
             "解析失败时应回到默认（放行），不影响推送链路"
         );
+    }
+
+    #[test]
+    fn delivery_patch_distinguishes_keep_inherit_and_explicit_empty() {
+        let original_slots = vec![DigestSlot {
+            id: "premarket".into(),
+            time: "08:30".into(),
+            label: Some("盘前要闻".into()),
+            floor_macro: Some(1),
+        }];
+        let mut prefs = NotificationPrefs {
+            timezone: Some("Asia/Shanghai".into()),
+            digest_slots: Some(original_slots.clone()),
+            price_high_pct_override: Some(4.0),
+            ..Default::default()
+        };
+
+        prefs
+            .apply_delivery_patch(NotificationDeliveryPatch {
+                timezone: PreferenceUpdate::Keep,
+                digest_slots: PreferenceUpdate::Set(Vec::new()),
+                price_high_pct_override: PreferenceUpdate::Inherit,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(prefs.timezone.as_deref(), Some("Asia/Shanghai"));
+        assert_eq!(prefs.digest_slots, Some(Vec::new()));
+        assert_eq!(prefs.price_high_pct_override, None);
+
+        prefs
+            .apply_delivery_patch(NotificationDeliveryPatch {
+                digest_slots: PreferenceUpdate::Inherit,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(prefs.digest_slots, None);
+    }
+
+    #[test]
+    fn invalid_delivery_patch_is_atomic() {
+        let original_slots = vec![DigestSlot {
+            id: "premarket".into(),
+            time: "08:30".into(),
+            label: Some("盘前要闻".into()),
+            floor_macro: None,
+        }];
+        let mut prefs = NotificationPrefs {
+            timezone: Some("Asia/Shanghai".into()),
+            digest_slots: Some(original_slots.clone()),
+            price_high_pct_override: Some(4.0),
+            ..Default::default()
+        };
+
+        let error = prefs
+            .apply_delivery_patch(NotificationDeliveryPatch {
+                timezone: PreferenceUpdate::Set("America/New_York".into()),
+                price_high_pct_override: PreferenceUpdate::Set(99.0),
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("(0, 50]"));
+        assert_eq!(prefs.timezone.as_deref(), Some("Asia/Shanghai"));
+        assert_eq!(prefs.digest_slots, Some(original_slots));
+        assert_eq!(prefs.price_high_pct_override, Some(4.0));
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_digest_slot_id_and_time() {
+        let duplicate_id = NotificationPrefs {
+            digest_slots: Some(vec![
+                DigestSlot {
+                    id: "market".into(),
+                    time: "08:30".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+                DigestSlot {
+                    id: "market".into(),
+                    time: "19:00".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+            ]),
+            ..Default::default()
+        };
+        assert!(
+            duplicate_id
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("重复 id")
+        );
+
+        let duplicate_time = NotificationPrefs {
+            digest_slots: Some(vec![
+                DigestSlot {
+                    id: "premarket".into(),
+                    time: "08:30".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+                DigestSlot {
+                    id: "morning".into(),
+                    time: "08:30".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+            ]),
+            ..Default::default()
+        };
+        assert!(
+            duplicate_time
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("重复时刻")
+        );
+    }
+
+    #[test]
+    fn quiet_window_end_boundary_can_share_digest_slot() {
+        let prefs = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot {
+                id: "postmarket".into(),
+                time: "07:30".into(),
+                label: Some("盘后要闻".into()),
+                floor_macro: Some(1),
+            }]),
+            quiet_hours: Some(QuietHours {
+                from: "23:00".into(),
+                to: "07:30".into(),
+                exempt_kinds: Vec::new(),
+            }),
+            ..Default::default()
+        };
+        prefs
+            .validate()
+            .expect("quiet end uses an exclusive boundary");
+    }
+
+    #[test]
+    fn validate_checks_directional_and_large_position_percentages() {
+        let invalid_direction = NotificationPrefs {
+            price_high_pct_up_override: Some(50.1),
+            ..Default::default()
+        };
+        assert!(
+            invalid_direction
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("price_high_pct_up_override")
+        );
+
+        let valid = NotificationPrefs {
+            price_high_pct_up_override: Some(6.0),
+            price_high_pct_down_override: Some(5.0),
+            large_position_weight_pct: Some(20.0),
+            ..Default::default()
+        };
+        valid.validate().unwrap();
     }
 }

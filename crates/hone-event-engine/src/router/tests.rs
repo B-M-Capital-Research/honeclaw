@@ -38,7 +38,7 @@ fn actor(user: &str) -> ActorIdentity {
     ActorIdentity::new("imessage", user, None::<&str>).unwrap()
 }
 
-fn sample_event(severity: Severity) -> MarketEvent {
+fn earnings_event_with_severity(severity: Severity) -> MarketEvent {
     MarketEvent {
         id: "e1".into(),
         kind: EventKind::EarningsReleased,
@@ -53,7 +53,7 @@ fn sample_event(severity: Severity) -> MarketEvent {
     }
 }
 
-fn price_band_ev(symbol: &str, direction: &str, band_bps: i64, pct: f64) -> MarketEvent {
+fn price_band_event(symbol: &str, direction: &str, band_bps: i64, pct: f64) -> MarketEvent {
     MarketEvent {
         id: format!("price_band:{symbol}:2026-04-24:{direction}:{band_bps}"),
         kind: EventKind::PriceAlert {
@@ -103,7 +103,7 @@ fn router_with_aapl_actor() -> (NotificationRouter, Arc<CapturingSink>, tempfile
 async fn high_severity_goes_to_sink_immediately() {
     let (router, sink, _tmp) = router_with_aapl_actor();
     let (sent, pending) = router
-        .dispatch(&sample_event(Severity::High))
+        .dispatch(&earnings_event_with_severity(Severity::High))
         .await
         .unwrap();
     assert_eq!(sent, 1);
@@ -200,7 +200,7 @@ async fn high_daily_cap_zero_means_no_cap() {
     .with_high_daily_cap(0);
 
     for i in 0..5 {
-        let mut event = sample_event(Severity::High);
+        let mut event = earnings_event_with_severity(Severity::High);
         event.id = format!("h{i}");
         let (s, _) = router.dispatch(&event).await.unwrap();
         assert_eq!(s, 1, "cap=0 时每条 High 都应走 sink");
@@ -260,7 +260,7 @@ async fn same_symbol_cooldown_demotes_second_high_to_digest() {
     assert_eq!(s3 + p3, 0, "未订阅 NVDA,不应 dispatch");
 }
 
-fn analyst_grade_ev(id: &str, symbol: &str, firm: &str) -> MarketEvent {
+fn analyst_grade_event(id: &str, symbol: &str, firm: &str) -> MarketEvent {
     MarketEvent {
         id: id.into(),
         kind: EventKind::AnalystGrade,
@@ -294,12 +294,12 @@ async fn analyst_grade_two_firms_same_symbol_both_pass() {
     )
     .with_same_symbol_cooldown_minutes(60);
 
-    let goldman = analyst_grade_ev("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
+    let goldman = analyst_grade_event("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
     store.insert_event(&goldman).unwrap();
     assert_eq!(router.dispatch(&goldman).await.unwrap(), (1, 0));
 
     // 同 ticker 不同投行,60min 冷却内仍应直推
-    let raymond = analyst_grade_ev("grade:SNDK:t2:Raymond James", "SNDK", "Raymond James");
+    let raymond = analyst_grade_event("grade:SNDK:t2:Raymond James", "SNDK", "Raymond James");
     store.insert_event(&raymond).unwrap();
     assert_eq!(
         router.dispatch(&raymond).await.unwrap(),
@@ -329,7 +329,7 @@ async fn analyst_grade_same_news_url_fanout_demotes_second_firm() {
     .with_same_symbol_cooldown_minutes(60);
 
     let url = "https://thefly.com/ajax/news_get.php?id=4346982";
-    let mut jefferies = analyst_grade_ev("grade:AMD:t:Jefferies", "AMD", "Jefferies");
+    let mut jefferies = analyst_grade_event("grade:AMD:t:Jefferies", "AMD", "Jefferies");
     jefferies.url = Some(url.into());
     jefferies.payload = serde_json::json!({
         "gradingCompany": "Jefferies",
@@ -338,7 +338,7 @@ async fn analyst_grade_same_news_url_fanout_demotes_second_firm() {
         "newGrade": "Hold",
         "newsURL": url
     });
-    let mut btig = analyst_grade_ev("grade:AMD:t:BTIG", "AMD", "BTIG");
+    let mut btig = analyst_grade_event("grade:AMD:t:BTIG", "AMD", "BTIG");
     btig.url = Some(url.into());
     btig.payload = serde_json::json!({
         "gradingCompany": "BTIG",
@@ -381,12 +381,12 @@ async fn analyst_grade_same_firm_same_symbol_demotes() {
     )
     .with_same_symbol_cooldown_minutes(60);
 
-    let first = analyst_grade_ev("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
+    let first = analyst_grade_event("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
     store.insert_event(&first).unwrap();
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
 
     // 同投行同 ticker 60min 内仍应降级 —— 防"同投行刷数据"
-    let second = analyst_grade_ev("grade:SNDK:t2:Goldman Sachs", "SNDK", "Goldman Sachs");
+    let second = analyst_grade_event("grade:SNDK:t2:Goldman Sachs", "SNDK", "Goldman Sachs");
     store.insert_event(&second).unwrap();
     assert_eq!(
         router.dispatch(&second).await.unwrap(),
@@ -460,7 +460,7 @@ async fn cooldown_zero_means_no_throttle() {
     .with_same_symbol_cooldown_minutes(0);
 
     for i in 0..3 {
-        let mut event = sample_event(Severity::High);
+        let mut event = earnings_event_with_severity(Severity::High);
         event.id = format!("h{i}");
         store.insert_event(&event).unwrap();
         let (sent_count, _) = router.dispatch(&event).await.unwrap();
@@ -491,8 +491,8 @@ async fn price_band_bypasses_generic_same_symbol_cooldown() {
     .with_same_symbol_cooldown_minutes(60)
     .with_price_band_min_advance_pct(2.0);
 
-    let first = price_band_ev("AAOI", "up", 600, 6.18);
-    let second = price_band_ev("AAOI", "up", 800, 8.12);
+    let first = price_band_event("AAOI", "up", 600, 6.18);
+    let second = price_band_event("AAOI", "up", 800, 8.12);
     store.insert_event(&first).unwrap();
     store.insert_event(&second).unwrap();
 
@@ -526,11 +526,11 @@ async fn price_band_advance_rule_demotes_band_below_min_advance() {
     )
     .with_price_band_min_advance_pct(2.0);
 
-    let first = price_band_ev("AAOI", "up", 600, 6.18);
+    let first = price_band_event("AAOI", "up", 600, 6.18);
     // 同档位再来一次 —— id 相同,理论上 INSERT IGNORE 已挡掉,但 dispatch 层
     // 也应直接降级(不依赖 store 防重)。
-    let same_again = price_band_ev("AAOI", "up", 600, 6.50);
-    let advanced = price_band_ev("AAOI", "up", 800, 8.12);
+    let same_again = price_band_event("AAOI", "up", 600, 6.50);
+    let advanced = price_band_event("AAOI", "up", 800, 8.12);
     store.insert_event(&first).unwrap();
     store.insert_event(&same_again).unwrap();
     store.insert_event(&advanced).unwrap();
@@ -571,12 +571,12 @@ async fn price_band_advance_rule_passes_full_aaoi_2026_05_01_sequence() {
     .with_price_band_min_advance_pct(2.0);
 
     let bands = [
-        price_band_ev("AAOI", "up", 600, 6.18),
-        price_band_ev("AAOI", "up", 800, 8.12),
-        price_band_ev("AAOI", "up", 1000, 10.35),
-        price_band_ev("AAOI", "up", 1200, 12.50),
-        price_band_ev("AAOI", "up", 1400, 14.20),
-        price_band_ev("AAOI", "up", 1600, 16.30),
+        price_band_event("AAOI", "up", 600, 6.18),
+        price_band_event("AAOI", "up", 800, 8.12),
+        price_band_event("AAOI", "up", 1000, 10.35),
+        price_band_event("AAOI", "up", 1200, 12.50),
+        price_band_event("AAOI", "up", 1400, 14.20),
+        price_band_event("AAOI", "up", 1600, 16.30),
     ];
     for ev in &bands {
         store.insert_event(ev).unwrap();
@@ -613,8 +613,8 @@ async fn price_band_advance_rule_separates_up_and_down_lanes() {
     )
     .with_price_band_min_advance_pct(2.0);
 
-    let up = price_band_ev("AAOI", "up", 1200, 12.50);
-    let down = price_band_ev("AAOI", "down", 600, -6.30);
+    let up = price_band_event("AAOI", "up", 1200, 12.50);
+    let down = price_band_event("AAOI", "down", 600, -6.30);
     store.insert_event(&up).unwrap();
     store.insert_event(&down).unwrap();
 
@@ -648,9 +648,9 @@ async fn price_band_advance_rule_disabled_when_zero() {
     )
     .with_price_band_min_advance_pct(0.0);
 
-    let first = price_band_ev("AAOI", "up", 800, 8.10);
+    let first = price_band_event("AAOI", "up", 800, 8.10);
     // 反过来推 6%(在 advance>0 下会被降级),advance=0 应允许直推。
-    let lower = price_band_ev("AAOI", "up", 600, 6.20);
+    let lower = price_band_event("AAOI", "up", 600, 6.20);
     store.insert_event(&first).unwrap();
     store.insert_event(&lower).unwrap();
 
@@ -663,10 +663,13 @@ async fn price_band_advance_rule_disabled_when_zero() {
 async fn medium_and_low_are_deferred_to_digest() {
     let (router, sink, _tmp) = router_with_aapl_actor();
     let (sent_m, pending_m) = router
-        .dispatch(&sample_event(Severity::Medium))
+        .dispatch(&earnings_event_with_severity(Severity::Medium))
         .await
         .unwrap();
-    let (sent_l, pending_l) = router.dispatch(&sample_event(Severity::Low)).await.unwrap();
+    let (sent_l, pending_l) = router
+        .dispatch(&earnings_event_with_severity(Severity::Low))
+        .await
+        .unwrap();
     assert_eq!(sent_m + sent_l, 0);
     assert_eq!(pending_m + pending_l, 2);
     sink.assert_no_calls();
@@ -702,7 +705,7 @@ async fn polisher_body_overrides_default_template() {
     .with_polisher(Arc::new(FixedPolisher));
 
     let _ = router
-        .dispatch(&sample_event(Severity::High))
+        .dispatch(&earnings_event_with_severity(Severity::High))
         .await
         .unwrap();
     let calls = sink.calls.lock().unwrap();
@@ -741,11 +744,11 @@ async fn disabled_prefs_skip_send_and_enqueue() {
     .with_prefs(prefs_store);
 
     let (sent_h, pending_h) = router
-        .dispatch(&sample_event(Severity::High))
+        .dispatch(&earnings_event_with_severity(Severity::High))
         .await
         .unwrap();
     let (sent_m, pending_m) = router
-        .dispatch(&sample_event(Severity::Medium))
+        .dispatch(&earnings_event_with_severity(Severity::Medium))
         .await
         .unwrap();
     assert_eq!(sent_h + sent_m, 0);
@@ -802,16 +805,16 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
     .with_prefs(prefs_store);
 
     // 无 symbol 的 macro 事件应被过滤
-    let mut macro_ev = sample_event(Severity::High);
-    macro_ev.kind = crate::event::EventKind::MacroEvent;
-    macro_ev.symbols.clear();
-    let (sent, _pending) = router.dispatch(&macro_ev).await.unwrap();
+    let mut macro_event = earnings_event_with_severity(Severity::High);
+    macro_event.kind = crate::event::EventKind::MacroEvent;
+    macro_event.symbols.clear();
+    let (sent, _pending) = router.dispatch(&macro_event).await.unwrap();
     assert_eq!(sent, 0);
     sink.assert_no_calls();
 
     // 命中 symbol 的事件仍应送达
     let (sent, _pending) = router
-        .dispatch(&sample_event(Severity::High))
+        .dispatch(&earnings_event_with_severity(Severity::High))
         .await
         .unwrap();
     assert_eq!(sent, 1);
@@ -846,7 +849,7 @@ async fn macro_high_is_digest_until_due_window_then_immediate() {
     )
     .with_macro_immediate_window(6, 2);
 
-    let mut future_macro = sample_event(Severity::High);
+    let mut future_macro = earnings_event_with_severity(Severity::High);
     future_macro.id = "macro:future:cpi".into();
     future_macro.kind = EventKind::MacroEvent;
     future_macro.symbols.clear();
@@ -882,7 +885,7 @@ async fn far_earnings_preview_is_low_priority_digest() {
         store,
         digest.clone(),
     );
-    let mut event = sample_event(Severity::Medium);
+    let mut event = earnings_event_with_severity(Severity::Medium);
     event.id = "earnings:AAPL:far".into();
     event.kind = EventKind::EarningsUpcoming;
     event.occurred_at = Utc::now() + chrono::Duration::days(10);
@@ -1157,7 +1160,7 @@ async fn globally_disabled_kind_is_dropped_before_prefs() {
 
     // 非黑名单 kind 不受影响
     let (sent, _) = router
-        .dispatch(&sample_event(Severity::High))
+        .dispatch(&earnings_event_with_severity(Severity::High))
         .await
         .unwrap();
     assert_eq!(sent, 1);
@@ -2156,7 +2159,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
     )
     .with_prefs(prefs_store);
 
-    let mut news = sample_event(Severity::High);
+    let mut news = earnings_event_with_severity(Severity::High);
     news.id = "news:AAPL:quiet".into();
     news.kind = EventKind::NewsCritical;
     news.title = "AAPL high news".into();
@@ -2164,7 +2167,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "quiet mode 下新闻 High 应进 digest");
 
-    let mut filing = sample_event(Severity::High);
+    let mut filing = earnings_event_with_severity(Severity::High);
     filing.id = "sec:AAPL:8k".into();
     filing.kind = EventKind::SecFiling { form: "8-K".into() };
     let (sent, pending) = router.dispatch(&filing).await.unwrap();
@@ -2188,7 +2191,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
         store.clone(),
         digest,
     );
-    let event = sample_event(Severity::High);
+    let event = earnings_event_with_severity(Severity::High);
     store.insert_event(&event).unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "dispatch 计数代表 sink 调用成功");
@@ -2231,7 +2234,7 @@ async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
 #[tokio::test]
 async fn event_without_subscribers_is_no_op() {
     let (router, sink, _tmp) = router_with_aapl_actor();
-    let mut event = sample_event(Severity::High);
+    let mut event = earnings_event_with_severity(Severity::High);
     event.symbols = vec!["TSLA".into()]; // 无人持仓
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
@@ -2292,7 +2295,7 @@ fn router_with_quiet_hours_for_aapl(
 async fn quiet_held_logs_status_and_skips_sink() {
     let qh = quiet_hours_around_now();
     let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let mut event = sample_event(Severity::High);
+    let mut event = earnings_event_with_severity(Severity::High);
     event.id = "earnings_in_quiet".into();
     store.insert_event(&event).unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
@@ -2319,7 +2322,7 @@ async fn exempt_kind_bypasses_quiet_hold() {
     let mut qh = quiet_hours_around_now();
     qh.exempt_kinds = vec!["earnings_released".into()];
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = sample_event(Severity::High); // EarningsReleased
+    let event = earnings_event_with_severity(Severity::High); // EarningsReleased
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "exempt kind must still go to sink during quiet");
     assert_eq!(sink.calls.lock().unwrap().len(), 1);
@@ -2338,7 +2341,7 @@ async fn quiet_outside_window_does_not_hold() {
         exempt_kinds: Vec::new(),
     };
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = sample_event(Severity::High);
+    let event = earnings_event_with_severity(Severity::High);
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1);
     assert_eq!(sink.calls.lock().unwrap().len(), 1);
@@ -2349,7 +2352,7 @@ async fn quiet_does_not_hold_medium_to_digest() {
     // 验证 quiet_hours 只拦 High,Medium 仍走 digest enqueue
     let qh = quiet_hours_around_now();
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = sample_event(Severity::Medium);
+    let event = earnings_event_with_severity(Severity::Medium);
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "Medium event should still enqueue to digest");

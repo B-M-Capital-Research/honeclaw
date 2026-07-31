@@ -20,9 +20,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use hone_event_engine::prefs::{
-    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, first_invalid_kind_tag,
-};
+use hone_event_engine::prefs::{ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider};
 
 use crate::routes::{json_error, require_actor};
 use crate::state::AppState;
@@ -58,70 +56,8 @@ fn prefs_dir(state: &AppState) -> PathBuf {
     PathBuf::from(&state.core.config.storage.notif_prefs_dir)
 }
 
-fn validate_prefs(prefs: &NotificationPrefs) -> Result<(), Response> {
-    if let Some(bad) = first_invalid_kind_tag(prefs.blocked_kinds.iter().map(|s| s.as_str())) {
-        return Err(json_error(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "blocked_kinds 含未知 tag '{bad}';合法清单:{}",
-                ALL_KIND_TAGS.join(", ")
-            ),
-        ));
-    }
-    if let Some(allow) = &prefs.allow_kinds {
-        if let Some(bad) = first_invalid_kind_tag(allow.iter().map(|s| s.as_str())) {
-            return Err(json_error(
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "allow_kinds 含未知 tag '{bad}';合法清单:{}",
-                    ALL_KIND_TAGS.join(", ")
-                ),
-            ));
-        }
-    }
-    if let Some(tz) = &prefs.timezone {
-        if !tz.trim().is_empty() {
-            use std::str::FromStr;
-            if chrono_tz::Tz::from_str(tz.trim()).is_err() {
-                return Err(json_error(
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "timezone {tz:?} 不是合法 IANA 名;示例:Asia/Shanghai、America/New_York、Europe/London"
-                    ),
-                ));
-            }
-        }
-    }
-    if let Some(slots) = &prefs.digest_slots {
-        for s in slots {
-            if chrono::NaiveTime::parse_from_str(&s.time, "%H:%M").is_err() {
-                return Err(json_error(
-                    StatusCode::BAD_REQUEST,
-                    format!("digest_slots 含非法时刻 {:?},必须是 HH:MM (24h)", s.time),
-                ));
-            }
-        }
-    }
-    if let Some(pct) = prefs.price_high_pct_override {
-        if !pct.is_finite() || !(pct > 0.0 && pct <= 50.0) {
-            return Err(json_error(
-                StatusCode::BAD_REQUEST,
-                format!("price_high_pct_override 必须在 (0, 50] 范围,收到 {pct}"),
-            ));
-        }
-    }
-    if let Some(kinds) = &prefs.immediate_kinds {
-        if let Some(bad) = first_invalid_kind_tag(kinds.iter().map(|s| s.as_str())) {
-            return Err(json_error(
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "immediate_kinds 含未知 tag '{bad}';合法清单:{}",
-                    ALL_KIND_TAGS.join(", ")
-                ),
-            ));
-        }
-    }
-    Ok(())
+fn validate_prefs(prefs: &NotificationPrefs) -> Result<(), String> {
+    prefs.validate().map_err(|error| error.to_string())
 }
 
 /// GET /api/notification-prefs
@@ -207,8 +143,8 @@ pub(crate) async fn handle_put_prefs(
         Ok(a) => a,
         Err(resp) => return resp,
     };
-    if let Err(resp) = validate_prefs(&body.prefs) {
-        return resp;
+    if let Err(error) = validate_prefs(&body.prefs) {
+        return json_error(StatusCode::BAD_REQUEST, error);
     }
     let storage = match FilePrefsStorage::new(prefs_dir(&state)) {
         Ok(s) => s,
@@ -226,4 +162,111 @@ pub(crate) async fn handle_put_prefs(
         );
     }
     Json(json!({ "prefs": body.prefs })).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hone_event_engine::prefs::QuietHours;
+    use hone_event_engine::unified_digest::DigestSlot;
+
+    #[test]
+    fn shared_validation_accepts_structured_time_and_numeric_controls() {
+        let prefs = NotificationPrefs {
+            timezone: Some("Asia/Shanghai".into()),
+            digest_slots: Some(vec![
+                DigestSlot {
+                    id: "postmarket".into(),
+                    time: "07:30".into(),
+                    label: Some("盘后要闻".into()),
+                    floor_macro: Some(2),
+                },
+                DigestSlot {
+                    id: "premarket".into(),
+                    time: "21:00".into(),
+                    label: Some("盘前要闻".into()),
+                    floor_macro: None,
+                },
+            ]),
+            price_high_pct_override: Some(6.0),
+            price_high_pct_up_override: Some(7.0),
+            price_high_pct_down_override: Some(5.0),
+            large_position_weight_pct: Some(20.0),
+            quiet_hours: Some(QuietHours {
+                from: "23:00".into(),
+                to: "07:30".into(),
+                exempt_kinds: vec!["earnings_released".into()],
+            }),
+            ..Default::default()
+        };
+        validate_prefs(&prefs).unwrap();
+    }
+
+    #[test]
+    fn shared_validation_rejects_duplicate_slots_and_out_of_range_numbers() {
+        let duplicate_slots = NotificationPrefs {
+            digest_slots: Some(vec![
+                DigestSlot {
+                    id: "one".into(),
+                    time: "08:30".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+                DigestSlot {
+                    id: "two".into(),
+                    time: "08:30".into(),
+                    label: None,
+                    floor_macro: None,
+                },
+            ]),
+            ..Default::default()
+        };
+        assert!(
+            validate_prefs(&duplicate_slots)
+                .unwrap_err()
+                .contains("重复时刻")
+        );
+
+        let invalid_number = NotificationPrefs {
+            large_position_weight_pct: Some(101.0),
+            ..Default::default()
+        };
+        assert!(
+            validate_prefs(&invalid_number)
+                .unwrap_err()
+                .contains("large_position_weight_pct")
+        );
+    }
+
+    #[test]
+    fn shared_validation_rejects_quiet_overlap_but_allows_end_boundary() {
+        let quiet_hours = QuietHours {
+            from: "23:00".into(),
+            to: "07:30".into(),
+            exempt_kinds: Vec::new(),
+        };
+        let overlapping = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot {
+                id: "night".into(),
+                time: "02:00".into(),
+                label: None,
+                floor_macro: None,
+            }]),
+            quiet_hours: Some(quiet_hours.clone()),
+            ..Default::default()
+        };
+        assert!(validate_prefs(&overlapping).unwrap_err().contains("吞掉"));
+
+        let boundary = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot {
+                id: "postmarket".into(),
+                time: "07:30".into(),
+                label: None,
+                floor_macro: None,
+            }]),
+            quiet_hours: Some(quiet_hours),
+            ..Default::default()
+        };
+        validate_prefs(&boundary).unwrap();
+    }
 }

@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-31 10:02 CST）
+
+- `2026-07-31 06:00-10:02 CST` 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` / `session_messages` / `cron_job_runs`
+    - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` 的任务正文明确要求调取 `SNDK` 最新行情、新闻催化、评级变化和 `NAND Flash` 存储行业动态。
+    - assistant final / `run_id=50835` 只返回“已识别证券代码 `NAND`，但当前数据供应商没有返回同代码行情覆盖”，未生成 SNDK 简报主体。
+    - 同条 run 落成 `heartbeat=0`、`execution_status=execution_failed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`，说明失败提示已作为用户可见 scheduler 结果发送。
+  - 判断：
+    - 最新样本仍是 scheduler 任务正文中的行业词 `NAND Flash` 进入证券实体 guard / resolver 后误抽为 ticker，导致明确 ticker `SNDK` 的业务正文被阻断；与既有 `NAND` / `13F` / `ARK` / `Nancy` / `PCE` / `SEC` 误抽同根，不新建重复缺陷。
+    - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文生成并发送失败提示，但同窗 direct / scheduler 仍有正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-30 22:03 CST）
 
 - `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New/P2`：

@@ -217,11 +217,14 @@ impl SecFilingSummarizer for LlmSecFilingSummarizer {
             }
         }
         let result = result?;
-        let summary = result.content.trim().to_string();
-        if summary.is_empty() {
-            warn!(event_id = %event.id, "sec_enrichment LLM returned empty content");
+        let Some(summary) = crate::event::normalize_llm_summary(&result.content) else {
+            warn!(
+                event_id = %event.id,
+                "sec_enrichment LLM returned empty or invalid structured content"
+            );
             return None;
-        }
+        };
+        let summary = summary.into_owned();
 
         if let Ok(mut c) = self.cache.lock() {
             c.insert(key, summary.clone());

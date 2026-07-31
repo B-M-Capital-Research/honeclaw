@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-31 06:00-10:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:02 普通 scheduler `美股持仓收盘后早报` `run_id=50805` 落成 `execution_failed + sent + delivered=1`，用户侧收到的 preview / error 主要是已核验标的清单和报价片段，没有完整早报结论。
+    - 08:31 普通 scheduler `每日有色化工标的新闻追踪` `run_id=50832` 同样落成 `execution_failed + sent + delivered=1`，只返回 `本轮未能发现足够的可核验代表证券，不会用通用标的凑数`，用户任务要求的中国宏桥、紫金矿业、盐湖股份等新闻 / 公告摘要未生成。
+    - 近窗 runtime 日志有更新，但未确认这两条都是 `max_iterations_exceeded`；因此只按既有 function-calling / 普通 scheduler 通用失败恢复缺口补证，不拆新根因。
+  - 判断：
+    - 最新样本仍是 function-calling / 普通 scheduler 在内部失败后缺少可恢复业务答案，用户只能收到半截事实或安全失败片段；未确认新的独立根因。
+    - 严重等级维持 `P2`：会阻断具体 scheduler 业务任务，但同窗其它 direct / scheduler 可收口，未形成全渠道不可用或 P1。
+
 - `2026-07-30 18:00-22:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `session_messages` / `cron_job_runs`
     - 20:00 Feishu scheduler `美股盘前要闻、持仓评级与机会观察` 任务要求生成盘前综合简报，覆盖宏观、持仓 / 关注股新闻、评级变化、财报预期和操作优先级；20:03 assistant final 仅返回“抱歉，这次处理失败了。请稍后再试。”，随后追加 scheduler failure 补偿。

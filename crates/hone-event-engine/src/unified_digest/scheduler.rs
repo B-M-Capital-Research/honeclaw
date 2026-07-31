@@ -13,7 +13,8 @@
 //!
 //! 调用方在 `pipeline::cron_minute_tick` 里以 60s 频率调 `tick_once`。
 //! `quiet_hours` 期间 actor 整体让位,`to` 时刻触发 `quiet_flush` 把 router hold
-//! 的 High + buffer 累积合并一次性发出 —— 这块逻辑直接平移自旧 `DigestScheduler`。
+//! 的 High + buffer 累积合并一次性发出；若同刻有命名 digest slot,合集沿用
+//! 该 slot 的用户可见标签,避免盘前/盘后语义退化成泛化的“晨间静音合集”。
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -426,10 +427,7 @@ impl UnifiedDigestScheduler {
                 };
 
                 // ── 4) 合并 → prefs filter → floor 分类 ───────────────
-                let label = slot
-                    .label
-                    .clone()
-                    .unwrap_or_else(|| format!("定时摘要 · {}", slot.time));
+                let label = digest_slot_label(slot);
 
                 let mut floor_events: Vec<MarketEvent> = Vec::new();
                 let mut other_events: Vec<MarketEvent> = Vec::new();
@@ -912,7 +910,7 @@ impl UnifiedDigestScheduler {
             cap_overflow = truncated.len();
             omitted_events.extend(truncated);
         }
-        let label = format!("晨间静音合集 · {}", qh.to);
+        let label = quiet_flush_label(user_prefs, &self.default_slots, &qh.to);
         let body = render_digest(&label, &filtered, cap_overflow, self.sink.format_for(actor));
         let payload = build_digest_payload(label.clone(), &filtered, cap_overflow);
         let send_result = self.sink.send_digest(actor, &payload, &body).await;
@@ -1071,6 +1069,25 @@ fn effective_tz_date_key(
     EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback_offset_hours).date_key(now)
 }
 
+fn digest_slot_label(slot: &DigestSlot) -> String {
+    slot.label
+        .clone()
+        .unwrap_or_else(|| format!("定时摘要 · {}", slot.time))
+}
+
+fn quiet_flush_label(
+    prefs: &NotificationPrefs,
+    default_slots: &[DigestSlot],
+    quiet_to: &str,
+) -> String {
+    let slots = prefs.digest_slots.as_deref().unwrap_or(default_slots);
+    slots
+        .iter()
+        .find(|slot| slot.time == quiet_to)
+        .map(digest_slot_label)
+        .unwrap_or_else(|| format!("晨间静音合集 · {quiet_to}"))
+}
+
 fn actor_focus_symbols(
     storage: &PortfolioStorage,
     actor: &ActorIdentity,
@@ -1171,6 +1188,50 @@ mod tests {
 
         assert!(symbols.contains("AAPL"));
         assert!(symbols.contains("MU"));
+    }
+
+    #[test]
+    fn quiet_flush_uses_actor_slot_label_at_same_time() {
+        let prefs = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot {
+                id: "postmarket".into(),
+                time: "07:30".into(),
+                label: Some("盘后要闻".into()),
+                floor_macro: None,
+            }]),
+            ..Default::default()
+        };
+        let defaults = vec![DigestSlot::from_legacy_window("08:30")];
+
+        assert_eq!(quiet_flush_label(&prefs, &defaults, "07:30"), "盘后要闻");
+    }
+
+    #[test]
+    fn quiet_flush_uses_standard_slot_fallback_when_same_time_has_no_label() {
+        let prefs = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot::from_legacy_window("07:30")]),
+            ..Default::default()
+        };
+
+        assert_eq!(quiet_flush_label(&prefs, &[], "07:30"), "定时摘要 · 07:30");
+    }
+
+    #[test]
+    fn quiet_flush_keeps_generic_label_without_same_time_slot() {
+        let prefs = NotificationPrefs {
+            digest_slots: Some(vec![DigestSlot {
+                id: "premarket".into(),
+                time: "21:00".into(),
+                label: Some("盘前要闻".into()),
+                floor_macro: None,
+            }]),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            quiet_flush_label(&prefs, &[], "07:30"),
+            "晨间静音合集 · 07:30"
+        );
     }
 
     #[test]
