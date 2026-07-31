@@ -1965,3 +1965,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-event-engine quiet_flush_ --lib`; `cargo test -p hone-event-engine --lib`
 - Current conclusion: both local Discord actor preferences now map 07:30 to `postmarket / 盘后要闻` and 21:00 to `premarket / 盘前要闻`, with quiet hours ending at 07:30. A quiet flush coinciding with a named digest slot reuses that label, so the morning postmarket rollup is no longer drained or renamed before the configured slot. The rebuilt source runtime is healthy and Discord has reconnected.
 - Next entry point: after the next natural 21:00 and 07:30 slots, query `data/events.sqlite3` as described in the handoff to confirm the live user-visible headers and event windows.
+
+### Public User Admin Whitelist Production List Recovery
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/archive/plans/public-admin-whitelist-production-followup.md`
+- Handoff: `docs/handoffs/2026-07-31-public-user-admin-whitelist-management.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-31-03-keep-public-user-administration-separate-and-database-authoritative`
+- Related PRs / commits: `49ef8dd4e2d5298ad69f01b73d7a1b9be7fa5b87`
+- Related runbooks / regressions: `docs/runbooks/public-user-admin.md`; Core 22/22; Memory 133/133; Web API 160/160 plus 2 credentialed ignores; `tests/regression/run_ci.sh`
+- Current conclusion: The production 500 came from binding a Rust string directly to a PostgreSQL `date` placeholder in the daily-count query, not from the frontend or administrator role. All count/audit paths now cast text to date, the list uses a minimal non-secret projection, and ancillary count failure no longer hides readable rows. The exact immutable production build is active with healthy PostgreSQL/R2, zero active chats, and the tunnel unchanged.
+- Next entry point: refresh the authenticated “我的 → 管理” view; if live mutation acceptance is needed, use one explicitly controlled phone rather than synthetic production accounts.

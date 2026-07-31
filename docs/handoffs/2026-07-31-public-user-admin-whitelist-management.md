@@ -23,7 +23,7 @@
   - `docs/repo-map.md`
   - `docs/invariants.md`
   - `docs/decisions.md`
-- related_prs: implementation/deployment commit `5eacfe98c0b2b3bdaac11fc23830c0ab91b14f3d` on `main`
+- related_prs: feature commit `5eacfe98c0b2b3bdaac11fc23830c0ab91b14f3d`; production recovery commit `49ef8dd4e2d5298ad69f01b73d7a1b9be7fa5b87` on `main`
 
 ## Summary
 
@@ -65,3 +65,30 @@ The shared public mobile/PC client now has a PostgreSQL-authoritative administra
 ## Next Entry Point
 
 On the next normal login as `13871396421`, confirm “我的 → 管理” appears. If a live mutation canary is desired, use one explicitly controlled phone, perform one create/disable cycle, and verify its sessions are revoked; do not consume the daily allowance with synthetic entries.
+
+## Production List Recovery — 2026-07-31
+
+The first authenticated production list request exposed a PostgreSQL parameter
+contract bug: Rust supplied `beijing_date` as a string while the SQL declared
+the placeholder directly as `date`. `tokio-postgres` therefore failed before
+query execution with `error serializing parameter 1`. Because the original
+handler coupled the list and daily count with one `?`, this ancillary failure
+turned 162 readable domestic whitelist summaries into a whole-page 500.
+
+Commit `49ef8dd4` fixes every administrator count/audit occurrence by binding
+the value as text and casting inside PostgreSQL. It also makes the list use a
+minimal non-secret database projection, isolates the daily count so a future
+failure leaves the list visible while conservatively disabling creation,
+protects every administrator row from disable UI, and adds sanitized
+success/failure logs. The public response schema, frontend rendering, and
+prompt answer format did not change.
+
+The production read-only probe returned 162 domestic rows, a readable
+administrator, and daily count zero after the fix; the legacy full-record list
+also remained readable at 175 rows. Core 22/22, Memory 133/133, Web API 160/160
+with two credentialed ignores, and all CI-safe regressions passed. Web and
+Feishu now load `target/deploy-49ef8dd4`; manifest SHA-256 is
+`300c55cc7413cf6e7732b2697d2150f2e812e1c698bac35b25ac58491ca7d68e`.
+PostgreSQL/R2 are healthy, cloud storage is authoritative, active chats are
+zero, and local/origin/public auth and administrator routes fail closed with
+`401 application/json` when anonymous. The tunnel supervisor was left intact.
