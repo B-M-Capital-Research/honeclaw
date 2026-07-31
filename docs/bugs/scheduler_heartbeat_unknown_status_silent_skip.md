@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-31 10:00-14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T13:32:11.719423+08:00`、`session_messages.max(timestamp)=2026-07-31T13:32:11.719423+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T14:01:22.994948+08:00`。
+    - 同窗 heartbeat run 共 84 条：`noop/skipped_noop=50`、`completed/sent=23`、`execution_failed/skipped_error=11`；普通 scheduler 3 条均 `completed/sent`。
+    - `detail_json.scheduler.parse_kind` 仍未稳定写入：50 条 noop 与 11 条 skipped_error 为空，23 条 sent heartbeat 落在 `PlainTextTriggered`。
+    - 10:00 `RKLB 全面心跳检测` / `全天原油价格3小时播报`、10:30 `AAOI 全面心跳检测` / `RKLB 全面心跳检测` / `Monitor_Watchlist_11`、11:30 原油、13:00 AAOI、14:00 原油 / Watchlist 均因“heartbeat 输出不是结构化 JSON / 不是合法 JSON”落成 `execution_failed + skipped_error`。
+  - 判断：最新证据仍落在 heartbeat 结构化状态输出退化与后置归类漂移范围内；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-07-31 06:00-10:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T10:00:01.827129+08:00`、`session_messages.max(timestamp)=2026-07-31T10:00:01.827129+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T10:01:14.272597+08:00`。

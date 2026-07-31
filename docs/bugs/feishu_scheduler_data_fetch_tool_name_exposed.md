@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-31 10:00-14:02 CST 运行态继续复发，状态维持 `New`：
+  - 10:00-14:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 条 user / 10 条 assistant / 4 条 system compact，覆盖 6 个更新 Feishu session；近期 direct / scheduler 会话均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误、raw tool JSON、错投或敏感信息；本轮命中的是 heartbeat 用户可见内部工具名 / 工具限额口径。
+  - 13:30 CST heartbeat `Monitor_Watchlist_11` `run_id=50942` 已 `completed + sent + delivered=1`，用户可见 preview 开头写出 `data_fetch 工具当前遭遇持续调用限额`，并继续说明其余 9 只标的因工具限额未完成实体搜索与行情核验。
+  - 该消息业务主体没有整体投递失败，也没有原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-28 18:01-22:03 CST 运行态继续复发，状态维持 `New`：
   - 18:01-22:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 42 条 user / 31 条 assistant / 8 条 system compact；近期 Feishu direct / scheduler 会话多数有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是用户可见 provider / 工具字段口径。
