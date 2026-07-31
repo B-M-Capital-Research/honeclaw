@@ -12,6 +12,8 @@ import type {
   PublicPushListResponse,
   PublicPushOpenResponse,
   PublicAuthUserInfo,
+  PublicAdminInviteList,
+  PublicAdminInviteMutation,
   MetaInfo,
   SkillDetailInfo,
   SkillInfo,
@@ -345,6 +347,41 @@ export async function getPublicAuthMe(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/auth/me", { signal });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
   return payload.user;
+}
+
+const PUBLIC_ADMIN_ACTION_HEADERS = {
+  "X-Hone-Admin-Action": "whitelist",
+};
+
+export async function getPublicAdminInvites(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/admin/invites", {
+    signal,
+    cache: "no-store",
+  });
+  return parseJson<PublicAdminInviteList>(response);
+}
+
+export async function createPublicAdminInvite(phoneNumber: string) {
+  const response = await apiFetch("/api/public/admin/invites", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...PUBLIC_ADMIN_ACTION_HEADERS,
+    },
+    body: JSON.stringify({ phone_number: phoneNumber }),
+  });
+  return parseJson<PublicAdminInviteMutation>(response);
+}
+
+export async function disablePublicAdminInvite(userId: string) {
+  const response = await apiFetch(
+    `/api/public/admin/invites/${encodeURIComponent(userId)}/disable`,
+    {
+      method: "POST",
+      headers: PUBLIC_ADMIN_ACTION_HEADERS,
+    },
+  );
+  return parseJson<PublicAdminInviteMutation>(response);
 }
 
 export async function getPublicChatBootstrap(signal?: AbortSignal) {

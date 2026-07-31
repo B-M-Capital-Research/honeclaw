@@ -38,6 +38,7 @@ function user(
     has_password: false,
     registration_policy: policy,
     whop_membership: whopMembership,
+    is_admin: false,
   };
 }
 

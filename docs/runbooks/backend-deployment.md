@@ -145,6 +145,39 @@ from a separate `cloud doctor` command launched in a different working
 directory; that command may have loaded a different `.env` from the live
 process.
 
+### Origin Tunnel Health
+
+On the current macOS production host, `origin.hone-claw.com` is forwarded by a
+Sunny-ngrok tunnel to `127.0.0.1:8088`. A live `hone-console-page`, healthy
+`/api/meta`, and listening `8077` / `8088` do not prove that public users can
+reach the service.
+
+If the Pages homepage loads but `/api/public/*` and
+`origin.hone-claw.com/api/public/auth/me` time out:
+
+1. Confirm local `8088` returns the expected unauthenticated `401`.
+2. Confirm the Cloudflare `honeclaw-public-api-proxy` Worker route still points
+   `/api/public/*` to `origin.hone-claw.com`.
+3. Inspect the Sunny-ngrok process and its local inspection port `4040`.
+   Process existence and a listening inspection port are not sufficient:
+   require a currently registered `https://origin.hone-claw.com` tunnel and a
+   fresh end-to-end origin probe.
+4. Never paste the complete Sunny-ngrok inspection page into logs or tickets.
+   It contains captured request headers and may contain live session cookies.
+   Extract only tunnel URL, local target, request path, status, and timing.
+5. If local network software uses fake-IP DNS in `198.18.0.0/15`, a restarted
+   tunnel may connect to a synthetic address and stall during authentication.
+   Resolve the tunnel server through a non-fake authoritative resolver and use
+   the reviewed supervisor/network bypass. Do not permanently hard-code a
+   transient upstream IP without a monitored replacement plan.
+6. Restart only the failed tunnel lane when the backend is healthy. Afterward,
+   require repeated `401` responses from both the origin and public hostname,
+   plus one real public-client bootstrap, before declaring recovery.
+
+The tunnel credential is operational secret material. Keep it out of committed
+files and command output, and run the tunnel under the host supervisor rather
+than an unattended interactive terminal.
+
 ## Public Auth Runtime Env
 
 Public SMS login and optional captcha are runtime env configuration, not

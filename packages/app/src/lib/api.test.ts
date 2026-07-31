@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   ApiError,
+  createPublicAdminInvite,
+  disablePublicAdminInvite,
   getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
@@ -177,6 +179,103 @@ describe("public chat bootstrap API", () => {
     expect(requestedUrl).toContain("/api/public/history?limit=20&before=40");
     expect(payload.history_start).toBe(20);
     expect(requestedInit?.cache).toBe("no-store");
+  });
+});
+
+describe("public administrator whitelist API", () => {
+  test("creates through a one-shot POST with the administrator action marker", async () => {
+    let requestedUrl = "";
+    let requestedInit: RequestInit | undefined;
+    let calls = 0;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      requestedUrl = String(url);
+      requestedInit = init;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            invite: {
+              user_id: "web-user-2",
+              phone_number: "13900000000",
+              created_at: "2026-07-31T10:00:00+08:00",
+              enabled: true,
+              can_disable: true,
+            },
+            daily_create_limit: 5,
+            created_today: 1,
+            remaining_today: 4,
+            cleared_session_count: 0,
+            message: "已加入会员白名单",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const result = await createPublicAdminInvite("13900000000");
+    const headers = new Headers(requestedInit?.headers);
+
+    expect(calls).toBe(1);
+    expect(requestedUrl).toContain("/api/public/admin/invites");
+    expect(requestedInit?.method).toBe("POST");
+    expect(headers.get("x-hone-admin-action")).toBe("whitelist");
+    expect(result.remaining_today).toBe(4);
+  });
+
+  test("disables through a one-shot marked POST to the exact user", async () => {
+    let requestedUrl = "";
+    let requestedInit: RequestInit | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(url);
+      requestedInit = init;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            invite: {
+              user_id: "web-user/member",
+              phone_number: "13900000000",
+              created_at: "2026-07-31T10:00:00+08:00",
+              enabled: false,
+              can_disable: false,
+            },
+            daily_create_limit: 5,
+            created_today: 1,
+            remaining_today: 4,
+            cleared_session_count: 1,
+            message: "已禁用会员白名单",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    await disablePublicAdminInvite("web-user/member");
+    const headers = new Headers(requestedInit?.headers);
+
+    expect(requestedUrl).toContain(
+      "/api/public/admin/invites/web-user%2Fmember/disable",
+    );
+    expect(requestedInit?.method).toBe("POST");
+    expect(headers.get("x-hone-admin-action")).toBe("whitelist");
+  });
+
+  test("keeps the server daily-limit explanation", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({ error: "今日新增白名单已达到 5 人上限" }),
+        {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const error = await expectApiError(() =>
+      createPublicAdminInvite("13900000000"),
+    );
+    expect(error.status).toBe(429);
+    expect(error.message).toBe("今日新增白名单已达到 5 人上限");
   });
 });
 

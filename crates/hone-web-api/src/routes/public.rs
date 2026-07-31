@@ -1301,7 +1301,7 @@ pub(crate) fn require_public_user(
     Ok(user)
 }
 
-fn require_public_session_user(
+pub(crate) fn require_public_session_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
@@ -1772,6 +1772,7 @@ fn to_public_auth_user(
             .as_deref()
             .map(mask_email_address),
         whop_membership: external_profile.whop_membership,
+        is_admin: state.web_auth.is_web_admin(user_id).unwrap_or(false),
     }
 }
 

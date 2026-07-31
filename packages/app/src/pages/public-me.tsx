@@ -5,6 +5,7 @@ import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
 import { PublicSettingsPanel } from "@/components/public-settings-panel";
+import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
 import { getPublicAuthMe, publicLogout } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
 import {
@@ -149,6 +150,9 @@ function AccountView(props: {
         <Show when={publicUserHasProductAccess(props.user)}>
           <PublicHoldingsPanel />
           <PublicSettingsPanel />
+        </Show>
+        <Show when={props.user.is_admin}>
+          <PublicAdminWhitelistPanel />
         </Show>
         <MembershipCard user={props.user} />
         <div class="public-account-grid">

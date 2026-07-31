@@ -39,6 +39,13 @@ describe("public workspace page contract", () => {
     expect(css).toContain(".public-settings-input");
   });
 
+  it("shows whitelist management only for server-authoritative administrators", () => {
+    expect(me).toContain("<Show when={props.user.is_admin}>");
+    expect(me).toContain("<PublicAdminWhitelistPanel />");
+    expect(css).toContain(".public-admin-panel");
+    expect(css).toContain(".public-admin-table td::before");
+  });
+
   it("keeps restoration inside the Agent visual language", () => {
     expect(startup).toContain("HONE AGENT");
     expect(startup).not.toContain("HONE CONVERSATION");

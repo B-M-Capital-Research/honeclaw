@@ -2,7 +2,9 @@ use std::future::Future;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_runtime::{
+    CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
+};
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -12,6 +14,7 @@ pub const SESSION_TTL_DAYS_LONG: i64 = 30;
 pub const SESSION_TTL_DAYS_SHORT: i64 = 1;
 pub const REGISTRATION_POLICY_CN_DOMESTIC: &str = "cn_domestic";
 pub const REGISTRATION_POLICY_WHOP_INTERNATIONAL: &str = "whop_international";
+pub const WEB_ADMIN_DAILY_INVITE_LIMIT: u32 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebInviteUser {
@@ -144,6 +147,28 @@ pub struct WebInviteMutation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebAdminInviteCreateOutcome {
+    Created {
+        invite: WebInviteUser,
+        used_today: u32,
+    },
+    NotAdmin,
+    LimitReached {
+        used_today: u32,
+    },
+    DuplicatePhone,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebAdminInviteDisableOutcome {
+    Disabled(WebInviteMutation),
+    AlreadyDisabled(WebInviteUser),
+    NotAdmin,
+    NotFound,
+    ProtectedAdmin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebSessionAuthResult {
     Authenticated(WebInviteUser),
     Missing,
@@ -259,6 +284,20 @@ impl WebAuthStorage {
             CREATE UNIQUE INDEX IF NOT EXISTS idx_web_user_external_email
                 ON web_user_external_state(email_address)
                 WHERE email_address IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS web_admin_actions (
+                action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_user_id TEXT NOT NULL,
+                target_user_id TEXT NOT NULL,
+                action TEXT NOT NULL CHECK (action IN ('create', 'disable')),
+                beijing_date TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(admin_user_id) REFERENCES web_invite_users(user_id),
+                FOREIGN KEY(target_user_id) REFERENCES web_invite_users(user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_web_admin_actions_daily
+                ON web_admin_actions(admin_user_id, beijing_date, action);
             ",
         )
         .map_err(sql_err)?;
@@ -277,6 +316,12 @@ impl WebAuthStorage {
         ensure_column(&conn, "web_invite_users", "api_key_prefix", "TEXT")?;
         ensure_column(&conn, "web_invite_users", "api_key_created_at", "TEXT")?;
         ensure_column(&conn, "web_invite_users", "api_key_last_used_at", "TEXT")?;
+        ensure_column(
+            &conn,
+            "web_invite_users",
+            "is_admin",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         conn.execute(
             "
             CREATE UNIQUE INDEX IF NOT EXISTS idx_web_invite_users_api_key_hash
@@ -575,6 +620,389 @@ impl WebAuthStorage {
             postgres.purge_expired_web_auth_sessions(&now).await?;
             Ok(())
         })
+    }
+
+    pub fn is_web_admin(&self, user_id: &str) -> HoneResult<bool> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let user_id = user_id.to_string();
+            return run_cloud_web_auth(
+                async move { postgres.web_invite_user_is_admin(&user_id).await },
+            );
+        }
+        let conn = self.sqlite_conn()?;
+        conn.query_row(
+            "SELECT is_admin FROM web_invite_users WHERE user_id = ?1",
+            params![user_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .optional()
+        .map(|value| value.unwrap_or(false))
+        .map_err(sql_err)
+    }
+
+    pub fn set_web_admin_by_phone(
+        &self,
+        phone_number: &str,
+        is_admin: bool,
+    ) -> HoneResult<Option<String>> {
+        let phone_number = validate_phone_number(phone_number)?;
+        if let Some(postgres) = self.cloud_postgres() {
+            return run_cloud_web_auth(async move {
+                postgres
+                    .set_web_invite_user_admin_by_phone(&phone_number, is_admin)
+                    .await
+            });
+        }
+        let conn = self.sqlite_conn()?;
+        let user_ids = {
+            let mut statement = conn
+                .prepare("SELECT user_id FROM web_invite_users WHERE phone_number = ?1")
+                .map_err(sql_err)?;
+            statement
+                .query_map(params![&phone_number], |row| row.get::<_, String>(0))
+                .map_err(sql_err)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sql_err)?
+        };
+        match user_ids.as_slice() {
+            [] => Ok(None),
+            [user_id] => {
+                conn.execute(
+                    "UPDATE web_invite_users SET is_admin = ?2 WHERE user_id = ?1",
+                    params![user_id, is_admin],
+                )
+                .map_err(sql_err)?;
+                Ok(Some(user_id.clone()))
+            }
+            _ => Err(HoneError::Storage(format!(
+                "手机号 {phone_number} 对应多个 Web 用户，拒绝设置管理员"
+            ))),
+        }
+    }
+
+    pub fn web_admin_create_count_today(&self, admin_user_id: &str) -> HoneResult<u32> {
+        let beijing_date = beijing_now().format("%F").to_string();
+        if let Some(postgres) = self.cloud_postgres() {
+            let admin_user_id = admin_user_id.to_string();
+            return run_cloud_web_auth(async move {
+                postgres
+                    .web_admin_create_count_for_date(&admin_user_id, &beijing_date)
+                    .await
+            });
+        }
+        let conn = self.sqlite_conn()?;
+        conn.query_row(
+            r#"
+SELECT count(*)
+FROM web_admin_actions
+WHERE admin_user_id = ?1
+  AND beijing_date = ?2
+  AND action = 'create'
+"#,
+            params![admin_user_id, beijing_date],
+            |row| row.get::<_, u32>(0),
+        )
+        .map_err(sql_err)
+    }
+
+    pub fn create_invite_user_by_admin(
+        &self,
+        admin_user_id: &str,
+        phone_number: &str,
+    ) -> HoneResult<WebAdminInviteCreateOutcome> {
+        let now = beijing_now();
+        let created_at = now.to_rfc3339();
+        let beijing_date = now.format("%F").to_string();
+        let user_id = generate_user_id();
+        let phone_number = validate_phone_number(phone_number)?;
+
+        if let Some(postgres) = self.cloud_postgres() {
+            let invite_code = generate_unique_invite_code_cloud(self)?;
+            let api_key = generate_unique_api_key_cloud(self)?;
+            let api_key_hash = hash_api_key(&api_key);
+            let api_key_prefix = api_key_prefix(&api_key);
+            let user = WebInviteUser {
+                user_id: user_id.clone(),
+                invite_code,
+                phone_number: phone_number.clone(),
+                created_at: created_at.clone(),
+                last_login_at: None,
+                revoked_at: None,
+                password_hash: None,
+                password_set_at: None,
+                tos_accepted_at: None,
+                tos_version: None,
+                api_key_prefix: Some(api_key_prefix),
+                api_key_created_at: Some(created_at),
+                api_key_last_used_at: None,
+                api_key_plaintext: Some(api_key),
+            };
+            let record = CloudWebInviteRecord {
+                user: user.clone(),
+                api_key_hash: Some(api_key_hash),
+                external_state: WebUserExternalState::default(),
+            };
+            let record = serde_json::to_value(record)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            let admin_user_id = admin_user_id.to_string();
+            let outcome = run_cloud_web_auth(async move {
+                postgres
+                    .create_web_invite_user_record_by_admin(
+                        &admin_user_id,
+                        &user_id,
+                        &phone_number,
+                        record,
+                        &beijing_date,
+                        WEB_ADMIN_DAILY_INVITE_LIMIT,
+                    )
+                    .await
+            })?;
+            return Ok(match outcome {
+                CloudWebAdminCreateOutcome::Created { used_today } => {
+                    WebAdminInviteCreateOutcome::Created {
+                        invite: user,
+                        used_today,
+                    }
+                }
+                CloudWebAdminCreateOutcome::NotAdmin => WebAdminInviteCreateOutcome::NotAdmin,
+                CloudWebAdminCreateOutcome::LimitReached { used_today } => {
+                    WebAdminInviteCreateOutcome::LimitReached { used_today }
+                }
+                CloudWebAdminCreateOutcome::DuplicatePhone => {
+                    WebAdminInviteCreateOutcome::DuplicatePhone
+                }
+            });
+        }
+
+        let conn = self.sqlite_conn()?;
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let admin_allowed = tx
+            .query_row(
+                r#"
+SELECT 1
+FROM web_invite_users
+WHERE user_id = ?1
+  AND is_admin = 1
+  AND revoked_at IS NULL
+"#,
+                params![admin_user_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .is_some();
+        if !admin_allowed {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteCreateOutcome::NotAdmin);
+        }
+        let duplicate = tx
+            .query_row(
+                "SELECT 1 FROM web_invite_users WHERE phone_number = ?1 LIMIT 1",
+                params![&phone_number],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .is_some();
+        if duplicate {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteCreateOutcome::DuplicatePhone);
+        }
+        let used_today = tx
+            .query_row(
+                r#"
+SELECT count(*)
+FROM web_admin_actions
+WHERE admin_user_id = ?1
+  AND beijing_date = ?2
+  AND action = 'create'
+"#,
+                params![admin_user_id, &beijing_date],
+                |row| row.get::<_, u32>(0),
+            )
+            .map_err(sql_err)?;
+        if used_today >= WEB_ADMIN_DAILY_INVITE_LIMIT {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteCreateOutcome::LimitReached { used_today });
+        }
+
+        let invite_code = generate_unique_invite_code(&tx)?;
+        let api_key = generate_unique_api_key(&tx)?;
+        let api_key_hash = hash_api_key(&api_key);
+        let api_key_prefix = api_key_prefix(&api_key);
+        tx.execute(
+            r#"
+INSERT INTO web_invite_users (
+  user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+  api_key_hash, api_key_prefix, api_key_created_at, api_key_last_used_at,
+  is_admin
+)
+VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, ?6, ?4, NULL, 0)
+"#,
+            params![
+                &user_id,
+                &invite_code,
+                &phone_number,
+                &created_at,
+                &api_key_hash,
+                &api_key_prefix,
+            ],
+        )
+        .map_err(sql_err)?;
+        tx.execute(
+            r#"
+INSERT INTO web_admin_actions(
+  admin_user_id, target_user_id, action, beijing_date, created_at
+)
+VALUES (?1, ?2, 'create', ?3, ?4)
+"#,
+            params![admin_user_id, &user_id, &beijing_date, &created_at],
+        )
+        .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
+
+        Ok(WebAdminInviteCreateOutcome::Created {
+            used_today: used_today.saturating_add(1),
+            invite: WebInviteUser {
+                user_id,
+                invite_code,
+                phone_number,
+                created_at: created_at.clone(),
+                last_login_at: None,
+                revoked_at: None,
+                password_hash: None,
+                password_set_at: None,
+                tos_accepted_at: None,
+                tos_version: None,
+                api_key_prefix: Some(api_key_prefix),
+                api_key_created_at: Some(created_at),
+                api_key_last_used_at: None,
+                api_key_plaintext: Some(api_key),
+            },
+        })
+    }
+
+    pub fn disable_invite_user_by_admin(
+        &self,
+        admin_user_id: &str,
+        target_user_id: &str,
+    ) -> HoneResult<WebAdminInviteDisableOutcome> {
+        let now = beijing_now();
+        let beijing_date = now.format("%F").to_string();
+        let now = now.to_rfc3339();
+        if let Some(postgres) = self.cloud_postgres() {
+            let admin_user_id = admin_user_id.to_string();
+            let target_user_id = target_user_id.to_string();
+            let outcome = run_cloud_web_auth(async move {
+                postgres
+                    .disable_web_invite_user_by_admin(
+                        &admin_user_id,
+                        &target_user_id,
+                        &now,
+                        &beijing_date,
+                    )
+                    .await
+            })?;
+            return Ok(match outcome {
+                CloudWebAdminDisableOutcome::Disabled {
+                    record,
+                    cleared_session_count,
+                } => {
+                    let (invite, _) = Self::cloud_record_to_user(record)?;
+                    WebAdminInviteDisableOutcome::Disabled(WebInviteMutation {
+                        invite,
+                        cleared_session_count,
+                    })
+                }
+                CloudWebAdminDisableOutcome::AlreadyDisabled { record } => {
+                    let (invite, _) = Self::cloud_record_to_user(record)?;
+                    WebAdminInviteDisableOutcome::AlreadyDisabled(invite)
+                }
+                CloudWebAdminDisableOutcome::NotAdmin => WebAdminInviteDisableOutcome::NotAdmin,
+                CloudWebAdminDisableOutcome::NotFound => WebAdminInviteDisableOutcome::NotFound,
+                CloudWebAdminDisableOutcome::ProtectedAdmin => {
+                    WebAdminInviteDisableOutcome::ProtectedAdmin
+                }
+            });
+        }
+
+        let conn = self.sqlite_conn()?;
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let admin_allowed = tx
+            .query_row(
+                r#"
+SELECT 1
+FROM web_invite_users
+WHERE user_id = ?1
+  AND is_admin = 1
+  AND revoked_at IS NULL
+"#,
+                params![admin_user_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .is_some();
+        if !admin_allowed {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteDisableOutcome::NotAdmin);
+        }
+        if admin_user_id == target_user_id {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteDisableOutcome::ProtectedAdmin);
+        }
+        let target = tx
+            .query_row(
+                r#"
+SELECT is_admin, revoked_at
+FROM web_invite_users
+WHERE user_id = ?1
+"#,
+                params![target_user_id],
+                |row| Ok((row.get::<_, bool>(0)?, row.get::<_, Option<String>>(1)?)),
+            )
+            .optional()
+            .map_err(sql_err)?;
+        let Some((target_is_admin, target_revoked_at)) = target else {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteDisableOutcome::NotFound);
+        };
+        if target_is_admin {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteDisableOutcome::ProtectedAdmin);
+        }
+        if target_revoked_at.is_some() {
+            let invite = find_invite_user_tx(&tx, target_user_id)?.ok_or_else(|| {
+                HoneError::Storage("web invite disappeared during admin disable".to_string())
+            })?;
+            tx.rollback().map_err(sql_err)?;
+            return Ok(WebAdminInviteDisableOutcome::AlreadyDisabled(invite));
+        }
+
+        let cleared_session_count = delete_sessions_for_user_tx(&tx, target_user_id)? as u32;
+        tx.execute(
+            "UPDATE web_invite_users SET revoked_at = ?2 WHERE user_id = ?1",
+            params![target_user_id, &now],
+        )
+        .map_err(sql_err)?;
+        tx.execute(
+            r#"
+INSERT INTO web_admin_actions(
+  admin_user_id, target_user_id, action, beijing_date, created_at
+)
+VALUES (?1, ?2, 'disable', ?3, ?4)
+"#,
+            params![admin_user_id, target_user_id, &beijing_date, &now],
+        )
+        .map_err(sql_err)?;
+        let invite = find_invite_user_tx(&tx, target_user_id)?.ok_or_else(|| {
+            HoneError::Storage("web invite disappeared during admin disable".to_string())
+        })?;
+        tx.commit().map_err(sql_err)?;
+        Ok(WebAdminInviteDisableOutcome::Disabled(WebInviteMutation {
+            invite,
+            cleared_session_count,
+        }))
     }
 
     pub fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
@@ -2299,8 +2727,9 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 mod tests {
     use super::{
         CloudWebInviteRecord, EmailVerificationResult, REGISTRATION_POLICY_WHOP_INTERNATIONAL,
-        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebSessionAuthResult,
-        WhopMembershipEvent, WhopMembershipUpsertOutcome, generate_api_key, generate_invite_code,
+        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAdminInviteCreateOutcome,
+        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, WhopMembershipEvent,
+        WhopMembershipUpsertOutcome, generate_api_key, generate_invite_code,
         generate_session_token, hash_session_token,
     };
     use hone_core::beijing_now;
@@ -2426,6 +2855,171 @@ mod tests {
                 .expect("lookup revoked")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn web_admin_role_is_storage_authoritative() {
+        let storage = test_storage();
+        let user = storage.create_invite_user("13871396421").expect("create");
+
+        assert!(!storage.is_web_admin(&user.user_id).expect("role"));
+        assert_eq!(
+            storage
+                .set_web_admin_by_phone("138-7139-6421", true)
+                .expect("grant")
+                .as_deref(),
+            Some(user.user_id.as_str())
+        );
+        assert!(storage.is_web_admin(&user.user_id).expect("role"));
+        assert_eq!(
+            storage
+                .set_web_admin_by_phone("13871396421", false)
+                .expect("revoke")
+                .as_deref(),
+            Some(user.user_id.as_str())
+        );
+        assert!(!storage.is_web_admin(&user.user_id).expect("role"));
+    }
+
+    #[test]
+    fn public_admin_create_limit_counts_only_successful_creates() {
+        let storage = test_storage();
+        let admin = storage.create_invite_user("13871396421").expect("admin");
+        storage
+            .set_web_admin_by_phone("13871396421", true)
+            .expect("grant");
+
+        let first = storage
+            .create_invite_user_by_admin(&admin.user_id, "13900000000")
+            .expect("first");
+        assert!(matches!(
+            first,
+            WebAdminInviteCreateOutcome::Created { used_today: 1, .. }
+        ));
+        assert_eq!(
+            storage
+                .web_admin_create_count_today(&admin.user_id)
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            storage
+                .create_invite_user_by_admin(&admin.user_id, "13900000000")
+                .expect("duplicate"),
+            WebAdminInviteCreateOutcome::DuplicatePhone
+        );
+        assert_eq!(
+            storage
+                .web_admin_create_count_today(&admin.user_id)
+                .unwrap(),
+            1,
+            "duplicate attempts must not consume the daily allowance"
+        );
+
+        for (index, phone) in ["13900000001", "13900000002", "13900000003", "13900000004"]
+            .into_iter()
+            .enumerate()
+        {
+            assert!(matches!(
+                storage
+                    .create_invite_user_by_admin(&admin.user_id, phone)
+                    .expect("create"),
+                WebAdminInviteCreateOutcome::Created { used_today, .. }
+                    if used_today == index as u32 + 2
+            ));
+        }
+        assert_eq!(
+            storage
+                .create_invite_user_by_admin(&admin.user_id, "13900000005")
+                .expect("limit"),
+            WebAdminInviteCreateOutcome::LimitReached { used_today: 5 }
+        );
+        assert_eq!(
+            storage
+                .web_admin_create_count_today(&admin.user_id)
+                .unwrap(),
+            5
+        );
+    }
+
+    #[test]
+    fn non_admin_cannot_create_or_disable_whitelist_users() {
+        let storage = test_storage();
+        let ordinary = storage.create_invite_user("13800138000").expect("ordinary");
+        let target = storage.create_invite_user("13900139000").expect("target");
+
+        assert_eq!(
+            storage
+                .create_invite_user_by_admin(&ordinary.user_id, "13700137000")
+                .expect("create"),
+            WebAdminInviteCreateOutcome::NotAdmin
+        );
+        assert_eq!(
+            storage
+                .disable_invite_user_by_admin(&ordinary.user_id, &target.user_id)
+                .expect("disable"),
+            WebAdminInviteDisableOutcome::NotAdmin
+        );
+        assert!(
+            storage
+                .find_active_invite_user_by_phone("13900139000")
+                .expect("target")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn admin_disable_is_audited_clears_sessions_and_protects_admins() {
+        let storage = test_storage();
+        let admin = storage.create_invite_user("13871396421").expect("admin");
+        storage
+            .set_web_admin_by_phone("13871396421", true)
+            .expect("grant");
+        let target = storage.create_invite_user("13900139000").expect("target");
+        let session = storage
+            .create_session_for_user(&target.user_id, SESSION_TTL_DAYS_LONG)
+            .expect("session")
+            .expect("session");
+
+        assert_eq!(
+            storage
+                .disable_invite_user_by_admin(&admin.user_id, &admin.user_id)
+                .expect("self"),
+            WebAdminInviteDisableOutcome::ProtectedAdmin
+        );
+        let disabled = storage
+            .disable_invite_user_by_admin(&admin.user_id, &target.user_id)
+            .expect("disable");
+        assert!(matches!(
+            disabled,
+            WebAdminInviteDisableOutcome::Disabled(super::WebInviteMutation {
+                cleared_session_count: 1,
+                ..
+            })
+        ));
+        assert!(
+            storage
+                .authenticate_session(&session.session_token)
+                .expect("auth")
+                .is_none()
+        );
+        assert!(matches!(
+            storage
+                .disable_invite_user_by_admin(&admin.user_id, &target.user_id)
+                .expect("idempotent"),
+            WebAdminInviteDisableOutcome::AlreadyDisabled(_)
+        ));
+
+        let conn = storage.sqlite_conn().expect("conn");
+        let audit_count: u32 = conn
+            .query_row(
+                "SELECT count(*) FROM web_admin_actions WHERE admin_user_id = ?1 AND action = 'disable'",
+                params![&admin.user_id],
+                |row| row.get(0),
+            )
+            .expect("audit");
+        assert_eq!(audit_count, 1);
     }
 
     #[test]

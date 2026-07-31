@@ -15,6 +15,7 @@ pub(crate) mod notification_prefs;
 pub(crate) mod notifications;
 pub(crate) mod portfolio;
 pub(crate) mod public;
+pub(crate) mod public_admin;
 pub(crate) mod public_community;
 pub(crate) mod public_digest;
 pub(crate) mod public_finance_calendar;
@@ -287,6 +288,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/email/login", post(public::handle_email_login))
         .route("/auth/logout", post(public::handle_logout))
         .route("/auth/me", get(public::handle_me))
+        .route(
+            "/admin/invites",
+            get(public_admin::handle_list_invites).post(public_admin::handle_create_invite),
+        )
+        .route(
+            "/admin/invites/{user_id}/disable",
+            post(public_admin::handle_disable_invite),
+        )
         .route(
             "/integrations/whop/webhook",
             post(whop::handle_whop_webhook),

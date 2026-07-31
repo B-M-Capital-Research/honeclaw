@@ -765,6 +765,28 @@ pub struct CloudWebAuthImportReport {
     pub skipped_sessions: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudWebAdminCreateOutcome {
+    Created { used_today: u32 },
+    NotAdmin,
+    LimitReached { used_today: u32 },
+    DuplicatePhone,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CloudWebAdminDisableOutcome {
+    Disabled {
+        record: serde_json::Value,
+        cleared_session_count: u32,
+    },
+    AlreadyDisabled {
+        record: serde_json::Value,
+    },
+    NotAdmin,
+    NotFound,
+    ProtectedAdmin,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CloudCronJobRecord {
     pub actor_storage_key: String,
@@ -1284,13 +1306,29 @@ CREATE TABLE IF NOT EXISTS cloud_sessions (
 CREATE TABLE IF NOT EXISTS cloud_web_invite_users (
   user_id TEXT PRIMARY KEY,
   phone_number TEXT,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   record JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE cloud_web_invite_users
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_cloud_web_invite_users_admin
+  ON cloud_web_invite_users(is_admin)
+  WHERE is_admin = TRUE;
 UPDATE cloud_web_invite_users
 SET record = record - 'api_key_plaintext',
     updated_at = now()
 WHERE record ? 'api_key_plaintext';
+CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
+  action_id BIGSERIAL PRIMARY KEY,
+  admin_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
+  target_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
+  action TEXT NOT NULL CHECK (action IN ('create', 'disable')),
+  beijing_date DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_web_admin_actions_daily
+  ON cloud_web_admin_actions(admin_user_id, beijing_date, action);
 CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
   session_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -2411,6 +2449,349 @@ DO UPDATE SET
             .await
             .map_err(|err| HoneError::Config(format!("Postgres web invite 读取失败: {err}")))?;
         Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn web_invite_user_is_admin(&self, user_id: &str) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT is_admin FROM cloud_web_invite_users WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 身份读取失败: {err}")))?;
+        Ok(row.is_some_and(|row| row.get::<_, bool>(0)))
+    }
+
+    pub async fn set_web_invite_user_admin_by_phone(
+        &self,
+        phone_number: &str,
+        is_admin: bool,
+    ) -> HoneResult<Option<String>> {
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 身份事务创建失败: {err}"))
+        })?;
+        let rows = transaction
+            .query(
+                r#"
+SELECT user_id
+FROM cloud_web_invite_users
+WHERE phone_number = $1
+FOR UPDATE
+"#,
+                &[&phone_number],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 身份锁定失败: {err}")))?;
+        match rows.as_slice() {
+            [] => {
+                transaction.rollback().await.map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 身份事务回滚失败: {err}"))
+                })?;
+                Ok(None)
+            }
+            [row] => {
+                let user_id = row.get::<_, String>(0);
+                transaction
+                    .execute(
+                        r#"
+UPDATE cloud_web_invite_users
+SET is_admin = $2,
+    updated_at = now()
+WHERE user_id = $1
+"#,
+                        &[&user_id, &is_admin],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!("Postgres web admin 身份写入失败: {err}"))
+                    })?;
+                transaction.commit().await.map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 身份事务提交失败: {err}"))
+                })?;
+                Ok(Some(user_id))
+            }
+            _ => {
+                transaction.rollback().await.map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 身份事务回滚失败: {err}"))
+                })?;
+                Err(HoneError::Storage(format!(
+                    "手机号 {phone_number} 对应多个 Web 用户，拒绝设置管理员"
+                )))
+            }
+        }
+    }
+
+    pub async fn web_admin_create_count_for_date(
+        &self,
+        admin_user_id: &str,
+        beijing_date: &str,
+    ) -> HoneResult<u32> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_one(
+                r#"
+SELECT count(*)::bigint
+FROM cloud_web_admin_actions
+WHERE admin_user_id = $1
+  AND beijing_date = $2::date
+  AND action = 'create'
+"#,
+                &[&admin_user_id, &beijing_date],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
+            })?;
+        Ok(row.get::<_, i64>(0).max(0) as u32)
+    }
+
+    pub async fn create_web_invite_user_record_by_admin(
+        &self,
+        admin_user_id: &str,
+        target_user_id: &str,
+        phone_number: &str,
+        record: serde_json::Value,
+        beijing_date: &str,
+        daily_limit: u32,
+    ) -> HoneResult<CloudWebAdminCreateOutcome> {
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 新增事务创建失败: {err}"))
+        })?;
+
+        let admin = transaction
+            .query_opt(
+                r#"
+SELECT is_admin, record->>'revoked_at'
+FROM cloud_web_invite_users
+WHERE user_id = $1
+FOR UPDATE
+"#,
+                &[&admin_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 身份锁定失败: {err}")))?;
+        let Some(admin) = admin else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminCreateOutcome::NotAdmin);
+        };
+        let is_admin = admin.get::<_, bool>(0);
+        let revoked_at = admin.get::<_, Option<String>>(1);
+        if !is_admin || revoked_at.is_some() {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminCreateOutcome::NotAdmin);
+        }
+
+        transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                &[&format!("web-invite-phone:{phone_number}")],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web invite 手机号锁定失败: {err}"))
+            })?;
+        let duplicate = transaction
+            .query_opt(
+                "SELECT 1 FROM cloud_web_invite_users WHERE phone_number = $1 LIMIT 1",
+                &[&phone_number],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 手机号查重失败: {err}")))?
+            .is_some();
+        if duplicate {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminCreateOutcome::DuplicatePhone);
+        }
+
+        let used_today = transaction
+            .query_one(
+                r#"
+SELECT count(*)::bigint
+FROM cloud_web_admin_actions
+WHERE admin_user_id = $1
+  AND beijing_date = $2::date
+  AND action = 'create'
+"#,
+                &[&admin_user_id, &beijing_date],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
+            })?
+            .get::<_, i64>(0)
+            .max(0) as u32;
+        if used_today >= daily_limit {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminCreateOutcome::LimitReached { used_today });
+        }
+
+        transaction
+            .execute(
+                r#"
+INSERT INTO cloud_web_invite_users(user_id, phone_number, is_admin, record)
+VALUES ($1, $2, FALSE, $3)
+"#,
+                &[&target_user_id, &phone_number, &record],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增白名单失败: {err}"))
+            })?;
+        transaction
+            .execute(
+                r#"
+INSERT INTO cloud_web_admin_actions(
+  admin_user_id, target_user_id, action, beijing_date
+)
+VALUES ($1, $2, 'create', $3::date)
+"#,
+                &[&admin_user_id, &target_user_id, &beijing_date],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 新增审计写入失败: {err}"))
+            })?;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 新增事务提交失败: {err}"))
+        })?;
+        Ok(CloudWebAdminCreateOutcome::Created {
+            used_today: used_today.saturating_add(1),
+        })
+    }
+
+    pub async fn disable_web_invite_user_by_admin(
+        &self,
+        admin_user_id: &str,
+        target_user_id: &str,
+        revoked_at: &str,
+        beijing_date: &str,
+    ) -> HoneResult<CloudWebAdminDisableOutcome> {
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 禁用事务创建失败: {err}"))
+        })?;
+
+        let admin = transaction
+            .query_opt(
+                r#"
+SELECT is_admin, record->>'revoked_at'
+FROM cloud_web_invite_users
+WHERE user_id = $1
+FOR UPDATE
+"#,
+                &[&admin_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 身份锁定失败: {err}")))?;
+        let Some(admin) = admin else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::NotAdmin);
+        };
+        if !admin.get::<_, bool>(0) || admin.get::<_, Option<String>>(1).is_some() {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::NotAdmin);
+        }
+        if admin_user_id == target_user_id {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::ProtectedAdmin);
+        }
+
+        let target = transaction
+            .query_opt(
+                r#"
+SELECT is_admin, record
+FROM cloud_web_invite_users
+WHERE user_id = $1
+FOR UPDATE
+"#,
+                &[&target_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 目标锁定失败: {err}")))?;
+        let Some(target) = target else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::NotFound);
+        };
+        if target.get::<_, bool>(0) {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::ProtectedAdmin);
+        }
+        let record = target.get::<_, serde_json::Value>(1);
+        if record
+            .get("revoked_at")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+        {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用事务回滚失败: {err}"))
+            })?;
+            return Ok(CloudWebAdminDisableOutcome::AlreadyDisabled { record });
+        }
+
+        let cleared_session_count = transaction
+            .execute(
+                "DELETE FROM cloud_web_auth_sessions WHERE user_id = $1",
+                &[&target_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 登录态清理失败: {err}")))?
+            as u32;
+        let updated = transaction
+            .query_one(
+                r#"
+UPDATE cloud_web_invite_users
+SET record = jsonb_set(record, '{revoked_at}', to_jsonb($2::text), TRUE),
+    updated_at = now()
+WHERE user_id = $1
+RETURNING record
+"#,
+                &[&target_user_id, &revoked_at],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 禁用白名单失败: {err}")))?
+            .get::<_, serde_json::Value>(0);
+        transaction
+            .execute(
+                r#"
+INSERT INTO cloud_web_admin_actions(
+  admin_user_id, target_user_id, action, beijing_date
+)
+VALUES ($1, $2, 'disable', $3::date)
+"#,
+                &[&admin_user_id, &target_user_id, &beijing_date],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 禁用审计写入失败: {err}"))
+            })?;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 禁用事务提交失败: {err}"))
+        })?;
+        Ok(CloudWebAdminDisableOutcome::Disabled {
+            record: updated,
+            cleared_session_count,
+        })
     }
 
     pub async fn delete_web_auth_sessions_for_user(&self, user_id: &str) -> HoneResult<u64> {

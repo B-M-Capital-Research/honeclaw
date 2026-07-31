@@ -211,6 +211,32 @@ export type PublicAuthUserInfo = {
   registration_policy: "cn_domestic" | "whop_international" | string;
   email_hint?: string;
   whop_membership?: WhopMembershipInfo;
+  is_admin: boolean;
+};
+
+export type PublicAdminInviteInfo = {
+  user_id: string;
+  phone_number: string;
+  created_at: string;
+  last_login_at?: string;
+  enabled: boolean;
+  can_disable: boolean;
+};
+
+export type PublicAdminInviteList = {
+  invites: PublicAdminInviteInfo[];
+  daily_create_limit: number;
+  created_today: number;
+  remaining_today: number;
+};
+
+export type PublicAdminInviteMutation = {
+  invite: PublicAdminInviteInfo;
+  daily_create_limit: number;
+  created_today: number;
+  remaining_today: number;
+  cleared_session_count: number;
+  message: string;
 };
 
 export type WhopMembershipInfo = {

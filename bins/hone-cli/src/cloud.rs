@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
     CloudCommunityPublishLock, CloudCommunityReconcileCandidate,
@@ -36,6 +36,8 @@ pub(crate) enum CloudCommands {
     CommunityContents(CommunityContentsArgs),
     /// 将社区只读时间线发布为 private-R2 edge snapshot（默认 dry-run）。
     CommunityPublish(CommunityPublishArgs),
+    /// 读取或修改一个国内 Web 用户的 PostgreSQL 管理员标记（默认 dry-run）。
+    WebAdmin(WebAdminArgs),
 }
 
 #[derive(Args, Debug)]
@@ -44,6 +46,24 @@ pub(crate) struct CloudDoctorArgs {
     pub(crate) json: bool,
     #[arg(long = "ensure-schema")]
     pub(crate) ensure_schema: bool,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum WebAdminRoleAction {
+    Grant,
+    Revoke,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct WebAdminArgs {
+    #[arg(long, value_name = "PHONE")]
+    pub(crate) phone: String,
+    #[arg(long, value_enum)]
+    pub(crate) action: WebAdminRoleAction,
+    #[arg(long)]
+    pub(crate) apply: bool,
+    #[arg(long)]
+    pub(crate) json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -497,6 +517,117 @@ pub(crate) async fn run_cloud_command(
         CloudCommands::CommunityAssets(args) => run_community_assets(config_path, args).await,
         CloudCommands::CommunityContents(args) => run_community_contents(config_path, args).await,
         CloudCommands::CommunityPublish(args) => run_community_publish(config_path, args).await,
+        CloudCommands::WebAdmin(args) => run_web_admin(config_path, args).await,
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct WebAdminReport {
+    mode: &'static str,
+    phone_hint: String,
+    user_id: String,
+    active: bool,
+    previous_is_admin: bool,
+    requested_is_admin: bool,
+    changed: bool,
+    verified_is_admin: bool,
+}
+
+fn normalize_domestic_web_admin_phone(raw: &str) -> Result<String, String> {
+    let digits = raw
+        .trim()
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    let normalized = digits
+        .strip_prefix("86")
+        .filter(|value| value.len() == 11)
+        .unwrap_or(&digits);
+    if normalized.len() != 11
+        || !normalized.starts_with('1')
+        || !normalized.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return Err("--phone 必须是有效的 11 位中国大陆手机号".to_string());
+    }
+    Ok(normalized.to_string())
+}
+
+fn mask_domestic_phone(phone: &str) -> String {
+    format!("{}****{}", &phone[..3], &phone[7..])
+}
+
+async fn run_web_admin(config_path: Option<&Path>, args: WebAdminArgs) -> Result<(), String> {
+    let phone = normalize_domestic_web_admin_phone(&args.phone)?;
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let postgres = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "PostgreSQL 未配置，无法管理 Web 管理员标记".to_string())?;
+    let record = postgres
+        .find_web_invite_user_record("phone_number", &phone)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "该手机号没有对应的 Web 白名单用户".to_string())?;
+    let user_id = record
+        .get("user_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Web 白名单记录缺少 user_id".to_string())?
+        .to_string();
+    let active = record
+        .get("revoked_at")
+        .and_then(serde_json::Value::as_str)
+        .is_none();
+    let previous_is_admin = postgres
+        .web_invite_user_is_admin(&user_id)
+        .await
+        .map_err(|err| err.to_string())?;
+    let requested_is_admin = matches!(args.action, WebAdminRoleAction::Grant);
+    if requested_is_admin && !active {
+        return Err("目标 Web 用户已被禁用，拒绝授予管理员".to_string());
+    }
+
+    let mut changed = false;
+    let mut verified_is_admin = previous_is_admin;
+    if args.apply && previous_is_admin != requested_is_admin {
+        let updated_user_id = postgres
+            .set_web_invite_user_admin_by_phone(&phone, requested_is_admin)
+            .await
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "管理员标记写入时目标用户消失".to_string())?;
+        if updated_user_id != user_id {
+            return Err("管理员标记写入返回了不同的目标用户".to_string());
+        }
+        verified_is_admin = postgres
+            .web_invite_user_is_admin(&user_id)
+            .await
+            .map_err(|err| err.to_string())?;
+        if verified_is_admin != requested_is_admin {
+            return Err("管理员标记写后复核失败".to_string());
+        }
+        changed = true;
+    }
+
+    let report = WebAdminReport {
+        mode: if args.apply { "apply" } else { "dry-run" },
+        phone_hint: mask_domestic_phone(&phone),
+        user_id,
+        active,
+        previous_is_admin,
+        requested_is_admin,
+        changed,
+        verified_is_admin,
+    };
+    if args.json {
+        print_json(&report)
+    } else {
+        println!("mode={}", report.mode);
+        println!("phone={}", report.phone_hint);
+        println!("user_id={}", report.user_id);
+        println!("active={}", report.active);
+        println!("previous_is_admin={}", report.previous_is_admin);
+        println!("requested_is_admin={}", report.requested_is_admin);
+        println!("changed={}", report.changed);
+        println!("verified_is_admin={}", report.verified_is_admin);
+        Ok(())
     }
 }
 
@@ -3552,6 +3683,20 @@ fn classify_path(rel: &str) -> Option<Classification> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_admin_phone_normalization_accepts_local_and_plus_86_only() {
+        assert_eq!(
+            normalize_domestic_web_admin_phone("138 7139 6421").unwrap(),
+            "13871396421"
+        );
+        assert_eq!(
+            normalize_domestic_web_admin_phone("+86 138-7139-6421").unwrap(),
+            "13871396421"
+        );
+        assert!(normalize_domestic_web_admin_phone("123").is_err());
+        assert_eq!(mask_domestic_phone("13871396421"), "138****6421");
+    }
 
     fn png_bytes() -> Vec<u8> {
         b"\x89PNG\r\n\x1a\nproduction-safe-test-payload".to_vec()

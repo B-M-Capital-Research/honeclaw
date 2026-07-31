@@ -26,6 +26,11 @@ pub struct CreateWebInviteRequest {
 }
 
 #[derive(Deserialize)]
+pub struct PublicAdminCreateInviteRequest {
+    pub phone_number: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct PublicSmsSendRequest {
     pub phone_number: Option<String>,
     pub captcha_verify_param: Option<String>,
@@ -233,6 +238,35 @@ pub struct PublicAuthUserInfo {
     pub registration_policy: String,
     pub email_hint: Option<String>,
     pub whop_membership: Option<hone_memory::WhopMembershipRecord>,
+    pub is_admin: bool,
+}
+
+#[derive(Serialize)]
+pub struct PublicAdminInviteInfo {
+    pub user_id: String,
+    pub phone_number: String,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+    pub enabled: bool,
+    pub can_disable: bool,
+}
+
+#[derive(Serialize)]
+pub struct PublicAdminInviteList {
+    pub invites: Vec<PublicAdminInviteInfo>,
+    pub daily_create_limit: u32,
+    pub created_today: u32,
+    pub remaining_today: u32,
+}
+
+#[derive(Serialize)]
+pub struct PublicAdminInviteMutation {
+    pub invite: PublicAdminInviteInfo,
+    pub daily_create_limit: u32,
+    pub created_today: u32,
+    pub remaining_today: u32,
+    pub cleared_session_count: u32,
+    pub message: String,
 }
 
 #[derive(Serialize)]
