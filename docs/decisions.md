@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -72,7 +72,7 @@ Last updated: 2026-07-28
   - The Web chat SSE protocol is now `run_started / assistant_delta / tool_call / run_error / run_finished`
   - Session summaries are no longer encoded as fake `system` messages
   - The breaking config key moved from `agent.provider` to `agent.runner`
-- Note: `opencode_acp` connects through `opencode acp` over stdio / JSON-RPC. Later runner hardening moved ACP continuity back to Hone's local transcript restore: `opencode_acp` and `codex_acp` both seed fresh ACP sessions from local context instead of relying on remote `session/load` replay.
+- Note: `opencode_acp` connects through `opencode acp` over stdio / JSON-RPC. Later runner hardening moved ACP continuity back to Hone's local transcript restore. `opencode_acp` still seeds fresh ACP sessions from local context. The equivalent Codex behavior was superseded by `D-2026-07-30-01`, which verified non-replaying `session/resume` and restored one persistent native Codex thread per Hone logical session.
 - Details: See `docs/adr/0002-agent-runtime-acp-refactor.md`
 
 ## D-2026-03-18-01 Make Dynamic Plans Opt-In
@@ -218,7 +218,7 @@ Last updated: 2026-07-28
 - Superseded in part by: `D-2026-07-15-01` restores the strict actor-bound function-calling safety fallback; `D-2026-07-15-02` restores the full investment workflow and response-format prompt; `D-2026-07-15-03` adds code-level enforcement for deep single-stock replies. `multi-agent` and user-selectable `function_calling` remain retired.
 - Supersedes: The in-process fallback portion of `D-2026-07-12-01` and the function-calling stream/tool-loop portions of `D-2026-07-12-03`.
 - Decision: Remove the in-process `function_calling` agent and the sequential `multi-agent` runner. Use the unified configured runner for both conversation and transient heartbeat execution, with `codex_acp` as the default local path.
-- Default: `gpt-5.6-sol` with `xhigh` reasoning effort through `@openai/codex >= 0.144.1` and `@agentclientprotocol/codex-acp >= 1.1.2`.
+- Default: `gpt-5.6-sol` with `xhigh` reasoning effort through `@openai/codex >= 0.146.0` and `@agentclientprotocol/codex-acp >= 1.1.7`. Hone sets both values in Codex process config before `session/new`; it does not depend on adapter-specific `session/set_model` model-id formatting.
 - Compatibility: Old `function_calling` and `multi-agent` config values fail explicitly; they do not silently select another runner. Historical records may retain the old names.
 - Security: Native CLI/ACP runners remain administrator-only trusted-host capabilities. With the actor-bound fallback removed, non-admin native-runner requests fail closed and should use `hone_cloud`; this change does not present an ACP/CLI subprocess as a strict filesystem sandbox.
 - Prompt impact: Keep `soul.md` as a compact persona layer, keep hard runtime policies in Rust, attach only query-relevant skill summaries to the current turn, and use `discover_skills` instead of injecting the full catalog into every system prompt.
@@ -723,3 +723,14 @@ Last updated: 2026-07-28
   body-tampered signatures returned `401`. A real non-owner buyer completing
   purchase through same-challenge inbox login remains the final business
   acceptance item.
+
+## D-2026-07-30-01 Persist One Native Codex Thread Per Hone Logical Session
+
+- Status: Accepted and locally verified with Codex CLI `0.146.0` and `@agentclientprotocol/codex-acp 1.1.7`.
+- Supersedes in part: the Codex fresh-session/local-transcript portion of `D-2026-03-17-01` and the behavior introduced by `be5d7414`. OpenCode's fresh-session contract is unchanged.
+- User-facing decision: One deterministic Hone logical session maps to one persistent native Codex session, so Codex page/history inspection shows the complete multi-turn conversation instead of one rollout per Hone message. This is per actor/session identity; no native thread is shared globally across users, direct chats, or channel scopes.
+- Protocol decision: The first turn calls ACP `session/new` and stores both the returned native ID and `codex_acp_session_mode=persistent_resume_v1`. Later turns start a new adapter process but call `session/resume` for that exact ID before `session/prompt`. Hone does not call `session/load`: real adapter inspection and a cross-process probe showed that load replays historical `session/update` events, while resume returned no historical updates.
+- Context ownership: On the first persistent entry only, Hone seeds the native thread from its durable normalized transcript. This preserves continuity when upgrading old one-turn metadata or switching into Codex from another runner. Subsequent turns send only the current system/runtime input; native Codex history and automatic compaction are authoritative. AgentSession does not locally compact and replay a native Codex context-overflow turn.
+- Failure and migration boundary: Pre-marker `codex_acp_session_id` values are treated as legacy one-turn rollouts and are not resumed. If a marked persistent session cannot be resumed, the turn fails explicitly instead of silently creating another native thread. Operators must repair/reset that mapping deliberately.
+- Configuration boundary: Model and reasoning effort remain Codex process `-c` settings established before ACP session creation or resume. No per-session `session/set_model` call is required.
+- Verification: A real two-turn Discord-path probe kept Hone session `Actor_discord__direct__acp_5fpersistent_5fdiscord_5f20260730` and native Codex ID `019fb3c2-f2f7-7140-8140-7520409d79be` across both turns. ACP evidence contained one `session/new`, one `session/resume`, and two `session/prompt` calls; neither prompt re-injected restored transcript. The single native rollout file contained two `user_message`, two `agent_message`, and two task completions, and turn two returned the exact first-turn sentinel `ONE-CODEX-SESSION-20260730`. Codex Desktop's own task index listed that same ID as one local task.

@@ -656,9 +656,12 @@ agent:
   codex_acp:
     command: "codex-acp"
     args: []
-    # Startup checks: @openai/codex >= 0.144.1 and @agentclientprotocol/codex-acp >= 1.1.2.
+    # Startup checks: @openai/codex >= 0.146.0 and @agentclientprotocol/codex-acp >= 1.1.7.
     codex_command: "codex"
     # GPT-5.6 Sol is the default high-capability Codex ACP model.
+    # Hone applies model + reasoning effort as Codex process config before ACP startup.
+    # One deterministic Hone conversation maps to one persistent native Codex session;
+    # later turns resume it and let the Codex harness own history and compaction.
     model: "gpt-5.6-sol"
     # Reasoning effort passed to Codex as model_reasoning_effort.
     variant: "xhigh"

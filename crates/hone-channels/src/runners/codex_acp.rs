@@ -21,7 +21,7 @@ use super::acp_common::{
     AcpRunFailure, AcpToolRenderPhase, CliVersion, acp_failure_to_runner_result,
     acp_prompt_succeeded, configure_acp_command_process_group, create_acp_session,
     finalize_context_messages, finalize_pending_tool_calls, log_acp_prompt_stop_diagnostics,
-    parse_cli_version, set_acp_session_model, wait_for_response,
+    parse_cli_version, resume_acp_session, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 use super::types::{
@@ -29,28 +29,42 @@ use super::types::{
 };
 
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
+const CODEX_ACP_SESSION_MODE_KEY: &str = "codex_acp_session_mode";
+const CODEX_ACP_PERSISTENT_SESSION_MODE: &str = "persistent_resume_v1";
 const MIN_CODEX_VERSION: CliVersion = CliVersion {
     major: 0,
-    minor: 144,
-    patch: 1,
+    minor: 146,
+    patch: 0,
 };
 const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     major: 1,
     minor: 1,
-    patch: 2,
+    patch: 7,
 };
 const CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS: &[u64] = &[200, 500];
 static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<String>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashSet::new()));
 
 pub(crate) fn reusable_codex_acp_session_id(
-    _session_metadata: &HashMap<String, Value>,
+    session_metadata: &HashMap<String, Value>,
 ) -> Option<String> {
-    // codex-acp can replay historical `session/update` events during `session/load`.
-    // Those replayed prompt/tool updates are raw ACP diagnostics, not current-turn
-    // user-visible output. Hone already restores local transcript context into each
-    // prompt, so fresh remote ACP sessions are the safer default.
-    None
+    // Before persistent resume mode, this metadata key pointed at a one-turn
+    // rollout and was overwritten on every message. Only IDs carrying the mode
+    // marker are complete Codex-owned conversations that are safe to resume.
+    let persistent_mode = session_metadata
+        .get(CODEX_ACP_SESSION_MODE_KEY)
+        .and_then(Value::as_str)
+        .is_some_and(|value| value == CODEX_ACP_PERSISTENT_SESSION_MODE);
+    persistent_mode
+        .then(|| {
+            session_metadata
+                .get(CODEX_ACP_SESSION_KEY)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .flatten()
 }
 
 pub(crate) struct CodexAcpRunner {
@@ -105,6 +119,11 @@ pub(crate) fn codex_acp_effective_args(config: &CodexAcpConfig, locked_down: boo
         args.push(format!("sandbox_permissions=[{permissions}]"));
     }
 
+    if let Some(model) = configured_codex_model_id(config) {
+        args.push("-c".to_string());
+        args.push(format!("model=\"{}\"", model));
+    }
+
     if let Some(effort) = configured_codex_reasoning_effort(config) {
         args.push("-c".to_string());
         args.push(format!("model_reasoning_effort=\"{}\"", effort));
@@ -129,6 +148,10 @@ impl AgentRunner for CodexAcpRunner {
     }
 
     fn manages_own_context(&self) -> bool {
+        true
+    }
+
+    fn relies_on_native_context_compaction(&self) -> bool {
         true
     }
 
@@ -157,24 +180,17 @@ pub(crate) fn configured_codex_model_id(config: &CodexAcpConfig) -> Option<Strin
         return None;
     }
 
-    let (model, embedded_effort) = split_codex_model_and_effort(model);
-    let configured_effort = config.variant.trim();
-    let effort = if configured_effort.is_empty() {
-        embedded_effort?
-    } else {
-        configured_effort
-    };
-
-    Some(format!("{model}[{effort}]"))
+    let (base_model, _) = split_codex_model_and_effort(model);
+    Some(base_model.to_string())
 }
 
 pub(crate) fn configured_codex_reasoning_effort(config: &CodexAcpConfig) -> Option<String> {
     let variant = config.variant.trim();
-    if variant.is_empty() {
-        None
-    } else {
-        Some(variant.to_string())
+    if !variant.is_empty() {
+        return Some(variant.to_string());
     }
+    let (_, embedded_effort) = split_codex_model_and_effort(config.model.trim());
+    embedded_effort.map(ToString::to_string)
 }
 
 fn split_codex_model_and_effort(model: &str) -> (&str, Option<&str>) {
@@ -336,6 +352,7 @@ async fn inspect_codex_acp_version(
     let mut command = tokio::process::Command::new(&config.command);
     command
         .args(codex_acp_effective_args(config, true))
+        .env("CODEX_PATH", &config.codex_command)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
@@ -468,7 +485,6 @@ async fn run_codex_acp(
     let startup_timeout = timeouts.step;
     let prompt_idle_timeout = timeouts.step;
     let prompt_overall_timeout = timeouts.overall;
-    let model_timeout = timeouts.step;
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
@@ -552,61 +568,65 @@ async fn run_codex_acp(
         })??;
         next_id += 1;
 
-        if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
-            tracing::debug!(
-                "[AgentRunner/codex] session={} ignoring reusable acp session candidate={session_id}",
-                request.session_id,
-            );
-        }
-        tracing::info!(
-            "[AgentRunner/codex] session={} creating fresh acp session",
-            request.session_id,
-        );
-        let codex_session_id = create_acp_session(
-            "codex",
-            &mut stdin,
-            &mut reader,
-            next_id,
-            &request.working_directory,
-            mcp_servers.clone(),
-            startup_timeout,
-            stderr_buffer.clone(),
-            Some(&acp_log),
-        )
-        .await?;
+        let mut seed_local_context = false;
+        let codex_session_id =
+            if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
+                tracing::info!(
+                    "[AgentRunner/codex] session={} resuming persistent acp session={session_id}",
+                    request.session_id,
+                );
+                resume_acp_session(
+                    "codex",
+                    &mut stdin,
+                    &mut reader,
+                    next_id,
+                    &session_id,
+                    &request.working_directory,
+                    mcp_servers.clone(),
+                    startup_timeout,
+                    stderr_buffer.clone(),
+                    Some(&acp_log),
+                )
+                .await?;
+                session_id
+            } else {
+                tracing::info!(
+                    "[AgentRunner/codex] session={} creating persistent acp session",
+                    request.session_id,
+                );
+                // First entry into persistent mode (including upgrades from the
+                // former one-rollout-per-turn mode) seeds Codex once from Hone's
+                // durable transcript. Subsequent turns rely only on native thread
+                // history and Codex's own compaction.
+                seed_local_context = true;
+                create_acp_session(
+                    "codex",
+                    &mut stdin,
+                    &mut reader,
+                    next_id,
+                    &request.working_directory,
+                    mcp_servers.clone(),
+                    startup_timeout,
+                    stderr_buffer.clone(),
+                    Some(&acp_log),
+                )
+                .await?
+            };
         next_id += 1;
 
         metadata_updates.insert(
             CODEX_ACP_SESSION_KEY.to_string(),
             Value::String(codex_session_id.clone()),
         );
-
-        if let Some(model_id) = configured_codex_model_id(config) {
-            set_acp_session_model(
-                "codex",
-                &mut stdin,
-                &mut reader,
-                next_id,
-                &codex_session_id,
-                &model_id,
-                model_timeout,
-                stderr_buffer.clone(),
-                Some(&acp_log),
-            )
-            .await?;
-            next_id += 1;
-        } else if !config.model.trim().is_empty() {
-            tracing::warn!(
-                session_id = %request.session_id,
-                model = %config.model.trim(),
-                "codex_acp model override skipped because no reasoning effort was configured"
-            );
-        }
+        metadata_updates.insert(
+            CODEX_ACP_SESSION_MODE_KEY.to_string(),
+            Value::String(CODEX_ACP_PERSISTENT_SESSION_MODE.to_string()),
+        );
 
         let prompt_text = build_codex_acp_prompt_text(
             &request.system_prompt,
             &request.runtime_input,
-            Some(&request.context),
+            seed_local_context.then_some(&request.context),
         );
         write_jsonrpc_request(
             &mut stdin,

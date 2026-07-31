@@ -2270,6 +2270,10 @@ impl AgentSession {
                     .error
                     .as_deref()
                     .is_some_and(is_context_overflow_error_text)
+                // Native ACP runners retain and compact their own thread history.
+                // Rewriting Hone's local context cannot shrink that active
+                // thread, and retrying the same turn could duplicate it.
+                && !execution.runner.relies_on_native_context_compaction()
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
                 && response_has_only_known_read_only_calls(&response.tool_calls_made)
                 && !response_has_persistent_side_effect(&response.tool_calls_made)

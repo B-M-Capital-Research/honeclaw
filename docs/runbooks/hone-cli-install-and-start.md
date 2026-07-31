@@ -1,6 +1,6 @@
 # Runbook: Hone CLI Install And Start
 
-Last updated: 2026-05-14
+Last updated: 2026-07-30
 
 ## When To Use
 
@@ -151,11 +151,12 @@ Runner install references shown by onboarding:
   - Required API key lives at `agent.hone_cloud.api_key`
 - `Codex CLI`
   - Install: `npm install -g @openai/codex`
-  - Update: `codex --upgrade`
+  - Update: `codex update`
   - Official guide: [OpenAI Codex CLI – Getting Started](https://help.openai.com/en/articles/11096431)
 - `Codex ACP`
   - Install/update both packages: `npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`
-  - Minimum validated combination: `codex >= 0.144.1` and `codex-acp >= 1.1.2`
+  - Minimum validated combination: `codex >= 0.146.0` and `codex-acp >= 1.1.7`
+  - Do not install the unrelated Homebrew `zed-industries/codex-acp` formula for Hone; replace it with the npm package above if `codex-acp --version` reports a `0.x` adapter version.
   - Recommended Hone config:
 
     ```yaml
@@ -170,6 +171,10 @@ Runner install references shown by onboarding:
     ```
 
   - Keep `sandbox_permissions: ["network-full-access"]` when `sandbox_mode: workspace-write` is used; Codex CLI otherwise keeps network access closed inside the actor sandbox, which can make `curl`, `git`, and DNS look broken during tool execution.
+  - Hone applies `model` and `variant` as Codex process config before ACP startup; it does not call ACP `session/set_model`, whose model-id format is adapter-version-specific.
+  - Each deterministic Hone logical session owns one native Codex session. The first turn stores the `session/new` ID with `codex_acp_session_mode=persistent_resume_v1`; later turns call `session/resume` for that same ID. This preserves one multi-turn conversation in Codex and leaves compaction to the Codex harness.
+  - Hone deliberately does not use `session/load`, because validated adapter versions replay historical updates on that path. If `session/resume` fails because the native session was deleted or corrupted, Hone fails the turn instead of silently creating a split replacement. Inspect and repair/reset the Hone session metadata deliberately before retrying.
+  - A session without the persistent-mode marker is treated as legacy. Its first post-upgrade Codex turn creates one new persistent native session and seeds the existing Hone transcript once; later turns no longer re-inject that transcript.
   - Restart the Hone runtime after changing this config; existing processes keep their previous effective config snapshot.
   - Adapter repo: [agentclientprotocol/codex-acp](https://github.com/agentclientprotocol/codex-acp)
 - `OpenCode ACP`

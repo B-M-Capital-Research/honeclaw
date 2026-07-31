@@ -179,6 +179,8 @@ struct RecordingContextRunner {
     recorded_contexts: Arc<Mutex<Vec<Vec<AgentMessage>>>>,
     recorded_runtime_inputs: Arc<Mutex<Vec<String>>>,
     queued_results: Arc<Mutex<VecDeque<AgentRunnerResult>>>,
+    manages_own_context: bool,
+    relies_on_native_context_compaction: bool,
 }
 
 #[async_trait]
@@ -231,6 +233,14 @@ impl AgentRunner for MockLlmRunner {
 impl AgentRunner for RecordingContextRunner {
     fn name(&self) -> &'static str {
         "recording_context_runner"
+    }
+
+    fn manages_own_context(&self) -> bool {
+        self.manages_own_context
+    }
+
+    fn relies_on_native_context_compaction(&self) -> bool {
+        self.relies_on_native_context_compaction
     }
 
     async fn run(
@@ -8084,6 +8094,73 @@ async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
 }
 
 #[tokio::test]
+async fn self_managed_runner_context_overflow_is_not_locally_compacted_or_retried() {
+    let root = make_temp_dir("hone_channels_self_managed_overflow_no_local_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_responses(vec![ChatResult {
+        content: "Hone 不应生成这个压缩摘要".to_string(),
+        usage: None,
+    }]);
+    let mut core = make_test_core(&root, llm.clone());
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([AgentRunnerResult {
+        response: AgentResponse {
+            content: String::new(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: false,
+            error: Some("codex_error_info=context_window_exceeded".to_string()),
+        },
+        streamed_output: false,
+        committed_visible_prefix: None,
+        terminal_error_emitted: false,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    }])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("unique core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+                manages_own_context: true,
+                relies_on_native_context_compaction: true,
+            })
+        }));
+    }
+
+    let actor = ActorIdentity::new("web", "self-managed-overflow", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let result = session
+        .run("让原生 harness 管理上下文", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .len(),
+        1
+    );
+    assert_eq!(
+        recorded_runtime_inputs
+            .lock()
+            .expect("recorded runtime inputs lock")
+            .len(),
+        1
+    );
+    assert_eq!(llm.chat_calls(), 0);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_context() {
     let root = make_temp_dir("hone_channels_overflow_retry_prunes_tool_protocol");
     std::fs::create_dir_all(&root).expect("create root");
@@ -8148,6 +8225,8 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
                 recorded_contexts: recorded_contexts.clone(),
                 recorded_runtime_inputs: recorded_runtime_inputs.clone(),
                 queued_results: queued_results.clone(),
+                manages_own_context: false,
+                relies_on_native_context_compaction: false,
             })
         }));
     }

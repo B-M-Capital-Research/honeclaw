@@ -78,7 +78,7 @@ mkfifo "$IN_PIPE" "$OUT_PIPE"
 touch "$STDOUT_LOG" "$STDERR_LOG"
 
 echo "[INFO] starting codex ACP in workspace-write/never mode"
-codex-acp \
+env CODEX_PATH="$(command -v codex)" codex-acp \
   -c 'sandbox_mode="workspace-write"' \
   -c 'approval_policy="never"' \
   <"$IN_PIPE" >"$OUT_PIPE" 2>"$STDERR_LOG" &
@@ -106,7 +106,7 @@ import json
 import re
 import sys
 
-minimum = (1, 1, 2)
+minimum = (1, 1, 7)
 for line in open(sys.argv[1], encoding="utf-8"):
     try:
         payload = json.loads(line)
@@ -123,7 +123,7 @@ for line in open(sys.argv[1], encoding="utf-8"):
 sys.exit(1)
 PY
 then
-  echo "[FAIL] codex acp initialize did not report adapter version >= 1.1.2" >&2
+  echo "[FAIL] codex acp initialize did not report adapter version >= 1.1.7" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
   exit 1

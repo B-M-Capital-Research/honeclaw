@@ -1,6 +1,6 @@
-//! ACP JSON-RPC 线上协议:请求/响应串行化、`session/new` / `session/set_model` /
-//! `session/prompt` 的等待循环、`session/request_permission` 的自动决策、
-//! idle/overall 超时判定。
+//! ACP JSON-RPC 线上协议:请求/响应串行化、`session/new` / `session/resume` /
+//! `session/set_model` / `session/prompt` 的等待循环、
+//! `session/request_permission` 的自动决策、idle/overall 超时判定。
 //!
 //! `codex_acp` 走这里的 `wait_for_response*` 入口;`opencode_acp` 因为 tool
 //! status 形状不同保留自定义 stream loop,但仍复用
@@ -87,6 +87,62 @@ pub(crate) async fn create_acp_session(
             kind: AgentSessionErrorKind::AgentFailed,
             message: format!("{runner_label} acp session/new returned empty sessionId"),
         })
+}
+
+pub(crate) async fn resume_acp_session(
+    runner_label: &'static str,
+    stdin: &mut tokio::process::ChildStdin,
+    reader: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+    request_id: u64,
+    session_id: &str,
+    working_directory: &str,
+    mcp_servers: Value,
+    timeout: Duration,
+    stderr_buffer: Arc<tokio::sync::Mutex<String>>,
+    log_ctx: Option<&AcpEventLogContext>,
+) -> Result<(), AgentSessionError> {
+    write_jsonrpc_request(
+        stdin,
+        request_id,
+        "session/resume",
+        json!({
+            "sessionId": session_id,
+            "cwd": working_directory,
+            "mcpServers": mcp_servers,
+        }),
+        log_ctx,
+    )
+    .await?;
+    match tokio::time::timeout(
+        timeout,
+        wait_for_response(
+            runner_label,
+            reader,
+            stdin,
+            request_id,
+            None,
+            None,
+            Some(stderr_buffer.clone()),
+            log_ctx,
+        ),
+    )
+    .await
+    {
+        Ok(result) => {
+            result?;
+        }
+        Err(_) => {
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::TimeoutOverall,
+                message: timeout_message_with_stderr(
+                    &format!("{runner_label} acp session/resume timeout for {session_id}"),
+                    &stderr_buffer,
+                )
+                .await,
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(crate) async fn set_acp_session_model(

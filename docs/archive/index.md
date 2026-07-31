@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
+
+## 2026-07-30
+
+### Codex ACP Session Continuity Diagnosis And Persistent-Session Follow-up
+
+- Status: done
+- Date: 2026-07-30
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (diagnostic subphase done; shared ACP runtime plan remains active)
+- Handoff: `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`
+- Decision / ADR: `D-2026-07-30-01` supersedes the Codex fresh-session portion of the earlier ACP continuity contract
+- Related PRs / commits: uncommitted local follow-up; the now-superseded fresh-session behavior was introduced by `be5d7414`
+- Related runbooks / regressions: Codex ACP initialize/event-stream manual regressions, raw cross-process resume probe, real two-turn Discord-path probe, persistent-session metadata/cold-start/context-overflow regressions
+- Current conclusion: one deterministic Hone logical session now maps to one persistent native Codex session. The first turn calls `session/new`; later turns call non-replaying `session/resume`. Hone seeds its durable transcript only when entering persistent mode, then Codex owns history and automatic compaction. A live Discord probe used native ID `019fb3c2-f2f7-7140-8140-7520409d79be` for both turns and the single Codex rollout contained two complete user/assistant turns. Codex CLI and adapter are `0.146.0` / `1.1.7`; model and effort are process config.
+- Next entry point: `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`; diagnose a continuity issue from the Hone logical session metadata, the `session/resume` request/result, and the one matching native Codex rollout. Do not silently replace an unresumable native session.
 
 ## 2026-07-28
 
