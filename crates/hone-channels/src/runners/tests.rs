@@ -19,9 +19,10 @@ use super::acp_common::{
     summarize_finished_tool_calls_for_log,
 };
 use super::codex_acp::{
-    build_codex_acp_prompt_text, codex_acp_effective_args, configured_codex_model_id,
-    configured_codex_reasoning_effort, patch_codex_session_update_params, render_codex_tool_status,
-    reusable_codex_acp_session_id, validate_codex_version_matrix,
+    build_codex_acp_prompt_text, codex_acp_effective_args, codex_acp_should_seed_system_prompt,
+    configured_codex_model_id, configured_codex_reasoning_effort,
+    patch_codex_session_update_params, render_codex_tool_status, reusable_codex_acp_session_id,
+    validate_codex_version_matrix,
 };
 use super::gemini_acp::{gemini_acp_effective_args, validate_gemini_version};
 use super::gemini_cli::{
@@ -248,6 +249,41 @@ fn codex_acp_reuses_only_persistent_remote_session_metadata() {
         Value::String("  ".to_string()),
     );
     assert!(reusable_codex_acp_session_id(&metadata).is_none());
+}
+
+#[test]
+fn codex_acp_seeds_system_prompt_only_on_first_turn_or_after_compaction() {
+    let mut metadata = HashMap::new();
+    assert!(codex_acp_should_seed_system_prompt(&metadata, true));
+
+    metadata.insert(
+        "codex_acp_session_id".to_string(),
+        Value::String("persistent-session".to_string()),
+    );
+    metadata.insert(
+        "codex_acp_session_mode".to_string(),
+        Value::String("persistent_resume_v1".to_string()),
+    );
+    assert!(!codex_acp_should_seed_system_prompt(&metadata, false));
+
+    metadata.insert("acp_needs_sp_reseed".to_string(), Value::Bool(true));
+    assert!(codex_acp_should_seed_system_prompt(&metadata, false));
+
+    metadata.insert("acp_needs_sp_reseed".to_string(), Value::Bool(false));
+    assert!(!codex_acp_should_seed_system_prompt(&metadata, false));
+}
+
+#[test]
+fn codex_resumed_turn_prompt_omits_static_system_and_keeps_current_turn() {
+    let runtime = "【当前时间】\n2026-07-31 09:00:00 (北京时间)\n\n【本轮用户输入】\n继续";
+    let prompt = build_codex_acp_prompt_text("", runtime, None);
+
+    assert_eq!(prompt, runtime);
+    assert!(!prompt.contains("### System Instructions ###"));
+    assert!(!prompt.contains("### User Input ###"));
+    assert!(!prompt.contains("【Session 上下文】"));
+    assert!(prompt.contains("【当前时间】"));
+    assert!(prompt.contains("【本轮用户输入】\n继续"));
 }
 
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {

@@ -162,6 +162,25 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
 
     tracing::debug!("[acp] session/update kind={kind}");
 
+    if update
+        .get("_meta")
+        .and_then(|meta| meta.get("contextCompaction"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if let Some(state) = state.as_deref_mut()
+            && !state.compact_detected
+        {
+            tracing::info!(
+                "[acp] runner internal compact signalled via contextCompaction metadata"
+            );
+            state.compact_detected = true;
+        }
+        // codex-acp models context compaction as an ACP tool update. It is
+        // harness lifecycle state, not a Hone tool call or user-visible event.
+        return;
+    }
+
     match kind {
         "agent_message_chunk" => {
             // Try nested content.text first (older protocol), then flat text/delta fields

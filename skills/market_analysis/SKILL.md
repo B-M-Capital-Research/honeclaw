@@ -4,7 +4,6 @@ description: Analyze macroeconomics, policy trends, and industry momentum, then 
 allowed-tools:
   - web_search
   - data_fetch
-  - skill_tool
 ---
 
 ## Market Analysis Skill
@@ -82,4 +81,4 @@ Never use SPY/QQQ or a previous-turn ticker merely to fill a sector list. Every 
 - For macro search, never issue a `web_search` query that omits the absolute date when the user intent is time-sensitive
 - If quotes succeeded, never claim that Hone lacks real-time/current market data or did not request it. Describe the provider result as latest available and non-tick-by-tick.
 - A failed news result does not erase valid quotes: report the verified prices and say the cause is not fully verified. A failed quote for one scope does not permit copying another scope's quote.
-- If the user asks for a trend, curve, distribution, or side-by-side visual and you already have the numbers, call `skill_tool(skill_name="chart_visualization", execute_script=true, ...)` instead of describing the chart only in prose
+- If the user asks for a trend, curve, distribution, or side-by-side visual and you already have the numbers, use the Chart Visualization skill instead of describing the chart only in prose. Native Codex loads that skill through its own skill discovery; legacy Hone runners may use `skill_tool(skill_name="chart_visualization", execute_script=true, ...)`.

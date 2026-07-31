@@ -14,7 +14,6 @@ aliases:
 allowed-tools:
   - data_fetch
   - web_search
-  - skill_tool
 ---
 
 ## Stock Research Skill

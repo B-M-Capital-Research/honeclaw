@@ -123,8 +123,26 @@ fn effective_context_owner_follows_actor_runner_route() {
 
     assert!(core.actor_uses_strict_runner_fallback(&public_actor));
     assert!(!core.effective_runner_manages_own_context(&public_actor));
+    assert!(!core.effective_runner_uses_native_codex_turns(&public_actor));
     assert!(!core.actor_uses_strict_runner_fallback(&admin_actor));
     assert!(core.effective_runner_manages_own_context(&admin_actor));
+    assert!(core.effective_runner_uses_native_codex_turns(&admin_actor));
+}
+
+#[test]
+fn native_minimal_turns_are_codex_specific() {
+    let actor = ActorIdentity::new("cli", "local", None::<String>).expect("actor");
+
+    let mut opencode_config = HoneConfig::default();
+    opencode_config.agent.runner = "opencode_acp".to_string();
+    let opencode_core = HoneBotCore::new(opencode_config);
+    assert!(opencode_core.effective_runner_manages_own_context(&actor));
+    assert!(!opencode_core.effective_runner_uses_native_codex_turns(&actor));
+
+    let mut codex_config = HoneConfig::default();
+    codex_config.agent.runner = "codex_acp".to_string();
+    let codex_core = HoneBotCore::new(codex_config);
+    assert!(codex_core.effective_runner_uses_native_codex_turns(&actor));
 }
 
 #[test]

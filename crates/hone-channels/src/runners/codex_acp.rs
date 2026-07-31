@@ -67,6 +67,17 @@ pub(crate) fn reusable_codex_acp_session_id(
         .flatten()
 }
 
+pub(crate) fn codex_acp_should_seed_system_prompt(
+    session_metadata: &HashMap<String, Value>,
+    creating_persistent_session: bool,
+) -> bool {
+    creating_persistent_session
+        || session_metadata
+            .get(ACP_NEEDS_SP_RESEED_KEY)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+}
+
 pub(crate) struct CodexAcpRunner {
     config: CodexAcpConfig,
     timeouts: RunnerTimeouts,
@@ -534,6 +545,7 @@ async fn run_codex_acp(
             .and_then(|value| value.as_u64()),
         ..AcpPromptState::default()
     };
+    let mut system_prompt_seed_attempted = false;
     let run_result: Result<Value, AgentSessionError> = async {
         let mut next_id = 1u64;
 
@@ -623,8 +635,32 @@ async fn run_codex_acp(
             Value::String(CODEX_ACP_PERSISTENT_SESSION_MODE.to_string()),
         );
 
+        system_prompt_seed_attempted =
+            codex_acp_should_seed_system_prompt(&request.session_metadata, seed_local_context);
+        if seed_local_context {
+            // If the first prompt fails after the native session was created,
+            // keep the seed pending so the resumed retry does not lose Hone's
+            // static instructions.
+            metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+        }
+        tracing::info!(
+            "[AgentRunner/codex] session={} system_prompt_seed={} reason={}",
+            request.session_id,
+            system_prompt_seed_attempted,
+            if seed_local_context {
+                "new_persistent_session"
+            } else if system_prompt_seed_attempted {
+                "post_compaction"
+            } else {
+                "native_context_active"
+            },
+        );
         let prompt_text = build_codex_acp_prompt_text(
-            &request.system_prompt,
+            if system_prompt_seed_attempted {
+                &request.system_prompt
+            } else {
+                ""
+            },
             &request.runtime_input,
             seed_local_context.then_some(&request.context),
         );
@@ -711,8 +747,6 @@ async fn run_codex_acp(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),
         Value::from(codex_state.current_prompt_peak_used),
     );
-    // Do not write `false` when compact was not detected: the prompt builder owns
-    // clearing a pending reseed flag after it has been consumed.
     if codex_state.compact_detected {
         tracing::info!(
             "[AgentRunner/codex] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
@@ -720,6 +754,10 @@ async fn run_codex_acp(
             codex_state.current_prompt_peak_used
         );
         metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+    } else if system_prompt_seed_attempted {
+        // Clear only after the prompt completed. A transport/protocol failure
+        // leaves the prior true value intact and retries the reseed once.
+        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(false));
     }
 
     finalize_pending_tool_calls(&mut codex_state, "unknown_after_missing_acp_result");
@@ -896,7 +934,11 @@ Messages are ordered from oldest to newest.\n\
         ));
     }
     if !runtime.is_empty() {
-        sections.push(format!("### User Input ###\n{runtime}"));
+        if sections.is_empty() {
+            sections.push(runtime.to_string());
+        } else {
+            sections.push(format!("### User Input ###\n{runtime}"));
+        }
     }
     sections.join("\n\n")
 }

@@ -1249,15 +1249,38 @@ impl AgentSession {
             prepared_investment.map(|prepared| prepared.prompt_time_beijing),
             hone_core::beijing_now(),
         );
+        let use_native_codex_turn_input = options.turn_origin == AgentTurnOrigin::Interactive
+            && self
+                .core
+                .effective_runner_uses_native_codex_turns(&self.actor);
         let (system_prompt, mut runtime_input, answer_time_beijing) = self.resolve_prompt_input_at(
             session_id,
             runtime_user_input,
             prompt_time_beijing,
             !use_fast_interactive_context && !use_current_turn_only_context,
+            use_native_codex_turn_input,
         );
         let investment_context = if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);
             prepared.clone()
+        } else if use_native_codex_turn_input {
+            let entity_resolution_input = options
+                .entity_resolution_input
+                .as_deref()
+                .unwrap_or(runtime_user_input);
+            PreparedInvestmentContext {
+                contract: None,
+                runtime_suffix: String::new(),
+                prompt_time_beijing,
+                reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
+                // Keep server-side read-only trace diagnostics without
+                // injecting their tool-loop instructions into the user turn.
+                main_agent_entity_discovery_input: uses_main_agent_entity_discovery(
+                    entity_resolution_input,
+                    options.turn_origin,
+                )
+                .then(|| entity_resolution_input.to_string()),
+            }
         } else {
             let suffix_start = runtime_input.len();
             let entity_resolution_input = options
@@ -1655,7 +1678,13 @@ impl AgentSession {
         session_id: &str,
         user_input: &str,
     ) -> (String, String, String) {
-        self.resolve_prompt_input_at(session_id, user_input, hone_core::beijing_now(), true)
+        self.resolve_prompt_input_at(
+            session_id,
+            user_input,
+            hone_core::beijing_now(),
+            true,
+            false,
+        )
     }
 
     fn resolve_prompt_input_at(
@@ -1664,6 +1693,7 @@ impl AgentSession {
         user_input: &str,
         prompt_time_beijing: DateTime<FixedOffset>,
         include_conversation_context: bool,
+        use_native_codex_turn_input: bool,
     ) -> (String, String, String) {
         let turn = PromptTurnBuilder::new(
             &self.core,
@@ -1677,6 +1707,7 @@ impl AgentSession {
             user_input,
             prompt_time_beijing,
             include_conversation_context,
+            use_native_codex_turn_input,
         );
         (
             turn.system_prompt,

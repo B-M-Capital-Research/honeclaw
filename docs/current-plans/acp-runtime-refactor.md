@@ -10,6 +10,10 @@
   - `crates/hone-channels/src/runners/acp_common/`
   - `crates/hone-channels/src/core/`
   - `crates/hone-channels/src/runners/codex_acp.rs`
+  - `crates/hone-channels/src/turn_builder.rs`
+  - `crates/hone-channels/src/execution.rs`
+  - `crates/hone-channels/src/sandbox.rs`
+  - `crates/hone-channels/src/prompt.rs`
   - `crates/hone-channels/src/attachments/ingest.rs`
   - `crates/hone-channels/src/attachments/vision.rs`
   - `crates/hone-channels/src/runtime.rs`
@@ -50,7 +54,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - ACP runners now treat their own session/compact logic as the source of truth: Hone skips its auto SessionCompactor for `codex_acp` / `opencode_acp`, and prompt construction suppresses Hone-side compact summaries for self-managed runners.
 - `acp_common` now detects codex literal `Context compacted` chunks and opencode usage-drop / markdown-summary compact signatures, drops those leak paths from user-visible output, and sets session metadata so the next turn can reseed the system prompt when needed.
 - `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
-- `codex_acp` keeps passing `agent.codex_acp.variant` to Codex CLI as `model_reasoning_effort`, and also normalizes the ACP `session/set_model` selector to the adapter-required `model[effort]` form. Legacy `model/variant` and already-normalized `model[variant]` inputs converge to the same selector instead of sending a bare model id that the adapter rejects.
+- `codex_acp` passes `agent.codex_acp.model` / `variant` to Codex CLI as process `model` / `model_reasoning_effort` overrides before ACP startup and no longer calls adapter-specific `session/set_model`.
 - Admin actors routed to `codex_acp` now use the adapter's native image capability directly instead of synchronously compiling and running the optional Apple Vision OCR helper before the first Discord placeholder. Strict public fallback actors retain local OCR pre-extraction. Timed-out OCR helper and Swift compiler children use kill-on-drop so they cannot remain behind as detached work.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 - 2026-06-24: Fixed ACP child-process lifecycle leaks where `codex_acp` / `opencode_acp` error or timeout paths could leave their stdio `hone-mcp` grandchildren running after the turn exits. ACP CLI children now run in their own process group and are cleaned up through a shared guard that terminates the group before returning from the runner.
@@ -60,6 +64,9 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-07-30 live continuity diagnosis: Codex ACP still intentionally creates one fresh upstream ACP session per Hone turn. A controlled two-turn Discord probe kept one deterministic Hone session, created two distinct Codex rollout/session IDs, injected the first `user/assistant` pair into the second turn's `### Restored Conversation Transcript ###`, and recovered the exact sentinel. Native Codex session views therefore show separate one-turn rollouts even though semantic conversation continuity is preserved by Hone's local transcript restore. Evidence and local adapter compatibility findings are recorded in `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`.
 - 2026-07-30 compatibility follow-up: replaced the unrelated Homebrew `zed-industries/codex-acp 0.11.1` with npm `@agentclientprotocol/codex-acp 1.1.7`, installed npm `@openai/codex 0.146.0`, raised Hone's validated floors, and moved Codex model/reasoning selection into process `-c` overrides before `session/new`. This avoids adapter-specific `session/set_model` model-id formatting and makes version probes use the same `CODEX_PATH` as real turns.
 - 2026-07-30 persistent-session follow-up: the preceding fresh-session diagnosis is retained as historical evidence of the old behavior, but its contract is superseded by `D-2026-07-30-01`. Hone now creates one native Codex session for each deterministic Hone logical session, stores a mode-marked native ID, resumes it on every later turn with `session/resume`, and seeds local transcript only once when entering persistent mode. Codex owns history and automatic compaction; a resume failure fails closed instead of silently forking the Codex page.
+- 2026-07-31 static-prompt lifecycle follow-up: Codex persistent sessions now send the complete static Hone system prompt only in the first native prompt. Ordinary `session/resume` turns send the freshly assembled runtime input without repeating the static prompt. Codex ACP 1.1.7 `_meta.contextCompaction=true` updates are treated as internal harness lifecycle events and set one pending reseed; the next successful prompt includes the static prompt once and clears the flag. The legacy compact text and usage-drop paths remain fallback detection. OpenCode behavior is unchanged.
+- 2026-07-31 minimal native-turn follow-up: trusted Codex ACP Interactive turns now treat the native harness as owner of retained history, tool/MCP lifecycle, and compaction. Their user payload contains only current Beijing time plus normalized current user content, including attachment/image material or an explicit slash-skill task. Hone no longer repeats Session IDs/history, receive-routing metadata, related-skill hints, entity-loop instructions, or final-answer contracts on those turns. OpenCode, scheduled/heartbeat tasks, and strict actor fallback remain unchanged.
+- 2026-07-31 native-skill follow-up: trusted persistent Codex ACP workspaces expose each enabled Hone system/custom skill through an individual symlink under `<actor sandbox>/.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone no longer repeats the MCP `SkillTool` loading contract or exposes skill-loading MCP schemas on that path. MCP remains the transport for live Hone data/action tools, while legacy runners retain the existing skill bridge.
 
 ## Validation
 
@@ -148,6 +155,26 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - `bash tests/regression/manual/test_codex_acp_initialize.sh`
   - `bash tests/regression/manual/test_codex_acp_event_stream.sh`
   - Temporary Discord administrator configuration was restored exactly after the probe.
+- 2026-07-31 static-prompt lifecycle follow-up:
+  - `cargo test -p hone-channels runners::acp_common::tests --lib -- --nocapture`
+  - `cargo test -p hone-channels runners::tests::codex --lib -- --nocapture`
+  - `cargo test -p hone-channels --lib` (`705 passed`, `1` host-dependent OCR test ignored)
+  - `cargo check -p hone-channels --tests`
+  - `bash scripts/ci/check_fmt_changed.sh`
+  - `bash tests/regression/manual/test_codex_acp_initialize.sh`
+  - `bash tests/regression/manual/test_codex_acp_event_stream.sh`
+  - At this intermediate subphase, a real CLI two-turn probe used one Hone logical session and one native Codex ID. The ACP log showed prompt one with `has_system=true`, prompt two with `has_system=false`, no restored transcript in either prompt, and then-current Session/current-user context in both. Both turns returned their exact requested sentinel, and session metadata ended with `acp_needs_sp_reseed=false`; the following minimal-turn subphase removed the repeated Session block.
+- 2026-07-31 minimal native-turn follow-up:
+  - `cargo test -p hone-channels --lib` (`708 passed`, `1` host-dependent OCR test ignored)
+  - `cargo check -p hone-channels --tests`
+  - Focused regressions covered the minimal payload shape, trusted Codex vs strict fallback routing, and the Codex-specific boundary versus OpenCode.
+  - A real three-turn CLI probe kept native ID `019fb5e4-7796-7410-bfb8-e5ab2fad887c` and returned `MINIMAL-TURN-ONE` / `MINIMAL-TURN-TWO` / `MINIMAL-TURN-THREE`. Parsed ACP requests showed the first system seed and no resumed system seed; all prompts omitted restored transcript, Session context, answer/entity contracts, and related-skill hints. The latest resumed prompt was a raw 103-character payload with no generic wrapper and contained only `【当前时间】` plus `【本轮用户输入】`.
+- 2026-07-31 native-skill follow-up:
+  - Focused symlink, native prompt, attachment, and skill-runtime tests passed.
+  - A real `hone-cli probe` created 16 managed links and made Codex natively read `skills/market_analysis/SKILL.md`; it returned exactly `原因本轮未完全核验` without a Hone MCP skill-loading call.
+  - The outbound `session/new` MCP allowlist omitted `discover_skills`, `load_skill`, and `skill_tool`.
+  - `codex app-server skills/list` with `forceReload=true` returned all 16 Hone skills with `errors=[]`.
+  - The bundled skill-creator validator could not start because its local Python environment lacks `PyYAML`; Codex's own parser/listing and the real ACP activation provide the runtime validation for this host.
 
 ## Documentation Sync
 
@@ -166,7 +193,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Partial convergence is risky if one runner path silently diverges from ACP behavior.
 - `opencode_acp` and `codex_acp` now consume the same normalized history for prompt restore, but their raw ACP event shapes still differ; raw-session persistence and replay must remain runner-owned.
 - Runner-specific transcript metadata can still grow session files; any future expansion should be validated against real session size and restore cost.
-- ACP compact detection currently depends on codex literal markers plus opencode usage-drop heuristics; if upstream protocols change those signals, the detection path needs fresh live validation.
+- ACP compact detection uses Codex ACP's structured `_meta.contextCompaction=true` signal first, retains legacy Codex compact text as a fallback, and still uses usage-drop/summary-boundary heuristics for OpenCode; future adapter upgrades must revalidate those event shapes.
 - ACP CLI cleanup must account for grandchildren such as `hone-mcp`; killing only the direct ACP process can leave orphaned MCP servers when the upstream CLI does not close them itself.
 - Codex ACP's model list and session/model-id representation remain adapter-version-specific. Hone now avoids that dependency by supplying the base model and reasoning effort as Codex process config before `session/new`; future adapter upgrades must rerun initialize, event-stream, and two-turn continuity probes.
 - A persistent native Codex session is scoped to one deterministic Hone logical session, not globally to the whole Hone installation. Any future session-key change must preserve actor/channel isolation.

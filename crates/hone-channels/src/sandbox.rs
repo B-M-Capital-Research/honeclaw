@@ -1,9 +1,11 @@
 use hone_core::actor::ActorIdentity;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 const HONE_AGENT_SANDBOX_DIR_ENV: &str = "HONE_AGENT_SANDBOX_DIR";
+const HONE_MANAGED_CODEX_SKILL_PREFIX: &str = "hone__";
 
 pub fn sandbox_base_dir() -> PathBuf {
     let fallback = safe_sandbox_base_dir();
@@ -32,6 +34,78 @@ pub(crate) fn ensure_actor_sandbox(actor: &ActorIdentity) -> io::Result<PathBuf>
     hone_core::harden_private_dir(root.join("company_profiles"))?;
     remove_sensitive_legacy_files(&root)?;
     Ok(root)
+}
+
+/// Expose Hone-managed skills through Codex's native repository-skill
+/// discovery path. Each enabled skill gets its own symlink so system and
+/// custom skills can coexist with actor-owned entries in `.agents/skills`.
+///
+/// Hone only removes links in its reserved `hone__*` namespace. Regular files,
+/// directories, and symlinks created by the actor are left untouched.
+pub(crate) fn sync_native_codex_skill_links(
+    root: &Path,
+    skills: &[(String, PathBuf)],
+) -> io::Result<usize> {
+    let agents_dir = root.join(".agents");
+    let skills_dir = agents_dir.join("skills");
+    hone_core::harden_private_dir(&agents_dir)?;
+    hone_core::harden_private_dir(&skills_dir)?;
+
+    let mut desired_links = HashSet::with_capacity(skills.len());
+    for (skill_id, source_dir) in skills {
+        let source_dir = fs::canonicalize(source_dir)?;
+        let link_name = format!(
+            "{HONE_MANAGED_CODEX_SKILL_PREFIX}{}",
+            sanitize_component(skill_id)
+        );
+        let link_path = skills_dir.join(&link_name);
+        desired_links.insert(link_name);
+
+        match fs::symlink_metadata(&link_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                if fs::read_link(&link_path).ok().as_deref() == Some(source_dir.as_path()) {
+                    continue;
+                }
+                fs::remove_file(&link_path)?;
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    path = %link_path.display(),
+                    skill_id,
+                    "preserving non-symlink entry in Hone-managed Codex skill namespace"
+                );
+                continue;
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+
+        create_directory_symlink(&source_dir, &link_path)?;
+    }
+
+    for entry in fs::read_dir(&skills_dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with(HONE_MANAGED_CODEX_SKILL_PREFIX)
+            || desired_links.contains(&name)
+            || !entry.file_type()?.is_symlink()
+        {
+            continue;
+        }
+        fs::remove_file(entry.path())?;
+    }
+
+    Ok(desired_links.len())
+}
+
+#[cfg(unix)]
+fn create_directory_symlink(source: &Path, target: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(source, target)
+}
+
+#[cfg(windows)]
+fn create_directory_symlink(source: &Path, target: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_dir(source, target)
 }
 
 pub(crate) fn actor_upload_dir(actor: &ActorIdentity, session_id: &str) -> PathBuf {
@@ -133,6 +207,7 @@ fn remove_sensitive_legacy_files(root: &Path) -> io::Result<()> {
 mod tests {
     use super::{
         actor_sandbox_root, channel_download_dir, path_within_root, safe_sandbox_base_dir,
+        sync_native_codex_skill_links,
     };
     use hone_core::actor::ActorIdentity;
     use std::path::Path;
@@ -208,5 +283,59 @@ mod tests {
         unsafe {
             std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
         }
+    }
+
+    #[test]
+    fn native_codex_skill_links_sync_enabled_skills_and_preserve_actor_entries() {
+        let temp = std::env::temp_dir().join(format!(
+            "hone_native_codex_skill_links_{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let workspace = temp.join("workspace");
+        let source = temp.join("source");
+        let alpha = source.join("alpha");
+        let beta = source.join("beta");
+        std::fs::create_dir_all(&workspace).expect("workspace");
+        std::fs::create_dir_all(&alpha).expect("alpha");
+        std::fs::create_dir_all(&beta).expect("beta");
+        std::fs::write(alpha.join("SKILL.md"), "alpha").expect("alpha skill");
+        std::fs::write(beta.join("SKILL.md"), "beta").expect("beta skill");
+
+        let count = sync_native_codex_skill_links(
+            &workspace,
+            &[
+                ("alpha".to_string(), alpha.clone()),
+                ("beta".to_string(), beta.clone()),
+            ],
+        )
+        .expect("initial sync");
+        assert_eq!(count, 2);
+
+        let skills_dir = workspace.join(".agents").join("skills");
+        let actor_skill = skills_dir.join("actor-owned");
+        let reserved_actor_skill = skills_dir.join("hone__actor-owned");
+        std::fs::create_dir_all(&actor_skill).expect("actor skill");
+        std::fs::create_dir_all(&reserved_actor_skill).expect("reserved actor skill");
+        std::fs::write(actor_skill.join("SKILL.md"), "actor").expect("actor skill file");
+        assert_eq!(
+            std::fs::canonicalize(skills_dir.join("hone__alpha")).expect("alpha link"),
+            std::fs::canonicalize(&alpha).expect("alpha source")
+        );
+        assert_eq!(
+            std::fs::canonicalize(skills_dir.join("hone__beta")).expect("beta link"),
+            std::fs::canonicalize(&beta).expect("beta source")
+        );
+
+        sync_native_codex_skill_links(&workspace, &[("beta".to_string(), beta.clone())])
+            .expect("resync");
+        assert!(!skills_dir.join("hone__alpha").exists());
+        assert!(skills_dir.join("hone__beta").exists());
+        assert!(actor_skill.exists());
+        assert!(reserved_actor_skill.exists());
+
+        let _ = std::fs::remove_dir_all(temp);
     }
 }

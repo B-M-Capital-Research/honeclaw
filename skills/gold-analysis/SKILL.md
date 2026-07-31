@@ -8,7 +8,6 @@ aliases:
 allowed-tools:
   - web_search
   - data_fetch
-  - skill_tool
 ---
 
 ## Gold Analysis

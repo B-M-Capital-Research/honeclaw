@@ -1,7 +1,7 @@
 ---
 name: Skill Management
-description: Design, inspect, create, and update Hone skills using the Claude Code-style runtime contract.
-when_to_use: Use when the user wants to create a new skill, inspect an existing skill, migrate old skill metadata, or understand how Hone skills are disclosed and invoked.
+description: Design, inspect, create, update, and validate Hone skills, including Codex-native discovery through workspace .agents/skills and compatibility with legacy Hone runners.
+when_to_use: Use when the user wants to create a skill, inspect or update an existing skill, migrate old skill metadata, or understand how Hone exposes skills to Codex and other runners.
 allowed-tools:
   - discover_skills
   - skill_tool
@@ -11,14 +11,15 @@ context: inline
 
 ## Skill Management (skill_manager)
 
-Use this skill when the user asks to add, create, edit, inspect, migrate, or align a Hone skill.
+Manage the source skill, not a generated projection of it.
 
-The runtime contract is now:
+## Runtime Contract
 
-1. Skills live in `skills/<name>/SKILL.md`, `data/custom_skills/<name>/SKILL.md`, or a closer `.hone/skills/<name>/SKILL.md`.
-2. The model sees a compact listing first.
-3. The full skill body is only injected into the current turn when `skill_tool(skill_name="...")` or a user slash command like `/<skill-name>` is invoked.
-4. `load_skill` is only a compatibility shim. Do not teach it as the primary workflow.
+1. Built-in sources live in `skills/<id>/SKILL.md`; custom sources live in `data/custom_skills/<id>/SKILL.md`; legacy project-local sources may live in a closer `.hone/skills/<id>/SKILL.md`.
+2. Trusted persistent Codex ACP workspaces expose enabled Hone skills as individual symlinks under `<actor workspace>/.agents/skills/`.
+3. Codex performs native progressive disclosure: it starts with each skill's name, description, and path, then reads the complete `SKILL.md` only when the task activates that skill.
+4. Do not copy skill bodies into each Codex user turn and do not call Hone MCP skill-loading tools merely to activate a skill.
+5. Non-Codex and strict legacy runners retain Hone's `discover_skills` / `skill_tool` bridge. `load_skill` remains a compatibility shim only.
 
 ## Frontmatter Contract
 
@@ -50,34 +51,34 @@ Notes:
 - `allowed-tools` replaces legacy `tools` as the main runtime field.
 - `context` should usually be `inline`; use `fork` only when the skill should run in an isolated child runner.
 - `paths` hides the skill from the default listing until the active task touches matching files.
-- `script` declares the default executable entrypoint inside the skill directory. `skill_tool(..., execute_script=true)` can run it with `${HONE_SKILL_DIR}` as cwd.
+- `script` declares the default executable entrypoint inside the skill directory. Native Codex may run a trusted bundled script directly; legacy Hone runners may use `skill_tool(..., execute_script=true)`.
 - Keep the Markdown body task-oriented and ready to inject as prompt text.
 
 ## How To Inspect Skills
 
-When the user asks what skills exist or which skill fits a task:
+On native Codex:
 
-1. Call `discover_skills(query="...")` with the user's task or keyword.
-2. Summarize the relevant skills from the returned metadata.
-3. If one skill should actually be used for the current task, call `skill_tool(skill_name="...")` so the full skill prompt is expanded for this turn.
+1. Use the native skill list already supplied by Codex.
+2. Match from `name` and `description`.
+3. Read the selected skill's `SKILL.md` from its disclosed path.
+4. Read bundled scripts or references only when the task needs them.
 
-When the user asks to inspect a specific skill in detail:
+On a legacy Hone runner without native skill discovery:
 
-1. Use `discover_skills(query="<skill name>")` to confirm the match if needed.
-2. Call `skill_tool(skill_name="<skill id>")`.
-3. Explain the resolved metadata and the injected prompt body, not a hand-written summary that drifts from the source.
+1. Use `discover_skills(query="...")` to select the skill.
+2. Use `skill_tool(skill_name="<skill id>")` to load its full prompt.
 
 ## How To Create Or Update Skills
 
-When the user wants to create or edit a skill:
-
 1. Collect the intended skill id, description, trigger conditions, and whether users should be able to invoke it directly with `/<skill-name>`.
-2. Write or update the actual `SKILL.md` file with the new frontmatter schema.
+2. Write or update the source `SKILL.md`; never edit the actor-workspace symlink as if it were an independent copy.
 3. Keep the body concrete: trigger rules, required steps, tool usage expectations, and refusal/verification constraints.
-4. If you created or changed a skill that should be runnable immediately, validate it by invoking `skill_tool(skill_name="<skill id>")` and checking the rendered prompt.
+4. Validate native discovery with Codex `skills/list` or a real Codex ACP turn. Validate the legacy bridge separately only when that runner remains in scope.
 
 ## Strict Rules
 
+- On native Codex, do not call `discover_skills`, `load_skill`, or `skill_tool` just to discover or load a skill.
+- Preserve actor-owned entries in `.agents/skills`; Hone only owns its `hone__*` links.
 - Do not teach the deprecated `skill_tool(action="add" | "update" | "remove")` CRUD workflow.
 - Do not rely on `load_skill` as the main user-facing path.
 - If a skill is path-gated, mention that it may stay hidden until matching files are involved.

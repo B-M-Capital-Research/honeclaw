@@ -3728,6 +3728,112 @@ fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() 
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[tokio::test]
+async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content() {
+    let root = make_temp_dir("hone_channels_codex_minimal_native_turn");
+    let system_skills = root.join("system_skills");
+    let skill_dir = system_skills.join("alpha_skill");
+    std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        concat!(
+            "---\n",
+            "name: Alpha Skill\n",
+            "description: alpha analysis workflow\n",
+            "when_to_use: use for alpha analysis tasks\n",
+            "---\n\n",
+            "body\n"
+        ),
+    )
+    .expect("write skill");
+
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+        config.extra.insert(
+            "skills_dir".to_string(),
+            serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
+        );
+    });
+    let actor = ActorIdentity::new("cli", "codex-native-skill-projection-test", None::<String>)
+        .expect("actor");
+    let session = AgentSession::new(core, actor.clone(), "direct").with_recv_extra(Some(
+        "attachments=1\n【群聊同发言者最近往返候选】\n旧消息".to_string(),
+    ));
+    let input = "alpha analysis：看一下 CRWV\n\n\
+                 用户上传了附件：positions.png\n\n\
+                 【图片文字提取】\nCRWV | 72.07";
+
+    let (execution, _investment_context) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            input,
+            input,
+            &AgentRunOptions::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("native Codex turn: {error}"));
+    let runtime_input = execution.runner_request.runtime_input;
+    let native_skill_link = std::path::Path::new(&execution.runner_request.working_directory)
+        .join(".agents/skills/hone__alpha_5fskill");
+
+    assert!(runtime_input.starts_with("【当前时间】\n"));
+    assert!(runtime_input.contains("\n\n【本轮用户输入】\n"));
+    assert!(runtime_input.ends_with(input));
+    assert!(runtime_input.contains("【图片文字提取】\nCRWV | 72.07"));
+    for redundant in [
+        "【Session 上下文】",
+        "会话 ID：",
+        "attachments=1",
+        "【群聊同发言者最近往返候选】",
+        "【本轮相关技能提示】",
+        "alpha_skill",
+        "【本轮证券实体发现：主 Agent 工具循环】",
+        "【本轮最终回答契约：由主 Agent 一次完成】",
+    ] {
+        assert!(
+            !runtime_input.contains(redundant),
+            "{redundant}: {runtime_input}"
+        );
+    }
+    assert!(
+        !execution
+            .runner_request
+            .system_prompt
+            .contains("【SkillTool】")
+    );
+    for loader in ["discover_skills", "load_skill", "skill_tool"] {
+        assert!(
+            !execution.runner_request.system_prompt.contains(loader),
+            "{loader} should not be repeated in the native Codex system prompt"
+        );
+        assert!(
+            !execution
+                .runner_request
+                .allowed_tools
+                .as_ref()
+                .expect("native Codex MCP allowlist")
+                .iter()
+                .any(|tool| tool == loader),
+            "{loader} should be provided by Codex native skill discovery"
+        );
+    }
+    assert!(
+        execution
+            .runner_request
+            .system_prompt
+            .contains("【领域边界与投研约束】")
+    );
+    assert_eq!(
+        std::fs::canonicalize(native_skill_link).expect("native Codex skill link"),
+        std::fs::canonicalize(&skill_dir).expect("source skill dir")
+    );
+    let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
     let root = make_temp_dir("hone_channels_prompt_stage_skill_visibility");

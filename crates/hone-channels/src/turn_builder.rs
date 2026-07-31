@@ -53,6 +53,7 @@ impl<'a> PromptTurnBuilder<'a> {
         user_input: &str,
         prompt_time_beijing: DateTime<FixedOffset>,
         include_conversation_context: bool,
+        use_native_codex_turn_input: bool,
     ) -> PromptTurnInput {
         let mut prompt_options = self.prompt_options.clone();
         if self.allow_cron {
@@ -65,22 +66,26 @@ impl<'a> PromptTurnBuilder<'a> {
                     .push(crate::prompt::DEFAULT_WEB_CRON_DELIVERY_POLICY.to_string());
             }
         }
-        let stage_constraints =
-            hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
-        let skill_runtime = self.build_skill_runtime();
-        prompt_options.extra_sections.push(
-            "【SkillTool】\n\
-             - 本轮相关技能提示匹配任务时，先调用 skill_tool（MCP 名称可能是 hone/skill_tool）再继续。\n\
-             - 没有匹配项、任务中途转向或现有技能不足时，调用 discover_skills（可能是 hone/discover_skills）。\n\
-             - 不要声称已经加载技能；必须真实调用工具。附件类技能仅在当前消息确有对应附件时使用。"
-                .to_string(),
-        );
-        let related_skills = skill_runtime.search_for_stage(
-            user_input,
-            &extract_possible_file_paths(user_input),
-            5,
-            &stage_constraints,
-        );
+        let related_skills = if use_native_codex_turn_input {
+            Vec::new()
+        } else {
+            prompt_options.extra_sections.push(
+                "【SkillTool】\n\
+                 - 本轮相关技能提示匹配任务时，先调用 skill_tool（MCP 名称可能是 hone/skill_tool）再继续。\n\
+                 - 没有匹配项、任务中途转向或现有技能不足时，调用 discover_skills（可能是 hone/discover_skills）。\n\
+                 - 不要声称已经加载技能；必须真实调用工具。附件类技能仅在当前消息确有对应附件时使用。"
+                    .to_string(),
+            );
+            let stage_constraints =
+                hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
+            let skill_runtime = self.build_skill_runtime();
+            skill_runtime.search_for_stage(
+                user_input,
+                &extract_possible_file_paths(user_input),
+                5,
+                &stage_constraints,
+            )
+        };
         let mut bundle = build_prompt_bundle_at(
             &self.core.config,
             &self.core.session_storage,
@@ -121,7 +126,11 @@ impl<'a> PromptTurnBuilder<'a> {
 
         PromptTurnInput {
             system_prompt: bundle.system_prompt(),
-            runtime_input: compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra),
+            runtime_input: if use_native_codex_turn_input {
+                compose_native_codex_turn_input(prompt_time_beijing, user_input)
+            } else {
+                compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra)
+            },
             answer_time_beijing: bundle.answer_time_beijing,
         }
     }
@@ -233,6 +242,21 @@ pub(crate) fn compose_runtime_input(
     sections.join("\n\n")
 }
 
+/// A persistent native Codex thread already owns conversation history, tool
+/// lifecycle, and compaction. Hone therefore contributes only facts that are
+/// new for this turn: the current clock and the normalized user content
+/// (including any attachment/image material embedded by channel ingestion).
+pub(crate) fn compose_native_codex_turn_input(
+    prompt_time_beijing: DateTime<FixedOffset>,
+    user_input: &str,
+) -> String {
+    format!(
+        "【当前时间】\n{} (北京时间)\n\n【本轮用户输入】\n{}",
+        prompt_time_beijing.format("%Y-%m-%d %H:%M:%S"),
+        user_input.trim()
+    )
+}
+
 pub(crate) fn extract_possible_file_paths(input: &str) -> Vec<String> {
     input
         .split_whitespace()
@@ -289,5 +313,31 @@ mod tests {
         assert!(history_pos < current_pos);
         assert!(session_pos < current_pos);
         assert!(input.ends_with("AMD的电脑CPU是什么名字"));
+    }
+
+    #[test]
+    fn native_codex_turn_input_contains_only_current_time_and_user_content() {
+        let prompt_time =
+            DateTime::parse_from_rfc3339("2026-07-31T09:15:27+08:00").expect("valid Beijing time");
+        let user_input = "看一下这张图\n\n【图片文字提取】\nCRWV | 72.07";
+
+        let input = compose_native_codex_turn_input(prompt_time, user_input);
+
+        assert_eq!(
+            input,
+            "【当前时间】\n2026-07-31 09:15:27 (北京时间)\n\n\
+             【本轮用户输入】\n看一下这张图\n\n【图片文字提取】\nCRWV | 72.07"
+        );
+        for redundant in [
+            "【Session 上下文】",
+            "会话 ID：",
+            "【历史会话总结】",
+            "【本轮相关技能提示】",
+            "【本轮证券实体发现：主 Agent 工具循环】",
+            "【本轮最终回答契约：由主 Agent 一次完成】",
+            "attachments=",
+        ] {
+            assert!(!input.contains(redundant), "{redundant}: {input}");
+        }
     }
 }

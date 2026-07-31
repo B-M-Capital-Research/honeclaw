@@ -24,7 +24,15 @@ Use this skill when a chart will materially improve the answer. Do not render a 
 
 ### Invocation
 
-Call:
+On native Codex, resolve this skill's directory from the disclosed `SKILL.md`
+path and run the bundled script directly:
+
+```text
+python3 <skill-dir>/scripts/render_chart.py '<JSON chart spec>'
+```
+
+Parse the script's JSON stdout and use the returned `artifacts` path. On a
+legacy Hone runner without native skill execution, call:
 
 ```text
 skill_tool(

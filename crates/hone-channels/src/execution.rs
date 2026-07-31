@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,7 +11,10 @@ use crate::agent_session::GeminiStreamOptions;
 use crate::core::runtime_config_path;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
 use crate::runners::{AgentRunner, AgentRunnerRequest, TerminalStreamPolicy};
-use crate::sandbox::ensure_actor_sandbox;
+use crate::sandbox::{ensure_actor_sandbox, sync_native_codex_skill_links};
+
+const NATIVE_CODEX_SKILL_LOADING_TOOLS: [&str; 3] = ["discover_skills", "load_skill", "skill_tool"];
+const EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL: &str = "__hone_no_mcp_tools__";
 
 fn absolute_runtime_path(path: &str) -> String {
     let candidate = std::path::PathBuf::from(path);
@@ -99,6 +102,16 @@ impl ExecutionService {
             &request.channel_target,
             request.allow_cron,
         );
+        let use_native_codex_skills = request.mode == ExecutionMode::PersistentConversation
+            && self
+                .core
+                .effective_runner_uses_native_codex_turns(&request.actor);
+        if use_native_codex_skills {
+            request.allowed_tools = Some(native_codex_mcp_tools(
+                &tool_registry,
+                request.allowed_tools.as_deref(),
+            ));
+        }
         let use_strict_fallback = matches!(
             request.runner_selection,
             ExecutionRunnerSelection::Configured
@@ -132,10 +145,20 @@ impl ExecutionService {
             }
         }
         let runner_name = runner.name();
-        let working_directory = ensure_actor_sandbox(&request.actor)
-            .map_err(|err| format!("actor sandbox 初始化失败: {err}"))?
-            .to_string_lossy()
-            .to_string();
+        let working_directory_path = ensure_actor_sandbox(&request.actor)
+            .map_err(|err| format!("actor sandbox 初始化失败: {err}"))?;
+        if use_native_codex_skills {
+            let skills = self.core.enabled_skill_directories(&working_directory_path);
+            let linked = sync_native_codex_skill_links(&working_directory_path, &skills)
+                .map_err(|err| format!("Codex 原生技能目录同步失败: {err}"))?;
+            tracing::debug!(
+                channel = %request.actor.channel,
+                user_id = %request.actor.user_id,
+                linked,
+                "synced Hone skills into native Codex workspace"
+            );
+        }
+        let working_directory = working_directory_path.to_string_lossy().to_string();
         let actor_label = match request.mode {
             ExecutionMode::PersistentConversation => request.actor.user_id.clone(),
             ExecutionMode::TransientTask => request.actor.session_id(),
@@ -170,6 +193,30 @@ impl ExecutionService {
             },
         })
     }
+}
+
+fn native_codex_mcp_tools(
+    registry: &hone_tools::ToolRegistry,
+    requested: Option<&[String]>,
+) -> Vec<String> {
+    let requested = requested.map(|tools| tools.iter().map(String::as_str).collect::<HashSet<_>>());
+    let mut tools = registry
+        .list_tool_names()
+        .into_iter()
+        .filter(|name| !NATIVE_CODEX_SKILL_LOADING_TOOLS.contains(name))
+        .filter(|name| {
+            requested
+                .as_ref()
+                .map(|requested| requested.contains(name))
+                .unwrap_or(true)
+        })
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    tools.sort();
+    if tools.is_empty() {
+        tools.push(EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL.to_string());
+    }
+    tools
 }
 
 fn sanitize_function_calling_context(context: &mut AgentContext) -> usize {

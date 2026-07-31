@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
+
+## 2026-07-31
+
+### Codex ACP Static-System, Minimal-Turn, And Native-Skill Follow-up
+
+- Status: done
+- Date: 2026-07-31
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (system/reseed, minimal-turn, and native-skill subphases done; shared ACP runtime plan remains active)
+- Handoff: `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md` (2026-07-31 follow-up section)
+- Decision / ADR: `D-2026-07-30-01` updated with first-turn/post-compaction seed semantics; `D-2026-07-31-02` records native skill discovery
+- Related PRs / commits: this change set
+- Related runbooks / regressions: focused ACP/Codex/sandbox tests, `cargo check -p hone-channels --tests`, real CLI/ACP prompt inspection, Codex `skills/list`, and a real native skill activation probe
+- Current conclusion: one persistent Codex thread no longer receives Hone's complete static system prompt on every message. The first native prompt sends it once; a structured native `contextCompaction` event schedules exactly one successful reseed. Ordinary trusted Interactive resumes contain only current Beijing time and current normalized user/attachment content—no Hone session/history metadata, receive-routing metadata, related-skill hints, entity-loop instructions, answer contracts, or generic user-input wrapper. Enabled Hone skills are exposed as per-skill symlinks under the actor workspace's `.agents/skills`; Codex natively discovered all 16 without errors and read `Market Analysis` on demand without a Hone MCP skill-loading call.
+- Next entry point: use `codex_acp_should_seed_system_prompt` and `acp_needs_sp_reseed` in `crates/hone-channels/src/runners/codex_acp.rs`, structured compaction handling in `crates/hone-channels/src/runners/acp_common/ingest.rs`, minimal current-turn assembly in `crates/hone-channels/src/turn_builder.rs` / `agent_session/core.rs`, and native skill projection in `crates/hone-channels/src/execution.rs` / `sandbox.rs`.
 
 ## 2026-07-30
 

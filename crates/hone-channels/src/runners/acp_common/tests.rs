@@ -259,6 +259,47 @@ async fn handle_acp_session_update_marks_codex_compact_literal_chunk_without_dro
 }
 
 #[tokio::test]
+async fn handle_acp_session_update_marks_codex_context_compaction_metadata_as_internal() {
+    let mut state = AcpPromptState::default();
+    let (emitter, deltas) = collecting_emitter();
+    let params = json!({
+        "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "compact-1",
+            "title": "Context compacted",
+            "status": "completed",
+            "_meta": { "contextCompaction": true }
+        }
+    });
+
+    handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+
+    assert!(state.compact_detected);
+    assert!(state.pending_tool_calls.is_empty());
+    assert!(state.finished_tool_calls.is_empty());
+    assert!(state.context_messages.is_empty());
+    assert!(deltas.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn handle_acp_session_update_recognizes_legacy_italic_compaction_text() {
+    let mut state = AcpPromptState::default();
+    let (emitter, _) = collecting_emitter();
+    let params = json!({
+        "update": {
+            "sessionUpdate": "agent_message_chunk",
+            "content": {
+                "text": "*Context compacted to fit the model's context window.*\n\n"
+            }
+        }
+    });
+
+    handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+
+    assert!(state.compact_detected);
+}
+
+#[tokio::test]
 async fn handle_acp_session_update_drops_internal_prompt_echo_chunk() {
     let mut state = AcpPromptState::default();
     let (emitter, deltas) = collecting_emitter();

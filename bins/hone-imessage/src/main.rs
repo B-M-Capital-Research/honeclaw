@@ -163,7 +163,7 @@ fn imessage_admin_prompt(project_root: &str) -> String {
         \n   主要目录：src/bins（渠道入口）、crates/（核心库）、skills/（技能）、config.yaml（配置）\
         \n2. 修改完源代码后，可调用 restart_hone(confirm=\"yes\") 工具重启 Hone（将重新编译并启动）\
         \n3. 管理员操作须谨慎，修改源码后建议先确认变更内容再执行重启\
-        \n如需使用管理员技能，请先调用 skill_tool(skill_name=\"hone_admin\") 获取完整操作指引。"
+        \n如需管理员操作指引，请使用 Hone Administrator 技能；技能正文由当前 Agent 的技能机制按需加载。"
     )
 }
 

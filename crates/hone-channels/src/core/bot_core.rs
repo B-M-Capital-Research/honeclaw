@@ -13,7 +13,7 @@
 //! sibling module 通过 `pub(super)` 字段可见性访问内部状态。
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -89,7 +89,8 @@ impl HoneBotCore {
             SessionStorage::new_cloud(
                 &config.storage.sessions_dir,
                 pg,
-                keep_shadow.then(|| std::path::PathBuf::from(&config.storage.session_sqlite_db_path)),
+                keep_shadow
+                    .then(|| std::path::PathBuf::from(&config.storage.session_sqlite_db_path)),
                 keep_shadow,
             )
             .expect("failed to initialize cloud session storage")
@@ -501,6 +502,25 @@ impl HoneBotCore {
         self.configured_runtime_dir().join("skill_registry.json")
     }
 
+    pub(crate) fn enabled_skill_directories(&self, workspace: &Path) -> Vec<(String, PathBuf)> {
+        hone_tools::SkillRuntime::new(
+            self.configured_system_skills_dir(),
+            self.configured_custom_skills_dir(),
+            workspace.to_path_buf(),
+        )
+        .with_registry_path(self.configured_skill_registry_path())
+        .list_summaries()
+        .into_iter()
+        .filter_map(|skill| {
+            let skill_path = PathBuf::from(skill.detail_path);
+            skill_path
+                .parent()
+                .map(Path::to_path_buf)
+                .map(|skill_dir| (skill.id, skill_dir))
+        })
+        .collect()
+    }
+
     /// 创建调度器及其事件接收端。
     ///
     /// `channels`：本调度器负责的渠道列表，只触发 `job.channel` 在列表中的任务。
@@ -653,6 +673,15 @@ impl HoneBotCore {
     pub(crate) fn effective_runner_manages_own_context(&self, actor: &ActorIdentity) -> bool {
         !self.actor_uses_strict_runner_fallback(actor)
             && self.config.agent.runner_kind().manages_own_context()
+    }
+
+    /// A trusted native Codex ACP thread accepts one new user turn at a time
+    /// and owns its retained history, tool loop, and compaction. OpenCode ACP
+    /// also manages history, but does not share this Codex-specific prompt
+    /// lifecycle contract.
+    pub(crate) fn effective_runner_uses_native_codex_turns(&self, actor: &ActorIdentity) -> bool {
+        !self.actor_uses_strict_runner_fallback(actor)
+            && self.config.agent.runner_kind() == AgentRunnerKind::CodexAcp
     }
 
     pub(crate) fn create_strict_actor_runner(

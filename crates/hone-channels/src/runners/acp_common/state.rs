@@ -18,15 +18,19 @@ use crate::agent_session::AgentSessionError;
 pub(crate) const ACP_PREV_PROMPT_PEAK_KEY: &str = "acp_prev_prompt_peak_used";
 
 /// session_metadata 上记录的"下一轮需要重新塞 system_prompt"标志。
-/// 写入条件：本轮 ACP runner 报告了 compact 事件（codex 字面量 / opencode used drop）。
-/// 消费方：prompt 构建层下一轮检查到 true 时，把完整 system_prompt 重新拼入 user message。
+/// 写入条件：本轮 ACP runner 报告了 compact 事件（codex contextCompaction metadata /
+/// 字面量，或 opencode used drop）。
+/// 消费方：持久 Codex prompt 构建层下一轮检查到 true 时，把完整 system_prompt
+/// 重新拼入 user message；成功消费后写回 false。
 pub(crate) const ACP_NEEDS_SP_RESEED_KEY: &str = "acp_needs_sp_reseed";
 
-/// codex-acp 在内置 compact 触发后推回的字面量 chunk（实测：
-/// `agent_message_chunk text="Context compacted\n"`，单独一条）。
+/// codex-acp 在 legacy `thread/compacted` 后可能推回的字面量 chunk。
 /// 同时也匹配 honeclaw 老 SessionCompactor 历史写入的 `Conversation compacted` 字符串。
 pub(super) static RE_ACP_COMPACT_STATUS_TEXT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^\s*(context|conversation)\s+compacted\.?\s*$").expect("valid regex")
+    Regex::new(
+        r"(?im)^\s*\*{0,2}(context|conversation)\s+compacted(?:\s+to\s+fit\s+the\s+model['’]s\s+context\s+window)?\.?\*{0,2}\s*$",
+    )
+    .expect("valid regex")
 });
 
 /// opencode 在内置 compact 触发后会把"重启会话"的 markdown summary 拼到本轮 reply 后面，
@@ -141,7 +145,8 @@ pub(crate) struct AcpPromptState {
     /// 本轮 prompt 流中观测到的 usage.used 峰值，结束后 runner 写回 metadata。
     pub(crate) current_prompt_peak_used: u64,
     /// 本轮 prompt 流中是否检测到 ACP runner 触发了内置 compact。
-    /// 触发源：codex 推 `Context compacted` 字面量 / opencode used 骤降 (>50%)。
+    /// 触发源：codex 推 `_meta.contextCompaction=true` / compact 字面量，
+    /// 或 opencode used 骤降 (>50%)。
     /// 检测后：runner 应在 metadata 写 `ACP_NEEDS_SP_RESEED_KEY=true`，下一轮重塞 SP。
     pub(crate) compact_detected: bool,
     /// 流中是否已经收到第一条 usage_update（用于"首次观测时与 prev_peak 比较"）。

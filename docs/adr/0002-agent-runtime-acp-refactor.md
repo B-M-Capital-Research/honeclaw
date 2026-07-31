@@ -1,7 +1,7 @@
 # ADR 0002: ACP-Aligned Agent Runtime Refactor
 
 Date: 2026-03-17
-Updated: 2026-04-09
+Updated: 2026-07-31
 Status: Accepted
 Owner: shared
 Related docs: `docs/decisions.md`, `docs/current-plans/acp-runtime-refactor.md`, `docs/archive/index.md`
@@ -23,28 +23,27 @@ Superseded by: N/A
 - Collapse `AgentSession` into a single `run()` entrypoint; channels, schedulers, and the Web UI all call that entrypoint and no longer branch execution paths by provider at the edge.
 - Rename executor configuration from `agent.provider` to `agent.runner` and treat the runner as a first-class runtime concept.
 - Converge the internal runtime on ACP semantics with the goal that every runner eventually emits the same session event classes; the Web SSE layer should upgrade to the new runtime event protocol directly.
-- Rework prompt assembly into three layers:
-  - static system prompt
-  - session-fixed context
-  - dynamic session context
-- Freeze Beijing time once when the session is created and store it in session runtime metadata; later turns reuse that frozen time instead of regenerating the current time.
-- Upgrade session storage to versioned JSON v2 and explicitly store:
-  - `version`
-  - `runtime.prompt.frozen_time_beijing`
-  - `summary { content, updated_at }`
-- Stop encoding the summary as a fake `system` message; the compressed summary belongs in the explicit summary field.
+- Rework prompt assembly around explicit ownership boundaries:
+  - static Hone system instructions
+  - Hone-managed history/session context for runners that do not own a native thread
+  - current-turn dynamic facts
+- Take one Beijing clock reading per turn and reuse it across automatic attempts. For a trusted persistent Codex ACP Interactive turn, the current-turn payload is only that time plus normalized current user/attachment content; the native thread owns retained history, tool/MCP lifecycle, and compaction.
+- Send the complete static Hone system prompt at the native Codex seed boundary (first prompt and first successful prompt after native compaction), not on ordinary `session/resume` turns.
+- Before starting a trusted persistent Codex ACP turn, expose each enabled Hone system/custom skill as an individual symlink under the actor workspace's `.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone MCP remains for live data/action tools, not Codex skill loading.
+- Session storage now writes the normalized version-4 user/assistant `content[] + status` model. Codex can use the local transcript for one-time native-session initialization/migration, while ordinary resumes do not replay it.
 - Choose `opencode acp` over stdio / JSON-RPC as the production integration path for `opencode`, instead of CLI text parsing or a `serve` compatibility layer.
 - This refactor is an intentional breaking change and does not preserve the old config keys, old SSE event semantics, or old session write format as a long-term compatibility surface.
 
 ## Consequences
 
 - Existing callers, frontend streaming consumers, config files, and session file formats all need to migrate together
-- Prompt-prefix cache hits should become more stable, but large static instructions must stay at the front and mutable content such as summaries must not be pushed back into the static layer
+- Prompt-prefix cache hits should become more stable, but large static instructions must stay at the native seed boundary and mutable content such as summaries must not be pushed back into that static layer
+- Persistent Codex Interactive input must not duplicate Harness-owned history/tool/compaction semantics or stable answer/tool-loop contracts; OpenCode and Hone-managed execution paths retain their separately validated context behavior
+- Native Codex skill projection must preserve actor-owned `.agents/skills` entries, remove only Hone-managed stale `hone__*` symlinks, and follow the shared skill registry's enabled state
 - `opencode_acp` must fail fast before the Rust runner is wired up; it must not silently fall back to another runner, or the incomplete runtime integration will be hidden
 - Remaining follow-up work:
-  - Real stdio / JSON-RPC implementation for `OpencodeAcpRunner`
-  - Runner contract tests
-  - An explicit session v1 to v2 migration script and verification
+  - Continue runner contract coverage and end-to-end ACP behavior alignment
+  - Revalidate native resume/compaction event shapes whenever the Codex adapter floor changes
 
 ## Verification / Adoption
 
