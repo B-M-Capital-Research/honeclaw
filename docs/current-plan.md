@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-31
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public 用户管理员白名单生产读取恢复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-admin-whitelist-production-followup.md`
+  - 摘要：生产管理页列表读取曾复用完整认证记录反序列化，并与今日新增计数强耦合；任一历史记录或计数查询异常都会令整个接口返回 500。当前改为数据库最小字段投影，计数异常时保留查看并保守禁用新增，同时补齐管理员行保护和服务端可观测性
 
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`

@@ -8,7 +8,7 @@ use serde_json::json;
 
 use hone_memory::{
     WEB_ADMIN_DAILY_INVITE_LIMIT, WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome,
-    WebInviteUser,
+    WebAdminInviteSummary, WebInviteUser,
 };
 
 use crate::state::AppState;
@@ -31,33 +31,61 @@ pub(crate) async fn handle_list_invites(
     let admin_user_id = admin.user_id.clone();
     let state_for_worker = state.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let invites = state_for_worker.web_auth.list_invite_users()?;
+        let invites = state_for_worker.web_auth.list_web_admin_invite_summaries();
         let created_today = state_for_worker
             .web_auth
-            .web_admin_create_count_today(&admin_user_id)?;
-        Ok::<_, hone_core::HoneError>((invites, created_today))
+            .web_admin_create_count_today(&admin_user_id);
+        (invites, created_today)
     })
     .await;
     let (invites, created_today) = match result {
-        Ok(Ok(result)) => result,
-        Ok(Err(error)) => {
+        Ok((Ok(invites), created_today)) => {
+            let created_today = match created_today {
+                Ok(created_today) => created_today,
+                Err(error) => {
+                    tracing::warn!(
+                        admin_user_id = %admin.user_id,
+                        error = %error,
+                        "public admin daily whitelist count failed; disabling creation conservatively"
+                    );
+                    WEB_ADMIN_DAILY_INVITE_LIMIT
+                }
+            };
+            (invites, created_today)
+        }
+        Ok((Err(error), _)) => {
+            tracing::error!(
+                admin_user_id = %admin.user_id,
+                error = %error,
+                "public admin whitelist list failed"
+            );
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("读取会员白名单失败: {error}"),
+                "会员白名单暂时无法读取，请稍后重试",
             );
         }
         Err(error) => {
+            tracing::error!(
+                admin_user_id = %admin.user_id,
+                error = %error,
+                "public admin whitelist list task failed"
+            );
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("读取会员白名单任务失败: {error}"),
+                "会员白名单暂时无法读取，请稍后重试",
             );
         }
     };
+    tracing::info!(
+        admin_user_id = %admin.user_id,
+        invite_count = invites.len(),
+        created_today,
+        "public admin whitelist list loaded"
+    );
     let response = PublicAdminInviteList {
         invites: invites
             .into_iter()
-            .filter(|invite| !invite.phone_number.trim().is_empty())
-            .map(|invite| to_public_admin_invite(&admin.user_id, invite))
+            .map(|invite| to_public_admin_summary(&admin.user_id, invite))
             .collect(),
         daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
         created_today,
@@ -91,7 +119,7 @@ pub(crate) async fn handle_create_invite(
     match result {
         Ok(Ok(WebAdminInviteCreateOutcome::Created { invite, used_today })) => {
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_invite(&admin.user_id, invite),
+                invite: to_public_admin_mutation_invite(&admin.user_id, invite),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today: used_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(used_today),
@@ -154,7 +182,7 @@ pub(crate) async fn handle_disable_invite(
                 .web_admin_create_count_today(&admin.user_id)
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_invite(&admin.user_id, result.invite),
+                invite: to_public_admin_mutation_invite(&admin.user_id, result.invite),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(created_today),
@@ -169,7 +197,7 @@ pub(crate) async fn handle_disable_invite(
                 .web_admin_create_count_today(&admin.user_id)
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_invite(&admin.user_id, invite),
+                invite: to_public_admin_mutation_invite(&admin.user_id, invite),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(created_today),
@@ -231,7 +259,25 @@ fn require_public_admin_mutation(
     Ok(user)
 }
 
-fn to_public_admin_invite(admin_user_id: &str, invite: WebInviteUser) -> PublicAdminInviteInfo {
+fn to_public_admin_summary(
+    admin_user_id: &str,
+    invite: WebAdminInviteSummary,
+) -> PublicAdminInviteInfo {
+    let enabled = invite.revoked_at.is_none();
+    PublicAdminInviteInfo {
+        can_disable: enabled && invite.user_id != admin_user_id && !invite.is_admin,
+        user_id: invite.user_id,
+        phone_number: invite.phone_number,
+        created_at: invite.created_at,
+        last_login_at: invite.last_login_at,
+        enabled,
+    }
+}
+
+fn to_public_admin_mutation_invite(
+    admin_user_id: &str,
+    invite: WebInviteUser,
+) -> PublicAdminInviteInfo {
     let enabled = invite.revoked_at.is_none();
     PublicAdminInviteInfo {
         can_disable: enabled && invite.user_id != admin_user_id,
@@ -245,9 +291,12 @@ fn to_public_admin_invite(admin_user_id: &str, invite: WebInviteUser) -> PublicA
 
 #[cfg(test)]
 mod tests {
-    use super::{ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, to_public_admin_invite};
+    use super::{
+        ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, to_public_admin_mutation_invite,
+        to_public_admin_summary,
+    };
     use axum::http::{HeaderMap, HeaderValue};
-    use hone_memory::WebInviteUser;
+    use hone_memory::{WebAdminInviteSummary, WebInviteUser};
 
     fn invite(user_id: &str, revoked: bool) -> WebInviteUser {
         WebInviteUser {
@@ -268,10 +317,24 @@ mod tests {
         }
     }
 
+    fn summary(user_id: &str, revoked: bool, is_admin: bool) -> WebAdminInviteSummary {
+        WebAdminInviteSummary {
+            user_id: user_id.to_string(),
+            phone_number: "13800138000".to_string(),
+            created_at: "2026-07-31T00:00:00+08:00".to_string(),
+            last_login_at: None,
+            revoked_at: revoked.then(|| "2026-07-31T01:00:00+08:00".to_string()),
+            is_admin,
+        }
+    }
+
     #[test]
     fn public_projection_never_exposes_invite_or_api_credentials() {
-        let value = serde_json::to_value(to_public_admin_invite("admin", invite("member", false)))
-            .expect("serialize");
+        let value = serde_json::to_value(to_public_admin_mutation_invite(
+            "admin",
+            invite("member", false),
+        ))
+        .expect("serialize");
         assert!(value.get("invite_code").is_none());
         assert!(value.get("api_key").is_none());
         assert!(value.get("password_hash").is_none());
@@ -280,8 +343,15 @@ mod tests {
 
     #[test]
     fn public_projection_protects_self_and_disabled_rows() {
-        assert!(!to_public_admin_invite("admin", invite("admin", false)).can_disable);
-        assert!(!to_public_admin_invite("admin", invite("member", true)).can_disable);
+        assert!(!to_public_admin_mutation_invite("admin", invite("admin", false)).can_disable);
+        assert!(!to_public_admin_mutation_invite("admin", invite("member", true)).can_disable);
+    }
+
+    #[test]
+    fn list_projection_protects_all_admins() {
+        assert!(!to_public_admin_summary("admin", summary("admin", false, true)).can_disable);
+        assert!(!to_public_admin_summary("admin", summary("other-admin", false, true)).can_disable);
+        assert!(to_public_admin_summary("admin", summary("member", false, false)).can_disable);
     }
 
     #[test]

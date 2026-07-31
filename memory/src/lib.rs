@@ -54,6 +54,6 @@ pub use web_auth::{
     EmailVerificationResult, REGISTRATION_POLICY_CN_DOMESTIC,
     REGISTRATION_POLICY_WHOP_INTERNATIONAL, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT,
     WEB_ADMIN_DAILY_INVITE_LIMIT, WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome,
-    WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult, WebUserExternalProfile,
-    WhopMembershipEvent, WhopMembershipRecord, WhopMembershipUpsertOutcome,
+    WebAdminInviteSummary, WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult,
+    WebUserExternalProfile, WhopMembershipEvent, WhopMembershipRecord, WhopMembershipUpsertOutcome,
 };

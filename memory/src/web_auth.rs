@@ -36,6 +36,16 @@ pub struct WebInviteUser {
     pub api_key_plaintext: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebAdminInviteSummary {
+    pub user_id: String,
+    pub phone_number: String,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+    pub revoked_at: Option<String>,
+    pub is_admin: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WhopMembershipRecord {
     pub membership_id: String,
@@ -1369,6 +1379,51 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             out.push(row.map_err(sql_err)?);
         }
         Ok(out)
+    }
+
+    pub fn list_web_admin_invite_summaries(&self) -> HoneResult<Vec<WebAdminInviteSummary>> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let records =
+                run_cloud_web_auth(
+                    async move { postgres.list_web_admin_invite_summaries().await },
+                )?;
+            return Ok(records
+                .into_iter()
+                .map(|record| WebAdminInviteSummary {
+                    user_id: record.user_id,
+                    phone_number: record.phone_number,
+                    created_at: record.created_at,
+                    last_login_at: record.last_login_at,
+                    revoked_at: record.revoked_at,
+                    is_admin: record.is_admin,
+                })
+                .collect());
+        }
+        let conn = self.sqlite_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "
+                SELECT user_id, phone_number, created_at, last_login_at, revoked_at, is_admin
+                FROM web_invite_users
+                WHERE phone_number <> ''
+                ORDER BY created_at DESC, user_id
+                ",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(WebAdminInviteSummary {
+                    user_id: row.get(0)?,
+                    phone_number: row.get(1)?,
+                    created_at: row.get(2)?,
+                    last_login_at: row.get(3)?,
+                    revoked_at: row.get(4)?,
+                    is_admin: row.get(5)?,
+                })
+            })
+            .map_err(sql_err)?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(sql_err)
     }
 
     pub fn find_invite_user_by_code(&self, invite_code: &str) -> HoneResult<Option<WebInviteUser>> {
@@ -2879,6 +2934,48 @@ mod tests {
             Some(user.user_id.as_str())
         );
         assert!(!storage.is_web_admin(&user.user_id).expect("role"));
+    }
+
+    #[test]
+    fn web_admin_summary_list_uses_minimal_fields_and_excludes_non_phone_accounts() {
+        let storage = test_storage();
+        let admin = storage.create_invite_user("13871396421").expect("admin");
+        let member = storage.create_invite_user("13900000000").expect("member");
+        let international = storage
+            .create_invite_user("13700000000")
+            .expect("international");
+        storage
+            .set_web_admin_by_phone("13871396421", true)
+            .expect("grant admin");
+        storage
+            .set_invite_revoked(&member.user_id, true)
+            .expect("disable member");
+        storage
+            .sqlite_conn()
+            .expect("sqlite")
+            .execute(
+                "UPDATE web_invite_users SET phone_number = '' WHERE user_id = ?1",
+                params![international.user_id],
+            )
+            .expect("clear international placeholder phone");
+
+        let summaries = storage
+            .list_web_admin_invite_summaries()
+            .expect("list summaries");
+
+        assert_eq!(summaries.len(), 2);
+        let admin_summary = summaries
+            .iter()
+            .find(|summary| summary.user_id == admin.user_id)
+            .expect("admin summary");
+        assert!(admin_summary.is_admin);
+        assert_eq!(admin_summary.phone_number, "13871396421");
+        let member_summary = summaries
+            .iter()
+            .find(|summary| summary.user_id == member.user_id)
+            .expect("member summary");
+        assert!(!member_summary.is_admin);
+        assert!(member_summary.revoked_at.is_some());
     }
 
     #[test]

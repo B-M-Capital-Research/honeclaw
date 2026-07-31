@@ -51,6 +51,28 @@ SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM c
 LIMIT 1
 "#;
 
+const LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL: &str = r#"
+SELECT
+  user_id,
+  phone_number,
+  COALESCE(NULLIF(record->>'created_at', ''), updated_at::text) AS created_at,
+  NULLIF(record->>'last_login_at', '') AS last_login_at,
+  NULLIF(record->>'revoked_at', '') AS revoked_at,
+  is_admin
+FROM cloud_web_invite_users
+WHERE phone_number <> ''
+ORDER BY COALESCE(NULLIF(record->>'created_at', ''), updated_at::text) DESC,
+         user_id
+"#;
+
+const WEB_ADMIN_CREATE_COUNT_SQL: &str = r#"
+SELECT count(*)::bigint
+FROM cloud_web_admin_actions
+WHERE admin_user_id = $1
+  AND beijing_date = $2::text::date
+  AND action = 'create'
+"#;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeRole {
@@ -763,6 +785,16 @@ pub struct CloudWebAuthImportReport {
     pub skipped_users: usize,
     pub changed_sessions: usize,
     pub skipped_sessions: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudWebAdminInviteSummary {
+    pub user_id: String,
+    pub phone_number: String,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+    pub revoked_at: Option<String>,
+    pub is_admin: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2463,6 +2495,29 @@ DO UPDATE SET
         Ok(row.is_some_and(|row| row.get::<_, bool>(0)))
     }
 
+    pub async fn list_web_admin_invite_summaries(
+        &self,
+    ) -> HoneResult<Vec<CloudWebAdminInviteSummary>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL, &[])
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 白名单摘要读取失败: {err}"))
+            })?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudWebAdminInviteSummary {
+                user_id: row.get(0),
+                phone_number: row.get(1),
+                created_at: row.get(2),
+                last_login_at: row.get(3),
+                revoked_at: row.get(4),
+                is_admin: row.get(5),
+            })
+            .collect())
+    }
+
     pub async fn set_web_invite_user_admin_by_phone(
         &self,
         phone_number: &str,
@@ -2530,16 +2585,7 @@ WHERE user_id = $1
     ) -> HoneResult<u32> {
         let client = self.connect_client().await?;
         let row = client
-            .query_one(
-                r#"
-SELECT count(*)::bigint
-FROM cloud_web_admin_actions
-WHERE admin_user_id = $1
-  AND beijing_date = $2::date
-  AND action = 'create'
-"#,
-                &[&admin_user_id, &beijing_date],
-            )
+            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &beijing_date])
             .await
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
@@ -2613,16 +2659,7 @@ FOR UPDATE
         }
 
         let used_today = transaction
-            .query_one(
-                r#"
-SELECT count(*)::bigint
-FROM cloud_web_admin_actions
-WHERE admin_user_id = $1
-  AND beijing_date = $2::date
-  AND action = 'create'
-"#,
-                &[&admin_user_id, &beijing_date],
-            )
+            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &beijing_date])
             .await
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
@@ -2654,7 +2691,7 @@ VALUES ($1, $2, FALSE, $3)
 INSERT INTO cloud_web_admin_actions(
   admin_user_id, target_user_id, action, beijing_date
 )
-VALUES ($1, $2, 'create', $3::date)
+VALUES ($1, $2, 'create', $3::text::date)
 "#,
                 &[&admin_user_id, &target_user_id, &beijing_date],
             )
@@ -2777,7 +2814,7 @@ RETURNING record
 INSERT INTO cloud_web_admin_actions(
   admin_user_id, target_user_id, action, beijing_date
 )
-VALUES ($1, $2, 'disable', $3::date)
+VALUES ($1, $2, 'disable', $3::text::date)
 "#,
                 &[&admin_user_id, &target_user_id, &beijing_date],
             )
@@ -5328,6 +5365,29 @@ mod tests {
         let source = include_str!("cloud_runtime.rs");
         assert!(source.contains("SET record = record - 'api_key_plaintext'"));
         assert!(source.contains("20260727_remove_web_invite_plaintext_api_keys"));
+    }
+
+    #[test]
+    fn web_admin_list_query_is_a_minimal_legacy_tolerant_projection() {
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("user_id"));
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("phone_number"));
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("is_admin"));
+        assert!(
+            LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL
+                .contains("COALESCE(NULLIF(record->>'created_at', ''), updated_at::text)")
+        );
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("WHERE phone_number <> ''"));
+        assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("SELECT record"));
+        assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("invite_code"));
+        assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("api_key"));
+    }
+
+    #[test]
+    fn web_admin_date_parameters_are_bound_as_text_before_date_casts() {
+        assert!(WEB_ADMIN_CREATE_COUNT_SQL.contains("$2::text::date"));
+        let source = include_str!("cloud_runtime.rs");
+        assert!(source.contains("'create', $3::text::date"));
+        assert!(source.contains("'disable', $3::text::date"));
     }
 
     #[test]
