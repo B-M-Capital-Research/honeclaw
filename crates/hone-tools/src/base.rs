@@ -44,11 +44,9 @@ pub trait Tool: Send + Sync {
     /// 工具参数列表
     fn parameters(&self) -> Vec<ToolParameter>;
 
-    /// 执行工具
-    async fn execute(&self, args: Value) -> hone_core::HoneResult<Value>;
-
-    /// 转换为 OpenAI Function Calling 格式
-    fn to_openai_schema(&self) -> Value {
+    /// 完整 JSON Schema 输入契约。简单工具默认由 [`Tool::parameters`] 生成；
+    /// 需要联合类型或字段间条件的工具可以覆写，避免把真实可接受值错误压成单一类型。
+    fn input_schema(&self) -> Value {
         let params = self.parameters();
         let mut properties = serde_json::Map::new();
         let mut required = Vec::new();
@@ -67,7 +65,7 @@ pub trait Tool: Send + Sync {
                     Value::Array(
                         enum_values
                             .iter()
-                            .map(|v| Value::String(v.clone()))
+                            .map(|value| Value::String(value.clone()))
                             .collect(),
                     ),
                 );
@@ -85,15 +83,23 @@ pub trait Tool: Send + Sync {
         }
 
         serde_json::json!({
+            "type": "object",
+            "properties": properties,
+            "required": required
+        })
+    }
+
+    /// 执行工具
+    async fn execute(&self, args: Value) -> hone_core::HoneResult<Value>;
+
+    /// 转换为 OpenAI Function Calling 格式
+    fn to_openai_schema(&self) -> Value {
+        serde_json::json!({
             "type": "function",
             "function": {
                 "name": self.name(),
                 "description": self.description(),
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required
-                }
+                "parameters": self.input_schema()
             }
         })
     }

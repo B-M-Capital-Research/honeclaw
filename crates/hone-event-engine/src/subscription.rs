@@ -337,12 +337,12 @@ mod tests {
         ActorIdentity::new(channel, user, None::<&str>).unwrap()
     }
 
-    fn ev(id: &str, sym: &str, sev: Severity, kind: EventKind) -> MarketEvent {
+    fn test_event(id: &str, symbol: &str, severity: Severity, kind: EventKind) -> MarketEvent {
         MarketEvent {
             id: id.into(),
             kind,
-            severity: sev,
-            symbols: vec![sym.into()],
+            severity,
+            symbols: vec![symbol.into()],
             occurred_at: Utc::now(),
             title: "t".into(),
             summary: String::new(),
@@ -355,13 +355,13 @@ mod tests {
     #[test]
     fn portfolio_sub_matches_case_insensitive() {
         let sub = PortfolioSubscription::new(actor("imessage", "u1"), vec!["aapl".into()]);
-        assert!(sub.matches(&ev(
+        assert!(sub.matches(&test_event(
             "e1",
             "AAPL",
             Severity::Medium,
             EventKind::EarningsUpcoming
         )));
-        assert!(!sub.matches(&ev(
+        assert!(!sub.matches(&test_event(
             "e2",
             "TSLA",
             Severity::Medium,
@@ -394,7 +394,7 @@ mod tests {
         }
         reg.register(Box::new(Upgrader(actor("imessage", "u1"))));
 
-        let hits = reg.resolve(&ev(
+        let hits = reg.resolve(&test_event(
             "e1",
             "AAPL",
             Severity::Medium,
@@ -408,8 +408,13 @@ mod tests {
     fn global_sub_kind_filter() {
         let sub = GlobalSubscription::new("g1", vec![actor("imessage", "u1")])
             .with_kinds(["macro_event".to_string()]);
-        assert!(sub.matches(&ev("e", "", Severity::Low, EventKind::MacroEvent)));
-        assert!(!sub.matches(&ev("e", "AAPL", Severity::Low, EventKind::EarningsUpcoming)));
+        assert!(sub.matches(&test_event("e", "", Severity::Low, EventKind::MacroEvent)));
+        assert!(!sub.matches(&test_event(
+            "e",
+            "AAPL",
+            Severity::Low,
+            EventKind::EarningsUpcoming
+        )));
     }
 
     #[test]
@@ -421,9 +426,9 @@ mod tests {
         storage.upsert_watch(&a, "AAPL", "stock").unwrap();
 
         let reg = registry_from_portfolios(&storage);
-        let mut macro_ev = ev("macro", "", Severity::High, EventKind::MacroEvent);
-        macro_ev.symbols.clear();
-        let hits = reg.resolve(&macro_ev);
+        let mut macro_event = test_event("macro", "", Severity::High, EventKind::MacroEvent);
+        macro_event.symbols.clear();
+        let hits = reg.resolve(&macro_event);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0.user_id, "u_macro");
     }
@@ -444,7 +449,7 @@ mod tests {
             actor("feishu", "u2"),
             vec!["AAPL".into()],
         )));
-        let hits = reg.resolve(&ev(
+        let hits = reg.resolve(&test_event(
             "e1",
             "AAPL",
             Severity::High,
@@ -527,7 +532,7 @@ mod tests {
             actor("imessage", "u1"),
             vec!["AAPL".into()],
         )));
-        let hits = reg.resolve(&ev(
+        let hits = reg.resolve(&test_event(
             "e",
             "NVDA",
             Severity::Medium,
@@ -602,7 +607,7 @@ mod tests {
         let n = shared.refresh().unwrap();
         assert_eq!(n, 2);
         assert_eq!(shared.load().watch_pool(), vec!["AAPL"]);
-        let hits = shared.load().resolve(&ev(
+        let hits = shared.load().resolve(&test_event(
             "e1",
             "AAPL",
             Severity::High,
@@ -689,7 +694,7 @@ mod tests {
         assert_eq!(reg.len(), 2, "仅关注的 actor 也应注册订阅");
         assert_eq!(reg.watch_pool(), vec!["NVDA"]);
 
-        let hits = reg.resolve(&ev(
+        let hits = reg.resolve(&test_event(
             "e-watchlist",
             "NVDA",
             Severity::High,

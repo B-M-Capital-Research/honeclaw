@@ -360,7 +360,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
 
-    fn sample_event() -> MarketEvent {
+    fn sample_aaoi_earnings_event() -> MarketEvent {
         MarketEvent {
             id: "earnings_surprise:AAOI:2026-05-08".into(),
             kind: crate::event::EventKind::EarningsReleased,
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn applies_digest_review_by_demoting_eps_high() {
-        let mut event = sample_event();
+        let mut event = sample_aaoi_earnings_event();
         let review = EarningsQualityReview {
             conclusion: "mixed_positive".into(),
             route: "digest".into(),
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn promotes_high_confidence_immediate_review() {
-        let mut event = sample_event();
+        let mut event = sample_aaoi_earnings_event();
         event.severity = Severity::Medium;
         let review = EarningsQualityReview {
             conclusion: "positive".into(),
@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn low_confidence_review_is_recorded_but_not_applied() {
-        let mut event = sample_event();
+        let mut event = sample_aaoi_earnings_event();
         let original_title = event.title.clone();
         let review = EarningsQualityReview {
             conclusion: "unclear".into(),

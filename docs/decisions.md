@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -734,3 +734,13 @@ Last updated: 2026-07-30
 - Failure and migration boundary: Pre-marker `codex_acp_session_id` values are treated as legacy one-turn rollouts and are not resumed. If a marked persistent session cannot be resumed, the turn fails explicitly instead of silently creating another native thread. Operators must repair/reset that mapping deliberately.
 - Configuration boundary: Model and reasoning effort remain Codex process `-c` settings established before ACP session creation or resume. No per-session `session/set_model` call is required.
 - Verification: A real two-turn Discord-path probe kept Hone session `Actor_discord__direct__acp_5fpersistent_5fdiscord_5f20260730` and native Codex ID `019fb3c2-f2f7-7140-8140-7520409d79be` across both turns. ACP evidence contained one `session/new`, one `session/resume`, and two `session/prompt` calls; neither prompt re-injected restored transcript. The single native rollout file contained two `user_message`, two `agent_message`, and two task completions, and turn two returned the exact first-turn sentinel `ONE-CODEX-SESSION-20260730`. Codex Desktop's own task index listed that same ID as one local task.
+
+## D-2026-07-31-01 Keep Conversational Notification Controls Deterministic And Domain-Owned
+
+- Status: Accepted and locally verified.
+- User-facing decision: A user may ask the Agent to adjust actor-scoped notification times and numeric thresholds: IANA timezone, named digest slots and their macro floor, quiet hours and exemptions, generic/up/down price thresholds, and the large-position weight boundary. Each nullable override can be restored independently to the system default. Prompt text, model selection, classifier policy, and investment-mainline text remain outside this ordinary conversational tool.
+- Domain decision: `hone-event-engine::prefs` owns a typed `NotificationDeliveryPatch` with `Keep` / `Inherit` / `Set` states and one whole-preference validator. Patches apply to a clone and replace the live preference only after all ranges, time formats, slot identities, quiet-hour overlaps, and kind tags pass. Agent and HTTP paths consume this same contract instead of duplicating validation branches.
+- Compatibility: Legacy `set_digest_slots` calls with an array of `HH:MM` strings still work. Structured calls preserve stable `id`, user-visible `label`, and optional `floor_macro`. Digest `null`, `[]`, and a non-empty list retain distinct inherit, disable, and custom semantics.
+- Tool contract: The generic Tool trait supports a complete overridable input schema. `notification_prefs` publishes the actual string/number/boolean/array/object/null union accepted by its action/value protocol, so strict Agent runtimes can call structured settings without relying on schema violations. Single-field actions remain available, while `update_delivery_controls` submits a multi-field time/numeric transition as one atomic patch so old quiet/slot values cannot deadlock an otherwise valid final state.
+- API and presentation: The existing actor-scoped REST full-write endpoint remains compatible but delegates validation to the domain layer. Notification overview output includes generic, directional, and large-position thresholds; the frontend API model carries those values even though this change does not add prompt or model controls.
+- Verification: Full `hone-core` and `hone-event-engine` library suites, full `hone-tools` library tests, focused notification-prefs Web API tests, Web typecheck, and all 309 Web tests pass. The full Web API suite has one unrelated pre-existing attachment-prompt assertion failure in `public_chat_user_input_uses_shared_attachment_context`; the notification preference tests pass.

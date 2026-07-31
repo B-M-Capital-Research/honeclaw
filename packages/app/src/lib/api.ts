@@ -1433,6 +1433,12 @@ export type NotificationPrefs = {
   digest_slots: DigestSlot[] | null;
   /** 价格异动即时推阈值(百分点);null = 沿用全局 thresholds.price_alert_high_pct */
   price_high_pct_override: number | null;
+  /** 上涨方向价格异动阈值;null = 回落到通用 actor override / 全局阈值 */
+  price_high_pct_up_override: number | null;
+  /** 下跌方向价格异动阈值;null = 回落到通用 actor override / 全局阈值 */
+  price_high_pct_down_override: number | null;
+  /** 被视为大仓位的持仓权重百分比;null = 沿用全局 router 配置 */
+  large_position_weight_pct: number | null;
   /** 强制升 High 即时推的 kind tag 列表;null/[] = 不强升 */
   immediate_kinds: string[] | null;
   /** 勿扰时段,null = 不启用 */

@@ -10,9 +10,9 @@
 //! 同一份后端逻辑给 NL `notification_prefs.get_overview` 工具和 admin 后台
 //! `/api/admin/schedule` 共用,确保用户从 chat 看到的表跟 admin 后台一致。
 
-use chrono::{DateTime, NaiveTime, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
-use hone_core::quiet::QuietHours;
+use hone_core::quiet::{QuietHours, local_time_in_quiet_window};
 use hone_event_engine::Severity;
 use hone_event_engine::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 use hone_event_engine::renderer::RenderFormat;
@@ -75,6 +75,9 @@ pub struct ImmediateConfig {
     pub min_severity: String,
     pub portfolio_only: bool,
     pub price_high_pct: Option<f64>,
+    pub price_high_pct_up: Option<f64>,
+    pub price_high_pct_down: Option<f64>,
+    pub large_position_weight_pct: Option<f64>,
     pub allow_kinds: Option<Vec<String>>,
     pub blocked_kinds: Vec<String>,
     pub immediate_kinds: Option<Vec<String>>,
@@ -222,6 +225,9 @@ fn immediate_config(prefs: &NotificationPrefs) -> ImmediateConfig {
         min_severity: severity_str(&prefs.min_severity),
         portfolio_only: prefs.portfolio_only,
         price_high_pct: prefs.price_high_pct_override,
+        price_high_pct_up: prefs.price_high_pct_up_override,
+        price_high_pct_down: prefs.price_high_pct_down_override,
+        large_position_weight_pct: prefs.large_position_weight_pct,
         allow_kinds: prefs.allow_kinds.clone(),
         blocked_kinds: prefs.blocked_kinds.clone(),
         immediate_kinds: prefs.immediate_kinds.clone(),
@@ -444,7 +450,19 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
         let _ = writeln!(output, "• 只推命中持仓的事件");
     }
     if let Some(price_high_pct) = overview.immediate.price_high_pct {
-        let _ = writeln!(output, "• 价格异动阈值：{price_high_pct}%");
+        let _ = writeln!(output, "• 通用价格异动阈值：{price_high_pct}%");
+    }
+    if let Some(price_high_pct_up) = overview.immediate.price_high_pct_up {
+        let _ = writeln!(output, "• 上涨即时推阈值：{price_high_pct_up}%");
+    }
+    if let Some(price_high_pct_down) = overview.immediate.price_high_pct_down {
+        let _ = writeln!(output, "• 下跌即时推阈值：{price_high_pct_down}%");
+    }
+    if let Some(large_position_weight_pct) = overview.immediate.large_position_weight_pct {
+        let _ = writeln!(
+            output,
+            "• 大仓位判定阈值：持仓权重 {large_position_weight_pct}%"
+        );
     }
     if !overview.immediate.blocked_kinds.is_empty() {
         let _ = writeln!(
@@ -526,29 +544,7 @@ fn describe_cron_frequency(job: &CronJob) -> String {
 /// 判断给定本地 HH:MM 是否落在 quiet_hours 区间内。语义跟
 /// `hone_core::quiet::quiet_window_active` 对齐，但只看本地时刻不需要 now。
 pub(crate) fn time_in_quiet(local_hhmm: &str, quiet_hours: Option<&QuietHours>) -> bool {
-    let Some(quiet_hours) = quiet_hours else {
-        return false;
-    };
-    let Ok(local_time) = NaiveTime::parse_from_str(local_hhmm, "%H:%M") else {
-        return false;
-    };
-    let Ok(start_time) = NaiveTime::parse_from_str(&quiet_hours.from, "%H:%M") else {
-        return false;
-    };
-    let Ok(end_time) = NaiveTime::parse_from_str(&quiet_hours.to, "%H:%M") else {
-        return false;
-    };
-    let local_minute = local_time.hour() as i32 * 60 + local_time.minute() as i32;
-    let start_minute = start_time.hour() as i32 * 60 + start_time.minute() as i32;
-    let end_minute = end_time.hour() as i32 * 60 + end_time.minute() as i32;
-    if start_minute == end_minute {
-        return false;
-    }
-    if start_minute < end_minute {
-        local_minute >= start_minute && local_minute < end_minute
-    } else {
-        local_minute >= start_minute || local_minute < end_minute
-    }
+    quiet_hours.is_some_and(|quiet_hours| local_time_in_quiet_window(local_hhmm, quiet_hours))
 }
 
 #[cfg(test)]
@@ -775,6 +771,52 @@ mod tests {
             // 每条 schedule 单行带 •
             assert!(rendered.contains("• 07:30") || rendered.contains("• 08:30"));
         }
+    }
+
+    #[test]
+    fn overview_exposes_directional_and_large_position_thresholds() {
+        let temp_root = tempdir().unwrap();
+        let prefs_dir = temp_root.path().join("prefs");
+        let cron_dir = temp_root.path().join("cron");
+        std::fs::create_dir_all(&prefs_dir).unwrap();
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        FilePrefsStorage::new(&prefs_dir)
+            .unwrap()
+            .save(
+                &actor_fixture(),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(6.0),
+                    price_high_pct_up_override: Some(7.0),
+                    price_high_pct_down_override: Some(5.0),
+                    large_position_weight_pct: Some(20.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let overview = build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &digest_defaults_fixture(),
+            Utc::now(),
+        )
+        .unwrap();
+        assert_eq!(overview.immediate.price_high_pct, Some(6.0));
+        assert_eq!(overview.immediate.price_high_pct_up, Some(7.0));
+        assert_eq!(overview.immediate.price_high_pct_down, Some(5.0));
+        assert_eq!(overview.immediate.large_position_weight_pct, Some(20.0));
+
+        let rendered = render_overview(&overview, RenderFormat::Plain);
+        assert_text_contains_all(
+            &rendered,
+            &[
+                "通用价格异动阈值：6%",
+                "上涨即时推阈值：7%",
+                "下跌即时推阈值：5%",
+                "大仓位判定阈值：持仓权重 20%",
+            ],
+        );
     }
 
     #[test]

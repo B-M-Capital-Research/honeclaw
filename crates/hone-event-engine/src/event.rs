@@ -2,6 +2,8 @@
 //!
 //! `MarketEvent` 是事件引擎的通用载荷，所有 poller 产出此类型。
 
+use std::borrow::Cow;
+
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -122,6 +124,16 @@ impl MarketEvent {
         self.symbols.iter().any(|s| s.eq_ignore_ascii_case(symbol))
     }
 
+    /// 返回可直接面向用户展示的 LLM 摘要。
+    ///
+    /// `llm_summary` 的长期契约是纯文本，但部分 provider/profile 会把响应包装成
+    /// `{"summary":"..."}`，历史数据库中也可能已经保存这种字符串。这里统一
+    /// 归一化，让即时消息与 Digest 共用同一显示语义。
+    pub(crate) fn normalized_llm_summary(&self) -> Option<Cow<'_, str>> {
+        let raw = self.payload.get("llm_summary")?.as_str()?;
+        normalize_llm_summary(raw)
+    }
+
     pub fn user_visible_url(&self) -> Option<&str> {
         self.url
             .as_deref()
@@ -129,6 +141,48 @@ impl MarketEvent {
             .filter(|url| !url.is_empty())
             .filter(|url| is_user_visible_url(url))
     }
+}
+
+/// 把 provider 返回的纯文本、裸 JSON 或 Markdown JSON 代码块归一化为摘要正文。
+///
+/// 对看起来像 JSON 却无法解析、或没有非空 `summary` 的结构化响应返回 `None`，
+/// 让调用方回退到 filing date/原始摘要，避免把协议外壳暴露给任何渠道。
+pub(crate) fn normalize_llm_summary(raw: &str) -> Option<Cow<'_, str>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let fenced = trimmed.starts_with("```");
+    let candidate = strip_markdown_code_fence(trimmed).unwrap_or(trimmed);
+    match serde_json::from_str::<serde_json::Value>(candidate) {
+        Ok(serde_json::Value::Object(value)) => value
+            .get("summary")
+            .and_then(|summary| summary.as_str())
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())
+            .map(|summary| Cow::Owned(summary.to_string())),
+        Ok(serde_json::Value::String(value)) => {
+            let summary = value.trim();
+            (!summary.is_empty()).then(|| Cow::Owned(summary.to_string()))
+        }
+        Ok(_) => None,
+        Err(_) if fenced || looks_like_json(candidate) => None,
+        Err(_) => Some(Cow::Borrowed(trimmed)),
+    }
+}
+
+fn strip_markdown_code_fence(raw: &str) -> Option<&str> {
+    let inner = raw.strip_prefix("```")?.strip_suffix("```")?.trim();
+    let body = match inner.split_once('\n') {
+        Some((language, body)) if language.trim().eq_ignore_ascii_case("json") => body.trim(),
+        _ => inner,
+    };
+    Some(body)
+}
+
+fn looks_like_json(raw: &str) -> bool {
+    matches!(raw.trim_start().chars().next(), Some('{' | '['))
 }
 
 pub fn is_user_visible_url(url: &str) -> bool {
@@ -328,6 +382,30 @@ mod tests {
         assert!(event.touches("aapl"));
         assert!(event.touches("AAPL"));
         assert!(!event.touches("TSLA"));
+    }
+
+    #[test]
+    fn llm_summary_normalizes_plain_and_json_responses() {
+        assert_eq!(
+            normalize_llm_summary("  纯文本摘要  ").as_deref(),
+            Some("纯文本摘要")
+        );
+        assert_eq!(
+            normalize_llm_summary(r#"{"summary":"JSON 摘要"}"#).as_deref(),
+            Some("JSON 摘要")
+        );
+        assert_eq!(
+            normalize_llm_summary("```json\n{\"summary\":\"代码块摘要\"}\n```").as_deref(),
+            Some("代码块摘要")
+        );
+    }
+
+    #[test]
+    fn llm_summary_rejects_invalid_or_unusable_structured_responses() {
+        assert!(normalize_llm_summary("{\"summary\":").is_none());
+        assert!(normalize_llm_summary(r#"{"reason":"missing summary"}"#).is_none());
+        assert!(normalize_llm_summary(r#"{"summary":"   "}"#).is_none());
+        assert!(normalize_llm_summary("```json\n{\"summary\":\n```").is_none());
     }
 
     #[test]

@@ -14,8 +14,8 @@ use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use hone_event_engine::Severity;
 use hone_event_engine::prefs::{
-    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours,
-    first_invalid_kind_tag,
+    ALL_KIND_TAGS, FilePrefsStorage, NotificationDeliveryPatch, NotificationPrefs,
+    PreferenceUpdate, PrefsProvider, QuietHours, first_invalid_kind_tag,
 };
 use hone_event_engine::unified_digest::DigestSlot;
 use serde_json::{Value, json};
@@ -133,12 +133,6 @@ fn validate_tags(tags: &[String]) -> HoneResult<()> {
     Ok(())
 }
 
-fn validate_hhmm(time_text: &str) -> HoneResult<()> {
-    chrono::NaiveTime::parse_from_str(time_text, "%H:%M")
-        .map(|_| ())
-        .map_err(|_| HoneError::Tool(format!("时间格式必须为 HH:MM (24h),收到 {time_text:?}")))
-}
-
 fn parse_bool_flag(value: &Value, action: &str) -> HoneResult<bool> {
     match value {
         Value::Bool(flag) => Ok(*flag),
@@ -156,60 +150,117 @@ fn optional_kind_tags(value: &Value) -> HoneResult<Option<Vec<String>>> {
     Ok((!tags.is_empty()).then_some(tags))
 }
 
-fn parse_digest_slots(value: &Value) -> HoneResult<Vec<DigestSlot>> {
+fn parse_digest_slots(value: &Value) -> HoneResult<PreferenceUpdate<Vec<DigestSlot>>> {
+    if value.is_null() {
+        return Ok(PreferenceUpdate::Inherit);
+    }
     let slot_values = value.as_array().ok_or_else(|| {
         HoneError::Tool(
-            "set_digest_slots 需要 HH:MM 字符串数组,例 [\"19:00\",\"09:00\"];传 [] 关 digest"
+            "set_digest_slots 需要槽位数组;可传 [\"19:00\",\"09:00\"] 或 \
+             [{\"id\":\"premarket\",\"time\":\"08:30\",\"label\":\"盘前要闻\",\"floor_macro\":1}];\
+             [] 关闭 digest,null 恢复全局时段"
                 .into(),
         )
     })?;
     let mut slots: Vec<DigestSlot> = Vec::with_capacity(slot_values.len());
     for (idx, slot_value) in slot_values.iter().enumerate() {
-        let slot_time = slot_value
-            .as_str()
-            .ok_or_else(|| HoneError::Tool("digest_slots 元素必须是 HH:MM 字符串".into()))?
-            .trim()
-            .to_string();
-        if slot_time.is_empty() {
+        if let Some(slot_time) = slot_value.as_str() {
+            let slot_time = slot_time.trim().to_string();
+            if slot_time.is_empty() {
+                continue;
+            }
+            slots.push(DigestSlot {
+                id: format!("slot_{idx}"),
+                time: slot_time,
+                label: None,
+                floor_macro: None,
+            });
             continue;
         }
-        validate_hhmm(&slot_time)?;
+
+        let slot_object = slot_value.as_object().ok_or_else(|| {
+            HoneError::Tool(
+                "digest_slots 元素必须是 HH:MM 字符串或 {id,time,label?,floor_macro?} 对象".into(),
+            )
+        })?;
+        let slot_time = slot_object
+            .get("time")
+            .and_then(Value::as_str)
+            .ok_or_else(|| HoneError::Tool("digest slot 缺少 time (HH:MM)".into()))?
+            .trim()
+            .to_string();
+        let id = match slot_object.get("id") {
+            None | Some(Value::Null) => format!("slot_{idx}"),
+            Some(Value::String(id)) => id.trim().to_string(),
+            Some(_) => {
+                return Err(HoneError::Tool("digest slot 的 id 必须是字符串".into()));
+            }
+        };
+        let label = match slot_object.get("label") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(label)) => Some(label.trim().to_string()),
+            Some(_) => {
+                return Err(HoneError::Tool(
+                    "digest slot 的 label 必须是字符串或 null".into(),
+                ));
+            }
+        };
+        let floor_macro = match slot_object.get("floor_macro") {
+            None | Some(Value::Null) => None,
+            Some(Value::Number(number)) => {
+                let value = number.as_u64().ok_or_else(|| {
+                    HoneError::Tool("digest slot 的 floor_macro 必须是非负整数".into())
+                })?;
+                Some(u32::try_from(value).map_err(|_| {
+                    HoneError::Tool("digest slot 的 floor_macro 超出 u32 范围".into())
+                })?)
+            }
+            Some(_) => {
+                return Err(HoneError::Tool(
+                    "digest slot 的 floor_macro 必须是非负整数或 null".into(),
+                ));
+            }
+        };
         slots.push(DigestSlot {
-            id: format!("slot_{idx}"),
+            id,
             time: slot_time,
-            label: None,
-            floor_macro: None,
+            label,
+            floor_macro,
         });
     }
-    Ok(slots)
+    Ok(PreferenceUpdate::Set(slots))
 }
 
-fn digest_slot_times_inside_quiet(slots: &[DigestSlot], quiet_hours: &QuietHours) -> Vec<String> {
-    slots
-        .iter()
-        .filter(|slot| crate::schedule_view::time_in_quiet(&slot.time, Some(quiet_hours)))
-        .map(|slot| slot.time.clone())
-        .collect()
-}
-
-fn parse_price_high_pct(value: &Value) -> HoneResult<f64> {
+fn parse_percentage_update(value: &Value, action: &str) -> HoneResult<PreferenceUpdate<f64>> {
+    if value.is_null() {
+        return Ok(PreferenceUpdate::Inherit);
+    }
     let percentage = match value {
         Value::Number(number) => number.as_f64(),
         Value::String(raw_text) => raw_text.trim().parse::<f64>().ok(),
-        Value::Null => None,
         _ => None,
     }
     .ok_or_else(|| {
-        HoneError::Tool(
-            "set_price_high_pct 需要数字 (0<x≤50,例 3.5);传 null 清空回到全局阈值".into(),
-        )
+        HoneError::Tool(format!(
+            "{action} 需要数字;传 null 可清空 actor override 并恢复继承"
+        ))
     })?;
-    if !(percentage.is_finite() && percentage > 0.0 && percentage <= 50.0) {
-        return Err(HoneError::Tool(format!(
-            "price_high_pct 必须在 (0, 50] 范围,收到 {percentage}"
-        )));
+    Ok(PreferenceUpdate::Set(percentage))
+}
+
+fn parse_timezone_update(value: &Value) -> HoneResult<PreferenceUpdate<String>> {
+    if value.is_null() {
+        return Ok(PreferenceUpdate::Inherit);
     }
-    Ok(percentage)
+    let raw = value.as_str().ok_or_else(|| {
+        HoneError::Tool("timezone 需要 IANA 字符串,例 \"Asia/Shanghai\";null 表示继承".into())
+    })?;
+    let trimmed = raw.trim();
+    Ok(if trimmed.is_empty() {
+        PreferenceUpdate::Inherit
+    } else {
+        PreferenceUpdate::Set(trimmed.to_string())
+    })
 }
 
 fn parse_quiet_hours(value: &Value) -> HoneResult<QuietHours> {
@@ -231,22 +282,88 @@ fn parse_quiet_hours(value: &Value) -> HoneResult<QuietHours> {
         .ok_or_else(|| HoneError::Tool("set_quiet_hours 缺少 to (HH:MM)".into()))?
         .trim()
         .to_string();
-    validate_hhmm(&from)?;
-    validate_hhmm(&to)?;
-    if from == to {
-        return Err(HoneError::Tool(
-            "set_quiet_hours 的 from 与 to 不能相等(空区间);若想全天静音请用 disable".into(),
-        ));
-    }
     let exempt_kinds = match quiet_hours_object.get("exempt_kinds") {
         Some(v) if !v.is_null() => extract_string_array(v)?,
         _ => Vec::new(),
     };
-    validate_tags(&exempt_kinds)?;
     Ok(QuietHours {
         from,
         to,
         exempt_kinds,
+    })
+}
+
+fn parse_delivery_controls(value: &Value) -> HoneResult<NotificationDeliveryPatch> {
+    let controls = value.as_object().ok_or_else(|| {
+        HoneError::Tool(
+            "update_delivery_controls 需要对象，字段可选:timezone,digest_slots,\
+             price_high_pct,price_high_pct_up,price_high_pct_down,\
+             large_position_weight_pct,quiet_hours"
+                .into(),
+        )
+    })?;
+    const ALLOWED_FIELDS: &[&str] = &[
+        "timezone",
+        "digest_slots",
+        "price_high_pct",
+        "price_high_pct_up",
+        "price_high_pct_down",
+        "large_position_weight_pct",
+        "quiet_hours",
+    ];
+    if let Some(unknown_field) = controls
+        .keys()
+        .find(|field| !ALLOWED_FIELDS.contains(&field.as_str()))
+    {
+        return Err(HoneError::Tool(format!(
+            "update_delivery_controls 不支持字段 {unknown_field:?};合法字段:{}",
+            ALLOWED_FIELDS.join(",")
+        )));
+    }
+
+    let timezone = controls
+        .get("timezone")
+        .map(parse_timezone_update)
+        .transpose()?
+        .unwrap_or_default();
+    let digest_slots = controls
+        .get("digest_slots")
+        .map(parse_digest_slots)
+        .transpose()?
+        .unwrap_or_default();
+    let price_high_pct_override = controls
+        .get("price_high_pct")
+        .map(|value| parse_percentage_update(value, "price_high_pct"))
+        .transpose()?
+        .unwrap_or_default();
+    let price_high_pct_up_override = controls
+        .get("price_high_pct_up")
+        .map(|value| parse_percentage_update(value, "price_high_pct_up"))
+        .transpose()?
+        .unwrap_or_default();
+    let price_high_pct_down_override = controls
+        .get("price_high_pct_down")
+        .map(|value| parse_percentage_update(value, "price_high_pct_down"))
+        .transpose()?
+        .unwrap_or_default();
+    let large_position_weight_pct = controls
+        .get("large_position_weight_pct")
+        .map(|value| parse_percentage_update(value, "large_position_weight_pct"))
+        .transpose()?
+        .unwrap_or_default();
+    let quiet_hours = match controls.get("quiet_hours") {
+        None => PreferenceUpdate::Keep,
+        Some(Value::Null) => PreferenceUpdate::Inherit,
+        Some(value) => PreferenceUpdate::Set(parse_quiet_hours(value)?),
+    };
+    Ok(NotificationDeliveryPatch {
+        timezone,
+        digest_slots,
+        price_high_pct_override,
+        price_high_pct_up_override,
+        price_high_pct_down_override,
+        large_position_weight_pct,
+        quiet_hours,
     })
 }
 
@@ -264,6 +381,9 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "timezone": prefs.timezone,
         "digest_slots": prefs.digest_slots,
         "price_high_pct_override": prefs.price_high_pct_override,
+        "price_high_pct_up_override": prefs.price_high_pct_up_override,
+        "price_high_pct_down_override": prefs.price_high_pct_down_override,
+        "large_position_weight_pct": prefs.large_position_weight_pct,
         "immediate_kinds": prefs.immediate_kinds,
         "mainline_style": prefs.mainline_style,
         "mainline_by_ticker": prefs.mainline_by_ticker,
@@ -273,6 +393,15 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
             "exempt_kinds": quiet_hours.exempt_kinds,
         })),
     })
+}
+
+fn apply_delivery_patch(
+    prefs: &mut NotificationPrefs,
+    patch: NotificationDeliveryPatch,
+) -> HoneResult<()> {
+    prefs
+        .apply_delivery_patch(patch)
+        .map_err(|error| HoneError::Tool(error.to_string()))
 }
 
 #[async_trait]
@@ -289,8 +418,13 @@ impl Tool for NotificationPrefsTool {
          set_portfolio_only 只推持仓相关、allow_kinds 设置白名单、block_kinds 设置黑名单、\
          clear_allow/clear_block 清空对应列表、reset 恢复默认。\
          per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 Asia/Shanghai、America/New_York)、\
-         set_digest_slots 设 digest 触发槽位(传 HH:MM 数组,每个时刻自动建一个 default slot;传 [] 关 digest)、\
-         set_price_high_pct 调价格异动即时推阈值 (0<x≤50,如 3.5)、\
+         set_digest_slots 设 digest 触发槽位(支持旧 HH:MM 数组或 \
+         {id,time,label?,floor_macro?} 对象数组;[] 关 digest;null 恢复全局)、\
+         set_price_high_pct / set_price_high_pct_up / set_price_high_pct_down \
+         调通用、上涨、下跌价格异动即时推阈值 (0<x≤50),\
+         set_large_position_weight_pct 调大仓位权重边界 (0<x≤100)。\
+         对应 inherit_* action 可单项清空 actor override、恢复系统默认。\
+         多项一起修改时优先用 update_delivery_controls，一次传对象并原子校验/保存。\
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
          **概览类问题**(用户问\"我的推送怎么配的\"/\"推送日程\"/\"都什么时候推什么\"/\"quiet 设了没\"等):\
          调 get_overview 拿到拍平后的全部推送时刻 + 即时推配置 + quiet_hours,返回里有 display_text \
@@ -313,6 +447,34 @@ impl Tool for NotificationPrefsTool {
          sec_filing / analyst_grade / macro_event / social_post。"
     }
 
+    fn input_schema(&self) -> Value {
+        let parameters = self.parameters();
+        let action = &parameters[0];
+        let value = &parameters[1];
+        json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": action.description,
+                    "enum": action.r#enum,
+                },
+                "value": {
+                    "description": value.description,
+                    "anyOf": [
+                        {"type": "string"},
+                        {"type": "number"},
+                        {"type": "boolean"},
+                        {"type": "array"},
+                        {"type": "object"},
+                        {"type": "null"}
+                    ]
+                }
+            },
+            "required": ["action"]
+        })
+    }
+
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
             ToolParameter {
@@ -332,8 +494,18 @@ impl Tool for NotificationPrefsTool {
                     "clear_allow".into(),
                     "clear_block".into(),
                     "set_timezone".into(),
+                    "inherit_timezone".into(),
                     "set_digest_slots".into(),
+                    "inherit_digest_slots".into(),
                     "set_price_high_pct".into(),
+                    "inherit_price_high_pct".into(),
+                    "set_price_high_pct_up".into(),
+                    "inherit_price_high_pct_up".into(),
+                    "set_price_high_pct_down".into(),
+                    "inherit_price_high_pct_down".into(),
+                    "set_large_position_weight_pct".into(),
+                    "inherit_large_position_weight_pct".into(),
+                    "update_delivery_controls".into(),
                     "set_immediate_kinds".into(),
                     "set_quiet_hours".into(),
                     "clear_quiet_hours".into(),
@@ -350,8 +522,17 @@ impl Tool for NotificationPrefsTool {
                     set_portfolio_only 传 true/false;\
                     allow_kinds/block_kinds/set_immediate_kinds 传 JSON 数组 (例 [\"news_critical\"]);\
                     set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
-                    set_digest_slots 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
-                    set_price_high_pct 传数字 (0<x≤50,例 3.5);\
+                    set_digest_slots 可传 HH:MM 数组，或对象数组 \
+                    [{\"id\":\"premarket\",\"time\":\"08:30\",\"label\":\"盘前要闻\",\"floor_macro\":1}];\
+                    空数组关 digest，null 或 inherit_digest_slots 恢复全局时段;\
+                    set_price_high_pct/set_price_high_pct_up/set_price_high_pct_down 传数字 (0<x≤50);\
+                    set_large_position_weight_pct 传数字 (0<x≤100);\
+                    inherit_timezone/inherit_price_high_pct/inherit_price_high_pct_up/\
+                    inherit_price_high_pct_down/inherit_large_position_weight_pct 不需要 value;\
+                    update_delivery_controls 传对象，可同时包含 timezone,digest_slots,\
+                    price_high_pct,price_high_pct_up,price_high_pct_down,\
+                    large_position_weight_pct,quiet_hours；字段为 null 表示单项继承，\
+                    整个对象一次校验后原子保存;\
                     set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
                     clear_quiet_hours 不需要 value。\
                     get/clear_allow/clear_block/enable/disable/disable_all/reset 不需要 value。"
@@ -457,67 +638,137 @@ impl Tool for NotificationPrefsTool {
                 prefs.blocked_kinds.clear();
             }
             "set_timezone" => {
-                let raw = value.as_str().ok_or_else(|| {
-                    HoneError::Tool("set_timezone 需要 IANA 字符串,例 \"Asia/Shanghai\"".into())
-                })?;
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    prefs.timezone = None;
-                } else {
-                    use std::str::FromStr;
-                    chrono_tz::Tz::from_str(trimmed).map_err(|_| {
-                        HoneError::Tool(format!(
-                            "未知 IANA 时区 {trimmed:?};示例:Asia/Shanghai、America/New_York、Europe/London"
-                        ))
-                    })?;
-                    prefs.timezone = Some(trimmed.to_string());
-                }
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        timezone: parse_timezone_update(&value)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_timezone" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        timezone: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
             }
             "set_digest_slots" => {
-                let slots = parse_digest_slots(&value)?;
-                // 任何 slot 落在现有 quiet_hours 内都会被 scheduler 让位给
-                // quiet_flush,等于 digest slot 配置静默失效。这里 hard error,
-                // 逼 LLM 自动改时间或先 clear_quiet_hours。
-                if let Some(quiet_hours) = prefs.quiet_hours.as_ref() {
-                    let blocked_slots = digest_slot_times_inside_quiet(&slots, quiet_hours);
-                    if !blocked_slots.is_empty() {
-                        return Err(HoneError::Tool(format!(
-                            "digest slot 时间 [{}] 落在 quiet_hours {}–{} 内,scheduler 不会触发;\
-                             改 slot 时间或先 clear_quiet_hours / 缩短 quiet 区间。",
-                            blocked_slots.join(", "),
-                            quiet_hours.from,
-                            quiet_hours.to,
-                        )));
-                    }
-                }
-                prefs.digest_slots = Some(slots);
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        digest_slots: parse_digest_slots(&value)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_digest_slots" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        digest_slots: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
             }
             "set_price_high_pct" => {
-                prefs.price_high_pct_override = Some(parse_price_high_pct(&value)?);
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_override: parse_percentage_update(&value, &action)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_price_high_pct" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_override: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "set_price_high_pct_up" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_up_override: parse_percentage_update(&value, &action)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_price_high_pct_up" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_up_override: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "set_price_high_pct_down" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_down_override: parse_percentage_update(&value, &action)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_price_high_pct_down" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_high_pct_down_override: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "set_large_position_weight_pct" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        large_position_weight_pct: parse_percentage_update(&value, &action)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_large_position_weight_pct" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        large_position_weight_pct: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "update_delivery_controls" => {
+                apply_delivery_patch(&mut prefs, parse_delivery_controls(&value)?)?;
             }
             "set_immediate_kinds" => {
                 prefs.immediate_kinds = optional_kind_tags(&value)?;
             }
             "set_quiet_hours" => {
-                // 反向校验:新 quiet 区间会吞掉现有 digest_slots(同样会被 scheduler 跳过),
-                // 报错让用户先调 slot。
                 let candidate = parse_quiet_hours(&value)?;
-                if let Some(slots) = prefs.digest_slots.as_ref() {
-                    let overlapping_slots = digest_slot_times_inside_quiet(slots, &candidate);
-                    if !overlapping_slots.is_empty() {
-                        return Err(HoneError::Tool(format!(
-                            "新 quiet_hours {}–{} 会吞掉现有 digest slot [{}],它们将不再触发;\
-                             请先 set_digest_slots 调整时间,或缩短 quiet 区间。",
-                            candidate.from,
-                            candidate.to,
-                            overlapping_slots.join(", "),
-                        )));
-                    }
-                }
-                prefs.quiet_hours = Some(candidate);
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        quiet_hours: PreferenceUpdate::Set(candidate),
+                        ..Default::default()
+                    },
+                )?;
             }
             "clear_quiet_hours" => {
-                prefs.quiet_hours = None;
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        quiet_hours: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
             }
             "reset" => {
                 prefs = NotificationPrefs::default();
@@ -573,6 +824,23 @@ mod tests {
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["enabled"], json!(true));
         assert_eq!(response["prefs"]["min_severity"], json!("low"));
+    }
+
+    #[test]
+    fn tool_schema_declares_the_real_value_union() {
+        let dir = tempdir().unwrap();
+        let schema = make_tool(dir.path()).to_openai_schema();
+        let value_types = schema["function"]["parameters"]["properties"]["value"]["anyOf"]
+            .as_array()
+            .expect("value anyOf");
+        assert_eq!(value_types.len(), 6);
+        assert!(value_types.iter().any(|entry| entry["type"] == "array"));
+        assert!(value_types.iter().any(|entry| entry["type"] == "object"));
+        assert!(value_types.iter().any(|entry| entry["type"] == "number"));
+        assert_eq!(
+            schema["function"]["parameters"]["required"],
+            json!(["action"])
+        );
     }
 
     #[tokio::test]
@@ -796,6 +1064,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_digest_slots_preserves_structured_names_and_floor() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": [
+                {
+                    "id": "postmarket",
+                    "time": "07:30",
+                    "label": "盘后要闻",
+                    "floor_macro": 2
+                },
+                {
+                    "id": "premarket",
+                    "time": "21:00",
+                    "label": "盘前要闻"
+                }
+            ]
+        }))
+        .await
+        .unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(
+            response["prefs"]["digest_slots"],
+            json!([
+                {
+                    "id": "postmarket",
+                    "time": "07:30",
+                    "label": "盘后要闻",
+                    "floor_macro": 2
+                },
+                {
+                    "id": "premarket",
+                    "time": "21:00",
+                    "label": "盘前要闻"
+                }
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn digest_slots_can_inherit_without_conflating_explicit_disable() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({"action":"set_digest_slots","value":[]}))
+            .await
+            .unwrap();
+        assert_eq!(
+            tool.execute(json!({"action":"get"})).await.unwrap()["prefs"]["digest_slots"],
+            json!([])
+        );
+
+        tool.execute(json!({"action":"inherit_digest_slots"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            tool.execute(json!({"action":"get"})).await.unwrap()["prefs"]["digest_slots"],
+            Value::Null
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_structured_digest_slot_is_rejected_without_persisting() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        let error = tool
+            .execute(json!({
+                "action": "set_digest_slots",
+                "value": [
+                    {"id":"market","time":"07:30"},
+                    {"id":"market","time":"21:00"}
+                ]
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("重复 id"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["digest_slots"], Value::Null);
+    }
+
+    #[tokio::test]
     async fn set_price_high_pct_enforces_range() {
         let dir = tempdir().unwrap();
         let tool = make_tool(dir.path());
@@ -826,6 +1175,145 @@ mod tests {
             .unwrap();
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["price_high_pct_override"], json!(4.2));
+    }
+
+    #[tokio::test]
+    async fn directional_and_large_position_thresholds_set_and_inherit() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({"action":"set_price_high_pct_up","value":6.0}))
+            .await
+            .unwrap();
+        tool.execute(json!({"action":"set_price_high_pct_down","value":"5.0"}))
+            .await
+            .unwrap();
+        tool.execute(json!({"action":"set_large_position_weight_pct","value":20}))
+            .await
+            .unwrap();
+
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["price_high_pct_up_override"], json!(6.0));
+        assert_eq!(
+            response["prefs"]["price_high_pct_down_override"],
+            json!(5.0)
+        );
+        assert_eq!(response["prefs"]["large_position_weight_pct"], json!(20.0));
+
+        tool.execute(json!({"action":"inherit_price_high_pct_up"}))
+            .await
+            .unwrap();
+        tool.execute(json!({
+            "action":"set_price_high_pct_down",
+            "value": null
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({"action":"inherit_large_position_weight_pct"}))
+            .await
+            .unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["price_high_pct_up_override"], Value::Null);
+        assert_eq!(
+            response["prefs"]["price_high_pct_down_override"],
+            Value::Null
+        );
+        assert_eq!(response["prefs"]["large_position_weight_pct"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn invalid_directional_threshold_does_not_persist() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({"action":"set_price_high_pct_up","value":6.0}))
+            .await
+            .unwrap();
+        let error = tool
+            .execute(json!({"action":"set_price_high_pct_up","value":80.0}))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("(0, 50]"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["price_high_pct_up_override"], json!(6.0));
+    }
+
+    #[tokio::test]
+    async fn update_delivery_controls_applies_cross_field_transition_atomically() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": {"from":"00:00","to":"08:00"}
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": [{"id":"old","time":"09:00"}]
+        }))
+        .await
+        .unwrap();
+
+        // 单独先改任一字段都会和旧值冲突；复合补丁按最终状态整体校验。
+        tool.execute(json!({
+            "action": "update_delivery_controls",
+            "value": {
+                "timezone": "Asia/Shanghai",
+                "digest_slots": [
+                    {"id":"postmarket","time":"07:00","label":"盘后要闻","floor_macro":2}
+                ],
+                "quiet_hours": {"from":"08:00","to":"10:00"},
+                "price_high_pct": 6,
+                "price_high_pct_up": 7,
+                "price_high_pct_down": 5,
+                "large_position_weight_pct": 20
+            }
+        }))
+        .await
+        .unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["timezone"], json!("Asia/Shanghai"));
+        assert_eq!(
+            response["prefs"]["digest_slots"][0]["id"],
+            json!("postmarket")
+        );
+        assert_eq!(response["prefs"]["quiet_hours"]["from"], json!("08:00"));
+        assert_eq!(response["prefs"]["price_high_pct_override"], json!(6.0));
+        assert_eq!(response["prefs"]["price_high_pct_up_override"], json!(7.0));
+        assert_eq!(
+            response["prefs"]["price_high_pct_down_override"],
+            json!(5.0)
+        );
+        assert_eq!(response["prefs"]["large_position_weight_pct"], json!(20.0));
+
+        let error = tool
+            .execute(json!({
+                "action": "update_delivery_controls",
+                "value": {
+                    "timezone": "America/New_York",
+                    "price_high_pct_up": 99
+                }
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("(0, 50]"));
+        let unchanged = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(unchanged["prefs"]["timezone"], json!("Asia/Shanghai"));
+        assert_eq!(unchanged["prefs"]["price_high_pct_up_override"], json!(7.0));
+    }
+
+    #[tokio::test]
+    async fn update_delivery_controls_rejects_unknown_fields() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        let error = tool
+            .execute(json!({
+                "action": "update_delivery_controls",
+                "value": {"news_importance_prompt":"do not expose this"}
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("不支持字段"));
+        assert!(error.to_string().contains("news_importance_prompt"));
     }
 
     #[tokio::test]
@@ -1155,5 +1643,28 @@ mod tests {
         .unwrap();
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["quiet_hours"]["from"], json!("23:00"));
+    }
+
+    #[tokio::test]
+    async fn digest_slot_at_quiet_end_boundary_is_valid() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "23:00", "to": "07:30" },
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": [{"id":"postmarket","time":"07:30","label":"盘后要闻"}]
+        }))
+        .await
+        .unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(
+            response["prefs"]["digest_slots"][0]["label"],
+            json!("盘后要闻")
+        );
     }
 }
