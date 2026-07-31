@@ -175,6 +175,8 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - The outbound `session/new` MCP allowlist omitted `discover_skills`, `load_skill`, and `skill_tool`.
   - `codex app-server skills/list` with `forceReload=true` returned all 16 Hone skills with `errors=[]`.
   - The bundled skill-creator validator could not start because its local Python environment lacks `PyYAML`; Codex's own parser/listing and the real ACP activation provide the runtime validation for this host.
+  - After merging the latest `origin/main`, the full default gates passed: changed-file formatting, workspace check/test excluding Apple clients, all 309 Web tests, Edge Worker typecheck plus 45 tests, and the complete CI-safe regression suite including all 44 finance automation contracts.
+  - The post-merge Web API and finance-contract assertions were updated to require native image-path handling and the absence of the obsolete `skill_tool` instruction.
 
 ## Documentation Sync
 

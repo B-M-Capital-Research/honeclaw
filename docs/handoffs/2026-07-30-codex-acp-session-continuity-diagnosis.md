@@ -5,7 +5,7 @@
 - created_at: 2026-07-30
 - updated_at: 2026-07-31
 - owner: Codex
-- related_files: `crates/hone-channels/src/runners/codex_acp.rs`, `crates/hone-channels/src/runners/acp_common/protocol.rs`, `crates/hone-channels/src/runners/types.rs`, `crates/hone-channels/src/runners/tests.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/agent_session/restore.rs`, `crates/hone-channels/src/turn_builder.rs`, `crates/hone-channels/src/execution.rs`, `crates/hone-channels/src/sandbox.rs`, `crates/hone-channels/src/prompt.rs`, `skills/skill_manager/SKILL.md`, `soul.md`, `bins/hone-cli/src/onboard.rs`, `bins/hone-discord/src/handlers.rs`, `memory/src/session.rs`, `tests/regression/manual/test_codex_acp_initialize.sh`, `tests/regression/manual/test_codex_acp_event_stream.sh`
+- related_files: `crates/hone-channels/src/runners/codex_acp.rs`, `crates/hone-channels/src/runners/acp_common/protocol.rs`, `crates/hone-channels/src/runners/types.rs`, `crates/hone-channels/src/runners/tests.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/agent_session/restore.rs`, `crates/hone-channels/src/turn_builder.rs`, `crates/hone-channels/src/execution.rs`, `crates/hone-channels/src/sandbox.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-web-api/src/routes/public.rs`, `skills/skill_manager/SKILL.md`, `soul.md`, `bins/hone-cli/src/onboard.rs`, `bins/hone-discord/src/handlers.rs`, `memory/src/session.rs`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_codex_acp_initialize.sh`, `tests/regression/manual/test_codex_acp_event_stream.sh`
 - related_docs: `docs/current-plans/acp-runtime-refactor.md`, `docs/invariants.md`, `docs/decisions.md`, `docs/repo-map.md`, `docs/runbooks/hone-cli-install-and-start.md`, `docs/bugs/archive/web_direct_session_update_prompt_echo_leak.md`
 - related_prs: N/A
 
@@ -145,6 +145,9 @@ Minimal native-turn verification:
 - A real native-skill CLI probe created 16 Hone-managed symlinks, then Codex read the source `skills/market_analysis/SKILL.md` and returned exactly `原因本轮未完全核验`. Its ACP trace contained native file/command operations and no Hone MCP skill-loading call.
 - The same probe's `session/new` payload exposed only live Hone MCP tools (`cron_job`, data/search/state/local-file tools, and administrator tools); `discover_skills`, `load_skill`, and `skill_tool` were absent.
 - `codex app-server skills/list` with `forceReload=true` returned all 16 Hone skills and `errors=[]`.
+- After merging current `origin/main`, `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` and `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed.
+- `bun run test:web` passed all 309 tests; the Public Community Edge Worker passed typecheck and all 45 tests.
+- `bash tests/regression/run_ci.sh` passed, including all 44 finance automation contracts. The Web API attachment test and CI contract now assert native image-path handling and reject the obsolete `skill_tool` wording.
 
 ## Risks / Follow-ups
 

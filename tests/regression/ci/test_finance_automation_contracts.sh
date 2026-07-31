@@ -600,7 +600,8 @@ fi
 if contains 'pub(crate) async fn extract_image_text' "$ATTACHMENT_VISION" \
   && contains 'VNRecognizeTextRequest' "$ATTACHMENT_VISION" \
   && contains '【图片文字提取】' "$ATTACHMENT_INGEST" \
-  && contains '不需要为了读取同一图片再调用 skill_tool' "$ATTACHMENT_INGEST" \
+  && contains 'runner 支持原生图片读取时，直接读取附件本地路径' "$ATTACHMENT_INGEST" \
+  && ! contains '再调用 skill_tool' "$ATTACHMENT_INGEST" \
   && contains '【图片文字提取】' "$IMAGE_SKILL" \
   && contains 'commit_before_model: false' "$AGENT_CORE" \
   && contains 'web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering' "$AGENT_TESTS" \
