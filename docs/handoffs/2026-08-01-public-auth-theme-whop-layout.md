@@ -11,17 +11,22 @@
   - `packages/app/src/lib/public-prefs.test.ts`
   - `packages/app/src/components/public-login-form.tsx`
   - `packages/app/src/components/public-checkbox.tsx`
+  - `packages/app/src/components/public-legal-toc.tsx`
   - `packages/app/src/pages/public-foundation.css`
   - `packages/app/src/pages/public-site.css`
+  - `packages/app/src/pages/public-polish.css`
+  - `packages/app/src/pages/public-terms.tsx`
+  - `packages/app/src/pages/public-privacy.tsx`
   - `packages/app/src/pages/public-whop-activate.tsx`
   - `packages/app/src/pages/public-login-theme-contract.test.ts`
+  - `packages/app/src/pages/public-legal-theme-contract.test.ts`
   - `packages/app/src/pages/public-whop-activation-contract.test.ts`
 - related_docs:
   - `docs/archive/plans/public-login-theme-contrast.md`
   - `docs/archive/index.md`
 - related_prs: []
 - verification:
-  - `bun run test:web`：322 pass，0 fail
+  - `bun run test:web`：325 pass，0 fail
   - `bun --filter @hone-financial/app typecheck`
   - `HONE_APP_SURFACE=public HONE_APP_OUT_DIR=dist-public-theme-check bun --filter @hone-financial/app build`
   - `cd workers/public-community-edge && bun run typecheck && bun run test`：45 pass，0 fail
@@ -36,14 +41,15 @@
 
 ## Summary
 
-Public 未登录页现在把首次访问稳定初始化为浅色，并为品牌、卡片、输入框、复选框、按钮、链接与状态信息使用同一套语义颜色。显式切到暗色后，HONE 品牌字样和表单内容均保持清晰对比度。Whop 直达页会主动加载 Public 基础样式，品牌图恢复正常尺寸，移动端内容完整进入页面滚动区。
+Public 未登录页现在把首次访问稳定初始化为浅色，并为品牌、卡片、输入框、复选框、按钮、链接与状态信息使用同一套语义颜色。显式切到暗色后，HONE 品牌字样和表单内容均保持清晰对比度。Whop 直达页会主动加载 Public 基础样式，品牌图恢复正常尺寸，移动端内容完整进入页面滚动区。后续补查的用户协议和隐私政策页也已移除写死白底，导航与长文正文在两种主题下使用匹配的前景 / 背景色。
 
 ## What Changed
 
 - Public surface 在路由加载前统一初始化偏好；缺少或损坏的主题存储值归一为 `light`，有效显式偏好不变。
 - 共用登录表单增加主题入口，并以主题 token 取代写死的白色表面和浅色文字组合。
 - Whop 页面直接导入 Public 基础样式，复用登录页语义表面，并为窄屏补齐纵向节奏、验证码行折叠和可滚动布局。
-- 新增主题偏好、登录表面对比度和 Whop 直达样式契约回归。
+- 用户协议与隐私政策页改用主题纸色；导航品牌、购买按钮、对话按钮和回到顶部按钮改用成对语义色。
+- 新增主题偏好、登录表面对比度、法律页和 Whop 直达样式契约回归。
 
 ## Verification
 
@@ -51,6 +57,7 @@ Public 未登录页现在把首次访问稳定初始化为浅色，并为品牌�
 - 登录页浅色品牌 / 标题对比度 15.16:1，暗色 14.68:1；输入文字分别为 16.63:1 与 16:1；暗色辅助文字 5.96:1，暗色禁用按钮 6.93:1。
 - 1920px 桌面与 390px 手机登录页在两种主题下均无横向溢出。
 - Whop 390x667 页面 `scrollHeight=724`，实际 `scrollY` 可从 0 移到 57，底部链接可见；`scrollWidth=384` 未超过 390px 视口。桌面与移动端的浅色 / 暗色渲染均已截图留证。
+- 法律页浅色标题 / 正文对比度为 16.36:1 / 12.08:1，深色为 16:1 / 12.64:1；导航操作分别达到 5.34:1、9.28:1、15.17:1 或更高。用户协议与隐私政策均无横向溢出，目录跳转实际从页首滚动到 `scrollY=1699`，回到顶部按钮在深色主题下为深字浅底。
 - 视觉证据位于 `/Users/zhangxuanren/.codex/visualizations/2026/08/01/019fbd41-5b0d-7e43-895b-9f788b259d0b/hone-login-theme/`。
 
 ## Risks / Follow-ups

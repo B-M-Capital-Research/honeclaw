@@ -87,7 +87,7 @@ export function BackToTop() {
           height: "44px",
           "border-radius": "999px",
           background: "var(--hone-ink-950)",
-          color: "#fff",
+          color: "var(--hone-action-fg)",
           border: "none",
           cursor: "pointer",
           "box-shadow": "0 6px 20px rgba(23,32,31,0.25)",

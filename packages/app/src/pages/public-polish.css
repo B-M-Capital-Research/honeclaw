@@ -72,8 +72,14 @@
 .pub-nav-cta {
   border-color: var(--hone-ink-950);
   background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
   box-shadow: none;
   text-decoration: none;
+}
+
+.pub-nav-cta:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
 }
 
 .pub-nav-brand {
@@ -127,10 +133,10 @@
   align-items: center;
   min-height: 36px;
   padding: 0 16px;
-  border: 1px solid var(--hone-coral-500);
+  border: 1px solid var(--hone-action-bg);
   border-radius: var(--hone-radius-sm);
-  background: var(--hone-coral-500);
-  color: #fff;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
   cursor: pointer;
   font: 700 13px/1 var(--hone-font-body);
   white-space: nowrap;

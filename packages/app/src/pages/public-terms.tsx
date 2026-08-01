@@ -95,7 +95,7 @@ export default function PublicTermsPage() {
       class="pub-page"
       style={{
         "min-height": "100vh",
-        background: "#fff",
+        background: "var(--hone-paper-50)",
         "font-family": "var(--hone-font-body)",
       }}
     >

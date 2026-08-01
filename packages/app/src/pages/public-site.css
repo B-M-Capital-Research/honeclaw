@@ -60,7 +60,7 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: #172026;
+  color: var(--hone-ink-950);
   line-height: 1;
 }
 .hone-brand-mark {
