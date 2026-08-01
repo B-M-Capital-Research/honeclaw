@@ -14,13 +14,21 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-01 06:00-10:01 CST 运行态回退为 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 09:01 CST `核心观察池早间简报` 落成 `execution_failed + sent + delivered=1`，用户侧收到“观察池行情出现数量级异常，系统已跳过精确价格版本”的失败提示。说明异常行情锚仍会进入核心观察池任务，只是部分路径已被 guard 改成失败降级。
+    - 10:02 CST `Citrini AI 供应链文章跟踪` `run_id=51349` 正常 `completed + sent + delivered=1`，但 preview 仍使用 `MU ... $823.03`、`NVDA 突破 $200` 等明显数量级异常 / 高风险价格锚，并据此扩展出“AI 算力需求”和“AI 内存”交易逻辑判断。
+  - 判断：
+    - 2026-07-30 的代码级 guard 已能拦住一部分核心观察池精确价格版本，但最新真实投递仍证明异常行情锚会从其它 scheduler 入口进入投资结论，且会影响用户可见分析。
+    - 状态从代码级 `Fixed` 回退为运行态 `New`；严重等级暂维持 `P0`，因为错误价格数量级会直接污染投资决策，不过本轮没有错投、敏感泄露或系统全渠道不可用。
 
 - 2026-07-30 `bug-2` 代码级修复补强：
   - `crates/hone-channels/src/scheduler.rs` 的 `watchlist_price_anchor_guard` 现在先保留原有的 `ticker + 价格` 数量级拦截，再额外扫描同一观察池片段里的后续技术位 / 盘后 / 昨收等价格锚；单 ticker 片段会继续检查后续 `$...` 数值，多 ticker 串行价格片段会按 ticker 顺序逐个配对校验。

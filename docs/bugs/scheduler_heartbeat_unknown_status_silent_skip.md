@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-08-01 06:00-10:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - SQLite 已推进到 `sessions.max(last_message_at)=2026-08-01T10:00:01.150310+08:00`、`session_messages.max(timestamp)=2026-08-01T10:00:01.150310+08:00`、`cron_job_runs.max(executed_at)=2026-08-01T10:00:49.977517+08:00`。
+    - 同窗 heartbeat run 共 72 条：`execution_failed/skipped_error=46`、`noop/skipped_noop=18`、`completed/sent=8`；普通 scheduler 8 条里还有 `target_resolution_failed=3`、`skipped_error=2`、`execution_failed/sent=1`、`running/pending=1`。
+    - 09:00 `ASTS 全面心跳检测` 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 落成 `execution_failed + skipped_error`；09:30 `关注股重大事件心跳检测` 继续以 fenced JSON 协议正文送达；09:30 / 10:00 `珠海冠宇加仓信号心跳检测`、09:30 `ASTS 全面心跳检测`、10:00 `AAOI 全面心跳检测` 等正文写 `NOOP/noop/无新增触发事实/不推送` 后仍进入 `completed + sent`。
+    - 06:30-08:30 大量 skipped_error 是 MiniMax transport 与证券数据源失败，另归入对应传输 / 证据链路；本单记录的是 heartbeat 状态契约仍在 `failed / noop / sent` 之间漂移，且结构化 parse 语义不足以阻止错误投递或错误跳过。
+  - 判断：最新证据仍落在 heartbeat 结构化状态输出退化与后置归类漂移范围内；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-07-31 10:00-14:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - SQLite 已推进到 `sessions.max(last_message_at)=2026-07-31T13:32:11.719423+08:00`、`session_messages.max(timestamp)=2026-07-31T13:32:11.719423+08:00`、`cron_job_runs.max(executed_at)=2026-07-31T14:01:22.994948+08:00`。

@@ -7,6 +7,12 @@
 
 ## 最新进展
 
+- `2026-08-01 06:00-10:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 09:30 CST `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=51347` 落成 `completed + sent + delivered=1`，`response_preview` 以 fenced `json` 代码块开头，随后直接暴露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗其它 direct / scheduler final 未见 raw tool、绝对路径、思维痕迹或 provider 原始错误外泄；本轮问题集中在 heartbeat 触发载荷渲染格式。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并送达，用户可从字段中读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-31 10:00-14:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 10:31 CST heartbeat job `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=50891` 已 `completed + sent + delivered=1`，`response_preview` 直接以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。

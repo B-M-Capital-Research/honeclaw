@@ -3,9 +3,21 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展（2026-04-26）
+
+- **2026-08-01 06:00-10:01 CST 运行态回退为 `New`**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 巡检窗口按上一轮自动化边界 `2026-07-31T22:00:44Z` / 北京时间 `2026-08-01 06:00:44` 起算，`cron_job_runs.max(executed_at)=2026-08-01T10:00:49.977517+08:00`。
+    - 06:30-08:30 CST 连续 5 个半小时批次里，`AAOI 全面心跳检测`、`ASTS 全面心跳检测`、`RKLB 全面心跳检测`、`Monitor_Watchlist_11`、`全天原油价格3小时播报` 各 5 次落成 `execution_failed + skipped_error + delivered=0`。
+    - 错误体均为 `LLM 错误: 所有 OpenAI-compatible API Key 的流式请求均失败：error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，说明 provider 级短重试后仍没有进入可用降级或下一 provider。
+  - 会话质量对照：
+    - 同窗 Feishu direct 在 09:23 / 09:54 有 AMZN 画像更新、Pagaya 分析等正常 assistant 收口；普通 scheduler 也有 `特斯拉与火箭实验室新闻日报`、`Citrini AI 供应链文章跟踪` 正常送达。
+    - 因此本轮不是全局 LLM 或 Feishu 全渠道不可用，而是 heartbeat 对 MiniMax / OpenAI-compatible 传输失败仍成批跳过。
+  - 判断：
+    - 该样本晚于 2026-07-16 代码级修复，满足“后续运行态仍成批复现则重新打开”的条件；状态从 `Fixed` 回退为 `New`。
+    - 影响范围是 heartbeat 监控覆盖缺口，未见错投、敏感泄露或全渠道不可用，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - **2026-07-16 代码级修复，状态更新为 `Fixed`**：
   - `crates/hone-channels/src/scheduler.rs`

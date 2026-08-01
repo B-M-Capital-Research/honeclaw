@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 2026-05-21 23:03 CST 复核重新打开：
@@ -48,6 +48,19 @@
     - 区别在于该缺陷当前表现为“校验拦截后无法送达”，而不是把消息误投给错误用户
 
 ## 端到端链路
+
+## 状态更新（2026-08-01 bug）
+
+- 本轮巡检确认该缺陷不能继续维持 `Fixed`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 巡检窗口：`2026-08-01 06:00:44-10:01 CST`。
+    - `OKLO每日重要事件跟踪`、`每日SemiAnalysis与Citrini文章追踪`、`每日有色化工标的新闻追踪` 在 08:30 CST 左右均落成 `execution_failed + target_resolution_failed + delivered=0`。
+    - 三条错误均为 `集成错误: Feishu token request failed: error sending request for url (https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal)`。
+    - 同窗 Feishu direct 创建每日任务在 08:44 / 08:49 两次也因 tenant token 请求传输失败导致占位消息与失败兜底发送失败；09:50 同一用户重试后成功创建任务，说明故障后续恢复，但 08:30-08:50 窗口已经造成多条任务漏发 / 用户重试。
+  - 判断：
+    - 这次坏态与 2026-05 的 contact lookup / invalid-token 子类不同，但端到端失败阶段相同：Feishu 出站目标解析 / 鉴权前置失败后，内容无法送达，最终 `delivered=0`。
+    - 本轮有多个普通 scheduler 与 direct 发送前置动作受影响，因此从代码级 `Fixed` 回退为运行态 `New`；但 09:50 后已有成功样本，暂按 `P2`，不按历史批量全局不可用 `P1` 处理。
+    - 已有关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)，本轮没有新增活跃 P1，不创建新 GitHub Issue。
 
 1. 用户此前创建了 Feishu 直达型定时任务，任务配置里保存的 `channel_target` 为手机号 `+8617326027390`。
 2. 调度器按计划触发任务，模型执行阶段已经产生了内容或至少进入了正式运行。
