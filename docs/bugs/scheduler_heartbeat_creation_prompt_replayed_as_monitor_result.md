@@ -18,6 +18,15 @@
 
 ## 修复进展
 
+- `2026-08-01 10:00-14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 11:00 `ASTS 全面心跳检测` `run_id=51370` 作为 ASTS heartbeat job 触发，用户可见 preview 却输出“流动性陷阱（Liquidity Trap）”的宏观概念解释，没有执行 ASTS 监控条件。
+    - 11:31 `AAOI 全面心跳检测` `run_id=51379` 作为 AAOI heartbeat job 触发，却串入旧持仓数字和成本澄清语境，没有稳定执行 AAOI 心跳检查。
+    - 14:00 runtime `Monitor_Watchlist_11` raw preview 仍围绕工具调用限制和 `HIMS/MU` 临时结果组织判断，其中 `MU $823.03` 继续进入观察池内部分析；虽然该轮 parse 为 noop 未发送，但说明执行期仍会被残缺工具上下文污染。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、无关主题或残缺工具上下文污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-07-30 18:00-22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 18:00 `RKLB 全面心跳检测` 作为 RKLB heartbeat job 触发，却串入“成本约 $53、浮亏约 20%”的旧直聊持仓语境，围绕成本核对和是否要卖展开。

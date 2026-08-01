@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-01 10:00-14:02 CST 运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
+    - 10:02 CST `Citrini AI 供应链文章跟踪` `run_id=51349` 继续以 `MU ... $823.03`、`NVDA 突破 $200` 等明显数量级异常 / 高风险价格锚组织交易逻辑判断；该样本在上一轮 10:01 临界点已发现，本轮确认仍落在本次最近四小时窗口内。
+    - 14:00 runtime `关注股重大事件心跳检测` raw preview 继续写 `MU (Micron): $823.03, -5.90%` 并用于观察池触发判断；该轮 parse 为 `JsonNoop` 未发送，但说明上游行情锚仍能进入 heartbeat 生成上下文。
+    - 14:00 runtime `Monitor_Watchlist_11` raw preview 同样在工具调用限制后保留 `MU $823.03` 作为距离触发价判断锚，最终 parse 为 `PlainTextNoop` 未发送。
+  - 判断：
+    - 当前 guard 已能拦住部分异常价格或将部分轮次压成 noop，但异常行情锚仍会进入普通 scheduler / heartbeat 生成上下文，并且 10:02 已有用户可见 sent 样本。
+    - 状态维持运行态 `New`；严重等级维持 `P0`，因为错误价格数量级会直接污染投资决策。14:00 两条未送达样本不单独升 P1。
+
 - 2026-08-01 06:00-10:01 CST 运行态回退为 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 09:01 CST `核心观察池早间简报` 落成 `execution_failed + sent + delivered=1`，用户侧收到“观察池行情出现数量级异常，系统已跳过精确价格版本”的失败提示。说明异常行情锚仍会进入核心观察池任务，只是部分路径已被 guard 改成失败降级。
