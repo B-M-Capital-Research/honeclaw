@@ -8,7 +8,7 @@
 #   1. 等待 3 秒（让当前对话回复发出去）
 #   2. 向旧 hone-cli start supervisor 发送 SIGTERM
 #   3. 等待旧进程退出（最多 10 秒）
-#   4. 在项目根目录通过本地 CLI build-and-start 路径重启
+#   4. 在项目根目录通过本地 CLI build-and-start detached 路径重启
 #   5. hone-cli start 在就绪后写入 data/runtime/current.pid
 
 set -euo pipefail
@@ -75,7 +75,7 @@ cd "$PROJECT_ROOT" || {
     exit 1
 }
 
-echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 启动新的 hone-cli start --build..."
+echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 启动新的 hone-cli start --build --detach..."
 
 # 启动新 hone-cli，输出写入 hone-cli-start.log
 # current.pid 将由 hone-cli start 在进程就绪后写入
@@ -87,9 +87,9 @@ case "$TARGET_ROOT" in
 esac
 CLI_BIN="$TARGET_ROOT/debug/hone-cli"
 if [[ -x "$CLI_BIN" ]]; then
-    nohup "$CLI_BIN" start --build >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
+    nohup "$CLI_BIN" start --build --detach >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
 else
-    nohup cargo run -q -p hone-cli -- start --build >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
+    nohup cargo run -q -p hone-cli -- start --build --detach >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
 fi
 NEW_START_PID=$!
 

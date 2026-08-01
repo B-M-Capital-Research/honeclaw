@@ -1,6 +1,8 @@
 use std::env;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -28,6 +30,7 @@ const ACTIVE_CHAT_DRAIN_GRACE: Duration = Duration::from_secs(15);
 const ACTIVE_CHAT_DRAIN_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const ACTIVE_CHAT_DRAIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES: usize = 3;
+const DETACHED_START_CHILD_ENV: &str = "HONE_START_DETACHED_CHILD";
 
 #[derive(Debug, Deserialize)]
 struct ActiveChatRunsResponse {
@@ -47,6 +50,9 @@ pub(crate) struct StartArgs {
     /// 在源码 checkout 中先构建 hone-cli 和运行时二进制，再从本地 target 启动。
     #[arg(long)]
     pub(crate) build: bool,
+    /// 在后台 detached 启动 hone-cli supervisor，并把日志写到 data/logs/hone-cli-start.log。
+    #[arg(long)]
+    pub(crate) detach: bool,
     /// 源码 checkout 根目录；默认从当前目录向上查找，或读取 HONE_SOURCE_ROOT。
     #[arg(long, value_name = "DIR")]
     pub(crate) source_root: Option<PathBuf>,
@@ -88,6 +94,27 @@ fn source_target_debug_dir(source_root: &Path) -> PathBuf {
         source_root.join(target_dir)
     };
     target_dir.join("debug")
+}
+
+fn detached_start_log_path(paths: &ResolvedRuntimePaths) -> PathBuf {
+    paths.data_dir.join("logs").join("hone-cli-start.log")
+}
+
+fn detached_start_child_args(
+    explicit_config: Option<&Path>,
+    source_root: Option<&Path>,
+) -> Vec<OsString> {
+    let mut args = Vec::new();
+    if let Some(path) = explicit_config {
+        args.push(OsString::from("--config"));
+        args.push(path.as_os_str().to_os_string());
+    }
+    args.push(OsString::from("start"));
+    if let Some(root) = source_root {
+        args.push(OsString::from("--source-root"));
+        args.push(root.as_os_str().to_os_string());
+    }
+    args
 }
 
 fn public_web_port_from_env() -> u16 {
@@ -425,6 +452,56 @@ fn isolate_runtime_child_from_terminal_interrupt(command: &mut Command) {
     command.process_group(0);
 }
 
+fn is_detached_start_child() -> bool {
+    env::var(DETACHED_START_CHILD_ENV)
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+fn spawn_detached_supervisor(
+    explicit_config: Option<&Path>,
+    paths: &ResolvedRuntimePaths,
+    source_root: Option<&Path>,
+) -> Result<u32, String> {
+    let current_exe =
+        env::current_exe().map_err(|error| format!("无法定位当前 hone-cli 可执行文件：{error}"))?;
+    let log_path = detached_start_log_path(paths);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("无法创建日志目录 {}: {error}", parent.display()))?;
+    }
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|error| format!("无法打开 detached 启动日志 {}: {error}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("无法复制 detached 启动日志句柄：{error}"))?;
+
+    let child_args = detached_start_child_args(explicit_config, source_root);
+    let mut command = if cfg!(unix) {
+        let mut command = Command::new("nohup");
+        command.arg(&current_exe);
+        command
+    } else {
+        Command::new(&current_exe)
+    };
+    command
+        .args(&child_args)
+        .current_dir(&paths.root_dir)
+        .env(DETACHED_START_CHILD_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    isolate_runtime_child_from_terminal_interrupt(&mut command);
+
+    let child = command
+        .spawn()
+        .map_err(|error| format!("启动 detached hone-cli supervisor 失败：{error}"))?;
+    Ok(child.id().unwrap_or_default())
+}
+
 async fn spawn_channel(
     binary: &str,
     label: &str,
@@ -530,7 +607,7 @@ fn clear_current_pid(paths: &ResolvedRuntimePaths) {
 
 pub(crate) async fn run_start(
     explicit_config: Option<&Path>,
-    args: StartArgs,
+    mut args: StartArgs,
 ) -> Result<(), String> {
     let source_root = if args.build {
         Some(source_root_from_env_or_cwd(args.source_root.as_deref()).ok_or_else(|| {
@@ -544,6 +621,19 @@ pub(crate) async fn run_start(
     if args.build {
         build_source_runtime_binaries(source_root.as_deref().expect("source root")).await?;
     }
+
+    if args.detach && !is_detached_start_child() {
+        let paths = resolve_runtime_paths(explicit_config, true).map_err(|e| e.to_string())?;
+        let supervisor_pid =
+            spawn_detached_supervisor(explicit_config, &paths, source_root.as_deref())?;
+        let log_path = detached_start_log_path(&paths);
+        println!(
+            "[INFO] detached hone-cli supervisor started pid={supervisor_pid} log={}",
+            log_path.display()
+        );
+        return Ok(());
+    }
+    args.detach = false;
 
     let (config, paths) = load_cli_config(explicit_config, true).map_err(|e| e.to_string())?;
     let runtime_role = RuntimeRole::from_env();
@@ -757,6 +847,43 @@ mod tests {
     #[test]
     fn unexpected_exit_hint_is_none_for_other_processes() {
         assert!(unexpected_exit_hint("hone-feishu").is_none());
+    }
+
+    #[test]
+    fn detached_start_child_args_keep_config_and_source_root() {
+        let args = detached_start_child_args(
+            Some(Path::new("/tmp/hone/config.yaml")),
+            Some(Path::new("/tmp/hone")),
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("--config"),
+                OsString::from("/tmp/hone/config.yaml"),
+                OsString::from("start"),
+                OsString::from("--source-root"),
+                OsString::from("/tmp/hone"),
+            ]
+        );
+    }
+
+    #[test]
+    fn detached_start_log_path_uses_data_logs_directory() {
+        let paths = ResolvedRuntimePaths {
+            canonical_config_path: PathBuf::from("/tmp/hone/config.yaml"),
+            effective_config_path: PathBuf::from("/tmp/hone/data/runtime/effective-config.yaml"),
+            data_dir: PathBuf::from("/tmp/hone/data"),
+            runtime_dir: PathBuf::from("/tmp/hone/data/runtime"),
+            skills_dir: PathBuf::from("/tmp/hone/skills"),
+            root_dir: PathBuf::from("/tmp/hone"),
+            web_port: 8077,
+        };
+
+        assert_eq!(
+            detached_start_log_path(&paths),
+            PathBuf::from("/tmp/hone/data/logs/hone-cli-start.log")
+        );
     }
 
     #[test]

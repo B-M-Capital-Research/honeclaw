@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,25 +22,20 @@
 
 ## 最新进展
 
-- 2026-08-02 02:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
-  - 证据来源：
-    - `data/sessions.sqlite3`
-      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
-      - `session_messages.max(imported_at)=2026-08-01T14:13:46.194864+08:00`
-      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
-      - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`
-      - 22:02-02:02 CST 窗口内新增 session / message / cron run 均为 0。
-    - `data/runtime/logs/*.log` 与 `data/logs/*.log`
-      - 22:02 CST 后没有新的 `.log` mtime 推进。
-      - 最近 runtime 相关日志仍停在 `web.log.2026-08-01` / `web_deploy_49ef8dd4_20260731.log` / `feishu_deploy_49ef8dd4_20260731.log` 的 14:14 CST，以及 `sunny_ngrok_screen_20260731.log` 的 14:21 CST。
-    - 进程表：
-      - 02:02 CST 仍未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-web-api`、`hone-desktop` 或 scheduler 运行进程；命中项仅为无关系统进程、本地 PostgreSQL、ChatGPT / Codex 进程和浏览器辅助进程。
-    - 最近提交：
-      - 22:02-02:02 CST 无非文档代码提交。
-  - 判断：
-    - 本轮没有新的真实 assistant final 或 scheduler 输出可检查答非所问、格式污染、错投或 AI 返回质量问题；缺陷信号仍集中在运行承载链路缺席。
-    - 该证据与 18:03 / 22:03 CST 回退和复核记录属于同一根因、同一影响范围，不新建重复缺陷。
-    - 已有关联 GitHub Issue #53，本轮确认活跃 P1 但不重复创建 Issue。
+- 2026-08-01 11:45 CST 代码级修复，状态更新为 `Fixed`：
+  - 修复内容：
+    - `bins/hone-cli/src/start.rs` 为 `hone-cli start` 新增 `--detach`。当前台源码入口使用 `cargo run -p hone-cli -- start --build --detach` 时，前台 CLI 先完成本地 build，再由同一 CLI 自行拉起 detached supervisor，统一把启动日志写到 `data/logs/hone-cli-start.log`，并继续沿用 `data/runtime/current.pid` 作为权威 supervisor pid。
+    - `scripts/restart_hone.sh` 同步改为调用 `hone-cli start --build --detach`，避免后台重启链路和人工 source-start 链路再使用两套生命周期语义。
+    - `docs/runbooks/desktop-dev-runtime.md` 与 `docs/repo-map.md` 同步切到新的 source runtime 契约，避免继续建议把长期运行态绑在临时 shell 前台。
+  - 验证：
+    - `cargo test -p hone-cli start::tests -- --nocapture`
+    - `cargo check -p hone-cli --tests`
+    - `rustfmt --edition 2024 --check bins/hone-cli/src/start.rs`
+    - `bash -n scripts/restart_hone.sh`
+    - `git diff --check`
+  - 当前边界：
+    - 本轮没有重启现有 live runtime，也没有做 launchctl / 外部 supervisor 运行态复核；因此先记代码级 `Fixed`，不推进 `Closed`。
+    - 2026-08-01 18:03 / 22:03 以及先前台账里的“运行承载进程缺席”证据，仍代表旧启动契约或旧运行实例上的真实坏态；需要后续在新入口下继续观察是否复发。
 
 - 2026-08-01 22:03 CST 运行态持续活跃复核，状态保持 `New/P1`：
   - 证据来源：

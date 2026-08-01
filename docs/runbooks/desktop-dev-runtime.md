@@ -18,10 +18,10 @@ For the validated macOS release-app operating procedure, see [desktop-release-ap
 Start backend and enabled channel listeners from the source checkout:
 
 ```bash
-cargo run -p hone-cli -- start --build
+cargo run -p hone-cli -- start --build --detach
 ```
 
-This builds the local CLI/runtime binaries, generates `data/runtime/effective-config.yaml`, starts `hone-console-page`, starts enabled channels, and writes `data/runtime/current.pid`.
+This builds the local CLI/runtime binaries, asks `hone-cli` to spawn its own detached supervisor, writes logs to `data/logs/hone-cli-start.log`, then returns the shell prompt. The detached supervisor generates `data/runtime/effective-config.yaml`, starts `hone-console-page`, starts enabled channels, and writes `data/runtime/current.pid`.
 
 ### Desktop Shell Lane
 
@@ -66,7 +66,7 @@ Example:
 
 ```bash
 export CARGO_TARGET_DIR="$HOME/Library/Caches/honeclaw/target"
-cargo run -p hone-cli -- start --build
+cargo run -p hone-cli -- start --build --detach
 ```
 
 ## Incident Stopgap: Enable Feishu On A Test Machine
@@ -74,7 +74,7 @@ cargo run -p hone-cli -- start --build
 Use the stable runtime lane and disable Feishu scheduler only when live messages must not be starved by overdue cron jobs:
 
 ```bash
-HONE_FEISHU_DISABLE_SCHEDULER=1 cargo run -p hone-cli -- start --build
+HONE_FEISHU_DISABLE_SCHEDULER=1 cargo run -p hone-cli -- start --build --detach
 ```
 
 Then start the public frontend if local user-side smoke tests need it:
