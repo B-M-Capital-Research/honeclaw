@@ -337,7 +337,7 @@ export default function PublicHomePage() {
           border: 1px solid var(--hone-ink-950);
           border-radius: 999px;
           background: var(--hone-ink-950);
-          color: #fff;
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 13px;
           font-weight: 700;
@@ -350,32 +350,32 @@ export default function PublicHomePage() {
           box-shadow: 0 14px 32px rgba(23, 32, 31, 0.18);
         }
         .hone-home-cta.is-buy {
-          border-color: var(--hone-coral-500);
-          background: var(--hone-coral-500);
+          border-color: var(--hone-action-bg);
+          background: var(--hone-action-bg);
           box-shadow: 0 10px 26px color-mix(in srgb, var(--hone-coral-500) 30%, transparent);
         }
         .hone-home-cta.is-buy:hover {
-          border-color: var(--hone-coral-600);
-          background: var(--hone-coral-600);
+          border-color: color-mix(in srgb, var(--hone-action-bg) 90%, var(--hone-ink-950));
+          background: color-mix(in srgb, var(--hone-action-bg) 90%, var(--hone-ink-950));
           box-shadow: 0 14px 32px color-mix(in srgb, var(--hone-coral-500) 38%, transparent);
         }
         .hone-home-cta.is-buy small {
           padding: 2px 8px;
           border-radius: 999px;
-          background: rgba(255, 255, 255, 0.22);
-          color: #fff;
+          background: color-mix(in srgb, var(--hone-action-bg) 78%, var(--hone-ink-950));
+          color: var(--hone-action-fg);
           font-size: 11px;
           font-weight: 700;
         }
         .hone-home-cta.is-ghost {
           border-color: var(--hone-line-strong);
-          background: rgba(255, 255, 255, 0.88);
+          background: color-mix(in srgb, var(--hone-control-surface) 88%, transparent);
           color: var(--hone-ink-950);
           box-shadow: none;
         }
         .hone-home-cta.is-ghost:hover {
           border-color: var(--hone-ink-950);
-          background: #fff;
+          background: var(--hone-surface-raised);
           box-shadow: var(--hone-shadow-sm);
         }
         .hone-home-cta small {
@@ -422,7 +422,7 @@ export default function PublicHomePage() {
           overflow: hidden;
           border: 1px solid var(--hone-line);
           border-radius: 17px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           box-shadow: 0 30px 80px rgba(23, 32, 31, 0.1);
         }
         .hone-home-window > header {
@@ -441,7 +441,7 @@ export default function PublicHomePage() {
           border: 1px solid var(--hone-line);
         }
         .hone-home-window > header i:first-child {
-          background: color-mix(in srgb, var(--hone-coral-500) 55%, #fff);
+          background: color-mix(in srgb, var(--hone-coral-500) 55%, var(--hone-surface-raised));
           border-color: color-mix(in srgb, var(--hone-coral-500) 40%, var(--hone-line));
         }
         .hone-home-window > header span {
@@ -474,7 +474,7 @@ export default function PublicHomePage() {
           padding: 24px 22px 26px;
           border: 1px solid var(--hone-line);
           border-radius: 17px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           transition: transform 0.18s var(--hone-ease), border-color 0.18s ease, box-shadow 0.18s var(--hone-ease);
         }
         .hone-home-trust article:hover {
@@ -512,7 +512,7 @@ export default function PublicHomePage() {
           margin-top: 18px;
           border: 1px solid var(--hone-line);
           border-radius: 17px;
-          background: #fff;
+          background: var(--hone-surface-raised);
         }
         .hone-home-case-tabs {
           display: flex;
@@ -540,7 +540,7 @@ export default function PublicHomePage() {
         }
         .hone-home-case-tabs button:hover { color: var(--hone-ink-950); }
         .hone-home-case-tabs button.is-active {
-          background: #fff;
+          background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           box-shadow: var(--hone-shadow-sm);
         }
@@ -574,7 +574,7 @@ export default function PublicHomePage() {
           border: 1px solid var(--hone-ink-950);
           border-radius: var(--hone-radius-sm);
           background: var(--hone-ink-950);
-          color: #fff;
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 12px;
           font-weight: 700;
@@ -634,7 +634,7 @@ export default function PublicHomePage() {
           padding: 26px;
           border: 1px solid var(--hone-line);
           border-radius: 17px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           cursor: pointer;
           transition: transform 0.18s var(--hone-ease), border-color 0.18s ease, box-shadow 0.18s var(--hone-ease);
         }
@@ -671,7 +671,7 @@ export default function PublicHomePage() {
           border: 1px solid var(--hone-ink-950);
           border-radius: var(--hone-radius-sm);
           background: var(--hone-ink-950);
-          color: #fff;
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 12px;
           font-weight: 700;
@@ -702,7 +702,7 @@ export default function PublicHomePage() {
           border-radius: 17px;
           background:
             radial-gradient(420px 200px at 90% 0, color-mix(in srgb, var(--hone-coral-500) 9%, transparent), transparent 70%),
-            #fff;
+            var(--hone-surface-raised);
         }
         .hone-home-plan h2 {
           margin: 12px 0 0;
@@ -727,7 +727,7 @@ export default function PublicHomePage() {
           border: 1px solid var(--hone-ink-950);
           border-radius: 999px;
           background: var(--hone-ink-950);
-          color: #fff;
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 13px;
           font-weight: 700;
@@ -745,7 +745,7 @@ export default function PublicHomePage() {
           z-index: 1000;
           display: grid;
           place-items: center;
-          background: rgba(255, 253, 248, 0.96);
+          background: color-mix(in srgb, var(--hone-paper-50) 96%, transparent);
           backdrop-filter: blur(18px);
           cursor: zoom-out;
           animation: hone-home-fade 0.25s ease;
@@ -800,7 +800,7 @@ export default function PublicHomePage() {
             overflow: hidden;
             border: 1px solid var(--hone-line);
             border-radius: 16px;
-            background: #fff;
+            background: var(--hone-surface-raised);
           }
           .hone-home-trust article {
             display: grid;

@@ -514,7 +514,7 @@ html {
   padding: 14px;
   border: 1px solid var(--hone-line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
+  background: color-mix(in srgb, var(--hone-surface-raised) 98%, transparent);
   box-shadow: 0 22px 60px rgba(23, 32, 31, 0.16);
   opacity: 0;
   pointer-events: none;
@@ -547,7 +547,7 @@ html {
   padding: 12px;
   border: 1px solid var(--hone-line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
   text-decoration: none;
   display: flex;
@@ -558,7 +558,7 @@ html {
 .pub-contact-card:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--hone-coral-500) 35%, transparent);
-  background: color-mix(in srgb, var(--hone-coral-500) 8%, #fff);
+  background: color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised));
 }
 .pub-contact-card-icon {
   width: 30px;
@@ -969,7 +969,7 @@ html {
 /* Footer */
 .pub-footer {
   padding: 72px 32px 34px;
-  color: #9ca4a8;
+  color: #aeb6b9;
   background:
     radial-gradient(circle at 12% -20%, rgba(232, 93, 4, 0.14), transparent 38%),
     #171d20;
@@ -988,13 +988,13 @@ html {
 .pub-footer-brand p {
   max-width: 260px;
   margin: 18px 0 0;
-  color: #737d82;
+  color: #929da1;
   font-size: 13px;
   line-height: 1.7;
 }
 .pub-footer-column h4 {
   margin: 0 0 18px;
-  color: #5f696e;
+  color: #879398;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.18em;
@@ -1012,7 +1012,7 @@ html {
 .pub-footer-column button {
   padding: 0;
   border: 0;
-  color: #8c969a;
+  color: #aeb6b9;
   background: transparent;
   cursor: pointer;
   font: inherit;
@@ -1030,11 +1030,11 @@ html {
   gap: 24px;
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  color: #505a5f;
+  color: #879398;
   font-size: 11px;
 }
 .pub-footer-bottom strong {
-  color: #6f787c;
+  color: #929da1;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -1765,7 +1765,7 @@ html {
   background:
     radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--hone-coral-500) 13%, transparent), transparent 30%),
     radial-gradient(circle at 88% 4%, rgba(23, 32, 31, 0.08), transparent 28%),
-    #fff;
+    var(--hone-paper-50);
   color: var(--hone-ink-950);
   font-family: var(--hone-font-body);
 }
@@ -1826,7 +1826,7 @@ html {
   padding: 20px;
   border: 1px solid var(--hone-line);
   border-radius: 32px;
-  background: rgba(255, 255, 255, 0.88);
+  background: color-mix(in srgb, var(--hone-surface-raised) 92%, transparent);
   box-shadow: 0 24px 80px rgba(23, 32, 31, 0.08);
   cursor: pointer;
   transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
@@ -1897,7 +1897,7 @@ html {
   border: none;
   border-radius: 999px;
   background: var(--hone-ink-950);
-  color: #fff;
+  color: var(--hone-action-fg);
   padding: 12px 18px;
   font-size: 14px;
   font-weight: 800;
@@ -1950,7 +1950,12 @@ html {
   padding: 18px 20px;
   border: 1px solid var(--hone-line);
   border-radius: 22px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--hone-coral-500) 8%, #fff) 0%, #ffffff 54%, var(--hone-paper-100) 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised)) 0%,
+    var(--hone-surface-raised) 54%,
+    var(--hone-paper-100) 100%
+  );
   box-shadow: 0 20px 60px rgba(23, 32, 31, 0.07);
   cursor: pointer;
   text-align: left;
@@ -1997,7 +2002,11 @@ html {
 .public-blog-markdown {
   max-width: 1120px;
   margin: 0;
-  color: #263241;
+  --text-primary: var(--hone-ink-950);
+  --text-secondary: var(--hone-ink-800);
+  --accent: var(--hone-link);
+  --border: var(--hone-line);
+  color: var(--hone-ink-800);
   font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif;
   font-size: 19px;
   line-height: 1.78;
@@ -2019,7 +2028,7 @@ html {
 
 .public-blog-markdown blockquote {
   border-left-color: var(--hone-coral-500);
-  background: color-mix(in srgb, var(--hone-coral-500) 8%, #fff);
+  background: color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised));
 }
 
 .public-blog-markdown img {
@@ -2041,7 +2050,7 @@ html {
 .public-blog-keep-reading button {
   margin-top: 16px;
   border: 1px solid var(--hone-line);
-  background: #fff;
+  background: var(--hone-control-surface);
   color: var(--hone-ink-950);
   border-radius: 18px;
   padding: 18px 20px;

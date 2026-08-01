@@ -144,8 +144,8 @@
   box-shadow: 0 6px 16px color-mix(in srgb, var(--hone-coral-500) 32%, transparent);
 }
 .pub-nav-buy:hover {
-  border-color: var(--hone-coral-600);
-  background: var(--hone-coral-600);
+  border-color: color-mix(in srgb, var(--hone-action-bg) 90%, var(--hone-ink-950));
+  background: color-mix(in srgb, var(--hone-action-bg) 90%, var(--hone-ink-950));
   box-shadow: 0 8px 20px color-mix(in srgb, var(--hone-coral-500) 40%, transparent);
 }
 .pub-nav-buy:active {
@@ -166,7 +166,7 @@
   padding: 9px;
   border: 1px solid var(--hone-line);
   border-radius: 17px;
-  background: rgba(255, 254, 251, 0.98);
+  background: color-mix(in srgb, var(--hone-surface-raised) 98%, transparent);
   box-shadow: 0 20px 58px rgba(23, 32, 31, 0.16);
   animation: pub-menu-arrive 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -315,7 +315,7 @@
 .public-scheduled-card {
   border-color: var(--hone-line);
   border-radius: var(--hone-radius-md);
-  background: #fff;
+  background: var(--hone-surface-raised);
   box-shadow: var(--hone-shadow-sm);
 }
 
@@ -406,17 +406,17 @@
     gap: 10px;
     margin-top: 6px;
     padding: 0 14px;
-    border: 1px solid var(--hone-coral-500);
+    border: 1px solid var(--hone-action-bg);
     border-radius: 12px;
-    background: var(--hone-coral-500);
-    color: #fff;
+    background: var(--hone-action-bg);
+    color: var(--hone-action-fg);
     cursor: pointer;
     font: 700 14px/1 var(--hone-font-body);
   }
   .pub-mobile-menu-buy small {
     padding: 3px 9px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--hone-action-bg) 78%, var(--hone-ink-950));
     font-size: 11px;
     font-weight: 700;
   }
@@ -431,7 +431,7 @@
   .pub-mobile-menu .pub-nav-utility-links a,
   .pub-mobile-menu .pub-nav-utility-item {
     min-height: 48px;
-    background: rgba(255, 255, 255, 0.64);
+    background: color-mix(in srgb, var(--hone-surface-raised) 64%, transparent);
   }
 
   .pub-mobile-menu-meta > span {
@@ -454,7 +454,7 @@
     padding: 5px 7px;
     border: 1px solid color-mix(in srgb, var(--hone-line) 88%, transparent);
     border-radius: 20px;
-    background: rgba(255, 254, 251, 0.95);
+    background: color-mix(in srgb, var(--hone-surface-raised) 95%, transparent);
     box-shadow: 0 12px 34px rgba(23, 32, 31, 0.14);
     backdrop-filter: blur(20px) saturate(1.16);
     -webkit-backdrop-filter: blur(20px) saturate(1.16);

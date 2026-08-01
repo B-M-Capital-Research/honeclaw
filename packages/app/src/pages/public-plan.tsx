@@ -360,7 +360,7 @@ export default function PublicPlanPage() {
           flex: 0 0 96px;
           border: 1px solid var(--hone-line);
           border-radius: 26px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           box-shadow: var(--hone-shadow-md);
           object-fit: cover;
         }
@@ -387,7 +387,7 @@ export default function PublicPlanPage() {
           padding: 4px 10px;
           border: 1px solid var(--hone-line);
           border-radius: 999px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           color: var(--hone-ink-600);
           font-size: 11px;
           font-weight: 650;
@@ -413,7 +413,7 @@ export default function PublicPlanPage() {
           padding: 8px 13px;
           border: 1px solid var(--hone-line);
           border-radius: 11px;
-          background: #fff;
+          background: var(--hone-surface-raised);
         }
         .hone-hub-stats strong {
           color: var(--hone-ink-950);
@@ -444,7 +444,7 @@ export default function PublicPlanPage() {
           padding: 0 14px 0 11px;
           border: 1px solid var(--hone-line);
           border-radius: 999px;
-          background: #fff;
+          background: var(--hone-surface-raised);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-family: inherit;
@@ -484,7 +484,7 @@ export default function PublicPlanPage() {
           padding: 20px 22px;
           border: 1px solid var(--hone-line);
           border-radius: 17px;
-          background: #fff;
+          background: var(--hone-surface-raised);
         }
         .hone-hub-label {
           margin-bottom: 14px;
@@ -547,7 +547,7 @@ export default function PublicPlanPage() {
           padding: 0 14px;
           border: 1px solid var(--hone-line-strong);
           border-radius: 10px;
-          background: #fff;
+          background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-size: 12px;
@@ -565,7 +565,7 @@ export default function PublicPlanPage() {
           border: 1px solid var(--hone-ink-950);
           border-radius: 10px;
           background: var(--hone-ink-950);
-          color: #fff;
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 12px;
           font-weight: 700;
@@ -672,7 +672,7 @@ export default function PublicPlanPage() {
           border-color: color-mix(in srgb, var(--hone-coral-500) 32%, var(--hone-line));
           background:
             radial-gradient(420px 200px at 92% 0, color-mix(in srgb, var(--hone-coral-500) 9%, transparent), transparent 70%),
-            #fff;
+            var(--hone-surface-raised);
         }
         .hone-hub-member-head {
           display: flex;
@@ -705,8 +705,8 @@ export default function PublicPlanPage() {
           padding: 3px 10px;
           border-radius: 999px;
           border: 1px solid color-mix(in srgb, var(--hone-coral-500) 36%, transparent);
-          background: color-mix(in srgb, var(--hone-coral-500) 8%, #fff);
-          color: var(--hone-coral-600);
+          background: color-mix(in srgb, var(--hone-coral-500) 10%, var(--hone-surface-raised));
+          color: var(--hone-link);
           font-size: 11px;
           font-weight: 700;
           white-space: nowrap;
@@ -747,10 +747,10 @@ export default function PublicPlanPage() {
           gap: 10px;
           min-height: 46px;
           padding: 0 20px;
-          border: 1px solid var(--hone-coral-500);
+          border: 1px solid var(--hone-action-bg);
           border-radius: var(--hone-radius-sm);
-          background: var(--hone-coral-500);
-          color: #fff;
+          background: var(--hone-action-bg);
+          color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 14px;
           font-weight: 700;
@@ -782,7 +782,7 @@ export default function PublicPlanPage() {
           margin-top: 9px;
           border: 1px solid var(--hone-line-strong);
           border-radius: var(--hone-radius-sm);
-          background: #fff;
+          background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-size: 13px;
@@ -812,7 +812,7 @@ export default function PublicPlanPage() {
           padding: 0 16px;
           border: 1px solid var(--hone-line-strong);
           border-radius: var(--hone-radius-sm);
-          background: #fff;
+          background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-size: 13px;
@@ -914,7 +914,7 @@ export default function PublicPlanPage() {
           place-items: center;
           border: 1px solid var(--hone-line);
           border-radius: 50%;
-          background: #fff;
+          background: var(--hone-control-surface);
           color: var(--hone-ink-600);
           cursor: pointer;
           font-size: 16px;

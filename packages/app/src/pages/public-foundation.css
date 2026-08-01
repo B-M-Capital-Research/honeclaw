@@ -17,9 +17,12 @@
   --hone-control-surface: #ffffff;
   --hone-sage-100: #e8eee8;
   --hone-coral-500: #f06449;
-  --hone-coral-600: #d94e35;
+  --hone-coral-600: #b94432;
   --hone-action-bg: #b94432;
   --hone-action-fg: #ffffff;
+  --hone-inverse-bg: #17201f;
+  --hone-inverse-fg: #f3f5f2;
+  --hone-inverse-muted: #b5bcb6;
   --hone-link: #a83c2c;
   --hone-error-600: #96342d;
   --hone-success-600: #176a38;
@@ -51,6 +54,9 @@
   --hone-coral-600: #ff9a86;
   --hone-action-bg: #ffad9d;
   --hone-action-fg: #17201f;
+  --hone-inverse-bg: #17201f;
+  --hone-inverse-fg: #f3f5f2;
+  --hone-inverse-muted: #b5bcb6;
   --hone-link: #ffad9d;
   --hone-error-600: #ffb3a8;
   --hone-success-600: #85dca4;

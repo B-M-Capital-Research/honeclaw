@@ -267,39 +267,40 @@ export default function PublicRoadmapPage() {
         .page-header {
           position: fixed; top: 0; left: 0; right: 0; height: 72px;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 0 40px; background: rgba(255, 255, 255, 0.85);
+          padding: 0 40px; background: color-mix(in srgb, var(--hone-paper-50) 85%, transparent);
           backdrop-filter: blur(16px); border-bottom: 1px solid rgba(0,0,0,0.04); z-index: 100;
         }
         .header-logo { display: flex; align-items: center; gap: 12px; cursor: pointer; }
         .header-logo img { height: 32px; }
         .header-logo span { font-weight: 800; font-size: 22px; color: var(--hone-ink-950); }
         .header-actions { display: flex; align-items: center; gap: 24px; }
-        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid var(--hone-line); padding: 3px; border-radius: 999px; gap: 2px; }
+        .lang-switch { display: inline-flex; align-items: center; background: color-mix(in srgb, var(--hone-control-surface) 72%, transparent); border: 1px solid var(--hone-line); padding: 3px; border-radius: 999px; gap: 2px; }
         .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--hone-ink-600); }
-        .lang-switch button.active { background: var(--hone-ink-950); color: #fff; border-radius: 999px; }
-        .btn-chat-nav { background: var(--hone-ink-950); color: #fff; border: none; padding: 10px 24px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
+        .lang-switch button.active { background: var(--hone-ink-950); color: var(--hone-action-fg); border-radius: 999px; }
+        .btn-chat-nav { background: var(--hone-ink-950); color: var(--hone-action-fg); border: none; padding: 10px 24px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
         .btn-roadmap-nav { background: transparent; color: var(--hone-ink-600); border: 1.5px solid var(--hone-line); padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
 
         .main-content { position: relative; z-index: 1; padding: 120px 40px 80px; max-width: 1200px; margin: 0 auto; width: 100%; display: grid; gap: 40px; }
         .roadmap-hero { text-align: center; margin-bottom: 32px; }
-        .roadmap-hero .meta { font-size: 14px; font-weight: 800; color: var(--hone-coral-500); letter-spacing: 0.2em; margin-bottom: 16px; }
+        .roadmap-hero .meta { font-size: 14px; font-weight: 800; color: var(--hone-coral-600); letter-spacing: 0.2em; margin-bottom: 16px; }
         .roadmap-hero .title { font-size: 56px; font-weight: 800; color: var(--hone-ink-950); margin-bottom: 24px; }
         .roadmap-hero .subtitle { font-size: 20px; color: var(--hone-ink-800); max-width: 820px; margin: 0 auto; line-height: 1.6; }
-        .version-pill { display: inline-flex; margin-top: 24px; padding: 7px 13px; border: 1px solid var(--hone-line); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 800; color: var(--hone-ink-950); }
+        .version-pill { display: inline-flex; margin-top: 24px; padding: 7px 13px; border: 1px solid var(--hone-line); border-radius: 999px; background: var(--hone-surface-raised); font-size: 13px; font-weight: 800; color: var(--hone-ink-950); }
 
-        .roadmap-card { background: #fff; border: 1.5px solid var(--hone-line); border-radius: var(--hone-radius-lg); padding: 40px; box-shadow: 0 20px 50px rgba(23,32,31,0.02); }
-        .roadmap-card.dark { background: var(--hone-ink-950); color: #fff; border: none; }
+        .roadmap-card { background: var(--hone-surface-raised); border: 1.5px solid var(--hone-line); border-radius: var(--hone-radius-lg); padding: 40px; box-shadow: 0 20px 50px rgba(23,32,31,0.02); }
+        .roadmap-card.dark { background: var(--hone-inverse-bg); color: var(--hone-inverse-fg); border: none; }
         .section-head { margin-bottom: 28px; }
-        .section-eyebrow { font-size: 12px; font-weight: 800; color: var(--hone-coral-500); letter-spacing: 0.16em; margin-bottom: 10px; }
+        .section-eyebrow { font-size: 12px; font-weight: 800; color: var(--hone-coral-600); letter-spacing: 0.16em; margin-bottom: 10px; }
+        .roadmap-card.dark .section-eyebrow { color: var(--hone-coral-500); }
         .card-title { font-size: 30px; font-weight: 800; margin: 0; color: var(--hone-ink-950); }
-        .roadmap-card.dark .card-title { color: #fff; }
+        .roadmap-card.dark .card-title { color: var(--hone-inverse-fg); }
         .card-intro { margin: 12px 0 0; color: var(--hone-ink-600); line-height: 1.7; max-width: 920px; }
-        .roadmap-card.dark .card-intro { color: var(--hone-ink-400); }
+        .roadmap-card.dark .card-intro { color: var(--hone-inverse-muted); }
 
         .install-grid, .phases-container, .architecture-grid, .boundary-grid, .contrib-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-        .install-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 800; color: var(--hone-paper-200); }
+        .install-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 800; color: var(--hone-inverse-fg); }
         .install-label em { font-style: normal; font-size: 11px; color: var(--hone-coral-500); }
-        .code-block { background: rgba(0,0,0,0.32); padding: 18px; border-radius: var(--hone-radius-md); font-family: var(--hone-font-label); font-size: 13px; color: var(--hone-paper-200); overflow-x: auto; }
+        .code-block { background: rgba(0,0,0,0.32); padding: 18px; border-radius: var(--hone-radius-md); font-family: var(--hone-font-label); font-size: 13px; color: var(--hone-inverse-fg); overflow-x: auto; }
         .code-block pre { margin: 0; }
         .code-block code { white-space: pre; }
 
@@ -329,12 +330,12 @@ export default function PublicRoadmapPage() {
         .row-name { display: block; font-size: 15px; font-weight: 700; color: var(--hone-ink-800); line-height: 1.35; }
         .row-note { display: block; margin-top: 4px; font-size: 12px; color: var(--hone-ink-600); line-height: 1.4; }
         .status-badge { flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: var(--hone-radius-sm); }
-        .status-badge.stable { background: #ecfdf5; color: #059669; }
+        .status-badge.stable { background: #ecfdf5; color: #047857; }
         .status-badge.beta { background: color-mix(in srgb, var(--hone-coral-500) 8%, transparent); color: var(--hone-coral-600); }
         .status-badge.planned { background: var(--hone-paper-200); color: var(--hone-ink-600); }
 
         .channel-grid, .skills-grid, .docs-grid, .faq-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-        .channel-row, .skill-row, .architecture-point, .doc-card, .contrib-card, details { border: 1px solid var(--hone-line); border-radius: var(--hone-radius-md); padding: 18px; background: #fff; min-width: 0; }
+        .channel-row, .skill-row, .architecture-point, .doc-card, .contrib-card, details { border: 1px solid var(--hone-line); border-radius: var(--hone-radius-md); padding: 18px; background: var(--hone-control-surface); min-width: 0; }
         .channel-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; }
         .channel-icon {
           display: inline-flex; align-items: center; justify-content: center;
@@ -359,7 +360,7 @@ export default function PublicRoadmapPage() {
           font-family: var(--hone-font-label);
           font-size: 11px;
           font-weight: 600;
-          color: var(--hone-ink-400);
+          color: var(--hone-ink-800);
           letter-spacing: 0;
           overflow-wrap: anywhere;
         }
@@ -375,7 +376,7 @@ export default function PublicRoadmapPage() {
         .bottom-cta { text-align: center; margin-top: 32px; padding: 64px 32px; background: var(--hone-paper-100); border-radius: 30px; }
         .bottom-cta h2 { font-size: 32px; font-weight: 800; margin: 0 0 12px; color: var(--hone-ink-950); }
         .bottom-cta p { margin: 0 0 28px; color: var(--hone-ink-600); }
-        .btn-primary.large { background: var(--hone-ink-950); color: #fff; border: none; padding: 16px 40px; border-radius: 100px; font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
+        .btn-primary.large { background: var(--hone-ink-950); color: var(--hone-action-fg); border: none; padding: 16px 40px; border-radius: 100px; font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
         .btn-primary.large:hover { transform: scale(1.03); }
 
         @media (max-width: 960px) {

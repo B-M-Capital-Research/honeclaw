@@ -4,6 +4,18 @@ Last updated: 2026-08-01
 
 ## 2026-08-01
 
+### Public Whole-site Theme Surface Audit And Repair
+
+- Status: done
+- Date: 2026-08-01
+- Plan: `docs/archive/plans/public-theme-surface-audit.md`
+- Handoff: `docs/handoffs/2026-08-01-public-theme-surface-audit.md`
+- Decision / ADR: N/A; this completes the existing Public light/dark surface contract without changing routing ownership, authentication semantics, data flow, or module boundaries
+- Related PRs / commits: this change set is committed and pushed directly to `main`; no release or tag
+- Related runbooks / regressions: 20 focused theme contracts, Web typecheck, 334 Web tests, Public production build, `git diff --check`, and real light/dark browser QA across every Public UI route plus `/portfolio` and `/invest` redirect verification
+- Current conclusion: first-time Public visitors still default to light, while explicit light, dark, and auto remain supported. Home, roadmap, plan, Blog/article, signed-in community surfaces, shared navigation overlays, mobile menus, and the footer now use paired semantic surfaces and foregrounds. Logged-out account, Whop, community gate, legal, chat, and share-preview pages were rechecked; all audited routes had zero horizontal overflow. Authentication, purchases, production data, deployment, release, and tags were not exercised.
+- Next entry point: `docs/handoffs/2026-08-01-public-theme-surface-audit.md`; if production differs, verify the Pages commit/cache first, then reproduce under explicit `light` and `dark` before changing CSS.
+
 ### Public Logged-out Theme And Whop Layout/Scroll Repair
 
 - Status: done
