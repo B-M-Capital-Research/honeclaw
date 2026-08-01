@@ -10,8 +10,8 @@
 //! - 新增 runner 时,若发现这里的重建结果不适用,应当**扩展**这个函数的
 //!   输入/输出契约（例如加个参数决定是否展开 tool_result），而不是在
 //!   runner 内部重新读一遍 session 文件
-//! - 具体 runner 只负责把 `AgentContext` 喂进自家的 prompt/API
-//!   （例：`codex_acp::build_codex_acp_prompt_text` 把它序列化成 JSON）
+//! - 具体 replay runner 只负责把 `AgentContext` 喂进自家的 prompt/API；
+//!   native persistent runner 从类型上不接收这份 Hone 历史
 //!
 //! 之所以写得这么啰嗦：仓库早期有过 runner 各自读 session JSON 的版本,
 //! 每次存储 schema 升级都漏改一两个 runner,这里用注释锁死不变量。

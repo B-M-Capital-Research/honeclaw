@@ -1,6 +1,6 @@
 # Runbook: OpenCode Setup
 
-Last updated: 2026-04-12
+Last updated: 2026-08-01
 
 ## When to Use
 
@@ -169,6 +169,25 @@ Check the following:
 
 Note: the model's spoken `variant` is not always trustworthy. If you need protocol-level truth, prefer the logs or an exported session.
 
+### Verify the ACP entrypoint itself
+
+The production boundary is newline-delimited JSON-RPC over stdio:
+
+```bash
+opencode acp
+```
+
+Drive `initialize -> session/new -> session/prompt` from a small local client and require a final `stopReason=end_turn`; do not treat a successful `initialize` alone as provider/model proof. The 2026-08-01 reference probe used official stable OpenCode `1.18.11` and returned `OPENCODE_ACP_OK`.
+
+The observed `1.18.11` stream included:
+
+- `available_commands_update`
+- object-shaped `agent_thought_chunk.content.text`
+- object-shaped, possibly split `agent_message_chunk.content.text`
+- `usage_update` with `used`, `size`, and `cost { amount, currency }`
+
+These fields are a versioned compatibility sample, not a promise that OpenCode and codex-acp will emit identical events. When the installed version changes, rerun the real probe before updating the fixture.
+
 ## 8. Wire It Into Hone
 
 Recommended minimal Hone config:
@@ -223,6 +242,12 @@ agent:
 - Confirm `opencode --version`
 - Confirm that the current version supports ACP `session/set_model`
 - Confirm that `agent.opencode.model` uses `<provider>/<model>` or `<provider>/<model>/<variant>`
+
+### `initialize` succeeds but the first model prompt fails authentication
+
+- A working ACP transport does not prove that the configured provider token is still valid
+- Reconnect the provider with `/connect`, or repair the selected provider's own local auth/config
+- Never paste a key into a checked-in probe fixture or capture it in protocol logs
 
 ## 10. Delivery Check
 

@@ -157,14 +157,18 @@ pub(crate) fn resolve_hone_cloud_chat_url(base_url: &str) -> String {
 }
 
 fn build_hone_cloud_messages(request: &AgentRunnerRequest) -> Vec<Value> {
+    let (system_prompt, current_user_turn, context) = request
+        .conversation
+        .replay_parts()
+        .expect("hone_cloud requires structured replay conversation input");
     let mut messages = Vec::new();
-    if !request.system_prompt.trim().is_empty() {
+    if !system_prompt.trim().is_empty() {
         messages.push(json!({
             "role": "system",
-            "content": request.system_prompt,
+            "content": system_prompt,
         }));
     }
-    for message in &request.context.messages {
+    for message in &context.messages {
         if matches!(message.role.as_str(), "user" | "assistant")
             && let Some(content) = message
                 .content
@@ -179,7 +183,7 @@ fn build_hone_cloud_messages(request: &AgentRunnerRequest) -> Vec<Value> {
     }
     messages.push(json!({
         "role": "user",
-        "content": request.runtime_input,
+        "content": current_user_turn,
     }));
     messages
 }

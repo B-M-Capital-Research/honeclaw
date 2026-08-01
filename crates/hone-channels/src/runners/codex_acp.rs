@@ -1,9 +1,8 @@
 use async_trait::async_trait;
-use hone_core::agent::{
-    AgentContext, AgentMessage, AgentResponse, final_assistant_message_content,
-};
-use hone_core::config::CodexAcpConfig;
-use serde_json::Value;
+use hone_core::agent::{AgentMessage, AgentResponse, final_assistant_message_content};
+use hone_core::config::{AgentConversationStrategy, CodexAcpConfig};
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -16,21 +15,23 @@ use crate::tool_trace::{
 };
 
 use super::acp_common::{
-    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
-    AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts,
-    AcpRunFailure, AcpToolRenderPhase, CliVersion, acp_failure_to_runner_result,
-    acp_prompt_succeeded, configure_acp_command_process_group, create_acp_session,
-    finalize_context_messages, finalize_pending_tool_calls, log_acp_prompt_stop_diagnostics,
-    parse_cli_version, resume_acp_session, wait_for_response,
-    wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
+    ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext, AcpPermissionDecision,
+    AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpRunFailure, AcpToolRenderPhase,
+    CliVersion, acp_failure_to_runner_result, acp_prompt_succeeded,
+    configure_acp_command_process_group, create_acp_session, finalize_context_messages,
+    finalize_pending_tool_calls, log_acp_prompt_stop_diagnostics, parse_cli_version,
+    resume_acp_session, wait_for_response, wait_for_response_with_timeouts_and_renderer,
+    write_jsonrpc_request,
 };
 use super::types::{
-    AgentRunner, AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult, RunnerTimeouts,
+    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult,
+    NativeSkillProjection, RunnerTimeouts,
 };
 
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
 const CODEX_ACP_SESSION_MODE_KEY: &str = "codex_acp_session_mode";
-const CODEX_ACP_PERSISTENT_SESSION_MODE: &str = "persistent_resume_v1";
+const CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY: &str = "codex_acp_instruction_fingerprint";
+const CODEX_ACP_PERSISTENT_SESSION_MODE: &str = "native_turn_v2";
 const MIN_CODEX_VERSION: CliVersion = CliVersion {
     major: 0,
     minor: 146,
@@ -47,15 +48,20 @@ static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<S
 
 pub(crate) fn reusable_codex_acp_session_id(
     session_metadata: &HashMap<String, Value>,
+    instruction_fingerprint: &str,
 ) -> Option<String> {
-    // Before persistent resume mode, this metadata key pointed at a one-turn
-    // rollout and was overwritten on every message. Only IDs carrying the mode
-    // marker are complete Codex-owned conversations that are safe to resume.
-    let persistent_mode = session_metadata
+    // Only sessions created under the role-clean contract and the exact same
+    // developer instruction generation may be resumed. Older mode markers or
+    // changed instructions deliberately rotate to a new native task.
+    let contract_matches = session_metadata
         .get(CODEX_ACP_SESSION_MODE_KEY)
         .and_then(Value::as_str)
-        .is_some_and(|value| value == CODEX_ACP_PERSISTENT_SESSION_MODE);
-    persistent_mode
+        .is_some_and(|value| value == CODEX_ACP_PERSISTENT_SESSION_MODE)
+        && session_metadata
+            .get(CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY)
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == instruction_fingerprint);
+    contract_matches
         .then(|| {
             session_metadata
                 .get(CODEX_ACP_SESSION_KEY)
@@ -65,17 +71,6 @@ pub(crate) fn reusable_codex_acp_session_id(
                 .map(ToString::to_string)
         })
         .flatten()
-}
-
-pub(crate) fn codex_acp_should_seed_system_prompt(
-    session_metadata: &HashMap<String, Value>,
-    creating_persistent_session: bool,
-) -> bool {
-    creating_persistent_session
-        || session_metadata
-            .get(ACP_NEEDS_SP_RESEED_KEY)
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
 }
 
 pub(crate) struct CodexAcpRunner {
@@ -89,67 +84,128 @@ impl CodexAcpRunner {
     }
 }
 
-pub(crate) fn codex_acp_effective_args(config: &CodexAcpConfig, locked_down: bool) -> Vec<String> {
-    let mut args = config.args.clone();
-    let sandbox_mode = if locked_down {
-        "workspace-write".to_string()
-    } else {
-        config.sandbox_mode.trim().to_string()
-    };
-    let approval_policy = if locked_down {
-        "never".to_string()
-    } else {
-        config.approval_policy.trim().to_string()
-    };
+pub(crate) fn codex_acp_effective_args(config: &CodexAcpConfig) -> Vec<String> {
+    // The official codex-acp executable accepts ACP adapter arguments here.
+    // Codex configuration belongs in CODEX_CONFIG and is merged into
+    // thread/start or thread/resume by the adapter.
+    config.args.clone()
+}
 
-    if !sandbox_mode.is_empty() {
-        args.push("-c".to_string());
-        args.push(format!("sandbox_mode=\"{}\"", sandbox_mode));
-    }
+pub(crate) fn codex_instruction_fingerprint(instructions: &str) -> String {
+    let digest = Sha256::digest(instructions.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
-    if !approval_policy.is_empty() {
-        args.push("-c".to_string());
-        args.push(format!("approval_policy=\"{}\"", approval_policy));
-    }
+fn parse_codex_config_literal(raw: &str) -> Value {
+    serde_json::from_str(raw).unwrap_or_else(|_| {
+        Value::String(
+            raw.trim()
+                .trim_matches(|ch| ch == '\'' || ch == '"')
+                .to_string(),
+        )
+    })
+}
 
-    if config.dangerously_bypass_approvals_and_sandbox && !locked_down {
-        args.push("-c".to_string());
-        args.push("sandbox_mode=\"danger-full-access\"".to_string());
-        args.push("-c".to_string());
-        args.push("approval_policy=\"never\"".to_string());
+fn insert_codex_config_path(root: &mut Map<String, Value>, path: &str, value: Value) {
+    let mut segments = path
+        .split('.')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .peekable();
+    let mut current = root;
+    while let Some(segment) = segments.next() {
+        if segments.peek().is_none() {
+            current.insert(segment.to_string(), value);
+            return;
+        }
+        let entry = current
+            .entry(segment.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        current = entry.as_object_mut().expect("inserted object");
     }
+}
 
-    if !config.sandbox_permissions.is_empty() && !locked_down {
-        let permissions = config
-            .sandbox_permissions
-            .iter()
-            .map(|value| format!("\"{}\"", value))
-            .collect::<Vec<_>>()
-            .join(", ");
-        args.push("-c".to_string());
-        args.push(format!("sandbox_permissions=[{permissions}]"));
-    }
+pub(crate) fn codex_acp_process_config(
+    config: &CodexAcpConfig,
+    developer_instructions: Option<&str>,
+    locked_down: bool,
+) -> Value {
+    let mut values = Map::new();
 
     if let Some(model) = configured_codex_model_id(config) {
-        args.push("-c".to_string());
-        args.push(format!("model=\"{}\"", model));
+        values.insert("model".to_string(), Value::String(model));
     }
-
     if let Some(effort) = configured_codex_reasoning_effort(config) {
-        args.push("-c".to_string());
-        args.push(format!("model_reasoning_effort=\"{}\"", effort));
+        values.insert("model_reasoning_effort".to_string(), Value::String(effort));
     }
-
     for override_value in &config.extra_config_overrides {
-        let trimmed = override_value.trim();
-        if trimmed.is_empty() {
+        let Some((path, raw_value)) = override_value.trim().split_once('=') else {
             continue;
-        }
-        args.push("-c".to_string());
-        args.push(trimmed.to_string());
+        };
+        insert_codex_config_path(
+            &mut values,
+            path.trim(),
+            parse_codex_config_literal(raw_value.trim()),
+        );
     }
 
-    args
+    if locked_down {
+        values.insert(
+            "sandbox_mode".to_string(),
+            Value::String("workspace-write".to_string()),
+        );
+        values.insert(
+            "approval_policy".to_string(),
+            Value::String("never".to_string()),
+        );
+        values.remove("sandbox_permissions");
+    } else {
+        if !config.sandbox_mode.trim().is_empty() {
+            values.insert(
+                "sandbox_mode".to_string(),
+                Value::String(config.sandbox_mode.trim().to_string()),
+            );
+        }
+        if !config.approval_policy.trim().is_empty() {
+            values.insert(
+                "approval_policy".to_string(),
+                Value::String(config.approval_policy.trim().to_string()),
+            );
+        }
+        if config.dangerously_bypass_approvals_and_sandbox {
+            values.insert(
+                "sandbox_mode".to_string(),
+                Value::String("danger-full-access".to_string()),
+            );
+            values.insert(
+                "approval_policy".to_string(),
+                Value::String("never".to_string()),
+            );
+        }
+        if !config.sandbox_permissions.is_empty() {
+            values.insert(
+                "sandbox_permissions".to_string(),
+                Value::Array(
+                    config
+                        .sandbox_permissions
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+        }
+    }
+    if let Some(instructions) = developer_instructions {
+        values.insert(
+            "developer_instructions".to_string(),
+            Value::String(instructions.to_string()),
+        );
+    }
+    Value::Object(values)
 }
 
 #[async_trait]
@@ -158,12 +214,16 @@ impl AgentRunner for CodexAcpRunner {
         "codex_acp"
     }
 
-    fn manages_own_context(&self) -> bool {
-        true
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::NativePersistent
     }
 
-    fn relies_on_native_context_compaction(&self) -> bool {
-        true
+    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
+        Some(AcpStreamDialect::CodexAcp1_1_7)
+    }
+
+    fn native_skill_projection(&self) -> Option<NativeSkillProjection> {
+        Some(NativeSkillProjection::CodexWorkspace)
     }
 
     async fn run(
@@ -171,6 +231,12 @@ impl AgentRunner for CodexAcpRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
+        let dialect = self.acp_stream_dialect().expect("codex ACP dialect");
+        tracing::debug!(
+            adapter = dialect.adapter(),
+            observed_version = dialect.observed_version(),
+            "using versioned ACP stream dialect"
+        );
         match run_codex_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates, context_messages)) => AgentRunnerResult {
                 response,
@@ -279,7 +345,8 @@ pub(crate) fn codex_acp_version_validation_cache_key(config: &CodexAcpConfig) ->
     serde_json::json!({
         "codex_command": config.codex_command,
         "command": config.command,
-        "args": codex_acp_effective_args(config, true),
+        "args": codex_acp_effective_args(config),
+        "codex_config": codex_acp_process_config(config, None, true),
         "min_codex": MIN_CODEX_VERSION.to_string(),
         "min_codex_acp": MIN_CODEX_ACP_VERSION.to_string(),
     })
@@ -362,8 +429,12 @@ async fn inspect_codex_acp_version(
 ) -> Result<CliVersion, AgentSessionError> {
     let mut command = tokio::process::Command::new(&config.command);
     command
-        .args(codex_acp_effective_args(config, true))
+        .args(codex_acp_effective_args(config))
         .env("CODEX_PATH", &config.codex_command)
+        .env(
+            "CODEX_CONFIG",
+            codex_acp_process_config(config, None, true).to_string(),
+        )
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
@@ -433,13 +504,14 @@ async fn inspect_codex_acp_version(
 async fn spawn_codex_acp_child_with_retry(
     config: &CodexAcpConfig,
     working_directory: &std::path::Path,
+    developer_instructions: &str,
 ) -> Result<tokio::process::Child, AgentSessionError> {
     for (attempt, delay_ms) in CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS
         .iter()
         .copied()
         .enumerate()
     {
-        match spawn_codex_acp_child(config, working_directory) {
+        match spawn_codex_acp_child(config, working_directory, developer_instructions) {
             Ok(child) => return Ok(child),
             Err(err) if codex_spawn_error_is_transient_resource_unavailable(&err) => {
                 tracing::warn!(
@@ -454,17 +526,22 @@ async fn spawn_codex_acp_child_with_retry(
         }
     }
 
-    spawn_codex_acp_child(config, working_directory)
+    spawn_codex_acp_child(config, working_directory, developer_instructions)
 }
 
 fn spawn_codex_acp_child(
     config: &CodexAcpConfig,
     working_directory: &std::path::Path,
+    developer_instructions: &str,
 ) -> Result<tokio::process::Child, AgentSessionError> {
     let mut command = tokio::process::Command::new(&config.command);
     command
-        .args(codex_acp_effective_args(config, true))
+        .args(codex_acp_effective_args(config))
         .env("CODEX_PATH", &config.codex_command)
+        .env(
+            "CODEX_CONFIG",
+            codex_acp_process_config(config, Some(developer_instructions), true).to_string(),
+        )
         .current_dir(working_directory)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -492,6 +569,17 @@ async fn run_codex_acp(
 > {
     let acp_log = AcpEventLogContext::from_request("codex", &request);
     validate_codex_acp_versions(config, timeouts.step).await?;
+    let (developer_instructions, current_user_turn) =
+        request
+            .conversation
+            .native_parts()
+            .ok_or(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: "codex_acp requires native-persistent conversation input".to_string(),
+            })?;
+    let developer_instructions = developer_instructions.to_string();
+    let current_user_turn = current_user_turn.to_string();
+    let instruction_fingerprint = codex_instruction_fingerprint(&developer_instructions);
 
     let startup_timeout = timeouts.step;
     let prompt_idle_timeout = timeouts.step;
@@ -502,9 +590,12 @@ async fn run_codex_acp(
         message,
     })?;
 
-    let child =
-        spawn_codex_acp_child_with_retry(config, std::path::Path::new(&request.working_directory))
-            .await?;
+    let child = spawn_codex_acp_child_with_retry(
+        config,
+        std::path::Path::new(&request.working_directory),
+        &developer_instructions,
+    )
+    .await?;
     let mut child_guard = AcpChildGuard::new("codex", child, None);
 
     let child = child_guard.child_mut().ok_or(AgentSessionError {
@@ -545,7 +636,6 @@ async fn run_codex_acp(
             .and_then(|value| value.as_u64()),
         ..AcpPromptState::default()
     };
-    let mut system_prompt_seed_attempted = false;
     let run_result: Result<Value, AgentSessionError> = async {
         let mut next_id = 1u64;
 
@@ -580,50 +670,45 @@ async fn run_codex_acp(
         })??;
         next_id += 1;
 
-        let mut seed_local_context = false;
-        let codex_session_id =
-            if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
-                tracing::info!(
-                    "[AgentRunner/codex] session={} resuming persistent acp session={session_id}",
-                    request.session_id,
-                );
-                resume_acp_session(
-                    "codex",
-                    &mut stdin,
-                    &mut reader,
-                    next_id,
-                    &session_id,
-                    &request.working_directory,
-                    mcp_servers.clone(),
-                    startup_timeout,
-                    stderr_buffer.clone(),
-                    Some(&acp_log),
-                )
-                .await?;
-                session_id
-            } else {
-                tracing::info!(
-                    "[AgentRunner/codex] session={} creating persistent acp session",
-                    request.session_id,
-                );
-                // First entry into persistent mode (including upgrades from the
-                // former one-rollout-per-turn mode) seeds Codex once from Hone's
-                // durable transcript. Subsequent turns rely only on native thread
-                // history and Codex's own compaction.
-                seed_local_context = true;
-                create_acp_session(
-                    "codex",
-                    &mut stdin,
-                    &mut reader,
-                    next_id,
-                    &request.working_directory,
-                    mcp_servers.clone(),
-                    startup_timeout,
-                    stderr_buffer.clone(),
-                    Some(&acp_log),
-                )
-                .await?
-            };
+        let codex_session_id = if let Some(session_id) =
+            reusable_codex_acp_session_id(&request.session_metadata, &instruction_fingerprint)
+        {
+            tracing::info!(
+                "[AgentRunner/codex] session={} resuming persistent acp session={session_id}",
+                request.session_id,
+            );
+            resume_acp_session(
+                "codex",
+                &mut stdin,
+                &mut reader,
+                next_id,
+                &session_id,
+                &request.working_directory,
+                mcp_servers.clone(),
+                startup_timeout,
+                stderr_buffer.clone(),
+                Some(&acp_log),
+            )
+            .await?;
+            session_id
+        } else {
+            tracing::info!(
+                "[AgentRunner/codex] session={} creating native-turn-v2 acp session",
+                request.session_id,
+            );
+            create_acp_session(
+                "codex",
+                &mut stdin,
+                &mut reader,
+                next_id,
+                &request.working_directory,
+                mcp_servers.clone(),
+                startup_timeout,
+                stderr_buffer.clone(),
+                Some(&acp_log),
+            )
+            .await?
+        };
         next_id += 1;
 
         metadata_updates.insert(
@@ -634,35 +719,9 @@ async fn run_codex_acp(
             CODEX_ACP_SESSION_MODE_KEY.to_string(),
             Value::String(CODEX_ACP_PERSISTENT_SESSION_MODE.to_string()),
         );
-
-        system_prompt_seed_attempted =
-            codex_acp_should_seed_system_prompt(&request.session_metadata, seed_local_context);
-        if seed_local_context {
-            // If the first prompt fails after the native session was created,
-            // keep the seed pending so the resumed retry does not lose Hone's
-            // static instructions.
-            metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
-        }
-        tracing::info!(
-            "[AgentRunner/codex] session={} system_prompt_seed={} reason={}",
-            request.session_id,
-            system_prompt_seed_attempted,
-            if seed_local_context {
-                "new_persistent_session"
-            } else if system_prompt_seed_attempted {
-                "post_compaction"
-            } else {
-                "native_context_active"
-            },
-        );
-        let prompt_text = build_codex_acp_prompt_text(
-            if system_prompt_seed_attempted {
-                &request.system_prompt
-            } else {
-                ""
-            },
-            &request.runtime_input,
-            seed_local_context.then_some(&request.context),
+        metadata_updates.insert(
+            CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY.to_string(),
+            Value::String(instruction_fingerprint.clone()),
         );
         write_jsonrpc_request(
             &mut stdin,
@@ -673,7 +732,7 @@ async fn run_codex_acp(
                 "prompt": [
                     {
                         "type": "text",
-                        "text": prompt_text,
+                        "text": current_user_turn,
                     }
                 ]
             }),
@@ -711,9 +770,6 @@ async fn run_codex_acp(
                 ACP_PREV_PROMPT_PEAK_KEY.to_string(),
                 Value::from(codex_state.current_prompt_peak_used),
             );
-            if codex_state.compact_detected {
-                metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
-            }
             return Err(AcpRunFailure {
                 error,
                 state: codex_state,
@@ -739,25 +795,19 @@ async fn run_codex_acp(
         .await;
     }
 
-    // ACP runner 内置 compact 状态写回 session_metadata：
-    //  * 总是回写本轮 used 峰值，下一轮作为 used-drop 检测基线
-    //  * 若本轮检测到 compact，置 acp_needs_sp_reseed=true，下一轮 prompt 构建层
-    //    把完整 system_prompt 重新拼入 user message
+    // Peak usage remains diagnostics for native compaction detection. A
+    // compact event never changes the next user payload: Codex retains its
+    // developer instructions and native summary inside the thread.
     metadata_updates.insert(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),
         Value::from(codex_state.current_prompt_peak_used),
     );
     if codex_state.compact_detected {
         tracing::info!(
-            "[AgentRunner/codex] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
+            "[AgentRunner/codex] session={} ACP compact detected (peak_used={}); native developer instructions remain authoritative",
             request.session_id,
             codex_state.current_prompt_peak_used
         );
-        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
-    } else if system_prompt_seed_attempted {
-        // Clear only after the prompt completed. A transport/protocol failure
-        // leaves the prior true value intact and retries the reseed once.
-        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(false));
     }
 
     finalize_pending_tool_calls(&mut codex_state, "unknown_after_missing_acp_result");
@@ -910,39 +960,4 @@ fn truncate_codex_purpose(text: &str) -> String {
     }
     let prefix = trimmed.chars().take(80).collect::<String>();
     format!("{prefix} [truncated, {total} chars]")
-}
-
-pub(crate) fn build_codex_acp_prompt_text(
-    system_prompt: &str,
-    runtime_input: &str,
-    context: Option<&AgentContext>,
-) -> String {
-    let system = system_prompt.trim();
-    let runtime = runtime_input.trim();
-    let restored = context.and_then(serialize_context_for_codex_prompt);
-
-    let mut sections = Vec::new();
-    if !system.is_empty() {
-        sections.push(format!("### System Instructions ###\n{system}"));
-    }
-    if let Some(restored) = restored {
-        sections.push(format!(
-            "### Restored Conversation Transcript ###\n\
-Use the following JSON transcript as the prior conversation context for this session.\n\
-Messages are ordered from oldest to newest.\n\
-```json\n{restored}\n```"
-        ));
-    }
-    if !runtime.is_empty() {
-        if sections.is_empty() {
-            sections.push(runtime.to_string());
-        } else {
-            sections.push(format!("### User Input ###\n{runtime}"));
-        }
-    }
-    sections.join("\n\n")
-}
-
-pub(crate) fn serialize_context_for_codex_prompt(context: &AgentContext) -> Option<String> {
-    context.normalized_history_json()
 }

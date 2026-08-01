@@ -96,7 +96,11 @@ impl<'a> PromptTurnBuilder<'a> {
             prompt_time_beijing,
             include_conversation_context,
         );
-        if self.core.effective_runner_manages_own_context(self.actor) {
+        if self
+            .core
+            .effective_runner_conversation_strategy(self.actor)
+            .retains_native_history()
+        {
             bundle.conversation_context = None;
         }
         let runtime_user_input = if related_skills.is_empty() {

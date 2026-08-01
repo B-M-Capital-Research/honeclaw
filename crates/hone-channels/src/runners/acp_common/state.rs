@@ -17,13 +17,6 @@ use crate::agent_session::AgentSessionError;
 /// 用作下一轮 compact 检测的基线（opencode 不推 compact 字面量，只能靠 used 骤降识别）。
 pub(crate) const ACP_PREV_PROMPT_PEAK_KEY: &str = "acp_prev_prompt_peak_used";
 
-/// session_metadata 上记录的"下一轮需要重新塞 system_prompt"标志。
-/// 写入条件：本轮 ACP runner 报告了 compact 事件（codex contextCompaction metadata /
-/// 字面量，或 opencode used drop）。
-/// 消费方：持久 Codex prompt 构建层下一轮检查到 true 时，把完整 system_prompt
-/// 重新拼入 user message；成功消费后写回 false。
-pub(crate) const ACP_NEEDS_SP_RESEED_KEY: &str = "acp_needs_sp_reseed";
-
 /// codex-acp 在 legacy `thread/compacted` 后可能推回的字面量 chunk。
 /// 同时也匹配 honeclaw 老 SessionCompactor 历史写入的 `Conversation compacted` 字符串。
 pub(super) static RE_ACP_COMPACT_STATUS_TEXT: LazyLock<Regex> = LazyLock::new(|| {
@@ -147,7 +140,8 @@ pub(crate) struct AcpPromptState {
     /// 本轮 prompt 流中是否检测到 ACP runner 触发了内置 compact。
     /// 触发源：codex 推 `_meta.contextCompaction=true` / compact 字面量，
     /// 或 opencode used 骤降 (>50%)。
-    /// 检测后：runner 应在 metadata 写 `ACP_NEEDS_SP_RESEED_KEY=true`，下一轮重塞 SP。
+    /// 检测只用于 dialect-specific lifecycle telemetry；它不得触发下一轮 user prompt
+    /// 重放 system/developer instructions。
     pub(crate) compact_detected: bool,
     /// 流中是否已经收到第一条 usage_update（用于"首次观测时与 prev_peak 比较"）。
     pub(crate) usage_update_seen: bool,

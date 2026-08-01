@@ -22,10 +22,10 @@ pub mod server;
 pub mod yaml;
 
 pub use agent::{
-    AdminConfig, AgentConfig, AgentRunnerKind, AgentRunnerProbe, AuxiliaryLlmConfig,
-    CodexAcpConfig, GeminiAcpConfig, HoneCloudConfig, KimiConfig, LlmConfig, LlmProfileEntryConfig,
-    LlmProfileParamsConfig, LlmProviderEntryConfig, LlmProviderOptionsConfig, LlmReasoningConfig,
-    OpenRouterConfig, OpencodeAcpConfig,
+    AdminConfig, AgentConfig, AgentConversationStrategy, AgentRunnerKind, AgentRunnerProbe,
+    AuxiliaryLlmConfig, CodexAcpConfig, GeminiAcpConfig, HoneCloudConfig, KimiConfig, LlmConfig,
+    LlmProfileEntryConfig, LlmProfileParamsConfig, LlmProviderEntryConfig,
+    LlmProviderOptionsConfig, LlmReasoningConfig, OpenRouterConfig, OpencodeAcpConfig,
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,

@@ -14,7 +14,7 @@ use futures::stream::{self, BoxStream};
 use hone_core::ActorIdentity;
 use hone_core::SessionIdentity;
 use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
-use hone_core::config::HoneConfig;
+use hone_core::config::{AgentConversationStrategy, HoneConfig};
 use hone_llm::provider::{ChatResult, ChatStreamFinishReason, FunctionCall, ToolCall};
 use hone_llm::{ChatResponse, ChatStreamEvent, LlmProvider, Message, ToolChoiceMode};
 use hone_memory::session::{SessionRuntimeBackend, SessionStorageOptions};
@@ -45,7 +45,7 @@ use crate::response_finalizer::{
 use crate::run_event::RunEvent;
 use crate::runners::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    TerminalStreamPolicy, stream_gemini_prompt,
+    NativeSkillProjection, RunnerConversationInput, TerminalStreamPolicy, stream_gemini_prompt,
 };
 use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
@@ -69,6 +69,18 @@ use super::types::{
 
 fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4()))
+}
+
+fn structured_test_conversation(
+    system_prompt: impl Into<String>,
+    current_user_turn: impl Into<String>,
+    context: AgentContext,
+) -> RunnerConversationInput {
+    RunnerConversationInput::StructuredReplay {
+        system_prompt: system_prompt.into(),
+        current_user_turn: current_user_turn.into(),
+        context,
+    }
 }
 
 #[test]
@@ -179,8 +191,8 @@ struct RecordingContextRunner {
     recorded_contexts: Arc<Mutex<Vec<Vec<AgentMessage>>>>,
     recorded_runtime_inputs: Arc<Mutex<Vec<String>>>,
     queued_results: Arc<Mutex<VecDeque<AgentRunnerResult>>>,
-    manages_own_context: bool,
-    relies_on_native_context_compaction: bool,
+    conversation_strategy: AgentConversationStrategy,
+    native_skill_projection: Option<NativeSkillProjection>,
 }
 
 #[async_trait]
@@ -196,7 +208,7 @@ impl AgentRunner for MockLlmRunner {
     ) -> AgentRunnerResult {
         let messages = vec![Message {
             role: "user".to_string(),
-            content: Some(request.runtime_input),
+            content: Some(request.conversation.current_user_turn().to_string()),
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
@@ -235,12 +247,12 @@ impl AgentRunner for RecordingContextRunner {
         "recording_context_runner"
     }
 
-    fn manages_own_context(&self) -> bool {
-        self.manages_own_context
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        self.conversation_strategy
     }
 
-    fn relies_on_native_context_compaction(&self) -> bool {
-        self.relies_on_native_context_compaction
+    fn native_skill_projection(&self) -> Option<NativeSkillProjection> {
+        self.native_skill_projection
     }
 
     async fn run(
@@ -248,14 +260,19 @@ impl AgentRunner for RecordingContextRunner {
         request: AgentRunnerRequest,
         _emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
+        let context_messages = request
+            .conversation
+            .replay_parts()
+            .map(|(_, _, context)| context.messages.clone())
+            .unwrap_or_default();
         self.recorded_contexts
             .lock()
             .expect("recorded contexts lock")
-            .push(request.context.messages.clone());
+            .push(context_messages);
         self.recorded_runtime_inputs
             .lock()
             .expect("recorded runtime inputs lock")
-            .push(request.runtime_input.clone());
+            .push(request.conversation.current_user_turn().to_string());
         self.queued_results
             .lock()
             .expect("queued results lock")
@@ -384,7 +401,7 @@ impl AgentRunner for MockStreamingSequencedRunner {
         self.runtime_inputs
             .lock()
             .expect("lock runtime inputs")
-            .push(request.runtime_input);
+            .push(request.conversation.current_user_turn().to_string());
         let run = self
             .runs
             .lock()
@@ -1091,9 +1108,11 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "user input".to_string(),
-        context: AgentContext::new("empty-success-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "user input",
+            AgentContext::new("empty-success-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -1175,9 +1194,11 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "user input".to_string(),
-        context: AgentContext::new("transient-retry-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "user input",
+            AgentContext::new("transient-retry-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -1256,9 +1277,11 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "CRWV 和 NVDA 有什么关系".to_string(),
-        context: AgentContext::new("committed-no-retry-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "CRWV 和 NVDA 有什么关系",
+            AgentContext::new("committed-no-retry-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -1473,9 +1496,11 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         allow_cron: true,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "帮我关注 NBIS".to_string(),
-        context: AgentContext::new("persistent-no-retry-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "帮我关注 NBIS",
+            AgentContext::new("persistent-no-retry-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2042,9 +2067,11 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "现在 NBIS 怎么看".to_string(),
-        context: AgentContext::new("unknown-tool-no-retry-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "现在 NBIS 怎么看",
+            AgentContext::new("unknown-tool-no-retry-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2122,9 +2149,11 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         allow_cron: true,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "每天9点给我看 RMBS".to_string(),
-        context: AgentContext::new("execute-once-empty-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "每天9点给我看 RMBS",
+            AgentContext::new("execute-once-empty-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2211,9 +2240,11 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: input.to_string(),
-        context: AgentContext::new("portfolio-mutation-disconnect-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            input,
+            AgentContext::new("portfolio-mutation-disconnect-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2300,9 +2331,11 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: input.to_string(),
-        context: AgentContext::new("deep-research-disconnect-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            input,
+            AgentContext::new("deep-research-disconnect-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2374,9 +2407,11 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "现在 NBIS 怎么看".to_string(),
-        context: AgentContext::new("post-quote-failure-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "现在 NBIS 怎么看",
+            AgentContext::new("post-quote-failure-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2570,9 +2605,11 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "我想了解Q3的时候nbis能不能起飞".to_string(),
-        context: AgentContext::new("investment-contract-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "我想了解Q3的时候nbis能不能起飞",
+            AgentContext::new("investment-contract-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2708,9 +2745,11 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "现在 NBIS 怎么看".to_string(),
-        context: AgentContext::new("investment-unknown-tool-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "现在 NBIS 怎么看",
+            AgentContext::new("investment-unknown-tool-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -2826,9 +2865,11 @@ fn repair_trace_request(
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "分析下 CRWV 和 NBIS".to_string(),
-        context: AgentContext::new(session_id.to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "分析下 CRWV 和 NBIS",
+            AgentContext::new(session_id.to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -3147,9 +3188,11 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "现在 INTL 怎么看".to_string(),
-        context: AgentContext::new("fund-contract-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "现在 INTL 怎么看",
+            AgentContext::new("fund-contract-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -3254,9 +3297,11 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "现在 INTL 怎么看".to_string(),
-        context: AgentContext::new("visible-contract-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "现在 INTL 怎么看",
+            AgentContext::new("visible-contract-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -3748,13 +3793,24 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
     .expect("write skill");
 
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core_with_config(&root, llm, |config| {
+    let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
         config.extra.insert(
             "skills_dir".to_string(),
             serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
         );
     });
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| {
+        Box::new(RecordingContextRunner {
+            recorded_contexts: Arc::new(Mutex::new(Vec::new())),
+            recorded_runtime_inputs: Arc::new(Mutex::new(Vec::new())),
+            queued_results: Arc::new(Mutex::new(VecDeque::new())),
+            conversation_strategy: AgentConversationStrategy::NativePersistent,
+            native_skill_projection: Some(NativeSkillProjection::CodexWorkspace),
+        })
+    }));
     let actor = ActorIdentity::new("cli", "codex-native-skill-projection-test", None::<String>)
         .expect("actor");
     let session = AgentSession::new(core, actor.clone(), "direct").with_recv_extra(Some(
@@ -3775,7 +3831,11 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
         )
         .await
         .unwrap_or_else(|(_, error)| panic!("native Codex turn: {error}"));
-    let runtime_input = execution.runner_request.runtime_input;
+    let (system_prompt, runtime_input) = execution
+        .runner_request
+        .conversation
+        .native_parts()
+        .expect("native Codex conversation input");
     let native_skill_link = std::path::Path::new(&execution.runner_request.working_directory)
         .join(".agents/skills/hone__alpha_5fskill");
 
@@ -3798,15 +3858,10 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             "{redundant}: {runtime_input}"
         );
     }
-    assert!(
-        !execution
-            .runner_request
-            .system_prompt
-            .contains("【SkillTool】")
-    );
+    assert!(!system_prompt.contains("【SkillTool】"));
     for loader in ["discover_skills", "load_skill", "skill_tool"] {
         assert!(
-            !execution.runner_request.system_prompt.contains(loader),
+            !system_prompt.contains(loader),
             "{loader} should not be repeated in the native Codex system prompt"
         );
         assert!(
@@ -3820,12 +3875,7 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             "{loader} should be provided by Codex native skill discovery"
         );
     }
-    assert!(
-        execution
-            .runner_request
-            .system_prompt
-            .contains("【领域边界与投研约束】")
-    );
+    assert!(system_prompt.contains("【领域边界与投研约束】"));
     assert_eq!(
         std::fs::canonicalize(native_skill_link).expect("native Codex skill link"),
         std::fs::canonicalize(&skill_dir).expect("source skill dir")
@@ -6595,9 +6645,11 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         allow_cron: false,
         config_path: String::new(),
         runtime_dir: String::new(),
-        system_prompt: "system".to_string(),
-        runtime_input: "crwv和英伟达什么关系，估值怎么看".to_string(),
-        context: AgentContext::new("crwv-nvidia-observational-session".to_string()),
+        conversation: structured_test_conversation(
+            "system",
+            "crwv和英伟达什么关系，估值怎么看",
+            AgentContext::new("crwv-nvidia-observational-session".to_string()),
+        ),
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
@@ -8234,8 +8286,8 @@ async fn self_managed_runner_context_overflow_is_not_locally_compacted_or_retrie
                 recorded_contexts: recorded_contexts.clone(),
                 recorded_runtime_inputs: recorded_runtime_inputs.clone(),
                 queued_results: queued_results.clone(),
-                manages_own_context: true,
-                relies_on_native_context_compaction: true,
+                conversation_strategy: AgentConversationStrategy::NativePersistent,
+                native_skill_projection: None,
             })
         }));
     }
@@ -8331,8 +8383,8 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
                 recorded_contexts: recorded_contexts.clone(),
                 recorded_runtime_inputs: recorded_runtime_inputs.clone(),
                 queued_results: queued_results.clone(),
-                manages_own_context: false,
-                relies_on_native_context_compaction: false,
+                conversation_strategy: AgentConversationStrategy::StructuredReplay,
+                native_skill_projection: None,
             })
         }));
     }

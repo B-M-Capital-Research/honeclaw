@@ -6,6 +6,7 @@
 //! - `create_tool_registry` 的 actor-scoped 工具注入;
 //! - `/report` intercept 的解析与默认 payload。
 
+use hone_core::config::AgentConversationStrategy;
 use hone_core::{ActorIdentity, HoneConfig};
 use serde_json::json;
 
@@ -122,10 +123,16 @@ fn effective_context_owner_follows_actor_runner_route() {
     let admin_actor = ActorIdentity::new("discord", "admin", None::<String>).expect("admin actor");
 
     assert!(core.actor_uses_strict_runner_fallback(&public_actor));
-    assert!(!core.effective_runner_manages_own_context(&public_actor));
+    assert_eq!(
+        core.effective_runner_conversation_strategy(&public_actor),
+        AgentConversationStrategy::StructuredReplay
+    );
     assert!(!core.effective_runner_uses_native_codex_turns(&public_actor));
     assert!(!core.actor_uses_strict_runner_fallback(&admin_actor));
-    assert!(core.effective_runner_manages_own_context(&admin_actor));
+    assert_eq!(
+        core.effective_runner_conversation_strategy(&admin_actor),
+        AgentConversationStrategy::NativePersistent
+    );
     assert!(core.effective_runner_uses_native_codex_turns(&admin_actor));
 }
 
@@ -136,7 +143,10 @@ fn native_minimal_turns_are_codex_specific() {
     let mut opencode_config = HoneConfig::default();
     opencode_config.agent.runner = "opencode_acp".to_string();
     let opencode_core = HoneBotCore::new(opencode_config);
-    assert!(opencode_core.effective_runner_manages_own_context(&actor));
+    assert_eq!(
+        opencode_core.effective_runner_conversation_strategy(&actor),
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    );
     assert!(!opencode_core.effective_runner_uses_native_codex_turns(&actor));
 
     let mut codex_config = HoneConfig::default();

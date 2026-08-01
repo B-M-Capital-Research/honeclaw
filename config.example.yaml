@@ -658,7 +658,8 @@ agent:
     # Startup checks: @openai/codex >= 0.146.0 and @agentclientprotocol/codex-acp >= 1.1.7.
     codex_command: "codex"
     # GPT-5.6 Sol is the default high-capability Codex ACP model.
-    # Hone applies model + reasoning effort as Codex process config before ACP startup.
+    # Hone applies model, reasoning effort, safety settings, and native developer
+    # instructions through the codex-acp CODEX_CONFIG boundary before startup.
     # One deterministic Hone conversation maps to one persistent native Codex session;
     # later turns resume it and let the Codex harness own history and compaction.
     model: "gpt-5.6-sol"
@@ -670,10 +671,8 @@ agent:
     dangerously_bypass_approvals_and_sandbox: false
     # Open network inside the workspace-write sandbox; without this, curl/git inside
     # the actor sandbox will hit DNS timeouts (codex defaults network_access=false).
-    # NOTE: must use the legacy sandbox_permissions array, not
-    # `extra_config_overrides: ["sandbox_workspace_write.network_access=true"]`,
-    # because codex 0.128's `-c` does not merge dotted keys into the profile table
-    # and silently keeps network closed.
+    # Keep this convenience list for common workspace-write permissions. Advanced
+    # settings may also use `extra_config_overrides` and are merged into CODEX_CONFIG.
     sandbox_permissions: ["network-full-access"]
     extra_config_overrides: []
   opencode:

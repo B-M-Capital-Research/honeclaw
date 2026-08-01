@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use hone_core::agent::{
     AgentContext, AgentMessage, AgentResponse, final_assistant_message_content,
 };
-use hone_core::config::OpencodeAcpConfig;
+use hone_core::config::{AgentConversationStrategy, OpencodeAcpConfig};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
@@ -19,17 +19,17 @@ use crate::tool_trace::{
 };
 
 use super::acp_common::{
-    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
-    AcpPromptState, AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord,
-    acp_diagnostic_excerpt_for_log, acp_error_detail_for_message, acp_failure_to_runner_result,
-    acp_prompt_succeeded, configure_acp_command_process_group, create_acp_session,
-    finalize_pending_tool_calls, log_acp_payload, log_acp_prompt_stop_diagnostics,
-    log_acp_raw_parse_error, message_with_bounded_stderr, set_acp_session_model,
-    timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
+    ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext, AcpPromptState,
+    AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord, acp_diagnostic_excerpt_for_log,
+    acp_error_detail_for_message, acp_failure_to_runner_result, acp_prompt_succeeded,
+    configure_acp_command_process_group, create_acp_session, finalize_pending_tool_calls,
+    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
+    wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
-    AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    RunnerTimeouts,
+    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest,
+    AgentRunnerResult, RunnerTimeouts,
 };
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
@@ -52,8 +52,12 @@ impl AgentRunner for OpencodeAcpRunner {
         "opencode_acp"
     }
 
-    fn manages_own_context(&self) -> bool {
-        true
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    }
+
+    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
+        Some(AcpStreamDialect::OpenCode1_18_11)
     }
 
     async fn run(
@@ -61,6 +65,12 @@ impl AgentRunner for OpencodeAcpRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
+        let dialect = self.acp_stream_dialect().expect("OpenCode ACP dialect");
+        tracing::debug!(
+            adapter = dialect.adapter(),
+            observed_version = dialect.observed_version(),
+            "using versioned ACP stream dialect"
+        );
         let mut metadata_updates = HashMap::new();
         match run_opencode_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates, context_messages)) => {
@@ -569,11 +579,12 @@ async fn run_opencode_acp(
             prompt_idle_timeout.as_secs(),
             prompt_overall_timeout.as_secs(),
         );
-        let prompt_text = build_opencode_acp_prompt_text(
-            &request.system_prompt,
-            &request.runtime_input,
-            Some(&request.context),
-        );
+        let (system_prompt, current_user_turn, context) = request
+            .conversation
+            .replay_parts()
+            .expect("opencode_acp requires Hone replay conversation input");
+        let prompt_text =
+            build_opencode_acp_prompt_text(system_prompt, current_user_turn, Some(context));
         write_jsonrpc_request(
             &mut stdin,
             next_id,
@@ -617,9 +628,6 @@ async fn run_opencode_acp(
                 ACP_PREV_PROMPT_PEAK_KEY.to_string(),
                 Value::from(opencode_state.current_prompt_peak_used),
             );
-            if opencode_state.compact_detected {
-                metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
-            }
             return Err(AcpRunFailure {
                 error,
                 state: opencode_state,
@@ -645,18 +653,18 @@ async fn run_opencode_acp(
         .await;
     }
 
-    // ACP runner 内置 compact 状态写回 metadata（含义同 codex_acp.rs）
+    // Peak usage remains dialect-specific lifecycle telemetry. OpenCode starts
+    // a fresh ACP session on the next Hone turn and receives a fresh replay.
     metadata_updates.insert(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),
         Value::from(opencode_state.current_prompt_peak_used),
     );
     if opencode_state.compact_detected {
         tracing::info!(
-            "[AgentRunner/opencode] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
+            "[AgentRunner/opencode] session={} ACP compact detected (peak_used={}); next Hone turn remains a fresh replay",
             request.session_id,
             opencode_state.current_prompt_peak_used
         );
-        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
     }
 
     finalize_pending_tool_calls(&mut opencode_state, "unknown_after_missing_acp_result");
@@ -1201,6 +1209,32 @@ pub(crate) async fn handle_opencode_session_update(
                 // 共用 acp_common 的 usage 骤降识别路径，stage 维持 `opencode.usage`。
                 super::acp_common::ingest_acp_usage_update(used, state, emitter, "opencode.usage")
                     .await;
+                let size = update.get("size").and_then(Value::as_u64);
+                let cost = update.get("cost").and_then(Value::as_object);
+                let cost_amount = cost
+                    .and_then(|value| value.get("amount"))
+                    .and_then(Value::as_f64);
+                let cost_currency = cost
+                    .and_then(|value| value.get("currency"))
+                    .and_then(Value::as_str);
+                if size.is_some() || cost_amount.is_some() || cost_currency.is_some() {
+                    let mut detail = vec![format!("used={used}")];
+                    if let Some(size) = size {
+                        detail.push(format!("size={size}"));
+                    }
+                    if let Some(amount) = cost_amount {
+                        detail.push(format!("cost={amount}"));
+                    }
+                    if let Some(currency) = cost_currency {
+                        detail.push(format!("currency={currency}"));
+                    }
+                    emitter
+                        .emit(AgentRunnerEvent::Progress {
+                            stage: "opencode.usage_detail",
+                            detail: Some(detail.join(" ")),
+                        })
+                        .await;
+                }
             }
         }
         _ => {}

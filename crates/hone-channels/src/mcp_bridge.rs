@@ -12,8 +12,18 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::HoneBotCore;
 use crate::runners::AgentRunnerRequest;
+#[cfg(test)]
+use crate::runners::RunnerConversationInput;
+
+pub(crate) const EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL: &str = "__hone_no_mcp_tools__";
 
 pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
+    if matches!(
+        request.allowed_tools.as_deref(),
+        Some([only]) if only == EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL
+    ) {
+        return Ok(json!([]));
+    }
     let command = hone_mcp_command_path()?;
     let mut env_entries = vec![
         mcp_env_entry("HONE_CONFIG_PATH", request.config_path.as_str()),
@@ -878,9 +888,11 @@ mod tests {
             allow_cron: true,
             config_path: "/tmp/config.yaml".to_string(),
             runtime_dir: "/tmp/runtime".to_string(),
-            system_prompt: "system".to_string(),
-            runtime_input: "input".to_string(),
-            context: AgentContext::new("session-1".to_string()),
+            conversation: RunnerConversationInput::StructuredReplay {
+                system_prompt: "system".to_string(),
+                current_user_turn: "input".to_string(),
+                context: AgentContext::new("session-1".to_string()),
+            },
             timeout: Some(Duration::from_secs(30)),
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),

@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -727,6 +727,7 @@ Last updated: 2026-07-31
 ## D-2026-07-30-01 Persist One Native Codex Thread Per Hone Logical Session
 
 - Status: Accepted and locally verified with Codex CLI `0.146.0` and `@agentclientprotocol/codex-acp 1.1.7`.
+- Superseded in part by: `D-2026-08-01-01` replaces `persistent_resume_v1`, first-turn transcript/system seeding, post-compact reseeding, and adapter `-c` assumptions. The persistent per-logical-session `session/new` / `session/resume` mapping and fail-closed resume behavior remain active.
 - Supersedes in part: the Codex fresh-session/local-transcript portion of `D-2026-03-17-01` and the behavior introduced by `be5d7414`. OpenCode's fresh-session contract is unchanged.
 - User-facing decision: One deterministic Hone logical session maps to one persistent native Codex session, so Codex page/history inspection shows the complete multi-turn conversation instead of one rollout per Hone message. This is per actor/session identity; no native thread is shared globally across users, direct chats, or channel scopes.
 - Protocol decision: The first turn calls ACP `session/new` and stores both the returned native ID and `codex_acp_session_mode=persistent_resume_v1`. Later turns start a new adapter process but call `session/resume` for that exact ID before `session/prompt`. Hone does not call `session/load`: real adapter inspection and a cross-process probe showed that load replays historical `session/update` events, while resume returned no historical updates.
@@ -734,6 +735,17 @@ Last updated: 2026-07-31
 - Failure and migration boundary: Pre-marker `codex_acp_session_id` values are treated as legacy one-turn rollouts and are not resumed. If a marked persistent session cannot be resumed, the turn fails explicitly instead of silently creating another native thread. Operators must repair/reset that mapping deliberately.
 - Configuration boundary: Model and reasoning effort remain Codex process `-c` settings established before ACP session creation or resume. No per-session `session/set_model` call is required.
 - Verification: A real two-turn Discord-path probe kept Hone session `Actor_discord__direct__acp_5fpersistent_5fdiscord_5f20260730` and native Codex ID `019fb3c2-f2f7-7140-8140-7520409d79be` across both turns. ACP evidence contained one `session/new`, one `session/resume`, and two `session/prompt` calls; neither prompt re-injected restored transcript. The single native rollout file contained two `user_message`, two `agent_message`, and two task completions, and turn two returned the exact first-turn sentinel `ONE-CODEX-SESSION-20260730`. Codex Desktop's own task index listed that same ID as one local task. A 2026-07-31 real CLI follow-up used native ID `019fb5e4-7796-7410-bfb8-e5ab2fad887c`: prompt one contained the system seed; ordinary resumes did not. The latest resume was 103 characters, had no generic `### User Input ###` wrapper, and contained only `【当前时间】` and `【本轮用户输入】`; restored transcript, Session context, answer/entity contracts, and related-skill hints were all absent. All three sentinels completed exactly, `cargo test -p hone-channels --lib` passed 708 tests with one host-dependent OCR test ignored, and `cargo check -p hone-channels --tests` passed.
+
+## D-2026-08-01-01 Separate Conversation Ownership From ACP Stream Dialects
+
+- Status: Accepted and locally verified with Codex CLI `0.146.0`, `@agentclientprotocol/codex-acp 1.1.7`, and OpenCode `1.18.11`.
+- Supersedes in part: the Codex seed/reseed and process-`-c` portions of `D-2026-07-30-01`; the old `persistent_resume_v1` generation is historical and is never resumed by the new path.
+- Conversation architecture: Every runner declares one `AgentConversationStrategy`: native persistence, structured replay, or ephemeral compiled prompt. Shared execution constructs a matching `RunnerConversationInput` only after selecting the actual runner. Codex receives only native developer instructions plus the current user turn; Hone Cloud receives structured roles; CLI and fresh-session OpenCode adapters may compile the system/current/history fields they explicitly own. Runner behavior is no longer inferred from overlapping `manages_own_context` booleans.
+- Capability architecture: Conversation ownership, ACP stream dialect, and native workspace skill projection are separate typed axes. Only a runner declaring `NativeSkillProjection::CodexWorkspace` receives Codex-native skill links and their MCP allowlist filtering; native persistence alone never opts another runner into Codex-specific behavior.
+- Codex role boundary: Hone passes the complete instruction layer as Codex `developer_instructions` through the official adapter `CODEX_CONFIG` environment, together with model/effort/safety settings. Every `session/prompt` contains only the canonical current turn, on `session/new`, `session/resume`, and after native compaction. Hone never sends system text, local user/assistant history, tool calls/results, or compact summaries through that user method, and compact events never set a reseed flag.
+- Native generation boundary: Hone persists `codex_acp_session_mode=native_turn_v2` plus a SHA-256 instruction fingerprint. Only an exact mode/fingerprint match may resume. Legacy v1 or instruction-mismatched metadata creates a new native generation deliberately; an exact compatible resume still fails closed rather than silently forking.
+- Stream architecture: ACP transport method names do not imply identical output. Each adapter declares a versioned stream dialect. The codex-acp `1.1.7` and OpenCode `1.18.11` paths retain every safely mappable answer, reasoning, tool, progress, usage, and terminal detail that the observed adapter exposes; channel output is not required to be byte-identical across adapters.
+- Verification: An executable fake codex-acp boundary observed `session/new -> session/resume -> session/new` across same-instruction resume and changed-instruction rotation, emitted a compact notification between turns, and captured three exact current-turn-only prompts with no reseed metadata. A real two-turn `hone-cli probe` resumed native Codex ID `019fbe23-f728-7a72-a2fb-6ed9260d5e31`; rollout inspection found exactly two Hone current-turn user payloads, no cross-turn marker or system/history/tool replay, and both exact sentinel replies. A real OpenCode `1.18.11` ACP exchange returned `OPENCODE_ACP_OK`; its recorded fixture covers object-shaped thought/message chunks and `usage_update` detail (`used`, `size`, `cost`, `currency`).
 
 ## D-2026-07-31-01 Keep Conversational Notification Controls Deterministic And Domain-Owned
 

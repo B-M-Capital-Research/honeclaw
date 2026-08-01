@@ -332,6 +332,29 @@ pub enum AgentRunnerKind {
     Unknown,
 }
 
+/// Declares where conversation roles are assembled and which component owns
+/// retained history. This is deliberately richer than the former
+/// `manages_own_context` flag: a fresh ACP session that receives a compiled
+/// Hone transcript is not equivalent to a persistent native thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentConversationStrategy {
+    /// The upstream harness retains the thread and compacts it natively. Hone
+    /// sends exactly one canonical user turn per prompt.
+    NativePersistent,
+    /// Hone sends system, historical user/assistant, and current user content
+    /// as distinct protocol roles on every request.
+    StructuredReplay,
+    /// Hone owns history and the runner adapter compiles the separate roles
+    /// into a single backend prompt at the final transport boundary.
+    EphemeralCompiledPrompt,
+}
+
+impl AgentConversationStrategy {
+    pub fn retains_native_history(self) -> bool {
+        self == Self::NativePersistent
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentRunnerProbe {
     /// 本机 CLI runner 启动前可快速探测的二进制。
@@ -365,8 +388,15 @@ impl AgentRunnerKind {
         }
     }
 
-    pub fn manages_own_context(self) -> bool {
-        matches!(self, Self::CodexAcp | Self::OpencodeAcp)
+    pub fn conversation_strategy(self) -> AgentConversationStrategy {
+        match self {
+            Self::CodexAcp => AgentConversationStrategy::NativePersistent,
+            Self::HoneCloud => AgentConversationStrategy::StructuredReplay,
+            Self::GeminiCli | Self::GeminiAcp | Self::CodexCli | Self::OpencodeAcp => {
+                AgentConversationStrategy::EphemeralCompiledPrompt
+            }
+            Self::Unknown => AgentConversationStrategy::StructuredReplay,
+        }
     }
 
     /// 返回 runner 需要的本机 CLI 快速探针。
@@ -674,7 +704,7 @@ fn default_opencode_args() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::AgentRunnerKind;
+    use super::{AgentConversationStrategy, AgentRunnerKind};
 
     #[test]
     fn agent_default_daily_conversation_limit_is_twelve() {
@@ -685,13 +715,24 @@ mod tests {
     fn agent_runner_kind_keeps_wire_values_and_probe_mapping() {
         let kind = AgentRunnerKind::from_config_value("codex_acp");
         assert_eq!(kind.as_str(), "codex_acp");
-        assert!(kind.manages_own_context());
+        assert_eq!(
+            kind.conversation_strategy(),
+            AgentConversationStrategy::NativePersistent
+        );
         let probe = kind.cli_probe().expect("codex acp probe");
         assert_eq!(probe.binary, "codex-acp");
         assert_eq!(probe.arg, "--version");
         let cloud = AgentRunnerKind::from_config_value("hone_cloud");
         assert_eq!(cloud.as_str(), "hone_cloud");
+        assert_eq!(
+            cloud.conversation_strategy(),
+            AgentConversationStrategy::StructuredReplay
+        );
         assert!(cloud.cli_probe().is_none());
+        assert_eq!(
+            AgentRunnerKind::OpencodeAcp.conversation_strategy(),
+            AgentConversationStrategy::EphemeralCompiledPrompt
+        );
         assert_eq!(
             AgentRunnerKind::from_config_value("function_calling"),
             AgentRunnerKind::Unknown

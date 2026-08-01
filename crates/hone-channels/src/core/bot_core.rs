@@ -19,7 +19,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::config::{AgentRunnerKind, HoneConfig};
+use hone_core::config::{AgentConversationStrategy, AgentRunnerKind, HoneConfig};
 use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
@@ -670,15 +670,21 @@ impl HoneBotCore {
         !self.is_admin_actor(actor) && self.configured_runner_requires_trusted_host_access()
     }
 
-    pub(crate) fn effective_runner_manages_own_context(&self, actor: &ActorIdentity) -> bool {
-        !self.actor_uses_strict_runner_fallback(actor)
-            && self.config.agent.runner_kind().manages_own_context()
+    pub(crate) fn effective_runner_conversation_strategy(
+        &self,
+        actor: &ActorIdentity,
+    ) -> AgentConversationStrategy {
+        if self.actor_uses_strict_runner_fallback(actor) {
+            AgentConversationStrategy::StructuredReplay
+        } else {
+            self.config.agent.runner_kind().conversation_strategy()
+        }
     }
 
     /// A trusted native Codex ACP thread accepts one new user turn at a time
     /// and owns its retained history, tool loop, and compaction. OpenCode ACP
-    /// also manages history, but does not share this Codex-specific prompt
-    /// lifecycle contract.
+    /// shares the protocol family but still uses a fresh Hone replay and does
+    /// not inherit this Codex-specific prompt lifecycle contract.
     pub(crate) fn effective_runner_uses_native_codex_turns(&self, actor: &ActorIdentity) -> bool {
         !self.actor_uses_strict_runner_fallback(actor)
             && self.config.agent.runner_kind() == AgentRunnerKind::CodexAcp
@@ -716,8 +722,8 @@ impl HoneBotCore {
 
     /// 检查并压缩会话历史。
     ///
-    /// 对于本轮实际使用且自带上下文管理 / 内置 compact 的 runner
-    ///（codex_acp / opencode_acp），直接短路返回。普通 Web actor 即使全局
+    /// 对于本轮实际使用且持有原生会话 / 内置 compact 的 runner
+    ///（当前为 codex_acp），直接短路返回。普通 Web actor 即使全局
     /// 配置了 ACP，也会安全降级到 function-calling，因此仍必须由 Hone
     /// 管理上下文。
     /// 见 `docs/bugs/session_compact_summary_report_hallucination.md` 2026-04-23 决策。
@@ -726,7 +732,10 @@ impl HoneBotCore {
         session_id: &str,
         actor: &ActorIdentity,
     ) -> hone_core::HoneResult<()> {
-        if self.effective_runner_manages_own_context(actor) {
+        if self
+            .effective_runner_conversation_strategy(actor)
+            .retains_native_history()
+        {
             tracing::debug!(
                 "[Compact] session={} runner={} 自管上下文，跳过 honeclaw 自动 compact",
                 session_id,

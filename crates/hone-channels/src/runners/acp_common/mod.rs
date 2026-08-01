@@ -48,9 +48,8 @@ pub(crate) use protocol::{
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 pub(crate) use state::{
-    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpPermissionDecision, AcpPromptState,
-    AcpRenderedToolStatus, AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord,
-    AcpToolRenderPhase,
+    ACP_PREV_PROMPT_PEAK_KEY, AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus,
+    AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord, AcpToolRenderPhase,
 };
 pub(crate) use tool_state::{finalize_context_messages, finalize_pending_tool_calls};
 pub(crate) use version::{CliVersion, parse_cli_version};

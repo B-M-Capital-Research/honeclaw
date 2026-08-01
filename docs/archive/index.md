@@ -2003,3 +2003,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/public-user-admin.md`; Core 22/22; Memory 133/133; Web API 160/160 plus 2 credentialed ignores; `tests/regression/run_ci.sh`
 - Current conclusion: The production 500 came from binding a Rust string directly to a PostgreSQL `date` placeholder in the daily-count query, not from the frontend or administrator role. All count/audit paths now cast text to date, the list uses a minimal non-secret projection, and ancillary count failure no longer hides readable rows. The exact immutable production build is active with healthy PostgreSQL/R2, zero active chats, and the tunnel unchanged.
 - Next entry point: refresh the authenticated “我的 → 管理” view; if live mutation acceptance is needed, use one explicitly controlled phone rather than synthetic production accounts.
+
+### ACP Native-Turn Role Boundary And Versioned Stream Dialects
+
+- Status: done
+- Date: 2026-08-01
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (this role-boundary phase is done; parent ACP runtime plan remains active)
+- Handoff: `docs/handoffs/2026-08-01-acp-native-turn-contract.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-01-01-separate-conversation-ownership-from-acp-stream-dialects`; `docs/adr/0002-agent-runtime-acp-refactor.md`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; codex-acp `1.1.7` executable boundary regression; OpenCode `1.18.11` stream fixture; real two-turn Codex and one-turn OpenCode probes; complete repository gates
+- Current conclusion: Runner conversation ownership is explicit. Codex instructions use native `developer_instructions`, all Codex `session/prompt` calls are current-turn-only even after compact, legacy/mismatched generations rotate, and the old seed/reseed/transcript execution path is deleted. Codex and OpenCode retain separate version-labelled stream mappings that preserve their available detail without claiming byte-identical channel output.
+- Next entry point: `docs/handoffs/2026-08-01-acp-native-turn-contract.md`; the remaining umbrella runtime work stays in `docs/current-plans/acp-runtime-refactor.md`.

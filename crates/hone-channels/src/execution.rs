@@ -9,13 +9,15 @@ use serde_json::Value;
 use crate::HoneBotCore;
 use crate::agent_session::GeminiStreamOptions;
 use crate::core::runtime_config_path;
+use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
-use crate::runners::{AgentRunner, AgentRunnerRequest, TerminalStreamPolicy};
+use crate::runners::{
+    AgentRunner, AgentRunnerRequest, NativeSkillProjection, RunnerConversationInput,
+    TerminalStreamPolicy,
+};
 use crate::sandbox::{ensure_actor_sandbox, sync_native_codex_skill_links};
 
 const NATIVE_CODEX_SKILL_LOADING_TOOLS: [&str; 3] = ["discover_skills", "load_skill", "skill_tool"];
-const EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL: &str = "__hone_no_mcp_tools__";
-
 fn absolute_runtime_path(path: &str) -> String {
     let candidate = std::path::PathBuf::from(path);
     if candidate.is_absolute() {
@@ -102,16 +104,8 @@ impl ExecutionService {
             &request.channel_target,
             request.allow_cron,
         );
-        let use_native_codex_skills = request.mode == ExecutionMode::PersistentConversation
-            && self
-                .core
-                .effective_runner_uses_native_codex_turns(&request.actor);
-        if use_native_codex_skills {
-            request.allowed_tools = Some(native_codex_mcp_tools(
-                &tool_registry,
-                request.allowed_tools.as_deref(),
-            ));
-        }
+        let native_codex_tools =
+            native_codex_mcp_tools(&tool_registry, request.allowed_tools.as_deref());
         let use_strict_fallback = matches!(
             request.runner_selection,
             ExecutionRunnerSelection::Configured
@@ -133,6 +127,13 @@ impl ExecutionService {
                 request.model_override.as_deref(),
             )?,
         };
+        let runner_name = runner.name();
+        let conversation_strategy = runner.conversation_strategy();
+        let use_native_codex_skills = request.mode == ExecutionMode::PersistentConversation
+            && runner.native_skill_projection() == Some(NativeSkillProjection::CodexWorkspace);
+        if use_native_codex_skills {
+            request.allowed_tools = Some(native_codex_tools);
+        }
         if use_strict_fallback {
             let removed = sanitize_function_calling_context(&mut request.context);
             if removed > 0 {
@@ -144,7 +145,6 @@ impl ExecutionService {
                 );
             }
         }
-        let runner_name = runner.name();
         let working_directory_path = ensure_actor_sandbox(&request.actor)
             .map_err(|err| format!("actor sandbox 初始化失败: {err}"))?;
         if use_native_codex_skills {
@@ -164,6 +164,12 @@ impl ExecutionService {
             ExecutionMode::TransientTask => request.actor.session_id(),
         };
 
+        let conversation = RunnerConversationInput::prepare(
+            conversation_strategy,
+            request.system_prompt,
+            request.runtime_input,
+            request.context,
+        );
         Ok(PreparedExecution {
             runner_name,
             runner,
@@ -177,9 +183,7 @@ impl ExecutionService {
                 runtime_dir: absolute_runtime_path(
                     &self.core.configured_runtime_dir().to_string_lossy(),
                 ),
-                system_prompt: request.system_prompt,
-                runtime_input: request.runtime_input,
-                context: request.context,
+                conversation,
                 timeout: request.timeout,
                 gemini_stream: request.gemini_stream,
                 session_metadata: request.session_metadata,

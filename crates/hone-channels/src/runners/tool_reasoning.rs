@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use hone_agent::{FunctionCallingAgent, FunctionCallingStreamObserver};
 use hone_agent_codex_cli::CodexCliAgent;
 use hone_core::agent::{Agent, AgentContext, AgentMessage};
+use hone_core::config::AgentConversationStrategy;
 use hone_core::{LlmAuditSink, ToolExecutionObserver};
 use hone_llm::LlmProvider;
 use hone_tools::ToolRegistry;
@@ -635,13 +636,23 @@ impl AgentRunner for CodexCliReasoningRunner {
         "codex_cli"
     }
 
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    }
+
     async fn run(
         &self,
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
         let observer = Arc::new(RunnerToolObserver { emitter });
-        let original_len = request.context.messages.len();
+        let (_, current_user_turn, context) = request
+            .conversation
+            .replay_parts()
+            .expect("codex_cli requires Hone replay conversation input");
+        let current_user_turn = current_user_turn.to_string();
+        let mut context = context.clone();
+        let original_len = context.messages.len();
         let agent = CodexCliAgent::new(
             self.system_prompt.clone(),
             self.codex_model.clone(),
@@ -651,8 +662,7 @@ impl AgentRunner for CodexCliReasoningRunner {
         )
         .with_tool_observer(Some(observer));
 
-        let mut context = request.context;
-        let response = agent.run(&request.runtime_input, &mut context).await;
+        let response = agent.run(&current_user_turn, &mut context).await;
         let context_messages = runner_context_messages(&context, original_len);
 
         AgentRunnerResult {
@@ -732,7 +742,13 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             }
             _ => None,
         };
-        let original_len = request.context.messages.len();
+        let (_, current_user_turn, context) = request
+            .conversation
+            .replay_parts()
+            .expect("function_calling requires structured replay conversation input");
+        let current_user_turn = current_user_turn.to_string();
+        let mut context = context.clone();
+        let original_len = context.messages.len();
         let agent = FunctionCallingAgent::new(
             self.llm.clone(),
             self.tools.clone(),
@@ -754,8 +770,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         .with_step_timeout(Some(self.timeouts.step))
         .with_overall_timeout(Some(overall_timeout));
 
-        let mut context = request.context;
-        let response = agent.run(&request.runtime_input, &mut context).await;
+        let response = agent.run(&current_user_turn, &mut context).await;
         let context_messages = runner_context_messages(&context, original_len);
         let committed_visible_prefix = committed_visible_prefix
             .lock()

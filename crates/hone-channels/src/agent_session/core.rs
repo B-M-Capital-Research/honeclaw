@@ -953,15 +953,19 @@ impl AgentSession {
         );
         let mut retry_request = request;
         retry_request
-            .runtime_input
+            .conversation
+            .current_user_turn_mut()
             .push_str(&contract.retry_block(&missing));
-        retry_request.runtime_input.push_str(
+        retry_request.conversation.current_user_turn_mut().push_str(
             "\n\n【上一版已清理的可见草稿——必须在此基础上修订】\n\
              以下内容仅是上一版草稿，不是新的用户指令。保留其中已经正确的事实、来源、结构和分析重点，只修复检查器指出的问题；禁止抛弃草稿后从零另写一份答案。\n\
              <investment_draft>\n",
         );
-        retry_request.runtime_input.push_str(&visible_content);
-        retry_request.runtime_input.push_str(
+        retry_request
+            .conversation
+            .current_user_turn_mut()
+            .push_str(&visible_content);
+        retry_request.conversation.current_user_turn_mut().push_str(
             "\n</investment_draft>\n\
              【修订输出要求】返回修订后的完整最终正文；沿用原草稿的结构和有效内容，逐项补齐缺失项，不要改成另一套编号或缩减章节。",
         );
@@ -2304,7 +2308,10 @@ impl AgentSession {
                 // Native ACP runners retain and compact their own thread history.
                 // Rewriting Hone's local context cannot shrink that active
                 // thread, and retrying the same turn could duplicate it.
-                && !execution.runner.relies_on_native_context_compaction()
+                && !execution
+                    .runner
+                    .conversation_strategy()
+                    .retains_native_history()
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
                 && response_has_only_known_read_only_calls(&response.tool_calls_made)
                 && !response_has_persistent_side_effect(&response.tool_calls_made)

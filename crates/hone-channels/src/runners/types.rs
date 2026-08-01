@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
 use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
+use hone_core::config::AgentConversationStrategy;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,6 +9,38 @@ use std::time::Duration;
 
 use crate::agent_session::GeminiStreamOptions;
 pub(crate) use crate::run_event::RunEvent as AgentRunnerEvent;
+
+/// Versioned wire profiles observed from real ACP adapters. The variants are
+/// intentionally adapter-specific: sharing ACP method names does not imply
+/// identical stream updates or presentation detail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcpStreamDialect {
+    CodexAcp1_1_7,
+    OpenCode1_18_11,
+}
+
+/// Adapter-specific workspace preparation that is independent from
+/// conversation ownership and stream event shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeSkillProjection {
+    CodexWorkspace,
+}
+
+impl AcpStreamDialect {
+    pub fn adapter(self) -> &'static str {
+        match self {
+            Self::CodexAcp1_1_7 => "codex-acp",
+            Self::OpenCode1_18_11 => "opencode",
+        }
+    }
+
+    pub fn observed_version(self) -> &'static str {
+        match self {
+            Self::CodexAcp1_1_7 => "1.1.7",
+            Self::OpenCode1_18_11 => "1.18.11",
+        }
+    }
+}
 
 /// Controls whether a runner may publish a narrowly bounded, irreversible
 /// answer prefix while the rest of an Agent answer remains deferred.
@@ -43,6 +76,120 @@ pub(crate) struct RunnerTimeouts {
 }
 
 #[derive(Clone)]
+pub enum RunnerConversationInput {
+    NativePersistent {
+        developer_instructions: String,
+        current_user_turn: String,
+    },
+    StructuredReplay {
+        system_prompt: String,
+        current_user_turn: String,
+        context: AgentContext,
+    },
+    EphemeralCompiledPrompt {
+        system_prompt: String,
+        current_user_turn: String,
+        context: AgentContext,
+    },
+}
+
+impl RunnerConversationInput {
+    pub fn prepare(
+        strategy: AgentConversationStrategy,
+        system_prompt: String,
+        current_user_turn: String,
+        context: AgentContext,
+    ) -> Self {
+        match strategy {
+            AgentConversationStrategy::NativePersistent => Self::NativePersistent {
+                developer_instructions: system_prompt,
+                current_user_turn,
+            },
+            AgentConversationStrategy::StructuredReplay => Self::StructuredReplay {
+                system_prompt,
+                current_user_turn,
+                context,
+            },
+            AgentConversationStrategy::EphemeralCompiledPrompt => Self::EphemeralCompiledPrompt {
+                system_prompt,
+                current_user_turn,
+                context,
+            },
+        }
+    }
+
+    pub fn current_user_turn(&self) -> &str {
+        match self {
+            Self::NativePersistent {
+                current_user_turn, ..
+            }
+            | Self::StructuredReplay {
+                current_user_turn, ..
+            }
+            | Self::EphemeralCompiledPrompt {
+                current_user_turn, ..
+            } => current_user_turn,
+        }
+    }
+
+    pub fn current_user_turn_mut(&mut self) -> &mut String {
+        match self {
+            Self::NativePersistent {
+                current_user_turn, ..
+            }
+            | Self::StructuredReplay {
+                current_user_turn, ..
+            }
+            | Self::EphemeralCompiledPrompt {
+                current_user_turn, ..
+            } => current_user_turn,
+        }
+    }
+
+    pub fn native_parts(&self) -> Option<(&str, &str)> {
+        match self {
+            Self::NativePersistent {
+                developer_instructions,
+                current_user_turn,
+            } => Some((developer_instructions, current_user_turn)),
+            Self::StructuredReplay { .. } | Self::EphemeralCompiledPrompt { .. } => None,
+        }
+    }
+
+    pub fn replay_parts(&self) -> Option<(&str, &str, &AgentContext)> {
+        match self {
+            Self::StructuredReplay {
+                system_prompt,
+                current_user_turn,
+                context,
+            }
+            | Self::EphemeralCompiledPrompt {
+                system_prompt,
+                current_user_turn,
+                context,
+            } => Some((system_prompt, current_user_turn, context)),
+            Self::NativePersistent { .. } => None,
+        }
+    }
+
+    pub fn into_replay_parts(self) -> Option<(String, String, AgentContext)> {
+        match self {
+            Self::StructuredReplay {
+                system_prompt,
+                current_user_turn,
+                context,
+            }
+            | Self::EphemeralCompiledPrompt {
+                system_prompt,
+                current_user_turn,
+                context,
+            } => Some((system_prompt, current_user_turn, context)),
+            Self::NativePersistent { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct AgentRunnerRequest {
     pub session_id: String,
     pub actor_label: String,
@@ -51,9 +198,7 @@ pub struct AgentRunnerRequest {
     pub allow_cron: bool,
     pub config_path: String,
     pub runtime_dir: String,
-    pub system_prompt: String,
-    pub runtime_input: String,
-    pub context: AgentContext,
+    pub conversation: RunnerConversationInput,
     pub timeout: Option<Duration>,
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
@@ -95,10 +240,10 @@ pub struct AgentRunnerResult {
 
 /// Agent 执行器抽象。
 ///
-/// **历史还原契约**：Runner **不应该**直接读 `SessionStorage` / `SessionMessage`。
-/// 上游 `AgentSession` 会用 `restore_context` 把 session 历史构造成
-/// `AgentContext`,以 `AgentRunnerRequest.context` 注入。Runner 只消费
-/// `AgentContext`（或它的 `normalized_history_json()` 序列化形式）。
+/// **会话契约**：Runner **不应该**直接读 `SessionStorage` / `SessionMessage`。
+/// 上游先选择实际 runner，再按 [`AgentConversationStrategy`] 构造一个有角色边界的
+/// [`RunnerConversationInput`]。Native persistent runner 从类型上拿不到 Hone 历史；
+/// replay runner 则在适配器边界消费 `AgentContext`。
 ///
 /// 这么约束的原因是让 session 持久化 schema 的任何变更都只需要改动
 /// `restore_context` 一处,不需要同步到每个 runner 实现里。
@@ -112,22 +257,15 @@ pub trait AgentRunner: Send + Sync {
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult;
 
-    /// Runner 是否自己管理对话上下文 / 历史 / 内置压缩。
-    ///
-    /// 返回 true 时 honeclaw 不会对其触发 SessionCompactor，也不会在每轮 prompt
-    /// 里再拼接 `latest_compact_summary`，由 runner 内置的 ACP session 机制累积
-    /// 与压缩。仅 ACP 系列 runner（codex_acp / opencode_acp）应当 override 为
-    /// true；其它 runner 保持默认 false。
-    fn manages_own_context(&self) -> bool {
-        false
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::StructuredReplay
     }
 
-    /// Runner 是否把当前逻辑会话绑定到一个持久的原生会话，并依赖原生
-    /// harness 处理 context overflow / compaction。
-    ///
-    /// 返回 true 时，AgentSession 不应通过改写 Hone 本地历史重放当前 turn；
-    /// 这既无法缩小原生会话，也可能造成重复执行。当前仅 Codex ACP 使用。
-    fn relies_on_native_context_compaction(&self) -> bool {
-        false
+    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
+        None
+    }
+
+    fn native_skill_projection(&self) -> Option<NativeSkillProjection> {
+        None
     }
 }

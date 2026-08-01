@@ -4147,9 +4147,12 @@ async fn run_heartbeat_task(
         &Default::default(),
         &prompt_options,
     );
-    // 与 turn_builder::PromptTurnBuilder 保持一致：self-managed-context runner
-    // 不需要 honeclaw 灌注 conversation_context，runner 自带 ACP session 管理。
-    if core.config.agent.runner_kind().manages_own_context() {
+    // 与 turn_builder::PromptTurnBuilder 保持一致：只有持久原生会话不需要
+    // Hone 灌注 conversation_context。OpenCode fresh-session 路径仍由 Hone replay。
+    if core
+        .effective_runner_conversation_strategy(&event.actor)
+        .retains_native_history()
+    {
         bundle.conversation_context = None;
     }
     let timeout = run_options.timeout;

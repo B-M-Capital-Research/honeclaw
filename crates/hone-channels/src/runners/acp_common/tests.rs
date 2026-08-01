@@ -234,7 +234,7 @@ async fn nominal_prompt_completion_marks_missing_tool_result_unknown() {
 
 /// codex-acp 内置 compact 触发后单独发一条 `agent_message_chunk text="Context compacted\n"`。
 /// 现在这类文本会继续透传给用户，但仍需在 state 上标记 compact_detected=true，
-/// 供 runner 写回 metadata 触发下一轮 SP reseed。
+/// 供 runner 保留 dialect-specific lifecycle telemetry；不得改变下一轮 user prompt。
 #[tokio::test]
 async fn handle_acp_session_update_marks_codex_compact_literal_chunk_without_dropping_output() {
     let mut state = AcpPromptState::default();
@@ -463,7 +463,7 @@ async fn ingest_acp_message_chunk_detects_boundary_split_across_chunks_without_t
     );
     assert!(
         state.compact_detected,
-        "boundary detection must mark compact_detected for SP reseed"
+        "boundary detection must retain compact lifecycle telemetry"
     );
 
     let captured = deltas.lock().await.clone();

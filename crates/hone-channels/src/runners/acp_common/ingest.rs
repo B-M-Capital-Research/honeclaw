@@ -37,8 +37,8 @@ pub(crate) async fn handle_acp_session_update(
 /// 处理一段 ACP `agent_message_chunk` 文本（codex / opencode 共用）。
 ///
 /// compact 发生后的文本现在按用户可见内容透传，不再在 ACP ingest 层做裁剪。
-/// 这里仍保留 compact 检测，用于 runner 在本轮结束时写回
-/// `ACP_NEEDS_SP_RESEED_KEY`，保证下一轮 system prompt 能正确 reseed。
+/// 这里保留 compact 检测只用于 adapter lifecycle 观测；不得据此污染下一轮
+/// `session/prompt` 的 user role。
 pub(crate) async fn ingest_acp_message_chunk(
     text: &str,
     state: &mut AcpPromptState,

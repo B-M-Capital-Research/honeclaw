@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use hone_core::ToolExecutionObserver;
 use hone_core::agent::{
     AgentContext, AgentMessage, ToolCallMade, final_assistant_message_content,
     normalize_agent_messages,
 };
 use hone_core::config::{CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig};
+use hone_core::{ActorIdentity, ToolExecutionObserver};
 use hone_memory::restore_tool_message;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use super::acp_common::{
     AcpPromptState, AcpToolRenderPhase, CliVersion, extract_finished_tool_calls,
@@ -19,7 +20,7 @@ use super::acp_common::{
     summarize_finished_tool_calls_for_log,
 };
 use super::codex_acp::{
-    build_codex_acp_prompt_text, codex_acp_effective_args, codex_acp_should_seed_system_prompt,
+    codex_acp_effective_args, codex_acp_process_config, codex_instruction_fingerprint,
     configured_codex_model_id, configured_codex_reasoning_effort,
     patch_codex_session_update_params, render_codex_tool_status, reusable_codex_acp_session_id,
     validate_codex_version_matrix,
@@ -37,10 +38,14 @@ use super::opencode_acp::{
 use super::tool_reasoning::{
     RunnerToolObserver, render_runner_tool_label, runner_context_messages,
 };
-use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
+use super::types::{
+    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest,
+    RunnerConversationInput, RunnerTimeouts,
+};
 use uuid::Uuid;
 
-use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
+use crate::agent_session::{AgentSessionError, AgentSessionErrorKind, GeminiStreamOptions};
+use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 
 struct NoopEmitter;
 
@@ -226,64 +231,36 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
 }
 
 #[test]
-fn codex_acp_reuses_only_persistent_remote_session_metadata() {
+fn codex_acp_reuses_only_matching_native_turn_generation() {
+    let fingerprint = codex_instruction_fingerprint("SYSTEM");
     let mut metadata = HashMap::new();
     metadata.insert(
         "codex_acp_session_id".to_string(),
         Value::String("old-remote-session".to_string()),
     );
 
-    assert!(reusable_codex_acp_session_id(&metadata).is_none());
+    assert!(reusable_codex_acp_session_id(&metadata, &fingerprint).is_none());
 
     metadata.insert(
         "codex_acp_session_mode".to_string(),
-        Value::String("persistent_resume_v1".to_string()),
+        Value::String("native_turn_v2".to_string()),
+    );
+    metadata.insert(
+        "codex_acp_instruction_fingerprint".to_string(),
+        Value::String(fingerprint.clone()),
     );
     assert_eq!(
-        reusable_codex_acp_session_id(&metadata).as_deref(),
+        reusable_codex_acp_session_id(&metadata, &fingerprint).as_deref(),
         Some("old-remote-session")
     );
+
+    assert!(reusable_codex_acp_session_id(&metadata, "changed").is_none());
 
     metadata.insert(
         "codex_acp_session_id".to_string(),
         Value::String("  ".to_string()),
     );
-    assert!(reusable_codex_acp_session_id(&metadata).is_none());
-}
-
-#[test]
-fn codex_acp_seeds_system_prompt_only_on_first_turn_or_after_compaction() {
-    let mut metadata = HashMap::new();
-    assert!(codex_acp_should_seed_system_prompt(&metadata, true));
-
-    metadata.insert(
-        "codex_acp_session_id".to_string(),
-        Value::String("persistent-session".to_string()),
-    );
-    metadata.insert(
-        "codex_acp_session_mode".to_string(),
-        Value::String("persistent_resume_v1".to_string()),
-    );
-    assert!(!codex_acp_should_seed_system_prompt(&metadata, false));
-
-    metadata.insert("acp_needs_sp_reseed".to_string(), Value::Bool(true));
-    assert!(codex_acp_should_seed_system_prompt(&metadata, false));
-
-    metadata.insert("acp_needs_sp_reseed".to_string(), Value::Bool(false));
-    assert!(!codex_acp_should_seed_system_prompt(&metadata, false));
-}
-
-#[test]
-fn codex_resumed_turn_prompt_omits_static_system_and_keeps_current_turn() {
-    let runtime = "【当前时间】\n2026-07-31 09:00:00 (北京时间)\n\n【本轮用户输入】\n继续";
-    let prompt = build_codex_acp_prompt_text("", runtime, None);
-
-    assert_eq!(prompt, runtime);
-    assert!(!prompt.contains("### System Instructions ###"));
-    assert!(!prompt.contains("### User Input ###"));
-    assert!(!prompt.contains("【Session 上下文】"));
-    assert!(prompt.contains("【当前时间】"));
-    assert!(prompt.contains("【本轮用户输入】\n继续"));
+    assert!(reusable_codex_acp_session_id(&metadata, &fingerprint).is_none());
 }
 
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
@@ -298,6 +275,257 @@ fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
         fs::set_permissions(&path, perms).expect("set permissions");
     }
     path
+}
+
+fn native_codex_boundary_request(
+    working_directory: &Path,
+    developer_instructions: &str,
+    current_user_turn: &str,
+    session_metadata: HashMap<String, Value>,
+) -> AgentRunnerRequest {
+    AgentRunnerRequest {
+        session_id: "codex-boundary-contract".to_string(),
+        actor_label: "cli:codex-boundary-contract".to_string(),
+        actor: ActorIdentity::new("cli", "codex-boundary-contract", None::<String>).expect("actor"),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: working_directory.join("config.yaml").display().to_string(),
+        runtime_dir: working_directory.join("runtime").display().to_string(),
+        conversation: RunnerConversationInput::NativePersistent {
+            developer_instructions: developer_instructions.to_string(),
+            current_user_turn: current_user_turn.to_string(),
+        },
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata,
+        working_directory: working_directory.display().to_string(),
+        allowed_tools: Some(vec![EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL.to_string()]),
+        max_tool_calls: None,
+        tool_call_limits: None,
+        agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
+        terminal_stream_policy: Default::default(),
+    }
+}
+
+/// External-boundary contract observed against @agentclientprotocol/codex-acp 1.1.7.
+/// The double speaks real stdio JSON-RPC and emits the adapter's structured
+/// contextCompaction notification between native turns. Assertions target only
+/// outbound ACP roles/session lifecycle, not private prompt-builder functions.
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_boundary_keeps_every_prompt_current_turn_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_root =
+        std::env::temp_dir().join(format!("hone-codex-acp-boundary-{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp_root).expect("create boundary temp dir");
+    let adapter = temp_root.join("fake-codex-acp");
+    let capture = temp_root.join("requests.jsonl");
+    let config_capture = temp_root.join("codex-config.jsonl");
+    let session_counter = temp_root.join("session-counter");
+    let script = r#"#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  echo "codex-cli 0.146.0"
+  exit 0
+fi
+printf '%s\n' "$CODEX_CONFIG" >> "__CONFIG_CAPTURE__"
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "__CAPTURE__"
+  case "$line" in
+    *'"method":"initialize"'*)
+      echo '{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"codex-acp","version":"1.1.7"}}}'
+      ;;
+    *'"method":"session/new"'*)
+      count=0
+      if [ -f "__SESSION_COUNTER__" ]; then count=$(sed -n '1p' "__SESSION_COUNTER__"); fi
+      count=$((count + 1))
+      printf '%s\n' "$count" > "__SESSION_COUNTER__"
+      printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"fake-native-%s"}}\n' "$count"
+      ;;
+    *'"method":"session/resume"'*)
+      echo '{"jsonrpc":"2.0","id":2,"result":{}}'
+      ;;
+    *'"method":"session/prompt"'*)
+      case "$line" in
+        *'TURN_ONE'*)
+          echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","_meta":{"contextCompaction":true}}}}'
+          ;;
+      esac
+      echo '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+      ;;
+  esac
+done
+"#
+    .replace("__CAPTURE__", &capture.display().to_string())
+    .replace("__CONFIG_CAPTURE__", &config_capture.display().to_string())
+    .replace("__SESSION_COUNTER__", &session_counter.display().to_string());
+    fs::write(&adapter, script).expect("write fake ACP adapter");
+    let mut permissions = fs::metadata(&adapter)
+        .expect("adapter metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&adapter, permissions).expect("make adapter executable");
+
+    let config = CodexAcpConfig {
+        command: adapter.display().to_string(),
+        codex_command: adapter.display().to_string(),
+        model: "gpt-5.6-sol".to_string(),
+        variant: "xhigh".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    let runner = super::CodexAcpRunner::new(
+        config,
+        RunnerTimeouts {
+            step: Duration::from_secs(5),
+            overall: Duration::from_secs(10),
+        },
+    );
+    assert_eq!(
+        runner.acp_stream_dialect(),
+        Some(AcpStreamDialect::CodexAcp1_1_7)
+    );
+    let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
+    let legacy_metadata = HashMap::from([
+        (
+            "codex_acp_session_id".to_string(),
+            Value::String("polluted-v1-session".to_string()),
+        ),
+        (
+            "codex_acp_session_mode".to_string(),
+            Value::String("persistent_resume_v1".to_string()),
+        ),
+        ("acp_needs_sp_reseed".to_string(), Value::Bool(true)),
+    ]);
+
+    let first = runner
+        .run(
+            native_codex_boundary_request(
+                &temp_root,
+                "HONE_DEVELOPER_INSTRUCTIONS",
+                "TURN_ONE",
+                legacy_metadata,
+            ),
+            emitter.clone(),
+        )
+        .await;
+    assert!(
+        first.response.success,
+        "first turn: {:?}",
+        first.response.error
+    );
+    assert_eq!(
+        first.session_metadata_updates["codex_acp_session_id"],
+        "fake-native-1"
+    );
+    assert_eq!(
+        first.session_metadata_updates["codex_acp_session_mode"],
+        "native_turn_v2"
+    );
+    assert!(
+        !first
+            .session_metadata_updates
+            .contains_key("acp_needs_sp_reseed")
+    );
+
+    let second = runner
+        .run(
+            native_codex_boundary_request(
+                &temp_root,
+                "HONE_DEVELOPER_INSTRUCTIONS",
+                "TURN_TWO",
+                first.session_metadata_updates.clone(),
+            ),
+            emitter.clone(),
+        )
+        .await;
+    assert!(
+        second.response.success,
+        "second turn: {:?}",
+        second.response.error
+    );
+
+    let third = runner
+        .run(
+            native_codex_boundary_request(
+                &temp_root,
+                "CHANGED_DEVELOPER_INSTRUCTIONS",
+                "TURN_THREE",
+                second.session_metadata_updates.clone(),
+            ),
+            emitter,
+        )
+        .await;
+    assert!(
+        third.response.success,
+        "third turn: {:?}",
+        third.response.error
+    );
+    assert_eq!(
+        third.session_metadata_updates["codex_acp_session_id"],
+        "fake-native-2"
+    );
+
+    let requests = fs::read_to_string(&capture).expect("captured ACP requests");
+    let payloads = requests
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("captured JSON-RPC request"))
+        .collect::<Vec<_>>();
+    let session_actions = payloads
+        .iter()
+        .filter_map(|payload| payload.get("method").and_then(Value::as_str))
+        .filter(|method| matches!(*method, "session/new" | "session/resume"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        session_actions,
+        vec!["session/new", "session/resume", "session/new"]
+    );
+    let prompts = payloads
+        .iter()
+        .filter(|payload| payload["method"] == "session/prompt")
+        .map(|payload| {
+            payload["params"]["prompt"][0]["text"]
+                .as_str()
+                .expect("text prompt")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(prompts, vec!["TURN_ONE", "TURN_TWO", "TURN_THREE"]);
+    for prompt in prompts {
+        for forbidden in [
+            "HONE_DEVELOPER_INSTRUCTIONS",
+            "System Instructions",
+            "Restored Conversation Transcript",
+            "tool_call",
+            "tool_result",
+        ] {
+            assert!(
+                !prompt.contains(forbidden),
+                "forbidden {forbidden}: {prompt}"
+            );
+        }
+    }
+
+    let process_configs = fs::read_to_string(&config_capture).expect("captured CODEX_CONFIG");
+    let developer_layers = process_configs
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|value| {
+            value
+                .get("developer_instructions")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        developer_layers,
+        vec![
+            "HONE_DEVELOPER_INSTRUCTIONS",
+            "HONE_DEVELOPER_INSTRUCTIONS",
+            "CHANGED_DEVELOPER_INSTRUCTIONS",
+        ]
+    );
+
+    let _ = fs::remove_dir_all(&temp_root);
 }
 
 #[test]
@@ -436,71 +664,24 @@ fn configured_codex_reasoning_effort_reads_variant() {
 }
 
 #[test]
-fn codex_acp_effective_args_include_reasoning_effort() {
+fn codex_acp_uses_adapter_args_and_official_codex_config_boundary() {
     let config = CodexAcpConfig {
         variant: "high".to_string(),
-        ..CodexAcpConfig::default()
-    };
-    let args = codex_acp_effective_args(&config, true);
-    assert!(
-        args.windows(2)
-            .any(|w| w[0] == "-c" && w[1] == "model=\"gpt-5.6-sol\""),
-        "expected model override in args, got: {args:?}"
-    );
-    assert!(
-        args.windows(2)
-            .any(|w| w[0] == "-c" && w[1] == "model_reasoning_effort=\"high\""),
-        "expected reasoning effort override in args, got: {args:?}"
-    );
-}
-
-#[test]
-fn codex_acp_effective_args_include_dangerous_bypass_overrides() {
-    let config = CodexAcpConfig {
-        dangerously_bypass_approvals_and_sandbox: true,
-        sandbox_permissions: vec!["disk-full-read-access".to_string()],
-        extra_config_overrides: vec!["shell_environment_policy.inherit=all".to_string()],
+        args: vec!["--adapter-flag".to_string()],
+        extra_config_overrides: vec!["shell_environment_policy.inherit=\"all\"".to_string()],
         ..CodexAcpConfig::default()
     };
     assert_eq!(
-        codex_acp_effective_args(&config, false),
-        vec![
-            "-c",
-            "sandbox_mode=\"danger-full-access\"",
-            "-c",
-            "approval_policy=\"never\"",
-            "-c",
-            "sandbox_permissions=[\"disk-full-read-access\"]",
-            "-c",
-            "model=\"gpt-5.6-sol\"",
-            "-c",
-            "model_reasoning_effort=\"xhigh\"",
-            "-c",
-            "shell_environment_policy.inherit=all",
-        ]
+        codex_acp_effective_args(&config),
+        vec!["--adapter-flag".to_string()]
     );
-}
-
-#[test]
-fn codex_acp_effective_args_lock_down_workspace_and_ignore_dangerous_bypass() {
-    let config = CodexAcpConfig {
-        dangerously_bypass_approvals_and_sandbox: true,
-        sandbox_permissions: vec!["disk-full-read-access".to_string()],
-        ..CodexAcpConfig::default()
-    };
-    assert_eq!(
-        codex_acp_effective_args(&config, true),
-        vec![
-            "-c",
-            "sandbox_mode=\"workspace-write\"",
-            "-c",
-            "approval_policy=\"never\"",
-            "-c",
-            "model=\"gpt-5.6-sol\"",
-            "-c",
-            "model_reasoning_effort=\"xhigh\"",
-        ]
-    );
+    let process_config = codex_acp_process_config(&config, Some("HONE SYSTEM"), true);
+    assert_eq!(process_config["model"], "gpt-5.6-sol");
+    assert_eq!(process_config["model_reasoning_effort"], "high");
+    assert_eq!(process_config["sandbox_mode"], "workspace-write");
+    assert_eq!(process_config["approval_policy"], "never");
+    assert_eq!(process_config["developer_instructions"], "HONE SYSTEM");
+    assert_eq!(process_config["shell_environment_policy"]["inherit"], "all");
 }
 
 #[test]
@@ -1035,56 +1216,6 @@ async fn acp_updates_build_restorable_transcript_sequence() {
 }
 
 #[test]
-fn codex_prompt_text_includes_restored_transcript_when_persistent_session_is_initialized() {
-    let mut context = AgentContext::new("session-1".to_string());
-    context.add_user_message("AAOI 是什么公司");
-    context.add_assistant_message("我先查本地画像。", None);
-
-    let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert_contains_all(
-        &prompt,
-        &[
-            "### Restored Conversation Transcript ###",
-            "\"role\": \"user\"",
-            "AAOI 是什么公司",
-            "### User Input ###\n新的问题",
-        ],
-    );
-}
-
-#[test]
-fn codex_prompt_text_serializes_message_metadata() {
-    let mut context = AgentContext::new("session-1".to_string());
-    context.messages.push(AgentMessage {
-        role: "assistant".to_string(),
-        content: Some("我先核验本地画像。".to_string()),
-        tool_calls: None,
-        tool_call_id: None,
-        name: None,
-        metadata: Some(HashMap::from([(
-            "codex_acp".to_string(),
-            serde_json::json!({
-                "segment_kind": "progress_note",
-                "channel_fields": {
-                    "stream_kind": "agent_message_chunk"
-                }
-            }),
-        )])),
-    });
-
-    let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert_contains_all(
-        &prompt,
-        &[
-            "\"metadata\"",
-            "\"codex_acp\"",
-            "\"segment_kind\": \"progress_note\"",
-            "\"stream_kind\": \"agent_message_chunk\"",
-        ],
-    );
-}
-
-#[test]
 fn normalized_history_collapses_tool_messages_into_assistant_turns() {
     let mut context = AgentContext::new("session-1".to_string());
     context.add_user_message("FLNC 现在怎么看");
@@ -1141,49 +1272,7 @@ fn normalized_history_collapses_tool_messages_into_assistant_turns() {
 }
 
 #[test]
-fn codex_prompt_text_uses_normalized_user_assistant_history() {
-    let mut context = AgentContext::new("session-1".to_string());
-    context.add_user_message("AAOI 是什么公司");
-    context.messages.push(AgentMessage {
-        role: "assistant".to_string(),
-        content: Some("我先查本地画像。".to_string()),
-        tool_calls: Some(vec![serde_json::json!({
-            "id": "call_1",
-            "type": "function",
-            "function": {
-                "name": "local_search_files",
-                "arguments": "{\"query\":\"AAOI\"}"
-            }
-        })]),
-        tool_call_id: None,
-        name: None,
-        metadata: None,
-    });
-    context.messages.push(AgentMessage {
-        role: "tool".to_string(),
-        content: Some("{\"matches\":[\"company_profiles/aaoi.md\"]}".to_string()),
-        tool_calls: None,
-        tool_call_id: Some("call_1".to_string()),
-        name: Some("local_search_files".to_string()),
-        metadata: None,
-    });
-    context.add_assistant_message("AAOI 是做光模块的。", None);
-
-    let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert_contains_all(
-        &prompt,
-        &[
-            "\"role\": \"assistant\"",
-            "\"type\": \"tool_call\"",
-            "\"type\": \"tool_result\"",
-            "\"type\": \"final\"",
-        ],
-    );
-    assert!(!prompt.contains("\"role\": \"tool\""));
-}
-
-#[test]
-fn codex_and_opencode_prompt_transcripts_share_the_same_normalized_history() {
+fn opencode_compiled_prompt_preserves_normalized_history() {
     let mut context = AgentContext::new("session-1".to_string());
     context.add_user_message("FLNC 现在怎么看");
     context.messages.push(AgentMessage {
@@ -1211,12 +1300,16 @@ fn codex_and_opencode_prompt_transcripts_share_the_same_normalized_history() {
     });
     context.add_assistant_message("结论：先看订单兑现，再判断估值弹性。", None);
 
-    let codex_prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
     let opencode_prompt = build_opencode_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-
-    assert_eq!(
-        json_fence_body(&codex_prompt, "codex transcript"),
-        json_fence_body(&opencode_prompt, "opencode transcript")
+    let transcript = json_fence_body(&opencode_prompt, "opencode transcript");
+    assert_contains_all(
+        transcript,
+        &[
+            "\"role\": \"assistant\"",
+            "\"type\": \"tool_call\"",
+            "\"type\": \"tool_result\"",
+            "\"type\": \"final\"",
+        ],
     );
 }
 
@@ -1307,8 +1400,11 @@ fn codex_execute_renderer_formats_done_message() {
     assert!(rendered.reasoning.is_none());
 }
 
+/// Captured from the codex-acp `1.1.7` execute-completion stream shape.
+/// `rawOutput` is adapter-only detail, so preserve it without imposing the
+/// same event shape on OpenCode.
 #[tokio::test]
-async fn codex_execute_completed_update_rehydrates_tool_result_from_raw_output() {
+async fn codex_acp_1_1_7_execute_stream_rehydrates_raw_tool_result() {
     let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
     let mut state = AcpPromptState::default();
 
@@ -1355,6 +1451,92 @@ async fn codex_execute_completed_update_rehydrates_tool_result_from_raw_output()
         tool_content,
         &["\"stdout\":\"rtk 0.35.0\\n\"", "\"exit_code\":0"],
     );
+}
+
+/// Captured from a real `opencode acp` 1.18.11 exchange on 2026-08-01.
+///
+/// This is an external protocol fixture, not a cross-runner rendering contract:
+/// OpenCode exposes thought chunks and detailed usage fields that codex-acp may
+/// not expose in the same shape. Keep every detail that can be mapped safely.
+#[tokio::test]
+async fn opencode_1_18_11_stream_preserves_available_reasoning_answer_and_usage() {
+    let runner = super::OpencodeAcpRunner::new(
+        OpencodeAcpConfig::default(),
+        RunnerTimeouts {
+            step: Duration::from_secs(5),
+            overall: Duration::from_secs(10),
+        },
+    );
+    let dialect = runner.acp_stream_dialect().expect("OpenCode dialect");
+    assert_eq!(dialect, AcpStreamDialect::OpenCode1_18_11);
+    assert_eq!(dialect.adapter(), "opencode");
+    assert_eq!(dialect.observed_version(), "1.18.11");
+
+    let emitter = Arc::new(CaptureEmitter::default());
+    let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
+    let mut state = AcpPromptState::default();
+
+    for update in [
+        serde_json::json!({
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "messageId": "msg_probe",
+                "content": { "type": "text", "text": "reasoning detail" }
+            }
+        }),
+        serde_json::json!({
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "messageId": "msg_probe",
+                "content": { "type": "text", "text": "OPENCODE_A" }
+            }
+        }),
+        serde_json::json!({
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "messageId": "msg_probe",
+                "content": { "type": "text", "text": "CP_OK" }
+            }
+        }),
+        serde_json::json!({
+            "update": {
+                "sessionUpdate": "usage_update",
+                "used": 8505,
+                "size": 1_000_000,
+                "cost": { "amount": 0.00025996, "currency": "USD" }
+            }
+        }),
+    ] {
+        handle_opencode_session_update(&update, &emitter_trait, &mut state).await;
+    }
+
+    assert_eq!(state.full_reply, "OPENCODE_ACP_OK");
+    let events = emitter.events.lock().expect("events lock");
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentRunnerEvent::StreamThought { thought } if thought == "reasoning detail"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentRunnerEvent::StreamDelta { content } if content == "OPENCODE_A"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentRunnerEvent::StreamDelta { content } if content == "CP_OK"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentRunnerEvent::Progress { stage, detail }
+            if *stage == "opencode.usage" && detail.as_deref() == Some("used=8505")
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentRunnerEvent::Progress { stage, detail }
+            if *stage == "opencode.usage_detail"
+                && detail.as_deref() == Some(
+                    "used=8505 size=1000000 cost=0.00025996 currency=USD"
+                )
+    )));
 }
 
 #[tokio::test]

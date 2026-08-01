@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use hone_agent_gemini_cli::{GeminiCliAgent, GeminiStreamEvent, parse_stream_event};
 use hone_core::agent::{AgentMessage, ToolCallMade};
+use hone_core::config::AgentConversationStrategy;
 use hone_tools::ToolRegistry;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -442,12 +443,19 @@ impl AgentRunner for GeminiCliRunner {
         "gemini_cli"
     }
 
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    }
+
     async fn run(
         &self,
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let mut context = request.context;
+        let (_, runtime_input, mut context) = request
+            .conversation
+            .into_replay_parts()
+            .expect("gemini_cli requires Hone replay conversation input");
         let mut pending_tool_results: Vec<(String, String, String)> = Vec::new();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut context_messages: Vec<AgentMessage> = Vec::new();
@@ -469,7 +477,7 @@ impl AgentRunner for GeminiCliRunner {
             iteration += 1;
 
             if iteration == 1 {
-                context.add_user_message(&request.runtime_input);
+                context.add_user_message(&runtime_input);
             }
 
             let prompt = GeminiCliAgent::build_streaming_prompt(
