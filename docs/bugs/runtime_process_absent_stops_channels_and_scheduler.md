@@ -22,6 +22,26 @@
 
 ## 最新进展
 
+- 2026-08-02 02:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-01T14:13:46.194864+08:00`
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`
+      - 22:02-02:02 CST 窗口内新增 session / message / cron run 均为 0。
+    - `data/runtime/logs/*.log` 与 `data/logs/*.log`
+      - 22:02 CST 后没有新的 `.log` mtime 推进。
+      - 最近 runtime 相关日志仍停在 `web.log.2026-08-01` / `web_deploy_49ef8dd4_20260731.log` / `feishu_deploy_49ef8dd4_20260731.log` 的 14:14 CST，以及 `sunny_ngrok_screen_20260731.log` 的 14:21 CST。
+    - 进程表：
+      - 02:02 CST 仍未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-web-api`、`hone-desktop` 或 scheduler 运行进程；命中项仅为无关系统进程、本地 PostgreSQL、ChatGPT / Codex 进程和浏览器辅助进程。
+    - 最近提交：
+      - 22:02-02:02 CST 无非文档代码提交。
+  - 判断：
+    - 本轮没有新的真实 assistant final 或 scheduler 输出可检查答非所问、格式污染、错投或 AI 返回质量问题；缺陷信号仍集中在运行承载链路缺席。
+    - 该证据与 18:03 / 22:03 CST 回退和复核记录属于同一根因、同一影响范围，不新建重复缺陷。
+    - 已有关联 GitHub Issue #53，本轮确认活跃 P1 但不重复创建 Issue。
+
 - 2026-08-01 22:03 CST 运行态持续活跃复核，状态保持 `New/P1`：
   - 证据来源：
     - `data/sessions.sqlite3`
