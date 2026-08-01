@@ -14,11 +14,31 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - [#53](https://github.com/B-M-Capital-Research/honeclaw/issues/53)
+
+## 最新进展
+
+- 2026-08-01 18:03 CST 运行态重新确认并从 `Fixed/P1` 回退为 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-01T14:13:46.194864+08:00`
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`
+      - 14:00-18:03 CST 窗口内只有 1 个 Feishu direct user turn 与 1 条 assistant final，14:12 用户要求更新 NVDA 画像，14:13 assistant 正常收口并发送成功。
+    - `data/runtime/logs/web.log.2026-08-01`
+      - 14:14:36 CST 记录 `Feishu 渠道已停止`，之后该日志不再刷新。
+    - `data/runtime/logs/web_deploy_49ef8dd4_20260731.log`
+      - 同窗尾部记录 `[INFO] shutdown requested` 与 `当前没有活动聊天任务，继续关闭服务`。
+    - 18:03 CST 进程表未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-web-api`、`hone-desktop` 或 scheduler 运行进程；命中项仅为无关系统进程、本轮 Codex 进程和本地 PostgreSQL。
+  - 判断：
+    - 14:14 后会话消息、runtime 日志和 scheduler 台账均停止推进，且本地没有可见 Hone runtime 进程；当前证据再次落在本单“运行承载进程缺席导致直聊 / scheduler 无法推进”的同一链路。
+    - 日志表现为主动 shutdown，可能是维护或迁移动作；但本地台账没有维护窗口标记，且当前巡检目标是记录真实运行链路状态，因此先按活跃 P1 回退。
+    - 已有关联 GitHub Issue #53，本轮不重复创建。若后续确认这是受控迁移且新生产 runtime 有独立健康证据，应将本单转回 `Fixed` 或 `Closed` 并补充维护窗口证据。
 
 ## 证据来源
 

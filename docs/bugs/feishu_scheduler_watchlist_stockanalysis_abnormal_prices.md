@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-01 14:00-18:03 CST 运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-08-01` / `data/sessions.sqlite3` / `cron_job_runs`
+    - 14:00 `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` raw preview 继续写 `MU (Micron): $823.03, -5.90%`，并把该价格作为观察池触发判断输入；该轮 parse 为 `JsonNoop`，未送达用户。
+    - 14:00 `Monitor_Watchlist_11` raw preview 在工具调用限制后继续保留 `MU $823.03`，并用它与触发价 `<= 252.00` 做距离判断；该轮 parse 为 `PlainTextNoop`，未送达用户。
+    - 同窗只有 1 条 Feishu direct NVDA 画像会话正常收口，未确认新的 direct 用户可见异常价格样本。
+  - 判断：
+    - 本轮样本说明异常行情锚仍能进入 heartbeat 生成上下文；虽然 14:00 两条均未送达，但 10:02 同根普通 scheduler 已有用户可见 sent 样本，因此状态继续维持运行态 `New`。
+    - 严重等级维持 `P0`：该问题的核心风险仍是异常数量级价格会污染投资决策；本轮新样本未形成新的 P1 issue 条件。
+
 - 2026-08-01 10:00-14:02 CST 运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
     - 10:02 CST `Citrini AI 供应链文章跟踪` `run_id=51349` 继续以 `MU ... $823.03`、`NVDA 突破 $200` 等明显数量级异常 / 高风险价格锚组织交易逻辑判断；该样本在上一轮 10:01 临界点已发现，本轮确认仍落在本次最近四小时窗口内。

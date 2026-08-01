@@ -22,6 +22,17 @@ New
 
 ## 最新进展
 
+- 2026-08-01 14:00-18:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
+    - SQLite 近窗 heartbeat run 共 9 条：`noop/skipped_noop=5`、`completed/sent=4`；普通 scheduler 无新增 run。
+    - 14:00 `TEM大事件心跳监控` `run_id=51428` deliver preview 明写 `本轮无新增触发事实，noop`，仍 `completed/sent/delivered=1`。
+    - 14:00 `AAOI 全面心跳检测` `run_id=51431` 写 `本轮无新增触发事实，noop`，仍 `completed/sent/delivered=1`。
+    - 14:00 `RKLB 全面心跳检测` `run_id=51424` 写 `本轮无新增触发事实，noop`，仍 `completed/sent/delivered=1`。
+    - 14:00 `ASTS 全面心跳检测` `run_id=51425` 写 `无新突破性事实，noop`，仍 `completed/sent/delivered=1`。
+  - 判断：
+    - 本轮样本继续来自 heartbeat=1 路径，但坏语义与本单相同：模型 / deliver preview 已明确无变化、无新增触发事实或 noop，出站层仍向用户发送完整正文。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；同窗没有错对象投递、数据破坏、敏感信息泄露或新的 P1 级投递错误。
+
 - 2026-08-01 10:00-14:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
     - SQLite 近窗 heartbeat run 共 45 条：`noop/skipped_noop=30`、`completed/sent=13`、`execution_failed/skipped_error=2`；普通 scheduler 3 条均 `completed/sent`。
