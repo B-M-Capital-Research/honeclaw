@@ -10,14 +10,16 @@ export type PublicFontScale = "s" | "m" | "l" | "xl";
 const THEME_KEY = "hone.public.theme";
 const FS_KEY = "hone.public.fs";
 
+export function normalizeStoredPublicTheme(value: string | null): PublicTheme {
+  if (value === "light" || value === "dark" || value === "auto") return value;
+  return "light";
+}
+
 function readTheme(): PublicTheme {
   try {
-    const storedTheme = localStorage.getItem(THEME_KEY);
-    if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto") {
-      return storedTheme;
-    }
+    return normalizeStoredPublicTheme(localStorage.getItem(THEME_KEY));
   } catch {}
-  return "auto";
+  return "light";
 }
 
 function readFontScale(): PublicFontScale {

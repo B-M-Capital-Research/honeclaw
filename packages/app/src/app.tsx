@@ -15,6 +15,7 @@ import { CompanyProfilesProvider } from "@/context/company-profiles"
 import { isRecoverableAssetLoadError, recoverFromAssetLoadError } from "@/lib/asset-recovery"
 import { PublicChatStartup } from "@/components/public-chat-startup"
 import { CONTENT } from "@/lib/public-content"
+import { initPublicPrefs } from "@/lib/public-prefs"
 import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
@@ -43,6 +44,8 @@ const NotificationsPage = lazy(() => import("@/pages/notifications"))
 const SchedulePage = lazy(() => import("@/pages/schedule"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
 const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public" : "admin"
+
+if (APP_SURFACE === "public") initPublicPrefs()
 
 function Loading() {
   if (APP_SURFACE === "public" && window.location.pathname === "/chat") {

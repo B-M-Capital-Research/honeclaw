@@ -15,7 +15,7 @@ body,
 
 body {
   overflow-x: hidden !important;
-  background-color: #fff;
+  background-color: var(--hone-paper-50);
 }
 
 html {
@@ -96,6 +96,52 @@ html {
 .public-login-brand {
   justify-content: center;
   margin-bottom: 16px;
+  color: var(--hone-ink-950);
+}
+.public-login-preferences {
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 60;
+}
+.public-login-input::placeholder {
+  color: var(--hone-ink-400);
+  opacity: 1;
+}
+.public-login-member-link {
+  color: var(--hone-link);
+  font-weight: 700;
+}
+.public-whop-activate a {
+  color: var(--hone-link);
+}
+.public-whop-activate-inner {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .public-whop-activate {
+    min-height: 100svh !important;
+    place-items: start center !important;
+    padding: max(64px, calc(env(safe-area-inset-top) + 54px)) 14px max(24px, env(safe-area-inset-bottom)) !important;
+    overflow: visible !important;
+  }
+  .public-whop-activate-card {
+    padding: 18px !important;
+  }
+  .public-whop-code-row {
+    grid-template-columns: minmax(0, 1fr) 112px !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .public-whop-code-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .public-whop-code-row > button {
+    width: 100%;
+  }
 }
 
 /* Shared public product header used by the home, roadmap, and chat pages. */

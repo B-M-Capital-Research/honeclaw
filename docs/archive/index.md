@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
+
+## 2026-08-01
+
+### Public Logged-out Theme And Whop Layout/Scroll Repair
+
+- Status: done
+- Date: 2026-08-01
+- Plan: `docs/archive/plans/public-login-theme-contrast.md`
+- Handoff: `docs/handoffs/2026-08-01-public-auth-theme-whop-layout.md`
+- Decision / ADR: N/A; this restores the existing Public theme and responsive-layout contract without changing authentication semantics, module boundaries, or data authority
+- Related PRs / commits: this change set is committed and pushed directly to `main`; no release or tag
+- Related runbooks / regressions: Public theme preference and login-surface contract tests, Whop direct-route contract tests, Web typecheck and 322 Web tests, Public production build, Edge Worker typecheck and 45 tests, full workspace check/test excluding Apple clients, complete CI-safe regressions, and desktop/mobile light/dark browser QA with computed contrast and scroll proof
+- Current conclusion: first-time Public visitors default to light while explicit `light`, `dark`, and `auto` preferences remain valid. Logged-out HONE branding, controls, links, and status text use theme-aware semantic surfaces with readable dark-mode contrast. The Whop direct route now loads Public CSS, renders a correctly sized brand, fits narrow viewports without horizontal overflow, and allows the full activation form to scroll. Authentication and verification behavior were not changed or exercised.
+- Next entry point: `docs/handoffs/2026-08-01-public-auth-theme-whop-layout.md`; if production differs, verify the deployed Pages commit and inspect root theme attributes plus the Whop lazy chunk's Public CSS imports.
 
 ## 2026-07-31
 

@@ -8,8 +8,12 @@ import {
 } from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
 import { PublicCheckbox } from "@/components/public-checkbox";
+import { PublicPrefsButton } from "@/components/public-prefs-button";
 import { publicEmailLogin, publicSendEmailCode } from "@/lib/api";
 import { TOS_VERSION } from "@/lib/tos";
+
+import "./public-foundation.css";
+import "./public-site.css";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -98,7 +102,7 @@ export default function PublicWhopActivatePage() {
 
   return (
     <main
-      class="public-login-screen"
+      class="public-login-screen public-whop-activate"
       style={{
         "min-height": "100dvh",
         padding: "48px 20px",
@@ -107,9 +111,14 @@ export default function PublicWhopActivatePage() {
         "place-items": "center",
         "box-sizing": "border-box",
         "font-family": "var(--hone-font-body)",
+        "overflow-y": "auto",
+        "-webkit-overflow-scrolling": "touch",
       }}
     >
-      <div style={{ width: "min(100%, 500px)" }}>
+      <div class="public-login-preferences">
+        <PublicPrefsButton />
+      </div>
+      <div class="public-whop-activate-inner" style={{ width: "min(100%, 500px)" }}>
         <header style={{ "text-align": "center", "margin-bottom": "22px" }}>
           <HoneBrand class="public-login-brand" />
           <div
@@ -119,7 +128,7 @@ export default function PublicWhopActivatePage() {
               "border-radius": "999px",
               background:
                 "color-mix(in srgb, var(--hone-coral-500) 10%, transparent)",
-              color: "var(--hone-coral-600)",
+              color: "var(--hone-link)",
               "font-size": "12px",
               "font-weight": "700",
               "margin-bottom": "12px",
@@ -150,12 +159,14 @@ export default function PublicWhopActivatePage() {
         </header>
 
         <section
+          class="public-whop-activate-card"
           style={{
             padding: "24px",
             "border-radius": "var(--hone-radius-md)",
             border: "1px solid var(--hone-line)",
-            background: "#fff",
-            "box-shadow": "0 8px 32px rgba(23,32,31,0.06)",
+            background: "var(--hone-surface-raised)",
+            color: "var(--hone-ink-950)",
+            "box-shadow": "var(--hone-login-shadow)",
           }}
         >
           <ol
@@ -176,11 +187,11 @@ export default function PublicWhopActivatePage() {
                   "border-radius": "8px",
                   background:
                     index === 1
-                      ? "color-mix(in srgb, var(--hone-coral-500) 10%, #fff)"
+                      ? "color-mix(in srgb, var(--hone-action-bg) 12%, var(--hone-surface-raised))"
                       : "var(--hone-paper-100)",
                   color:
                     index === 1
-                      ? "var(--hone-coral-600)"
+                      ? "var(--hone-link)"
                       : "var(--hone-ink-500)",
                   "font-size": "11px",
                   "font-weight": "700",
@@ -204,6 +215,7 @@ export default function PublicWhopActivatePage() {
           </div>
 
           <div
+            class="public-whop-code-row"
             style={{
               display: "grid",
               "grid-template-columns": "minmax(0, 1fr) 124px",
@@ -234,10 +246,12 @@ export default function PublicWhopActivatePage() {
                 height: "41px",
                 border: "1px solid var(--hone-line-strong)",
                 "border-radius": "var(--hone-radius-sm)",
-                background: sendReady() ? "#fff" : "var(--hone-paper-100)",
+                background: sendReady()
+                  ? "var(--hone-control-surface)"
+                  : "var(--hone-paper-200)",
                 color: sendReady()
-                  ? "var(--hone-coral-600)"
-                  : "var(--hone-ink-400)",
+                  ? "var(--hone-link)"
+                  : "var(--hone-ink-600)",
                 cursor: sendReady() ? "pointer" : "not-allowed",
                 "font-family": "inherit",
                 "font-size": "12px",
@@ -297,9 +311,11 @@ export default function PublicWhopActivatePage() {
               border: "0",
               "border-radius": "var(--hone-radius-sm)",
               background: loginReady()
-                ? "var(--hone-coral-500)"
-                : "color-mix(in srgb, var(--hone-coral-500) 50%, transparent)",
-              color: "#fff",
+                ? "var(--hone-action-bg)"
+                : "var(--hone-paper-200)",
+              color: loginReady()
+                ? "var(--hone-action-fg)"
+                : "var(--hone-ink-600)",
               cursor: loginReady() ? "pointer" : "not-allowed",
               "font-family": "inherit",
               "font-size": "15px",
@@ -318,7 +334,10 @@ export default function PublicWhopActivatePage() {
             "font-size": "12px",
           }}
         >
-          国内手机号用户？ <a href="/chat">使用短信验证码登录</a>
+          国内手机号用户？{" "}
+          <a class="public-login-member-link" href="/chat">
+            使用短信验证码登录
+          </a>
         </p>
       </div>
     </main>
@@ -351,6 +370,7 @@ function TextInput(props: {
 }) {
   return (
     <input
+      class="public-login-input"
       type={props.type ?? "text"}
       value={props.value}
       onInput={(event) => props.onInput(event.currentTarget.value)}
@@ -366,7 +386,7 @@ function TextInput(props: {
         padding: "10px 12px",
         border: "1px solid var(--hone-line-strong)",
         "border-radius": "var(--hone-radius-sm)",
-        background: "#fff",
+        background: "var(--hone-control-surface)",
         color: "var(--hone-ink-950)",
         "box-sizing": "border-box",
         "font-family": "inherit",
@@ -391,7 +411,9 @@ function Feedback(props: { message: string; error?: boolean }) {
         background: props.error
           ? "color-mix(in srgb, #b0443b 8%, transparent)"
           : "rgba(22,163,74,0.06)",
-        color: props.error ? "#b0443b" : "#15803d",
+        color: props.error
+          ? "var(--hone-error-600)"
+          : "var(--hone-success-600)",
         "font-size": "12.5px",
         "line-height": "1.5",
       }}

@@ -1,19 +1,28 @@
 /* HONE public-surface foundations. Page styles consume these tokens instead of
    inventing local colors, radii, type stacks, and elevation values. */
 :root {
+  color-scheme: light;
   --hone-font-display: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --hone-font-body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --hone-font-label: "SFMono-Regular", "JetBrains Mono", monospace;
   --hone-ink-950: #17201f;
   --hone-ink-800: #2d3735;
   --hone-ink-600: #606c68;
+  --hone-ink-500: #68736f;
   --hone-ink-400: #68736f;
   --hone-paper-50: #fffdf8;
   --hone-paper-100: #f8f4ec;
   --hone-paper-200: #eee8dc;
+  --hone-surface-raised: #ffffff;
+  --hone-control-surface: #ffffff;
   --hone-sage-100: #e8eee8;
   --hone-coral-500: #f06449;
   --hone-coral-600: #d94e35;
+  --hone-action-bg: #b94432;
+  --hone-action-fg: #ffffff;
+  --hone-link: #a83c2c;
+  --hone-error-600: #96342d;
+  --hone-success-600: #176a38;
   --hone-line: rgba(23, 32, 31, 0.11);
   --hone-line-strong: rgba(23, 32, 31, 0.18);
   --hone-radius-sm: 10px;
@@ -21,22 +30,33 @@
   --hone-radius-lg: 24px;
   --hone-shadow-sm: 0 2px 10px rgba(30, 35, 32, 0.06);
   --hone-shadow-md: 0 18px 48px rgba(30, 35, 32, 0.12);
+  --hone-login-shadow: 0 4px 24px rgba(23, 32, 31, 0.05);
   --hone-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --hone-focus-ring: #17201f;
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --hone-ink-950: #f3f5f2;
   --hone-ink-800: #d8dcd7;
   --hone-ink-600: #b5bcb6;
+  --hone-ink-500: #a8b0aa;
   --hone-ink-400: #9ca69f;
   --hone-paper-50: #171a18;
   --hone-paper-100: #1e2220;
   --hone-paper-200: #2b302d;
+  --hone-surface-raised: #242825;
+  --hone-control-surface: #171a18;
   --hone-coral-500: #ff8a73;
   --hone-coral-600: #ff9a86;
+  --hone-action-bg: #ffad9d;
+  --hone-action-fg: #17201f;
+  --hone-link: #ffad9d;
+  --hone-error-600: #ffb3a8;
+  --hone-success-600: #85dca4;
   --hone-line: rgba(255, 255, 255, 0.13);
   --hone-line-strong: rgba(255, 255, 255, 0.22);
+  --hone-login-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
   --hone-focus-ring: #f5f0e5;
 }
 

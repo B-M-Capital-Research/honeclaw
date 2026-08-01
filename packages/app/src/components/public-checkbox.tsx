@@ -53,9 +53,12 @@ export function PublicCheckbox(props: Props): JSX.Element {
           height: "18px",
           "border-radius": "5px",
           border: props.checked
-            ? "1.5px solid var(--hone-coral-500)"
+            ? "1.5px solid var(--hone-action-bg)"
             : "1.5px solid var(--hone-line-strong)",
-          background: props.checked ? "var(--hone-coral-500)" : "#fff",
+          background: props.checked
+            ? "var(--hone-action-bg)"
+            : "var(--hone-control-surface)",
+          color: "var(--hone-action-fg)",
           display: "inline-flex",
           "align-items": "center",
           "justify-content": "center",
@@ -68,7 +71,7 @@ export function PublicCheckbox(props: Props): JSX.Element {
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
               d="M2 6.4 L4.8 9 L10 3.4"
-              stroke="#fff"
+              stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"

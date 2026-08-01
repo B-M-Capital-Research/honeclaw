@@ -20,6 +20,7 @@ import {
 } from "@/lib/aliyun-captcha";
 import { CONTENT } from "@/lib/public-content";
 import { HoneBrand } from "@/components/hone-brand";
+import { PublicPrefsButton } from "@/components/public-prefs-button";
 import { normalizePhoneNumber } from "@/lib/public-chat";
 import { TOS_VERSION } from "@/lib/tos";
 import type { PublicAuthUserInfo } from "@/lib/types";
@@ -169,6 +170,9 @@ export function PublicLoginForm(props: Props) {
         width: "100%",
       }}
     >
+      <div class="public-login-preferences">
+        <PublicPrefsButton />
+      </div>
       <div
         class="public-login-card-wrap"
         style={{
@@ -211,8 +215,9 @@ export function PublicLoginForm(props: Props) {
             padding: "22px",
             "border-radius": "var(--hone-radius-md)",
             border: "1px solid var(--hone-line)",
-            background: "#fff",
-            "box-shadow": "0 4px 24px rgba(23,32,31,0.05)",
+            background: "var(--hone-surface-raised)",
+            color: "var(--hone-ink-950)",
+            "box-shadow": "var(--hone-login-shadow)",
           }}
         >
           <p
@@ -275,11 +280,11 @@ export function PublicLoginForm(props: Props) {
                 border:
                   "1px solid color-mix(in srgb, var(--hone-coral-500) 38%, transparent)",
                 background: sendReady()
-                  ? "color-mix(in srgb, var(--hone-coral-500) 8%, #fff)"
-                  : "var(--hone-paper-100)",
+                  ? "color-mix(in srgb, var(--hone-action-bg) 12%, var(--hone-surface-raised))"
+                  : "var(--hone-paper-200)",
                 color: sendReady()
-                  ? "var(--hone-coral-600)"
-                  : "var(--hone-ink-400)",
+                  ? "var(--hone-link)"
+                  : "var(--hone-ink-600)",
                 cursor: sendReady() ? "pointer" : "not-allowed",
                 "font-family": "inherit",
                 "font-size": "13px",
@@ -356,7 +361,10 @@ export function PublicLoginForm(props: Props) {
               "font-size": "12px",
             }}
           >
-            Whop 海外会员？ <a href="/activate/whop">使用购买邮箱开通或登录</a>
+            Whop 海外会员？{" "}
+            <a class="public-login-member-link" href="/activate/whop">
+              使用购买邮箱开通或登录
+            </a>
           </p>
         </div>
       </div>
@@ -386,6 +394,7 @@ function TextInput(props: {
 }) {
   return (
     <input
+      class="public-login-input"
       type={props.type ?? "text"}
       value={props.value}
       placeholder={props.placeholder}
@@ -407,7 +416,7 @@ function TextInput(props: {
         "font-size": "14px",
         "font-family": "inherit",
         color: "var(--hone-ink-950)",
-        background: "#fff",
+        background: "var(--hone-control-surface)",
         outline: "none",
         "box-sizing": "border-box",
         transition: "border-color 0.15s ease, box-shadow 0.15s ease",
@@ -449,7 +458,7 @@ function ErrorBox(props: { message: string }) {
         "border-radius": "var(--hone-radius-sm)",
         background: "color-mix(in srgb, #b0443b 8%, transparent)",
         border: "1px solid color-mix(in srgb, #b0443b 20%, transparent)",
-        color: "#b0443b",
+        color: "var(--hone-error-600)",
         "font-size": "12.5px",
       }}
     >
@@ -466,7 +475,7 @@ function NoticeBox(props: { message: string }) {
         "border-radius": "var(--hone-radius-sm)",
         background: "rgba(22,163,74,0.06)",
         border: "1px solid rgba(22,163,74,0.2)",
-        color: "#15803d",
+        color: "var(--hone-success-600)",
         "font-size": "12.5px",
       }}
     >
@@ -483,7 +492,7 @@ function TosLink() {
         href="/terms"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "var(--hone-coral-600)", "text-decoration": "underline" }}
+        style={{ color: "var(--hone-link)", "text-decoration": "underline" }}
       >
         {CONTENT.auth.tos.terms}
       </a>
@@ -492,7 +501,7 @@ function TosLink() {
         href="/privacy"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "var(--hone-coral-600)", "text-decoration": "underline" }}
+        style={{ color: "var(--hone-link)", "text-decoration": "underline" }}
       >
         {CONTENT.auth.tos.privacy}
       </a>
@@ -518,14 +527,16 @@ function SubmitButton(props: {
         padding: "12px 18px",
         "border-radius": "var(--hone-radius-sm)",
         background: props.disabled
-          ? "color-mix(in srgb, var(--hone-coral-500) 50%, transparent)"
-          : "var(--hone-coral-500)",
+          ? "var(--hone-paper-200)"
+          : "var(--hone-action-bg)",
         border: "none",
         cursor: props.disabled ? "not-allowed" : "pointer",
         "font-family": "inherit",
         "font-size": "15px",
         "font-weight": "700",
-        color: "#fff",
+        color: props.disabled
+          ? "var(--hone-ink-600)"
+          : "var(--hone-action-fg)",
         "box-shadow": props.disabled
           ? "none"
           : "0 4px 14px color-mix(in srgb, var(--hone-coral-500) 28%, transparent)",
