@@ -14,13 +14,33 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - [#53](https://github.com/B-M-Capital-Research/honeclaw/issues/53)
 
 ## 最新进展
+
+- 2026-08-02 06:01 CST 运行态复核，状态从代码级 `Fixed` 回退为 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-01T14:13:46.194864+08:00`
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`
+      - 2026-08-02 02:01-06:01 CST 窗口内新增 session / message / cron run 均为 0。
+    - `data/runtime/logs/*.log` 与 `data/logs/*.log`
+      - 最近 5 小时没有新的 `.log` mtime 推进。
+      - 最近 runtime 相关日志仍停在 `web.log.2026-08-01` / `web_deploy_49ef8dd4_20260731.log` / `feishu_deploy_49ef8dd4_20260731.log` 的 14:14 CST，以及 `sunny_ngrok_screen_20260731.log` 的 14:21 CST。
+    - 进程表：
+      - 06:01 CST 仍未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-web-api`、`hone-desktop` 或 scheduler 运行进程；命中项仅为无关系统进程、本地 PostgreSQL 和本轮 Codex 进程。
+    - 最近提交：
+      - 02:01-06:01 CST 唯一非文档代码提交为 `d896fb46 fix: detach source runtime supervisor startup`，属于本缺陷的 source runtime 代码级修复；但本轮没有看到 live runtime 进程、日志或台账恢复证据。
+  - 判断：
+    - 该问题仍是功能性 P1：会话接入、scheduler 触发和运行台账在真实窗口内继续整体停滞。
+    - 03:08 CST 的代码修复降低了下次按新入口启动后的复发风险，但当前 live 运行态仍未恢复，不能保持 `Fixed`。
+    - 该证据与既有 Issue #53 和本单同根因、同链路、同影响范围，不新建重复缺陷，也不重复创建 GitHub Issue。
 
 - 2026-08-01 11:45 CST 代码级修复，状态更新为 `Fixed`：
   - 修复内容：
