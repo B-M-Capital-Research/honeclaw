@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-07-27
+Last updated: 2026-08-01
 
 ## When to Use
 
@@ -16,6 +16,13 @@ The public entrypoint is split into two layers:
 - `hone-claw.com`: Cloudflare Pages serves the static public web bundle
 - `hone-claw.com/api/public/*`: Cloudflare Worker proxies public API requests to the backend origin
 - `origin.hone-claw.com`: backend origin hostname used by Cloudflare, not a user-facing entrypoint
+
+The backend origin is currently hosted on GCP Compute Engine and is reached by
+operators through IAP. PostgreSQL is co-located on that VM rather than running
+as a separately purchased managed database. Verify this live before every
+operation and use `docs/runbooks/gcp-backend-access.md` for private access and
+diagnosis. The repository deliberately omits the account, project, instance,
+zone, IP address, and credentials.
 
 Do not document private host location, workstation names, tunnel provider internals, credentials, or concrete process owner details in public files. Use “backend origin” or “managed backend host” in public-facing documentation.
 
@@ -145,38 +152,33 @@ from a separate `cloud doctor` command launched in a different working
 directory; that command may have loaded a different `.env` from the live
 process.
 
-### Origin Tunnel Health
+### Origin Reachability
 
-On the current macOS production host, `origin.hone-claw.com` is forwarded by a
-Sunny-ngrok tunnel to `127.0.0.1:8088`. A live `hone-console-page`, healthy
-`/api/meta`, and listening `8077` / `8088` do not prove that public users can
-reach the service.
+The current backend host is a GCP Compute Engine VM. Use
+`docs/runbooks/gcp-backend-access.md` to discover the private project, instance,
+and zone from authenticated local `gcloud` state and connect through IAP. Do
+not reuse the historical macOS/Sunny-ngrok path or assume the current
+Cloudflare product, route, connector, or origin mapping without live evidence.
+
+A live backend process, healthy `/api/meta`, and listening application ports do
+not prove that public users can reach the service.
 
 If the Pages homepage loads but `/api/public/*` and
 `origin.hone-claw.com/api/public/auth/me` time out:
 
-1. Confirm local `8088` returns the expected unauthenticated `401`.
+1. From the VM, discover the actual local application port and confirm the
+   public-auth route returns the expected unauthenticated `401`.
 2. Confirm the Cloudflare `honeclaw-public-api-proxy` Worker route still points
    `/api/public/*` to `origin.hone-claw.com`.
-3. Inspect the Sunny-ngrok process and its local inspection port `4040`.
-   Process existence and a listening inspection port are not sufficient:
-   require a currently registered `https://origin.hone-claw.com` tunnel and a
-   fresh end-to-end origin probe.
-4. Never paste the complete Sunny-ngrok inspection page into logs or tickets.
-   It contains captured request headers and may contain live session cookies.
-   Extract only tunnel URL, local target, request path, status, and timing.
-5. If local network software uses fake-IP DNS in `198.18.0.0/15`, a restarted
-   tunnel may connect to a synthetic address and stall during authentication.
-   Resolve the tunnel server through a non-fake authoritative resolver and use
-   the reviewed supervisor/network bypass. Do not permanently hard-code a
-   transient upstream IP without a monitored replacement plan.
-6. Restart only the failed tunnel lane when the backend is healthy. Afterward,
+3. Inspect the current Cloudflare origin/connector state and GCP firewall or
+   load-balancing boundary that live configuration actually uses. Do not infer
+   it from a historical runbook or process name.
+4. Extract only the route, target, status, and timing needed for diagnosis.
+   Never paste captured request headers, cookies, credentials, or an unredacted
+   provider inspection page into logs or tickets.
+5. Restart only the failed layer when the backend is healthy. Afterward,
    require repeated `401` responses from both the origin and public hostname,
    plus one real public-client bootstrap, before declaring recovery.
-
-The tunnel credential is operational secret material. Keep it out of committed
-files and command output, and run the tunnel under the host supervisor rather
-than an unattended interactive terminal.
 
 ## Public Auth Runtime Env
 

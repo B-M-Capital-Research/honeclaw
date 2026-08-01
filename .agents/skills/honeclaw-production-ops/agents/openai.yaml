@@ -1,0 +1,4 @@
+interface:
+  display_name: "Honeclaw Production Ops"
+  short_description: "Safely inspect and operate Honeclaw on GCP and Cloudflare"
+  default_prompt: "Use $honeclaw-production-ops to diagnose the current Honeclaw production deployment safely."

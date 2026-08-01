@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 
 ## Purpose
 
@@ -19,11 +19,15 @@ Last updated: 2026-07-31
 
 ## Repository Overview
 
+- `.agents/skills/`
+  - Repository-owned Codex development and operator skills; these are distinct from the end-user/runtime skills under `skills/`
+  - `honeclaw-production-ops/` routes production incident, GCP/IAP, co-located PostgreSQL, Cloudflare-origin, restart, migration, and deployment work through the live-discovery and rollback workflow in `docs/runbooks/gcp-backend-access.md`
 - `docs/`
   - `current-plan.md`: active task index
   - `current-plans/`: single-task plan pages for parallel work
   - `handoffs/`: handoff summaries that only keep information needed for the next person
   - `open-source-prep.md`: allowlist / denylist and cleanup checklist before copying to a public repo
+  - `runbooks/gcp-backend-access.md`: private-coordinate-free GCP/IAP access, VM/application/PostgreSQL diagnosis, and production mutation contract
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
   - `hone-llm`: model provider abstraction, profile resolver, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by configured auxiliary/background routes. `provider.rs` defines a metadata-first native stream lifecycle: requested/effective/fallback tool choice, content/reasoning/usage/indexed tool-call fragments, exactly one typed finish, then exactly one internal DONE. The generic OpenAI-compatible adapter accepts either literal `[DONE]` or one typed finish followed by error-free clean HTTP/SSE EOF (needed by MiniMax), normalizing the latter into DONE only at the adapter boundary. It tracks raw CR/LF framing before event parsing so an unterminated tail is an error, and rejects post-finish content/reasoning/tool payload; no-finish/duplicate-finish/error EOF remains incomplete, while OpenRouter retains its explicit-sentinel contract. Both providers may retry `Required` once as `Auto` only for an explicit 400/422 tool-choice capability rejection, never for auth/rate/transport/5xx/unrelated errors. An empty-tools terminal stream removes `tools`, `tool_choice`, and `parallel_tool_calls` after generic request options are applied while preserving generation options and SSE.

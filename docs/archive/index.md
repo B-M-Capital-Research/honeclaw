@@ -4,6 +4,18 @@ Last updated: 2026-08-01
 
 ## 2026-08-01
 
+### Honeclaw Production Ops Repository Skill
+
+- Status: done
+- Date: 2026-08-01
+- Plan: `docs/archive/plans/honeclaw-production-ops-skill.md`
+- Handoff: `docs/handoffs/2026-08-01-honeclaw-production-ops-skill.md`
+- Decision / ADR: N/A; this adds a repository-owned operator workflow and updates an obsolete host assumption without changing runtime architecture, storage authority, or production state
+- Related PRs / commits: branch `codex/honeclaw-production-ops-skill`; no PR, release, or tag requested
+- Related runbooks / regressions: `docs/runbooks/gcp-backend-access.md`, `docs/runbooks/backend-deployment.md`; skill frontmatter/UI metadata parse, live output-suppressed GCP instance-discovery command, sensitive-value scan, and `git diff --check`
+- Current conclusion: future Honeclaw production incident and change requests can invoke a repository-owned Codex skill that discovers private GCP coordinates from authorized live `gcloud` state, connects through IAP, checks the co-located PostgreSQL service, isolates Cloudflare/GCP/VM/application/database boundaries, and requires rollback-aware validation. No account identity, project/instance identifier, zone, IP, OAuth/2FA data, token, key, or database URL is committed, and the obsolete current macOS/Sunny-ngrok origin assumption was removed.
+- Next entry point: `.agents/skills/honeclaw-production-ops/SKILL.md`, then `docs/runbooks/gcp-backend-access.md` and the relevant section of `docs/runbooks/backend-deployment.md`.
+
 ### Public Logged-out Theme And Whop Layout/Scroll Repair
 
 - Status: done
