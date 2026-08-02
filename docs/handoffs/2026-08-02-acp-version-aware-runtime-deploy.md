@@ -35,7 +35,10 @@ Source deployment is now a revision-bound state machine rather than a sequence o
 - Real Codex CLI `0.146.0` plus codex-acp `1.1.7` initialize/session probing passed.
 - Real OpenCode `1.18.11` completed initialize, model selection, a read-only Hone MCP call, streamed reasoning/answer/usage, and `end_turn` with an explicit free probe model.
 - The configured default OpenAI OAuth returned `401`; it is recorded as a provider-auth limitation, not a successful default-model probe.
-- Exact pushed-revision source deployment and post-deploy `/api/meta`/port/channel/profile canary are still pending.
+- Exact local implementation commit `b8e183124e21c9d54e6a4449db88f711d16279d3` was pushed, merged into `main`, and deployed through the source-runtime state machine. The Web and Discord launchd jobs each remained at `runs=1` with stable PIDs; the apparent startup-lock errors were historical and their log did not change during observation.
+- Ports `8077`, `8088`, `3000`, and `3001` remained bound, `/api/meta` reported the exact implementation revision, Discord completed a fresh login, and active chats returned to `0`.
+- The exact Discord plist `PATH` resolved Codex CLI `0.146.0` and codex-acp `1.1.7`. A real `hone-cli` ACP canary returned exactly `LOCAL_PERSISTENT_PATH_OK` with `tool_calls=0`, and the next real Discord turn selected the validated `codex-acp 1.1.7` dialect, completed successfully, and sent one reply.
+- GCE rollout is explicitly paused by user direction. It is not part of the completed local acceptance and no further remote deployment should be attempted without a new instruction.
 
 ## Risks / Follow-ups
 
@@ -46,4 +49,4 @@ Source deployment is now a revision-bound state machine rather than a sequence o
 
 ## Next Entry Point
 
-Commit and push the reviewed branch, deploy that exact revision with `scripts/deploy_source_runtime.sh`, verify zero active chats, ports `8077/8088`, fresh Discord login, executable paths, `/api/meta.build.git_sha`, and a real Codex turn that writes the expected validated runtime profile. If any stage fails, confirm the script restored every service before attempting another revision.
+Local recovery is complete. Resume only on a new explicit request to deploy to GCE: first re-discover the remote runtime/revision and active-chat state, then deploy the exact reviewed revision through the same state-machine contract and retain rollback evidence if any stage fails.
