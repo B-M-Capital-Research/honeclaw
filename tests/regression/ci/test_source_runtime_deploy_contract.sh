@@ -23,6 +23,10 @@ for binary in hone-cli hone-console-page hone-discord; do
     printf '#!/bin/sh\nexit 0\n' > "$PROJECT/old/$binary"
     chmod 0755 "$PROJECT/old/$binary"
 done
+for command_name in codex codex-acp opencode; do
+    printf '#!/bin/sh\nprintf "%%s fake-version\\n" "$(basename "$0")"\n' > "$FAKE_BIN/$command_name"
+    chmod 0755 "$FAKE_BIN/$command_name"
+done
 git -C "$PROJECT" init -q
 git -C "$PROJECT" config user.name test
 git -C "$PROJECT" config user.email test@example.invalid
@@ -68,49 +72,28 @@ case "$command" in
         printf '%s\n' "$counter" > "$state/counter"
         : > "$state/$label.loaded"
         printf '%s\n' "$counter" > "$state/$label.pid"
-        printf '%s\n' "${FAKE_PROJECT:?}/old/hone-cli" > "$state/$label.binary"
-        printf '%s\n' legacy.web legacy.discord > "$state/$label.children"
-        printf '%s\n' "$((counter + 1))" > "$state/legacy.web.pid"
-        printf '%s\n' "$counter" > "$state/legacy.web.ppid"
-        printf '%s\n' "${FAKE_PROJECT}/old/hone-console-page" > "$state/legacy.web.binary"
-        printf '%s\n' "$((counter + 2))" > "$state/legacy.discord.pid"
-        printf '%s\n' "$counter" > "$state/legacy.discord.ppid"
-        printf '%s\n' "${FAKE_PROJECT}/old/hone-discord" > "$state/legacy.discord.binary"
-        printf 'bootstrap %s\n' "$label" >> "$state/events"
-        ;;
-    submit)
-        label="" stdout_log=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -l) label="$2"; shift 2 ;;
-                -o) stdout_log="$2"; shift 2 ;;
-                -e) shift 2 ;;
-                --) shift; break ;;
-                *) shift ;;
-            esac
-        done
-        binary="${!#}"
-        counter=100
-        [[ ! -f "$state/counter" ]] || counter="$(<"$state/counter")"
-        counter=$((counter + 1))
-        printf '%s\n' "$counter" > "$state/counter"
-        : > "$state/$label.loaded"
-        printf '%s\n' "$binary" > "$state/$label.binary"
-        printf 'submit %s %s\n' "$label" "$binary" >> "$state/events"
-        if [[ "$binary" == *'/releases/source/'* ]] \
-            && { [[ "$label" == *web* && "${FAKE_FAIL_NEW_WEB:-0}" == 1 ]] \
-                || [[ "$label" == *discord* && "${FAKE_FAIL_NEW_DISCORD:-0}" == 1 ]]; }; then
-            rm -f "$state/$label.pid"
+        if [[ "$label" == com.honeclaw.source.runtime ]]; then
+            printf '%s\n' "${FAKE_PROJECT:?}/old/hone-cli" > "$state/$label.binary"
+            printf '%s\n' legacy.web legacy.discord > "$state/$label.children"
+            printf '%s\n' "$((counter + 1))" > "$state/legacy.web.pid"
+            printf '%s\n' "$counter" > "$state/legacy.web.ppid"
+            printf '%s\n' "${FAKE_PROJECT}/old/hone-console-page" > "$state/legacy.web.binary"
+            printf '%s\n' "$((counter + 2))" > "$state/legacy.discord.pid"
+            printf '%s\n' "$counter" > "$state/legacy.discord.ppid"
+            printf '%s\n' "${FAKE_PROJECT}/old/hone-discord" > "$state/legacy.discord.binary"
         else
-            printf '%s\n' "$counter" > "$state/$label.pid"
-        fi
-        if [[ "$label" == *discord* ]]; then
-            if [[ "$binary" == *'/releases/source/'* && "${FAKE_FAIL_NEW_DISCORD:-0}" == 1 ]]; then
-                :
-            else
+            binary="$(grep -o '<key>ProgramArguments</key><array><string>[^<]*' "$plist" | sed 's#.*<string>##')"
+            stdout_log="$(grep -o '<key>StandardOutPath</key><string>[^<]*' "$plist" | sed 's#.*<string>##')"
+            printf '%s\n' "$binary" > "$state/$label.binary"
+            if [[ "$binary" == *'/releases/source/'* ]] \
+                && { [[ "$label" == *web* && "${FAKE_FAIL_NEW_WEB:-0}" == 1 ]] \
+                    || [[ "$label" == *discord* && "${FAKE_FAIL_NEW_DISCORD:-0}" == 1 ]]; }; then
+                rm -f "$state/$label.pid"
+            elif [[ "$label" == *discord* ]]; then
                 printf 'Discord 已登录\n' >> "$stdout_log"
             fi
         fi
+        printf 'bootstrap %s\n' "$label" >> "$state/events"
         ;;
     *) exit 2 ;;
 esac
@@ -225,6 +208,12 @@ EOF
 chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/kill" "$FAKE_BIN/ps" \
     "$FAKE_BIN/lsof" "$FAKE_BIN/curl"
 
+write_fake_managed_plist() {
+    local label="$1" binary="$2" stdout_log="$3" target="$4"
+    printf '<plist><dict><key>Label</key><string>%s</string><key>ProgramArguments</key><array><string>%s</string></array><key>EnvironmentVariables</key><dict><key>PATH</key><string>%s:/usr/bin:/bin</string></dict><key>StandardOutPath</key><string>%s</string></dict></plist>\n' \
+        "$label" "$binary" "$FAKE_BIN" "$stdout_log" > "$target"
+}
+
 reset_old_state() {
     rm -f "$STATE"/*.loaded "$STATE"/*.pid "$STATE"/*.ppid "$STATE"/*.binary \
         "$STATE"/*.children "$STATE/events" "$STATE/counter"
@@ -239,6 +228,12 @@ reset_old_state() {
     : > "$PROJECT/data/logs/hone-console-page-source.err.log"
     : > "$PROJECT/data/logs/hone-discord-source.log"
     : > "$PROJECT/data/logs/hone-discord-source.err.log"
+    write_fake_managed_plist com.honeclaw.source.web "$PROJECT/old/hone-console-page" \
+        "$PROJECT/data/logs/hone-console-page-source.log" \
+        "$LAUNCH_AGENTS/com.honeclaw.source.web.plist"
+    write_fake_managed_plist com.honeclaw.source.discord "$PROJECT/old/hone-discord" \
+        "$PROJECT/data/logs/hone-discord-source.log" \
+        "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist"
 }
 
 reset_legacy_state() {
@@ -262,7 +257,8 @@ reset_legacy_state() {
 run_deploy() {
     env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
         HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_KILL_COMMAND="$FAKE_BIN/kill" \
-        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
+        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" \
+        HONE_SOURCE_RUNTIME_PATH="$FAKE_BIN:/usr/bin:/bin" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
         --skip-build --allow-unpushed --startup-timeout 2 --drain-timeout 2 \
         --poll-interval 0.1 --terminate-grace 1
@@ -271,7 +267,8 @@ run_deploy() {
 run_deploy_strict() {
     env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
         HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_KILL_COMMAND="$FAKE_BIN/kill" \
-        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
+        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" \
+        HONE_SOURCE_RUNTIME_PATH="$FAKE_BIN:/usr/bin:/bin" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
         --skip-build --startup-timeout 2 --drain-timeout 2 --poll-interval 0.1 \
         --terminate-grace 1
@@ -287,11 +284,14 @@ run_deploy env
 grep -q "/releases/source/$REVISION/hone-console-page" "$STATE/com.honeclaw.source.web.binary"
 grep -q "/releases/source/$REVISION/hone-discord" "$STATE/com.honeclaw.source.discord.binary"
 grep -q "remove com.honeclaw.source.web" "$STATE/events"
-grep -q "submit com.honeclaw.source.web" "$STATE/events"
+grep -q "bootstrap com.honeclaw.source.web" "$STATE/events"
 grep -q "ps 41" "$STATE/events"
 grep -q "hone-console-page.lock" "$STATE/events"
 grep -q "$REVISION/hone-console-page" "$LAUNCH_AGENTS/com.honeclaw.source.web.plist"
 grep -q "$REVISION/hone-discord" "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist"
+! grep -q '/.codex/tmp/' "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist"
+plist_runtime_path="$(grep -o '<key>PATH</key><string>[^<]*' "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist" | sed 's#.*<string>##')"
+PATH="$plist_runtime_path" codex --version >/dev/null
 if command -v plutil >/dev/null 2>&1; then
     plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.web.plist" >/dev/null
     plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist" >/dev/null
@@ -326,7 +326,17 @@ if run_deploy env FAKE_UNMANAGED_PID=99; then
     echo "expected unmanaged port-owner refusal" >&2
     exit 1
 fi
-! grep -Eq '^(remove|submit|bootstrap) ' "$STATE/events"
+[[ ! -f "$STATE/events" ]] || ! grep -Eq '^(remove|bootstrap) ' "$STATE/events"
+
+reset_old_state
+ephemeral_path="$TMP_ROOT/user/.codex/tmp/turn/bin"
+mkdir -p "$ephemeral_path"
+if run_deploy env HONE_SOURCE_RUNTIME_PATH="$ephemeral_path:$FAKE_BIN:/usr/bin:/bin"; then
+    echo "expected ephemeral persistent PATH refusal" >&2
+    exit 1
+fi
+[[ ! -f "$STATE/events" ]] || ! grep -Eq '^(remove|bootstrap) ' "$STATE/events"
+rm -rf "$TMP_ROOT/user/.codex"
 
 reset_old_state
 if run_deploy_strict env; then
@@ -350,7 +360,7 @@ if run_deploy env FAKE_FAIL_NEW_WEB=1; then
     exit 1
 fi
 assert_old_state
-grep -q "remove com.honeclaw.source.web" "$STATE/events"
+grep -q "bootstrap com.honeclaw.source.web" "$STATE/events"
 
 reset_old_state
 if run_deploy env FAKE_FAIL_NEW_DISCORD=1; then
@@ -358,6 +368,6 @@ if run_deploy env FAKE_FAIL_NEW_DISCORD=1; then
     exit 1
 fi
 assert_old_state
-grep -q "remove com.honeclaw.source.discord" "$STATE/events"
+grep -q "bootstrap com.honeclaw.source.discord" "$STATE/events"
 
 echo "source runtime deploy contract: ok"

@@ -82,6 +82,8 @@ LEGACY_RUNTIME_LABEL="${HONE_DEPLOY_LEGACY_RUNTIME_LABEL:-com.honeclaw.source.ru
 DOMAIN="gui/$(id -u)"
 USER_HOME_DIR="$(cd && pwd)"
 LAUNCH_AGENT_DIR="${HONE_DEPLOY_LAUNCH_AGENT_DIR:-$USER_HOME_DIR/Library/LaunchAgents}"
+DEFAULT_SOURCE_RUNTIME_PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$USER_HOME_DIR/.local/bin:$USER_HOME_DIR/.cargo/bin:/Applications/ChatGPT.app/Contents/Resources:/usr/bin:/bin:/usr/sbin:/sbin"
+SOURCE_RUNTIME_PATH="${HONE_SOURCE_RUNTIME_PATH:-$DEFAULT_SOURCE_RUNTIME_PATH}"
 WEB_PLIST="$LAUNCH_AGENT_DIR/$WEB_LABEL.plist"
 DISCORD_PLIST="$LAUNCH_AGENT_DIR/$DISCORD_LABEL.plist"
 LEGACY_RUNTIME_PLIST="$LAUNCH_AGENT_DIR/$LEGACY_RUNTIME_LABEL.plist"
@@ -96,6 +98,86 @@ DISCORD_ERR="$LOG_DIR/hone-discord-source.err.log"
 mkdir -p "$LOG_DIR" "$RELEASE_ROOT"
 
 log() { printf '[deploy] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+
+yaml_agent_value() {
+    local section="$1" key="$2" default_value="$3" value
+    value="$(awk -v section="$section" -v key="$key" '
+        function emit_value(line) {
+            sub(/^[^:]*:[[:space:]]*/, "", line)
+            sub(/[[:space:]]+#.*$/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            if ((substr(line, 1, 1) == "\"" && substr(line, length(line), 1) == "\"") ||
+                (substr(line, 1, 1) == "\047" && substr(line, length(line), 1) == "\047")) {
+                line = substr(line, 2, length(line) - 2)
+            }
+            print line
+            exit
+        }
+        /^agent:[[:space:]]*($|#)/ { in_agent = 1; next }
+        in_agent && /^[^[:space:]#]/ { exit }
+        !in_agent { next }
+        section == "" && $0 ~ "^[[:space:]]{2}" key ":[[:space:]]*" { emit_value($0) }
+        section != "" && $0 ~ "^[[:space:]]{2}" section ":[[:space:]]*($|#)" { in_section = 1; next }
+        in_section && /^[[:space:]]{2}[^[:space:]#][^:]*:/ { in_section = 0 }
+        in_section && $0 ~ "^[[:space:]]{4}" key ":[[:space:]]*" { emit_value($0) }
+    ' "$CONFIG_PATH")"
+    printf '%s' "${value:-$default_value}"
+}
+
+validate_source_runtime_path() {
+    local entry
+    [[ -n "$SOURCE_RUNTIME_PATH" && ":$SOURCE_RUNTIME_PATH:" != *::* ]] || {
+        echo "[deploy] source runtime PATH must not contain empty entries" >&2
+        return 1
+    }
+    while IFS= read -r entry; do
+        [[ "$entry" == /* ]] || {
+            echo "[deploy] source runtime PATH entries must be absolute: $entry" >&2
+            return 1
+        }
+        case "$entry" in
+            */.codex/tmp/*|*/.cache/codex-runtimes/*)
+                echo "[deploy] refusing ephemeral source runtime PATH entry: $entry" >&2
+                return 1
+                ;;
+        esac
+    done < <(printf '%s' "$SOURCE_RUNTIME_PATH" | tr ':' '\n')
+}
+
+validate_runtime_command() {
+    local command_name="$1" resolved
+    if [[ "$command_name" == */* ]]; then
+        resolved="$command_name"
+    else
+        resolved="$(PATH="$SOURCE_RUNTIME_PATH" command -v "$command_name" 2>/dev/null || true)"
+    fi
+    [[ -n "$resolved" && -x "$resolved" ]] || {
+        echo "[deploy] runtime command unavailable on persistent PATH: $command_name" >&2
+        return 1
+    }
+    PATH="$SOURCE_RUNTIME_PATH" "$resolved" --version >/dev/null 2>&1 || {
+        echo "[deploy] runtime command version probe failed on persistent PATH: $command_name" >&2
+        return 1
+    }
+}
+
+validate_runner_runtime() {
+    local runner adapter_command companion_command
+    validate_source_runtime_path
+    runner="$(yaml_agent_value "" runner codex_acp)"
+    case "$runner" in
+        codex_acp)
+            adapter_command="$(yaml_agent_value codex_acp command codex-acp)"
+            companion_command="$(yaml_agent_value codex_acp codex_command codex)"
+            validate_runtime_command "$adapter_command"
+            validate_runtime_command "$companion_command"
+            ;;
+        opencode_acp)
+            adapter_command="$(yaml_agent_value opencode command opencode)"
+            validate_runtime_command "$adapter_command"
+            ;;
+    esac
+}
 
 DEPLOY_STATE="preflight"
 transition() {
@@ -194,11 +276,13 @@ wait_active_chats_zero() {
     done
 }
 
-submit_job() {
-    local label="$1" stdout_log="$2" stderr_log="$3" binary="$4"
-    launchctl submit -l "$label" -o "$stdout_log" -e "$stderr_log" -- \
-        /bin/zsh -c 'cd "$1" && exec /usr/bin/env HONE_CONFIG_PATH="$2" HONE_DATA_DIR="$3" HONE_SKILLS_DIR="$4" "$5"' \
-        hone-source-runtime "$PROJECT_ROOT" "$CONFIG_PATH" "$DATA_DIR" "$SKILLS_DIR" "$binary"
+bootstrap_job() {
+    local plist="$1"
+    [[ -f "$plist" ]] || {
+        echo "[deploy] launch agent plist missing: $plist" >&2
+        return 1
+    }
+    launchctl bootstrap "$DOMAIN" "$plist"
 }
 
 restore_legacy_runtime_job() {
@@ -270,7 +354,7 @@ write_launch_agent_plist() {
     escaped_skills="$(printf '%s' "$SKILLS_DIR" | xml_escape)"
     escaped_stdout="$(printf '%s' "$stdout_log" | xml_escape)"
     escaped_stderr="$(printf '%s' "$stderr_log" | xml_escape)"
-    escaped_path="$(printf '%s' "$PATH" | xml_escape)"
+    escaped_path="$(printf '%s' "$SOURCE_RUNTIME_PATH" | xml_escape)"
     if [[ -n "${SOURCE_AGENT_SANDBOX_DIR:-}" ]]; then
         sandbox_xml="<key>HONE_AGENT_SANDBOX_DIR</key><string>$(printf '%s' "$SOURCE_AGENT_SANDBOX_DIR" | xml_escape)</string>"
     fi
@@ -400,12 +484,12 @@ rollback() {
     wait_locks_release || failure=1
     restore_launch_agent_files || failure=1
     if (( ORIGINAL_WEB_RUNNING )); then
-        submit_job "$WEB_LABEL" "$WEB_LOG" "$WEB_ERR" "$ORIGINAL_WEB_BINARY" || failure=1
+        bootstrap_job "$WEB_PLIST" || failure=1
         wait_web_ready "" || failure=1
     fi
     if (( ORIGINAL_DISCORD_RUNNING )); then
         offset="$(wc -c < "$DISCORD_LOG" 2>/dev/null || printf 0)"
-        submit_job "$DISCORD_LABEL" "$DISCORD_LOG" "$DISCORD_ERR" "$ORIGINAL_DISCORD_BINARY" || failure=1
+        bootstrap_job "$DISCORD_PLIST" || failure=1
         wait_discord_ready "$offset" || failure=1
     fi
     if (( ORIGINAL_LEGACY_RUNTIME_EXISTS )); then
@@ -450,9 +534,18 @@ if (( ! ALLOW_UNPUSHED )); then
         exit 1
     }
 fi
+validate_runner_runtime
 
 if job_exists "$LEGACY_RUNTIME_LABEL" && job_exists "$WEB_LABEL"; then
     echo "[deploy] conflicting legacy and managed Web launchd jobs are both loaded" >&2
+    exit 1
+fi
+if job_exists "$WEB_LABEL" && [[ ! -f "$WEB_PLIST" ]]; then
+    echo "[deploy] loaded managed Web job has no persistent plist: $WEB_PLIST" >&2
+    exit 1
+fi
+if job_exists "$DISCORD_LABEL" && [[ ! -f "$DISCORD_PLIST" ]]; then
+    echo "[deploy] loaded managed Discord job has no persistent plist: $DISCORD_PLIST" >&2
     exit 1
 fi
 if job_exists "$LEGACY_RUNTIME_LABEL" && [[ ! -f "$LEGACY_RUNTIME_PLIST" ]]; then
@@ -591,7 +684,8 @@ wait_locks_release || { echo "[deploy] process locks did not release" >&2; exit 
 
 transition start
 log "starting web revision $REVISION"
-submit_job "$WEB_LABEL" "$WEB_LOG" "$WEB_ERR" "$RELEASE_DIR/hone-console-page"
+install_launch_agent_plist "$WEB_PLIST_CANDIDATE" "$WEB_PLIST"
+bootstrap_job "$WEB_PLIST"
 transition startup
 transition ready
 wait_web_ready "$REVISION" || { echo "[deploy] web readiness timeout" >&2; exit 1; }
@@ -600,8 +694,11 @@ transition channel_login
 if (( START_DISCORD )); then
     offset="$(wc -c < "$DISCORD_LOG" 2>/dev/null || printf 0)"
     log "starting Discord revision $REVISION"
-    submit_job "$DISCORD_LABEL" "$DISCORD_LOG" "$DISCORD_ERR" "$RELEASE_DIR/hone-discord"
+    install_launch_agent_plist "$DISCORD_PLIST_CANDIDATE" "$DISCORD_PLIST"
+    bootstrap_job "$DISCORD_PLIST"
     wait_discord_ready "$offset" || { echo "[deploy] Discord readiness timeout" >&2; exit 1; }
+else
+    rm -f "$DISCORD_PLIST"
 fi
 
 transition verify
@@ -620,12 +717,6 @@ if (( START_DISCORD )); then
     }
 fi
 
-install_launch_agent_plist "$WEB_PLIST_CANDIDATE" "$WEB_PLIST"
-if (( START_DISCORD )); then
-    install_launch_agent_plist "$DISCORD_PLIST_CANDIDATE" "$DISCORD_PLIST"
-else
-    rm -f "$DISCORD_PLIST"
-fi
 if [[ -f "$LEGACY_RUNTIME_PLIST" ]]; then
     mv "$LEGACY_RUNTIME_PLIST" "$LEGACY_RUNTIME_DISABLED_PLIST"
     LEGACY_PLIST_DISABLED_DURING_DEPLOY=1
