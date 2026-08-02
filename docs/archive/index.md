@@ -4,6 +4,18 @@ Last updated: 2026-08-02
 
 ## 2026-08-02
 
+### Public Administrator Usage Analytics
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/archive/plans/public-admin-usage-analytics.md`, `docs/archive/plans/public-admin-usage-analytics-refinement.md`, `docs/archive/plans/public-admin-usage-trend-charts.md`, `docs/archive/plans/public-admin-usage-date-options.md`
+- Handoff: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-02-03-keep-public-usage-analytics-inside-the-web-administrator-boundary`
+- Related PRs / commits: uncommitted local change set; no deployment, release, or tag
+- Related runbooks / regressions: `docs/runbooks/public-user-admin.md`; Web API 164/164 with two credentialed live smokes ignored, Web 343/343, TypeScript typecheck, Public production build, and authenticated local browser QA
+- Current conclusion: `/me` mounts a server-authorized usage report, two native-SVG 14-day charts, and one bounded, scrollable per-user/day table before collapsible whitelist management. The report removes message automation and all `codex*` actor rows, masks phone labels, and never exposes other channels. Daily charts show distinct question users and question totals on the same zero-filled two-week axis; the date selector also lists every one of those 14 dates, including zero-activity days, and the headline follows the selected range/date. Both administrator panels collapse independently; ordinary users remain hidden/`403`. Local read-only data and interaction QA passed; deployment was not performed.
+- Next entry point: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`; use `crates/hone-web-api/src/routes/public_admin.rs` for aggregation/auth changes and `packages/app/src/components/public-admin-usage-panel.tsx` for presentation.
+
 ### Codex ACP Tool Status Cross-channel Projection Repair
 
 - Status: done

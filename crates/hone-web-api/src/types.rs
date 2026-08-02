@@ -285,6 +285,47 @@ pub struct PublicAdminInviteMutation {
     pub message: String,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct PublicAdminUsageQuestion {
+    pub asked_at: String,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct PublicAdminUsageRow {
+    pub date: String,
+    pub user_id: String,
+    pub user_label: String,
+    pub question_count: u32,
+    pub questions: Vec<PublicAdminUsageQuestion>,
+    pub scheduled_run_count: u32,
+    pub delivered_push_count: u32,
+    pub failed_delivery_count: u32,
+    pub latest_activity_at: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct PublicAdminUsageSummary {
+    pub today: String,
+    pub today_active_users: u32,
+    pub today_question_count: u32,
+    pub today_delivered_push_count: u32,
+    pub last_week_same_day_active_users: u32,
+    pub active_user_change: i32,
+    pub leading_decline_user_label: Option<String>,
+    pub leading_decline_question_delta: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct PublicAdminUsageReport {
+    pub generated_at: String,
+    pub period_start: String,
+    pub period_end: String,
+    pub summary: PublicAdminUsageSummary,
+    pub rows: Vec<PublicAdminUsageRow>,
+}
+
 #[derive(Serialize)]
 pub struct CronJobRecord {
     pub channel: String,

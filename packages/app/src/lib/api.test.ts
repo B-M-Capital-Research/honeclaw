@@ -3,6 +3,7 @@ import {
   ApiError,
   createPublicAdminInvite,
   disablePublicAdminInvite,
+  getPublicAdminUsage,
   getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
@@ -183,6 +184,42 @@ describe("public chat bootstrap API", () => {
 });
 
 describe("public administrator whitelist API", () => {
+  test("loads the administrator usage report without caching", async () => {
+    let requestedUrl = "";
+    let requestedInit: RequestInit | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(url);
+      requestedInit = init;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            generated_at: "2026-08-02T12:00:00+08:00",
+            period_start: "2026-07-20",
+            period_end: "2026-08-02",
+            summary: {
+              today: "2026-08-02",
+              today_active_users: 2,
+              today_question_count: 5,
+              today_delivered_push_count: 3,
+              last_week_same_day_active_users: 3,
+              active_user_change: -1,
+              leading_decline_question_delta: 2,
+              text: "今日 HONE 总使用人数 2 人",
+            },
+            rows: [],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const result = await getPublicAdminUsage();
+
+    expect(requestedUrl).toContain("/api/public/admin/usage");
+    expect(requestedInit?.cache).toBe("no-store");
+    expect(result.summary.today_question_count).toBe(5);
+  });
+
   test("creates through a one-shot POST with the administrator action marker", async () => {
     let requestedUrl = "";
     let requestedInit: RequestInit | undefined;

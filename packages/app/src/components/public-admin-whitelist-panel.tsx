@@ -132,13 +132,13 @@ export function PublicAdminWhitelistPanel() {
   };
 
   return (
-    <section class="public-workspace-panel public-admin-panel" aria-labelledby="public-admin-title">
-      <header class="public-admin-head">
-        <div>
+    <details class="public-workspace-panel public-admin-panel" aria-labelledby="public-admin-title">
+      <summary class="public-admin-section-summary">
+        <span class="public-admin-section-copy">
           <span class="public-workspace-eyebrow">管理员</span>
-          <h2 id="public-admin-title">管理</h2>
+          <h2 id="public-admin-title">会员白名单</h2>
           <p>管理国内手机号会员白名单。禁用后，该用户现有登录态会立即失效。</p>
-        </div>
+        </span>
         <Show when={list()}>
           {(current) => (
             <span class="public-admin-limit">
@@ -146,95 +146,102 @@ export function PublicAdminWhitelistPanel() {
             </span>
           )}
         </Show>
-      </header>
+        <span class="public-admin-section-toggle-label" aria-hidden="true">
+          <span class="when-open">收起</span>
+          <span class="when-closed">展开</span>
+          <span class="public-admin-section-chevron" />
+        </span>
+      </summary>
 
-      <form class="public-admin-create" onSubmit={createInvite}>
-        <label for="public-admin-phone">新增白名单手机号</label>
-        <div>
-          <input
-            id="public-admin-phone"
-            type="tel"
-            inputmode="numeric"
-            autocomplete="tel"
-            maxlength="18"
-            placeholder="请输入 11 位手机号"
-            value={phone()}
-            onInput={(event) => setPhone(event.currentTarget.value)}
-            disabled={pending()}
-          />
-          <button
-            type="submit"
-            disabled={!publicAdminCanCreate(list(), pending())}
-          >
-            {pending() ? "处理中…" : "加入白名单"}
-          </button>
-        </div>
-        <small>为防止误操作，每位管理员按北京时间每天最多成功新增 5 人。</small>
-      </form>
-
-      <Show when={error()}>
-        <p class="public-admin-feedback is-error" role="alert">{error()}</p>
-      </Show>
-      <Show when={notice()}>
-        <p class="public-admin-feedback is-success" role="status">{notice()}</p>
-      </Show>
-
-      <Show
-        when={!loading()}
-        fallback={<div class="public-admin-loading">正在读取会员白名单…</div>}
-      >
-        <Show
-          when={(list()?.invites.length ?? 0) > 0}
-          fallback={<div class="public-admin-empty">当前还没有国内手机号会员。</div>}
-        >
-          <div class="public-admin-table-wrap">
-            <table class="public-admin-table">
-              <thead>
-                <tr>
-                  <th>手机号</th>
-                  <th>加入时间</th>
-                  <th>最近登录</th>
-                  <th>状态</th>
-                  <th><span class="sr-only">操作</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={list()?.invites ?? []}>
-                  {(invite) => (
-                    <tr>
-                      <td data-label="手机号"><strong>{invite.phone_number}</strong></td>
-                      <td data-label="加入时间">{formatAdminDate(invite.created_at)}</td>
-                      <td data-label="最近登录">{formatAdminDate(invite.last_login_at)}</td>
-                      <td data-label="状态">
-                        <span classList={{
-                          "public-admin-status": true,
-                          "is-enabled": invite.enabled,
-                        }}>
-                          {invite.enabled ? "已启用" : "已禁用"}
-                        </span>
-                      </td>
-                      <td class="public-admin-row-action">
-                        <Show
-                          when={invite.can_disable}
-                          fallback={<span>{invite.enabled ? "当前管理员" : "—"}</span>}
-                        >
-                          <button
-                            type="button"
-                            disabled={pending()}
-                            onClick={() => void disableInvite(invite)}
-                          >
-                            禁用
-                          </button>
-                        </Show>
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
+      <div class="public-admin-section-body">
+        <form class="public-admin-create" onSubmit={createInvite}>
+          <label for="public-admin-phone">新增白名单手机号</label>
+          <div>
+            <input
+              id="public-admin-phone"
+              type="tel"
+              inputmode="numeric"
+              autocomplete="tel"
+              maxlength="18"
+              placeholder="请输入 11 位手机号"
+              value={phone()}
+              onInput={(event) => setPhone(event.currentTarget.value)}
+              disabled={pending()}
+            />
+            <button
+              type="submit"
+              disabled={!publicAdminCanCreate(list(), pending())}
+            >
+              {pending() ? "处理中…" : "加入白名单"}
+            </button>
           </div>
+          <small>为防止误操作，每位管理员按北京时间每天最多成功新增 5 人。</small>
+        </form>
+
+        <Show when={error()}>
+          <p class="public-admin-feedback is-error" role="alert">{error()}</p>
         </Show>
-      </Show>
-    </section>
+        <Show when={notice()}>
+          <p class="public-admin-feedback is-success" role="status">{notice()}</p>
+        </Show>
+
+        <Show
+          when={!loading()}
+          fallback={<div class="public-admin-loading">正在读取会员白名单…</div>}
+        >
+          <Show
+            when={(list()?.invites.length ?? 0) > 0}
+            fallback={<div class="public-admin-empty">当前还没有国内手机号会员。</div>}
+          >
+            <div class="public-admin-table-wrap">
+              <table class="public-admin-table">
+                <thead>
+                  <tr>
+                    <th>手机号</th>
+                    <th>加入时间</th>
+                    <th>最近登录</th>
+                    <th>状态</th>
+                    <th><span class="sr-only">操作</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={list()?.invites ?? []}>
+                    {(invite) => (
+                      <tr>
+                        <td data-label="手机号"><strong>{invite.phone_number}</strong></td>
+                        <td data-label="加入时间">{formatAdminDate(invite.created_at)}</td>
+                        <td data-label="最近登录">{formatAdminDate(invite.last_login_at)}</td>
+                        <td data-label="状态">
+                          <span classList={{
+                            "public-admin-status": true,
+                            "is-enabled": invite.enabled,
+                          }}>
+                            {invite.enabled ? "已启用" : "已禁用"}
+                          </span>
+                        </td>
+                        <td class="public-admin-row-action">
+                          <Show
+                            when={invite.can_disable}
+                            fallback={<span>{invite.enabled ? "当前管理员" : "—"}</span>}
+                          >
+                            <button
+                              type="button"
+                              disabled={pending()}
+                              onClick={() => void disableInvite(invite)}
+                            >
+                              禁用
+                            </button>
+                          </Show>
+                        </td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+          </Show>
+        </Show>
+      </div>
+    </details>
   );
 }

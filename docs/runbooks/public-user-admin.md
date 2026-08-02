@@ -58,12 +58,16 @@ After deploying a build that contains the public-admin API/UI:
 
 1. Sign in as the target domestic user.
 2. Open `/me`.
-3. Confirm “管理” appears and the list excludes international email-only users.
-4. Confirm an ordinary user receives `403` from `/api/public/admin/invites` and sees no management module.
-5. Add only a controlled test phone. Confirm the remaining count decreases by one.
-6. Repeat the same phone and confirm it returns conflict without consuming another slot.
-7. Disable the controlled test user and confirm its existing session becomes unauthorized.
-8. Do not production-test the sixth successful creation unless five real additions are already intended that day.
+3. Confirm “HONE 使用统计” and “会员白名单” appear, while the whitelist excludes international email-only users. The usage section defaults open; the whitelist defaults closed; both must expand and collapse.
+4. Confirm `/api/public/admin/usage` shows the latest 14 Beijing dates, real Web questions only, scheduled run/success/failure counts, and a generated timestamp. Verify known scheduler triggers are not counted as user questions and every `user_id` beginning with `codex` (case-insensitive) is absent from both question and execution rows.
+5. Confirm the usage data stays in one vertically bounded, internally scrollable table with a sticky header; mobile keeps the same table with horizontal scrolling instead of expanding every row into a page-length card list.
+6. Confirm two trend charts appear above the table: “每日使用用户数” and “每日提问量”. Each must expose the same 14 consecutive Beijing dates, including zero-filled dates; the first counts distinct users with at least one real question, while the second sums real questions. Push-only users must not enter the user chart. On mobile the two cards stay in one horizontally scrollable row.
+7. Confirm “统计日期” lists every one of the 14 report dates newest-first, including dates with no rows. Switch between “最近 14 天”, a date with known activity, and a zero-activity date. The top sentence must change with the selection: the 14-day view compares the latest seven days with the prior seven, while a single date compares with the same date one week earlier. A zero-activity date must remain selected after refresh and show 0 users/questions/pushes plus the empty-table state; a date whose comparison falls outside the returned window must say that comparison data is unavailable.
+8. Confirm an ordinary user receives `403` from both `/api/public/admin/usage` and `/api/public/admin/invites`, and sees no management module.
+9. Add only a controlled test phone. Confirm the remaining count decreases by one.
+10. Repeat the same phone and confirm it returns conflict without consuming another slot.
+11. Disable the controlled test user and confirm its existing session becomes unauthorized.
+12. Do not production-test the sixth successful creation unless five real additions are already intended that day.
 
 ## Rollback
 

@@ -14,6 +14,7 @@ import type {
   PublicAuthUserInfo,
   PublicAdminInviteList,
   PublicAdminInviteMutation,
+  PublicAdminUsageReport,
   MetaInfo,
   SkillDetailInfo,
   SkillInfo,
@@ -359,6 +360,14 @@ export async function getPublicAdminInvites(signal?: AbortSignal) {
     cache: "no-store",
   });
   return parseJson<PublicAdminInviteList>(response);
+}
+
+export async function getPublicAdminUsage(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/admin/usage", {
+    signal,
+    cache: "no-store",
+  });
+  return parseJson<PublicAdminUsageReport>(response);
 }
 
 export async function createPublicAdminInvite(phoneNumber: string) {

@@ -12,6 +12,14 @@ const startup = readFileSync(
 const css = readFileSync(new URL("./public-workspace.css", import.meta.url), "utf8");
 const community = readFileSync(new URL("./public-community.tsx", import.meta.url), "utf8");
 const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
+const adminUsage = readFileSync(
+  new URL("../components/public-admin-usage-panel.tsx", import.meta.url),
+  "utf8",
+);
+const adminWhitelist = readFileSync(
+  new URL("../components/public-admin-whitelist-panel.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("public workspace page contract", () => {
   it("shares one desktop and mobile chrome across 洞察 and 我的", () => {
@@ -41,9 +49,19 @@ describe("public workspace page contract", () => {
 
   it("shows whitelist management only for server-authoritative administrators", () => {
     expect(me).toContain("<Show when={props.user.is_admin}>");
+    expect(me).toContain("<PublicAdminUsagePanel />");
     expect(me).toContain("<PublicAdminWhitelistPanel />");
     expect(css).toContain(".public-admin-panel");
+    expect(css).toContain(".public-admin-live-summary");
     expect(css).toContain(".public-admin-table td::before");
+    expect(adminUsage).toContain("<details");
+    expect(adminUsage).toContain("summarizePublicAdminUsage(current, selectedDate())");
+    expect(adminUsage).toContain('title="每日使用用户数"');
+    expect(adminUsage).toContain('title="每日提问量"');
+    expect(adminWhitelist).toContain("<details");
+    expect(css).toContain(".public-admin-section-summary");
+    expect(css).toContain(".public-admin-trend-grid");
+    expect(css).toContain("max-height: min(58vh, 540px)");
   });
 
   it("keeps restoration inside the Agent visual language", () => {

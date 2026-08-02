@@ -1,11 +1,15 @@
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, TimeZone};
 use serde_json::json;
 
+use hone_memory::cron_job::{CronJobExecutionRecord, ExecutionFilter};
+use hone_memory::session::Session;
 use hone_memory::{
     WEB_ADMIN_DAILY_INVITE_LIMIT, WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome,
     WebAdminInviteSummary, WebInviteUser,
@@ -14,11 +18,24 @@ use hone_memory::{
 use crate::state::AppState;
 use crate::types::{
     PublicAdminCreateInviteRequest, PublicAdminInviteInfo, PublicAdminInviteList,
-    PublicAdminInviteMutation,
+    PublicAdminInviteMutation, PublicAdminUsageQuestion, PublicAdminUsageReport,
+    PublicAdminUsageRow, PublicAdminUsageSummary,
 };
 
 const ADMIN_ACTION_HEADER: &str = "x-hone-admin-action";
 const ADMIN_ACTION_HEADER_VALUE: &str = "whitelist";
+const USAGE_REPORT_DAYS: i64 = 14;
+const USAGE_EXECUTION_LIMIT: usize = 50_000;
+const USAGE_QUESTION_PREVIEW_CHARS: usize = 1_000;
+
+#[derive(Default)]
+struct UsageAccumulator {
+    questions: Vec<PublicAdminUsageQuestion>,
+    scheduled_run_count: u32,
+    delivered_push_count: u32,
+    failed_delivery_count: u32,
+    latest_activity_at: String,
+}
 
 pub(crate) async fn handle_list_invites(
     State(state): State<Arc<AppState>>,
@@ -226,6 +243,400 @@ pub(crate) async fn handle_disable_invite(
     }
 }
 
+pub(crate) async fn handle_usage_report(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Response {
+    let admin = match require_public_admin(&state, &headers) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    let now = hone_core::beijing_now();
+    let period_start_date = now.date_naive() - Duration::days(USAGE_REPORT_DAYS - 1);
+    let period_start = start_of_beijing_day(period_start_date, now.offset());
+    let state_for_worker = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let sessions = state_for_worker.core.session_storage.list_sessions()?;
+        let executions = state_for_worker
+            .core
+            .cron_job_storage()
+            .list_recent_executions(&ExecutionFilter {
+                since: Some(period_start.to_rfc3339()),
+                until: Some(now.to_rfc3339()),
+                channel: Some("web".to_string()),
+                limit: USAGE_EXECUTION_LIMIT,
+                ..ExecutionFilter::default()
+            })?;
+        let users = state_for_worker.web_auth.list_invite_users()?;
+        Ok::<_, hone_core::HoneError>(build_usage_report(now, sessions, executions, users))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(report)) => {
+            tracing::info!(
+                admin_user_id = %admin.user_id,
+                row_count = report.rows.len(),
+                today_questions = report.summary.today_question_count,
+                "public admin usage report loaded"
+            );
+            Json(report).into_response()
+        }
+        Ok(Err(error)) => {
+            tracing::error!(
+                admin_user_id = %admin.user_id,
+                error = %error,
+                "public admin usage report failed"
+            );
+            crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "使用统计暂时无法读取，请稍后重试",
+            )
+        }
+        Err(error) => {
+            tracing::error!(
+                admin_user_id = %admin.user_id,
+                error = %error,
+                "public admin usage report task failed"
+            );
+            crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "使用统计暂时无法读取，请稍后重试",
+            )
+        }
+    }
+}
+
+fn build_usage_report(
+    now: DateTime<FixedOffset>,
+    sessions: Vec<Session>,
+    executions: Vec<CronJobExecutionRecord>,
+    users: Vec<WebInviteUser>,
+) -> PublicAdminUsageReport {
+    let today = now.date_naive();
+    let period_start_date = today - Duration::days(USAGE_REPORT_DAYS - 1);
+    let period_start = start_of_beijing_day(period_start_date, now.offset());
+    let user_labels = users
+        .into_iter()
+        .map(|user| {
+            let label = usage_user_label(&user.user_id, &user.phone_number);
+            (user.user_id, label)
+        })
+        .collect::<HashMap<_, _>>();
+    let mut rows = BTreeMap::<(NaiveDate, String), UsageAccumulator>::new();
+
+    for session in sessions {
+        let Some(user_id) = web_session_user_id(&session) else {
+            continue;
+        };
+        if usage_user_is_automation(&user_id) {
+            continue;
+        }
+        for message in session.messages {
+            if message.role != "user" {
+                continue;
+            }
+            let text = hone_memory::session_message_text(&message);
+            if usage_message_is_automation(&text, message.metadata.as_ref()) {
+                continue;
+            }
+            let Some(asked_at) = parse_beijing_time(&message.timestamp, now.offset()) else {
+                continue;
+            };
+            if asked_at < period_start || asked_at > now {
+                continue;
+            }
+            let question_text = if text.trim().is_empty() {
+                "[附件或图片提问]".to_string()
+            } else {
+                hone_core::truncate_chars_append(text.trim(), USAGE_QUESTION_PREVIEW_CHARS, "…")
+            };
+            let entry = rows
+                .entry((asked_at.date_naive(), user_id.clone()))
+                .or_default();
+            entry.questions.push(PublicAdminUsageQuestion {
+                asked_at: asked_at.to_rfc3339(),
+                text: question_text,
+            });
+            update_latest_activity(&mut entry.latest_activity_at, &asked_at.to_rfc3339());
+        }
+    }
+
+    for execution in executions {
+        if execution.channel != "web" || execution.channel_scope.is_some() {
+            continue;
+        }
+        if usage_user_is_automation(&execution.user_id) {
+            continue;
+        }
+        let Some(executed_at) = parse_beijing_time(&execution.executed_at, now.offset()) else {
+            continue;
+        };
+        if executed_at < period_start || executed_at > now {
+            continue;
+        }
+        let entry = rows
+            .entry((executed_at.date_naive(), execution.user_id))
+            .or_default();
+        entry.scheduled_run_count = entry.scheduled_run_count.saturating_add(1);
+        if execution.delivered {
+            entry.delivered_push_count = entry.delivered_push_count.saturating_add(1);
+        } else if execution.should_deliver {
+            entry.failed_delivery_count = entry.failed_delivery_count.saturating_add(1);
+        }
+        update_latest_activity(&mut entry.latest_activity_at, &executed_at.to_rfc3339());
+    }
+
+    let mut report_rows = rows
+        .into_iter()
+        .map(|((date, user_id), mut entry)| {
+            entry
+                .questions
+                .sort_by(|left, right| right.asked_at.cmp(&left.asked_at));
+            let question_count = u32::try_from(entry.questions.len()).unwrap_or(u32::MAX);
+            PublicAdminUsageRow {
+                date: date.to_string(),
+                user_label: user_labels
+                    .get(&user_id)
+                    .cloned()
+                    .unwrap_or_else(|| usage_user_label(&user_id, "")),
+                user_id,
+                question_count,
+                questions: entry.questions,
+                scheduled_run_count: entry.scheduled_run_count,
+                delivered_push_count: entry.delivered_push_count,
+                failed_delivery_count: entry.failed_delivery_count,
+                latest_activity_at: entry.latest_activity_at,
+            }
+        })
+        .collect::<Vec<_>>();
+    report_rows.sort_by(|left, right| {
+        right
+            .date
+            .cmp(&left.date)
+            .then_with(|| right.question_count.cmp(&left.question_count))
+            .then_with(|| left.user_label.cmp(&right.user_label))
+    });
+
+    let summary = build_usage_summary(now, &report_rows);
+    PublicAdminUsageReport {
+        generated_at: now.to_rfc3339(),
+        period_start: period_start_date.to_string(),
+        period_end: today.to_string(),
+        summary,
+        rows: report_rows,
+    }
+}
+
+fn build_usage_summary(
+    now: DateTime<FixedOffset>,
+    rows: &[PublicAdminUsageRow],
+) -> PublicAdminUsageSummary {
+    let today = now.date_naive();
+    let last_week_same_day = today - Duration::days(7);
+    let today_rows = rows.iter().filter(|row| row.date == today.to_string());
+    let today_question_count = today_rows
+        .clone()
+        .map(|row| row.question_count)
+        .fold(0_u32, u32::saturating_add);
+    let today_delivered_push_count = today_rows
+        .clone()
+        .map(|row| row.delivered_push_count)
+        .fold(0_u32, u32::saturating_add);
+    let today_users = today_rows
+        .filter(|row| row.question_count > 0)
+        .map(|row| row.user_id.as_str())
+        .collect::<HashSet<_>>();
+    let last_week_users = rows
+        .iter()
+        .filter(|row| row.date == last_week_same_day.to_string() && row.question_count > 0)
+        .map(|row| row.user_id.as_str())
+        .collect::<HashSet<_>>();
+    let today_active_users = u32::try_from(today_users.len()).unwrap_or(u32::MAX);
+    let last_week_same_day_active_users = u32::try_from(last_week_users.len()).unwrap_or(u32::MAX);
+    let active_user_change = i64::from(today_active_users)
+        .saturating_sub(i64::from(last_week_same_day_active_users))
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+
+    let current_week_start =
+        today - Duration::days(i64::from(now.weekday().num_days_from_monday()));
+    let previous_week_start = current_week_start - Duration::days(7);
+    let comparison_date_end = today - Duration::days(7);
+    let comparison_time = now.time();
+    let mut current_counts = HashMap::<&str, u32>::new();
+    let mut previous_counts = HashMap::<&str, u32>::new();
+    let mut labels = HashMap::<&str, &str>::new();
+    for row in rows {
+        let Ok(date) = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d") else {
+            continue;
+        };
+        labels.insert(row.user_id.as_str(), row.user_label.as_str());
+        let include_current = date >= current_week_start
+            && date <= today
+            && (date < today
+                || row.questions.iter().any(|question| {
+                    parse_beijing_time(&question.asked_at, now.offset())
+                        .is_some_and(|asked_at| asked_at.time() <= comparison_time)
+                }));
+        if include_current {
+            let count = row
+                .questions
+                .iter()
+                .filter(|question| {
+                    parse_beijing_time(&question.asked_at, now.offset())
+                        .is_some_and(|asked_at| asked_at <= now)
+                })
+                .count();
+            let count = u32::try_from(count).unwrap_or(u32::MAX);
+            current_counts
+                .entry(row.user_id.as_str())
+                .and_modify(|value| *value = value.saturating_add(count))
+                .or_insert(count);
+        }
+        let include_previous = date >= previous_week_start && date <= comparison_date_end;
+        if include_previous {
+            let previous_end = now - Duration::days(7);
+            let count = row
+                .questions
+                .iter()
+                .filter(|question| {
+                    parse_beijing_time(&question.asked_at, now.offset())
+                        .is_some_and(|asked_at| asked_at <= previous_end)
+                })
+                .count();
+            let count = u32::try_from(count).unwrap_or(u32::MAX);
+            previous_counts
+                .entry(row.user_id.as_str())
+                .and_modify(|value| *value = value.saturating_add(count))
+                .or_insert(count);
+        }
+    }
+    let leading_decline = previous_counts
+        .iter()
+        .filter_map(|(user_id, previous)| {
+            let current = current_counts.get(user_id).copied().unwrap_or_default();
+            previous
+                .checked_sub(current)
+                .filter(|drop| *drop > 0)
+                .map(|drop| (*user_id, drop))
+        })
+        .max_by(|(left_user, left_drop), (right_user, right_drop)| {
+            left_drop
+                .cmp(right_drop)
+                .then_with(|| right_user.cmp(left_user))
+        });
+    let (leading_decline_user_label, leading_decline_question_delta) = leading_decline
+        .map(|(user_id, drop)| {
+            (
+                Some(labels.get(user_id).copied().unwrap_or(user_id).to_string()),
+                drop,
+            )
+        })
+        .unwrap_or((None, 0));
+    let comparison = match active_user_change.cmp(&0) {
+        std::cmp::Ordering::Less => {
+            format!("比上周同日少 {} 人", active_user_change.unsigned_abs())
+        }
+        std::cmp::Ordering::Greater => format!("比上周同日多 {active_user_change} 人"),
+        std::cmp::Ordering::Equal => "与上周同日持平".to_string(),
+    };
+    let decline = leading_decline_user_label
+        .as_ref()
+        .map(|label| {
+            format!(
+                "主要是 {label} 本周使用频率降低（较上周同期少 {leading_decline_question_delta} 次）"
+            )
+        })
+        .unwrap_or_else(|| "本周暂无明显降频用户".to_string());
+    let text = format!(
+        "今日 HONE 总使用人数 {today_active_users} 人，提问问题总共 {today_question_count} 个，定时任务成功推送 {today_delivered_push_count} 条，{comparison}；{decline}。"
+    );
+
+    PublicAdminUsageSummary {
+        today: today.to_string(),
+        today_active_users,
+        today_question_count,
+        today_delivered_push_count,
+        last_week_same_day_active_users,
+        active_user_change,
+        leading_decline_user_label,
+        leading_decline_question_delta,
+        text,
+    }
+}
+
+fn web_session_user_id(session: &Session) -> Option<String> {
+    session
+        .session_identity
+        .as_ref()
+        .filter(|identity| identity.channel == "web" && !identity.is_group())
+        .and_then(|identity| identity.user_id.clone())
+        .or_else(|| {
+            session
+                .actor
+                .as_ref()
+                .filter(|actor| actor.channel == "web" && actor.channel_scope.is_none())
+                .map(|actor| actor.user_id.clone())
+        })
+        .filter(|user_id| !user_id.trim().is_empty())
+}
+
+fn usage_message_is_automation(
+    content: &str,
+    metadata: Option<&HashMap<String, serde_json::Value>>,
+) -> bool {
+    let tagged_source = metadata
+        .and_then(|items| items.get("source"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|source| matches!(source, "scheduler" | "heartbeat"));
+    let tagged_job = metadata
+        .is_some_and(|items| items.contains_key("job_id") || items.contains_key("web_push_id"));
+    tagged_source || tagged_job || content.trim_start().starts_with("[定时任务触发]")
+}
+
+fn usage_user_is_automation(user_id: &str) -> bool {
+    user_id.trim().to_ascii_lowercase().starts_with("codex")
+}
+
+fn usage_user_label(user_id: &str, phone_number: &str) -> String {
+    let phone = phone_number.trim();
+    if phone.len() == 11 && phone.chars().all(|character| character.is_ascii_digit()) {
+        return format!("{}****{}", &phone[..3], &phone[7..]);
+    }
+    let normalized = user_id.trim();
+    if let Some(suffix) = normalized.strip_prefix("web-user-") {
+        let tail = suffix
+            .chars()
+            .rev()
+            .take(4)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        return format!("HONE 用户 {tail}");
+    }
+    hone_core::truncate_chars_append(normalized, 18, "…")
+}
+
+fn parse_beijing_time(value: &str, offset: &FixedOffset) -> Option<DateTime<FixedOffset>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|parsed| parsed.with_timezone(offset))
+}
+
+fn start_of_beijing_day(date: NaiveDate, offset: &FixedOffset) -> DateTime<FixedOffset> {
+    offset
+        .from_local_datetime(&date.and_hms_opt(0, 0, 0).expect("valid start of day"))
+        .single()
+        .expect("fixed offset has one local datetime")
+}
+
+fn update_latest_activity(current: &mut String, candidate: &str) {
+    if current.is_empty() || candidate > current.as_str() {
+        *current = candidate.to_string();
+    }
+}
+
 fn require_public_admin(state: &AppState, headers: &HeaderMap) -> Result<WebInviteUser, Response> {
     let user = crate::routes::public::require_public_session_user(state, headers)?;
     match state.web_auth.is_web_admin(&user.user_id) {
@@ -292,11 +703,18 @@ fn to_public_admin_mutation_invite(
 #[cfg(test)]
 mod tests {
     use super::{
-        ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, to_public_admin_mutation_invite,
-        to_public_admin_summary,
+        ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, build_usage_report,
+        to_public_admin_mutation_invite, to_public_admin_summary, usage_user_is_automation,
     };
     use axum::http::{HeaderMap, HeaderValue};
+    use chrono::DateTime;
+    use hone_core::{ActorIdentity, SessionIdentity};
+    use hone_memory::cron_job::CronJobExecutionRecord;
+    use hone_memory::session::{Session, SessionRuntimeState};
+    use hone_memory::session_message_from_text;
     use hone_memory::{WebAdminInviteSummary, WebInviteUser};
+    use serde_json::json;
+    use std::collections::HashMap;
 
     fn invite(user_id: &str, revoked: bool) -> WebInviteUser {
         WebInviteUser {
@@ -325,6 +743,50 @@ mod tests {
             last_login_at: None,
             revoked_at: revoked.then(|| "2026-07-31T01:00:00+08:00".to_string()),
             is_admin,
+        }
+    }
+
+    fn usage_session(
+        user_id: &str,
+        messages: Vec<hone_memory::session::SessionMessage>,
+    ) -> Session {
+        Session {
+            version: 4,
+            id: format!("Actor_web__direct__{user_id}"),
+            actor: Some(ActorIdentity::new("web", user_id, None::<String>).expect("actor")),
+            session_identity: Some(SessionIdentity::direct("web", user_id).expect("identity")),
+            created_at: "2026-07-20T00:00:00+08:00".to_string(),
+            updated_at: "2026-08-02T12:00:00+08:00".to_string(),
+            messages,
+            metadata: HashMap::new(),
+            runtime: SessionRuntimeState::default(),
+            summary: None,
+        }
+    }
+
+    fn usage_execution(
+        user_id: &str,
+        executed_at: &str,
+        should_deliver: bool,
+        delivered: bool,
+    ) -> CronJobExecutionRecord {
+        CronJobExecutionRecord {
+            run_id: 1,
+            job_id: "job-1".to_string(),
+            job_name: "每日复盘".to_string(),
+            channel: "web".to_string(),
+            user_id: user_id.to_string(),
+            channel_scope: None,
+            channel_target: user_id.to_string(),
+            heartbeat: false,
+            executed_at: executed_at.to_string(),
+            execution_status: "completed".to_string(),
+            message_send_status: if delivered { "sent" } else { "send_failed" }.to_string(),
+            should_deliver,
+            delivered,
+            response_preview: None,
+            error_message: None,
+            detail: json!({}),
         }
     }
 
@@ -368,5 +830,154 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some(ADMIN_ACTION_HEADER_VALUE)
         );
+    }
+
+    #[test]
+    fn usage_report_counts_real_questions_in_beijing_and_excludes_automation() {
+        let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
+        let mut scheduler_metadata = HashMap::new();
+        scheduler_metadata.insert("source".to_string(), json!("scheduler"));
+        let sessions = vec![usage_session(
+            "web-user-alpha1234",
+            vec![
+                session_message_from_text("user", "凌晨的问题", "2026-08-01T16:30:00Z", None),
+                session_message_from_text(
+                    "user",
+                    "[定时任务触发] 每日复盘",
+                    "2026-08-02T08:00:00+08:00",
+                    Some(scheduler_metadata),
+                ),
+                session_message_from_text(
+                    "user",
+                    "今天还能买吗？",
+                    "2026-08-02T10:00:00+08:00",
+                    None,
+                ),
+            ],
+        )];
+        let report = build_usage_report(
+            now,
+            sessions,
+            vec![
+                usage_execution(
+                    "web-user-alpha1234",
+                    "2026-08-02T09:00:00+08:00",
+                    true,
+                    true,
+                ),
+                usage_execution(
+                    "web-user-alpha1234",
+                    "2026-08-02T11:00:00+08:00",
+                    true,
+                    false,
+                ),
+            ],
+            vec![invite("web-user-alpha1234", false)],
+        );
+
+        assert_eq!(report.summary.today_active_users, 1);
+        assert_eq!(report.summary.today_question_count, 2);
+        assert_eq!(report.summary.today_delivered_push_count, 1);
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].question_count, 2);
+        assert_eq!(report.rows[0].scheduled_run_count, 2);
+        assert_eq!(report.rows[0].failed_delivery_count, 1);
+        assert!(
+            report.rows[0]
+                .questions
+                .iter()
+                .all(|question| !question.text.contains("定时任务触发"))
+        );
+        assert_eq!(report.rows[0].user_label, "138****8000");
+    }
+
+    #[test]
+    fn usage_report_excludes_codex_prefixed_automation_users_and_executions() {
+        let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
+        let sessions = vec![
+            usage_session(
+                "Codex-nightly-01",
+                vec![session_message_from_text(
+                    "user",
+                    "自动化提问",
+                    "2026-08-02T10:00:00+08:00",
+                    None,
+                )],
+            ),
+            usage_session(
+                "web-user-real1234",
+                vec![session_message_from_text(
+                    "user",
+                    "真实用户提问",
+                    "2026-08-02T10:30:00+08:00",
+                    None,
+                )],
+            ),
+        ];
+        let report = build_usage_report(
+            now,
+            sessions,
+            vec![
+                usage_execution(
+                    " codex-push-worker ",
+                    "2026-08-02T11:00:00+08:00",
+                    true,
+                    true,
+                ),
+                usage_execution("web-user-real1234", "2026-08-02T11:30:00+08:00", true, true),
+            ],
+            vec![invite("web-user-real1234", false)],
+        );
+
+        assert!(usage_user_is_automation("codex-worker"));
+        assert!(usage_user_is_automation("  CODEX-worker  "));
+        assert!(!usage_user_is_automation("web-user-codex-worker"));
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].user_id, "web-user-real1234");
+        assert_eq!(report.rows[0].question_count, 1);
+        assert_eq!(report.rows[0].delivered_push_count, 1);
+        assert_eq!(report.summary.today_active_users, 1);
+    }
+
+    #[test]
+    fn usage_summary_compares_same_day_and_names_the_largest_weekly_decline() {
+        let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
+        let alpha = usage_session(
+            "web-user-alpha1234",
+            vec![
+                session_message_from_text("user", "上周问题一", "2026-07-21T09:00:00+08:00", None),
+                session_message_from_text("user", "上周问题二", "2026-07-22T09:00:00+08:00", None),
+                session_message_from_text("user", "上周问题三", "2026-07-26T09:00:00+08:00", None),
+                session_message_from_text("user", "本周问题", "2026-08-02T09:00:00+08:00", None),
+            ],
+        );
+        let beta = usage_session(
+            "web-user-beta5678",
+            vec![session_message_from_text(
+                "user",
+                "上周同日问题",
+                "2026-07-26T10:00:00+08:00",
+                None,
+            )],
+        );
+        let mut alpha_invite = invite("web-user-alpha1234", false);
+        alpha_invite.phone_number = "13871396421".to_string();
+        let report = build_usage_report(
+            now,
+            vec![alpha, beta],
+            Vec::new(),
+            vec![alpha_invite, invite("web-user-beta5678", false)],
+        );
+
+        assert_eq!(report.summary.today_active_users, 1);
+        assert_eq!(report.summary.last_week_same_day_active_users, 2);
+        assert_eq!(report.summary.active_user_change, -1);
+        assert_eq!(
+            report.summary.leading_decline_user_label.as_deref(),
+            Some("138****6421")
+        );
+        assert_eq!(report.summary.leading_decline_question_delta, 2);
+        assert!(report.summary.text.contains("比上周同日少 1 人"));
+        assert!(report.summary.text.contains("138****6421 本周使用频率降低"));
     }
 }

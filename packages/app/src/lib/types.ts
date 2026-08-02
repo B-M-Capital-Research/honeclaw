@@ -239,6 +239,41 @@ export type PublicAdminInviteMutation = {
   message: string;
 };
 
+export type PublicAdminUsageQuestion = {
+  asked_at: string;
+  text: string;
+};
+
+export type PublicAdminUsageRow = {
+  date: string;
+  user_id: string;
+  user_label: string;
+  question_count: number;
+  questions: PublicAdminUsageQuestion[];
+  scheduled_run_count: number;
+  delivered_push_count: number;
+  failed_delivery_count: number;
+  latest_activity_at: string;
+};
+
+export type PublicAdminUsageReport = {
+  generated_at: string;
+  period_start: string;
+  period_end: string;
+  summary: {
+    today: string;
+    today_active_users: number;
+    today_question_count: number;
+    today_delivered_push_count: number;
+    last_week_same_day_active_users: number;
+    active_user_change: number;
+    leading_decline_user_label?: string;
+    leading_decline_question_delta: number;
+    text: string;
+  };
+  rows: PublicAdminUsageRow[];
+};
+
 export type WhopMembershipInfo = {
   membership_id: string;
   whop_user_id: string;

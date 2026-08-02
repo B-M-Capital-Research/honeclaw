@@ -296,6 +296,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/admin/invites/{user_id}/disable",
             post(public_admin::handle_disable_invite),
         )
+        .route("/admin/usage", get(public_admin::handle_usage_report))
         .route(
             "/integrations/whop/webhook",
             post(whop::handle_whop_webhook),

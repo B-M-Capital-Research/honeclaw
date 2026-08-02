@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-02
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **管理员使用统计生产上线**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-admin-usage-production-rollout.md`
+  - 摘要：将已完成的管理员统计、折线图、折叠大表格和近两周完整日期选项推送到 `main`，通过不可变构建与 active-chat drain 状态机完成后端切换，等待 Cloudflare Pages 前端生效，并在 PostgreSQL 权威身份校验后为三个指定手机号写入并复核管理员权限；本次不打 release tag
 
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`

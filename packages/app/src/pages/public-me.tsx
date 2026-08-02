@@ -6,6 +6,7 @@ import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
 import { PublicSettingsPanel } from "@/components/public-settings-panel";
 import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
+import { PublicAdminUsagePanel } from "@/components/public-admin-usage-panel";
 import { getPublicAuthMe, publicLogout } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
 import {
@@ -152,6 +153,7 @@ function AccountView(props: {
           <PublicSettingsPanel />
         </Show>
         <Show when={props.user.is_admin}>
+          <PublicAdminUsagePanel />
           <PublicAdminWhitelistPanel />
         </Show>
         <MembershipCard user={props.user} />
