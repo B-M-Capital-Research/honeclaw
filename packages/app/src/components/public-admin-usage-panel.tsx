@@ -463,6 +463,9 @@ export function PublicAdminUsagePanel() {
       const next = await getPublicAdminUsage(days);
       if (version !== loadVersion) return;
       setReport(next);
+      if (PUBLIC_ADMIN_USAGE_RANGES.includes(next.period_days as PublicAdminUsageRangeDays)) {
+        setRangeDays(next.period_days as PublicAdminUsageRangeDays);
+      }
       if (!publicAdminUsageDateIsAvailable(next, selectedDate())) {
         setSelectedDate("all");
       }

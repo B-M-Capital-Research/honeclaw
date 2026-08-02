@@ -372,7 +372,20 @@ export async function getPublicAdminUsage(
     signal,
     cache: "no-store",
   });
-  return parseJson<PublicAdminUsageReport>(response);
+  const report = await parseJson<PublicAdminUsageReport>(response);
+  if (
+    Number.isInteger(report.period_days) &&
+    report.period_days > 0
+  ) {
+    return report;
+  }
+  const start = Date.parse(`${report.period_start}T00:00:00Z`);
+  const end = Date.parse(`${report.period_end}T00:00:00Z`);
+  const inferredDays =
+    Number.isFinite(start) && Number.isFinite(end) && end >= start
+      ? Math.floor((end - start) / 86_400_000) + 1
+      : days;
+  return { ...report, period_days: inferredDays };
 }
 
 export async function createPublicAdminInvite(phoneNumber: string) {
