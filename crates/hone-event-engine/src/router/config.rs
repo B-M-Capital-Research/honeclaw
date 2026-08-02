@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use crate::digest::DigestBuffer;
 use crate::news_classifier::{DEFAULT_IMPORTANCE_PROMPT, NewsClassifier};
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::prefs::{AllowAllPrefs, PrefsProvider};
+use crate::prefs::{AllowAllPrefs, PrefsProvider, PriceAlertPolicyDefaults};
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
 
@@ -38,16 +38,10 @@ pub struct NotificationRouter {
     /// 防止同一 ticker 短时间内被价格异动 + 新闻 + SEC filing 三连推。
     /// 命中后降级到 digest,log_delivery 写 status="cooled_down"。
     pub(super) same_symbol_cooldown_minutes: u32,
-    /// 用户价格阈值覆盖的系统级最小即时推阈值。
-    pub(super) price_min_direct_pct: f64,
-    /// 价格 band 单一推送规则:新档 pct 必须比当日已 sink-sent 最大档 pct 高出
-    /// 本字段值,否则降级 digest。0 = 关闭(等于无脑全推);生产配置默认 2.0
-    /// = 「每跨一个新 band 必推」。替代旧的 daily cap + intraday gap 双保险机制。
-    pub(super) price_band_min_advance_pct: f64,
-    /// 收盘价格异动是否允许即时推；默认只进入摘要。
-    pub(super) price_close_direct_enabled: bool,
-    /// 大仓位标的用用户敏感阈值直推的默认仓位权重门槛。
-    pub(super) large_position_weight_pct: f64,
+    /// 价格候选档、首次直推阈值、重复步长和大仓位边界的系统默认值。
+    /// actor 偏好通过 `NotificationPrefs::effective_price_alert_policy` 与这组默认值
+    /// 合成；路由和概览必须共用同一解析入口。
+    pub(super) price_policy_defaults: PriceAlertPolicyDefaults,
     /// MacroEvent High 允许即时推的临近窗口。
     pub(super) macro_immediate_lookahead_hours: i64,
     pub(super) macro_immediate_grace_hours: i64,
@@ -90,10 +84,12 @@ impl NotificationRouter {
             high_daily_cap: 0,
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
-            price_min_direct_pct: 6.0,
-            price_band_min_advance_pct: 0.0,
-            price_close_direct_enabled: false,
-            large_position_weight_pct: 20.0,
+            // `NotificationRouter::new` 保留历史上的“重复 band 不限流”测试/嵌入语义；
+            // 生产 EventEngine 总是通过 `with_price_policy_defaults` 注入 canonical 配置。
+            price_policy_defaults: PriceAlertPolicyDefaults {
+                repeat_step_pct: 0.0,
+                ..PriceAlertPolicyDefaults::default()
+            },
             macro_immediate_lookahead_hours: 6,
             macro_immediate_grace_hours: 2,
             disabled_kinds: Arc::new(HashSet::new()),
@@ -138,24 +134,8 @@ impl NotificationRouter {
         self
     }
 
-    pub fn with_price_min_direct_pct(mut self, pct: f64) -> Self {
-        self.price_min_direct_pct = pct.max(0.0);
-        self
-    }
-
-    /// 价格 band 单一推送规则的 advance 阈值(百分点)。0 = 关闭。
-    pub fn with_price_band_min_advance_pct(mut self, pct: f64) -> Self {
-        self.price_band_min_advance_pct = pct.max(0.0);
-        self
-    }
-
-    pub fn with_price_close_direct_enabled(mut self, enabled: bool) -> Self {
-        self.price_close_direct_enabled = enabled;
-        self
-    }
-
-    pub fn with_large_position_weight_pct(mut self, pct: f64) -> Self {
-        self.large_position_weight_pct = pct.max(0.0);
+    pub fn with_price_policy_defaults(mut self, defaults: PriceAlertPolicyDefaults) -> Self {
+        self.price_policy_defaults = defaults;
         self
     }
 

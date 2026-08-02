@@ -96,6 +96,11 @@ pub struct NotificationPrefs {
     /// 正数价格变动优先用 `price_high_pct_up_override`，负数优先用 down。
     pub price_high_pct_up_override: Option<f64>,
     pub price_high_pct_down_override: Option<f64>,
+    /// 盘中价格首次达到即时推阈值后，再次即时提醒所需的最小前进步长（百分点）。
+    /// `None` → 继承系统 `thresholds.price_band_min_advance_pct`。
+    /// 例如首次阈值 8%、本字段 4% 时，系统候选档会形成 8% / 12% / 16%…
+    /// 的 actor 级提醒阶梯；不足 4 个百分点的中间档进入摘要。
+    pub price_realert_step_pct_override: Option<f64>,
     /// 当 router 能从事件 payload 读到 portfolio_weight / portfolio_weight_pct 时，
     /// 高仓位标的允许使用更敏感的用户阈值直推；低仓位仍受系统最小直推阈值保护。
     pub large_position_weight_pct: Option<f64>,
@@ -156,6 +161,7 @@ impl Default for NotificationPrefs {
             blocked_sources: Vec::new(),
             price_high_pct_up_override: None,
             price_high_pct_down_override: None,
+            price_realert_step_pct_override: None,
             large_position_weight_pct: None,
             mainline_style: None,
             mainline_style_user: None,
@@ -195,8 +201,133 @@ pub struct NotificationDeliveryPatch {
     pub price_high_pct_override: PreferenceUpdate<f64>,
     pub price_high_pct_up_override: PreferenceUpdate<f64>,
     pub price_high_pct_down_override: PreferenceUpdate<f64>,
+    pub price_realert_step_pct_override: PreferenceUpdate<f64>,
     pub large_position_weight_pct: PreferenceUpdate<f64>,
     pub quiet_hours: PreferenceUpdate<QuietHours>,
+}
+
+/// 价格候选事件与即时推策略的系统默认值。
+///
+/// PricePoller 负责按 `candidate_first_pct + N * candidate_step_pct` 产生全局候选档；
+/// router 再用 actor 偏好计算首次直推阈值和重复步长。把这组输入封装成值对象，确保
+/// 路由执行、聊天概览与管理 API 使用同一份策略解析逻辑。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct PriceAlertPolicyDefaults {
+    pub candidate_first_pct: f64,
+    pub candidate_step_pct: f64,
+    pub repeat_step_pct: f64,
+    pub min_direct_pct: f64,
+    pub large_position_weight_pct: f64,
+    pub close_direct_enabled: bool,
+}
+
+impl Default for PriceAlertPolicyDefaults {
+    fn default() -> Self {
+        Self {
+            candidate_first_pct: 6.0,
+            candidate_step_pct: 2.0,
+            repeat_step_pct: 2.0,
+            min_direct_pct: 6.0,
+            large_position_weight_pct: 20.0,
+            close_direct_enabled: false,
+        }
+    }
+}
+
+impl From<&hone_core::config::EventEngineThresholds> for PriceAlertPolicyDefaults {
+    fn from(thresholds: &hone_core::config::EventEngineThresholds) -> Self {
+        Self {
+            candidate_first_pct: thresholds.price_alert_high_pct,
+            candidate_step_pct: thresholds.price_realert_step_pct,
+            repeat_step_pct: thresholds.price_band_min_advance_pct,
+            min_direct_pct: thresholds.price_min_direct_pct,
+            large_position_weight_pct: thresholds.large_position_weight_pct,
+            close_direct_enabled: thresholds.price_close_direct_enabled,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PricePolicySource {
+    System,
+    ActorCommon,
+    ActorDirection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EffectivePriceDirectionPolicy {
+    /// 用户表达或系统继承得到的首次阈值，尚未应用非大仓位系统直推地板。
+    pub configured_first_pct: f64,
+    pub configured_first_source: PricePolicySource,
+    /// 普通仓位实际参与路由判断的首次阈值。
+    pub first_direct_pct: f64,
+    /// 用户配置低于系统非大仓位直推地板时为 true；保留原始来源的同时，
+    /// 让解释层明确最终阈值并非原样采用用户输入。
+    pub system_floor_applied: bool,
+    /// 达到大仓位权重门槛时实际参与路由判断的首次阈值。
+    pub large_position_first_direct_pct: f64,
+    /// 全局候选 band 网格中第一条不低于普通仓位阈值的可观测档。
+    pub first_candidate_band_pct: f64,
+    /// 全局候选 band 网格中第一条不低于大仓位阈值的可观测档。
+    pub large_position_first_candidate_band_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EffectivePriceAlertPolicy {
+    pub up: EffectivePriceDirectionPolicy,
+    pub down: EffectivePriceDirectionPolicy,
+    pub repeat_step_pct: f64,
+    pub repeat_step_source: PricePolicySource,
+    pub candidate_first_pct: f64,
+    pub candidate_step_pct: f64,
+    pub min_direct_pct: f64,
+    pub large_position_weight_pct: f64,
+    pub close_direct_enabled: bool,
+}
+
+impl EffectivePriceAlertPolicy {
+    pub fn direction_for_change(&self, change_pct: f64) -> &EffectivePriceDirectionPolicy {
+        if change_pct >= 0.0 {
+            &self.up
+        } else {
+            &self.down
+        }
+    }
+
+    pub fn first_direct_pct(&self, change_pct: f64, is_large_position: bool) -> f64 {
+        let direction = self.direction_for_change(change_pct);
+        if is_large_position {
+            direction.large_position_first_direct_pct
+        } else {
+            direction.first_direct_pct
+        }
+    }
+
+    /// 返回从首次可观测候选档开始的前 `count` 个实际提醒示例。
+    ///
+    /// 候选档由全局 poller 网格产生；actor 重复步长只是最小前进量。因此当两者
+    /// 不整除时，下一档向上落到第一条满足最小前进量的候选档，查询结果不会承诺
+    /// source 根本不会产生的精度。
+    pub fn sample_candidate_bands(&self, upward: bool, count: usize) -> Vec<f64> {
+        let direction = if upward { &self.up } else { &self.down };
+        let mut bands = Vec::with_capacity(count);
+        let mut current = direction.first_candidate_band_pct;
+        let effective_advance = if self.repeat_step_pct > 0.0 {
+            self.repeat_step_pct
+        } else {
+            self.candidate_step_pct
+        };
+        for _ in 0..count {
+            bands.push(round_pct(current));
+            current = next_candidate_band_at_or_above(
+                current + effective_advance,
+                self.candidate_first_pct,
+                self.candidate_step_pct,
+            );
+        }
+        bands
+    }
 }
 
 impl NotificationPrefs {
@@ -216,10 +347,23 @@ impl NotificationPrefs {
 
     /// 按偏好判断是否应推送该事件。
     pub fn should_deliver(&self, event: &MarketEvent) -> bool {
+        self.should_deliver_with_severity(event, event.severity)
+    }
+
+    /// 按路由已经为当前 actor 解析出的最终 severity 过滤。
+    ///
+    /// Router 可能因价格阈值或 immediate_kinds 对共享事件升/降级；此时不能再用
+    /// 原始事件 severity 判断 min_severity，否则会出现“已降为 Medium 仍穿过 High
+    /// 过滤”或“已升为 High 却被原始 Low 过滤”的执行分叉。
+    pub fn should_deliver_with_severity(
+        &self,
+        event: &MarketEvent,
+        effective_severity: Severity,
+    ) -> bool {
         if !self.enabled {
             return false;
         }
-        if event.severity.rank() < self.min_severity.rank() {
+        if effective_severity.rank() < self.min_severity.rank() {
             return false;
         }
         if self.portfolio_only && event.symbols.is_empty() {
@@ -275,6 +419,10 @@ impl NotificationPrefs {
         apply_optional_update(
             &mut candidate.price_high_pct_down_override,
             patch.price_high_pct_down_override,
+        );
+        apply_optional_update(
+            &mut candidate.price_realert_step_pct_override,
+            patch.price_realert_step_pct_override,
         );
         apply_optional_update(
             &mut candidate.large_position_weight_pct,
@@ -359,6 +507,11 @@ impl NotificationPrefs {
             50.0,
         )?;
         validate_optional_percentage(
+            "price_realert_step_pct_override",
+            self.price_realert_step_pct_override,
+            50.0,
+        )?;
+        validate_optional_percentage(
             "large_position_weight_pct",
             self.large_position_weight_pct,
             100.0,
@@ -392,6 +545,105 @@ impl NotificationPrefs {
         }
         Ok(())
     }
+
+    pub fn effective_price_alert_policy(
+        &self,
+        defaults: PriceAlertPolicyDefaults,
+    ) -> EffectivePriceAlertPolicy {
+        let candidate_first_pct = sanitize_positive(defaults.candidate_first_pct, 6.0);
+        let candidate_step_pct = sanitize_positive(defaults.candidate_step_pct, 2.0);
+        let repeat_step_pct = self
+            .price_realert_step_pct_override
+            .unwrap_or(defaults.repeat_step_pct)
+            .max(0.0);
+        let min_direct_pct = defaults.min_direct_pct.max(0.0);
+        let common_first = self.price_high_pct_override;
+        let up = effective_direction_policy(
+            self.price_high_pct_up_override,
+            common_first,
+            candidate_first_pct,
+            candidate_step_pct,
+            min_direct_pct,
+        );
+        let down = effective_direction_policy(
+            self.price_high_pct_down_override,
+            common_first,
+            candidate_first_pct,
+            candidate_step_pct,
+            min_direct_pct,
+        );
+        EffectivePriceAlertPolicy {
+            up,
+            down,
+            repeat_step_pct,
+            repeat_step_source: if self.price_realert_step_pct_override.is_some() {
+                PricePolicySource::ActorCommon
+            } else {
+                PricePolicySource::System
+            },
+            candidate_first_pct,
+            candidate_step_pct,
+            min_direct_pct,
+            large_position_weight_pct: self
+                .large_position_weight_pct
+                .unwrap_or(defaults.large_position_weight_pct)
+                .max(0.0),
+            close_direct_enabled: defaults.close_direct_enabled,
+        }
+    }
+}
+
+fn effective_direction_policy(
+    direction_override: Option<f64>,
+    common_override: Option<f64>,
+    candidate_first_pct: f64,
+    candidate_step_pct: f64,
+    min_direct_pct: f64,
+) -> EffectivePriceDirectionPolicy {
+    let (configured_first_pct, configured_first_source) =
+        match (direction_override, common_override) {
+            (Some(value), _) => (value, PricePolicySource::ActorDirection),
+            (None, Some(value)) => (value, PricePolicySource::ActorCommon),
+            (None, None) => (candidate_first_pct, PricePolicySource::System),
+        };
+    let first_direct_pct = configured_first_pct.max(min_direct_pct);
+    EffectivePriceDirectionPolicy {
+        configured_first_pct,
+        configured_first_source,
+        first_direct_pct,
+        system_floor_applied: first_direct_pct > configured_first_pct + 1e-9,
+        large_position_first_direct_pct: configured_first_pct,
+        first_candidate_band_pct: next_candidate_band_at_or_above(
+            first_direct_pct,
+            candidate_first_pct,
+            candidate_step_pct,
+        ),
+        large_position_first_candidate_band_pct: next_candidate_band_at_or_above(
+            configured_first_pct,
+            candidate_first_pct,
+            candidate_step_pct,
+        ),
+    }
+}
+
+fn next_candidate_band_at_or_above(target: f64, first: f64, step: f64) -> f64 {
+    if target <= first {
+        return round_pct(first);
+    }
+    let lanes = ((target - first) / step - 1e-9).ceil().max(0.0);
+    round_pct(first + lanes * step)
+}
+
+fn sanitize_positive(value: f64, fallback: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        fallback
+    }
+}
+
+fn round_pct(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
 }
 
 fn apply_optional_update<T>(target: &mut Option<T>, update: PreferenceUpdate<T>) {
@@ -863,6 +1115,7 @@ mod tests {
             blocked_sources: vec!["watcherguru".into()],
             price_high_pct_up_override: Some(6.0),
             price_high_pct_down_override: Some(5.0),
+            price_realert_step_pct_override: Some(4.0),
             large_position_weight_pct: Some(20.0),
             mainline_style: Some("长期叙事派".into()),
             mainline_style_user: None,
@@ -906,6 +1159,7 @@ mod tests {
         assert_eq!(loaded.blocked_sources, vec!["watcherguru".to_string()]);
         assert_eq!(loaded.price_high_pct_up_override, Some(6.0));
         assert_eq!(loaded.price_high_pct_down_override, Some(5.0));
+        assert_eq!(loaded.price_realert_step_pct_override, Some(4.0));
         assert_eq!(loaded.large_position_weight_pct, Some(20.0));
         assert_eq!(loaded.mainline_style.as_deref(), Some("长期叙事派"));
         assert_eq!(
@@ -935,9 +1189,80 @@ mod tests {
         assert!(prefs.blocked_sources.is_empty());
         assert!(prefs.price_high_pct_up_override.is_none());
         assert!(prefs.price_high_pct_down_override.is_none());
+        assert!(prefs.price_realert_step_pct_override.is_none());
         assert!(prefs.large_position_weight_pct.is_none());
         assert!(prefs.mainline_style.is_none());
         assert!(prefs.mainline_by_ticker.is_none());
+    }
+
+    #[test]
+    fn effective_price_policy_resolves_actor_ladder_against_system_candidates() {
+        let prefs = NotificationPrefs {
+            price_high_pct_override: Some(8.0),
+            price_realert_step_pct_override: Some(4.0),
+            ..Default::default()
+        };
+        let policy = prefs.effective_price_alert_policy(PriceAlertPolicyDefaults {
+            candidate_first_pct: 6.0,
+            candidate_step_pct: 2.0,
+            repeat_step_pct: 2.0,
+            min_direct_pct: 6.0,
+            ..Default::default()
+        });
+
+        assert_eq!(policy.up.first_direct_pct, 8.0);
+        assert_eq!(policy.down.first_direct_pct, 8.0);
+        assert_eq!(
+            policy.up.configured_first_source,
+            PricePolicySource::ActorCommon
+        );
+        assert_eq!(policy.repeat_step_pct, 4.0);
+        assert_eq!(policy.repeat_step_source, PricePolicySource::ActorCommon);
+        assert_eq!(
+            policy.sample_candidate_bands(true, 3),
+            vec![8.0, 12.0, 16.0]
+        );
+        assert_eq!(
+            policy.sample_candidate_bands(false, 3),
+            vec![8.0, 12.0, 16.0]
+        );
+    }
+
+    #[test]
+    fn effective_price_policy_reports_observable_grid_without_fake_precision() {
+        let prefs = NotificationPrefs {
+            price_high_pct_up_override: Some(7.0),
+            price_realert_step_pct_override: Some(3.0),
+            ..Default::default()
+        };
+        let policy = prefs.effective_price_alert_policy(PriceAlertPolicyDefaults::default());
+
+        assert_eq!(policy.up.first_direct_pct, 7.0);
+        assert_eq!(policy.up.first_candidate_band_pct, 8.0);
+        assert_eq!(
+            policy.sample_candidate_bands(true, 3),
+            vec![8.0, 12.0, 16.0]
+        );
+        assert_eq!(policy.down.first_direct_pct, 6.0);
+        assert_eq!(
+            policy.down.configured_first_source,
+            PricePolicySource::System
+        );
+    }
+
+    #[test]
+    fn effective_price_policy_keeps_system_floor_except_for_large_positions() {
+        let prefs = NotificationPrefs {
+            price_high_pct_override: Some(4.0),
+            large_position_weight_pct: Some(25.0),
+            ..Default::default()
+        };
+        let policy = prefs.effective_price_alert_policy(PriceAlertPolicyDefaults::default());
+
+        assert_eq!(policy.up.first_direct_pct, 6.0);
+        assert!(policy.up.system_floor_applied);
+        assert_eq!(policy.up.large_position_first_direct_pct, 4.0);
+        assert_eq!(policy.large_position_weight_pct, 25.0);
     }
 
     #[test]
@@ -990,6 +1315,7 @@ mod tests {
         assert!(loaded.blocked_sources.is_empty());
         assert!(loaded.price_high_pct_up_override.is_none());
         assert!(loaded.price_high_pct_down_override.is_none());
+        assert!(loaded.price_realert_step_pct_override.is_none());
         assert!(loaded.large_position_weight_pct.is_none());
     }
 
@@ -1278,9 +1604,22 @@ mod tests {
         let valid = NotificationPrefs {
             price_high_pct_up_override: Some(6.0),
             price_high_pct_down_override: Some(5.0),
+            price_realert_step_pct_override: Some(4.0),
             large_position_weight_pct: Some(20.0),
             ..Default::default()
         };
         valid.validate().unwrap();
+
+        let invalid_step = NotificationPrefs {
+            price_realert_step_pct_override: Some(0.0),
+            ..Default::default()
+        };
+        assert!(
+            invalid_step
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("price_realert_step_pct_override")
+        );
     }
 }

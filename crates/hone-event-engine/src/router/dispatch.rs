@@ -71,6 +71,7 @@ impl NotificationRouter {
         let mut pending = 0u32;
         for (actor, sev) in hits {
             let user_prefs = self.prefs.load(&actor);
+            let price_policy = user_prefs.effective_price_alert_policy(self.price_policy_defaults);
             // LLM 仲裁:不确定来源的 Low NewsCritical,按 actor 重要性 prompt
             // 决定是否升 Medium。结果只影响本 actor 的本次分发,不污染原 event。
             let actor_upgraded_event;
@@ -81,15 +82,16 @@ impl NotificationRouter {
                 }
                 None => (event, sev),
             };
-            // per-actor severity override:用户可自定义
-            //   (a) price_high_pct_override:价格异动绝对值触达即升 High 即时推;
+            // per-actor severity policy:用户可自定义
+            //   (a) 首次价格阈值:达到时升 High,未达到时即使系统候选为 High 也降级;
             //   (b) immediate_kinds:某些 kind 无条件升 High 即时推(例如 52 周高/低、
-            //       分析师评级)。
+            //       分析师评级；price_alert 仍不能绕过显式价格阈值)。
             // 升级后仍要走 high_daily_cap / cooldown,保持 burst 防护。
-            let mut sev = self.apply_per_actor_severity_override(event, sev, &user_prefs);
+            let mut sev =
+                self.apply_per_actor_severity_policy(event, sev, &user_prefs, &price_policy);
             sev = self.apply_quiet_mode(event, sev, &user_prefs);
             if is_price_close_alert(event)
-                && !self.price_close_direct_enabled
+                && !price_policy.close_direct_enabled
                 && matches!(sev, Severity::High)
             {
                 tracing::info!(
@@ -100,7 +102,7 @@ impl NotificationRouter {
                 );
                 sev = Severity::Medium;
             }
-            if !user_prefs.should_deliver(event) {
+            if !user_prefs.should_deliver_with_severity(event, sev) {
                 let _ = self.store.log_delivery(
                     &event.id,
                     &actor_key(&actor),
@@ -165,7 +167,7 @@ impl NotificationRouter {
                 sev
             };
             // 价格 band 单一推送规则:新档 pct 必须比当日已 sink-sent 最大档 pct
-            // 至少高出 `price_band_min_advance_pct`,否则降级 digest。这一条规则
+            // 至少高出 actor 最终 `repeat_step_pct`,否则降级 digest。这一条规则
             // 替代了旧的 daily cap + intraday gap —— 因为 band id 已自带「同档位
             // INSERT IGNORE」防重,所以不再需要时间 gap 兜底;`monotone 新高 + N」
             // 既保护了「同档位反复震荡不刷屏」(任何 ≤max 的 band 都被挡),又允许
@@ -173,7 +175,7 @@ impl NotificationRouter {
             // 等价于「每跨一个新 band 必推」。
             if matches!(effective_sev, Severity::High)
                 && is_intraday_price_band_alert(event)
-                && self.price_band_min_advance_pct > 0.0
+                && price_policy.repeat_step_pct > 0.0
             {
                 if let Some((symbol, direction)) = price_alert_symbol_direction(event) {
                     let day_start = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
@@ -181,7 +183,7 @@ impl NotificationRouter {
                         .payload
                         .get("hone_price_band_bps")
                         .and_then(|v| v.as_i64());
-                    let min_advance_bps = (self.price_band_min_advance_pct * 100.0).round() as i64;
+                    let min_advance_bps = (price_policy.repeat_step_pct * 100.0).round() as i64;
                     match (
                         current_bps,
                         self.store.last_price_band_max_bps_for_symbol_direction(
@@ -200,7 +202,7 @@ impl NotificationRouter {
                                 direction = %direction,
                                 current_band_bps = cur,
                                 prev_max_band_bps = prev_max,
-                                min_advance_pct = self.price_band_min_advance_pct,
+                                min_advance_pct = price_policy.repeat_step_pct,
                                 "price band demoted to digest (no monotone advance ≥ min_advance_pct)"
                             );
                             demoted_by_price_advance = true;

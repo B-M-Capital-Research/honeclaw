@@ -191,6 +191,7 @@ mod tests {
             price_high_pct_override: Some(6.0),
             price_high_pct_up_override: Some(7.0),
             price_high_pct_down_override: Some(5.0),
+            price_realert_step_pct_override: Some(4.0),
             large_position_weight_pct: Some(20.0),
             quiet_hours: Some(QuietHours {
                 from: "23:00".into(),

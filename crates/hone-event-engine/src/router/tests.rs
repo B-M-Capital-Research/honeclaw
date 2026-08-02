@@ -1,6 +1,7 @@
 use super::*;
 use crate::digest::DigestBuffer;
 use crate::event::{EventKind, MarketEvent, Severity};
+use crate::prefs::PriceAlertPolicyDefaults;
 use crate::store::EventStore;
 use crate::subscription::{PortfolioSubscription, SharedRegistry, SubscriptionRegistry};
 use async_trait::async_trait;
@@ -36,6 +37,13 @@ impl OutboundSink for CapturingSink {
 
 fn actor(user: &str) -> ActorIdentity {
     ActorIdentity::new("imessage", user, None::<&str>).unwrap()
+}
+
+fn price_policy_defaults(repeat_step_pct: f64) -> PriceAlertPolicyDefaults {
+    PriceAlertPolicyDefaults {
+        repeat_step_pct,
+        ..Default::default()
+    }
 }
 
 fn earnings_event_with_severity(severity: Severity) -> MarketEvent {
@@ -489,7 +497,7 @@ async fn price_band_bypasses_generic_same_symbol_cooldown() {
         digest,
     )
     .with_same_symbol_cooldown_minutes(60)
-    .with_price_band_min_advance_pct(2.0);
+    .with_price_policy_defaults(price_policy_defaults(2.0));
 
     let first = price_band_event("AAOI", "up", 600, 6.18);
     let second = price_band_event("AAOI", "up", 800, 8.12);
@@ -524,7 +532,7 @@ async fn price_band_advance_rule_demotes_band_below_min_advance() {
         store.clone(),
         digest,
     )
-    .with_price_band_min_advance_pct(2.0);
+    .with_price_policy_defaults(price_policy_defaults(2.0));
 
     let first = price_band_event("AAOI", "up", 600, 6.18);
     // 同档位再来一次 —— id 相同,理论上 INSERT IGNORE 已挡掉,但 dispatch 层
@@ -568,7 +576,7 @@ async fn price_band_advance_rule_passes_full_aaoi_2026_05_01_sequence() {
         store.clone(),
         digest,
     )
-    .with_price_band_min_advance_pct(2.0);
+    .with_price_policy_defaults(price_policy_defaults(2.0));
 
     let bands = [
         price_band_event("AAOI", "up", 600, 6.18),
@@ -611,7 +619,7 @@ async fn price_band_advance_rule_separates_up_and_down_lanes() {
         store.clone(),
         digest,
     )
-    .with_price_band_min_advance_pct(2.0);
+    .with_price_policy_defaults(price_policy_defaults(2.0));
 
     let up = price_band_event("AAOI", "up", 1200, 12.50);
     let down = price_band_event("AAOI", "down", 600, -6.30);
@@ -646,7 +654,7 @@ async fn price_band_advance_rule_disabled_when_zero() {
         store.clone(),
         digest,
     )
-    .with_price_band_min_advance_pct(0.0);
+    .with_price_policy_defaults(price_policy_defaults(0.0));
 
     let first = price_band_event("AAOI", "up", 800, 8.10);
     // 反过来推 6%(在 advance>0 下会被降级),advance=0 应允许直推。
@@ -656,6 +664,161 @@ async fn price_band_advance_rule_disabled_when_zero() {
 
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
     assert_eq!(router.dispatch(&lower).await.unwrap(), (1, 0));
+    assert_eq!(sink.calls.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn actor_price_ladder_enforces_first_threshold_and_four_point_realerts() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                price_high_pct_override: Some(8.0),
+                price_realert_step_pct_override: Some(4.0),
+                // 即使旧配置里把 price_alert 放进 immediate_kinds，也不能绕过
+                // 显式的首次价格阈值。
+                immediate_kinds: Some(vec!["price_alert".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_prefs(prefs_store)
+    .with_price_policy_defaults(price_policy_defaults(2.0));
+
+    let cases = [
+        ("up", 600, 6.2, (0, 1)),
+        ("up", 800, 8.2, (1, 0)),
+        ("up", 1000, 10.2, (0, 1)),
+        ("up", 1200, 12.2, (1, 0)),
+        ("up", 1000, 10.4, (0, 1)),
+        ("up", 1600, 16.2, (1, 0)),
+        ("down", 600, -6.2, (0, 1)),
+        ("down", 800, -8.2, (1, 0)),
+        ("down", 1000, -10.2, (0, 1)),
+        ("down", 1200, -12.2, (1, 0)),
+        ("down", 1000, -10.4, (0, 1)),
+        ("down", 1600, -16.2, (1, 0)),
+    ];
+    for (direction, band_bps, pct, expected) in cases {
+        let event = price_band_event("AAOI", direction, band_bps, pct);
+        store.insert_event(&event).unwrap();
+        let actual = router.dispatch(&event).await.unwrap();
+        assert_eq!(
+            actual, expected,
+            "direction={direction} band={band_bps} pct={pct}"
+        );
+    }
+    assert_eq!(sink.calls.lock().unwrap().len(), 6);
+}
+
+#[tokio::test]
+async fn actor_price_policy_filters_against_effective_not_shared_event_severity() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                min_severity: Severity::High,
+                price_high_pct_override: Some(8.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_prefs(prefs_store)
+    .with_price_policy_defaults(price_policy_defaults(2.0));
+
+    let below_actor_threshold = price_band_event("AAOI", "up", 600, 6.2);
+    let at_actor_threshold = price_band_event("AAOI", "up", 800, 8.2);
+    store.insert_event(&below_actor_threshold).unwrap();
+    store.insert_event(&at_actor_threshold).unwrap();
+
+    assert_eq!(
+        router.dispatch(&below_actor_threshold).await.unwrap(),
+        (0, 0),
+        "共享事件原本是 High，但 actor 价格策略已降为 Medium，应被 min_severity=High 过滤"
+    );
+    assert_eq!(router.dispatch(&at_actor_threshold).await.unwrap(), (1, 0));
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                price_high_pct_override: Some(8.0),
+                price_realert_step_pct_override: Some(4.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_prefs(prefs_store)
+    .with_high_daily_cap(2)
+    .with_price_policy_defaults(price_policy_defaults(2.0));
+
+    for (band_bps, pct, expected) in [
+        (800, 8.2, (1, 0)),
+        (1200, 12.2, (1, 0)),
+        (1600, 16.2, (0, 1)),
+    ] {
+        let event = price_band_event("AAOI", "up", band_bps, pct);
+        store.insert_event(&event).unwrap();
+        assert_eq!(router.dispatch(&event).await.unwrap(), expected);
+    }
     assert_eq!(sink.calls.lock().unwrap().len(), 2);
 }
 
@@ -1774,7 +1937,10 @@ async fn large_position_can_use_sensitive_price_threshold() {
         digest,
     )
     .with_prefs(prefs_store)
-    .with_price_min_direct_pct(6.0);
+    .with_price_policy_defaults(PriceAlertPolicyDefaults {
+        min_direct_pct: 6.0,
+        ..Default::default()
+    });
 
     let ev = MarketEvent {
         id: "price:AAOI:large".into(),
@@ -1830,7 +1996,10 @@ async fn directional_price_thresholds_use_move_direction() {
         digest,
     )
     .with_prefs(prefs_store)
-    .with_price_min_direct_pct(5.0);
+    .with_price_policy_defaults(PriceAlertPolicyDefaults {
+        min_direct_pct: 5.0,
+        ..Default::default()
+    });
 
     let mk = |id: &str, pct: f64| MarketEvent {
         id: id.into(),
@@ -1938,7 +2107,10 @@ async fn price_close_direct_enabled_allows_closing_move_promotion() {
         digest,
     )
     .with_prefs(prefs_store)
-    .with_price_close_direct_enabled(true);
+    .with_price_policy_defaults(PriceAlertPolicyDefaults {
+        close_direct_enabled: true,
+        ..Default::default()
+    });
 
     let ev = MarketEvent {
         id: "price_close:AMD:2026-04-22".into(),

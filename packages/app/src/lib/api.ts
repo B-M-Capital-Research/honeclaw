@@ -1297,11 +1297,45 @@ export interface QuietHoursView {
   exempt_kinds: string[];
 }
 
+export type PricePolicySource = "system" | "actor_common" | "actor_direction";
+
+export interface EffectivePriceDirectionPolicy {
+  configured_first_pct: number;
+  configured_first_source: PricePolicySource;
+  first_direct_pct: number;
+  system_floor_applied: boolean;
+  large_position_first_direct_pct: number;
+  first_candidate_band_pct: number;
+  large_position_first_candidate_band_pct: number;
+}
+
+export interface EffectivePriceAlertPolicy {
+  up: EffectivePriceDirectionPolicy;
+  down: EffectivePriceDirectionPolicy;
+  repeat_step_pct: number;
+  repeat_step_source: PricePolicySource;
+  candidate_first_pct: number;
+  candidate_step_pct: number;
+  min_direct_pct: number;
+  large_position_weight_pct: number;
+  close_direct_enabled: boolean;
+}
+
 export interface ImmediateConfig {
+  event_engine_enabled: boolean;
+  globally_disabled_kinds: string[];
   enabled: boolean;
   min_severity: string;
   portfolio_only: boolean;
+  high_severity_daily_cap: number;
+  same_symbol_cooldown_minutes: number;
   price_high_pct?: number | null;
+  price_high_pct_up?: number | null;
+  price_high_pct_down?: number | null;
+  price_realert_step_pct?: number | null;
+  large_position_weight_pct?: number | null;
+  effective_price_alert_policy: EffectivePriceAlertPolicy;
+  price_ladder_examples: { up: number[]; down: number[] };
   allow_kinds?: string[] | null;
   blocked_kinds: string[];
   immediate_kinds?: string[] | null;
@@ -1483,6 +1517,8 @@ export type NotificationPrefs = {
   price_high_pct_up_override: number | null;
   /** 下跌方向价格异动阈值;null = 回落到通用 actor override / 全局阈值 */
   price_high_pct_down_override: number | null;
+  /** 首次命中后的重复提醒最小前进步长;null = 沿用全局价格 band 推送步长 */
+  price_realert_step_pct_override: number | null;
   /** 被视为大仓位的持仓权重百分比;null = 沿用全局 router 配置 */
   large_position_weight_pct: number | null;
   /** 强制升 High 即时推的 kind tag 列表;null/[] = 不强升 */

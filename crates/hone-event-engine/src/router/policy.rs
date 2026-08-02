@@ -3,8 +3,8 @@
 //!
 //! - **`apply_system_event_policy`**:全局规则。律所软文降 Low、Macro 高优只在临近
 //!   窗口生效、远期 EarningsUpcoming 提前预览不算 High。
-//! - **`apply_per_actor_severity_override`**:用户偏好。允许通过 `price_*_override`
-//!   或 `immediate_kinds` 把 Medium 升 High 即时推。
+//! - **`apply_per_actor_severity_policy`**:用户偏好。价格规则可按最终首次阈值
+//!   升级或降级；其它 kind 可通过 `immediate_kinds` 把 Medium 升 High 即时推。
 //! - **`apply_quiet_mode`**:夜间静默。除几类「真硬信号」(财报 / SEC filing /
 //!   盘中价格 band)外,把 High 降回 Medium 进 digest。
 //!
@@ -15,7 +15,7 @@
 use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Utc};
 
 use crate::event::{EventKind, MarketEvent, Severity, is_noop_analyst_grade};
-use crate::prefs::{NotificationPrefs, kind_tag};
+use crate::prefs::{EffectivePriceAlertPolicy, NotificationPrefs, kind_tag};
 
 use super::config::NotificationRouter;
 
@@ -64,36 +64,37 @@ impl NotificationRouter {
         routed
     }
 
-    /// 按用户 prefs 重写 severity:价格阈值 / immediate_kinds。价格覆盖保留用户
-    /// 敏感度，但默认不能低于系统最小直推阈值；大仓位标的可用用户阈值。
-    pub(super) fn apply_per_actor_severity_override(
+    /// 按最终用户策略重写 severity:价格阶梯 / immediate_kinds。
+    ///
+    /// 价格策略既能升级也能降级：用户阈值低于系统默认时，达到最终地板可升 High；
+    /// 用户阈值高于系统默认时，较低的系统 High 候选必须降回摘要。PriceAlert 一旦
+    /// 进入这里就由价格策略完整接管，`immediate_kinds=price_alert` 不能绕过显式阈值。
+    pub(super) fn apply_per_actor_severity_policy(
         &self,
         event: &MarketEvent,
         sev: Severity,
         prefs: &NotificationPrefs,
+        price_policy: &EffectivePriceAlertPolicy,
     ) -> Severity {
-        if matches!(sev, Severity::High) {
-            return sev;
-        }
-        if let Some(threshold_pct) = price_override_threshold(event, prefs)
-            && matches!(event.kind, EventKind::PriceAlert { .. })
-            && let Some(change_pct) = price_alert_change_pct(event)
-        {
-            let min_direct = self.price_min_direct_pct.max(0.0);
-            let large_weight_threshold = prefs
-                .large_position_weight_pct
-                .unwrap_or(self.large_position_weight_pct);
-            let is_large_position = event_position_weight_pct(event)
-                .map(|weight| weight >= large_weight_threshold)
-                .unwrap_or(false);
-            let required = if is_large_position {
-                threshold_pct
-            } else {
-                threshold_pct.max(min_direct)
+        if matches!(event.kind, EventKind::PriceAlert { .. }) {
+            let Some(change_pct) = price_alert_change_pct(event) else {
+                return sev;
             };
+            let is_large_position = event_position_weight_pct(event)
+                .map(|weight| weight >= price_policy.large_position_weight_pct)
+                .unwrap_or(false);
+            let required = price_policy.first_direct_pct(change_pct, is_large_position);
             if change_pct.abs() >= required {
                 return Severity::High;
             }
+            return if matches!(sev, Severity::High) {
+                Severity::Medium
+            } else {
+                sev
+            };
+        }
+        if matches!(sev, Severity::High) {
+            return sev;
         }
         if let Some(kinds) = prefs.immediate_kinds.as_deref() {
             let tag = kind_tag(&event.kind);
@@ -141,22 +142,6 @@ impl NotificationRouter {
             "quiet mode demoted High to digest"
         );
         Severity::Medium
-    }
-}
-
-fn price_override_threshold(event: &MarketEvent, prefs: &NotificationPrefs) -> Option<f64> {
-    let pct = event
-        .payload
-        .get("changesPercentage")
-        .and_then(|v| v.as_f64());
-    match pct {
-        Some(p) if p >= 0.0 => prefs
-            .price_high_pct_up_override
-            .or(prefs.price_high_pct_override),
-        Some(_) => prefs
-            .price_high_pct_down_override
-            .or(prefs.price_high_pct_override),
-        None => prefs.price_high_pct_override,
     }
 }
 

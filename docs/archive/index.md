@@ -4,6 +4,18 @@ Last updated: 2026-08-02
 
 ## 2026-08-02
 
+### Actor Price Ladder And Effective Rule Explanation
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/archive/plans/price-ladder-effective-rules.md`
+- Handoff: `docs/handoffs/2026-08-02-price-ladder-effective-rules.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-02-04-separate-price-candidate-bands-from-actor-notification-ladders`
+- Related PRs / commits: committed and pushed directly to `main`; no PR, deployment, release, or tag
+- Related runbooks / regressions: Core 136; event-engine 538/13 ignored; tools 163/1 ignored; Web API focused 6; Web 343; TypeScript typecheck; workspace all-target check; complete CI-safe regressions; 43-item offline classifier fixture; real local browser QA
+- Current conclusion: PricePoller keeps one shared 6% + 2-point candidate grid, while each actor can own the first threshold and repeat step. The Router and all rule-query surfaces resolve one domain policy, so an 8%/4-point request executes and explains ±8/12/16 consistently. Lower system candidates and insufficient advances are not immediate, `immediate_kinds=price_alert` cannot bypass the threshold, min severity uses the actor-final severity, and system-floor intervention is explicit. The query also fails loud when the event engine or `price_alert` is globally disabled, states that the per-category daily High cap still applies, and explains that intraday price bands remain exempt from ordinary same-symbol cooldown.
+- Next entry point: `docs/handoffs/2026-08-02-price-ladder-effective-rules.md`; start with `NotificationPrefs::effective_price_alert_policy`, then inspect router policy/dispatch and the shared schedule overview builder.
+
 ### Public Administrator Usage Analytics
 
 - Status: done

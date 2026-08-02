@@ -363,7 +363,7 @@ impl HoneBotCore {
         // 目录必须与 event-engine `with_prefs_dir` 使用同一个,否则写进去 router 读不到。
         // 同时强制注入 overview 上下文(cron_jobs_dir + unified digest 默认槽位时刻),
         // 让 get_overview action 总能给出完整的「我的推送日程」拍平视图,无 partial 分支。
-        let overview_digest_defaults = hone_tools::schedule_view::DigestDefaults {
+        let overview_defaults = hone_tools::schedule_view::NotificationOverviewDefaults {
             slots: self
                 .config
                 .event_engine
@@ -375,6 +375,17 @@ impl HoneBotCore {
                     label: s.label.clone(),
                 })
                 .collect(),
+            price_alert: hone_tools::schedule_view::PriceAlertPolicyDefaults::from(
+                &self.config.event_engine.thresholds,
+            ),
+            event_engine_enabled: self.config.event_engine.enabled,
+            globally_disabled_kinds: self.config.event_engine.disabled_kinds.clone(),
+            high_severity_daily_cap: self.config.event_engine.thresholds.high_severity_daily_cap,
+            same_symbol_cooldown_minutes: self
+                .config
+                .event_engine
+                .thresholds
+                .same_symbol_cooldown_minutes,
         };
         if self.config.cloud.effective_mode().is_cloud_authoritative()
             && self.config.cloud.postgres.is_configured()
@@ -384,7 +395,7 @@ impl HoneBotCore {
                 &self.config.storage.notif_prefs_dir,
                 actor.cloned(),
                 &self.config.storage.cron_jobs_dir,
-                overview_digest_defaults,
+                overview_defaults,
                 postgres,
             )));
         } else {
@@ -392,7 +403,7 @@ impl HoneBotCore {
                 &self.config.storage.notif_prefs_dir,
                 actor.cloned(),
                 &self.config.storage.cron_jobs_dir,
-                overview_digest_defaults,
+                overview_defaults,
             )));
         }
 

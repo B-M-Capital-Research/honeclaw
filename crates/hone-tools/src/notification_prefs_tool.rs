@@ -29,7 +29,7 @@ pub struct NotificationPrefsTool {
     /// `get_overview` 聚合视图所需的上下文。HoneBotCore 构造时必传,
     /// 保证用户问「我的推送怎么配的」时拿到的是含 cron + unified digest 的完整表格。
     cron_jobs_dir: PathBuf,
-    digest_defaults: crate::schedule_view::DigestDefaults,
+    overview_defaults: crate::schedule_view::NotificationOverviewDefaults,
     postgres: Option<CloudPgRuntime>,
 }
 
@@ -38,13 +38,13 @@ impl NotificationPrefsTool {
         prefs_dir: impl Into<PathBuf>,
         actor: Option<ActorIdentity>,
         cron_jobs_dir: impl Into<PathBuf>,
-        digest_defaults: crate::schedule_view::DigestDefaults,
+        overview_defaults: crate::schedule_view::NotificationOverviewDefaults,
     ) -> Self {
         Self {
             prefs_dir: prefs_dir.into(),
             actor,
             cron_jobs_dir: cron_jobs_dir.into(),
-            digest_defaults,
+            overview_defaults,
             postgres: None,
         }
     }
@@ -53,14 +53,14 @@ impl NotificationPrefsTool {
         prefs_dir: impl Into<PathBuf>,
         actor: Option<ActorIdentity>,
         cron_jobs_dir: impl Into<PathBuf>,
-        digest_defaults: crate::schedule_view::DigestDefaults,
+        overview_defaults: crate::schedule_view::NotificationOverviewDefaults,
         postgres: CloudPgRuntime,
     ) -> Self {
         Self {
             prefs_dir: prefs_dir.into(),
             actor,
             cron_jobs_dir: cron_jobs_dir.into(),
-            digest_defaults,
+            overview_defaults,
             postgres: Some(postgres),
         }
     }
@@ -298,7 +298,7 @@ fn parse_delivery_controls(value: &Value) -> HoneResult<NotificationDeliveryPatc
         HoneError::Tool(
             "update_delivery_controls 需要对象，字段可选:timezone,digest_slots,\
              price_high_pct,price_high_pct_up,price_high_pct_down,\
-             large_position_weight_pct,quiet_hours"
+             price_realert_step_pct,large_position_weight_pct,quiet_hours"
                 .into(),
         )
     })?;
@@ -308,6 +308,7 @@ fn parse_delivery_controls(value: &Value) -> HoneResult<NotificationDeliveryPatc
         "price_high_pct",
         "price_high_pct_up",
         "price_high_pct_down",
+        "price_realert_step_pct",
         "large_position_weight_pct",
         "quiet_hours",
     ];
@@ -346,6 +347,11 @@ fn parse_delivery_controls(value: &Value) -> HoneResult<NotificationDeliveryPatc
         .map(|value| parse_percentage_update(value, "price_high_pct_down"))
         .transpose()?
         .unwrap_or_default();
+    let price_realert_step_pct_override = controls
+        .get("price_realert_step_pct")
+        .map(|value| parse_percentage_update(value, "price_realert_step_pct"))
+        .transpose()?
+        .unwrap_or_default();
     let large_position_weight_pct = controls
         .get("large_position_weight_pct")
         .map(|value| parse_percentage_update(value, "large_position_weight_pct"))
@@ -362,6 +368,7 @@ fn parse_delivery_controls(value: &Value) -> HoneResult<NotificationDeliveryPatc
         price_high_pct_override,
         price_high_pct_up_override,
         price_high_pct_down_override,
+        price_realert_step_pct_override,
         large_position_weight_pct,
         quiet_hours,
     })
@@ -383,6 +390,7 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "price_high_pct_override": prefs.price_high_pct_override,
         "price_high_pct_up_override": prefs.price_high_pct_up_override,
         "price_high_pct_down_override": prefs.price_high_pct_down_override,
+        "price_realert_step_pct_override": prefs.price_realert_step_pct_override,
         "large_position_weight_pct": prefs.large_position_weight_pct,
         "immediate_kinds": prefs.immediate_kinds,
         "mainline_style": prefs.mainline_style,
@@ -422,12 +430,15 @@ impl Tool for NotificationPrefsTool {
          {id,time,label?,floor_macro?} 对象数组;[] 关 digest;null 恢复全局)、\
          set_price_high_pct / set_price_high_pct_up / set_price_high_pct_down \
          调通用、上涨、下跌价格异动即时推阈值 (0<x≤50),\
+         set_price_realert_step_pct 调首次命中后的重复提醒最小前进步长 (0<x≤50),\
          set_large_position_weight_pct 调大仓位权重边界 (0<x≤100)。\
          对应 inherit_* action 可单项清空 actor override、恢复系统默认。\
          多项一起修改时优先用 update_delivery_controls，一次传对象并原子校验/保存。\
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
          **概览类问题**(用户问\"我的推送怎么配的\"/\"推送日程\"/\"都什么时候推什么\"/\"quiet 设了没\"等):\
-         调 get_overview 拿到拍平后的全部推送时刻 + 即时推配置 + quiet_hours,返回里有 display_text \
+         调 get_overview 拿到拍平后的全部推送时刻 + 最终生效价格阶梯 + quiet_hours；\
+         价格阶梯会解析系统候选档、继承来源、普通/大仓位首次阈值、重复步长、示例、每日 High 上限，\
+         并明确普通同标的冷却不限制盘中价格阶梯。返回里有 display_text \
          字段已经按调用方所在渠道(Discord 用代码块表 / Telegram 用 <pre> / Feishu+iMessage 用列表)\
          渲染好,**直接整段 relay 给用户**,不要 dump 原始 prefs JSON,也不要把 display_text 拆开重写。\
          勿扰时段(quiet_hours):set_quiet_hours 传 {from:\"23:00\", to:\"07:00\", exempt_kinds?:[...]} \
@@ -503,6 +514,8 @@ impl Tool for NotificationPrefsTool {
                     "inherit_price_high_pct_up".into(),
                     "set_price_high_pct_down".into(),
                     "inherit_price_high_pct_down".into(),
+                    "set_price_realert_step_pct".into(),
+                    "inherit_price_realert_step_pct".into(),
                     "set_large_position_weight_pct".into(),
                     "inherit_large_position_weight_pct".into(),
                     "update_delivery_controls".into(),
@@ -525,12 +538,14 @@ impl Tool for NotificationPrefsTool {
                     set_digest_slots 可传 HH:MM 数组，或对象数组 \
                     [{\"id\":\"premarket\",\"time\":\"08:30\",\"label\":\"盘前要闻\",\"floor_macro\":1}];\
                     空数组关 digest，null 或 inherit_digest_slots 恢复全局时段;\
-                    set_price_high_pct/set_price_high_pct_up/set_price_high_pct_down 传数字 (0<x≤50);\
+                    set_price_high_pct/set_price_high_pct_up/set_price_high_pct_down/\
+                    set_price_realert_step_pct 传数字 (0<x≤50);\
                     set_large_position_weight_pct 传数字 (0<x≤100);\
                     inherit_timezone/inherit_price_high_pct/inherit_price_high_pct_up/\
-                    inherit_price_high_pct_down/inherit_large_position_weight_pct 不需要 value;\
+                    inherit_price_high_pct_down/inherit_price_realert_step_pct/\
+                    inherit_large_position_weight_pct 不需要 value;\
                     update_delivery_controls 传对象，可同时包含 timezone,digest_slots,\
-                    price_high_pct,price_high_pct_up,price_high_pct_down,\
+                    price_high_pct,price_high_pct_up,price_high_pct_down,price_realert_step_pct,\
                     large_position_weight_pct,quiet_hours；字段为 null 表示单项继承，\
                     整个对象一次校验后原子保存;\
                     set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
@@ -571,14 +586,14 @@ impl Tool for NotificationPrefsTool {
                         &self.prefs_dir,
                         cron_storage.list_jobs(&actor),
                         &actor,
-                        &self.digest_defaults,
+                        &self.overview_defaults,
                     )
                 } else {
                     crate::schedule_view::build_overview(
                         &self.prefs_dir,
                         &self.cron_jobs_dir,
                         &actor,
-                        &self.digest_defaults,
+                        &self.overview_defaults,
                         chrono::Utc::now(),
                     )
                 }
@@ -727,6 +742,24 @@ impl Tool for NotificationPrefsTool {
                     },
                 )?;
             }
+            "set_price_realert_step_pct" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_realert_step_pct_override: parse_percentage_update(&value, &action)?,
+                        ..Default::default()
+                    },
+                )?;
+            }
+            "inherit_price_realert_step_pct" => {
+                apply_delivery_patch(
+                    &mut prefs,
+                    NotificationDeliveryPatch {
+                        price_realert_step_pct_override: PreferenceUpdate::Inherit,
+                        ..Default::default()
+                    },
+                )?;
+            }
             "set_large_position_weight_pct" => {
                 apply_delivery_patch(
                     &mut prefs,
@@ -790,8 +823,8 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn digest_defaults_fixture() -> crate::schedule_view::DigestDefaults {
-        crate::schedule_view::DigestDefaults {
+    fn digest_defaults_fixture() -> crate::schedule_view::NotificationOverviewDefaults {
+        crate::schedule_view::NotificationOverviewDefaults {
             slots: vec![
                 crate::schedule_view::DigestDefaultSlot {
                     time: "08:30".into(),
@@ -802,6 +835,11 @@ mod tests {
                     label: Some("晨间摘要".into()),
                 },
             ],
+            price_alert: hone_event_engine::prefs::PriceAlertPolicyDefaults::default(),
+            event_engine_enabled: true,
+            globally_disabled_kinds: Vec::new(),
+            high_severity_daily_cap: 8,
+            same_symbol_cooldown_minutes: 60,
         }
     }
 
@@ -1190,6 +1228,9 @@ mod tests {
         tool.execute(json!({"action":"set_large_position_weight_pct","value":20}))
             .await
             .unwrap();
+        tool.execute(json!({"action":"set_price_realert_step_pct","value":4}))
+            .await
+            .unwrap();
 
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["price_high_pct_up_override"], json!(6.0));
@@ -1198,6 +1239,10 @@ mod tests {
             json!(5.0)
         );
         assert_eq!(response["prefs"]["large_position_weight_pct"], json!(20.0));
+        assert_eq!(
+            response["prefs"]["price_realert_step_pct_override"],
+            json!(4.0)
+        );
 
         tool.execute(json!({"action":"inherit_price_high_pct_up"}))
             .await
@@ -1211,6 +1256,9 @@ mod tests {
         tool.execute(json!({"action":"inherit_large_position_weight_pct"}))
             .await
             .unwrap();
+        tool.execute(json!({"action":"inherit_price_realert_step_pct"}))
+            .await
+            .unwrap();
         let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(response["prefs"]["price_high_pct_up_override"], Value::Null);
         assert_eq!(
@@ -1218,6 +1266,10 @@ mod tests {
             Value::Null
         );
         assert_eq!(response["prefs"]["large_position_weight_pct"], Value::Null);
+        assert_eq!(
+            response["prefs"]["price_realert_step_pct_override"],
+            Value::Null
+        );
     }
 
     #[tokio::test]
@@ -1265,6 +1317,7 @@ mod tests {
                 "price_high_pct": 6,
                 "price_high_pct_up": 7,
                 "price_high_pct_down": 5,
+                "price_realert_step_pct": 4,
                 "large_position_weight_pct": 20
             }
         }))
@@ -1284,6 +1337,10 @@ mod tests {
             json!(5.0)
         );
         assert_eq!(response["prefs"]["large_position_weight_pct"], json!(20.0));
+        assert_eq!(
+            response["prefs"]["price_realert_step_pct_override"],
+            json!(4.0)
+        );
 
         let error = tool
             .execute(json!({
@@ -1471,6 +1528,57 @@ mod tests {
         assert_eq!(response["render_format"], json!("TelegramHtml"));
         let entries = response["overview"]["schedule"].as_array().unwrap();
         assert_eq!(entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_overview_explains_the_same_eight_four_ladder_used_by_router() {
+        let dir = tempdir().unwrap();
+        let tool = make_tool(dir.path());
+        tool.execute(json!({
+            "action": "update_delivery_controls",
+            "value": {
+                "price_high_pct": 8,
+                "price_realert_step_pct": 4
+            }
+        }))
+        .await
+        .unwrap();
+
+        let response = tool
+            .execute(json!({"action":"get_overview"}))
+            .await
+            .unwrap();
+        let policy = &response["overview"]["immediate"]["effective_price_alert_policy"];
+        assert_eq!(policy["up"]["first_direct_pct"], json!(8.0));
+        assert_eq!(policy["down"]["first_direct_pct"], json!(8.0));
+        assert_eq!(policy["repeat_step_pct"], json!(4.0));
+        assert_eq!(policy["repeat_step_source"], json!("actor_common"));
+        assert_eq!(
+            response["overview"]["immediate"]["high_severity_daily_cap"],
+            json!(8)
+        );
+        assert_eq!(
+            response["overview"]["immediate"]["same_symbol_cooldown_minutes"],
+            json!(60)
+        );
+        let display_text = response["display_text"].as_str().unwrap();
+        for expected in [
+            "价格阶梯（最终生效）",
+            "上涨首次 +8%",
+            "+8% / +12% / +16%",
+            "下跌首次 -8%",
+            "-8% / -12% / -16%",
+            "重复步长来源：用户通用设置",
+            "每日 High 上限：每个事件类别最多 8 条",
+            "价格阶梯也受此上限约束",
+            "普通同标的 High 冷却：60 分钟",
+            "盘中价格阶梯豁免该冷却",
+        ] {
+            assert!(
+                display_text.contains(expected),
+                "missing {expected:?} in {display_text}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -98,6 +98,12 @@ function summarize(prefs: NotificationPrefs): string {
   }
   if (prefs.price_high_pct_override != null)
     parts.push(tpl(NOTIFICATIONS.prefs.summarize_price, { value: prefs.price_high_pct_override }));
+  if (prefs.price_realert_step_pct_override != null)
+    parts.push(
+      tpl(NOTIFICATIONS.prefs.summarize_price_step, {
+        value: prefs.price_realert_step_pct_override,
+      }),
+    );
   if (prefs.immediate_kinds && prefs.immediate_kinds.length)
     parts.push(
       tpl(NOTIFICATIONS.prefs.summarize_immediate, {
@@ -363,6 +369,16 @@ export function NotificationPreferencesCard() {
     }));
   };
 
+  const handlePriceRealertStepInput = (raw: string) => {
+    editCurrent((prefs) => ({
+      ...prefs,
+      price_realert_step_pct_override: priceHighOverrideFromInput(
+        raw,
+        prefs.price_realert_step_pct_override,
+      ),
+    }));
+  };
+
   const submitDetail = async () => {
     const actor = currentActor();
     const entry = currentEntry();
@@ -617,6 +633,24 @@ export function NotificationPreferencesCard() {
                 placeholder={NOTIFICATIONS.prefs.timezone_placeholder}
                 value={currentPrefs().timezone ?? ""}
                 onInput={(e) => handleTimezoneInput(e.currentTarget.value)}
+              />
+            </label>
+
+            <label class="flex flex-col gap-1 text-[11px]">
+              <span class="text-[color:var(--text-secondary)]">
+                {NOTIFICATIONS.prefs.price_realert_step_label}
+              </span>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="50"
+                class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
+                placeholder={NOTIFICATIONS.prefs.price_realert_step_placeholder}
+                value={currentPrefs().price_realert_step_pct_override ?? ""}
+                onInput={(e) =>
+                  handlePriceRealertStepInput(e.currentTarget.value)
+                }
               />
             </label>
 

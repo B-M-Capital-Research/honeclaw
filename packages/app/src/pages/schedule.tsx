@@ -38,6 +38,14 @@ function scheduleActorKey(actor: ActorRef): string {
   return `${actor.channel.trim()}::${(actor.channel_scope ?? "").trim()}::${actor.user_id.trim()}`
 }
 
+function formatPct(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
+}
+
+function signedBands(values: number[], sign: "+" | "-"): string {
+  return values.map((value) => `${sign}${formatPct(value)}%`).join(" / ")
+}
+
 export default function SchedulePage() {
   const [selectedActor, setSelectedActor] = createSignal<ActorRef | null>(null)
   const [overview, setOverview] = createSignal<ScheduleOverview | null>(null)
@@ -137,15 +145,71 @@ export default function SchedulePage() {
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
                 <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.immediate}</div>
                 <div class="text-[color:var(--text-primary)]">
+                  {scheduleOverview().immediate.event_engine_enabled
+                    ? SCHEDULE.card.event_engine_enabled
+                    : SCHEDULE.card.event_engine_disabled}
+                </div>
+                <div class="text-[color:var(--text-primary)]">
                   {scheduleOverview().immediate.enabled ? SCHEDULE.card.immediate_enabled : SCHEDULE.card.immediate_disabled}
                   {SCHEDULE.card.immediate_min_prefix}
                   {scheduleOverview().immediate.min_severity}
                   <Show when={scheduleOverview().immediate.portfolio_only}>
                     {SCHEDULE.card.immediate_only_portfolio}
                   </Show>
-                  <Show when={scheduleOverview().immediate.price_high_pct != null}>
-                    {tpl(SCHEDULE.card.immediate_price_threshold, { pct: scheduleOverview().immediate.price_high_pct ?? "" })}
+                </div>
+              </div>
+              <div class="w-full rounded border border-[color:var(--border)] bg-white/5 px-3 py-2 sm:min-w-[22rem] sm:flex-1">
+                <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.price_ladder}</div>
+                <div class="space-y-1 text-[color:var(--text-primary)]">
+                  <Show when={!scheduleOverview().immediate.event_engine_enabled}>
+                    <div class="text-amber-400">{SCHEDULE.card.price_engine_disabled}</div>
                   </Show>
+                  <Show
+                    when={
+                      scheduleOverview().immediate.event_engine_enabled &&
+                      scheduleOverview().immediate.globally_disabled_kinds.includes("price_alert")
+                    }
+                  >
+                    <div class="text-amber-400">{SCHEDULE.card.price_globally_disabled}</div>
+                  </Show>
+                  <div>
+                    {tpl(SCHEDULE.card.price_up, {
+                      first: formatPct(scheduleOverview().immediate.effective_price_alert_policy.up.first_direct_pct),
+                      step: formatPct(scheduleOverview().immediate.effective_price_alert_policy.repeat_step_pct),
+                    })}
+                  </div>
+                  <div class="font-mono text-[10px] text-[color:var(--text-muted)]">
+                    {signedBands(scheduleOverview().immediate.price_ladder_examples.up, "+")}
+                  </div>
+                  <div>
+                    {tpl(SCHEDULE.card.price_down, {
+                      first: formatPct(scheduleOverview().immediate.effective_price_alert_policy.down.first_direct_pct),
+                      step: formatPct(scheduleOverview().immediate.effective_price_alert_policy.repeat_step_pct),
+                    })}
+                  </div>
+                  <div class="font-mono text-[10px] text-[color:var(--text-muted)]">
+                    {signedBands(scheduleOverview().immediate.price_ladder_examples.down, "-")}
+                  </div>
+                  <div class="text-[10px] text-[color:var(--text-muted)]">
+                    {tpl(SCHEDULE.card.price_candidate_grid, {
+                      first: formatPct(scheduleOverview().immediate.effective_price_alert_policy.candidate_first_pct),
+                      step: formatPct(scheduleOverview().immediate.effective_price_alert_policy.candidate_step_pct),
+                    })}
+                  </div>
+                  <div class="text-[10px] text-[color:var(--text-muted)]">
+                    {scheduleOverview().immediate.high_severity_daily_cap > 0
+                      ? tpl(SCHEDULE.card.price_daily_cap, {
+                          cap: scheduleOverview().immediate.high_severity_daily_cap,
+                        })
+                      : SCHEDULE.card.price_daily_cap_disabled}
+                  </div>
+                  <div class="text-[10px] text-[color:var(--text-muted)]">
+                    {scheduleOverview().immediate.same_symbol_cooldown_minutes > 0
+                      ? tpl(SCHEDULE.card.price_cooldown, {
+                          minutes: scheduleOverview().immediate.same_symbol_cooldown_minutes,
+                        })
+                      : SCHEDULE.card.price_cooldown_disabled}
+                  </div>
                 </div>
               </div>
             </div>
@@ -220,12 +284,21 @@ export default function SchedulePage() {
             <Show
               when={
                 scheduleOverview().immediate.blocked_kinds.length > 0 ||
+                scheduleOverview().immediate.globally_disabled_kinds.length > 0 ||
                 (scheduleOverview().immediate.allow_kinds &&
                   scheduleOverview().immediate.allow_kinds!.length > 0) ||
                 scheduleOverview().immediate.exempt_in_quiet.length > 0
               }
             >
               <div class="rounded border border-[color:var(--border)] bg-white/5 p-3 text-xs text-[color:var(--text-muted)]">
+                <Show when={scheduleOverview().immediate.globally_disabled_kinds.length > 0}>
+                  <div>
+                    {SCHEDULE.filters.globally_disabled_kinds}
+                    <span class="text-[color:var(--text-primary)]">
+                      {scheduleOverview().immediate.globally_disabled_kinds.join(", ")}
+                    </span>
+                  </div>
+                </Show>
                 <Show when={scheduleOverview().immediate.blocked_kinds.length > 0}>
                   <div>
                     {SCHEDULE.filters.blocked_kinds}

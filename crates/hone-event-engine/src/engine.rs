@@ -25,7 +25,7 @@ use crate::pollers::{
     ExtendedHoursPoller, MacroPoller, NewsPoller, PricePoller, RssNewsPoller, SecFilingsPoller,
     TelegramChannelPoller,
 };
-use crate::prefs::{FilePrefsStorage, PrefsProvider};
+use crate::prefs::{FilePrefsStorage, PrefsProvider, PriceAlertPolicyDefaults};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
 use crate::source::SourceSchedule;
 use crate::spawner::spawn_event_source;
@@ -354,10 +354,7 @@ impl EventEngine {
         .with_tz_offset_hours(tz_offset_for_router)
         .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
         .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
-        .with_price_min_direct_pct(self.engine_cfg.thresholds.price_min_direct_pct)
-        .with_price_band_min_advance_pct(self.engine_cfg.thresholds.price_band_min_advance_pct)
-        .with_price_close_direct_enabled(self.engine_cfg.thresholds.price_close_direct_enabled)
-        .with_large_position_weight_pct(self.engine_cfg.thresholds.large_position_weight_pct)
+        .with_price_policy_defaults(PriceAlertPolicyDefaults::from(&self.engine_cfg.thresholds))
         .with_macro_immediate_window(
             self.engine_cfg.thresholds.macro_immediate_lookahead_hours,
             self.engine_cfg.thresholds.macro_immediate_grace_hours,
@@ -696,7 +693,8 @@ impl EventEngine {
         // 窗口工作 —— 窗口外 poll() 直接 no-op,几乎零 FMP 开销。补 PricePoller 在
         // pre/post timestamp 不更新被 stale-skip 的盲区(GOOGL 2026-04-29 财报夜整夜
         // 无推送的根因)。低/高阈值复用全局 thresholds.price_alert_{low,high}_pct;
-        // per-actor `price_high_pct_override` 经 router 同样路径升级 Low→High。
+        // per-actor 价格策略经 router 同样路径升级或降级 severity；盘前/盘后
+        // 事件不属于 intraday band，因此只应用首次阈值，不应用盘中重复阶梯。
         if fmp_available && sources.extended_hours {
             let poller = ExtendedHoursPoller::new(client.clone(), registry.clone())
                 .with_thresholds(

@@ -4,7 +4,7 @@
 //! - Digest slots(per-actor `digest_slots` 优先,缺省全局 pre/post-market)
 //!   — UnifiedDigestScheduler 上线后持仓事件 + 全球要闻同槽推送,不再分离两条
 //! - 自定义 cron jobs (含 bypass_quiet_hours 标记 + would_be_skipped_by_quiet)
-//! - 即时推阈值 (kind 黑/白名单 + price_high_pct + min_severity)
+//! - 即时推规则 (kind 黑/白名单 + 最终价格阶梯 + min_severity)
 //! - quiet_hours 区间
 //!
 //! 同一份后端逻辑给 NL `notification_prefs.get_overview` 工具和 admin 后台
@@ -14,7 +14,11 @@ use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
 use hone_core::quiet::{QuietHours, local_time_in_quiet_window};
 use hone_event_engine::Severity;
-use hone_event_engine::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+pub use hone_event_engine::prefs::PriceAlertPolicyDefaults;
+use hone_event_engine::prefs::{
+    EffectivePriceAlertPolicy, FilePrefsStorage, NotificationPrefs, PrefsProvider,
+    PricePolicySource,
+};
 use hone_event_engine::renderer::RenderFormat;
 use hone_memory::CronJobStorage;
 use hone_memory::cron_job::CronJob;
@@ -71,13 +75,27 @@ pub enum ScheduleSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImmediateConfig {
+    /// 系统事件引擎总开关；关闭时 actor 设置保留但不会执行。
+    pub event_engine_enabled: bool,
+    /// 部署方全局关闭的 kind；优先于任何 actor allow/immediate 设置。
+    pub globally_disabled_kinds: Vec<String>,
     pub enabled: bool,
     pub min_severity: String,
     pub portfolio_only: bool,
+    /// 每 actor、每事件类别、每本地日最多直推的 High 数量；0 表示关闭。
+    pub high_severity_daily_cap: u32,
+    /// 普通 High 事件的同标的冷却分钟数；盘中价格 band 明确豁免此冷却，
+    /// 由价格阶梯的 repeat_step_pct 独立控频。
+    pub same_symbol_cooldown_minutes: u32,
     pub price_high_pct: Option<f64>,
     pub price_high_pct_up: Option<f64>,
     pub price_high_pct_down: Option<f64>,
+    pub price_realert_step_pct: Option<f64>,
     pub large_position_weight_pct: Option<f64>,
+    /// 路由真正使用的价格规则。原始 override 字段仅用于说明用户输入；执行和
+    /// 渲染必须读取本字段，避免把“未设置”误解为“系统没有规则”。
+    pub effective_price_alert_policy: EffectivePriceAlertPolicy,
+    pub price_ladder_examples: PriceLadderExamples,
     pub allow_kinds: Option<Vec<String>>,
     pub blocked_kinds: Vec<String>,
     pub immediate_kinds: Option<Vec<String>>,
@@ -85,11 +103,22 @@ pub struct ImmediateConfig {
     pub exempt_in_quiet: Vec<String>,
 }
 
-/// Unified digest 全局默认槽位时刻（从 `event_engine.digest.default_slots` 读取,
-/// 用户未自定义 `prefs.digest_slots` 时回退到这组时刻）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceLadderExamples {
+    pub up: Vec<f64>,
+    pub down: Vec<f64>,
+}
+
+/// 推送概览解析所需的系统默认值。Digest 时刻和价格候选/路由规则一起注入，
+/// 让聊天工具、管理 API 与事件 router 能从同一份配置构造最终视图。
 #[derive(Debug, Clone)]
-pub struct DigestDefaults {
+pub struct NotificationOverviewDefaults {
     pub slots: Vec<DigestDefaultSlot>,
+    pub price_alert: PriceAlertPolicyDefaults,
+    pub event_engine_enabled: bool,
+    pub globally_disabled_kinds: Vec<String>,
+    pub high_severity_daily_cap: u32,
+    pub same_symbol_cooldown_minutes: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -103,19 +132,19 @@ pub fn build_overview(
     prefs_dir: &Path,
     cron_jobs_dir: &Path,
     actor: &ActorIdentity,
-    digest_defaults: &DigestDefaults,
+    defaults: &NotificationOverviewDefaults,
     _now: DateTime<Utc>,
 ) -> anyhow::Result<ScheduleOverview> {
     let cron_storage = CronJobStorage::new(cron_jobs_dir);
     let jobs = cron_storage.list_jobs(actor);
-    build_overview_with_cron_jobs(prefs_dir, jobs, actor, digest_defaults)
+    build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults)
 }
 
 pub fn build_overview_with_cron_jobs(
     prefs_dir: &Path,
     jobs: Vec<CronJob>,
     actor: &ActorIdentity,
-    digest_defaults: &DigestDefaults,
+    defaults: &NotificationOverviewDefaults,
 ) -> anyhow::Result<ScheduleOverview> {
     let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
     let prefs = prefs_storage.load(actor);
@@ -129,7 +158,7 @@ pub fn build_overview_with_cron_jobs(
     let mut schedule: Vec<ScheduleEntry> = Vec::new();
 
     schedule.extend(
-        digest_slot_entries(&prefs, digest_defaults)
+        digest_slot_entries(&prefs, defaults)
             .into_iter()
             .map(|(window, label)| {
                 digest_schedule_entry(window, label, prefs.quiet_hours.as_ref())
@@ -145,7 +174,7 @@ pub fn build_overview_with_cron_jobs(
     // 按 time_local 升序排
     schedule.sort_by(|a, b| a.time_local.cmp(&b.time_local));
 
-    let immediate = immediate_config(&prefs);
+    let immediate = immediate_config(&prefs, defaults);
 
     Ok(ScheduleOverview {
         actor: actor_key,
@@ -167,14 +196,14 @@ fn schedule_actor_key(actor: &ActorIdentity) -> String {
 
 fn digest_slot_entries(
     prefs: &NotificationPrefs,
-    digest_defaults: &DigestDefaults,
+    defaults: &NotificationOverviewDefaults,
 ) -> Vec<(String, Option<String>)> {
     match prefs.digest_slots.as_deref() {
         Some(slots) => slots
             .iter()
             .map(|slot| (slot.time.clone(), slot.label.clone()))
             .collect(),
-        None => digest_defaults
+        None => defaults
             .slots
             .iter()
             .map(|slot| (slot.time.clone(), slot.label.clone()))
@@ -219,15 +248,30 @@ fn cron_schedule_entry(job: &CronJob, quiet_hours: Option<&QuietHours>) -> Sched
     }
 }
 
-fn immediate_config(prefs: &NotificationPrefs) -> ImmediateConfig {
+fn immediate_config(
+    prefs: &NotificationPrefs,
+    defaults: &NotificationOverviewDefaults,
+) -> ImmediateConfig {
+    let effective_price_alert_policy = prefs.effective_price_alert_policy(defaults.price_alert);
+    let price_ladder_examples = PriceLadderExamples {
+        up: effective_price_alert_policy.sample_candidate_bands(true, 3),
+        down: effective_price_alert_policy.sample_candidate_bands(false, 3),
+    };
     ImmediateConfig {
+        event_engine_enabled: defaults.event_engine_enabled,
+        globally_disabled_kinds: defaults.globally_disabled_kinds.clone(),
         enabled: prefs.enabled,
         min_severity: severity_str(&prefs.min_severity),
         portfolio_only: prefs.portfolio_only,
+        high_severity_daily_cap: defaults.high_severity_daily_cap,
+        same_symbol_cooldown_minutes: defaults.same_symbol_cooldown_minutes,
         price_high_pct: prefs.price_high_pct_override,
         price_high_pct_up: prefs.price_high_pct_up_override,
         price_high_pct_down: prefs.price_high_pct_down_override,
+        price_realert_step_pct: prefs.price_realert_step_pct_override,
         large_position_weight_pct: prefs.large_position_weight_pct,
+        effective_price_alert_policy,
+        price_ladder_examples,
         allow_kinds: prefs.allow_kinds.clone(),
         blocked_kinds: prefs.blocked_kinds.clone(),
         immediate_kinds: prefs.immediate_kinds.clone(),
@@ -438,6 +482,15 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
     let _ = writeln!(output, "即时推：");
     let _ = writeln!(
         output,
+        "• 系统事件引擎：{}",
+        if overview.immediate.event_engine_enabled {
+            "✅ 启用"
+        } else {
+            "❌ 已停用（用户设置会保留，但当前不会执行）"
+        }
+    );
+    let _ = writeln!(
+        output,
         "• 总开关：{}",
         if overview.immediate.enabled {
             "✅ 启用"
@@ -449,19 +502,40 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
     if overview.immediate.portfolio_only {
         let _ = writeln!(output, "• 只推命中持仓的事件");
     }
-    if let Some(price_high_pct) = overview.immediate.price_high_pct {
-        let _ = writeln!(output, "• 通用价格异动阈值：{price_high_pct}%");
-    }
-    if let Some(price_high_pct_up) = overview.immediate.price_high_pct_up {
-        let _ = writeln!(output, "• 上涨即时推阈值：{price_high_pct_up}%");
-    }
-    if let Some(price_high_pct_down) = overview.immediate.price_high_pct_down {
-        let _ = writeln!(output, "• 下跌即时推阈值：{price_high_pct_down}%");
-    }
-    if let Some(large_position_weight_pct) = overview.immediate.large_position_weight_pct {
+    write_effective_price_policy(
+        output,
+        &overview.immediate.effective_price_alert_policy,
+        &overview.immediate.price_ladder_examples,
+    );
+    if !overview.immediate.event_engine_enabled {
+        let _ = writeln!(output, "  - ⚠ 系统事件引擎已停用，上述价格阶梯当前不会执行");
+    } else if overview
+        .immediate
+        .globally_disabled_kinds
+        .iter()
+        .any(|kind| kind == "price_alert")
+    {
         let _ = writeln!(
             output,
-            "• 大仓位判定阈值：持仓权重 {large_position_weight_pct}%"
+            "  - ⚠ 系统已全局关闭 price_alert，上述价格阶梯当前不会执行"
+        );
+    }
+    if overview.immediate.high_severity_daily_cap == 0 {
+        let _ = writeln!(output, "• 每日 High 上限：未启用");
+    } else {
+        let _ = writeln!(
+            output,
+            "• 每日 High 上限：每个事件类别最多 {} 条（价格阶梯也受此上限约束，超出后进入摘要）",
+            overview.immediate.high_severity_daily_cap,
+        );
+    }
+    if overview.immediate.same_symbol_cooldown_minutes == 0 {
+        let _ = writeln!(output, "• 普通同标的 High 冷却：未启用");
+    } else {
+        let _ = writeln!(
+            output,
+            "• 普通同标的 High 冷却：{} 分钟；盘中价格阶梯豁免该冷却，按上述重复步长控频",
+            overview.immediate.same_symbol_cooldown_minutes,
         );
     }
     if !overview.immediate.blocked_kinds.is_empty() {
@@ -469,6 +543,13 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
             output,
             "• 屏蔽 kind：{}",
             overview.immediate.blocked_kinds.join(", ")
+        );
+    }
+    if !overview.immediate.globally_disabled_kinds.is_empty() {
+        let _ = writeln!(
+            output,
+            "• 系统全局关闭 kind：{}",
+            overview.immediate.globally_disabled_kinds.join(", ")
         );
     }
     if let Some(allow) = overview.immediate.allow_kinds.as_ref()
@@ -482,6 +563,90 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
             "• 静音期间豁免：{}",
             overview.immediate.exempt_in_quiet.join(", ")
         );
+    }
+}
+
+fn write_effective_price_policy(
+    output: &mut String,
+    policy: &EffectivePriceAlertPolicy,
+    examples: &PriceLadderExamples,
+) {
+    use std::fmt::Write;
+    let up_bands = format_signed_bands(&examples.up, true);
+    let down_bands = format_signed_bands(&examples.down, false);
+    let _ = writeln!(output, "• 价格阶梯（最终生效）：");
+    let _ = writeln!(
+        output,
+        "  - 上涨首次 +{}%（{}），之后至少每前进 {} 个百分点；候选示例 {}",
+        format_pct(policy.up.first_direct_pct),
+        direction_source_label(&policy.up),
+        format_pct(policy.repeat_step_pct),
+        up_bands,
+    );
+    let _ = writeln!(
+        output,
+        "  - 下跌首次 -{}%（{}），之后至少每前进 {} 个百分点；候选示例 {}",
+        format_pct(policy.down.first_direct_pct),
+        direction_source_label(&policy.down),
+        format_pct(policy.repeat_step_pct),
+        down_bands,
+    );
+    let _ = writeln!(
+        output,
+        "  - 重复步长来源：{}；系统候选档：{}% 起、每 {} 个百分点一档",
+        source_label_for_policy(policy.repeat_step_source),
+        format_pct(policy.candidate_first_pct),
+        format_pct(policy.candidate_step_pct),
+    );
+    if policy.up.large_position_first_direct_pct < policy.up.first_direct_pct
+        || policy.down.large_position_first_direct_pct < policy.down.first_direct_pct
+    {
+        let _ = writeln!(
+            output,
+            "  - 大仓位（权重 ≥ {}%）可使用用户原始敏感阈值：上涨 +{}%、下跌 -{}%",
+            format_pct(policy.large_position_weight_pct),
+            format_pct(policy.up.large_position_first_direct_pct),
+            format_pct(policy.down.large_position_first_direct_pct),
+        );
+    }
+}
+
+fn direction_source_label(
+    policy: &hone_event_engine::prefs::EffectivePriceDirectionPolicy,
+) -> String {
+    let source = source_label_for_policy(policy.configured_first_source);
+    if policy.system_floor_applied {
+        format!("{source}，受系统最低直推阈值限制")
+    } else {
+        source.to_string()
+    }
+}
+
+fn source_label_for_policy(source: PricePolicySource) -> &'static str {
+    match source {
+        PricePolicySource::System => "继承系统",
+        PricePolicySource::ActorCommon => "用户通用设置",
+        PricePolicySource::ActorDirection => "用户方向设置",
+    }
+}
+
+fn format_signed_bands(bands: &[f64], upward: bool) -> String {
+    let sign = if upward { "+" } else { "-" };
+    bands
+        .iter()
+        .map(|band| format!("{sign}{}%", format_pct(*band)))
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
+
+fn format_pct(value: f64) -> String {
+    if value.fract().abs() < 1e-9 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.2}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
     }
 }
 
@@ -558,8 +723,8 @@ mod tests {
         ActorIdentity::new("imessage", "u1", None::<String>).unwrap()
     }
 
-    fn digest_defaults_fixture() -> DigestDefaults {
-        DigestDefaults {
+    fn digest_defaults_fixture() -> NotificationOverviewDefaults {
+        NotificationOverviewDefaults {
             slots: vec![
                 DigestDefaultSlot {
                     time: "08:30".into(),
@@ -570,6 +735,11 @@ mod tests {
                     label: Some("晨间摘要".into()),
                 },
             ],
+            price_alert: PriceAlertPolicyDefaults::default(),
+            event_engine_enabled: true,
+            globally_disabled_kinds: Vec::new(),
+            high_severity_daily_cap: 8,
+            same_symbol_cooldown_minutes: 60,
         }
     }
 
@@ -788,6 +958,7 @@ mod tests {
                     price_high_pct_override: Some(6.0),
                     price_high_pct_up_override: Some(7.0),
                     price_high_pct_down_override: Some(5.0),
+                    price_realert_step_pct_override: Some(4.0),
                     large_position_weight_pct: Some(20.0),
                     ..Default::default()
                 },
@@ -805,16 +976,79 @@ mod tests {
         assert_eq!(overview.immediate.price_high_pct, Some(6.0));
         assert_eq!(overview.immediate.price_high_pct_up, Some(7.0));
         assert_eq!(overview.immediate.price_high_pct_down, Some(5.0));
+        assert_eq!(overview.immediate.price_realert_step_pct, Some(4.0));
         assert_eq!(overview.immediate.large_position_weight_pct, Some(20.0));
+        let policy = &overview.immediate.effective_price_alert_policy;
+        assert_eq!(policy.up.first_direct_pct, 7.0);
+        assert_eq!(policy.down.first_direct_pct, 6.0);
+        assert_eq!(policy.down.large_position_first_direct_pct, 5.0);
+        assert_eq!(policy.repeat_step_pct, 4.0);
 
         let rendered = render_overview(&overview, RenderFormat::Plain);
         assert_text_contains_all(
             &rendered,
             &[
-                "通用价格异动阈值：6%",
-                "上涨即时推阈值：7%",
-                "下跌即时推阈值：5%",
-                "大仓位判定阈值：持仓权重 20%",
+                "价格阶梯（最终生效）",
+                "上涨首次 +7%",
+                "+8% / +12% / +16%",
+                "下跌首次 -6%",
+                "用户方向设置，受系统最低直推阈值限制",
+                "-6% / -10% / -14%",
+                "重复步长来源：用户通用设置",
+                "大仓位（权重 ≥ 20%）",
+                "每日 High 上限：每个事件类别最多 8 条",
+                "价格阶梯也受此上限约束",
+                "普通同标的 High 冷却：60 分钟",
+                "盘中价格阶梯豁免该冷却",
+            ],
+        );
+    }
+
+    #[test]
+    fn overview_explains_global_execution_gates_before_actor_rules() {
+        let temp_root = tempdir().unwrap();
+        let prefs_dir = temp_root.path().join("prefs");
+        let cron_dir = temp_root.path().join("cron");
+        std::fs::create_dir_all(&prefs_dir).unwrap();
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        let mut defaults = digest_defaults_fixture();
+        defaults.globally_disabled_kinds = vec!["price_alert".into()];
+
+        let globally_disabled = build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &defaults,
+            Utc::now(),
+        )
+        .unwrap();
+        let rendered = render_overview(&globally_disabled, RenderFormat::Plain);
+        assert_text_contains_all(
+            &rendered,
+            &[
+                "系统事件引擎：✅ 启用",
+                "系统已全局关闭 price_alert",
+                "上述价格阶梯当前不会执行",
+                "系统全局关闭 kind：price_alert",
+            ],
+        );
+
+        defaults.event_engine_enabled = false;
+        let engine_disabled = build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &defaults,
+            Utc::now(),
+        )
+        .unwrap();
+        let rendered = render_overview(&engine_disabled, RenderFormat::Plain);
+        assert_text_contains_all(
+            &rendered,
+            &[
+                "系统事件引擎：❌ 已停用",
+                "用户设置会保留，但当前不会执行",
+                "系统事件引擎已停用，上述价格阶梯当前不会执行",
             ],
         );
     }

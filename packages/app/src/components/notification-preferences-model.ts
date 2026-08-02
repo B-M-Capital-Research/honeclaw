@@ -16,6 +16,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   price_high_pct_override: null,
   price_high_pct_up_override: null,
   price_high_pct_down_override: null,
+  price_realert_step_pct_override: null,
   large_position_weight_pct: null,
   immediate_kinds: null,
   quiet_hours: null,

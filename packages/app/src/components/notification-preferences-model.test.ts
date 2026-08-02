@@ -33,6 +33,7 @@ describe("notification-preferences-model", () => {
     expect(DEFAULT_NOTIFICATION_PREFS.digest_slots).toBeNull()
     expect(DEFAULT_NOTIFICATION_PREFS.price_high_pct_up_override).toBeNull()
     expect(DEFAULT_NOTIFICATION_PREFS.price_high_pct_down_override).toBeNull()
+    expect(DEFAULT_NOTIFICATION_PREFS.price_realert_step_pct_override).toBeNull()
     expect(DEFAULT_NOTIFICATION_PREFS.large_position_weight_pct).toBeNull()
     expect(DEFAULT_NOTIFICATION_PREFS.quiet_hours).toBeNull()
   })

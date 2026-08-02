@@ -15,8 +15,10 @@ use axum::http::StatusCode;
 use serde::Deserialize;
 
 use hone_core::ActorIdentity;
+use hone_event_engine::prefs::PriceAlertPolicyDefaults;
 use hone_tools::schedule_view::{
-    DigestDefaultSlot, DigestDefaults, ScheduleOverview, build_overview_with_cron_jobs,
+    DigestDefaultSlot, NotificationOverviewDefaults, ScheduleOverview,
+    build_overview_with_cron_jobs,
 };
 
 use crate::state::AppState;
@@ -39,7 +41,7 @@ pub(crate) async fn handle_schedule(
     })?;
 
     let app_config = &state.core.config;
-    let digest_defaults = DigestDefaults {
+    let overview_defaults = NotificationOverviewDefaults {
         slots: app_config
             .event_engine
             .digest
@@ -50,12 +52,20 @@ pub(crate) async fn handle_schedule(
                 label: s.label.clone(),
             })
             .collect(),
+        price_alert: PriceAlertPolicyDefaults::from(&app_config.event_engine.thresholds),
+        event_engine_enabled: app_config.event_engine.enabled,
+        globally_disabled_kinds: app_config.event_engine.disabled_kinds.clone(),
+        high_severity_daily_cap: app_config.event_engine.thresholds.high_severity_daily_cap,
+        same_symbol_cooldown_minutes: app_config
+            .event_engine
+            .thresholds
+            .same_symbol_cooldown_minutes,
     };
 
     let prefs_dir = std::path::Path::new(&app_config.storage.notif_prefs_dir);
     let cron_jobs = state.core.cron_job_storage().list_jobs(&actor);
 
-    let overview = build_overview_with_cron_jobs(prefs_dir, cron_jobs, &actor, &digest_defaults)
+    let overview = build_overview_with_cron_jobs(prefs_dir, cron_jobs, &actor, &overview_defaults)
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
