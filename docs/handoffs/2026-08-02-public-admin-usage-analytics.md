@@ -14,6 +14,7 @@
   - packages/app/src/pages/public-workspace.css
 - related_docs:
   - docs/archive/plans/public-admin-usage-analytics.md
+  - docs/archive/plans/public-admin-usage-production-rollout.md
   - docs/decisions.md
   - docs/invariants.md
   - docs/runbooks/public-user-admin.md
@@ -101,3 +102,27 @@ Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时�
 - 统计与样式定向测试 14/14、完整 Web 343/343、TypeScript typecheck 通过。
 - 管理员登录态页面的下拉框依次显示 8 月 2 日、8 月 1 日、7 月 31 日直到 7 月 20 日；8 月 1 日和 2 日均可选择并显示 0 人、0 问题、0 推送。
 - 未改变后端、图表、白名单、推送或授权行为；没有部署、提交或发布。
+
+## 2026-08-02 生产上线阶段
+
+### Summary
+
+- 功能提交 `39ce9ce54f5cbfea26e664459cb70edf3fd97292` 已推送到 `main`；本次没有创建 release tag。
+- Cloudflare Pages 已切换到 `index-vHyTHbU6.js`。公网 `/`、`/me` 返回 `200`，新增 `/api/public/admin/usage` 在未登录时返回正确的 `401`，不再是旧后端的 `404`。
+- GCE 在连续两次确认活动会话为 0 后，从 `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801` 原子切换到 `/opt/hone/releases/39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802`。Web 与 Feishu systemd 服务均为 active，运行时 Git SHA 与提交一致，PostgreSQL/R2 健康且本地持久化依赖数为 0。
+- 三个指定账号 `181****4550`、`135****3292`、`139****9177` 均通过 PostgreSQL 权威身份路径授予管理员；二次 dry-run 读取均为 active、`previous_is_admin=true`、`changed=false`、`verified_is_admin=true`。
+- 临时 2 GiB 构建 swap、远端构建/上传中间目录和本地 30 MiB 上传包均在稳定性复核后删除；GCE `enable-oslogin-2fa` 已恢复为 `TRUE`，临时 gcloud 配置已销毁。
+
+### Verification
+
+- GitHub：CI、Secret Scan、CodeQL、Release Cache Warm Linux 全部成功。
+- 本地：`cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`、Web 343/343、Public build、Public Community Edge 45/45、CI-safe regression、Web API 164/164（另 2 个凭证 smoke ignored）与管理员统计 7/7 均通过。
+- 云端：不可变发布包 1,860 项 checksum 通过；切换后 Web 第 2 次探测就绪，Feishu 第 1 次探测 active，持续检查无 warning/error，活动会话保持 0。
+- 公网：`/api/public/auth/me`、`/api/public/admin/invites`、`/api/public/admin/usage` 均返回未登录 `401`，证明路由已生效且权限边界仍在。
+- 完整本地 workspace Rust tests 中，未改动的 `hone-channels` FMP stub 有 10 项失败；隔离复现一致，GitHub CI 与本次涉及模块的测试均通过，因此未把无关测试夹具纳入本次改动。
+
+### Rollback / Follow-ups
+
+- GCE 回滚点保留为 `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801`；将 `/opt/hone/current` 原子指回该目录并按 Web → Feishu 顺序启动即可回退。首次切换因验证脚本 stdin 写法错误触发过一次自动回滚，旧版恢复健康后修正脚本并完成最终切换，证明回滚路径有效。
+- GCE `/api/meta` 的 Git SHA 与二进制哈希可信，但 build source 仍显示 `unknown`；后续部署工具应补齐该 provenance 字段。
+- 本机源码运行时为通过现有 `codex-acp --version` 前置检查保留了兼容 shim；云端 GCE 不依赖该 shim。应在 ACP umbrella 任务中统一探测契约，避免下次冷启动需要本机兼容层。

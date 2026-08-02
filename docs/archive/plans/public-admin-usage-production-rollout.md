@@ -1,7 +1,7 @@
 # Public Admin Usage Production Rollout
 
 - title: Public Admin Usage Production Rollout
-- status: in_progress
+- status: done
 - created_at: 2026-08-02
 - updated_at: 2026-08-02
 - owner: Codex
@@ -34,6 +34,14 @@ Push the completed administrator usage analytics feature to `main`, deploy the e
 - Per-phone `hone-cli cloud web-admin` dry-run, apply, and `verified_is_admin=true`
 - Exact runtime revision, cloud authority, PostgreSQL/R2, auth boundary, active-chat, frontend asset, and page smoke probes
 
+## Result
+
+- Feature commit `39ce9ce54f5cbfea26e664459cb70edf3fd97292` was pushed to `main`; GitHub CI, secret scan, CodeQL, and Linux cache warm all completed successfully.
+- Cloudflare Pages serves `index-vHyTHbU6.js`. Public `/` and `/me` return `200`; `/api/public/admin/usage` now reaches the new backend and correctly returns `401` without a session instead of the previous `404`.
+- GCE atomically switched from `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801` to `/opt/hone/releases/39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802` after two zero-active-chat checks. Web and Feishu services are active, the embedded Git SHA matches, and PostgreSQL/R2 health is green.
+- The three requested cloud identities were granted through the authoritative PostgreSQL admin path and independently re-read as active, unchanged, and `verified_is_admin=true`.
+- Build swap and staging artifacts were removed after cutover; OS Login 2FA was restored to `TRUE`, and the temporary gcloud configuration was deleted.
+
 ## Documentation Sync
 
 - Append final rollout evidence and rollback notes to `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`.
@@ -41,6 +49,6 @@ Push the completed administrator usage analytics feature to `main`, deploy the e
 
 ## Risks / Open Questions
 
-- The current foreground local preview owns the backend port and must be drained/stopped before the managed production job can claim it; perform the final immutable build first so the cutover window is limited to process handoff and readiness.
-- A phone is only granted when the authoritative PostgreSQL row is unique and active; missing, disabled, or duplicate identities remain fail-closed and must be reported.
-- Cloudflare Pages deploys asynchronously after push, so public asset verification must wait for the expected bundle rather than assuming push completion equals cutover.
+- The local source-runtime cold-start preflight currently requires a compatibility shim because the installed `codex-acp` package does not implement the deployment script's `--version` probe. The cloud GCE release does not depend on that shim, but the local deploy contract should be reconciled in the ACP umbrella plan.
+- GCE `/api/meta` proves the exact embedded Git SHA and binary hash, but reports build `source=unknown`; future immutable build tooling should preserve an explicit source label as well as the revision.
+- The full local workspace Rust test command encountered ten pre-existing FMP stub failures in unchanged `hone-channels` tests. Focused Web API tests, the full required cargo check, all frontend/worker/regression gates, and GitHub CI were green.

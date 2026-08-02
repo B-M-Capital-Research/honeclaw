@@ -2053,3 +2053,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/source-web-startup.md`; `docs/runbooks/opencode-setup.md`; `tests/regression/ci/test_source_runtime_deploy_contract.sh`; version-labelled Codex ACP `1.1.7` and OpenCode `1.18.11` fixtures; complete repository gates
 - Current conclusion: Codex and OpenCode now select separate typed stream dialects from the exact live initialize identity/version, retain explicit compatibility status, and fail closed on mismatched identities, older versions, missing versions, or unknown majors. Codex prompts remain current-turn-only after compaction. The local source runtime deploys Web/Discord/MCP as an immutable revision unit with drain, PID/lock convergence, persisted runner PATH, fresh channel login, external provenance verification, and one complete rollback path. Exact implementation `ee9da19a` is active with four listeners, zero active chats, matching Web/ACP build provenance, and a successful no-tool ACP sentinel.
 - Next entry point: `docs/handoffs/2026-08-02-acp-version-aware-runtime-deploy.md`; do not touch GCE without a new explicit instruction.
+
+### Public Admin Usage Analytics Production Rollout
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/archive/plans/public-admin-usage-production-rollout.md`
+- Handoff: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-02-03-keep-public-usage-analytics-inside-the-web-administrator-boundary`
+- Related PRs / commits: `39ce9ce54f5cbfea26e664459cb70edf3fd97292`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `docs/runbooks/public-user-admin.md`; Web 343/343; Web API 164/164 plus 2 credentialed ignores; Public Community Edge 45/45; CI-safe regressions; GitHub CI/CodeQL/Secret Scan
+- Current conclusion: The collapsible administrator analytics table, dynamic date-bound summary, complete zero-activity dates, and two 14-day trend charts are live on Cloudflare Pages and the exact GCE immutable backend revision. Public auth boundaries, PostgreSQL/R2 health, zero-active-chat cutover, Web/Feishu services, and all three explicitly requested administrator grants were re-read successfully. Temporary deployment access and build artifacts were removed, and OS Login 2FA is back on.
+- Next entry point: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`; GCE rollback remains `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801`.
