@@ -59,7 +59,7 @@ pub(crate) use version::{CliVersion, parse_cli_version};
 // 的 handler / log 格式化 helper 做黑盒断言;这些符号在 lib release 路径上并不
 // 被链接,因此 gate 在 `#[cfg(test)]` 之下,避免 rustc 报 unused warning。
 #[cfg(test)]
-pub(crate) use ingest::handle_acp_session_update;
+pub(crate) use ingest::{handle_acp_session_update, handle_acp_session_update_with_renderer};
 #[cfg(test)]
 pub(crate) use log::summarize_finished_tool_calls_for_log;
 #[cfg(test)]

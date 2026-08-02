@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use super::acp_common::{
     AcpPromptState, AcpToolRenderPhase, CliVersion, extract_finished_tool_calls,
-    finalize_context_messages, handle_acp_session_update, parse_cli_version,
-    summarize_finished_tool_calls_for_log,
+    finalize_context_messages, handle_acp_session_update, handle_acp_session_update_with_renderer,
+    parse_cli_version, summarize_finished_tool_calls_for_log,
 };
 use super::codex_acp::{
     codex_acp_effective_args, codex_acp_process_config, codex_instruction_fingerprint,
@@ -1348,7 +1348,7 @@ fn final_response_content_prefers_last_assistant_segment() {
 }
 
 #[test]
-fn codex_execute_renderer_hides_command_and_appends_purpose() {
+fn codex_execute_renderer_shows_safe_category_and_appends_purpose() {
     let long_script = "python - <<'PY'\n".to_string() + &"x".repeat(2400);
     let rendered = render_codex_tool_status(
         &serde_json::json!({
@@ -1364,13 +1364,13 @@ fn codex_execute_renderer_hides_command_and_appends_purpose() {
         Some("default".to_string()),
     );
 
-    assert_eq!(rendered.tool, "本地命令");
+    assert_eq!(rendered.tool, "运行 Python（python）");
     assert!(rendered.message.is_none());
     assert!(
         rendered
             .reasoning
             .as_deref()
-            .is_some_and(|value| value.starts_with("正在执行：本地命令"))
+            .is_some_and(|value| value.starts_with("正在执行：运行 Python（python）"))
     );
     assert!(
         rendered
@@ -1395,9 +1395,161 @@ fn codex_execute_renderer_formats_done_message() {
         None,
     );
 
-    assert_eq!(rendered.tool, "本地命令");
-    assert_eq!(rendered.message.as_deref(), Some("执行完成：本地命令"));
+    assert_eq!(rendered.tool, "本地命令（rtk）");
+    assert_eq!(
+        rendered.message.as_deref(),
+        Some("执行完成：本地命令（rtk）")
+    );
     assert!(rendered.reasoning.is_none());
+}
+
+/// Captured from the Codex ACP 1.1.7 execute-start stream on 2026-08-02.
+/// Current adapters may send `rawInput.command` as a string rather than argv.
+#[test]
+fn codex_execute_renderer_summarizes_real_string_command_shape() {
+    let rendered = render_codex_tool_status(
+        &serde_json::json!({
+            "kind": "execute",
+            "title": "git status --short",
+            "rawInput": {
+                "command": "git status --short",
+                "cwd": "/private/tmp/hone-agent-sandbox"
+            }
+        }),
+        AcpToolRenderPhase::Start,
+        "git status --short",
+        None,
+        None,
+    );
+
+    assert_eq!(rendered.tool, "检查 Git（git status）");
+    assert_eq!(
+        rendered.reasoning.as_deref(),
+        Some("正在执行：检查 Git（git status）")
+    );
+    assert!(!rendered.tool.contains("--short"));
+    assert!(!rendered.tool.contains("hone-agent-sandbox"));
+}
+
+#[tokio::test]
+async fn codex_execute_completion_reuses_safe_start_summary() {
+    let emitter = Arc::new(CaptureEmitter::default());
+    let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
+    let mut state = AcpPromptState::default();
+
+    let start = serde_json::json!({
+        "update": {
+            "sessionUpdate": "tool_call",
+            "toolCallId": "exec-string-command-1",
+            "kind": "execute",
+            "title": "pwd",
+            "rawInput": {
+                "command": "pwd",
+                "cwd": "/private/tmp/hone-agent-sandbox"
+            }
+        }
+    });
+    handle_acp_session_update_with_renderer(
+        &start,
+        &emitter_trait,
+        Some(&mut state),
+        Some(render_codex_tool_status),
+    )
+    .await;
+
+    let completed = serde_json::json!({
+        "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "exec-string-command-1",
+            "status": "completed",
+            "rawOutput": {
+                "formatted_output": "/private/tmp/hone-agent-sandbox\n",
+                "exit_code": 0
+            }
+        }
+    });
+    handle_acp_session_update_with_renderer(
+        &completed,
+        &emitter_trait,
+        Some(&mut state),
+        Some(render_codex_tool_status),
+    )
+    .await;
+
+    assert_eq!(
+        emitter.tool_events(),
+        vec![
+            CapturedToolEvent {
+                tool: "读取本地内容（pwd）".to_string(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some("正在执行：读取本地内容（pwd）".to_string()),
+            },
+            CapturedToolEvent {
+                tool: "读取本地内容（pwd）".to_string(),
+                status: "done".to_string(),
+                message: Some("执行完成：读取本地内容（pwd）".to_string()),
+                reasoning: None,
+            },
+        ]
+    );
+}
+
+#[test]
+fn codex_mcp_execute_renderer_shows_bounded_business_tool_summary() {
+    let rendered = render_codex_tool_status(
+        &serde_json::json!({
+            "kind": "execute",
+            "title": "mcp.hone.web_search",
+            "_meta": {"is_mcp_tool_call": true},
+            "rawInput": {
+                "server": "hone",
+                "tool": "web_search",
+                "arguments": {
+                    "query": "NVIDIA Rubin platform official 2026 specifications"
+                }
+            }
+        }),
+        AcpToolRenderPhase::Start,
+        "mcp.hone.web_search",
+        None,
+        None,
+    );
+
+    assert_eq!(
+        rendered.tool,
+        "hone/web_search query=\"NVIDIA Rubin platform official 2026 specifications\""
+    );
+    assert_eq!(
+        rendered.reasoning.as_deref(),
+        Some(
+            "正在执行：hone/web_search query=\"NVIDIA Rubin platform official 2026 specifications\""
+        )
+    );
+    assert!(!rendered.tool.contains("本地命令"));
+}
+
+#[test]
+fn codex_execute_renderer_never_exposes_shell_arguments_or_secrets() {
+    let rendered = render_codex_tool_status(
+        &serde_json::json!({
+            "kind": "execute",
+            "rawInput": {
+                "command": "OPENROUTER_API_KEY=super-secret curl https://example.test/private?token=secret"
+            }
+        }),
+        AcpToolRenderPhase::Start,
+        "Run curl",
+        None,
+        None,
+    );
+
+    assert_eq!(rendered.tool, "请求接口（curl）");
+    let reasoning = rendered.reasoning.expect("safe command reasoning");
+    assert_eq!(reasoning, "正在执行：请求接口（curl）");
+    assert!(!reasoning.contains("super-secret"));
+    assert!(!reasoning.contains("example.test"));
+    assert!(!reasoning.contains("token="));
 }
 
 /// Captured from the codex-acp `1.1.7` execute-completion stream shape.

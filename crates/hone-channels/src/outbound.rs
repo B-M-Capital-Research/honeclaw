@@ -394,6 +394,10 @@ fn compact_tool_subject_candidate(text: &str) -> Option<String> {
         return None;
     }
 
+    if let Some(action) = compact_safe_local_action(trimmed) {
+        return Some(action.to_string());
+    }
+
     let base = trimmed
         .split_whitespace()
         .next()
@@ -402,6 +406,10 @@ fn compact_tool_subject_candidate(text: &str) -> Option<String> {
 
     if let Some(label) = compact_tool_subject_from_name(base) {
         return Some(label.to_string());
+    }
+
+    if let Some(label) = compact_mcp_tool_subject(base) {
+        return Some(label);
     }
 
     if looks_like_command(trimmed) {
@@ -417,6 +425,42 @@ fn compact_tool_subject_candidate(text: &str) -> Option<String> {
     }
 
     None
+}
+
+fn compact_safe_local_action(text: &str) -> Option<&'static str> {
+    const ACTIONS: &[(&str, &str)] = &[
+        ("运行 Rust 工具", "运行 Rust 工具"),
+        ("格式化 Rust 代码", "格式化 Rust 代码"),
+        ("检查 Git", "检查 Git"),
+        ("搜索本地内容", "搜索本地内容"),
+        ("读取本地内容", "读取本地内容"),
+        ("请求接口", "请求接口"),
+        ("处理 JSON 数据", "处理 JSON 数据"),
+        ("运行 Python", "运行 Python"),
+        ("运行前端工具", "运行前端工具"),
+        ("检查本机进程", "检查本机进程"),
+        ("管理本机进程", "管理本机进程"),
+        ("检查 macOS 配置", "检查 macOS 配置"),
+        ("修改本地文件", "修改本地文件"),
+        ("运行 shell 命令", "运行 shell 命令"),
+        ("本地命令", "执行本地命令"),
+    ];
+    ACTIONS.iter().find_map(|(prefix, action)| {
+        (text == *prefix || text.starts_with(&format!("{prefix}（"))).then_some(*action)
+    })
+}
+
+fn compact_mcp_tool_subject(name: &str) -> Option<String> {
+    let (server, tool) = name.split_once('/')?;
+    if !is_safe_tool_identifier(server) || !is_safe_tool_identifier(tool) {
+        return None;
+    }
+    Some(
+        tool_display_map()
+            .get(tool)
+            .map(|(display_name, _)| (*display_name).to_string())
+            .unwrap_or_else(|| format!("调用工具 {tool}")),
+    )
 }
 
 fn compact_tool_subject_from_name(name: &str) -> Option<&'static str> {
@@ -940,6 +984,32 @@ mod tests {
         assert_eq!(
             render_compact_tool_status_done("/bin/bash -lc rtk rg company_profiles /tmp/foo", None),
             "执行命令完成"
+        );
+    }
+
+    #[test]
+    fn compact_tool_status_understands_safe_codex_mcp_and_local_summaries() {
+        assert_eq!(
+            render_compact_tool_status_start(
+                "hone/web_search query=\"OpenAI official website\"",
+                None
+            ),
+            "正在搜索信息..."
+        );
+        assert_eq!(
+            render_compact_tool_status_done(
+                "hone/web_search query=\"OpenAI official website\"",
+                None
+            ),
+            "搜索信息完成"
+        );
+        assert_eq!(
+            render_compact_tool_status_start("检查 Git（git status）", None),
+            "正在检查 Git..."
+        );
+        assert_eq!(
+            render_compact_tool_status_done("读取本地内容（pwd）", None),
+            "读取本地内容完成"
         );
     }
 

@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
+
+## 2026-08-02
+
+### Codex ACP Tool Status Cross-channel Projection Repair
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (tool-status subphase done; shared ACP runtime plan remains active)
+- Handoff: `docs/handoffs/2026-08-02-acp-tool-status-projection.md`
+- Decision / ADR: N/A; this restores the existing adapter-lifecycle and user-visible projection boundary without changing module ownership, runner routing, or storage authority
+- Related PRs / commits: uncommitted local change set; no release or tag
+- Related runbooks / regressions: exact Codex ACP 1.1.7 lifecycle/MCP/shell fixtures, secret-redaction and metadata-loss regressions, full `hone-channels` library suite, iMessage tests, four IM channel-bin compile checks, isolated live Discord MCP/shell probes, and source LaunchAgent health verification
+- Current conclusion: cancelled `mcp_startup.<server>` watcher events remain available in raw diagnostics but no longer appear or count as business tools. Structured Hone MCP calls and actual shell calls have distinct, bounded labels; shell start/done labels remain stable even when Codex completion metadata is sparse. Discord, Telegram, Feishu, and iMessage consume the corrected shared event according to their Full/Compact/pending-state UX, without exposing command arguments, full paths, URLs, or secrets.
+- Next entry point: `docs/handoffs/2026-08-02-acp-tool-status-projection.md`; use raw ACP payload shape plus the shared runner/outbound projection before adding any channel-specific exception.
 
 ## 2026-08-01
 

@@ -3,13 +3,15 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-08-01
+- updated_at: 2026-08-02
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
   - `crates/hone-channels/src/runners/acp_common/`
   - `crates/hone-channels/src/core/`
   - `crates/hone-channels/src/runners/codex_acp.rs`
+  - `crates/hone-channels/src/outbound.rs`
+  - `bins/hone-imessage/src/main.rs`
   - `crates/hone-channels/src/runners/types.rs`
   - `crates/hone-channels/src/turn_builder.rs`
   - `crates/hone-channels/src/execution.rs`
@@ -34,6 +36,7 @@
   - `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`
   - `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
   - `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
+  - `docs/handoffs/2026-08-02-acp-tool-status-projection.md`
 
 ## Goal
 
@@ -69,6 +72,19 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-07-31 minimal native-turn follow-up: trusted Codex ACP Interactive turns now treat the native harness as owner of retained history, tool/MCP lifecycle, and compaction. Their user payload contains only current Beijing time plus normalized current user content, including attachment/image material or an explicit slash-skill task. Hone no longer repeats Session IDs/history, receive-routing metadata, related-skill hints, entity-loop instructions, or final-answer contracts on those turns. OpenCode, scheduled/heartbeat tasks, and strict actor fallback remain unchanged.
 - 2026-07-31 native-skill follow-up: trusted persistent Codex ACP workspaces expose each enabled Hone system/custom skill through an individual symlink under `<actor sandbox>/.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone no longer repeats the MCP `SkillTool` loading contract or exposes skill-loading MCP schemas on that path. MCP remains the transport for live Hone data/action tools, while legacy runners retain the existing skill bridge.
 - 2026-08-01 native-turn contract follow-up (done; parent plan remains active): replaced the seed/reseed user-message convention with an explicit runner conversation strategy. Persistent Codex sessions receive Hone instructions through Codex's native `developer_instructions` configuration and every ACP `session/prompt` contains only the canonical current user turn. Native compaction never causes Hone to replay system instructions, local transcript, historical user/assistant messages, tool calls, or tool results. The persistent-session mode and instruction fingerprint form a generation boundary so pre-contract or instruction-mismatched native sessions rotate deliberately instead of being resumed as if clean. OpenCode remains a fresh-session Hone-replay adapter until its own resume/event contract is independently proven.
+- 2026-08-02 MCP startup and execute-status follow-up (done; parent plan remains active): `codex-acp 1.1.7` can report a cancelled MCP startup watcher as a synthetic terminal `tool_call` with `toolCallId=mcp_startup.<server>` and `status=failed`. Hone now retains that adapter lifecycle telemetry in the raw ACP log while excluding it from visible progress, pending/restored tool state, and business tool counts. Structured MCP calls and actual shell execution are distinguished from `rawInput`; MCP calls use bounded tool/argument summaries, shell calls use safe categories without arguments, secrets, or full paths, and completion events inherit the same start summary when Codex omits start metadata. Discord, Telegram, and Feishu direct/group projections share the Full/Compact rendering contract, while iMessage forwards safe tool-start state to its console pending view.
+
+### 2026-08-02 MCP startup status acceptance checklist
+
+- [x] Recognize adapter-generated `mcp_startup.<server>` lifecycle calls without relying only on the display title.
+- [x] Keep synthetic startup failures out of user-visible `ToolStatus`, pending tool state, restored tool transcript, and tool-call counts.
+- [x] Preserve ordinary MCP business tool start/completion events unchanged.
+- [x] Add a regression fixture matching the observed Codex ACP 1.1.7 cancelled-startup payload.
+- [x] Render observed `rawInput.server/tool/arguments` MCP calls as bounded business-tool summaries instead of `本地命令`.
+- [x] Render real shell calls with a safe executable/category summary while proving command arguments and secret-like values stay hidden.
+- [x] Keep start/done summaries stable when Codex completion events omit `kind` and `rawInput`.
+- [x] Apply the Full/Compact projection to Discord, Telegram, and Feishu, and forward the safe start summary to iMessage console state.
+- [x] Run focused and full tests, changed-file formatting, diff validation, then deploy through the existing source runtime and verify fresh MCP/shell turns.
 
 ### 2026-08-01 acceptance checklist
 
@@ -82,6 +98,17 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - [x] Run the repository gates, synchronize ADR/decision/invariant/repo-map/handoff/archive evidence, and commit only the reviewed task files.
 
 ## Validation
+
+- 2026-08-02 MCP startup and cross-channel tool-status follow-up:
+  - Exact Codex ACP 1.1.7 cancelled-startup, structured MCP, argv/string shell, secret-redaction, and start-to-completion metadata-loss regressions passed.
+  - `cargo test -p hone-channels --lib` (`710 passed`, `1` host-dependent OCR test ignored).
+  - `cargo test -p hone-imessage` (`3 passed`).
+  - `cargo check -p hone-discord -p hone-telegram -p hone-feishu -p hone-imessage` passed; the only emitted future-compatibility warning is from upstream `proc-macro-error2`.
+  - Exact changed Rust files were formatted with `rustfmt --edition 2024 --config skip_children=true`; `git diff --check` passed.
+  - A real isolated Discord Codex ACP MCP probe suppressed the observed `mcp_startup.hone` lifecycle event and emitted `hone/web_search query="..."` for the actual business call.
+  - A final isolated Discord shell probe emitted the same safe `读取本地内容（pwd）` label for start and completion, returned `LOCAL_PROBE_OK`, and made one real `pwd` tool call without exposing its sandbox path.
+  - Telegram's current source config has no non-empty administrator ID, so a live Telegram Codex ACP turn is not routable without changing channel authorization. No authorization was changed; shared Full/Compact regressions and all four channel-bin compile checks provide the non-credentialed cross-channel proof.
+  - The source LaunchAgent restarted at zero active chats with repository Cargo provenance. PID `83979` supervises source-built `hone-console-page` and `hone-discord`; Discord re-authenticated, ports `8077`, `8088`, `3000`, and `3001` returned HTTP `200`, and active chats returned to `0`.
 
 - 2026-08-01 native-turn v2 follow-up:
   - `cargo test -p hone-channels codex_acp_1_1_7_boundary_keeps_every_prompt_current_turn_only -- --nocapture`

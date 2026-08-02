@@ -14,7 +14,9 @@ use serde_json::Value;
 use crate::runners::types::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::resolve_tool_reasoning;
 
-use super::extract::{extract_acp_reasoning, extract_tool_failure, extract_tool_result};
+use super::extract::{
+    extract_acp_reasoning, extract_tool_call_id, extract_tool_failure, extract_tool_result,
+};
 use super::state::{
     ACP_BOUNDARY_SCAN_TAIL_BYTES, AcpPromptState, AcpToolRenderPhase, AcpToolStatusRenderer,
     RE_ACP_COMPACT_STATUS_TEXT, RE_OPENCODE_SUMMARY_BOUNDARY, floor_char_boundary,
@@ -23,6 +25,14 @@ use super::tool_state::{capture_tool_finish, capture_tool_start, flush_pending_a
 
 pub(crate) fn acp_prompt_succeeded(stop_reason: Option<&str>) -> bool {
     matches!(stop_reason, Some(reason) if reason != "cancelled")
+}
+
+fn is_mcp_startup_lifecycle_update(update: &Value) -> bool {
+    update
+        .get("toolCallId")
+        .and_then(Value::as_str)
+        .and_then(|tool_call_id| tool_call_id.strip_prefix("mcp_startup."))
+        .is_some_and(|server_name| !server_name.is_empty())
 }
 
 #[cfg(test)]
@@ -162,6 +172,23 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
 
     tracing::debug!("[acp] session/update kind={kind}");
 
+    if is_mcp_startup_lifecycle_update(update) {
+        let tool_call_id = update
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .unwrap_or("mcp_startup.unknown");
+        let status = update
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        tracing::warn!(
+            "[acp] suppressed adapter MCP startup lifecycle update tool_call_id={} status={}",
+            tool_call_id,
+            status
+        );
+        return;
+    }
+
     if update
         .get("_meta")
         .and_then(|meta| meta.get("contextCompaction"))
@@ -263,6 +290,10 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                 .await;
         }
         "tool_call_update" => {
+            let rendered_update = state
+                .as_deref()
+                .map(|state| tool_update_with_pending_start(update, state))
+                .unwrap_or_else(|| update.clone());
             let tool = update
                 .get("title")
                 .and_then(|value| value.as_str())
@@ -281,7 +312,7 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                 }
                 let rendered = tool_status_renderer.map(|renderer| {
                     renderer(
-                        update,
+                        &rendered_update,
                         AcpToolRenderPhase::Done,
                         &tool,
                         Some("工具执行完成".to_string()),
@@ -333,4 +364,29 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
         }
         _ => {}
     }
+}
+
+fn tool_update_with_pending_start(update: &Value, state: &AcpPromptState) -> Value {
+    let Some(tool_call_id) = extract_tool_call_id(update) else {
+        return update.clone();
+    };
+    let Some(pending) = state.pending_tool_calls.get(&tool_call_id) else {
+        return update.clone();
+    };
+    let Some(object) = update.as_object() else {
+        return update.clone();
+    };
+
+    let mut enriched = object.clone();
+    if !enriched.contains_key("title")
+        && !enriched.contains_key("name")
+        && !enriched.contains_key("toolName")
+        && !enriched.contains_key("kind")
+    {
+        enriched.insert("title".to_string(), Value::String(pending.name.clone()));
+    }
+    if !enriched.contains_key("rawInput") && !pending.arguments.is_null() {
+        enriched.insert("rawInput".to_string(), pending.arguments.clone());
+    }
+    Value::Object(enriched)
 }

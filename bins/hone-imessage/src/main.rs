@@ -190,6 +190,15 @@ fn parse_iteration(detail: &Option<String>) -> Option<u32> {
     raw.strip_prefix("iteration=")?.parse::<u32>().ok()
 }
 
+fn imessage_tool_progress_payload(status: &str, tool: &str) -> Option<serde_json::Value> {
+    (status == "start").then(|| {
+        serde_json::json!({
+            "stage": "tool.execute",
+            "tool": tool,
+        })
+    })
+}
+
 struct ImessageConsoleListener {
     handle: String,
 }
@@ -228,6 +237,11 @@ impl AgentSessionListener for ImessageConsoleListener {
                 }
                 _ => {}
             },
+            AgentSessionEvent::Run(RunEvent::ToolStatus { status, tool, .. }) => {
+                if let Some(payload) = imessage_tool_progress_payload(&status, &tool) {
+                    push_console_event(&self.handle, "imessage_progress", payload);
+                }
+            }
             AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 push_console_event(
                     &self.handle,
@@ -892,5 +906,17 @@ mod tests {
                 "x".repeat(MAX_APPLESCRIPT_STDERR_CHARS)
             )
         );
+    }
+
+    #[test]
+    fn imessage_console_forwards_safe_tool_start_summary_only() {
+        assert_eq!(
+            imessage_tool_progress_payload("start", "读取本地内容（pwd）"),
+            Some(serde_json::json!({
+                "stage": "tool.execute",
+                "tool": "读取本地内容（pwd）",
+            }))
+        );
+        assert!(imessage_tool_progress_payload("done", "读取本地内容（pwd）").is_none());
     }
 }

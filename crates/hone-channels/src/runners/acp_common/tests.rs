@@ -31,6 +31,10 @@ struct ProgressEmitter {
     details: Arc<Mutex<Vec<String>>>,
 }
 
+struct CountingEmitter {
+    count: Arc<Mutex<usize>>,
+}
+
 #[async_trait]
 impl AgentRunnerEmitter for CollectingEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
@@ -51,6 +55,13 @@ impl AgentRunnerEmitter for ProgressEmitter {
     }
 }
 
+#[async_trait]
+impl AgentRunnerEmitter for CountingEmitter {
+    async fn emit(&self, _event: AgentRunnerEvent) {
+        *self.count.lock().await += 1;
+    }
+}
+
 fn collecting_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>) {
     let deltas = Arc::new(Mutex::new(Vec::new()));
     let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(CollectingEmitter {
@@ -65,6 +76,66 @@ fn progress_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>) 
         details: details.clone(),
     });
     (emitter, details)
+}
+
+fn counting_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<usize>>) {
+    let count = Arc::new(Mutex::new(0));
+    let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(CountingEmitter {
+        count: count.clone(),
+    });
+    (emitter, count)
+}
+
+#[tokio::test]
+async fn codex_acp_cancelled_mcp_startup_is_not_a_visible_or_accounted_tool_call() {
+    let mut state = AcpPromptState::default();
+    let (emitter, emitted_count) = counting_emitter();
+
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "mcp_startup.hone",
+                "kind": "other",
+                "title": "mcp__hone__startup",
+                "status": "failed",
+                "content": [{
+                    "type": "content",
+                    "content": {
+                        "type": "text",
+                        "text": "[codex-acp forwarded startup error] MCP server `hone` startup was cancelled."
+                    }
+                }]
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    assert_eq!(*emitted_count.lock().await, 0);
+    assert!(state.pending_tool_calls.is_empty());
+    assert!(state.pending_assistant_tool_calls.is_empty());
+    assert!(state.finished_tool_calls.is_empty());
+    assert!(state.context_messages.is_empty());
+
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "exec-web-search-1",
+                "kind": "other",
+                "title": "mcp.hone.web_search",
+                "status": "in_progress"
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    assert_eq!(*emitted_count.lock().await, 1);
+    assert!(state.pending_tool_calls.contains_key("exec-web-search-1"));
 }
 
 #[tokio::test]
