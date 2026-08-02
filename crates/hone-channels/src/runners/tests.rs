@@ -951,6 +951,25 @@ fn codex_version_matrix_rejects_old_codex() {
 }
 
 #[test]
+fn codex_version_matrix_rejects_unknown_codex_major() {
+    let result = validate_codex_version_matrix(
+        CliVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        CliVersion {
+            major: 1,
+            minor: 1,
+            patch: 7,
+        },
+    );
+    let error = result.expect_err("unknown Codex major must fail closed");
+    assert!(error.contains("unsupported major"));
+    assert!(error.contains("0.146.0"));
+}
+
+#[test]
 fn codex_version_matrix_rejects_old_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {

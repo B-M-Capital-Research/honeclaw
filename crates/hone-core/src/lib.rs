@@ -29,7 +29,7 @@ pub const CHANNEL_DISABLED_EXIT_CODE: i32 = 20;
 pub use actor::{ActorIdentity, SessionIdentity, SessionKind};
 pub use api_key_pool::ApiKeyPool;
 pub use audit::{LlmAuditRecord, LlmAuditSink};
-pub use build_info::{BuildInfo, current_build_info};
+pub use build_info::{BuildInfo, BuildSource, current_build_info};
 pub use channel_process::{ObservedChannelProcess, channel_binary_name, scan_channel_processes};
 pub use config::{ChatScope, HoneConfig};
 pub use context_window::is_context_overflow_error;

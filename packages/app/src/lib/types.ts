@@ -279,6 +279,10 @@ export type MetaInfo = {
     git_sha?: string | null;
     build_timestamp?: string | null;
     profile: "debug" | "release" | string;
+    source?:
+      | "workspace"
+      | "direct_source_runtime"
+      | "unknown";
     binary_sha256?: string | null;
   };
   acp_profiles?: Array<{

@@ -406,7 +406,9 @@ wait_web_ready() {
     while (( SECONDS < deadline )); do
         payload="$(curl -fsS --max-time 3 http://127.0.0.1:8077/api/meta 2>/dev/null || true)"
         if [[ -n "$payload" ]] && curl -fsS --max-time 3 http://127.0.0.1:8088/ >/dev/null 2>&1; then
-            if [[ -z "$expected_revision" || "$payload" == *"\"git_sha\":\"$expected_revision\""* ]]; then
+            if [[ -z "$expected_revision" ]] \
+                || { [[ "$payload" == *"\"git_sha\":\"$expected_revision\""* ]] \
+                    && [[ "$payload" == *'"source":"direct_source_runtime"'* ]]; }; then
                 return 0
             fi
         fi
@@ -568,6 +570,7 @@ if [[ -n "$current_listener_pid" ]]; then
 fi
 
 RELEASE_DIR="$RELEASE_ROOT/$REVISION"
+BUILD_SOURCE="direct_source_runtime"
 if [[ -d "$RELEASE_DIR" ]]; then
     [[ -f "$RELEASE_DIR/manifest.json" ]] || { echo "[deploy] release manifest missing: $RELEASE_DIR" >&2; exit 1; }
     for binary in hone-console-page hone-discord hone-mcp; do
@@ -577,6 +580,7 @@ if [[ -d "$RELEASE_DIR" ]]; then
     DISCORD_SHA="$(shasum -a 256 "$RELEASE_DIR/hone-discord" | awk '{print $1}')"
     MCP_SHA="$(shasum -a 256 "$RELEASE_DIR/hone-mcp" | awk '{print $1}')"
     grep -q "\"git_sha\":\"$REVISION\"" "$RELEASE_DIR/manifest.json" \
+        && grep -q "\"build_source\":\"$BUILD_SOURCE\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-console-page\":\"$WEB_SHA\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-discord\":\"$DISCORD_SHA\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-mcp\":\"$MCP_SHA\"" "$RELEASE_DIR/manifest.json" || {
@@ -589,6 +593,7 @@ else
     if (( ! SKIP_BUILD )); then
         log "building revision $REVISION"
         HONE_BUILD_GIT_SHA="$REVISION" HONE_BUILD_TIMESTAMP="$BUILD_TIMESTAMP" \
+            HONE_BUILD_SOURCE="$BUILD_SOURCE" \
             cargo build -p hone-console-page -p hone-discord -p hone-mcp
     fi
     for binary in hone-console-page hone-discord hone-mcp; do
@@ -602,8 +607,8 @@ else
     WEB_SHA="$(shasum -a 256 "$STAGING_DIR/hone-console-page" | awk '{print $1}')"
     DISCORD_SHA="$(shasum -a 256 "$STAGING_DIR/hone-discord" | awk '{print $1}')"
     MCP_SHA="$(shasum -a 256 "$STAGING_DIR/hone-mcp" | awk '{print $1}')"
-    printf '{"git_sha":"%s","build_timestamp":"%s","binaries":{"hone-console-page":"%s","hone-discord":"%s","hone-mcp":"%s"}}\n' \
-        "$REVISION" "$BUILD_TIMESTAMP" "$WEB_SHA" "$DISCORD_SHA" "$MCP_SHA" > "$STAGING_DIR/manifest.json"
+    printf '{"git_sha":"%s","build_timestamp":"%s","build_source":"%s","binaries":{"hone-console-page":"%s","hone-discord":"%s","hone-mcp":"%s"}}\n' \
+        "$REVISION" "$BUILD_TIMESTAMP" "$BUILD_SOURCE" "$WEB_SHA" "$DISCORD_SHA" "$MCP_SHA" > "$STAGING_DIR/manifest.json"
     mv "$STAGING_DIR" "$RELEASE_DIR"
     STAGING_DIR=""
 fi

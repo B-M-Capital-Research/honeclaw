@@ -290,6 +290,12 @@ pub(crate) fn validate_codex_version_matrix(
             "codex_acp requires codex >= {MIN_CODEX_VERSION}; found {codex_version}. Update with `npm install -g @openai/codex@latest`."
         ));
     }
+    if codex_version.major != MIN_CODEX_VERSION.major {
+        return Err(format!(
+            "codex version {codex_version} has unsupported major {}; latest validated companion version is {MIN_CODEX_VERSION}",
+            codex_version.major
+        ));
+    }
     select_acp_adapter_profile(AcpAdapterKind::CodexAcp, adapter_version)
         .map(|_| ())
         .map_err(|message| {
@@ -374,6 +380,15 @@ async fn probe_codex_cli_version(
             kind: AgentSessionErrorKind::AgentFailed,
             message: format!(
                 "codex_acp requires codex >= {MIN_CODEX_VERSION}; found {codex_version}. Update with `npm install -g @openai/codex@latest`."
+            ),
+        });
+    }
+    if codex_version.major != MIN_CODEX_VERSION.major {
+        return Err(AgentSessionError {
+            kind: AgentSessionErrorKind::AgentFailed,
+            message: format!(
+                "codex version {codex_version} has unsupported major {}; latest validated companion version is {MIN_CODEX_VERSION}",
+                codex_version.major
             ),
         });
     }
@@ -573,10 +588,24 @@ async fn run_codex_acp(
                 },
             )?;
         }
+        let companion_codex_cli_version = codex_cli_version
+            .map(|version| version.to_string())
+            .unwrap_or_else(|| "probe_unavailable".to_string());
+        let companion_codex_cli_compatibility = codex_cli_version
+            .map(|version| {
+                if version == MIN_CODEX_VERSION {
+                    "validated"
+                } else {
+                    "compatible_newer"
+                }
+            })
+            .unwrap_or("probe_unavailable");
         match adapter_profile.compatibility {
             AcpCompatibilityStatus::Validated => tracing::info!(
                 adapter = adapter_profile.adapter.as_str(),
                 detected_version = %adapter_profile.detected_version,
+                companion_codex_cli_version = %companion_codex_cli_version,
+                companion_codex_cli_compatibility,
                 dialect = ?adapter_profile.dialect,
                 compatibility = adapter_profile.compatibility.as_str(),
                 "selected validated ACP stream dialect"
@@ -584,6 +613,8 @@ async fn run_codex_acp(
             AcpCompatibilityStatus::CompatibleNewer => tracing::warn!(
                 adapter = adapter_profile.adapter.as_str(),
                 detected_version = %adapter_profile.detected_version,
+                companion_codex_cli_version = %companion_codex_cli_version,
+                companion_codex_cli_compatibility,
                 baseline_version = adapter_profile.baseline_version(),
                 dialect = ?adapter_profile.dialect,
                 compatibility = adapter_profile.compatibility.as_str(),
@@ -591,12 +622,7 @@ async fn run_codex_acp(
             ),
         }
         let mut companion_versions = BTreeMap::new();
-        companion_versions.insert(
-            "codex_cli".to_string(),
-            codex_cli_version
-                .map(|version| version.to_string())
-                .unwrap_or_else(|| "probe_unavailable".to_string()),
-        );
+        companion_versions.insert("codex_cli".to_string(), companion_codex_cli_version);
         if let Err(error) = persist_acp_runtime_profile(
             &request.runtime_dir,
             "codex_acp",

@@ -92,13 +92,13 @@ bash scripts/deploy_source_runtime.sh \
 The checkout may be a clean feature worktree while config/data/skills remain in the normal runtime checkout. The command:
 
 1. refuses a dirty, unexpected, or unpushed revision by default;
-2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp;
-3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256 manifest;
+2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp plus the closed provenance kind `direct_source_runtime`;
+3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256/build-source manifest;
 4. waits for active chats to drain;
 5. validates the configured Codex/OpenCode commands on an explicit persistent runtime `PATH`; this path excludes turn-local `.codex/tmp` and `.cache/codex-runtimes` entries even when the deployment is invoked from Codex Desktop;
 6. rejects an unknown owner of port `8077`, then removes either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor; any captured child reparented to PID 1 is executable-reverified, sent TERM, and only then subject to bounded exact-PID KILL escalation before locks are checked;
 7. atomically installs the revision-bound Web/Discord plists under `~/Library/LaunchAgents` and bootstraps those exact files, so the canary and next login use identical working-directory/environment semantics;
-8. requires `/api/meta.build.git_sha` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
+8. requires `/api/meta.build.git_sha` and `/api/meta.build.source=direct_source_runtime` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
 9. verifies the running executable paths, moves the legacy supervisor plist to the recoverable `.disabled-by-hone-source-deploy` name, and updates the `current` symlink only after success.
 
 One exit trap owns rollback. Any failure after the old runtime is stopped removes all partially started managed jobs, restores and bootstraps the previous managed plists, or restores and bootstraps the legacy supervisor plist, then verifies the services that were running before deployment. A loaded-but-crashed launchd job is still removed even when it no longer has a PID. The disabled legacy plist is retained as a rollback asset; do not load it alongside the managed Web plist because both would compete for the same backend ports.
@@ -163,7 +163,7 @@ curl -fsS http://127.0.0.1:8077/api/meta
 readlink data/releases/source/current
 ```
 
-`build.git_sha` must equal the requested revision. `acp_profiles` may be empty until a real adapter connection initializes; after a Codex/OpenCode turn it must report the detected adapter version, selected dialect, compatibility status, detection time, and runner build SHA without paths or credentials.
+`build.git_sha` must equal the requested revision, `build.source` must be `direct_source_runtime`, and `build.binary_sha256` must be nonempty. Startup logs must record the same bounded Git SHA/timestamp/profile/source/hash line. `acp_profiles` may be empty until a real adapter connection initializes; after a Codex/OpenCode turn it must report the detected adapter version, selected dialect, compatibility status, detection time, and runner build SHA without paths or credentials. The matching dialect-selection log must include the actual adapter version/status and, for Codex ACP, the companion Codex CLI version/status.
 
 Expected URLs:
 

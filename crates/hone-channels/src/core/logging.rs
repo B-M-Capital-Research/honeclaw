@@ -33,6 +33,7 @@ impl HoneBotCore {
 
     /// 打印启动期路由信息（配置来源、主对话执行器、压缩/审计/存储后端等）
     pub fn log_startup_routing(&self, channel: &str, config_path: &str) {
+        let build = hone_core::current_build_info();
         let llm_provider = self.config.llm.provider.trim();
         let (llm_model, llm_timeout, llm_max_tokens) = match llm_provider {
             "kimi" => (
@@ -57,6 +58,14 @@ impl HoneBotCore {
         };
 
         tracing::info!("[Startup/{channel}] config.path={config_path}");
+        tracing::info!(
+            "[Startup/{channel}] build.git_sha={} build.timestamp={} build.profile={} build.source={} binary.sha256={}",
+            build.git_sha.as_deref().unwrap_or("unavailable"),
+            build.build_timestamp.as_deref().unwrap_or("unavailable"),
+            build.profile,
+            build.source.as_str(),
+            build.binary_sha256.as_deref().unwrap_or("unavailable")
+        );
         tracing::info!(
             "[Startup/{channel}] llm.provider={} llm.model={} timeout={}s max_tokens={} api_key.source={}",
             printable_or_default(llm_provider, "<empty>"),

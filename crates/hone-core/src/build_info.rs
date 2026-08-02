@@ -5,11 +5,30 @@ use std::sync::LazyLock;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildSource {
+    Workspace,
+    DirectSourceRuntime,
+    Unknown,
+}
+
+impl BuildSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Workspace => "workspace",
+            Self::DirectSourceRuntime => "direct_source_runtime",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BuildInfo {
     pub git_sha: Option<String>,
     pub build_timestamp: Option<String>,
     pub profile: &'static str,
+    pub source: BuildSource,
     pub binary_sha256: Option<String>,
 }
 
@@ -21,6 +40,7 @@ static CURRENT_BUILD_INFO: LazyLock<BuildInfo> = LazyLock::new(|| BuildInfo {
     } else {
         "release"
     },
+    source: normalized_build_source(option_env!("HONE_BUILD_SOURCE")),
     binary_sha256: current_binary_sha256(),
 });
 
@@ -40,6 +60,14 @@ fn sanitized_build_value(raw: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn normalized_build_source(raw: Option<&str>) -> BuildSource {
+    match raw.map(str::trim).filter(|value| !value.is_empty()) {
+        None | Some("workspace") => BuildSource::Workspace,
+        Some("direct_source_runtime") => BuildSource::DirectSourceRuntime,
+        Some(_) => BuildSource::Unknown,
+    }
+}
+
 fn current_binary_sha256() -> Option<String> {
     let executable = std::env::current_exe().ok()?;
     let mut file = File::open(executable).ok()?;
@@ -57,7 +85,7 @@ fn current_binary_sha256() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitized_build_value;
+    use super::{BuildSource, normalized_build_source, sanitized_build_value};
 
     #[test]
     fn build_metadata_accepts_bounded_identifiers_and_rejects_paths() {
@@ -67,5 +95,18 @@ mod tests {
         );
         assert_eq!(sanitized_build_value(Some(" /tmp/private/build ")), None);
         assert_eq!(sanitized_build_value(Some("secret value")), None);
+    }
+
+    #[test]
+    fn build_source_is_a_bounded_provenance_kind_not_a_path() {
+        assert_eq!(normalized_build_source(None), BuildSource::Workspace);
+        assert_eq!(
+            normalized_build_source(Some("direct_source_runtime")),
+            BuildSource::DirectSourceRuntime
+        );
+        assert_eq!(
+            normalized_build_source(Some("/private/tmp/custom-build")),
+            BuildSource::Unknown
+        );
     }
 }

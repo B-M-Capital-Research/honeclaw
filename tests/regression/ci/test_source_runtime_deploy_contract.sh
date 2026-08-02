@@ -195,7 +195,7 @@ case "$url" in
         if [[ "$binary" == *'/releases/source/'* ]]; then
             [[ "${FAKE_FAIL_NEW_WEB:-0}" != 1 ]] || exit 22
             revision="$(basename "$(dirname "$binary")")"
-            printf '{"build":{"git_sha":"%s"}}\n' "$revision"
+            printf '{"build":{"git_sha":"%s","source":"direct_source_runtime"}}\n' "$revision"
         else
             printf '{"build":{"git_sha":"old"}}\n'
         fi
@@ -281,6 +281,7 @@ assert_old_state() {
 
 reset_old_state
 run_deploy env
+grep -q '"build_source":"direct_source_runtime"' "$PROJECT/data/releases/source/$REVISION/manifest.json"
 grep -q "/releases/source/$REVISION/hone-console-page" "$STATE/com.honeclaw.source.web.binary"
 grep -q "/releases/source/$REVISION/hone-discord" "$STATE/com.honeclaw.source.discord.binary"
 grep -q "remove com.honeclaw.source.web" "$STATE/events"

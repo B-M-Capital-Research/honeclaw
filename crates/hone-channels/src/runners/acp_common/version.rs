@@ -106,6 +106,22 @@ pub(crate) fn select_acp_adapter_profile_from_initialize(
     adapter: AcpAdapterKind,
     initialize_result: &Value,
 ) -> Result<(CliVersion, AcpAdapterProfile), String> {
+    let adapter_name = initialize_result
+        .get("agentInfo")
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let identity_matches = match adapter {
+        AcpAdapterKind::CodexAcp => adapter_name.eq_ignore_ascii_case("codex-acp"),
+        AcpAdapterKind::OpenCode => adapter_name.eq_ignore_ascii_case("opencode"),
+    };
+    if !identity_matches {
+        return Err(format!(
+            "{} initialize returned a missing or unexpected agentInfo.name",
+            adapter.as_str()
+        ));
+    }
     let version_text = initialize_result
         .get("agentInfo")
         .and_then(|value| value.get("version"))
@@ -113,7 +129,7 @@ pub(crate) fn select_acp_adapter_profile_from_initialize(
         .unwrap_or_default();
     let version = parse_cli_version(version_text).ok_or_else(|| {
         format!(
-            "{} initialize returned an unparseable agentInfo.version: `{version_text}`",
+            "{} initialize returned a missing or unparseable agentInfo.version",
             adapter.as_str()
         )
     })?;
@@ -236,11 +252,38 @@ mod tests {
         assert_eq!(version, CODEX_ACP_BASELINE_VERSION);
         assert_eq!(profile.compatibility, AcpCompatibilityStatus::Validated);
 
-        let missing = serde_json::json!({"protocolVersion": 1, "agentInfo": {}});
+        let missing = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {"name": "opencode"}
+        });
         let error = select_acp_adapter_profile_from_initialize(AcpAdapterKind::OpenCode, &missing)
             .expect_err("missing version must fail closed");
         assert!(error.contains("opencode"));
         assert!(error.contains("agentInfo.version"));
+
+        let wrong_identity = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {"name": "opencode", "version": "1.1.7"}
+        });
+        let error =
+            select_acp_adapter_profile_from_initialize(AcpAdapterKind::CodexAcp, &wrong_identity)
+                .expect_err("a different adapter identity must fail closed");
+        assert!(error.contains("codex-acp"));
+        assert!(error.contains("agentInfo.name"));
+
+        let oversized_version = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {
+                "name": "codex-acp",
+                "version": "not-a-version-with-private-or-unbounded-diagnostic-content"
+            }
+        });
+        let error = select_acp_adapter_profile_from_initialize(
+            AcpAdapterKind::CodexAcp,
+            &oversized_version,
+        )
+        .expect_err("invalid version must fail without echoing external content");
+        assert!(!error.contains("private-or-unbounded"));
     }
 
     #[tokio::test]

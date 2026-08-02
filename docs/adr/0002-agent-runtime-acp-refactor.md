@@ -36,8 +36,8 @@ Superseded by: N/A
 - Session storage now writes the normalized version-4 user/assistant `content[] + status` model. Hone-managed replay runners may consume it, but Codex native prompts never serialize that local transcript, including during migration or compaction.
 - Choose `opencode acp` over stdio / JSON-RPC as the production integration path for `opencode`, instead of CLI text parsing or a `serve` compatibility layer.
 - Treat ACP streaming as versioned adapter dialects rather than one byte-identical renderer contract. The current observed profiles are codex-acp `1.1.7` and OpenCode `1.18.11`; each adapter preserves the visible, thought, tool, progress, usage, and final detail that its protocol actually exposes.
-- Select the adapter profile from the real connection's `initialize.agentInfo.version`, not a runner-name constant or a second probe process. An exact fixture version is `validated`; a newer minor/patch in the same major uses the nearest validated dialect as `compatible_newer` with a warning; an older version, missing/unparseable version, or unknown major fails before `session/new` or `session/prompt`.
-- Persist only sanitized runtime provenance for the last observed Codex/OpenCode profile under the runtime directory. `/api/meta` exposes the Web binary build identity plus those observed profiles; an empty profile list means that adapter has not completed initialize in this runtime, not that a version was guessed.
+- Select the adapter profile from the real connection's matching `initialize.agentInfo.name` and `initialize.agentInfo.version`, not a runner-name constant or a second probe process. A missing or mismatched identity fails before a session. An exact fixture version is `validated`; a newer minor/patch in the same major uses the nearest validated dialect as `compatible_newer` with a warning; an older version, missing/unparseable version, or unknown major fails before `session/new` or `session/prompt`. The Codex CLI companion follows the same exact/same-major/unknown-major boundary around `0.146.0` even though the live adapter initialize remains the stream-dialect authority.
+- Persist only sanitized runtime provenance for the last observed Codex/OpenCode profile under the runtime directory. `/api/meta` exposes the Web binary Git SHA, timestamp, profile, bounded build-source kind, binary hash, and observed adapter profiles; an empty profile list means that adapter has not completed initialize in this runtime, not that a version was guessed. Startup logs emit the same bounded build provenance, and adapter selection logs include the detected adapter version, selected dialect/status, and Codex CLI companion version/status.
 - Keep stream detail typed through the session boundary. Answer bytes, reasoning deltas, tool status, progress, usage, reset, and terminal state are not interchangeable. Admin Web and full-reasoning direct channels may show sanitized reasoning progress; compact group modes show only a generic analysis signal; OpenAI-compatible output and channels without a safe live-update surface omit it. Final answer semantics do not depend on that presentation choice.
 - This refactor is an intentional breaking change and does not preserve the old config keys, old SSE event semantics, or old session write format as a long-term compatibility surface.
 
@@ -58,8 +58,8 @@ Superseded by: N/A
 
 | Runner | Companion floor | Adapter fixture | Selection policy |
 | --- | --- | --- | --- |
-| `codex_acp` | Codex CLI `0.146.0` | codex-acp `1.1.7` | exact validated; same-major newer conservative; older/unknown-major fail closed |
-| `opencode_acp` | local provider/model config | OpenCode `1.18.11` | exact validated; same-major newer conservative; older/unknown-major fail closed |
+| `codex_acp` | Codex CLI `0.146.0` with the same exact/same-major/unknown-major policy | codex-acp `1.1.7` | initialize identity must be `codex-acp`; exact validated; same-major newer conservative; older/unknown-major fail closed |
+| `opencode_acp` | local provider/model config | OpenCode `1.18.11` | initialize identity must be `opencode`; exact validated; same-major newer conservative; older/unknown-major fail closed |
 
 The fixture version is an external wire sample, not a claim that the two adapters expose identical events.
 
