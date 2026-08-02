@@ -14,9 +14,11 @@ function row(
   questionCount = 1,
   deliveredPushCount = 0,
   userLabel = userId,
+  channel = "web",
 ): PublicAdminUsageRow {
   return {
     date,
+    channel,
     user_id: userId,
     user_label: userLabel,
     question_count: questionCount,
@@ -113,6 +115,20 @@ describe("public admin usage panel", () => {
       question_count: 0,
     });
     expect(trend.filter((point) => point.question_count === 0)).toHaveLength(12);
+  });
+
+  it("treats the same external id on different channels as two users", () => {
+    const usage = report([
+      row("2026-08-02", "shared-id", 2, 0, "网页用户", "web"),
+      row("2026-08-02", "shared-id", 3, 0, "飞书用户", "feishu"),
+    ]);
+
+    expect(publicAdminUsageTrend(usage).at(-1)).toEqual({
+      date: "2026-08-02",
+      active_users: 2,
+      question_count: 5,
+    });
+    expect(summarizePublicAdminUsage(usage, "2026-08-02").active_users).toBe(2);
   });
 
   it("recomputes the top summary for the selected date and its prior-week comparison", () => {

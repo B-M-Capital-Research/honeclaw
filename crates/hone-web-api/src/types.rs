@@ -294,6 +294,7 @@ pub struct PublicAdminUsageQuestion {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct PublicAdminUsageRow {
     pub date: String,
+    pub channel: String,
     pub user_id: String,
     pub user_label: String,
     pub question_count: u32,

@@ -11,6 +11,41 @@ Safely inspect, grant, or revoke the PostgreSQL-backed administrator role used b
 - The target phone already belongs to exactly one active domestic Web invite user.
 - Never paste database credentials, API keys, session cookies, or complete query output into tickets or committed files.
 
+## Production Authority Check
+
+For the managed GCE deployment, run the role command on the GCE host with the same
+config and environment file as `hone-web.service`. Do not treat a local `.env`, a
+forwarded `127.0.0.1` PostgreSQL port, or a successful local read-back as proof that
+the production role changed; those may point at a different PostgreSQL instance.
+
+Confirm the active service inputs without printing secret values:
+
+```bash
+sudo systemctl show hone-web \
+  -p WorkingDirectory -p ExecStart -p EnvironmentFiles --no-pager
+sudo awk -F= \
+  '/^(HONE_CLOUD_MODE|DATABASE_URL|HONE_POSTGRES_[A-Z0-9_]+)=/ {print $1"=SET"}' \
+  /etc/hone/runtime.env | sort
+```
+
+Then run dry-run/apply from that host through the installed release binary:
+
+```bash
+sudo bash -lc '
+  set -a
+  source /etc/hone/runtime.env
+  set +a
+  cd /var/lib/hone
+  /opt/hone/current/bin/hone-cli \
+    --config /srv/honeclaw/config.yaml \
+    cloud web-admin --phone 13800138000 --action grant
+'
+```
+
+Add `--apply` only after the GCE-hosted dry-run identifies exactly one active target.
+After apply, require `verified_is_admin=true`, then refresh the target's authenticated
+production `/me` page and confirm both administrator sections render.
+
 ## Ensure Schema
 
 ```bash

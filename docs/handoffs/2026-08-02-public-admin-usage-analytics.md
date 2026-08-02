@@ -110,7 +110,7 @@ Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时�
 - 功能提交 `39ce9ce54f5cbfea26e664459cb70edf3fd97292` 已推送到 `main`；本次没有创建 release tag。
 - Cloudflare Pages 已切换到 `index-vHyTHbU6.js`。公网 `/`、`/me` 返回 `200`，新增 `/api/public/admin/usage` 在未登录时返回正确的 `401`，不再是旧后端的 `404`。
 - GCE 在连续两次确认活动会话为 0 后，从 `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801` 原子切换到 `/opt/hone/releases/39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802`。Web 与 Feishu systemd 服务均为 active，运行时 Git SHA 与提交一致，PostgreSQL/R2 健康且本地持久化依赖数为 0。
-- 三个指定账号 `181****4550`、`135****3292`、`139****9177` 均通过 PostgreSQL 权威身份路径授予管理员；二次 dry-run 读取均为 active、`previous_is_admin=true`、`changed=false`、`verified_is_admin=true`。
+- 首次管理员授权验证误用了本机 `.env` 指向的转发 PostgreSQL，虽然本机读取为 `verified_is_admin=true`，但并未改变 GCE 生产实例实际使用的 PostgreSQL；该结论已在同日“生产管理员授权纠偏阶段”中更正。
 - 临时 2 GiB 构建 swap、远端构建/上传中间目录和本地 30 MiB 上传包均在稳定性复核后删除；GCE `enable-oslogin-2fa` 已恢复为 `TRUE`，临时 gcloud 配置已销毁。
 
 ### Verification
@@ -126,3 +126,24 @@ Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时�
 - GCE 回滚点保留为 `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801`；将 `/opt/hone/current` 原子指回该目录并按 Web → Feishu 顺序启动即可回退。首次切换因验证脚本 stdin 写法错误触发过一次自动回滚，旧版恢复健康后修正脚本并完成最终切换，证明回滚路径有效。
 - GCE `/api/meta` 的 Git SHA 与二进制哈希可信，但 build source 仍显示 `unknown`；后续部署工具应补齐该 provenance 字段。
 - 本机源码运行时为通过现有 `codex-acp --version` 前置检查保留了兼容 shim；云端 GCE 不依赖该 shim。应在 ACP umbrella 任务中统一探测契约，避免下次冷启动需要本机兼容层。
+
+## 2026-08-02 生产管理员授权纠偏阶段
+
+### Summary
+
+- 用户以 `181****4550` 登录生产 `/me` 后仍看不到管理员区域。Chrome 强制刷新确认账号为 `web-user-9b62484ff43d`、前端资产为当前版本，且“HONE 使用统计”和“会员白名单”均未渲染，因此排除普通前端缓存问题。
+- GCE `hone-web.service` 实际使用 `/etc/hone/runtime.env`、`/srv/honeclaw/config.yaml` 与本机 `127.0.0.1:5432/db_bamang_research` PostgreSQL；直接读取该生产库确认三个目标账号的 `is_admin` 均为 `false`。此前本机 `127.0.0.1:55432` 读取到的 `true` 属于另一条数据库连接，不能作为生产授权证据。
+- 在 GCE 主机上使用已部署的 `/opt/hone/current/bin/hone-cli`、生产 config 与 runtime env 对三个目标账号先 dry-run、再 `--apply`。三个账号均唯一、active，apply 均返回 `changed=true`、`verified_is_admin=true`。
+- 权限接口每次请求重新读取服务端角色，无需重启。刷新已登录的生产 Chrome 页面后，`181****4550` 账号成功显示“HONE 使用统计”、两张 14 日趋势图、真实统计表和“会员白名单”。
+
+### Verification
+
+- GCE-hosted CLI dry-run：三个目标均为 `previous_is_admin=false`、`requested_is_admin=true`。
+- GCE-hosted CLI apply：三个目标均为 `changed=true`、`verified_is_admin=true`。
+- 生产 Chrome：当前账号 `web-user-9b62484ff43d`；“HONE 使用统计”“每日使用用户数”“每日提问量”“会员白名单”标题均存在；统计表加载真实脱敏行；控制台无 warning/error。
+- `hone-web.service` 未重启，避免不必要的会话中断；角色刷新即时生效。
+
+### Risks / Follow-ups
+
+- 生产管理员授权必须在 GCE 上复用 `hone-web.service` 的有效 config/env 执行。本机端口转发仅可用于明确标识过目标实例的诊断，不能单独作为生产变更或 read-after-write 证据。
+- `docs/runbooks/public-user-admin.md` 已增加 GCE 生产权威性检查和 host-local CLI 执行方式。

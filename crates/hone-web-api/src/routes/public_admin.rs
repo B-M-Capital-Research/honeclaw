@@ -263,7 +263,6 @@ pub(crate) async fn handle_usage_report(
             .list_recent_executions(&ExecutionFilter {
                 since: Some(period_start.to_rfc3339()),
                 until: Some(now.to_rfc3339()),
-                channel: Some("web".to_string()),
                 limit: USAGE_EXECUTION_LIMIT,
                 ..ExecutionFilter::default()
             })?;
@@ -316,17 +315,14 @@ fn build_usage_report(
     let today = now.date_naive();
     let period_start_date = today - Duration::days(USAGE_REPORT_DAYS - 1);
     let period_start = start_of_beijing_day(period_start_date, now.offset());
-    let user_labels = users
+    let web_phone_numbers = users
         .into_iter()
-        .map(|user| {
-            let label = usage_user_label(&user.user_id, &user.phone_number);
-            (user.user_id, label)
-        })
+        .map(|user| (user.user_id, user.phone_number))
         .collect::<HashMap<_, _>>();
-    let mut rows = BTreeMap::<(NaiveDate, String), UsageAccumulator>::new();
+    let mut rows = BTreeMap::<(NaiveDate, String, String), UsageAccumulator>::new();
 
     for session in sessions {
-        let Some(user_id) = web_session_user_id(&session) else {
+        let Some((channel, user_id)) = usage_session_actor(&session) else {
             continue;
         };
         if usage_user_is_automation(&user_id) {
@@ -352,7 +348,7 @@ fn build_usage_report(
                 hone_core::truncate_chars_append(text.trim(), USAGE_QUESTION_PREVIEW_CHARS, "…")
             };
             let entry = rows
-                .entry((asked_at.date_naive(), user_id.clone()))
+                .entry((asked_at.date_naive(), channel.clone(), user_id.clone()))
                 .or_default();
             entry.questions.push(PublicAdminUsageQuestion {
                 asked_at: asked_at.to_rfc3339(),
@@ -363,9 +359,9 @@ fn build_usage_report(
     }
 
     for execution in executions {
-        if execution.channel != "web" || execution.channel_scope.is_some() {
+        let Some(channel) = normalized_usage_channel(&execution.channel) else {
             continue;
-        }
+        };
         if usage_user_is_automation(&execution.user_id) {
             continue;
         }
@@ -376,7 +372,11 @@ fn build_usage_report(
             continue;
         }
         let entry = rows
-            .entry((executed_at.date_naive(), execution.user_id))
+            .entry((
+                executed_at.date_naive(),
+                channel.to_string(),
+                execution.user_id,
+            ))
             .or_default();
         entry.scheduled_run_count = entry.scheduled_run_count.saturating_add(1);
         if execution.delivered {
@@ -389,17 +389,22 @@ fn build_usage_report(
 
     let mut report_rows = rows
         .into_iter()
-        .map(|((date, user_id), mut entry)| {
+        .map(|((date, channel, user_id), mut entry)| {
             entry
                 .questions
                 .sort_by(|left, right| right.asked_at.cmp(&left.asked_at));
             let question_count = u32::try_from(entry.questions.len()).unwrap_or(u32::MAX);
             PublicAdminUsageRow {
                 date: date.to_string(),
-                user_label: user_labels
-                    .get(&user_id)
-                    .cloned()
-                    .unwrap_or_else(|| usage_user_label(&user_id, "")),
+                user_label: usage_user_label(
+                    &channel,
+                    &user_id,
+                    web_phone_numbers
+                        .get(&user_id)
+                        .map(String::as_str)
+                        .unwrap_or(""),
+                ),
+                channel,
                 user_id,
                 question_count,
                 questions: entry.questions,
@@ -415,6 +420,7 @@ fn build_usage_report(
             .date
             .cmp(&left.date)
             .then_with(|| right.question_count.cmp(&left.question_count))
+            .then_with(|| left.channel.cmp(&right.channel))
             .then_with(|| left.user_label.cmp(&right.user_label))
     });
 
@@ -445,12 +451,12 @@ fn build_usage_summary(
         .fold(0_u32, u32::saturating_add);
     let today_users = today_rows
         .filter(|row| row.question_count > 0)
-        .map(|row| row.user_id.as_str())
+        .map(|row| (row.channel.as_str(), row.user_id.as_str()))
         .collect::<HashSet<_>>();
     let last_week_users = rows
         .iter()
         .filter(|row| row.date == last_week_same_day.to_string() && row.question_count > 0)
-        .map(|row| row.user_id.as_str())
+        .map(|row| (row.channel.as_str(), row.user_id.as_str()))
         .collect::<HashSet<_>>();
     let today_active_users = u32::try_from(today_users.len()).unwrap_or(u32::MAX);
     let last_week_same_day_active_users = u32::try_from(last_week_users.len()).unwrap_or(u32::MAX);
@@ -463,14 +469,15 @@ fn build_usage_summary(
     let previous_week_start = current_week_start - Duration::days(7);
     let comparison_date_end = today - Duration::days(7);
     let comparison_time = now.time();
-    let mut current_counts = HashMap::<&str, u32>::new();
-    let mut previous_counts = HashMap::<&str, u32>::new();
-    let mut labels = HashMap::<&str, &str>::new();
+    let mut current_counts = HashMap::<(&str, &str), u32>::new();
+    let mut previous_counts = HashMap::<(&str, &str), u32>::new();
+    let mut labels = HashMap::<(&str, &str), &str>::new();
     for row in rows {
         let Ok(date) = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d") else {
             continue;
         };
-        labels.insert(row.user_id.as_str(), row.user_label.as_str());
+        let actor_key = (row.channel.as_str(), row.user_id.as_str());
+        labels.insert(actor_key, row.user_label.as_str());
         let include_current = date >= current_week_start
             && date <= today
             && (date < today
@@ -489,7 +496,7 @@ fn build_usage_summary(
                 .count();
             let count = u32::try_from(count).unwrap_or(u32::MAX);
             current_counts
-                .entry(row.user_id.as_str())
+                .entry(actor_key)
                 .and_modify(|value| *value = value.saturating_add(count))
                 .or_insert(count);
         }
@@ -506,29 +513,35 @@ fn build_usage_summary(
                 .count();
             let count = u32::try_from(count).unwrap_or(u32::MAX);
             previous_counts
-                .entry(row.user_id.as_str())
+                .entry(actor_key)
                 .and_modify(|value| *value = value.saturating_add(count))
                 .or_insert(count);
         }
     }
     let leading_decline = previous_counts
         .iter()
-        .filter_map(|(user_id, previous)| {
-            let current = current_counts.get(user_id).copied().unwrap_or_default();
+        .filter_map(|(actor_key, previous)| {
+            let current = current_counts.get(actor_key).copied().unwrap_or_default();
             previous
                 .checked_sub(current)
                 .filter(|drop| *drop > 0)
-                .map(|drop| (*user_id, drop))
+                .map(|drop| (*actor_key, drop))
         })
-        .max_by(|(left_user, left_drop), (right_user, right_drop)| {
+        .max_by(|(left_actor, left_drop), (right_actor, right_drop)| {
             left_drop
                 .cmp(right_drop)
-                .then_with(|| right_user.cmp(left_user))
+                .then_with(|| right_actor.cmp(left_actor))
         });
     let (leading_decline_user_label, leading_decline_question_delta) = leading_decline
-        .map(|(user_id, drop)| {
+        .map(|(actor_key, drop)| {
             (
-                Some(labels.get(user_id).copied().unwrap_or(user_id).to_string()),
+                Some(
+                    labels
+                        .get(&actor_key)
+                        .copied()
+                        .unwrap_or(actor_key.1)
+                        .to_string(),
+                ),
                 drop,
             )
         })
@@ -565,20 +578,31 @@ fn build_usage_summary(
     }
 }
 
-fn web_session_user_id(session: &Session) -> Option<String> {
-    session
-        .session_identity
+fn usage_session_actor(session: &Session) -> Option<(String, String)> {
+    if let Some(actor) = session
+        .actor
         .as_ref()
-        .filter(|identity| identity.channel == "web" && !identity.is_group())
-        .and_then(|identity| identity.user_id.clone())
-        .or_else(|| {
-            session
-                .actor
-                .as_ref()
-                .filter(|actor| actor.channel == "web" && actor.channel_scope.is_none())
-                .map(|actor| actor.user_id.clone())
-        })
-        .filter(|user_id| !user_id.trim().is_empty())
+        .filter(|actor| !actor.user_id.trim().is_empty())
+    {
+        let channel = normalized_usage_channel(&actor.channel)?;
+        return Some((channel.to_string(), actor.user_id.clone()));
+    }
+    session.session_identity.as_ref().and_then(|identity| {
+        let user_id = identity.user_id.as_ref()?;
+        let channel = normalized_usage_channel(&identity.channel)?;
+        (!user_id.trim().is_empty()).then(|| (channel.to_string(), user_id.clone()))
+    })
+}
+
+fn normalized_usage_channel(channel: &str) -> Option<&'static str> {
+    match channel.trim().to_ascii_lowercase().as_str() {
+        "web" => Some("web"),
+        "feishu" => Some("feishu"),
+        "telegram" => Some("telegram"),
+        "discord" => Some("discord"),
+        "imessage" => Some("imessage"),
+        _ => None,
+    }
 }
 
 fn usage_message_is_automation(
@@ -588,7 +612,12 @@ fn usage_message_is_automation(
     let tagged_source = metadata
         .and_then(|items| items.get("source"))
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|source| matches!(source, "scheduler" | "heartbeat"));
+        .is_some_and(|source| {
+            matches!(
+                source.trim().to_ascii_lowercase().as_str(),
+                "scheduler" | "heartbeat"
+            )
+        });
     let tagged_job = metadata
         .is_some_and(|items| items.contains_key("job_id") || items.contains_key("web_push_id"));
     tagged_source || tagged_job || content.trim_start().starts_with("[定时任务触发]")
@@ -598,9 +627,12 @@ fn usage_user_is_automation(user_id: &str) -> bool {
     user_id.trim().to_ascii_lowercase().starts_with("codex")
 }
 
-fn usage_user_label(user_id: &str, phone_number: &str) -> String {
+fn usage_user_label(channel: &str, user_id: &str, phone_number: &str) -> String {
     let phone = phone_number.trim();
-    if phone.len() == 11 && phone.chars().all(|character| character.is_ascii_digit()) {
+    if channel == "web"
+        && phone.len() == 11
+        && phone.chars().all(|character| character.is_ascii_digit())
+    {
         return format!("{}****{}", &phone[..3], &phone[7..]);
     }
     let normalized = user_id.trim();
@@ -615,7 +647,23 @@ fn usage_user_label(user_id: &str, phone_number: &str) -> String {
             .collect::<String>();
         return format!("HONE 用户 {tail}");
     }
-    hone_core::truncate_chars_append(normalized, 18, "…")
+    let channel_label = match channel {
+        "web" => "网页",
+        "feishu" => "飞书",
+        "telegram" => "Telegram",
+        "discord" => "Discord",
+        "imessage" => "iMessage",
+        _ => channel,
+    };
+    let tail = normalized
+        .chars()
+        .rev()
+        .take(6)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("{channel_label}用户 {tail}")
 }
 
 fn parse_beijing_time(value: &str, offset: &FixedOffset) -> Option<DateTime<FixedOffset>> {
@@ -750,11 +798,21 @@ mod tests {
         user_id: &str,
         messages: Vec<hone_memory::session::SessionMessage>,
     ) -> Session {
+        usage_session_for("web", user_id, None, messages)
+    }
+
+    fn usage_session_for(
+        channel: &str,
+        user_id: &str,
+        channel_scope: Option<&str>,
+        messages: Vec<hone_memory::session::SessionMessage>,
+    ) -> Session {
+        let actor = ActorIdentity::new(channel, user_id, channel_scope).expect("actor");
         Session {
             version: 4,
-            id: format!("Actor_web__direct__{user_id}"),
-            actor: Some(ActorIdentity::new("web", user_id, None::<String>).expect("actor")),
-            session_identity: Some(SessionIdentity::direct("web", user_id).expect("identity")),
+            id: actor.session_id(),
+            session_identity: Some(SessionIdentity::from_actor(&actor).expect("identity")),
+            actor: Some(actor),
             created_at: "2026-07-20T00:00:00+08:00".to_string(),
             updated_at: "2026-08-02T12:00:00+08:00".to_string(),
             messages,
@@ -770,13 +828,24 @@ mod tests {
         should_deliver: bool,
         delivered: bool,
     ) -> CronJobExecutionRecord {
+        usage_execution_for("web", user_id, None, executed_at, should_deliver, delivered)
+    }
+
+    fn usage_execution_for(
+        channel: &str,
+        user_id: &str,
+        channel_scope: Option<&str>,
+        executed_at: &str,
+        should_deliver: bool,
+        delivered: bool,
+    ) -> CronJobExecutionRecord {
         CronJobExecutionRecord {
             run_id: 1,
             job_id: "job-1".to_string(),
             job_name: "每日复盘".to_string(),
-            channel: "web".to_string(),
+            channel: channel.to_string(),
             user_id: user_id.to_string(),
-            channel_scope: None,
+            channel_scope: channel_scope.map(str::to_string),
             channel_target: user_id.to_string(),
             heartbeat: false,
             executed_at: executed_at.to_string(),
@@ -836,7 +905,7 @@ mod tests {
     fn usage_report_counts_real_questions_in_beijing_and_excludes_automation() {
         let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
         let mut scheduler_metadata = HashMap::new();
-        scheduler_metadata.insert("source".to_string(), json!("scheduler"));
+        scheduler_metadata.insert("source".to_string(), json!(" Scheduler "));
         let sessions = vec![usage_session(
             "web-user-alpha1234",
             vec![
@@ -879,6 +948,7 @@ mod tests {
         assert_eq!(report.summary.today_question_count, 2);
         assert_eq!(report.summary.today_delivered_push_count, 1);
         assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].channel, "web");
         assert_eq!(report.rows[0].question_count, 2);
         assert_eq!(report.rows[0].scheduled_run_count, 2);
         assert_eq!(report.rows[0].failed_delivery_count, 1);
@@ -937,6 +1007,78 @@ mod tests {
         assert_eq!(report.rows[0].question_count, 1);
         assert_eq!(report.rows[0].delivered_push_count, 1);
         assert_eq!(report.summary.today_active_users, 1);
+    }
+
+    #[test]
+    fn usage_report_includes_supported_channels_and_keeps_actor_namespaces_separate() {
+        let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
+        let question = |text: &str| {
+            vec![session_message_from_text(
+                "user",
+                text,
+                "2026-08-02T10:00:00+08:00",
+                None,
+            )]
+        };
+        let report = build_usage_report(
+            now,
+            vec![
+                usage_session_for("web", "shared-user", None, question("网页问题")),
+                usage_session_for("feishu", "shared-user", None, question("飞书问题")),
+                usage_session_for(
+                    "discord",
+                    "discord-user",
+                    Some("guild:1:channel:2"),
+                    question("Discord 群问题"),
+                ),
+                usage_session_for("sms", "sms-user", None, question("不支持渠道问题")),
+            ],
+            vec![
+                usage_execution_for(
+                    "feishu",
+                    "shared-user",
+                    None,
+                    "2026-08-02T11:00:00+08:00",
+                    true,
+                    true,
+                ),
+                usage_execution_for(
+                    "discord",
+                    "discord-user",
+                    Some("guild:1:channel:2"),
+                    "2026-08-02T11:30:00+08:00",
+                    true,
+                    true,
+                ),
+                usage_execution_for(
+                    "sms",
+                    "sms-user",
+                    None,
+                    "2026-08-02T11:30:00+08:00",
+                    true,
+                    true,
+                ),
+            ],
+            Vec::new(),
+        );
+
+        assert_eq!(report.rows.len(), 3);
+        assert_eq!(report.summary.today_active_users, 3);
+        assert_eq!(report.summary.today_question_count, 3);
+        assert_eq!(report.summary.today_delivered_push_count, 2);
+        assert!(report.rows.iter().any(|row| {
+            row.channel == "feishu"
+                && row.user_id == "shared-user"
+                && row.user_label.starts_with("飞书用户 ")
+                && row.delivered_push_count == 1
+        }));
+        assert!(report.rows.iter().any(|row| {
+            row.channel == "discord"
+                && row.user_id == "discord-user"
+                && row.user_label.starts_with("Discord用户 ")
+                && row.delivered_push_count == 1
+        }));
+        assert!(report.rows.iter().all(|row| row.channel != "sms"));
     }
 
     #[test]

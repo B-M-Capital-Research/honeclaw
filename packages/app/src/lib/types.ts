@@ -246,6 +246,7 @@ export type PublicAdminUsageQuestion = {
 
 export type PublicAdminUsageRow = {
   date: string;
+  channel: "web" | "feishu" | "telegram" | "discord" | "imessage" | string;
   user_id: string;
   user_label: string;
   question_count: number;

@@ -299,13 +299,16 @@
 .public-admin-usage-toolbar small { color: #969994; font-size: 10px; text-align: right; }
 .public-admin-usage-actions { display: flex; align-items: center; gap: 10px; }
 .public-admin-usage-table-wrap { max-height: min(58vh, 540px); overflow: auto; }
-.public-admin-usage-table { min-width: 940px; }
+.public-admin-usage-table { min-width: 1000px; }
 .public-admin-usage-table thead { position: sticky; top: 0; z-index: 2; }
 .public-admin-usage-table th { box-shadow: 0 1px 0 #e6e7e3; }
 .public-admin-usage-table td { vertical-align: top; }
 .public-admin-usage-table td b { color: #111311; font-size: 13px; }
 .public-admin-usage-user strong { display: block; font-family: inherit !important; font-weight: 750; }
 .public-admin-usage-user small { display: block; max-width: 130px; margin-top: 3px; overflow: hidden; color: #9a9d98; font-size: 9px; text-overflow: ellipsis; }
+.public-admin-channel { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid #dfe3dd; border-radius: 999px; background: #f7f8f5; color: #555b54; font-size: 9px; font-weight: 750; }
+.public-admin-channel.is-feishu { border-color: #cfdaf0; background: #f3f6fc; color: #3f5f94; }
+.public-admin-channel.is-discord { border-color: #d9d4f0; background: #f6f4fc; color: #62549a; }
 .public-admin-question-cell { width: 38%; min-width: 300px; white-space: normal !important; }
 .public-admin-question-cell details { min-width: 0; }
 .public-admin-question-cell summary { color: #3f6845; cursor: pointer; font-size: 11px; font-weight: 700; list-style-position: outside; }
@@ -370,7 +373,7 @@
   .public-admin-trend-grid { display: grid; grid-auto-columns: minmax(310px, 86vw); grid-auto-flow: column; grid-template-columns: none; padding-bottom: 4px; overflow-x: auto; scroll-snap-type: x proximity; }
   .public-admin-trend-chart { scroll-snap-align: start; }
   .public-admin-usage-table-wrap { max-height: min(58vh, 480px); overflow: auto; border: 1px solid #e6e7e3; }
-  .public-admin-usage-table { display: table; width: 100%; min-width: 860px; }
+  .public-admin-usage-table { display: table; width: 100%; min-width: 1000px; }
   .public-admin-usage-table thead { display: table-header-group; }
   .public-admin-usage-table tbody { display: table-row-group; }
   .public-admin-usage-table tr { display: table-row; padding: 0; border: 0; }
@@ -640,6 +643,7 @@
 [data-theme="dark"] .public-admin-trend-point { fill: var(--workspace-panel); }
 [data-theme="dark"] .public-admin-question-cell ol { background: var(--workspace-soft); }
 [data-theme="dark"] .public-admin-usage-table td b { color: var(--workspace-ink); }
+[data-theme="dark"] .public-admin-channel { border-color: var(--workspace-line); background: var(--workspace-soft); color: var(--workspace-muted); }
 
 [data-chat-fs="l"] .public-workspace-page :is(p, small, time, button, input, .public-workspace-state) {
   font-size: max(13px, 1em);

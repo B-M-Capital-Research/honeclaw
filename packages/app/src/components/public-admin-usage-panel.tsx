@@ -56,6 +56,10 @@ export type PublicAdminUsageTrendPoint = {
   question_count: number;
 };
 
+function usageActorKey(row: Pick<PublicAdminUsageRow, "channel" | "user_id">) {
+  return `${row.channel}\u0000${row.user_id}`;
+}
+
 function shiftUsageDate(value: string, days: number) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return "";
@@ -75,7 +79,7 @@ export function publicAdminUsageTrend(
     if (row.date < start || row.date > report.period_end) continue;
     if (row.question_count > 0) {
       const users = activeUsers.get(row.date) ?? new Set<string>();
-      users.add(row.user_id);
+      users.add(usageActorKey(row));
       activeUsers.set(row.date, users);
     }
     questionCounts.set(
@@ -96,7 +100,7 @@ export function publicAdminUsageTrend(
 
 function usageTotals(rows: PublicAdminUsageRow[]): UsageTotals {
   const activeUsers = new Set(
-    rows.filter((row) => row.question_count > 0).map((row) => row.user_id),
+    rows.filter((row) => row.question_count > 0).map(usageActorKey),
   );
   return {
     activeUsers: activeUsers.size,
@@ -111,7 +115,8 @@ function usageTotals(rows: PublicAdminUsageRow[]): UsageTotals {
 function usageQuestionsByUser(rows: PublicAdminUsageRow[]) {
   const counts = new Map<string, number>();
   for (const row of rows) {
-    counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + row.question_count);
+    const actorKey = usageActorKey(row);
+    counts.set(actorKey, (counts.get(actorKey) ?? 0) + row.question_count);
   }
   return counts;
 }
@@ -148,7 +153,7 @@ export function summarizePublicAdminUsage(
   report: PublicAdminUsageReport,
   selectedDate: string,
 ): PublicAdminUsageSelectionSummary {
-  const labels = new Map(report.rows.map((row) => [row.user_id, row.user_label]));
+  const labels = new Map(report.rows.map((row) => [usageActorKey(row), row.user_label]));
   const selectedRows = filterPublicAdminUsageRows(report.rows, selectedDate);
   const totals = usageTotals(selectedRows);
 
@@ -221,6 +226,23 @@ function formatUsageTime(value: string) {
     hour12: false,
     timeZone: "Asia/Shanghai",
   });
+}
+
+function formatUsageChannel(channel: string) {
+  switch (channel) {
+    case "web":
+      return "网页";
+    case "feishu":
+      return "飞书";
+    case "telegram":
+      return "Telegram";
+    case "discord":
+      return "Discord";
+    case "imessage":
+      return "iMessage";
+    default:
+      return channel;
+  }
 }
 
 function formatGeneratedAt(value?: string) {
@@ -406,7 +428,7 @@ export function PublicAdminUsagePanel() {
         <span class="public-admin-section-copy">
           <span class="public-workspace-eyebrow">实时统计</span>
           <h2 id="public-admin-usage-title">HONE 使用统计</h2>
-          <p>按北京时间汇总最近 14 天的真实用户提问和定时任务投递。</p>
+          <p>按北京时间汇总最近 14 天网页、飞书及其它接入渠道；跨渠道未绑定的账号分别计数。</p>
         </span>
         <span class="public-admin-section-toggle-label" aria-hidden="true">
           <span class="when-open">收起</span>
@@ -489,6 +511,7 @@ export function PublicAdminUsagePanel() {
                       <thead>
                         <tr>
                           <th>日期</th>
+                          <th>渠道</th>
                           <th>用户</th>
                           <th>提问</th>
                           <th>用户询问的问题</th>
@@ -502,6 +525,11 @@ export function PublicAdminUsagePanel() {
                           {(row) => (
                             <tr>
                               <td data-label="日期">{formatUsageDate(row.date)}</td>
+                              <td data-label="渠道">
+                                <span class={`public-admin-channel is-${row.channel}`}>
+                                  {formatUsageChannel(row.channel)}
+                                </span>
+                              </td>
                               <td data-label="用户" class="public-admin-usage-user">
                                 <strong>{row.user_label}</strong>
                                 <small>{row.user_id}</small>
