@@ -95,7 +95,7 @@ The checkout may be a clean feature worktree while config/data/skills remain in 
 2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp;
 3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256 manifest;
 4. waits for active chats to drain;
-5. rejects an unknown owner of port `8077`, then removes either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor and waits for the supervisor, child PIDs, and process locks to disappear;
+5. rejects an unknown owner of port `8077`, then removes either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor; any captured child reparented to PID 1 is executable-reverified, sent TERM, and only then subject to bounded exact-PID KILL escalation before locks are checked;
 6. requires `/api/meta.build.git_sha` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
 7. verifies the running executable paths, atomically installs persistent Web/Discord plists under `~/Library/LaunchAgents`, moves the legacy supervisor plist to the recoverable `.disabled-by-hone-source-deploy` name, and updates the `current` symlink only after success.
 

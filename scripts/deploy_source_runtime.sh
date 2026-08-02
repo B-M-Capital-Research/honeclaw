@@ -12,6 +12,7 @@ EXPECTED_REVISION=""
 STARTUP_TIMEOUT=180
 DRAIN_TIMEOUT=300
 POLL_INTERVAL=1
+TERMINATE_GRACE=20
 SKIP_BUILD=0
 ALLOW_UNPUSHED=0
 DISCORD_MODE=auto
@@ -28,6 +29,7 @@ Usage: scripts/deploy_source_runtime.sh [options]
   --startup-timeout SEC     Startup/readiness deadline (default: 180)
   --drain-timeout SEC       Active-chat drain deadline (default: 300)
   --poll-interval SEC       Poll interval; decimals allowed (default: 1)
+  --terminate-grace SEC     TERM grace before exact-PID KILL escalation (default: 20)
   --discord auto|yes|no     Restart Discord when previously running, always, or never
   --skip-build              Reuse target/debug binaries
   --allow-unpushed          Permit a revision absent from origin/*
@@ -44,6 +46,7 @@ while [[ $# -gt 0 ]]; do
         --startup-timeout) STARTUP_TIMEOUT="${2:?missing startup timeout}"; shift 2 ;;
         --drain-timeout) DRAIN_TIMEOUT="${2:?missing drain timeout}"; shift 2 ;;
         --poll-interval) POLL_INTERVAL="${2:?missing poll interval}"; shift 2 ;;
+        --terminate-grace) TERMINATE_GRACE="${2:?missing terminate grace}"; shift 2 ;;
         --discord) DISCORD_MODE="${2:?missing discord mode}"; shift 2 ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --allow-unpushed) ALLOW_UNPUSHED=1; shift ;;
@@ -61,7 +64,7 @@ DATA_DIR="${DATA_DIR:-$PROJECT_ROOT/data}"
 SKILLS_DIR="${SKILLS_DIR:-$PROJECT_ROOT/skills}"
 
 case "$DISCORD_MODE" in auto|yes|no) ;; *) echo "[deploy] invalid --discord: $DISCORD_MODE" >&2; exit 2 ;; esac
-for value in "$STARTUP_TIMEOUT" "$DRAIN_TIMEOUT"; do
+for value in "$STARTUP_TIMEOUT" "$DRAIN_TIMEOUT" "$TERMINATE_GRACE"; do
     [[ "$value" =~ ^[1-9][0-9]*$ ]] || { echo "[deploy] timeout must be a positive integer: $value" >&2; exit 2; }
 done
 [[ -f "$CONFIG_PATH" ]] || { echo "[deploy] config missing: $CONFIG_PATH" >&2; exit 1; }
@@ -140,6 +143,32 @@ wait_pid_exit() {
     done
 }
 
+wait_pid_exit_for() {
+    local pid="$1" timeout_seconds="$2" deadline
+    deadline=$((SECONDS + timeout_seconds))
+    while ps -p "$pid" -o pid= >/dev/null 2>&1; do
+        (( SECONDS < deadline )) || return 1
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+terminate_exact_process() {
+    local pid="$1" expected_binary="$2" current_binary
+    ps -p "$pid" -o pid= >/dev/null 2>&1 || return 0
+    current_binary="$(process_binary "$pid")"
+    if [[ -z "$expected_binary" || "$current_binary" != "$expected_binary" ]]; then
+        echo "[deploy] refusing to signal reused/unverified pid=$pid binary=$current_binary" >&2
+        return 1
+    fi
+    "${HONE_DEPLOY_KILL_COMMAND:-/bin/kill}" -TERM "$pid"
+    if wait_pid_exit_for "$pid" "$TERMINATE_GRACE"; then
+        return 0
+    fi
+    log "old child pid=$pid ignored TERM; escalating to KILL"
+    "${HONE_DEPLOY_KILL_COMMAND:-/bin/kill}" -KILL "$pid"
+    wait_pid_exit_for "$pid" "$TERMINATE_GRACE"
+}
+
 wait_locks_release() {
     local deadline=$((SECONDS + STARTUP_TIMEOUT))
     while lsof "$LOCK_DIR/hone-console-page.lock" "$LOCK_DIR/hone-discord.lock" >/dev/null 2>&1; do
@@ -197,11 +226,15 @@ wait_legacy_child_binary() {
 }
 
 stop_legacy_runtime_and_wait() {
-    local supervisor_pid child children=""
+    local supervisor_pid child child_binary child_record child_records=""
     supervisor_pid="$(job_pid "$LEGACY_RUNTIME_LABEL" || true)"
     job_exists "$LEGACY_RUNTIME_LABEL" || return 0
     if [[ -n "$supervisor_pid" ]]; then
-        children="$(child_pids "$supervisor_pid" || true)"
+        while IFS= read -r child; do
+            [[ -n "$child" ]] || continue
+            child_binary="$(process_binary "$child")"
+            child_records+="$child|$child_binary"$'\n'
+        done < <(child_pids "$supervisor_pid")
     fi
     launchctl remove "$LEGACY_RUNTIME_LABEL"
     if [[ -n "$supervisor_pid" ]]; then
@@ -210,13 +243,15 @@ stop_legacy_runtime_and_wait() {
             return 1
         }
     fi
-    while IFS= read -r child; do
-        [[ -n "$child" ]] || continue
-        wait_pid_exit "$child" || {
-            echo "[deploy] old legacy child pid=$child did not exit" >&2
+    while IFS= read -r child_record; do
+        [[ -n "$child_record" ]] || continue
+        child="${child_record%%|*}"
+        child_binary="${child_record#*|}"
+        terminate_exact_process "$child" "$child_binary" || {
+            echo "[deploy] old legacy child pid=$child could not be terminated safely" >&2
             return 1
         }
-    done <<< "$children"
+    done <<< "$child_records"
 }
 
 xml_escape() {

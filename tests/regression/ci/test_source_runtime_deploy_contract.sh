@@ -49,7 +49,9 @@ case "$command" in
         label="${1:?}"
         if [[ -f "$state/$label.children" ]]; then
             while IFS= read -r child_label; do
-                rm -f "$state/$child_label.pid" "$state/$child_label.ppid" "$state/$child_label.binary"
+                if [[ "$label" != com.honeclaw.source.runtime || "${FAKE_ORPHAN_LEGACY_CHILDREN:-0}" != 1 ]]; then
+                    rm -f "$state/$child_label.pid" "$state/$child_label.ppid" "$state/$child_label.binary"
+                fi
             done < "$state/$label.children"
         fi
         rm -f "$state/$label.loaded" "$state/$label.pid" "$state/$label.binary"
@@ -112,6 +114,25 @@ case "$command" in
         ;;
     *) exit 2 ;;
 esac
+EOF
+
+cat > "$FAKE_BIN/kill" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+signal="${1:?}"
+pid="${2:?}"
+printf 'kill %s %s\n' "$signal" "$pid" >> "${FAKE_STATE:?}/events"
+for file in "${FAKE_STATE}"/*.pid; do
+    [[ -e "$file" ]] || continue
+    if [[ "$(<"$file")" == "$pid" ]]; then
+        label="${file##*/}"
+        label="${label%.pid}"
+        rm -f "${FAKE_STATE}/$label.pid" "${FAKE_STATE}/$label.ppid" \
+            "${FAKE_STATE}/$label.binary"
+        exit 0
+    fi
+done
+exit 1
 EOF
 
 cat > "$FAKE_BIN/ps" <<'EOF'
@@ -201,7 +222,8 @@ case "$url" in
 esac
 EOF
 
-chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/ps" "$FAKE_BIN/lsof" "$FAKE_BIN/curl"
+chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/kill" "$FAKE_BIN/ps" \
+    "$FAKE_BIN/lsof" "$FAKE_BIN/curl"
 
 reset_old_state() {
     rm -f "$STATE"/*.loaded "$STATE"/*.pid "$STATE"/*.ppid "$STATE"/*.binary \
@@ -239,17 +261,20 @@ reset_legacy_state() {
 
 run_deploy() {
     env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
-        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
+        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_KILL_COMMAND="$FAKE_BIN/kill" \
+        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
         --skip-build --allow-unpushed --startup-timeout 2 --drain-timeout 2 \
-        --poll-interval 0.1
+        --poll-interval 0.1 --terminate-grace 1
 }
 
 run_deploy_strict() {
     env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
-        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
+        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_KILL_COMMAND="$FAKE_BIN/kill" \
+        HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
-        --skip-build --startup-timeout 2 --drain-timeout 2 --poll-interval 0.1
+        --skip-build --startup-timeout 2 --drain-timeout 2 --poll-interval 0.1 \
+        --terminate-grace 1
 }
 
 assert_old_state() {
@@ -278,6 +303,11 @@ grep -q "remove com.honeclaw.source.runtime" "$STATE/events"
 grep -q "/releases/source/$REVISION/hone-console-page" "$STATE/com.honeclaw.source.web.binary"
 [[ ! -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist" ]]
 [[ -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist.disabled-by-hone-source-deploy" ]]
+
+reset_legacy_state
+run_deploy env FAKE_ORPHAN_LEGACY_CHILDREN=1
+grep -q 'kill -TERM 41' "$STATE/events"
+grep -q 'kill -TERM 42' "$STATE/events"
 
 reset_legacy_state
 if run_deploy env FAKE_FAIL_NEW_WEB=1; then
