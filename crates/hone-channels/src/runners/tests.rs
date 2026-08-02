@@ -17,7 +17,8 @@ use std::time::Duration;
 use super::acp_common::{
     AcpPromptState, AcpToolRenderPhase, CliVersion, extract_finished_tool_calls,
     finalize_context_messages, handle_acp_session_update, handle_acp_session_update_with_renderer,
-    parse_cli_version, summarize_finished_tool_calls_for_log,
+    parse_cli_version, select_acp_adapter_profile_from_initialize,
+    summarize_finished_tool_calls_for_log,
 };
 use super::codex_acp::{
     codex_acp_effective_args, codex_acp_process_config, codex_instruction_fingerprint,
@@ -39,8 +40,8 @@ use super::tool_reasoning::{
     RunnerToolObserver, render_runner_tool_label, runner_context_messages,
 };
 use super::types::{
-    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest,
-    RunnerConversationInput, RunnerTimeouts,
+    AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
+    AgentRunnerEvent, AgentRunnerRequest, RunnerConversationInput, RunnerTimeouts,
 };
 use uuid::Uuid;
 
@@ -381,10 +382,7 @@ done
             overall: Duration::from_secs(10),
         },
     );
-    assert_eq!(
-        runner.acp_stream_dialect(),
-        Some(AcpStreamDialect::CodexAcp1_1_7)
-    );
+    assert_eq!(runner.acp_adapter_kind(), Some(AcpAdapterKind::CodexAcp));
     let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
     let legacy_metadata = HashMap::from([
         (
@@ -1014,22 +1012,6 @@ fn codex_spawn_missing_binary_is_not_retryable() {
 }
 
 #[test]
-fn codex_version_validation_cache_key_tracks_effective_runner_args() {
-    let base = CodexAcpConfig {
-        command: "codex-acp".to_string(),
-        codex_command: "codex".to_string(),
-        ..CodexAcpConfig::default()
-    };
-    let mut with_effort = base.clone();
-    with_effort.variant = "high".to_string();
-
-    assert_ne!(
-        super::codex_acp::codex_acp_version_validation_cache_key(&base),
-        super::codex_acp::codex_acp_version_validation_cache_key(&with_effort)
-    );
-}
-
-#[test]
 fn gemini_version_guard_rejects_old_binary() {
     let result = validate_gemini_version(CliVersion {
         major: 0,
@@ -1407,15 +1389,13 @@ fn codex_execute_renderer_formats_done_message() {
 /// Current adapters may send `rawInput.command` as a string rather than argv.
 #[test]
 fn codex_execute_renderer_summarizes_real_string_command_shape() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/acp/codex-acp-1.1.7.json"
+    ))
+    .expect("Codex ACP 1.1.7 fixture");
+    assert_eq!(fixture["adapter"]["version"], "1.1.7");
     let rendered = render_codex_tool_status(
-        &serde_json::json!({
-            "kind": "execute",
-            "title": "git status --short",
-            "rawInput": {
-                "command": "git status --short",
-                "cwd": "/private/tmp/hone-agent-sandbox"
-            }
-        }),
+        &fixture["string_command_start"]["update"],
         AcpToolRenderPhase::Start,
         "git status --short",
         None,
@@ -1557,36 +1537,24 @@ fn codex_execute_renderer_never_exposes_shell_arguments_or_secrets() {
 /// same event shape on OpenCode.
 #[tokio::test]
 async fn codex_acp_1_1_7_execute_stream_rehydrates_raw_tool_result() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/acp/codex-acp-1.1.7.json"
+    ))
+    .expect("Codex ACP 1.1.7 fixture");
+    assert_eq!(fixture["adapter"]["captured_at"], "2026-08-02");
+    let (_, profile) = select_acp_adapter_profile_from_initialize(
+        AcpAdapterKind::CodexAcp,
+        &fixture["initialize_result"],
+    )
+    .expect("Codex ACP fixture profile");
+    assert_eq!(profile.dialect, AcpStreamDialect::CodexAcp1_1_7);
     let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
     let mut state = AcpPromptState::default();
-
-    let start = serde_json::json!({
-        "update": {
-            "sessionUpdate": "tool_call",
-            "toolCallId": "call_exec_1",
-            "title": "Run rtk --version",
-            "kind": "execute",
-            "rawInput": {
-                "command": ["/bin/zsh", "-lc", "rtk --version"]
-            }
-        }
-    });
-    handle_acp_session_update(&start, &emitter, Some(&mut state)).await;
-
-    let completed = serde_json::json!({
-        "update": {
-            "sessionUpdate": "tool_call_update",
-            "toolCallId": "call_exec_1",
-            "status": "completed",
-            "kind": "execute",
-            "rawOutput": {
-                "stdout": "rtk 0.35.0\n",
-                "formatted_output": "rtk 0.35.0\n",
-                "exit_code": 0
-            }
-        }
-    });
-    let patched = patch_codex_session_update_params(&completed).expect("patched params");
+    let updates = fixture["execute_updates"]
+        .as_array()
+        .expect("Codex execute updates");
+    handle_acp_session_update(&updates[0], &emitter, Some(&mut state)).await;
+    let patched = patch_codex_session_update_params(&updates[1]).expect("patched params");
     handle_acp_session_update(&patched, &emitter, Some(&mut state)).await;
 
     let messages = finalize_context_messages(&mut state);
@@ -1619,46 +1587,30 @@ async fn opencode_1_18_11_stream_preserves_available_reasoning_answer_and_usage(
             overall: Duration::from_secs(10),
         },
     );
-    let dialect = runner.acp_stream_dialect().expect("OpenCode dialect");
-    assert_eq!(dialect, AcpStreamDialect::OpenCode1_18_11);
-    assert_eq!(dialect.adapter(), "opencode");
-    assert_eq!(dialect.observed_version(), "1.18.11");
+    assert_eq!(runner.acp_adapter_kind(), Some(AcpAdapterKind::OpenCode));
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/acp/opencode-1.18.11.json"
+    ))
+    .expect("OpenCode 1.18.11 fixture");
+    assert_eq!(fixture["adapter"]["captured_at"], "2026-08-01");
+    let (_, profile) = select_acp_adapter_profile_from_initialize(
+        AcpAdapterKind::OpenCode,
+        &fixture["initialize_result"],
+    )
+    .expect("OpenCode 1.18.11 profile");
+    assert_eq!(profile.dialect, AcpStreamDialect::OpenCode1_18_11);
+    assert_eq!(profile.adapter.as_str(), "opencode");
+    assert_eq!(profile.detected_version, "1.18.11");
+    assert_eq!(profile.compatibility, AcpCompatibilityStatus::Validated);
 
     let emitter = Arc::new(CaptureEmitter::default());
     let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
     let mut state = AcpPromptState::default();
 
-    for update in [
-        serde_json::json!({
-            "update": {
-                "sessionUpdate": "agent_thought_chunk",
-                "messageId": "msg_probe",
-                "content": { "type": "text", "text": "reasoning detail" }
-            }
-        }),
-        serde_json::json!({
-            "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "messageId": "msg_probe",
-                "content": { "type": "text", "text": "OPENCODE_A" }
-            }
-        }),
-        serde_json::json!({
-            "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "messageId": "msg_probe",
-                "content": { "type": "text", "text": "CP_OK" }
-            }
-        }),
-        serde_json::json!({
-            "update": {
-                "sessionUpdate": "usage_update",
-                "used": 8505,
-                "size": 1_000_000,
-                "cost": { "amount": 0.00025996, "currency": "USD" }
-            }
-        }),
-    ] {
+    for update in fixture["updates"]
+        .as_array()
+        .expect("OpenCode stream updates")
+    {
         handle_opencode_session_update(&update, &emitter_trait, &mut state).await;
     }
 

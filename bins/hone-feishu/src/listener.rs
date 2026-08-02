@@ -149,6 +149,17 @@ impl AgentSessionListener for FeishuStreamListener {
                     self.push_tool_status(&text, dedupe).await;
                 }
             }
+            AgentSessionEvent::Run(RunEvent::StreamThought { thought }) => {
+                match self.reasoning_visibility {
+                    ReasoningVisibility::Hidden => {}
+                    ReasoningVisibility::Compact => {
+                        self.push_tool_status("正在分析...", true).await;
+                    }
+                    ReasoningVisibility::Full => {
+                        self.push_tool_status(&thought, true).await;
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -231,5 +242,29 @@ mod tests {
             .await;
 
         assert_eq!(buffer.read().unwrap().as_str(), "正在思考中...");
+    }
+
+    #[tokio::test]
+    async fn stream_thought_updates_full_feishu_progress_without_becoming_answer_text() {
+        let buffer = Arc::new(RwLock::new("正在思考中...".to_string()));
+        let listener = FeishuStreamListener {
+            buffer: buffer.clone(),
+            cardkit: None,
+            reasoning_visibility: ReasoningVisibility::Full,
+            think_formatter: Arc::new(RwLock::new(
+                hone_channels::think::ThinkStreamFormatter::new(ThinkRenderStyle::Hidden),
+            )),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::StreamThought {
+                thought: "正在核验 ACP 版本".to_string(),
+            }))
+            .await;
+
+        assert_eq!(
+            buffer.read().unwrap().as_str(),
+            "正在思考中...\n- 正在核验 ACP 版本"
+        );
     }
 }

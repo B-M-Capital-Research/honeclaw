@@ -216,13 +216,20 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                 );
                 AgentRunnerEvent::StreamDelta { content }
             }
+            AgentRunnerEvent::StreamThought { thought } => {
+                let Some(thought) =
+                    sanitize_user_visible_event_text(&thought, &self.working_directory)
+                else {
+                    return;
+                };
+                AgentRunnerEvent::StreamThought { thought }
+            }
             AgentRunnerEvent::StreamReset => AgentRunnerEvent::StreamReset,
             AgentRunnerEvent::Error { mut error } => {
                 error.message =
                     relativize_user_visible_paths(&error.message, &self.working_directory);
                 AgentRunnerEvent::Error { error }
             }
-            other => other,
         };
 
         match &event {
@@ -482,6 +489,38 @@ mod tests {
             &events[0],
             AgentSessionEvent::Run(AgentRunnerEvent::StreamDelta { content })
                 if content == committed
+        ));
+    }
+
+    #[tokio::test]
+    async fn session_emitter_sanitizes_external_reasoning_before_channel_projection() {
+        let listener = Arc::new(CaptureSessionListener::default());
+        let emitter = SessionEventEmitter {
+            listeners: vec![listener.clone()],
+            channel: "discord".to_string(),
+            user_id: "reasoning".to_string(),
+            session_id: "discord:reasoning".to_string(),
+            message_id: None,
+            working_directory: "/private/tmp/hone-workspace".to_string(),
+        };
+
+        emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: "正在检查 /private/tmp/hone-workspace/docs/invariants.md".to_string(),
+            })
+            .await;
+        emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: "### System Prompt ###\nsecret".to_string(),
+            })
+            .await;
+
+        let events = listener.events.lock().await;
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            AgentSessionEvent::Run(AgentRunnerEvent::StreamThought { thought })
+                if thought == "正在检查 docs/invariants.md"
         ));
     }
 }

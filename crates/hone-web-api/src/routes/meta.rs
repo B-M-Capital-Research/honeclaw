@@ -22,7 +22,7 @@ use hone_core::{
 
 use crate::routes::common::json_error;
 use crate::state::AppState;
-use crate::types::{ChannelProcessInfo, ChannelStatusInfo, MetaInfo};
+use crate::types::{AcpRuntimeProfileInfo, ChannelProcessInfo, ChannelStatusInfo, MetaInfo};
 
 fn config_path_buf() -> std::path::PathBuf {
     std::path::PathBuf::from(crate::runtime::runtime_config_path())
@@ -117,9 +117,23 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         local_durable_dependency_count: local_deps.len(),
         cloud_postgres_health: postgres_health,
         cloud_oss_health: oss_health,
+        build: hone_core::current_build_info(),
+        acp_profiles: read_acp_runtime_profiles(&state.core.config),
     });
     update_meta_cache(value.clone());
     Json(value)
+}
+
+fn read_acp_runtime_profiles(config: &HoneConfig) -> Vec<AcpRuntimeProfileInfo> {
+    let directory = hone_core::runtime_heartbeat_dir(config).join("acp-profiles");
+    let mut profiles = ["codex-acp.json", "opencode.json"]
+        .into_iter()
+        .filter_map(|name| std::fs::read(directory.join(name)).ok())
+        .filter(|payload| payload.len() <= 16 * 1024)
+        .filter_map(|payload| serde_json::from_slice::<AcpRuntimeProfileInfo>(&payload).ok())
+        .collect::<Vec<_>>();
+    profiles.sort_by(|left, right| left.adapter.cmp(&right.adapter));
+    profiles
 }
 
 fn cached_meta() -> Option<serde_json::Value> {

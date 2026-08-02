@@ -246,6 +246,7 @@ struct OutboundReasoningListener<A: OutboundAdapter> {
 struct ProgressTranscript {
     base_text: String,
     entries: Vec<String>,
+    live_reasoning: Option<String>,
 }
 
 impl ProgressTranscript {
@@ -253,6 +254,7 @@ impl ProgressTranscript {
         Self {
             base_text: base_text.trim().to_string(),
             entries: Vec::new(),
+            live_reasoning: None,
         }
     }
 
@@ -264,7 +266,39 @@ impl ProgressTranscript {
         if dedupe && self.entries.iter().any(|existing| existing == normalized) {
             return None;
         }
+        if let Some(reasoning) = self.live_reasoning.take() {
+            self.entries.push(reasoning);
+        }
         self.entries.push(normalized.to_string());
+        Some(self.render())
+    }
+
+    fn push_reasoning_delta(&mut self, delta: &str, compact: bool) -> Option<String> {
+        let normalized = delta.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+        if compact {
+            if self.live_reasoning.as_deref() == Some("正在分析...") {
+                return None;
+            }
+            self.live_reasoning = Some("正在分析...".to_string());
+            return Some(self.render());
+        }
+
+        let reasoning = self.live_reasoning.get_or_insert_with(String::new);
+        reasoning.push_str(delta);
+        const MAX_REASONING_CHARS: usize = 1_200;
+        if reasoning.chars().count() > MAX_REASONING_CHARS {
+            *reasoning = reasoning
+                .chars()
+                .rev()
+                .take(MAX_REASONING_CHARS)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
+        }
         Some(self.render())
     }
 
@@ -274,6 +308,9 @@ impl ProgressTranscript {
             lines.push(self.base_text.clone());
         }
         lines.extend(self.entries.iter().map(|entry| format!("- {entry}")));
+        if let Some(reasoning) = self.live_reasoning.as_deref() {
+            lines.push(format!("- {reasoning}"));
+        }
         lines.join("\n")
     }
 }
@@ -281,34 +318,44 @@ impl ProgressTranscript {
 #[async_trait]
 impl<A: OutboundAdapter> AgentSessionListener for OutboundReasoningListener<A> {
     async fn on_event(&self, event: AgentSessionEvent) {
-        let AgentSessionEvent::Run(RunEvent::ToolStatus {
-            tool,
-            status,
-            reasoning,
-            ..
-        }) = event
-        else {
-            return;
-        };
-        if status != "start" {
-            return;
-        }
         let visibility = self.adapter.reasoning_visibility();
-        let text = match visibility {
-            ReasoningVisibility::Hidden => None,
-            ReasoningVisibility::Full => reasoning.filter(|value| !value.trim().is_empty()),
-            ReasoningVisibility::Compact => Some(render_compact_tool_status_start(
-                &tool,
-                reasoning.as_deref(),
-            )),
+        let content = match event {
+            AgentSessionEvent::Run(RunEvent::ToolStatus {
+                tool,
+                status,
+                reasoning,
+                ..
+            }) if status == "start" => {
+                let text = match visibility {
+                    ReasoningVisibility::Hidden => None,
+                    ReasoningVisibility::Full => reasoning.filter(|value| !value.trim().is_empty()),
+                    ReasoningVisibility::Compact => Some(render_compact_tool_status_start(
+                        &tool,
+                        reasoning.as_deref(),
+                    )),
+                };
+                let Some(text) = text else {
+                    return;
+                };
+                let dedupe = !matches!(visibility, ReasoningVisibility::Compact);
+                self.progress.lock().await.push(&text, dedupe)
+            }
+            AgentSessionEvent::Run(RunEvent::StreamThought { thought }) => match visibility {
+                ReasoningVisibility::Hidden => return,
+                ReasoningVisibility::Full => self
+                    .progress
+                    .lock()
+                    .await
+                    .push_reasoning_delta(&thought, false),
+                ReasoningVisibility::Compact => self
+                    .progress
+                    .lock()
+                    .await
+                    .push_reasoning_delta(&thought, true),
+            },
+            _ => return,
         };
-        let Some(text) = text else {
-            return;
-        };
-        let dedupe = !matches!(visibility, ReasoningVisibility::Compact);
-        let Some(content) = self.progress.lock().await.push(&text, dedupe) else {
-            return;
-        };
+        let Some(content) = content else { return };
         let placeholder = self.placeholder.lock().await.clone();
         self.adapter
             .update_progress(placeholder.as_ref(), &content)
@@ -954,6 +1001,23 @@ mod tests {
         assert_eq!(
             transcript.push("正在搜索信息...", false),
             Some("正在思考中...\n- 正在搜索信息...\n- 正在搜索信息...".to_string())
+        );
+    }
+
+    #[test]
+    fn progress_transcript_accumulates_external_reasoning_chunks_without_answer_bytes() {
+        let mut transcript = ProgressTranscript::new("正在思考中...");
+        assert_eq!(
+            transcript.push_reasoning_delta("先核验", false),
+            Some("正在思考中...\n- 先核验".to_string())
+        );
+        assert_eq!(
+            transcript.push_reasoning_delta("版本。", false),
+            Some("正在思考中...\n- 先核验版本。".to_string())
+        );
+        assert_eq!(
+            transcript.push_reasoning_delta("不会显示", true),
+            Some("正在思考中...\n- 正在分析...".to_string())
         );
     }
 

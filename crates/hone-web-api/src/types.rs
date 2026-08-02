@@ -194,6 +194,22 @@ pub struct MetaInfo {
     pub local_durable_dependency_count: usize,
     pub cloud_postgres_health: Option<CloudHealth>,
     pub cloud_oss_health: Option<CloudHealth>,
+    pub build: hone_core::BuildInfo,
+    pub acp_profiles: Vec<AcpRuntimeProfileInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcpRuntimeProfileInfo {
+    pub runner: String,
+    pub adapter: String,
+    pub detected_version: String,
+    pub baseline_version: String,
+    pub dialect: String,
+    pub compatibility: String,
+    #[serde(default)]
+    pub companion_versions: std::collections::BTreeMap<String, String>,
+    pub detected_at: String,
+    pub build_git_sha: Option<String>,
 }
 
 #[derive(Serialize)]

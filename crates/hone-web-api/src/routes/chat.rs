@@ -103,6 +103,12 @@ impl AgentSessionListener for SseSessionListener {
                 let mut guard = self.sent_segments.lock().await;
                 *guard = 0;
             }
+            AgentSessionEvent::Run(RunEvent::StreamThought { thought }) => {
+                let _ = self
+                    .tx
+                    .send(("reasoning_delta".into(), json!({ "content": thought })))
+                    .await;
+            }
             AgentSessionEvent::Run(RunEvent::ToolStatus {
                 status,
                 tool,
@@ -518,6 +524,33 @@ mod tests {
         let (event, _) = rx.recv().await.expect("reset event");
         assert_eq!(event, "assistant_reset");
         assert_eq!(*sent_segments.lock().await, 0);
+    }
+
+    #[tokio::test]
+    async fn admin_web_preserves_typed_reasoning_separately_from_answer_deltas() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
+            active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::StreamThought {
+                thought: "reasoning detail".to_string(),
+            }))
+            .await;
+
+        assert_eq!(
+            rx.recv().await,
+            Some((
+                "reasoning_delta".to_string(),
+                json!({ "content": "reasoning detail" })
+            ))
+        );
+        assert_eq!(*listener.sent_segments.lock().await, 0);
     }
 
     #[tokio::test]

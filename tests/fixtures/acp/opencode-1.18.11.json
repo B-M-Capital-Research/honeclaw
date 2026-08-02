@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "adapter": {
+    "name": "opencode",
+    "version": "1.18.11",
+    "captured_at": "2026-08-01"
+  },
+  "initialize_result": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "opencode",
+      "version": "1.18.11"
+    }
+  },
+  "updates": [
+    {
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "messageId": "msg_probe",
+        "content": { "type": "text", "text": "reasoning detail" }
+      }
+    },
+    {
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "messageId": "msg_probe",
+        "content": { "type": "text", "text": "OPENCODE_A" }
+      }
+    },
+    {
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "messageId": "msg_probe",
+        "content": { "type": "text", "text": "CP_OK" }
+      }
+    },
+    {
+      "update": {
+        "sessionUpdate": "usage_update",
+        "used": 8505,
+        "size": 1000000,
+        "cost": { "amount": 0.00025996, "currency": "USD" }
+      }
+    }
+  ]
+}

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use hone_core::ActorIdentity;
 use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
 use hone_core::config::AgentConversationStrategy;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,10 +14,35 @@ pub(crate) use crate::run_event::RunEvent as AgentRunnerEvent;
 /// Versioned wire profiles observed from real ACP adapters. The variants are
 /// intentionally adapter-specific: sharing ACP method names does not imply
 /// identical stream updates or presentation detail.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum AcpAdapterKind {
+    #[serde(rename = "codex-acp")]
+    CodexAcp,
+    #[serde(rename = "opencode")]
+    OpenCode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AcpStreamDialect {
+    #[serde(rename = "codex-acp/1.1.7")]
     CodexAcp1_1_7,
+    #[serde(rename = "opencode/1.18.11")]
     OpenCode1_18_11,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpCompatibilityStatus {
+    Validated,
+    CompatibleNewer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpAdapterProfile {
+    pub adapter: AcpAdapterKind,
+    pub detected_version: String,
+    pub dialect: AcpStreamDialect,
+    pub compatibility: AcpCompatibilityStatus,
 }
 
 /// Adapter-specific workspace preparation that is independent from
@@ -27,18 +53,42 @@ pub enum NativeSkillProjection {
 }
 
 impl AcpStreamDialect {
-    pub fn adapter(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::CodexAcp1_1_7 => "codex-acp",
-            Self::OpenCode1_18_11 => "opencode",
+            Self::CodexAcp1_1_7 => "codex-acp/1.1.7",
+            Self::OpenCode1_18_11 => "opencode/1.18.11",
         }
     }
 
-    pub fn observed_version(self) -> &'static str {
+    pub fn baseline_version(self) -> &'static str {
         match self {
             Self::CodexAcp1_1_7 => "1.1.7",
             Self::OpenCode1_18_11 => "1.18.11",
         }
+    }
+}
+
+impl AcpAdapterKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CodexAcp => "codex-acp",
+            Self::OpenCode => "opencode",
+        }
+    }
+}
+
+impl AcpCompatibilityStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Validated => "validated",
+            Self::CompatibleNewer => "compatible_newer",
+        }
+    }
+}
+
+impl AcpAdapterProfile {
+    pub fn baseline_version(&self) -> &'static str {
+        self.dialect.baseline_version()
     }
 }
 
@@ -261,7 +311,7 @@ pub trait AgentRunner: Send + Sync {
         AgentConversationStrategy::StructuredReplay
     }
 
-    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
+    fn acp_adapter_kind(&self) -> Option<AcpAdapterKind> {
         None
     }
 

@@ -52,7 +52,10 @@ pub(crate) use state::{
     AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord, AcpToolRenderPhase,
 };
 pub(crate) use tool_state::{finalize_context_messages, finalize_pending_tool_calls};
-pub(crate) use version::{CliVersion, parse_cli_version};
+pub(crate) use version::{
+    CliVersion, parse_cli_version, persist_acp_runtime_profile, select_acp_adapter_profile,
+    select_acp_adapter_profile_from_initialize,
+};
 
 // ── 仅测试消费的 re-export ──
 // `runners/tests.rs` 以 `use super::acp_common::{...}` 的形式直接复用 acp_common

@@ -25,7 +25,13 @@
   - `memory/src/session.rs`
   - `crates/hone-channels/src/runners/gemini_acp.rs`
   - `crates/hone-channels/src/runners/opencode_acp.rs`
+  - `crates/hone-channels/src/runners/acp_common/version.rs`
   - `crates/hone-core/src/config/agent.rs`
+  - `crates/hone-web-api/src/routes/meta.rs`
+  - `crates/hone-web-api/src/types.rs`
+  - `scripts/deploy_source_runtime.sh`
+  - `tests/regression/ci/test_source_runtime_deploy_contract.sh`
+  - `docs/runbooks/source-web-startup.md`
   - `config.example.yaml`
   - `config.yaml`
 - related_docs:
@@ -73,6 +79,22 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-07-31 native-skill follow-up: trusted persistent Codex ACP workspaces expose each enabled Hone system/custom skill through an individual symlink under `<actor sandbox>/.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone no longer repeats the MCP `SkillTool` loading contract or exposes skill-loading MCP schemas on that path. MCP remains the transport for live Hone data/action tools, while legacy runners retain the existing skill bridge.
 - 2026-08-01 native-turn contract follow-up (done; parent plan remains active): replaced the seed/reseed user-message convention with an explicit runner conversation strategy. Persistent Codex sessions receive Hone instructions through Codex's native `developer_instructions` configuration and every ACP `session/prompt` contains only the canonical current user turn. Native compaction never causes Hone to replay system instructions, local transcript, historical user/assistant messages, tool calls, or tool results. The persistent-session mode and instruction fingerprint form a generation boundary so pre-contract or instruction-mismatched native sessions rotate deliberately instead of being resumed as if clean. OpenCode remains a fresh-session Hone-replay adapter until its own resume/event contract is independently proven.
 - 2026-08-02 MCP startup and execute-status follow-up (done; parent plan remains active): `codex-acp 1.1.7` can report a cancelled MCP startup watcher as a synthetic terminal `tool_call` with `toolCallId=mcp_startup.<server>` and `status=failed`. Hone now retains that adapter lifecycle telemetry in the raw ACP log while excluding it from visible progress, pending/restored tool state, and business tool counts. Structured MCP calls and actual shell execution are distinguished from `rawInput`; MCP calls use bounded tool/argument summaries, shell calls use safe categories without arguments, secrets, or full paths, and completion events inherit the same start summary when Codex omits start metadata. Discord, Telegram, and Feishu direct/group projections share the Full/Compact rendering contract, while iMessage forwards safe tool-start state to its console pending view.
+- 2026-08-02 version-aware dialect and source-deployment follow-up (in progress): keep the existing Codex/OpenCode conversation ownership split, but replace static observed-version labels with one shared runtime adapter profile selected from actual CLI/adapter probes. Known profiles must bind adapter identity, detected version, compatibility status, stream dialect, and fixture provenance; unknown newer versions may run only through an explicit conservative compatibility policy with visible telemetry, while older/structurally incompatible versions fail before a turn. Runtime metadata must expose sanitized build provenance and selected profiles. Direct source deployment must become one repository-owned, testable state machine with active-turn drain, exact PID/lock release, startup/readiness separation, all-service rollback, immutable commit provenance, and no credential output.
+
+### 2026-08-02 version-aware dialect and deployment acceptance checklist
+
+- [x] Preserve the existing `NativePersistent` Codex and `EphemeralCompiledPrompt` OpenCode conversation inputs; no version refactor may reintroduce system/history/tool replay into Codex prompts.
+- [x] Parse Codex CLI and live Codex/OpenCode initialize versions through one shared typed model; retain a bounded normalized semantic version for diagnostics.
+- [x] Resolve an adapter profile from actual identity/version, not from runner name alone. The profile includes compatibility status and the exact stream dialect/fixture baseline selected.
+- [x] Accept the currently observed Codex `0.146.0` + codex-acp `1.1.7` and OpenCode `1.18.11` profiles, reject versions below validated floors or in unknown majors, and emit a bounded warning for same-major newer versions without claiming they are the observed baseline.
+- [x] Keep external protocol fixtures adapter- and version-labelled, with capture date and source boundary. Assertions target protocol roles/events and safe normalized output rather than private implementation details or byte-identical cross-runner rendering.
+- [x] Preserve safely mappable answer, reasoning, tool, progress, usage, and terminal detail through shared `RunEvent` projection for Full/Compact channel renderers; unknown fields remain bounded diagnostics rather than user-visible raw JSON.
+- [x] Expose application version, Git SHA, build timestamp/profile, detected runner tool versions, selected dialect baseline, and compatibility status through `/api/meta` without paths, credentials, prompts, or user data.
+- [x] Implement a non-interactive direct-source deployment command with explicit `preflight -> drain -> stop -> wait_pid_and_lock -> start -> startup -> ready -> channel_login -> verify` states and one all-service rollback path.
+- [x] Deployment refuses a dirty/unpushed or unexpected revision unless explicitly overridden, waits for active chats to reach zero, proves old PIDs exited and locks released, uses configurable startup/readiness deadlines above the observed startup baseline, and restores every previously running service on failure.
+- [x] CI-safe deployment regression uses fake launch/service/HTTP boundaries and proves success, PID/lock waiting, crashed-but-loaded jobs, timeout, partial-start failure, and complete rollback without requiring launchd, credentials, or live ports.
+- [x] Run focused Rust tests, complete workspace gates, Web/Edge tests, CI-safe regressions, real local Codex version/initialize probes, and a manual OpenCode probe only when a real binary is available; absence of OpenCode must be reported rather than simulated as live proof.
+- [ ] Complete source-runtime canary from the exact reviewed commit only after code/test/docs gates pass: zero active chats, version/provenance metadata match, ports and channel login healthy, and rollback evidence retained if any stage fails.
 
 ### 2026-08-02 MCP startup status acceptance checklist
 
@@ -98,6 +120,16 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - [x] Run the repository gates, synchronize ADR/decision/invariant/repo-map/handoff/archive evidence, and commit only the reviewed task files.
 
 ## Validation
+
+- 2026-08-02 version-aware dialect and source-deployment follow-up:
+  - `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed.
+  - `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed; the only warnings were the existing Web API dead-code warning and upstream future-compatibility notice.
+  - `bun run test:web` passed `334/334`; Public Community Edge typecheck and `45/45` tests passed.
+  - `bash tests/regression/run_ci.sh` passed, including the new source-runtime deployment contract for success, dirty/unpushed refusal, crashed-but-loaded jobs, Web/Discord readiness failures, and all-service rollback.
+  - Post-review `cargo test -p hone-channels --lib` passed `715`, with one existing host-dependent OCR test ignored; `cargo test -p hone-core build_info` passed.
+  - The installed Codex CLI `0.146.0` and codex-acp `1.1.7` completed a real initialize/session exchange. The installed OpenCode `1.18.11` completed initialize, `session/set_model`, one read-only Hone MCP call, reasoning/answer/usage streaming, and `end_turn` with an explicit free probe model.
+  - OpenCode's configured default OpenAI OAuth independently returned `401`; this remains an external provider-auth problem and is not counted as default-model success.
+  - Exact source-runtime canary and final `/api/meta` provenance verification remain pending until the reviewed revision is committed and pushed.
 
 - 2026-08-02 MCP startup and cross-channel tool-status follow-up:
   - Exact Codex ACP 1.1.7 cancelled-startup, structured MCP, argv/string shell, secret-redaction, and start-to-completion metadata-loss regressions passed.

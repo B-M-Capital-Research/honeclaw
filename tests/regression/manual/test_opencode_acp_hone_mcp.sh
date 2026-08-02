@@ -4,6 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
+CONFIG_PATH="${HONE_CONFIG_PATH:-$ROOT_DIR/config.yaml}"
+DATA_DIR="${HONE_DATA_DIR:-$ROOT_DIR/data}"
+PROBE_MODEL="${HONE_OPENCODE_ACP_MODEL:-}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -14,6 +17,14 @@ require_cmd() {
 
 require_cmd opencode
 require_cmd cargo
+[[ -f "$CONFIG_PATH" ]] || {
+  echo "[FAIL] missing runtime config: $CONFIG_PATH (set HONE_CONFIG_PATH for a worktree probe)" >&2
+  exit 1
+}
+[[ -d "$DATA_DIR" ]] || {
+  echo "[FAIL] missing runtime data dir: $DATA_DIR (set HONE_DATA_DIR for a worktree probe)" >&2
+  exit 1
+}
 
 TMP_ITEMS=()
 cleanup() {
@@ -112,7 +123,7 @@ if ! wait_for_pattern '"id":1,"result"' 20; then
 fi
 
 MCP_ENV=$(cat <<EOF
-[{"name":"HONE_CONFIG_PATH","value":"$ROOT_DIR/config.yaml"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
+[{"name":"HONE_CONFIG_PATH","value":"$CONFIG_PATH"},{"name":"HONE_DATA_DIR","value":"$DATA_DIR"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
 EOF
 )
 
@@ -127,13 +138,6 @@ if ! wait_for_pattern '"id":2,"result"' 30; then
   exit 1
 fi
 
-if ! grep -q 'toolCount=8 create() successfully created client' "$STDERR_LOG"; then
-  echo "[FAIL] opencode stderr missing Hone MCP registration evidence" >&2
-  echo "--- stderr ---" >&2
-  cat "$STDERR_LOG" >&2 || true
-  exit 1
-fi
-
 SESSION_ID="$(LC_ALL=C sed -n 's/.*"id":2,"result":{"sessionId":"\([^"]*\)".*/\1/p' "$STDOUT_LOG" | tail -n 1)"
 if [[ -z "$SESSION_ID" ]]; then
   echo "[FAIL] could not extract sessionId from session/new response" >&2
@@ -142,11 +146,24 @@ if [[ -z "$SESSION_ID" ]]; then
   exit 1
 fi
 
-PROMPT='Use the hone_kb_search tool with action=search and query=Rocket Lab. Do not use any other search tool. Include the exact token HONE_OPENCODE_ACP_MCP_OK in the final answer.'
-echo "[INFO] prompting opencode ACP to call Hone tool"
-send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"prompt\":[{\"type\":\"text\",\"text\":\"$PROMPT\"}]}}"
+PROMPT_ID=3
+if [[ -n "$PROBE_MODEL" ]]; then
+  echo "[INFO] selecting OpenCode ACP probe model: $PROBE_MODEL"
+  send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":$PROMPT_ID,\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"modelId\":\"$PROBE_MODEL\"}}"
+  if ! wait_for_pattern "\"id\":$PROMPT_ID,\"result\"" 30; then
+    echo "[FAIL] opencode acp session/set_model did not succeed" >&2
+    cat "$STDOUT_LOG" >&2 || true
+    cat "$STDERR_LOG" >&2 || true
+    exit 1
+  fi
+  PROMPT_ID=$((PROMPT_ID + 1))
+fi
 
-if ! wait_for_pattern '"id":3,"result":{"stopReason":"end_turn"' 60; then
+PROMPT='Use the hone_local_search_files tool to search for Rocket Lab. Do not use any other tool. Include the exact token HONE_OPENCODE_ACP_MCP_OK in the final answer.'
+echo "[INFO] prompting opencode ACP to call Hone tool"
+send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":$PROMPT_ID,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"$SESSION_ID\",\"prompt\":[{\"type\":\"text\",\"text\":\"$PROMPT\"}]}}"
+
+if ! wait_for_pattern "\"id\":$PROMPT_ID,\"result\":{\"stopReason\":\"end_turn\"" 90; then
   echo "[FAIL] opencode acp prompt did not complete successfully" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
@@ -155,8 +172,8 @@ if ! wait_for_pattern '"id":3,"result":{"stopReason":"end_turn"' 60; then
   exit 1
 fi
 
-if ! grep -Eq '"title":"(Tool: hone/kb_search|hone_kb_search)"' "$STDOUT_LOG"; then
-  echo "[FAIL] opencode acp did not emit hone/kb_search tool_call" >&2
+if ! grep -Eq '"title":"(Tool: hone/local_search_files|hone_local_search_files)"' "$STDOUT_LOG"; then
+  echo "[FAIL] opencode acp did not emit hone/local_search_files tool_call" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
   exit 1

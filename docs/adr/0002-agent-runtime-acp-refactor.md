@@ -1,7 +1,7 @@
 # ADR 0002: ACP-Aligned Agent Runtime Refactor
 
 Date: 2026-03-17
-Updated: 2026-08-01
+Updated: 2026-08-02
 Status: Accepted
 Owner: shared
 Related docs: `docs/decisions.md`, `docs/current-plans/acp-runtime-refactor.md`, `docs/archive/index.md`
@@ -36,6 +36,9 @@ Superseded by: N/A
 - Session storage now writes the normalized version-4 user/assistant `content[] + status` model. Hone-managed replay runners may consume it, but Codex native prompts never serialize that local transcript, including during migration or compaction.
 - Choose `opencode acp` over stdio / JSON-RPC as the production integration path for `opencode`, instead of CLI text parsing or a `serve` compatibility layer.
 - Treat ACP streaming as versioned adapter dialects rather than one byte-identical renderer contract. The current observed profiles are codex-acp `1.1.7` and OpenCode `1.18.11`; each adapter preserves the visible, thought, tool, progress, usage, and final detail that its protocol actually exposes.
+- Select the adapter profile from the real connection's `initialize.agentInfo.version`, not a runner-name constant or a second probe process. An exact fixture version is `validated`; a newer minor/patch in the same major uses the nearest validated dialect as `compatible_newer` with a warning; an older version, missing/unparseable version, or unknown major fails before `session/new` or `session/prompt`.
+- Persist only sanitized runtime provenance for the last observed Codex/OpenCode profile under the runtime directory. `/api/meta` exposes the Web binary build identity plus those observed profiles; an empty profile list means that adapter has not completed initialize in this runtime, not that a version was guessed.
+- Keep stream detail typed through the session boundary. Answer bytes, reasoning deltas, tool status, progress, usage, reset, and terminal state are not interchangeable. Admin Web and full-reasoning direct channels may show sanitized reasoning progress; compact group modes show only a generic analysis signal; OpenAI-compatible output and channels without a safe live-update surface omit it. Final answer semantics do not depend on that presentation choice.
 - This refactor is an intentional breaking change and does not preserve the old config keys, old SSE event semantics, or old session write format as a long-term compatibility surface.
 
 ## Consequences
@@ -43,13 +46,25 @@ Superseded by: N/A
 - Existing callers, frontend streaming consumers, config files, and session file formats all need to migrate together
 - Prompt-prefix cache hits should become more stable, but large static instructions must stay in the native developer layer and mutable content such as summaries must not be pushed into it or into a later user turn
 - Persistent Codex Interactive input must not duplicate Harness-owned history/tool/compaction semantics or stable answer/tool-loop contracts; OpenCode and Hone-managed execution paths retain their separately validated context behavior
+- A new same-major adapter version is operationally compatible, not validated. Its profile and logs must retain the detected version, baseline dialect, and compatibility status until a real captured fixture promotes it to a new validated dialect.
+- Runtime profile files and `/api/meta` must not contain prompt text, credentials, absolute tool paths, user data, or raw protocol payloads.
 - Native Codex skill projection must preserve actor-owned `.agents/skills` entries, remove only Hone-managed stale `hone__*` symlinks, and follow the shared skill registry's enabled state
 - `opencode_acp` must fail fast before the Rust runner is wired up; it must not silently fall back to another runner, or the incomplete runtime integration will be hidden
 - Remaining follow-up work:
   - Continue runner contract coverage and end-to-end ACP behavior alignment
-  - Revalidate native resume/compaction and stream-event shapes whenever either ACP adapter floor changes
+- Revalidate native resume/compaction and stream-event shapes whenever either ACP adapter floor changes
+
+### Validated compatibility matrix
+
+| Runner | Companion floor | Adapter fixture | Selection policy |
+| --- | --- | --- | --- |
+| `codex_acp` | Codex CLI `0.146.0` | codex-acp `1.1.7` | exact validated; same-major newer conservative; older/unknown-major fail closed |
+| `opencode_acp` | local provider/model config | OpenCode `1.18.11` | exact validated; same-major newer conservative; older/unknown-major fail closed |
+
+The fixture version is an external wire sample, not a claim that the two adapters expose identical events.
 
 ## Verification / Adoption
 
 - The active follow-up for this ADR is tracked in `docs/current-plans/acp-runtime-refactor.md`
+- Versioned captures live in `tests/fixtures/acp/`; runner tests assert capture metadata as well as safely mapped events.
 - `docs/decisions.md` records the runtime convergence and dynamic plan policy decisions that frame the remaining work

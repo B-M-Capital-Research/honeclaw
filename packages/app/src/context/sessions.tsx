@@ -210,6 +210,19 @@ function createSessionsState() {
             });
           }
 
+          if (event.event === "reasoning_delta") {
+            const reasoning = event.data.content?.trim();
+            if (reasoning) {
+              updatePending(key, {
+                phase: "thinking",
+                statusText:
+                  reasoning.length > 160
+                    ? `${reasoning.slice(-160)}…`
+                    : reasoning,
+              });
+            }
+          }
+
           if (event.event === "assistant_delta") {
             const content = event.data.content ?? "";
             const currentPending = state.pendingByKey[key];

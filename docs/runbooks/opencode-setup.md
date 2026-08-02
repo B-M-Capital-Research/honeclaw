@@ -1,6 +1,6 @@
 # Runbook: OpenCode Setup
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## When to Use
 
@@ -188,6 +188,10 @@ The observed `1.18.11` stream included:
 
 These fields are a versioned compatibility sample, not a promise that OpenCode and codex-acp will emit identical events. When the installed version changes, rerun the real probe before updating the fixture.
 
+Hone reads `initialize.agentInfo.version` from the same ACP process that will receive the prompt. OpenCode `1.18.11` is the current validated fixture. A newer `1.x` release uses that dialect conservatively and is reported as `compatible_newer`; an older release, missing/unparseable version, or a new major fails before `session/prompt` until a real capture establishes a new dialect.
+
+The versioned external capture is `tests/fixtures/acp/opencode-1.18.11.json`. It records adapter/version/capture date plus thought, split answer, and usage shapes; it is not generated from Hone's private Rust structs.
+
 ## 8. Wire It Into Hone
 
 Recommended minimal Hone config:
@@ -248,6 +252,18 @@ agent:
 - A working ACP transport does not prove that the configured provider token is still valid
 - Reconnect the provider with `/connect`, or repair the selected provider's own local auth/config
 - Never paste a key into a checked-in probe fixture or capture it in protocol logs
+
+For a worktree-safe transport/MCP probe, pass the real ignored runtime paths explicitly:
+
+```bash
+env \
+  PATH="$HOME/.opencode/bin:$PATH" \
+  HONE_CONFIG_PATH=/absolute/path/to/config.yaml \
+  HONE_DATA_DIR=/absolute/path/to/data \
+  bash tests/regression/manual/test_opencode_acp_hone_mcp.sh
+```
+
+`HONE_OPENCODE_ACP_MODEL=<provider>/<model>` optionally exercises `session/set_model` without changing the global default. A free probe model can prove ACP transport, MCP registration, reasoning/answer/usage events, and end-turn handling when the configured provider credential is temporarily unavailable; it does not prove that the production default provider is authenticated. Record both facts separately.
 
 ## 10. Delivery Check
 

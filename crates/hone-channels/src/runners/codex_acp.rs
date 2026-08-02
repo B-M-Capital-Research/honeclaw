@@ -3,8 +3,8 @@ use hone_core::agent::{AgentMessage, AgentResponse, final_assistant_message_cont
 use hone_core::config::{AgentConversationStrategy, CodexAcpConfig};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
@@ -20,13 +20,14 @@ use super::acp_common::{
     CliVersion, acp_failure_to_runner_result, acp_prompt_succeeded,
     configure_acp_command_process_group, create_acp_session, finalize_context_messages,
     finalize_pending_tool_calls, log_acp_prompt_stop_diagnostics, parse_cli_version,
-    resume_acp_session, wait_for_response, wait_for_response_with_timeouts_and_renderer,
-    write_jsonrpc_request,
+    persist_acp_runtime_profile, resume_acp_session, select_acp_adapter_profile,
+    select_acp_adapter_profile_from_initialize, wait_for_response,
+    wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 use super::tool_reasoning::render_runner_tool_label;
 use super::types::{
-    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult,
-    NativeSkillProjection, RunnerTimeouts,
+    AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
+    AgentRunnerRequest, AgentRunnerResult, NativeSkillProjection, RunnerTimeouts,
 };
 
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
@@ -38,14 +39,7 @@ const MIN_CODEX_VERSION: CliVersion = CliVersion {
     minor: 146,
     patch: 0,
 };
-const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
-    major: 1,
-    minor: 1,
-    patch: 7,
-};
 const CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS: &[u64] = &[200, 500];
-static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<String>>> =
-    LazyLock::new(|| tokio::sync::Mutex::new(HashSet::new()));
 
 pub(crate) fn reusable_codex_acp_session_id(
     session_metadata: &HashMap<String, Value>,
@@ -219,8 +213,8 @@ impl AgentRunner for CodexAcpRunner {
         AgentConversationStrategy::NativePersistent
     }
 
-    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
-        Some(AcpStreamDialect::CodexAcp1_1_7)
+    fn acp_adapter_kind(&self) -> Option<AcpAdapterKind> {
+        Some(AcpAdapterKind::CodexAcp)
     }
 
     fn native_skill_projection(&self) -> Option<NativeSkillProjection> {
@@ -232,12 +226,6 @@ impl AgentRunner for CodexAcpRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let dialect = self.acp_stream_dialect().expect("codex ACP dialect");
-        tracing::debug!(
-            adapter = dialect.adapter(),
-            observed_version = dialect.observed_version(),
-            "using versioned ACP stream dialect"
-        );
         match run_codex_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates, context_messages)) => AgentRunnerResult {
                 response,
@@ -302,56 +290,13 @@ pub(crate) fn validate_codex_version_matrix(
             "codex_acp requires codex >= {MIN_CODEX_VERSION}; found {codex_version}. Update with `npm install -g @openai/codex@latest`."
         ));
     }
-    if adapter_version < MIN_CODEX_ACP_VERSION {
-        return Err(format!(
-            "codex_acp requires codex-acp >= {MIN_CODEX_ACP_VERSION}; found {adapter_version}. Update with `npm install -g @agentclientprotocol/codex-acp@latest` or install the minimum validated version with `npm install -g @agentclientprotocol/codex-acp@{MIN_CODEX_ACP_VERSION}`."
-        ));
-    }
-
-    Ok(())
-}
-
-async fn validate_codex_acp_versions(
-    config: &CodexAcpConfig,
-    step_timeout: Duration,
-) -> Result<(), AgentSessionError> {
-    let cache_key = codex_acp_version_validation_cache_key(config);
-    {
-        let cache = CODEX_ACP_VERSION_VALIDATION_CACHE.lock().await;
-        if cache.contains(&cache_key) {
-            return Ok(());
-        }
-    }
-
-    match validate_codex_acp_versions_uncached(config, step_timeout).await {
-        Ok(()) => {
-            CODEX_ACP_VERSION_VALIDATION_CACHE
-                .lock()
-                .await
-                .insert(cache_key);
-            Ok(())
-        }
-        Err(err) if codex_version_probe_error_is_transient_resource_unavailable(&err) => {
-            tracing::warn!(
-                error = %err.message,
-                "codex-acp version probe hit a transient resource limit; continuing to runner startup"
-            );
-            Ok(())
-        }
-        Err(err) => Err(err),
-    }
-}
-
-pub(crate) fn codex_acp_version_validation_cache_key(config: &CodexAcpConfig) -> String {
-    serde_json::json!({
-        "codex_command": config.codex_command,
-        "command": config.command,
-        "args": codex_acp_effective_args(config),
-        "codex_config": codex_acp_process_config(config, None, true),
-        "min_codex": MIN_CODEX_VERSION.to_string(),
-        "min_codex_acp": MIN_CODEX_ACP_VERSION.to_string(),
-    })
-    .to_string()
+    select_acp_adapter_profile(AcpAdapterKind::CodexAcp, adapter_version)
+        .map(|_| ())
+        .map_err(|message| {
+            format!(
+                "{message}. Update with `npm install -g @agentclientprotocol/codex-acp@latest`."
+            )
+        })
 }
 
 pub(crate) fn codex_version_probe_error_is_transient_resource_unavailable(
@@ -389,21 +334,31 @@ pub(crate) fn codex_spawn_error_is_transient_resource_unavailable(err: &AgentSes
             || message.contains("temporarily unavailable"))
 }
 
-async fn validate_codex_acp_versions_uncached(
+async fn probe_codex_cli_version(
     config: &CodexAcpConfig,
     step_timeout: Duration,
-) -> Result<(), AgentSessionError> {
-    let codex_output = tokio::process::Command::new(&config.codex_command)
-        .arg("--version")
-        .output()
-        .await
-        .map_err(|e| AgentSessionError {
-            kind: AgentSessionErrorKind::SpawnFailed,
-            message: format!(
-                "failed to probe codex version via `{}`: {e}",
-                config.codex_command
-            ),
-        })?;
+) -> Result<Option<CliVersion>, AgentSessionError> {
+    let codex_output = tokio::time::timeout(
+        step_timeout,
+        tokio::process::Command::new(&config.codex_command)
+            .arg("--version")
+            .output(),
+    )
+    .await
+    .map_err(|_| AgentSessionError {
+        kind: AgentSessionErrorKind::TimeoutOverall,
+        message: format!(
+            "timed out probing Codex CLI version via `{}`",
+            config.codex_command
+        ),
+    })?
+    .map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message: format!(
+            "failed to probe codex version via `{}`: {e}",
+            config.codex_command
+        ),
+    })?;
     let codex_text = String::from_utf8_lossy(&codex_output.stdout)
         .trim()
         .to_string();
@@ -414,92 +369,15 @@ async fn validate_codex_acp_versions_uncached(
             config.codex_command, codex_text
         ),
     })?;
-    validate_codex_version_matrix(
-        codex_version,
-        inspect_codex_acp_version(config, step_timeout).await?,
-    )
-    .map_err(|message| AgentSessionError {
-        kind: AgentSessionErrorKind::AgentFailed,
-        message,
-    })
-}
-
-async fn inspect_codex_acp_version(
-    config: &CodexAcpConfig,
-    step_timeout: Duration,
-) -> Result<CliVersion, AgentSessionError> {
-    let mut command = tokio::process::Command::new(&config.command);
-    command
-        .args(codex_acp_effective_args(config))
-        .env("CODEX_PATH", &config.codex_command)
-        .env(
-            "CODEX_CONFIG",
-            codex_acp_process_config(config, None, true).to_string(),
-        )
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    configure_acp_command_process_group(&mut command);
-
-    let child = command.spawn().map_err(|e| AgentSessionError {
-        kind: AgentSessionErrorKind::SpawnFailed,
-        message: format!("failed to spawn codex-acp for version probe: {e}"),
-    })?;
-    let mut child_guard = AcpChildGuard::new("codex", child, None);
-
-    let child = child_guard.child_mut().ok_or(AgentSessionError {
-        kind: AgentSessionErrorKind::Io,
-        message: "codex-acp version probe child unavailable".to_string(),
-    })?;
-    let mut stdin = child.stdin.take().ok_or(AgentSessionError {
-        kind: AgentSessionErrorKind::Io,
-        message: "codex-acp version probe stdin unavailable".to_string(),
-    })?;
-    let stdout = child.stdout.take().ok_or(AgentSessionError {
-        kind: AgentSessionErrorKind::StdoutUnavailable,
-        message: "codex-acp version probe stdout unavailable".to_string(),
-    })?;
-    let mut reader = tokio::io::BufReader::new(stdout).lines();
-
-    write_jsonrpc_request(
-        &mut stdin,
-        1,
-        "initialize",
-        serde_json::json!({
-            "protocolVersion": 1,
-            "clientCapabilities": {}
-        }),
-        None,
-    )
-    .await?;
-
-    let result = tokio::time::timeout(
-        step_timeout,
-        wait_for_response("codex", &mut reader, &mut stdin, 1, None, None, None, None),
-    )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: "codex-acp initialize timeout during version probe".to_string(),
-    })??;
-
-    let version_text = result
-        .get("agentInfo")
-        .and_then(|value| value.get("version"))
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .to_string();
-
-    let _ = stdin.shutdown().await;
-    child_guard.terminate().await;
-
-    parse_cli_version(&version_text).ok_or(AgentSessionError {
-        kind: AgentSessionErrorKind::AgentFailed,
-        message: format!(
-            "codex-acp initialize returned an unparseable version: `{}`",
-            version_text
-        ),
-    })
+    if codex_version < MIN_CODEX_VERSION {
+        return Err(AgentSessionError {
+            kind: AgentSessionErrorKind::AgentFailed,
+            message: format!(
+                "codex_acp requires codex >= {MIN_CODEX_VERSION}; found {codex_version}. Update with `npm install -g @openai/codex@latest`."
+            ),
+        });
+    }
+    Ok(Some(codex_version))
 }
 
 async fn spawn_codex_acp_child_with_retry(
@@ -569,7 +447,17 @@ async fn run_codex_acp(
     AcpRunFailure,
 > {
     let acp_log = AcpEventLogContext::from_request("codex", &request);
-    validate_codex_acp_versions(config, timeouts.step).await?;
+    let codex_cli_version = match probe_codex_cli_version(config, timeouts.step).await {
+        Ok(version) => version,
+        Err(error) if codex_version_probe_error_is_transient_resource_unavailable(&error) => {
+            tracing::warn!(
+                error = %error.message,
+                "Codex CLI version probe hit a transient resource limit; the live adapter initialize response remains authoritative for stream selection"
+            );
+            None
+        }
+        Err(error) => return Err(error.into()),
+    };
     let (developer_instructions, current_user_turn) =
         request
             .conversation
@@ -651,7 +539,7 @@ async fn run_codex_acp(
             Some(&acp_log),
         )
         .await?;
-        let _ = tokio::time::timeout(
+        let initialize_result = tokio::time::timeout(
             startup_timeout,
             wait_for_response(
                 "codex",
@@ -669,6 +557,73 @@ async fn run_codex_acp(
             kind: AgentSessionErrorKind::TimeoutOverall,
             message: "codex acp initialize timeout".to_string(),
         })??;
+        let (adapter_version, adapter_profile) = select_acp_adapter_profile_from_initialize(
+            AcpAdapterKind::CodexAcp,
+            &initialize_result,
+        )
+        .map_err(|message| AgentSessionError {
+            kind: AgentSessionErrorKind::AgentFailed,
+            message,
+        })?;
+        if let Some(codex_cli_version) = codex_cli_version {
+            validate_codex_version_matrix(codex_cli_version, adapter_version).map_err(
+                |message| AgentSessionError {
+                    kind: AgentSessionErrorKind::AgentFailed,
+                    message,
+                },
+            )?;
+        }
+        match adapter_profile.compatibility {
+            AcpCompatibilityStatus::Validated => tracing::info!(
+                adapter = adapter_profile.adapter.as_str(),
+                detected_version = %adapter_profile.detected_version,
+                dialect = ?adapter_profile.dialect,
+                compatibility = adapter_profile.compatibility.as_str(),
+                "selected validated ACP stream dialect"
+            ),
+            AcpCompatibilityStatus::CompatibleNewer => tracing::warn!(
+                adapter = adapter_profile.adapter.as_str(),
+                detected_version = %adapter_profile.detected_version,
+                baseline_version = adapter_profile.baseline_version(),
+                dialect = ?adapter_profile.dialect,
+                compatibility = adapter_profile.compatibility.as_str(),
+                "selected conservative ACP stream dialect for an unverified newer adapter"
+            ),
+        }
+        let mut companion_versions = BTreeMap::new();
+        companion_versions.insert(
+            "codex_cli".to_string(),
+            codex_cli_version
+                .map(|version| version.to_string())
+                .unwrap_or_else(|| "probe_unavailable".to_string()),
+        );
+        if let Err(error) = persist_acp_runtime_profile(
+            &request.runtime_dir,
+            "codex_acp",
+            &adapter_profile,
+            companion_versions,
+        )
+        .await
+        {
+            tracing::warn!(error = %error, "failed to persist sanitized Codex ACP runtime profile");
+        }
+        metadata_updates.insert(
+            "codex_acp_detected_version".to_string(),
+            Value::String(adapter_profile.detected_version.clone()),
+        );
+        metadata_updates.insert(
+            "codex_acp_stream_dialect".to_string(),
+            Value::String(adapter_profile.dialect.as_str().to_string()),
+        );
+        if adapter_profile.dialect != AcpStreamDialect::CodexAcp1_1_7 {
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: format!(
+                    "codex_acp selected unsupported stream dialect {:?}",
+                    adapter_profile.dialect
+                ),
+            });
+        }
         next_id += 1;
 
         let codex_session_id = if let Some(session_id) =

@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
+CONFIG_PATH="${HONE_CONFIG_PATH:-$ROOT_DIR/config.yaml}"
+DATA_DIR="${HONE_DATA_DIR:-$ROOT_DIR/data}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -15,6 +17,14 @@ require_cmd() {
 require_cmd codex
 require_cmd codex-acp
 require_cmd cargo
+[[ -f "$CONFIG_PATH" ]] || {
+  echo "[FAIL] missing runtime config: $CONFIG_PATH (set HONE_CONFIG_PATH for a worktree probe)" >&2
+  exit 1
+}
+[[ -d "$DATA_DIR" ]] || {
+  echo "[FAIL] missing runtime data dir: $DATA_DIR (set HONE_DATA_DIR for a worktree probe)" >&2
+  exit 1
+}
 
 TMP_ITEMS=()
 cleanup() {
@@ -130,7 +140,7 @@ then
 fi
 
 MCP_ENV=$(cat <<EOF
-[{"name":"HONE_CONFIG_PATH","value":"$ROOT_DIR/config.yaml"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
+[{"name":"HONE_CONFIG_PATH","value":"$CONFIG_PATH"},{"name":"HONE_DATA_DIR","value":"$DATA_DIR"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
 EOF
 )
 

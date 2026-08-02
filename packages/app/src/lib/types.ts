@@ -275,6 +275,23 @@ export type MetaInfo = {
   deploymentMode: "local" | "remote";
   /** Admin/console default UI language. "zh" or "en". Optional for backwards compat with older backends. */
   language?: "zh" | "en";
+  build?: {
+    git_sha?: string | null;
+    build_timestamp?: string | null;
+    profile: "debug" | "release" | string;
+    binary_sha256?: string | null;
+  };
+  acp_profiles?: Array<{
+    runner: string;
+    adapter: string;
+    detected_version: string;
+    baseline_version: string;
+    dialect: string;
+    compatibility: "validated" | "compatible_newer" | string;
+    companion_versions: Record<string, string>;
+    detected_at: string;
+    build_git_sha?: string | null;
+  }>;
 };
 
 export type BackendConfig = {
@@ -463,6 +480,7 @@ export type ChatStreamEvent =
       data: Partial<PublicChatActiveRun> & { text?: string };
     }
   | { event: "assistant_delta"; data: { content?: string } }
+  | { event: "reasoning_delta"; data: { content?: string } }
   | { event: "assistant_reset"; data: Record<string, never> }
   | {
       event: "tool_call";

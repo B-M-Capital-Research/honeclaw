@@ -1,6 +1,6 @@
 # Runbook: Source Web Startup
 
-Last updated: 2026-05-11
+Last updated: 2026-08-02
 
 This runbook covers starting the full local source checkout Web stack with the local CLI build path.
 Use it when you need the backend, enabled channel listeners, admin Vite frontend, and public Vite frontend running from the latest local code.
@@ -76,6 +76,33 @@ env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
 env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
 ```
 
+## Deploy One Reviewed Source Revision
+
+Use the revision-bound deployment state machine when replacing a long-running source Web/Discord runtime. This is different from an ordinary foreground development start:
+
+```bash
+bash scripts/deploy_source_runtime.sh \
+  --project-root /absolute/path/to/reviewed/checkout \
+  --config /absolute/path/to/runtime/config.yaml \
+  --data-dir /absolute/path/to/runtime/data \
+  --skills-dir /absolute/path/to/runtime/skills \
+  --revision "$(git rev-parse HEAD)"
+```
+
+The checkout may be a clean feature worktree while config/data/skills remain in the normal runtime checkout. The command:
+
+1. refuses a dirty, unexpected, or unpushed revision by default;
+2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp;
+3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256 manifest;
+4. waits for active chats to drain;
+5. removes loaded launchd jobs, waits for their exact PIDs and process locks to disappear, and starts the new Web binary;
+6. requires `/api/meta.build.git_sha` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
+7. verifies the running executable paths and updates the `current` symlink only after success.
+
+One exit trap owns rollback. Any failure after the old runtime is stopped removes all partially started managed jobs and restores every service that was running before deployment. A loaded-but-crashed launchd job is still removed even when it no longer has a PID.
+
+Use `--allow-unpushed` only for an explicitly accepted local canary. `--skip-build` is for the isolated CI contract or a separately verified exact build, not the normal deployment path. Frontend Vite processes on `3000/3001` remain independent and are not restarted by this command.
+
 ## macOS Rollup Native Addon Failure
 
 Symptom:
@@ -126,6 +153,15 @@ lsof -nP -iTCP:8077 -sTCP:LISTEN
 lsof -nP -iTCP:8088 -sTCP:LISTEN
 cat data/runtime/current.pid
 ```
+
+For a revision-bound deployment, also require:
+
+```bash
+curl -fsS http://127.0.0.1:8077/api/meta
+readlink data/releases/source/current
+```
+
+`build.git_sha` must equal the requested revision. `acp_profiles` may be empty until a real adapter connection initializes; after a Codex/OpenCode turn it must report the detected adapter version, selected dialect, compatibility status, detection time, and runner build SHA without paths or credentials.
 
 Expected URLs:
 

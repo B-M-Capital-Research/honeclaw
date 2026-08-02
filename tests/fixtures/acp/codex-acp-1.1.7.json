@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "adapter": {
+    "name": "@agentclientprotocol/codex-acp",
+    "version": "1.1.7",
+    "captured_at": "2026-08-02"
+  },
+  "initialize_result": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "codex-acp",
+      "version": "1.1.7"
+    }
+  },
+  "string_command_start": {
+    "update": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "exec-string-command-1",
+      "kind": "execute",
+      "title": "git status --short",
+      "rawInput": {
+        "command": "git status --short",
+        "cwd": "/private/tmp/hone-agent-sandbox"
+      }
+    }
+  },
+  "execute_updates": [
+    {
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "call_exec_1",
+        "title": "Run rtk --version",
+        "kind": "execute",
+        "rawInput": {
+          "command": ["/bin/zsh", "-lc", "rtk --version"]
+        }
+      }
+    },
+    {
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_exec_1",
+        "status": "completed",
+        "kind": "execute",
+        "rawOutput": {
+          "stdout": "rtk 0.35.0\n",
+          "formatted_output": "rtk 0.35.0\n",
+          "exit_code": 0
+        }
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ use hone_core::agent::{
 };
 use hone_core::config::{AgentConversationStrategy, OpencodeAcpConfig};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -24,12 +24,13 @@ use super::acp_common::{
     acp_error_detail_for_message, acp_failure_to_runner_result, acp_prompt_succeeded,
     configure_acp_command_process_group, create_acp_session, finalize_pending_tool_calls,
     log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
+    message_with_bounded_stderr, persist_acp_runtime_profile,
+    select_acp_adapter_profile_from_initialize, set_acp_session_model, timeout_message_with_stderr,
     wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
-    AcpStreamDialect, AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest,
-    AgentRunnerResult, RunnerTimeouts,
+    AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
+    AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult, RunnerTimeouts,
 };
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
@@ -56,8 +57,8 @@ impl AgentRunner for OpencodeAcpRunner {
         AgentConversationStrategy::EphemeralCompiledPrompt
     }
 
-    fn acp_stream_dialect(&self) -> Option<AcpStreamDialect> {
-        Some(AcpStreamDialect::OpenCode1_18_11)
+    fn acp_adapter_kind(&self) -> Option<AcpAdapterKind> {
+        Some(AcpAdapterKind::OpenCode)
     }
 
     async fn run(
@@ -65,12 +66,6 @@ impl AgentRunner for OpencodeAcpRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let dialect = self.acp_stream_dialect().expect("OpenCode ACP dialect");
-        tracing::debug!(
-            adapter = dialect.adapter(),
-            observed_version = dialect.observed_version(),
-            "using versioned ACP stream dialect"
-        );
         let mut metadata_updates = HashMap::new();
         match run_opencode_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates, context_messages)) => {
@@ -501,7 +496,7 @@ async fn run_opencode_acp(
             Some(&acp_log),
         )
         .await?;
-        let _ = tokio::time::timeout(
+        let initialize_result = tokio::time::timeout(
             startup_timeout,
             wait_for_response(
                 "opencode",
@@ -519,6 +514,56 @@ async fn run_opencode_acp(
             kind: AgentSessionErrorKind::TimeoutOverall,
             message: "opencode acp initialize timeout".to_string(),
         })??;
+        let (_, adapter_profile) =
+            select_acp_adapter_profile_from_initialize(AcpAdapterKind::OpenCode, &initialize_result)
+                .map_err(|message| AgentSessionError {
+                    kind: AgentSessionErrorKind::AgentFailed,
+                    message,
+                })?;
+        match adapter_profile.compatibility {
+            AcpCompatibilityStatus::Validated => tracing::info!(
+                adapter = adapter_profile.adapter.as_str(),
+                detected_version = %adapter_profile.detected_version,
+                dialect = ?adapter_profile.dialect,
+                compatibility = adapter_profile.compatibility.as_str(),
+                "selected validated ACP stream dialect"
+            ),
+            AcpCompatibilityStatus::CompatibleNewer => tracing::warn!(
+                adapter = adapter_profile.adapter.as_str(),
+                detected_version = %adapter_profile.detected_version,
+                baseline_version = adapter_profile.baseline_version(),
+                dialect = ?adapter_profile.dialect,
+                compatibility = adapter_profile.compatibility.as_str(),
+                "selected conservative ACP stream dialect for an unverified newer adapter"
+            ),
+        }
+        if let Err(error) = persist_acp_runtime_profile(
+            &request.runtime_dir,
+            "opencode_acp",
+            &adapter_profile,
+            BTreeMap::new(),
+        )
+        .await
+        {
+            tracing::warn!(error = %error, "failed to persist sanitized OpenCode runtime profile");
+        }
+        metadata_updates.insert(
+            "opencode_detected_version".to_string(),
+            Value::String(adapter_profile.detected_version.clone()),
+        );
+        metadata_updates.insert(
+            "opencode_stream_dialect".to_string(),
+            Value::String(adapter_profile.dialect.as_str().to_string()),
+        );
+        if adapter_profile.dialect != AcpStreamDialect::OpenCode1_18_11 {
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: format!(
+                    "opencode selected unsupported stream dialect {:?}",
+                    adapter_profile.dialect
+                ),
+            });
+        }
         next_id += 1;
 
         // 始终创建新的 opencode 会话，而不是复用旧会话。
