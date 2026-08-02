@@ -2065,3 +2065,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `docs/runbooks/public-user-admin.md`; Web 343/343; Web API 164/164 plus 2 credentialed ignores; Public Community Edge 45/45; CI-safe regressions; GitHub CI/CodeQL/Secret Scan
 - Current conclusion: The collapsible administrator analytics table, dynamic date-bound summary, complete zero-activity dates, and two 14-day trend charts are live on Cloudflare Pages and the exact GCE immutable backend revision. Public auth boundaries, PostgreSQL/R2 health, zero-active-chat cutover, Web/Feishu services, and all three explicitly requested administrator grants were re-read successfully. Temporary deployment access and build artifacts were removed, and OS Login 2FA is back on.
 - Next entry point: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`; GCE rollback remains `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801`.
+
+### GCE SMS Runtime Environment Persistence
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/archive/plans/gce-sms-runtime-env-persistence.md`
+- Handoff: `docs/handoffs/2026-08-02-gce-sms-runtime-env-persistence.md`
+- Decision / ADR: N/A; operational persistence contract is recorded in the backend deployment runbook
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_backend_runtime_env_contract.sh`; complete `tests/regression/run_ci.sh`
+- Current conclusion: Production SMS had returned generic acceptance while the detached provider call failed because the managed Web service lacked its Aliyun AccessKey. The canonical credential pair is now persisted in the protected host environment, and a root-owned systemd `ExecStartPre` gate blocks future starts with missing, empty, or placeholder credentials. Zero-chat restart, exact revision, PostgreSQL/R2, Web/Feishu, public canary acceptance, cleanup, and restored OS Login 2FA all passed.
+- Next entry point: `docs/handoffs/2026-08-02-gce-sms-runtime-env-persistence.md`; use the committed validator before changing any managed backend environment.

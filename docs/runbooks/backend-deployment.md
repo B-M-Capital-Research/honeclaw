@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-07-27
+Last updated: 2026-08-02
 
 ## When to Use
 
@@ -214,6 +214,35 @@ ALIBABA_CLOUD_ACCESS_KEY_SECRET
 ```
 
 The backend also accepts the compatibility aliases `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET` and `HONE_ALIYUN_ACCESS_KEY_ID` / `HONE_ALIYUN_ACCESS_KEY_SECRET`. Prefer the `ALIBABA_CLOUD_*` names for new deployments.
+
+Before every managed backend start or restart, validate the exact persistent
+environment file that the supervisor will load. The validator prints only the
+matched variable names and never credential values:
+
+```bash
+sudo bash scripts/check_backend_runtime_env.sh /etc/hone/runtime.env
+```
+
+On a systemd host, install the validator outside the immutable release tree and
+make it a persistent start gate rather than relying on an operator remembering
+the check:
+
+```ini
+[Service]
+ExecStartPre=+/usr/local/sbin/hone-check-web-env /etc/hone/runtime.env
+```
+
+Keep `/etc/hone/runtime.env` owned by `root:root` with mode `0600`. Update it
+through a `0600` staging file plus an atomic install, validate the staged and
+installed files, then restart. Never pass credential values in command-line
+arguments or print the environment file. A missing or placeholder credential
+must block a future start while leaving the currently running process intact.
+
+The SMS send endpoint intentionally returns the same generic acceptance body
+for eligible and ineligible phones before the detached provider call finishes.
+Therefore an HTTP `200` alone is not a delivery canary. After restart, perform
+one designated-number send and require both provider acceptance and absence of
+`SMS verification send failed after generic acceptance` in the service journal.
 
 Optional SMS overrides:
 
