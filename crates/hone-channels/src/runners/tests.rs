@@ -335,7 +335,7 @@ while IFS= read -r line; do
   printf '%s\n' "$line" >> "__CAPTURE__"
   case "$line" in
     *'"method":"initialize"'*)
-      echo '{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"codex-acp","version":"1.1.7"}}}'
+      echo '{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"@agentclientprotocol/codex-acp","version":"1.1.7"}}}'
       ;;
     *'"method":"session/new"'*)
       count=0

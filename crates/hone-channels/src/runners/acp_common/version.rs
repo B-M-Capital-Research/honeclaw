@@ -35,6 +35,9 @@ pub(crate) const OPENCODE_BASELINE_VERSION: CliVersion = CliVersion {
     patch: 11,
 };
 
+const CODEX_ACP_INITIALIZE_AGENT_NAME: &str = "@agentclientprotocol/codex-acp";
+const OPENCODE_INITIALIZE_AGENT_NAME: &str = "opencode";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct AcpRuntimeProfileRecord {
     pub(crate) runner: String,
@@ -112,11 +115,11 @@ pub(crate) fn select_acp_adapter_profile_from_initialize(
         .and_then(Value::as_str)
         .map(str::trim)
         .unwrap_or_default();
-    let identity_matches = match adapter {
-        AcpAdapterKind::CodexAcp => adapter_name.eq_ignore_ascii_case("codex-acp"),
-        AcpAdapterKind::OpenCode => adapter_name.eq_ignore_ascii_case("opencode"),
+    let expected_agent_name = match adapter {
+        AcpAdapterKind::CodexAcp => CODEX_ACP_INITIALIZE_AGENT_NAME,
+        AcpAdapterKind::OpenCode => OPENCODE_INITIALIZE_AGENT_NAME,
     };
-    if !identity_matches {
+    if adapter_name != expected_agent_name {
         return Err(format!(
             "{} initialize returned a missing or unexpected agentInfo.name",
             adapter.as_str()
@@ -244,7 +247,10 @@ mod tests {
     fn initialize_result_is_the_authoritative_version_boundary() {
         let exact = serde_json::json!({
             "protocolVersion": 1,
-            "agentInfo": {"name": "codex-acp", "version": "1.1.7"}
+            "agentInfo": {
+                "name": "@agentclientprotocol/codex-acp",
+                "version": "1.1.7"
+            }
         });
         let (version, profile) =
             select_acp_adapter_profile_from_initialize(AcpAdapterKind::CodexAcp, &exact)
@@ -271,10 +277,19 @@ mod tests {
         assert!(error.contains("codex-acp"));
         assert!(error.contains("agentInfo.name"));
 
+        let unobserved_alias = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {"name": "codex-acp", "version": "1.1.7"}
+        });
+        let error =
+            select_acp_adapter_profile_from_initialize(AcpAdapterKind::CodexAcp, &unobserved_alias)
+                .expect_err("an unobserved shorthand must not widen the identity contract");
+        assert!(error.contains("agentInfo.name"));
+
         let oversized_version = serde_json::json!({
             "protocolVersion": 1,
             "agentInfo": {
-                "name": "codex-acp",
+                "name": "@agentclientprotocol/codex-acp",
                 "version": "not-a-version-with-private-or-unbounded-diagnostic-content"
             }
         });
