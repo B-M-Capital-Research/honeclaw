@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -790,7 +790,7 @@ Last updated: 2026-08-01
 
 ## D-2026-08-02-02 Deploy Direct Source Runtimes As Immutable Revision Units
 
-- Status: Accepted; CI-safe state-machine contract verified. Exact live canary is required before closing the active ACP follow-up.
+- Status: Accepted and locally verified with exact implementation revision `ee9da19a9ac3d30e5df52c32dff7c40a387948dd`; GCE rollout is paused by user direction.
 - Scope: Long-running macOS source Web plus the currently managed Discord listener. Foreground development startup and Vite processes remain separate workflows.
 - Artifact decision: Build Web, Discord, and MCP with compile-time Git SHA/timestamp and the closed provenance kind `direct_source_runtime`; copy them into `data/releases/source/<sha>/`; hash every binary; and never replace an existing revision directory unless its manifest, source kind, and hashes already match. The running executable path, `/api/meta.build.git_sha`, and `/api/meta.build.source` must identify the requested revision and direct-source workflow.
 - State decision: Preflight clean/expected/pushed revision, reject an unrecognized `8077` listener, drain real active chats, and identify either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor and its child PIDs. Remove the prior topology; if launchd reparents captured legacy children to PID 1, verify each PID still resolves to the captured executable, send TERM, and use bounded exact-PID KILL escalation only when it ignores the grace period. Wait exact supervisor/child PIDs and process locks, atomically install the revision-bound LaunchAgent plists, and bootstrap those exact files for both the canary and future login. The persisted runtime `PATH` is a stable explicit allowlist, never the invoking Codex turn's temporary `.codex/tmp` or `.cache/codex-runtimes` path; the selected runner executables must pass `--version` on that path before shutdown. Verify Web readiness/provenance and fresh Discord login, recoverably disable the legacy plist, then commit the `current` symlink. A launchd job's registered state is separate from child PID liveness.

@@ -1,7 +1,7 @@
 # ACP Version-aware Runtime And Revision-bound Source Deployment
 
 - title: ACP Version-aware Runtime And Revision-bound Source Deployment
-- status: in_progress
+- status: done
 - created_at: 2026-08-02
 - updated_at: 2026-08-02
 - owner: shared
@@ -32,15 +32,15 @@ Source deployment is now a revision-bound state machine rather than a sequence o
 - Workspace check and workspace tests excluding Apple clients passed.
 - Web tests passed `334/334`; Public Community Edge typecheck and tests passed `45/45`.
 - Complete CI-safe regressions passed, including direct-job and legacy-supervisor source-deployment success, unknown-owner/dirty/unpushed refusal, persistent plist installation, partial-start failures, and full rollback/bootstrap cases.
-- Post-review `hone-channels` library tests passed `715` with one existing host-dependent ignore; the build-info unit contract passed.
+- Post-review `hone-channels` library tests passed `716` with one existing host-dependent ignore; the build-info unit contract passed.
 - Real Codex CLI `0.146.0` plus codex-acp `1.1.7` initialize/session probing passed.
 - Real OpenCode `1.18.11` completed initialize, model selection, a read-only Hone MCP call, streamed reasoning/answer/usage, and `end_turn` with an explicit free probe model.
 - The configured default OpenAI OAuth returned `401`; it is recorded as a provider-auth limitation, not a successful default-model probe.
-- Exact local implementation commit `b8e183124e21c9d54e6a4449db88f711d16279d3` was pushed, merged into `main`, and deployed through the source-runtime state machine. The Web and Discord launchd jobs each remained at `runs=1` with stable PIDs; the apparent startup-lock errors were historical and their log did not change during observation.
+- Final local implementation commit `ee9da19a9ac3d30e5df52c32dff7c40a387948dd` was pushed, fast-forwarded into `main`, and deployed through the source-runtime state machine. The Web and Discord launchd jobs each remained at `runs=1` with stable PIDs.
 - Ports `8077`, `8088`, `3000`, and `3001` remained bound, `/api/meta` reported the exact implementation revision, Discord completed a fresh login, and active chats returned to `0`.
-- The exact Discord plist `PATH` resolved Codex CLI `0.146.0` and codex-acp `1.1.7`. A real `hone-cli` ACP canary returned exactly `LOCAL_PERSISTENT_PATH_OK` with `tool_calls=0`, and the next real Discord turn selected the validated `codex-acp 1.1.7` dialect, completed successfully, and sent one reply.
+- The exact Discord plist `PATH` resolved Codex CLI `0.146.0` and codex-acp `1.1.7`. A fresh revision-stamped `hone-cli` used the deployed `hone-mcp` in an isolated administrator group scope and returned exactly `ACP_VERSION_ARCH_OK` with `success=true` and `tool_calls=0`; `/api/meta` then reported the validated `codex-acp/1.1.7` profile with matching runner build SHA `ee9da19a` and companion Codex CLI `0.146.0`.
 - GCE rollout is explicitly paused by user direction. It is not part of the completed local acceptance and no further remote deployment should be attempted without a new instruction.
-- Completion-audit gates passed: full workspace check/test, Web `334/334`, Edge `45/45`, complete CI-safe regressions, identity/version focused tests, and external `/api/meta` build-source deployment-contract cases. Exact pushed-revision local redeployment remains before this follow-up can be marked fully done.
+- Completion-audit gates passed: full workspace check/test, Web `334/334`, Edge `45/45`, complete CI-safe regressions, identity/version focused tests, and external `/api/meta` build-source deployment-contract cases. Exact pushed-revision deployment, fresh Discord login, four-listener health, matching Web/runtime-profile provenance, and zero-active-chat canary all passed.
 
 ## Risks / Follow-ups
 
@@ -51,4 +51,4 @@ Source deployment is now a revision-bound state machine rather than a sequence o
 
 ## Next Entry Point
 
-Local recovery is complete. Resume only on a new explicit request to deploy to GCE: first re-discover the remote runtime/revision and active-chat state, then deploy the exact reviewed revision through the same state-machine contract and retain rollback evidence if any stage fails.
+This local follow-up is complete. Resume only on a new explicit request to deploy to GCE: first re-discover the remote runtime/revision and active-chat state, then deploy the exact reviewed revision through the same state-machine contract and retain rollback evidence if any stage fails.

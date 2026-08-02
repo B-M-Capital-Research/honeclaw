@@ -2029,3 +2029,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; codex-acp `1.1.7` executable boundary regression; OpenCode `1.18.11` stream fixture; real two-turn Codex and one-turn OpenCode probes; complete repository gates
 - Current conclusion: Runner conversation ownership is explicit. Codex instructions use native `developer_instructions`, all Codex `session/prompt` calls are current-turn-only even after compact, legacy/mismatched generations rotate, and the old seed/reseed/transcript execution path is deleted. Codex and OpenCode retain separate version-labelled stream mappings that preserve their available detail without claiming byte-identical channel output.
 - Next entry point: `docs/handoffs/2026-08-01-acp-native-turn-contract.md`; the remaining umbrella runtime work stays in `docs/current-plans/acp-runtime-refactor.md`.
+
+### ACP Version-aware Runtime And Revision-bound Local Deployment
+
+- Status: done
+- Date: 2026-08-02
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (this version/deployment phase is done; parent ACP runtime plan remains active)
+- Handoff: `docs/handoffs/2026-08-02-acp-version-aware-runtime-deploy.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-02-01-select-acp-dialects-from-the-live-initialize-boundary`; `docs/decisions.md#d-2026-08-02-02-deploy-direct-source-runtimes-as-immutable-revision-units`; `docs/adr/0002-agent-runtime-acp-refactor.md`
+- Related PRs / commits: `16699c7e`, `2b5ab70d`, `3e223a97`, `b8e18312`, `998496b1`, `ee9da19a`; feature branch `codex/acp-versioned-runtime-deploy`
+- Related runbooks / regressions: `docs/runbooks/source-web-startup.md`; `docs/runbooks/opencode-setup.md`; `tests/regression/ci/test_source_runtime_deploy_contract.sh`; version-labelled Codex ACP `1.1.7` and OpenCode `1.18.11` fixtures; complete repository gates
+- Current conclusion: Codex and OpenCode now select separate typed stream dialects from the exact live initialize identity/version, retain explicit compatibility status, and fail closed on mismatched identities, older versions, missing versions, or unknown majors. Codex prompts remain current-turn-only after compaction. The local source runtime deploys Web/Discord/MCP as an immutable revision unit with drain, PID/lock convergence, persisted runner PATH, fresh channel login, external provenance verification, and one complete rollback path. Exact implementation `ee9da19a` is active with four listeners, zero active chats, matching Web/ACP build provenance, and a successful no-tool ACP sentinel.
+- Next entry point: `docs/handoffs/2026-08-02-acp-version-aware-runtime-deploy.md`; do not touch GCE without a new explicit instruction.
