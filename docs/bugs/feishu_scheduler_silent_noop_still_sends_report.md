@@ -22,6 +22,15 @@ New
 
 ## 最新进展
 
+- 2026-08-03 06:02 CST 运行态复核：问题继续在 live source heartbeat / scheduler 出站候选中复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-03 02:02-06:02 CST。
+    - 近窗仍有 `NOOP/noop/无全新/无触发` 等静默语义进入 `deliver_preview`。
+    - 代表样本：02:30 `AI与科技持仓观察关键事件心跳提醒` deliver preview 明写 `30 分钟心跳检查：NOOP`；03:30 `持仓财报与重大新闻心跳提醒` / `存储板块关键事件心跳提醒` 明写 `状态：noop`；04:00 / 05:00 / 06:00 多条 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`NBIS关键事件心跳提醒` 仍把无新增或 noop 结果送入 deliver / duplicate suppression。
+  - 判断：
+    - 该样本仍属于未触发静默条件时继续生成并进入投递候选的同根缺陷。
+    - 严重等级维持 P2：它造成监控噪音和错误送达语义，但本轮未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此不是 P1。
+
 - 2026-08-03 02:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 22:01-02:03 CST 近窗统计 `deliver=62`，其中 27 条 deliver preview 明写 `noop`、`NOOP`、`无新增` 或 `无触发` 仍进入 deliver 候选。

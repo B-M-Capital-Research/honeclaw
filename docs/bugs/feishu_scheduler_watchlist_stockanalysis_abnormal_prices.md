@@ -14,13 +14,24 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-03 06:02 CST 运行态复核：`3ee146d8 fix: guard scheduler prices with verified quotes` 已在仓库中完成代码级价格一致性守卫，但本轮自然运行窗口仍观察到 live source 出站候选继续使用异常价格锚，状态从代码级 `Fixed` 回退为运行态 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-03 02:02-06:02 CST。
+    - 近窗 `SNDK $1,214.83` 命中 23 次、`MU $823.03` 命中 3 次。
+    - 02:30 `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,214.83`；03:30 / 04:00 / 05:00 / 06:00 多条 `持仓财报与重大新闻心跳提醒` 或 `存储板块关键事件心跳提醒` deliver / duplicate preview 继续使用 `SNDK $1,214.83 / AAOI $94.32` 或 `SNDK $1,214.83 / MU $823.03` 作为行情口径。
+    - 06:00 `存储板块关键事件心跳提醒` deliver preview 继续写 `SNDK $1,214.83 / MU $823.03（2026-07-31 纽约时间 16:00，来源 financialmodelingprep.com）`。
+  - 判断：
+    - 该样本说明当前 live source runtime 仍在向用户侧出站候选传播异常数量级价格；即使仓库 HEAD 已有代码级修复，运行态仍未关闭。
+    - 缺陷仍为同一异常价格锚链路，不新建重复文档。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断；本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
 
 - 2026-08-02 `bug-2` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs` 新增基于同轮已核验 quote 工具结果的价格一致性守卫；当 scheduler / heartbeat 用户可见正文里的精确现价，与同轮 `data_fetch` 返回的 `quote` / `extended_hours` / `snapshot.data.quote` 明显不一致时，当前轮次会 fail-closed，而不是继续把异常数量级价格送达用户。
