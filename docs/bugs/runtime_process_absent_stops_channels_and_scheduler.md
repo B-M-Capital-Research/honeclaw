@@ -22,6 +22,28 @@
 
 ## 最新进展
 
+- 2026-08-02 10:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-01T14:13:46.194864+08:00`
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`
+      - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`
+      - 2026-08-02 06:01-10:02 CST 窗口内新增 session / message / cron run / web push 均为 0。
+    - `data/runtime/logs/*.log` 与 `data/logs/*.log`
+      - 最近 260 分钟没有新的 `.log` mtime 推进。
+      - 最近 runtime 相关日志仍停在 `web.log.2026-08-01` / `web_deploy_49ef8dd4_20260731.log` / `feishu_deploy_49ef8dd4_20260731.log` 的 14:14 CST，以及 `sunny_ngrok_screen_20260731.log` 的 14:21 CST。
+    - 进程表：
+      - 10:02 CST 仍未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-web-api`、`hone-desktop` 或 scheduler 运行进程；命中项仅为无关系统进程、本地 PostgreSQL 和本轮 Codex 进程。
+    - 最近提交：
+      - 06:01-10:02 CST 唯一提交为上一轮缺陷台账文档提交 `99bfc069 docs: update bug patrol ledger`；无非文档代码提交。
+  - 判断：
+    - 本轮没有新的真实 assistant final 可检查答非所问、格式污染、错投或内部错误外泄；缺陷信号仍集中在运行承载链路缺席。
+    - 该问题仍是功能性 P1：会话接入、scheduler 触发、Web push 与运行台账在真实窗口内继续整体停滞。
+    - 该证据与既有 Issue #53 和本单同根因、同链路、同影响范围，不新建重复缺陷，也不重复创建 GitHub Issue。
+
 - 2026-08-02 06:01 CST 运行态复核，状态从代码级 `Fixed` 回退为 `New/P1`：
   - 证据来源：
     - `data/sessions.sqlite3`
