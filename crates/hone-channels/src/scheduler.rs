@@ -5,6 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Timelike};
+use hone_core::agent::ToolCallMade;
 use hone_memory::CronJobStorage;
 use hone_scheduler::{SchedulerEvent, scheduler_event_is_active};
 use serde::Deserialize;
@@ -3457,6 +3458,232 @@ fn detect_unstable_watchlist_price_anchor(
     None
 }
 
+fn scheduler_current_price_display_tolerance(price: f64) -> f64 {
+    if price >= 1.0 {
+        0.011
+    } else if price >= 0.01 {
+        0.00011
+    } else if price >= 0.0001 {
+        0.0000011
+    } else {
+        (price.abs() * 0.001).max(1e-12)
+    }
+}
+
+fn extract_scheduler_verified_quote_prices(tool_calls: &[ToolCallMade]) -> BTreeMap<String, f64> {
+    fn positive_price(value: &Value) -> Option<f64> {
+        value
+            .as_f64()
+            .filter(|price| price.is_finite() && *price > 0.0)
+    }
+
+    fn collect_quotes(value: &Value, output: &mut BTreeMap<String, f64>) {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    collect_quotes(item, output);
+                }
+            }
+            Value::Object(object) => {
+                let symbol = object
+                    .get("symbol")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|symbol| !symbol.is_empty())
+                    .map(|symbol| symbol.to_ascii_uppercase());
+                let price = object.get("price").and_then(positive_price);
+                if let (Some(symbol), Some(price)) = (symbol, price) {
+                    output.entry(symbol).or_insert(price);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut verified = BTreeMap::new();
+    for call in tool_calls {
+        if call.name != "data_fetch" || call.result.get("error").is_some() {
+            continue;
+        }
+        let data_type = call
+            .arguments
+            .get("data_type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        match data_type {
+            "quote" | "extended_hours" => {
+                if let Some(data) = call.result.get("data") {
+                    collect_quotes(data, &mut verified);
+                }
+            }
+            "snapshot" => {
+                if let Some(data) = call.result.get("data").and_then(|data| data.get("quote")) {
+                    collect_quotes(data, &mut verified);
+                }
+            }
+            _ => {}
+        }
+    }
+    verified
+}
+
+fn detect_verified_quote_price_mismatch(
+    text: &str,
+    tool_calls: &[ToolCallMade],
+) -> Option<(String, f64, f64)> {
+    let verified = extract_scheduler_verified_quote_prices(tool_calls);
+    if verified.is_empty() {
+        return None;
+    }
+
+    let current_ticker_price_re = regex::Regex::new(
+        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|报价|交投于|报于|current\s+price|latest\s+price|last\s+price|current\s+status[^\n。；;]{0,16}?price)[^\d]{0,20}(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)?\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+    )
+    .expect("valid verified quote mismatch regex");
+    for captures in current_ticker_price_re.captures_iter(text) {
+        let Some(ticker) = captures.name("ticker").map(|matched| matched.as_str()) else {
+            continue;
+        };
+        let Some(expected_price) = verified.get(ticker) else {
+            continue;
+        };
+        let Some(observed_price) = captures
+            .name("price")
+            .map(|matched| matched.as_str().replace(',', ""))
+            .and_then(|value| value.parse::<f64>().ok())
+        else {
+            continue;
+        };
+        if (observed_price - expected_price).abs()
+            > scheduler_current_price_display_tolerance(*expected_price)
+        {
+            return Some((ticker.to_string(), observed_price, *expected_price));
+        }
+    }
+
+    let price_re = regex::Regex::new(
+        r"(?is)(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+    )
+    .expect("valid verified quote price token regex");
+    let ticker_re = regex::Regex::new(r"\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b")
+        .expect("valid verified quote ticker regex");
+    let looks_like_non_price_metric = |context: &str, suffix: &str| {
+        let lower = context.to_ascii_lowercase();
+        [
+            "市值",
+            "market cap",
+            "ev/sales",
+            "ev/ebitda",
+            "enterprise value",
+            "估值",
+            " pe",
+            "pb",
+            "ps",
+            "前收",
+            "昨收",
+            "收盘",
+            "高点",
+            "低点",
+            "high",
+            "low",
+        ]
+        .iter()
+        .any(|marker| context.contains(marker) || lower.contains(marker))
+            || suffix.trim_start().starts_with('亿')
+            || suffix.trim_start().starts_with('万')
+            || suffix.trim_start().starts_with('x')
+            || suffix.trim_start().starts_with('X')
+    };
+    let segment_has_live_price_label = |segment: &str| {
+        let lower = segment.to_ascii_lowercase();
+        [
+            "当前",
+            "最新",
+            "现价",
+            "现报",
+            "报价",
+            "盘后",
+            "盘前",
+            "current price",
+            "latest price",
+            "last price",
+            "current status",
+            "after-hours",
+            "after hours",
+            "premarket",
+            "pre-market",
+            "pre market",
+        ]
+        .iter()
+        .any(|marker| segment.contains(marker) || lower.contains(marker))
+    };
+
+    for segment in text
+        .split(|ch| ['\n', '。', '；', ';'].contains(&ch))
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty() && segment_has_live_price_label(segment))
+    {
+        let ordered_tickers = ticker_re
+            .find_iter(segment)
+            .filter_map(|matched| {
+                let ticker = matched.as_str().to_ascii_uppercase();
+                verified.contains_key(&ticker).then_some(ticker)
+            })
+            .fold(Vec::<String>::new(), |mut acc, ticker| {
+                if acc.last() != Some(&ticker) {
+                    acc.push(ticker);
+                }
+                acc
+            });
+        if ordered_tickers.len() <= 1 {
+            continue;
+        }
+
+        let prices = price_re
+            .captures_iter(segment)
+            .filter_map(|captures| {
+                let price_match = captures.get(0)?;
+                let local_prefix = segment[..price_match.start()]
+                    .chars()
+                    .rev()
+                    .take(24)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect::<String>();
+                let local_suffix = segment[price_match.end()..]
+                    .chars()
+                    .take(8)
+                    .collect::<String>();
+                if looks_like_non_price_metric(&local_prefix, &local_suffix) {
+                    return None;
+                }
+                captures
+                    .name("price")
+                    .map(|matched| matched.as_str().replace(',', ""))
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .filter(|price| price.is_finite() && *price > 0.0)
+            })
+            .collect::<Vec<_>>();
+        if ordered_tickers.len() != prices.len() {
+            continue;
+        }
+
+        for (ticker, observed_price) in ordered_tickers.into_iter().zip(prices.into_iter()) {
+            let Some(expected_price) = verified.get(&ticker) else {
+                continue;
+            };
+            if (observed_price - expected_price).abs()
+                > scheduler_current_price_display_tolerance(*expected_price)
+            {
+                return Some((ticker, observed_price, *expected_price));
+            }
+        }
+    }
+
+    None
+}
+
 fn unstable_watchlist_price_failure_message(event: &SchedulerEvent) -> String {
     if event.heartbeat {
         "本轮心跳检查命中了数量级异常的价格锚，已跳过精确价格提醒，等待下一轮重新核验。".to_string()
@@ -3464,6 +3691,31 @@ fn unstable_watchlist_price_failure_message(event: &SchedulerEvent) -> String {
         "本轮定时任务未能完成：观察池行情出现数量级异常，系统已跳过精确价格版本，并将在下一次触发时重试。"
             .to_string()
     }
+}
+
+fn verified_quote_price_mismatch_failure_message(event: &SchedulerEvent) -> String {
+    if event.heartbeat {
+        "本轮心跳检查中的精确价格与本轮已核验行情不一致，已跳过该提醒，等待下一轮重新核验。"
+            .to_string()
+    } else {
+        "本轮定时任务未能完成：正文里的精确价格与本轮已核验行情不一致，系统已跳过该版本，并将在下一次触发时重试。"
+            .to_string()
+    }
+}
+
+fn verified_quote_price_mismatch_metadata(
+    ticker: &str,
+    observed_price: f64,
+    verified_price: f64,
+    original: &str,
+) -> Value {
+    json!({
+        "failure_kind": "verified_quote_price_mismatch",
+        "ticker": ticker,
+        "observed_price": observed_price,
+        "verified_price": verified_price,
+        "suppressed_preview": truncate_for_log(original.trim(), 200),
+    })
 }
 
 fn unstable_watchlist_price_metadata(
@@ -3702,6 +3954,7 @@ pub async fn execute_scheduler_event_with_storage(
         let result = run_scheduled_task(core.clone(), event, prompt_options, run_options).await;
         let response = result.response;
         let session_id = result.session_id;
+        let verified_tool_calls = response.tool_calls_made.clone();
         if !scheduler_event_is_active(storage, event) {
             if response.success && !response.content.trim().is_empty() {
                 rollback_skipped_scheduler_assistant_turn(
@@ -3781,6 +4034,37 @@ pub async fn execute_scheduler_event_with_storage(
                     session_id: Some(session_id),
                 }
             } else {
+                if let Some((ticker, observed_price, verified_price)) =
+                    detect_verified_quote_price_mismatch(&sanitized, &verified_tool_calls)
+                {
+                    let suppressed_preview = truncate_for_log(sanitized.trim(), 200);
+                    tracing::warn!(
+                        "[SchedulerDiag] verified_quote_price_mismatch job_id={} job={} ticker={} observed_price={} verified_price={} preview=\"{}\"",
+                        event.job_id,
+                        event.job_name,
+                        ticker,
+                        observed_price,
+                        verified_price,
+                        suppressed_preview.replace('\n', "\\n"),
+                    );
+                    rollback_skipped_scheduler_assistant_turn(
+                        &core.session_storage,
+                        &session_id,
+                        &sanitized,
+                    );
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: String::new(),
+                        error: Some(verified_quote_price_mismatch_failure_message(event)),
+                        metadata: verified_quote_price_mismatch_metadata(
+                            &ticker,
+                            observed_price,
+                            verified_price,
+                            &sanitized,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
                 if let Some((ticker, price, zone, lower, upper)) =
                     detect_unstable_watchlist_price_anchor(&sanitized, &watchlist_guard_zones)
                 {
@@ -3860,6 +4144,25 @@ pub async fn execute_scheduler_event_with_storage(
                         metadata: json!({
                             "recovered_from_failure_kind": suppressed_failure_kind,
                         }),
+                        session_id: Some(session_id),
+                    };
+                }
+                if let Some((ticker, observed_price, verified_price)) =
+                    detect_verified_quote_price_mismatch(
+                        &recovered_content,
+                        &response.tool_calls_made,
+                    )
+                {
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: String::new(),
+                        error: Some(verified_quote_price_mismatch_failure_message(event)),
+                        metadata: verified_quote_price_mismatch_metadata(
+                            &ticker,
+                            observed_price,
+                            verified_price,
+                            &recovered_content,
+                        ),
                         session_id: Some(session_id),
                     };
                 }
@@ -3952,7 +4255,8 @@ pub async fn execute_scheduler_event_with_storage(
     }
 
     match heartbeat_result {
-        Ok(content) => {
+        Ok(heartbeat) => {
+            let content = heartbeat.content;
             let raw_preview = truncate_for_log(content.trim(), 280);
             let raw_chars = content.chars().count();
             let starts_with_json = content.trim_start().starts_with('{');
@@ -4053,6 +4357,35 @@ pub async fn execute_scheduler_event_with_storage(
                 }
             }
             if execution.should_deliver
+                && let Some((ticker, observed_price, verified_price)) =
+                    detect_verified_quote_price_mismatch(
+                        &execution.content,
+                        &heartbeat.tool_calls_made,
+                    )
+            {
+                tracing::warn!(
+                    "[HeartbeatDiag] verified_quote_price_mismatch job_id={} job={} target={} ticker={} observed_price={} verified_price={}",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    ticker,
+                    observed_price,
+                    verified_price,
+                );
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: verified_quote_price_mismatch_metadata(
+                        &ticker,
+                        observed_price,
+                        verified_price,
+                        &execution.content,
+                    ),
+                    session_id: None,
+                };
+            }
+            if execution.should_deliver
                 && let Some((ticker, price, zone, lower, upper)) =
                     detect_unstable_watchlist_price_anchor(
                         &execution.content,
@@ -4127,6 +4460,11 @@ pub async fn execute_scheduler_event_with_storage(
 
 struct NoopEmitter;
 
+struct HeartbeatTaskResult {
+    content: String,
+    tool_calls_made: Vec<ToolCallMade>,
+}
+
 #[async_trait]
 impl AgentRunnerEmitter for NoopEmitter {
     async fn emit(&self, _event: AgentRunnerEvent) {}
@@ -4137,7 +4475,7 @@ async fn run_heartbeat_task(
     event: &SchedulerEvent,
     prompt_options: PromptOptions,
     run_options: AgentRunOptions,
-) -> Result<String, String> {
+) -> Result<HeartbeatTaskResult, String> {
     let transient_session_id = format!("heartbeat_probe::{}", event.job_id);
     let mut bundle = build_prompt_bundle(
         &core.config,
@@ -4235,7 +4573,10 @@ async fn run_heartbeat_task(
                 result.response.content.chars().count(),
                 profile,
             );
-            return Ok(result.response.content);
+            return Ok(HeartbeatTaskResult {
+                content: result.response.content,
+                tool_calls_made: result.response.tool_calls_made,
+            });
         }
 
         let error = result
@@ -4277,8 +4618,9 @@ mod tests {
         SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE, ScheduledTaskExecution,
         build_heartbeat_recovery_prompt, build_scheduled_prompt,
         build_scheduled_prompt_with_recovered_local_context,
-        detect_unstable_watchlist_price_anchor, execute_scheduler_event,
-        extract_all_ticker_hit_zones_from_source, guard_commodity_causality_for_event,
+        detect_unstable_watchlist_price_anchor, detect_verified_quote_price_mismatch,
+        execute_scheduler_event, extract_all_ticker_hit_zones_from_source,
+        extract_scheduler_verified_quote_prices, guard_commodity_causality_for_event,
         guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
         heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
         heartbeat_execution_from_content_at, heartbeat_execution_from_content_at_beijing,
@@ -4295,6 +4637,7 @@ mod tests {
     use crate::execution::ExecutionRunnerSelection;
     use crate::prompt::PromptOptions;
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
+    use hone_core::agent::ToolCallMade;
     use hone_core::config::HoneConfig;
     use hone_core::{ActorIdentity, quiet::QuietHours};
     use hone_memory::{
@@ -5394,6 +5737,84 @@ mod tests {
         assert_eq!(detected.0, "COHR");
         assert_eq!(detected.1, 244.47);
         assert_eq!(detected.2, "$55-$75");
+    }
+
+    #[test]
+    fn scheduler_verified_quote_price_map_collects_quote_and_extended_hours_results() {
+        let verified = extract_scheduler_verified_quote_prices(&[
+            ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"SNDK"}),
+                result: serde_json::json!({"data":[{"symbol":"SNDK","price":51.23}]}),
+                tool_call_id: None,
+            },
+            ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"extended_hours","ticker":"MU"}),
+                result: serde_json::json!({"data":{"symbol":"MU","price":103.30}}),
+                tool_call_id: None,
+            },
+        ]);
+
+        assert_eq!(verified.get("SNDK"), Some(&51.23));
+        assert_eq!(verified.get("MU"), Some(&103.30));
+    }
+
+    #[test]
+    fn scheduler_verified_quote_price_mismatch_detects_single_symbol_current_status() {
+        let mismatch = detect_verified_quote_price_mismatch(
+            "SNDK Current Status: Price: $1,214.83，前收 $52.10，日跌 -5.09%。",
+            &[ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"SNDK"}),
+                result: serde_json::json!({"data":[{"symbol":"SNDK","price":51.23}]}),
+                tool_call_id: None,
+            }],
+        )
+        .expect("mismatched current price should be detected");
+
+        assert_eq!(mismatch.0, "SNDK");
+        assert_eq!(mismatch.1, 1214.83);
+        assert_eq!(mismatch.2, 51.23);
+    }
+
+    #[test]
+    fn scheduler_verified_quote_price_mismatch_pairs_multi_ticker_live_series() {
+        let mismatch = detect_verified_quote_price_mismatch(
+            "LITE/COHR/MU 盘后小幅反弹 $658.42/$244.47/$103.30。",
+            &[ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"LITE"}),
+                result: serde_json::json!({"data":[
+                    {"symbol":"LITE","price":658.42},
+                    {"symbol":"COHR","price":64.47},
+                    {"symbol":"MU","price":103.30}
+                ]}),
+                tool_call_id: None,
+            }],
+        )
+        .expect("mismatched paired series should be detected");
+
+        assert_eq!(mismatch.0, "COHR");
+        assert_eq!(mismatch.1, 244.47);
+        assert_eq!(mismatch.2, 64.47);
+    }
+
+    #[test]
+    fn scheduler_verified_quote_price_mismatch_ignores_matching_current_price_with_reference_fields()
+     {
+        assert!(
+            detect_verified_quote_price_mismatch(
+                "SNDK Current Status: Price: $51.23，前收 $52.10，日内低点 $49.80。",
+                &[ToolCallMade {
+                    name: "data_fetch".to_string(),
+                    arguments: serde_json::json!({"data_type":"quote","ticker":"SNDK"}),
+                    result: serde_json::json!({"data":[{"symbol":"SNDK","price":51.23}]}),
+                    tool_call_id: None,
+                }],
+            )
+            .is_none()
+        );
     }
 
     #[test]

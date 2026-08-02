@@ -14,13 +14,20 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-02 `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 新增基于同轮已核验 quote 工具结果的价格一致性守卫；当 scheduler / heartbeat 用户可见正文里的精确现价，与同轮 `data_fetch` 返回的 `quote` / `extended_hours` / `snapshot.data.quote` 明显不一致时，当前轮次会 fail-closed，而不是继续把异常数量级价格送达用户。
+  - 守卫同时覆盖两类此前持续漏过的高风险形态：单 ticker `Current Status: Price: $...` 精确现价口径，以及 `LITE/COHR/MU $658.42/$244.47/$103.30` 这类多 ticker 串行 live-price 片段；并显式跳过 `market cap`、`EV/Sales`、`前收`、`高低点` 等非当前现价字段，避免误伤参考指标。
+  - 新增回归 `scheduler_verified_quote_price_map_collects_quote_and_extended_hours_results`、`scheduler_verified_quote_price_mismatch_detects_single_symbol_current_status`、`scheduler_verified_quote_price_mismatch_pairs_multi_ticker_live_series`、`scheduler_verified_quote_price_mismatch_ignores_matching_current_price_with_reference_fields`，并复跑既有 `watchlist_price_anchor_guard` 定向测试。
+  - 验证：`cargo test -p hone-channels scheduler_verified_quote_price_ --lib -- --nocapture`、`cargo test -p hone-channels watchlist_price_anchor_guard --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 结论：本轮已完成可安全落地的代码级闭环，但按自动化约束未重启 live runtime，因此当前只推进到 `Fixed`，后续仍需在自然运行窗口复核 `SNDK $1,214.83` / `MU $823.03` 等异常行情锚是否从 source runtime 出站候选中消失，再决定是否推进 `Closed`。
 
 - 2026-08-03 02:03 CST 运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
