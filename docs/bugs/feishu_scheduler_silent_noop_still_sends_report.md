@@ -22,6 +22,15 @@ New
 
 ## 最新进展
 
+- 2026-08-03 02:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 22:01-02:03 CST 近窗统计 `deliver=62`，其中 27 条 deliver preview 明写 `noop`、`NOOP`、`无新增` 或 `无触发` 仍进入 deliver 候选。
+    - 01:00 / 01:30 / 02:00 `持仓财报与重大新闻心跳提醒`、`光模块板块关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒` 等 preview 明写 `状态：noop`、`30 分钟心跳检查：NOOP` 或 `本轮无全新持仓级别触发事件`，仍被归类为 `PlainTextTriggered` 并进入 deliver。
+    - 02:00 `持仓重大事件心跳提醒` deliver preview 写“本轮心跳检查结论：noop / 本次 30 分钟窗口无值得推送的持仓更新”，随后被 duplicate suppression 压制；同轮 `持仓财报与重大新闻` 和 `光模块板块` 仍完成定时任务。
+  - 判断：
+    - 最新样本继续来自 heartbeat=1 语义链路：模型 / preview 明确无新增事实或 noop，但出站层仍生成完整正文或送达候选。
+    - 严重等级维持 `P2`：该问题会导致监控任务错误投递噪音报告，影响提醒可信度；同窗没有错对象投递、数据破坏、敏感信息泄露或 P1 级链路故障。
+
 - 2026-08-02 21:00-22:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 21:01 `中际旭创关键事件心跳提醒` deliver preview 明写“本轮检查结果：无高权重新事件触发（noop）”，仍进入 `PlainTextTriggered` deliver 候选，随后被 duplicate suppression 压制。

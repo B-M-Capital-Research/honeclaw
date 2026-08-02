@@ -7,6 +7,13 @@
 
 ## 最新进展
 
+- `2026-08-03 02:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 01:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` raw preview 在 `<think>` 后直接拼出 fenced JSON，包含 `"status": "triggered"`、`triggered`、`symbol`、`condition`、`detail` 等协议字段；同条 deliver preview 以数据时间 / 行情口径后直接进入 fenced `json`。
+    - 01:31 CST 同 job deliver preview 直接以 fenced JSON 开头，继续暴露 `"status": "triggered"`、`triggered`、`symbol`、`condition`、`detail` 等机器字段。
+    - 02:00 CST 同 job 在采样点落成 `JsonNoop` 并跳过发送；本轮用户可见复发证据以前两条 deliver preview 为准。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并送达或进入送达预览，用户可从字段中读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-01 10:00-14:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 10:31 CST `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` `run_id=51359` 落成 `completed + sent + delivered=1`，`response_preview` 以 fenced `json` 代码块开头，随后直接暴露 `status`、`triggered`、`symbol`、`event` 等协议字段。

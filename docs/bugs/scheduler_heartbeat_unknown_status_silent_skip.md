@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-03 02:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 22:01-02:03 CST 近窗统计 `HeartbeatDiag=406`、`run_finish=108`、`deliver=62`、`duplicate_suppressed=17`。
+    - 同窗 108 条 heartbeat raw preview 以 `<think>` 开头且 `starts_with_json=false`；parse 分布继续分裂为 `PlainTextTriggered=124`、`JsonNoop=25`、`PlainTextNoop=3`、`JsonMalformed=2`。
+    - 02:00 `AAPL + NVDA + BE 关键事件提醒` 与 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` raw preview 都以 `<think>` 开头但落成 `JsonNoop` 并跳过发送；同批 `AI与科技持仓观察关键事件心跳提醒` 则以 `<think>` 开头后落成 `PlainTextTriggered` 并 deliver。
+    - 02:00 `存储板块关键事件心跳提醒` 在 `data_fetch` 工具受限后从存储板块关键事件漂移成 `SOXX / SOXL` ETF 配置建议，仍以 `PlainTextTriggered` deliver。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 未记录这些 live run，仍停在 `2026-08-01T14:00:52.724451+08:00`；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-02 21:00-22:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 21:00 / 21:30 / 22:00 CST 多批 heartbeat 已恢复执行，但状态契约仍不稳定：多条 raw preview 以 `<think>` 开头且 `starts_with_json=false`，随后被归类为 `PlainTextTriggered`、`JsonNoop`、`JsonMalformed` 或 suppressed。

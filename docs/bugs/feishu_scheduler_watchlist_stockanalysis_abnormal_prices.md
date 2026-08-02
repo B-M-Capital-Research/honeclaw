@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-03 02:03 CST 运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 22:01-02:03 CST 近窗统计 `SNDK $1,214.83` 异常行情锚命中 14 次，继续进入 heartbeat raw / deliver preview。
+    - 01:00 / 01:30 / 02:00 `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK $1,214.83 / AAOI $94.32` 作为行情口径，并在 `noop` 结论中保留财报窗口和价格变化判断。
+    - 02:00 `闪迪关键事件心跳提醒` raw preview 明写 `SNDK Current Status: Price: $1,214.83`、前收 `$1,279.96`、日跌 `-5.09%`，deliver preview 进一步写成 `SNDK 本轮检查结果：触发提醒（triggered）` 和 `核心事件：SNDK 当日...`。
+  - 判断：
+    - 本轮样本说明 live runtime 持续运行后，异常数量级价格仍能污染 heartbeat 生成上下文、noop 判断和 triggered 出站候选；与既有 P0 同根，不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断；本轮未见错投、敏感泄露或全渠道不可用，不触发新的 P1 issue 规则。
+
 - 2026-08-02 21:00-22:02 CST 运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 21:01 `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,214.83 / MU $823.03` 作为行情锚，并写“重大价格异动需关注”；该价格数量级与既有异常行情锚同根。
