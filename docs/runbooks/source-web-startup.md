@@ -95,11 +95,11 @@ The checkout may be a clean feature worktree while config/data/skills remain in 
 2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp;
 3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256 manifest;
 4. waits for active chats to drain;
-5. removes loaded launchd jobs, waits for their exact PIDs and process locks to disappear, and starts the new Web binary;
+5. rejects an unknown owner of port `8077`, then removes either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor and waits for the supervisor, child PIDs, and process locks to disappear;
 6. requires `/api/meta.build.git_sha` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
-7. verifies the running executable paths and updates the `current` symlink only after success.
+7. verifies the running executable paths, atomically installs persistent Web/Discord plists under `~/Library/LaunchAgents`, moves the legacy supervisor plist to the recoverable `.disabled-by-hone-source-deploy` name, and updates the `current` symlink only after success.
 
-One exit trap owns rollback. Any failure after the old runtime is stopped removes all partially started managed jobs and restores every service that was running before deployment. A loaded-but-crashed launchd job is still removed even when it no longer has a PID.
+One exit trap owns rollback. Any failure after the old runtime is stopped removes all partially started managed jobs, restores the previous managed plists, or restores and bootstraps the legacy supervisor plist, then verifies the services that were running before deployment. A loaded-but-crashed launchd job is still removed even when it no longer has a PID. The disabled legacy plist is retained as a rollback asset; do not load it alongside the managed Web plist because both would compete for the same backend ports.
 
 Use `--allow-unpushed` only for an explicitly accepted local canary. `--skip-build` is for the isolated CI contract or a separately verified exact build, not the normal deployment path. Frontend Vite processes on `3000/3001` remain independent and are not restarted by this command.
 

@@ -9,8 +9,9 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 PROJECT="$TMP_ROOT/project"
 FAKE_BIN="$TMP_ROOT/fake-bin"
 STATE="$TMP_ROOT/state"
+LAUNCH_AGENTS="$TMP_ROOT/launch-agents"
 mkdir -p "$PROJECT/data/logs" "$PROJECT/data/runtime/locks" "$PROJECT/skills" \
-    "$PROJECT/target/debug" "$PROJECT/old" "$FAKE_BIN" "$STATE"
+    "$PROJECT/target/debug" "$PROJECT/old" "$FAKE_BIN" "$STATE" "$LAUNCH_AGENTS"
 printf 'agent:\n  runner: codex_acp\n' > "$PROJECT/config.yaml"
 touch "$PROJECT/skills/.gitkeep"
 printf 'data/\ntarget/\nold/\n' > "$PROJECT/.gitignore"
@@ -18,7 +19,7 @@ for binary in hone-console-page hone-discord hone-mcp; do
     printf '#!/bin/sh\nexit 0\n' > "$PROJECT/target/debug/$binary"
     chmod 0755 "$PROJECT/target/debug/$binary"
 done
-for binary in hone-console-page hone-discord; do
+for binary in hone-cli hone-console-page hone-discord; do
     printf '#!/bin/sh\nexit 0\n' > "$PROJECT/old/$binary"
     chmod 0755 "$PROJECT/old/$binary"
 done
@@ -46,8 +47,34 @@ case "$command" in
         ;;
     remove)
         label="${1:?}"
+        if [[ -f "$state/$label.children" ]]; then
+            while IFS= read -r child_label; do
+                rm -f "$state/$child_label.pid" "$state/$child_label.ppid" "$state/$child_label.binary"
+            done < "$state/$label.children"
+        fi
         rm -f "$state/$label.loaded" "$state/$label.pid" "$state/$label.binary"
+        rm -f "$state/$label.children"
         printf 'remove %s\n' "$label" >> "$state/events"
+        ;;
+    bootstrap)
+        shift
+        plist="${1:?}"
+        label="$(basename "$plist" .plist)"
+        counter=200
+        [[ ! -f "$state/counter" ]] || counter="$(<"$state/counter")"
+        counter=$((counter + 1))
+        printf '%s\n' "$counter" > "$state/counter"
+        : > "$state/$label.loaded"
+        printf '%s\n' "$counter" > "$state/$label.pid"
+        printf '%s\n' "${FAKE_PROJECT:?}/old/hone-cli" > "$state/$label.binary"
+        printf '%s\n' legacy.web legacy.discord > "$state/$label.children"
+        printf '%s\n' "$((counter + 1))" > "$state/legacy.web.pid"
+        printf '%s\n' "$counter" > "$state/legacy.web.ppid"
+        printf '%s\n' "${FAKE_PROJECT}/old/hone-console-page" > "$state/legacy.web.binary"
+        printf '%s\n' "$((counter + 2))" > "$state/legacy.discord.pid"
+        printf '%s\n' "$counter" > "$state/legacy.discord.ppid"
+        printf '%s\n' "${FAKE_PROJECT}/old/hone-discord" > "$state/legacy.discord.binary"
+        printf 'bootstrap %s\n' "$label" >> "$state/events"
         ;;
     submit)
         label="" stdout_log=""
@@ -90,6 +117,16 @@ EOF
 cat > "$FAKE_BIN/ps" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == -axo ]]; then
+    for file in "${FAKE_STATE:?}"/*.ppid; do
+        [[ -e "$file" ]] || continue
+        label="${file##*/}"
+        label="${label%.ppid}"
+        [[ -f "${FAKE_STATE}/$label.pid" ]] || continue
+        printf '%s %s\n' "$(<"${FAKE_STATE}/$label.pid")" "$(<"$file")"
+    done
+    exit 0
+fi
 pid="${2:?}"
 printf 'ps %s\n' "$pid" >> "${FAKE_STATE:?}/events"
 for file in "${FAKE_STATE:?}"/*.pid; do
@@ -106,6 +143,19 @@ cat > "$FAKE_BIN/lsof" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'lsof %s\n' "$*" >> "${FAKE_STATE:?}/events"
+if [[ "$*" == *'-iTCP:8077'* ]]; then
+    if [[ -n "${FAKE_UNMANAGED_PID:-}" ]]; then
+        printf 'p%s\n' "$FAKE_UNMANAGED_PID"
+        exit 0
+    fi
+    for label in com.honeclaw.source.web legacy.web; do
+        if [[ -f "${FAKE_STATE}/$label.pid" ]]; then
+            printf 'p%s\n' "$(<"${FAKE_STATE}/$label.pid")"
+            exit 0
+        fi
+    done
+    exit 1
+fi
 for arg in "$@"; do
     [[ "$arg" != *.lock ]] || exit 1
 done
@@ -135,6 +185,7 @@ case "$url" in
     *api/runtime/active-chat-runs) printf '{"count":0}\n' ;;
     *8077/api/meta)
         file="${FAKE_STATE:?}/com.honeclaw.source.web.binary"
+        [[ -f "$file" ]] || file="${FAKE_STATE:?}/legacy.web.binary"
         [[ -f "$file" ]] || exit 22
         binary="$(<"$file")"
         if [[ "$binary" == *'/releases/source/'* ]]; then
@@ -153,7 +204,9 @@ EOF
 chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/ps" "$FAKE_BIN/lsof" "$FAKE_BIN/curl"
 
 reset_old_state() {
-    rm -f "$STATE"/*.loaded "$STATE"/*.pid "$STATE"/*.binary "$STATE/events" "$STATE/counter"
+    rm -f "$STATE"/*.loaded "$STATE"/*.pid "$STATE"/*.ppid "$STATE"/*.binary \
+        "$STATE"/*.children "$STATE/events" "$STATE/counter"
+    rm -f "$LAUNCH_AGENTS"/*
     : > "$STATE/com.honeclaw.source.web.loaded"
     printf '41\n' > "$STATE/com.honeclaw.source.web.pid"
     printf '%s\n' "$PROJECT/old/hone-console-page" > "$STATE/com.honeclaw.source.web.binary"
@@ -166,15 +219,35 @@ reset_old_state() {
     : > "$PROJECT/data/logs/hone-discord-source.err.log"
 }
 
+reset_legacy_state() {
+    reset_old_state
+    rm -f "$STATE/com.honeclaw.source.web.loaded" "$STATE/com.honeclaw.source.web.pid" \
+        "$STATE/com.honeclaw.source.web.binary" "$STATE/com.honeclaw.source.discord.loaded" \
+        "$STATE/com.honeclaw.source.discord.pid" "$STATE/com.honeclaw.source.discord.binary"
+    : > "$STATE/com.honeclaw.source.runtime.loaded"
+    printf '40\n' > "$STATE/com.honeclaw.source.runtime.pid"
+    printf '%s\n' "$PROJECT/old/hone-cli" > "$STATE/com.honeclaw.source.runtime.binary"
+    printf '%s\n' legacy.web legacy.discord > "$STATE/com.honeclaw.source.runtime.children"
+    printf '41\n' > "$STATE/legacy.web.pid"
+    printf '40\n' > "$STATE/legacy.web.ppid"
+    printf '%s\n' "$PROJECT/old/hone-console-page" > "$STATE/legacy.web.binary"
+    printf '42\n' > "$STATE/legacy.discord.pid"
+    printf '40\n' > "$STATE/legacy.discord.ppid"
+    printf '%s\n' "$PROJECT/old/hone-discord" > "$STATE/legacy.discord.binary"
+    printf '<plist>legacy</plist>\n' > "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist"
+}
+
 run_deploy() {
-    env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" HONE_DEPLOY_TEST_MODE=1 "$@" \
+    env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
+        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
         --skip-build --allow-unpushed --startup-timeout 2 --drain-timeout 2 \
         --poll-interval 0.1
 }
 
 run_deploy_strict() {
-    env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" HONE_DEPLOY_TEST_MODE=1 "$@" \
+    env PATH="$FAKE_BIN:$PATH" FAKE_STATE="$STATE" FAKE_PROJECT="$PROJECT" \
+        HONE_DEPLOY_TEST_MODE=1 HONE_DEPLOY_LAUNCH_AGENT_DIR="$LAUNCH_AGENTS" "$@" \
         "$DEPLOY_SCRIPT" --project-root "$PROJECT" --revision "$REVISION" \
         --skip-build --startup-timeout 2 --drain-timeout 2 --poll-interval 0.1
 }
@@ -192,6 +265,38 @@ grep -q "remove com.honeclaw.source.web" "$STATE/events"
 grep -q "submit com.honeclaw.source.web" "$STATE/events"
 grep -q "ps 41" "$STATE/events"
 grep -q "hone-console-page.lock" "$STATE/events"
+grep -q "$REVISION/hone-console-page" "$LAUNCH_AGENTS/com.honeclaw.source.web.plist"
+grep -q "$REVISION/hone-discord" "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist"
+if command -v plutil >/dev/null 2>&1; then
+    plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.web.plist" >/dev/null
+    plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist" >/dev/null
+fi
+
+reset_legacy_state
+run_deploy env
+grep -q "remove com.honeclaw.source.runtime" "$STATE/events"
+grep -q "/releases/source/$REVISION/hone-console-page" "$STATE/com.honeclaw.source.web.binary"
+[[ ! -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist" ]]
+[[ -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist.disabled-by-hone-source-deploy" ]]
+
+reset_legacy_state
+if run_deploy env FAKE_FAIL_NEW_WEB=1; then
+    echo "expected legacy-to-managed Web readiness failure" >&2
+    exit 1
+fi
+grep -q "bootstrap com.honeclaw.source.runtime" "$STATE/events"
+[[ -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist" ]]
+[[ ! -f "$LAUNCH_AGENTS/com.honeclaw.source.runtime.plist.disabled-by-hone-source-deploy" ]]
+
+reset_old_state
+rm -f "$STATE/com.honeclaw.source.web.loaded" "$STATE/com.honeclaw.source.web.pid" \
+    "$STATE/com.honeclaw.source.web.binary" "$STATE/com.honeclaw.source.discord.loaded" \
+    "$STATE/com.honeclaw.source.discord.pid" "$STATE/com.honeclaw.source.discord.binary"
+if run_deploy env FAKE_UNMANAGED_PID=99; then
+    echo "expected unmanaged port-owner refusal" >&2
+    exit 1
+fi
+! grep -Eq '^(remove|submit|bootstrap) ' "$STATE/events"
 
 reset_old_state
 if run_deploy_strict env; then

@@ -21,14 +21,15 @@ Source deployment is now a revision-bound state machine rather than a sequence o
 - Added version-labelled external fixtures with capture dates and protocol-level assertions for Codex execute/raw-output variance and OpenCode thought, split-answer, and detailed usage variance.
 - Kept answer, reasoning, tool status, usage, reset, and terminal events distinct. Full direct/admin surfaces may show sanitized reasoning, compact surfaces show a generic analysis signal, and unsuitable/OpenAI-compatible surfaces omit it without changing final answer bytes.
 - Added sanitized build/runtime provenance to `/api/meta` and bounded runtime profile files. The output excludes prompts, raw protocol payloads, paths, credentials, and user data.
-- Added `scripts/deploy_source_runtime.sh` plus a CI-safe fake-boundary regression. The script refuses dirty, unexpected, or unpushed revisions by default and commits the `current` symlink only after the full managed runtime is verified.
+- Added `scripts/deploy_source_runtime.sh` plus a CI-safe fake-boundary regression. The script refuses dirty, unexpected, unpushed, or unknown-port-owner revisions/topologies by default and commits the `current` symlink only after the full managed runtime is verified.
+- A real local preflight exposed the prior `com.honeclaw.source.runtime` supervisor with Web/Discord child processes. The deployer now treats this as an explicit migration: it waits parent and child PIDs, atomically installs persistent revision-bound Web/Discord LaunchAgent plists, recoverably disables the legacy plist on success, and restores/bootstrap-verifies the legacy topology on failure.
 - Updated manual Codex/OpenCode probes to work from a worktree. The OpenCode probe uses the current read-only MCP tool name and optionally selects an explicit model through `session/set_model`.
 
 ## Verification
 
 - Workspace check and workspace tests excluding Apple clients passed.
 - Web tests passed `334/334`; Public Community Edge typecheck and tests passed `45/45`.
-- Complete CI-safe regressions passed, including all source-deployment success/refusal/rollback cases.
+- Complete CI-safe regressions passed, including direct-job and legacy-supervisor source-deployment success, unknown-owner/dirty/unpushed refusal, persistent plist installation, partial-start failures, and full rollback/bootstrap cases.
 - Post-review `hone-channels` library tests passed `715` with one existing host-dependent ignore; the build-info unit contract passed.
 - Real Codex CLI `0.146.0` plus codex-acp `1.1.7` initialize/session probing passed.
 - Real OpenCode `1.18.11` completed initialize, model selection, a read-only Hone MCP call, streamed reasoning/answer/usage, and `end_turn` with an explicit free probe model.
