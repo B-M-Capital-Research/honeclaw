@@ -1,7 +1,7 @@
 # Public Admin All-channel Usage
 
 - title: Public Admin All-channel Usage
-- status: in_progress
+- status: archived
 - created_at: 2026-08-02
 - updated_at: 2026-08-02
 - owner: Codex
@@ -12,7 +12,7 @@
   - packages/app/src/lib/types.ts
   - packages/app/src/pages/public-workspace.css
 - related_docs:
-  - docs/current-plan.md
+  - docs/archive/index.md
   - docs/handoffs/2026-08-02-public-admin-usage-analytics.md
   - docs/runbooks/public-user-admin.md
 
@@ -48,3 +48,10 @@ Expand the administrator usage report from Web-only direct actors and Web cron e
 - Feishu/Discord/Telegram/iMessage user identifiers do not map to domestic phone labels; responses must use bounded channel-aware labels and never expose unrelated secrets or message content outside the administrator boundary.
 - Group/channel-scope sessions may represent shared conversations rather than one person; only the concrete actor user id counts, while the shared scope is retained solely for session routing and never becomes the user identity.
 - Full session enumeration remains bounded only by the existing 14-day message filter; increased channel volume may accelerate the need for a database-side time projection.
+
+## Completion
+
+- Production read-only evidence first proved that Feishu was the primary omitted lane: during the July 20–August 2 window it contributed 43 question actors and 556 questions, versus Web's 23 actors and 116 questions.
+- Exact commit `c4c217236fae8bbe571f259cd46b6b4768178bcf` was pushed to `main`, published by Cloudflare Pages, built into the verified GCE release `/opt/hone/releases/c4c217236fae8bbe571f259cd46b6b4768178bcf-all-channel-usage-20260802`, and cut over after two zero-active-chat checks.
+- Authenticated production Chrome verified channel-labelled rows, both charts, dynamic August 1/2 summaries, the collapsed whitelist, no `codex*` actors, and no console warnings/errors. The final 14-day window at 2026-08-03 01:21 Beijing contained 65 channel-scoped question actors, 401 questions, and 1,874 successful pushes.
+- Temporary build worktree and build logs were removed after the immutable release passed checksums and runtime verification; the prior release remains available for rollback.

@@ -15,22 +15,23 @@
 - related_docs:
   - docs/archive/plans/public-admin-usage-analytics.md
   - docs/archive/plans/public-admin-usage-production-rollout.md
+  - docs/archive/plans/public-admin-all-channel-usage.md
   - docs/decisions.md
   - docs/invariants.md
   - docs/runbooks/public-user-admin.md
-- related_prs: none
+- related_prs: `39ce9ce54f5cbfea26e664459cb70edf3fd97292`, `c4c217236fae8bbe571f259cd46b6b4768178bcf`
 
 ## Summary
 
-Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时间展示最近 14 天每位 Web 用户的真实提问、问题明细、定时任务执行、成功推送和失败投递，并生成今日活跃提问人数、问题数、成功推送数、上周同日同比与主要降频用户摘要。普通用户既不挂载组件，也会被服务端 `403` 拒绝。
+Public `/me` 的管理员区域提供实时 HONE 使用统计。它按北京时间展示最近 14 天网页、飞书、Telegram、Discord、iMessage 支持渠道中每位渠道账号的真实提问、问题明细、定时任务执行、成功推送和失败投递，并生成随日期筛选变化的使用人数、问题数、成功推送数、同比与主要降频用户摘要。普通用户既不挂载组件，也会被服务端 `403` 拒绝。
 
 ## What Changed
 
 - 新增 `GET /api/public/admin/usage`，复用现有 cookie session + 数据库管理员角色复核。
-- 按 direct Web actor 聚合 session 的 `user` 消息；排除 scheduler/heartbeat source、job metadata 与旧版触发 envelope。
+- 按 `(channel, user_id)` 聚合支持渠道的 session `user` 消息；群聊只使用具体 actor user id，不把共享 scope 当成用户，并排除 scheduler/heartbeat source、job metadata 与旧版触发 envelope。
 - 定时数据来自 cron execution history，不把 noop 当推送，也不把 `should_deliver=false` 当失败。
-- `/me` 增加摘要、手动刷新、14 天/单日筛选和可展开问题明细；桌面使用横向表格，移动端转为逐用户卡片。
-- 手机号展示为掩码；每个问题预览最多 1000 字，不返回助手答案或其它渠道内容。
+- `/me` 提供摘要、手动刷新、14 天/单日筛选、两张趋势图和可展开问题明细；桌面与移动端均保留一张有界、可双向滚动的大表格，并明确展示渠道。
+- Web 手机号展示为掩码；非 Web 用户仅展示渠道与标识后六位。每个问题预览最多 1000 字，不返回助手答案、凭据或不支持渠道内容。
 
 ## Verification
 
@@ -49,7 +50,7 @@ Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时�
 
 ## Next Entry Point
 
-先从 `crates/hone-web-api/src/routes/public_admin.rs::handle_usage_report` 和 `build_usage_report` 检查统计口径，再从 `packages/app/src/components/public-admin-usage-panel.tsx` 调整展示。任何扩大到非 Web 渠道、导出或更长留存期的需求都需要重新评估管理员权限与隐私边界。
+先从 `crates/hone-web-api/src/routes/public_admin.rs::handle_usage_report` 和 `build_usage_report` 检查统计口径，再从 `packages/app/src/components/public-admin-usage-panel.tsx` 调整展示。任何扩大到导出、更长留存期或跨渠道身份合并的需求都需要重新评估管理员权限、身份真相源与隐私边界。
 
 ## 2026-08-02 精简与日期联动阶段
 
@@ -147,3 +148,25 @@ Public `/me` 的管理员区域新增实时 HONE 使用统计。它按北京时�
 
 - 生产管理员授权必须在 GCE 上复用 `hone-web.service` 的有效 config/env 执行。本机端口转发仅可用于明确标识过目标实例的诊断，不能单独作为生产变更或 read-after-write 证据。
 - `docs/runbooks/public-user-admin.md` 已增加 GCE 生产权威性检查和 host-local CLI 执行方式。
+
+## 2026-08-02 全渠道统计与生产部署阶段
+
+### Summary
+
+- 在改逻辑前先只读统计 GCE 生产数据。北京时间 2026-07-20 至 2026-08-02：飞书 43 个提问账号、556 个真实问题，网页 23 个提问账号、116 个问题，Discord 1 个提问账号、7 个问题；飞书成功推送 1,266 条，网页 919 条，Discord 7 条。Telegram 与 iMessage 在该窗口无数据。
+- API row 新增 `channel`，session 与 cron execution 都扩展到 `web`、`feishu`、`telegram`、`discord`、`imessage`；同一外部 id 在不同渠道分别计数。群聊仅在存在具体 actor user id 时纳入。
+- 前端趋势、摘要和降频归因均改为以 `(channel, user_id)` 去重；表格新增渠道列，并明确提示跨渠道未绑定账号分别计数。
+- 提交 `c4c217236fae8bbe571f259cd46b6b4768178bcf` 已推送 `main`。Cloudflare Pages 生产懒加载包包含新渠道文案；GCE 从 `39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802` 原子切换到 `/opt/hone/releases/c4c217236fae8bbe571f259cd46b6b4768178bcf-all-channel-usage-20260802`。
+
+### Verification
+
+- 本地：Public-admin 8/8、Web API 165 passed + 2 ignored、Web 344/344、TypeScript typecheck、`cargo check -p hone-web-api`、Public production build 和 diff/格式检查均通过。
+- GCE：6 个 release 二进制 SHA256 全部通过；Web 与 Feishu 都内嵌精确 Git SHA。连续两次 active chat 均为 0；切换后 Web 第 2 次探测就绪，Web/Feishu active，飞书 WebSocket 重新连接成功，warning 级日志为空。
+- 运行时 `/api/meta`：`git_sha=c4c21723...`、`profile=release`、`source=workspace`，PostgreSQL/R2 健康，`cloud_storage_authoritative=true`，`local_durable_dependency_count=0`。本地与公网未登录鉴权均返回预期 `401`。
+- `181****4550` 的生产 Chrome：14 日总计 65 个渠道账号、401 个真实问题、1,874 条成功推送；其中飞书 43 人/289 问题/1,080 推送，网页 21 人/109 问题/788 推送，Discord 1 人/3 问题/6 推送。窗口已在北京时间跨到 8 月 3 日，因此与前述 7 月 20 日至 8 月 2 日的只读快照不同。
+- 页面摘要为“最近 7 天比前 7 天少 10 人，主要是飞书用户 c6079c 使用频率降低 10 次”；8 月 2 日为 14 人、50 问题、81 推送，8 月 1 日为 9 人、19 问题、0 推送。334 行表格无 `codex*` actor，渠道列、两张图、白名单均存在，控制台无 warning/error。
+
+### Rollback / Cleanup
+
+- 直接回滚点为 `/opt/hone/releases/39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802`；按 Feishu → Web 停止、原子切换 `/opt/hone/current`、Web → Feishu 启动即可恢复。
+- 临时远端 worktree、构建日志和验收临时文件已删除；新旧不可变 release 均保留，可恢复。未新增 release tag。

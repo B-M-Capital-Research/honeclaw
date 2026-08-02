@@ -2073,10 +2073,11 @@ Use this file as the historical entry point for completed or paused work that sh
 - Plan: `docs/archive/plans/public-admin-usage-production-rollout.md`
 - Handoff: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`
 - Decision / ADR: `docs/decisions.md#d-2026-08-02-03-keep-public-usage-analytics-inside-the-web-administrator-boundary`
-- Related PRs / commits: `39ce9ce54f5cbfea26e664459cb70edf3fd97292`
-- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `docs/runbooks/public-user-admin.md`; Web 343/343; Web API 164/164 plus 2 credentialed ignores; Public Community Edge 45/45; CI-safe regressions; GitHub CI/CodeQL/Secret Scan
-- Current conclusion: The collapsible administrator analytics table, dynamic date-bound summary, complete zero-activity dates, and two 14-day trend charts are live on Cloudflare Pages and the exact GCE immutable backend revision. The first administrator read-back used the wrong locally forwarded PostgreSQL connection; the same-day correction ran the installed CLI against GCE's effective production config/env, changed all three requested roles to admin with `verified_is_admin=true`, and confirmed the modules in the authenticated `181****4550` Chrome session. Public auth boundaries, PostgreSQL/R2 health, zero-active-chat cutover, and Web/Feishu services remain healthy; OS Login 2FA remains enabled.
-- Next entry point: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`; GCE rollback remains `/opt/hone/releases/d48c1f50-feishu-heartbeat-20260801`.
+- Related plan: `docs/archive/plans/public-admin-all-channel-usage.md`
+- Related PRs / commits: `39ce9ce54f5cbfea26e664459cb70edf3fd97292`, `c4c217236fae8bbe571f259cd46b6b4768178bcf`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `docs/runbooks/public-user-admin.md`; Web 344/344; Web API 165/165 plus 2 credentialed ignores; Public-admin 8/8; Public production build
+- Current conclusion: The administrator analytics table, dynamic date-bound summary, zero-filled 14-day charts, and collapsible whitelist are live across Web, Feishu, Telegram, Discord, and iMessage identity namespaces. Production currently shows Feishu, Web, and Discord data; same ids across channels remain separate, concrete group actors are safe to count, and `codex*` plus automation envelopes remain excluded. At the authenticated 2026-08-03 01:21 Beijing read-back, the latest 14 days contained 65 question actors, 401 questions, and 1,874 successful pushes. Exact GCE release `c4c21723` is active with authoritative PostgreSQL/R2, zero local durable dependencies, a connected Feishu stream, and zero active chats; Cloudflare Pages and the `181****4550` Chrome session both show the new channel column and summaries.
+- Next entry point: `docs/handoffs/2026-08-02-public-admin-usage-analytics.md`; direct GCE rollback is `/opt/hone/releases/39ce9ce54f5cbfea26e664459cb70edf3fd97292-admin-usage-20260802`.
 
 ### GCE SMS Runtime Environment Persistence
 

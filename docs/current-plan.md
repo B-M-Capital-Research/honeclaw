@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-02
-状态：有 10 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **Public 管理员全渠道使用统计**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/public-admin-all-channel-usage.md`
-  - 摘要：加急把现有仅 Web direct / Web cron 的 14 日统计扩展到 Feishu、Telegram、Discord、iMessage 等支持渠道；先读取 GCE 生产数据形成渠道对照，再补 channel 维度、自动化/群聊边界测试、推送并受控部署，最后用 `181****4550` 的生产登录态验收
 
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`
