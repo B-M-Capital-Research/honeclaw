@@ -22,6 +22,16 @@ New
 
 ## 最新进展
 
+- 2026-08-02 21:00-22:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 21:01 `中际旭创关键事件心跳提醒` deliver preview 明写“本轮检查结果：无高权重新事件触发（noop）”，仍进入 `PlainTextTriggered` deliver 候选，随后被 duplicate suppression 压制。
+    - 21:30 `NBIS关键事件心跳提醒` deliver preview 写“本轮检查结果：无高权重新事件触发（noop）”，仍进入 `PlainTextTriggered` deliver。
+    - 21:30 `光模块板块关键事件心跳提醒` 与 22:00 同 job 明写 `状态：noop / 本轮无全新触发事件`，仍进入 deliver 候选。
+    - 22:00 `持仓财报与重大新闻心跳提醒` 与 `存储板块关键事件心跳提醒` deliver preview 明写 `状态：noop`，仍进入 `PlainTextTriggered` deliver。
+  - 判断：
+    - 最新样本继续来自 heartbeat=1 语义链路：模型 / preview 明确无新增事实或 noop，但出站层仍生成完整正文或送达候选。
+    - 严重等级维持 `P2`：该问题会导致监控任务错误投递噪音报告，影响提醒可信度；同窗没有错对象投递、数据破坏、敏感信息泄露或 P1 级链路故障。
+
 - 2026-08-01 14:00-18:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
     - SQLite 近窗 heartbeat run 共 9 条：`noop/skipped_noop=5`、`completed/sent=4`；普通 scheduler 无新增 run。

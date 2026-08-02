@@ -3,9 +3,16 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-08-02 22:04 CST` 运行态回退为 `New/P2`：
+  - `data/logs/hone-console-page-source.log` 在 20:59-22:02 CST 恢复 live runtime 记录；22:02 CST 附近仍可见 `HeartbeatDiag run_finish`、`deliver`、`duplicate_suppressed`，event-engine `poller ok` 也持续推进。
+  - 同一时间 `data/sessions.sqlite3` 只有 mirror 导入时间推进：`sessions.max(imported_at)=2026-08-02T20:59:58.506373+08:00`、`session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`。
+  - 真实业务时间仍停滞：`sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`、`session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`、`cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`、`web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`。
+  - 21:00-22:02 CST source log 显示 scheduler / event-engine 正在运行，但 `cron_job_runs` 查询 `executed_at >= 2026-08-02T18:00:00+08:00` 返回 0；这说明本地 SQLite 运行台账再次没有随真实 runtime 推进。
+  - 判断：这不是 runtime 全局缺席 P1，因为 live scheduler / event-engine 已恢复；它影响缺陷巡检、调度审计、补发判断和运行态复核，属于功能性可观测性 P2。非 P1，不创建 GitHub Issue。
+
 - `2026-07-26 19:02 CST` 运行态复核确认当前镜像和调度台账均已追入真实窗口，状态从 `New` 调整为 `Fixed`：
   - `data/sessions.sqlite3` 在 2026-07-26 15:00-19:02 CST 按真实 `timestamp` 新增 36 条 user / 34 条 assistant / 2 条 system compact，覆盖 29 个更新 session；`session_messages.max(timestamp)=2026-07-26T18:33:39.187222+08:00`，`sessions.max(last_message_at)=2026-07-26T18:33:39.187222+08:00`。
   - 同一库 `cron_job_runs.max(executed_at)=2026-07-26T19:01:25.134807+08:00`，本窗有 heartbeat `completed + sent=7`、heartbeat `noop + skipped_noop=49`、heartbeat `execution_failed + skipped_error=4`，普通 scheduler `completed + sent=15`、`execution_failed + sent=2`。

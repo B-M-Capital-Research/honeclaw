@@ -14,13 +14,31 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - [#53](https://github.com/B-M-Capital-Research/honeclaw/issues/53)
 
 ## 最新进展
+
+- 2026-08-02 22:04 CST 运行态复核，状态从 `New/P1` 调整为 `Fixed/P1`：
+  - 证据来源：
+    - 进程表：
+      - 22:02 CST 可见 source runtime 进程 `data/releases/source/39ce9ce54f5cbfea26e664459cb70edf3fd97292/hone-console-page`，启动时间约 20:58 CST；不再是上一轮“未见 Hone runtime / Web / scheduler 进程”的整体缺席状态。
+    - `data/logs/hone-console-page-source.log`
+      - 21:00-22:02 CST 有 44128 行新增运行日志。
+      - 21:00 / 21:30 / 22:00 CST 多批 `HeartbeatDiag run_finish`、`deliver`、`duplicate_suppressed` 持续出现，说明 scheduler runner 已恢复执行。
+      - 20:59-22:02 CST event-engine poller 也持续记录 `poller ok`，包括 `fmp.news`、`fmp.earnings`、`fmp.macro`、`fmp.price`、`fmp.extended_hours`。
+    - `data/sessions.sqlite3`
+      - `sessions.max(imported_at)=2026-08-02T20:59:58.506373+08:00`，说明本地 session mirror 有重新导入动作。
+      - 真实消息时间仍停在 `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`，`cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`，但这已不再证明 runtime 进程缺席；调度台账未随 live runtime 推进另回退到 `sessions_sqlite_mirror_stalled_after_successful_direct_replies.md`。
+    - 最近提交：
+      - 18:00-22:04 CST 有非文档提交 `39ce9ce5 feat: add admin usage analytics`，与本缺陷修复链路无直接关系；本轮状态变化来自 live runtime 观测恢复。
+  - 判断：
+    - 本单根因范围是运行承载进程缺席导致直聊 / scheduler 无法推进；本轮已有 source runtime、scheduler 和 event-engine live 证据，因此不能继续保持活跃 P1。
+    - 由于 `cron_job_runs` / `web_push_messages` 本地 SQLite 台账仍未跟上 live 日志，本轮只将本单从活跃队列移出为 `Fixed`，不推进 `Closed`。
+    - 已有关联 Issue #53；本轮没有新增活跃 P1，不创建重复 GitHub Issue。
 
 - 2026-08-02 18:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
   - 证据来源：

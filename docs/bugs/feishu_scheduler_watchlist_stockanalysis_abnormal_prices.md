@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-02 21:00-22:02 CST 运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 21:01 `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,214.83 / MU $823.03` 作为行情锚，并写“重大价格异动需关注”；该价格数量级与既有异常行情锚同根。
+    - 21:30 同 job deliver preview 继续使用 `SNDK $1,214.83` 并触发“单日跌幅超 5%”。
+    - 22:00 `持仓财报与重大新闻心跳提醒` deliver preview 使用 `SNDK $1,214.83 / AAOI $94.32`，22:00 `存储板块关键事件心跳提醒` 继续用 `SNDK $1,214.83`、日内区间 `$1,187.26-$1,404.99` 等异常数量级行情锚组织 noop / 价格噪音判断。
+  - 判断：
+    - 本轮样本说明 live runtime 恢复后异常行情锚仍能进入 heartbeat 生成上下文和出站候选；与既有 P0 同根，不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断；本轮未见错投、敏感泄露或全渠道不可用，不触发新的 P1 issue 规则。
+
 - 2026-08-01 14:00-18:03 CST 运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-08-01` / `data/sessions.sqlite3` / `cron_job_runs`
     - 14:00 `关注股重大事件心跳检测：SNDK LITE COHR MU 000660.KS RKLB TEM` raw preview 继续写 `MU (Micron): $823.03, -5.90%`，并把该价格作为观察池触发判断输入；该轮 parse 为 `JsonNoop`，未送达用户。

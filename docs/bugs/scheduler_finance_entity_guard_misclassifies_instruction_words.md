@@ -8,6 +8,16 @@
 
 ## 运行态复核（2026-07-31 10:02 CST）
 
+## 运行态复核（2026-08-02 22:04 CST）
+
+- `2026-08-02 21:00-22:02 CST` 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 22:00 CST `闪迪关键事件心跳提醒` raw preview 把用户任务里的 `NAND Flash` 技术说明语境当成主要意图，deliver preview 直接输出“NAND Flash 是什么 / NAND Flash 就是 NAND”，而不是围绕 `SNDK` 关键事件监控生成稳定证券任务结果。
+    - 该轮随后被 duplicate suppression 压制，没有确认送达；但它说明 `NAND` 行业词 / 技术词仍能污染 scheduler / heartbeat 证券任务主体。
+  - 判断：
+    - 最新样本与既有 `NAND Flash` 误抽 / 误拦同根，都是行业词与明确 ticker `SNDK` 的任务主体优先级冲突；不新建重复缺陷。
+    - 本轮样本未确认用户可见送达，因此只补充运行态候选证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-31 06:00-10:02 CST` 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3` / `session_messages` / `cron_job_runs`
     - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` 的任务正文明确要求调取 `SNDK` 最新行情、新闻催化、评级变化和 `NAND Flash` 存储行业动态。
