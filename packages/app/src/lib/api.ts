@@ -362,8 +362,13 @@ export async function getPublicAdminInvites(signal?: AbortSignal) {
   return parseJson<PublicAdminInviteList>(response);
 }
 
-export async function getPublicAdminUsage(signal?: AbortSignal) {
-  const response = await apiFetch("/api/public/admin/usage", {
+export type PublicAdminUsageRangeDays = 14 | 30 | 90;
+
+export async function getPublicAdminUsage(
+  days: PublicAdminUsageRangeDays = 14,
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(`/api/public/admin/usage?days=${days}`, {
     signal,
     cache: "no-store",
   });

@@ -1,15 +1,21 @@
 import { For, Show, createMemo, createSignal, onMount } from "solid-js";
-import { getPublicAdminUsage } from "@/lib/api";
+import {
+  getPublicAdminUsage,
+  type PublicAdminUsageRangeDays,
+} from "@/lib/api";
 import type {
   PublicAdminUsageReport,
   PublicAdminUsageRow,
 } from "@/lib/types";
 
 export function publicAdminUsageDates(
-  report: Pick<PublicAdminUsageReport, "period_start" | "period_end"> | null,
+  report: Pick<
+    PublicAdminUsageReport,
+    "period_days" | "period_start" | "period_end"
+  > | null,
 ) {
   if (!report || report.period_start > report.period_end) return [];
-  return Array.from({ length: 14 }, (_, index) =>
+  return Array.from({ length: report.period_days }, (_, index) =>
     shiftUsageDate(report.period_end, -index),
   ).filter(
     (date) =>
@@ -30,10 +36,13 @@ export function publicAdminUsageDateIsAvailable(
 export function filterPublicAdminUsageRows(
   rows: PublicAdminUsageRow[],
   selectedDate: string,
+  selectedChannel = "all",
 ) {
-  return selectedDate === "all"
-    ? rows
-    : rows.filter((row) => row.date === selectedDate);
+  return rows.filter(
+    (row) =>
+      (selectedDate === "all" || row.date === selectedDate) &&
+      (selectedChannel === "all" || row.channel === selectedChannel),
+  );
 }
 
 type UsageTotals = {
@@ -68,14 +77,19 @@ function shiftUsageDate(value: string, days: number) {
 }
 
 export function publicAdminUsageTrend(
-  report: Pick<PublicAdminUsageReport, "period_end" | "rows">,
+  report: Pick<
+    PublicAdminUsageReport,
+    "period_days" | "period_start" | "period_end" | "rows"
+  >,
+  selectedChannel = "all",
 ): PublicAdminUsageTrendPoint[] {
-  const start = shiftUsageDate(report.period_end, -13);
+  const start = report.period_start;
   if (!start) return [];
 
   const activeUsers = new Map<string, Set<string>>();
   const questionCounts = new Map<string, number>();
   for (const row of report.rows) {
+    if (selectedChannel !== "all" && row.channel !== selectedChannel) continue;
     if (row.date < start || row.date > report.period_end) continue;
     if (row.question_count > 0) {
       const users = activeUsers.get(row.date) ?? new Set<string>();
@@ -88,7 +102,7 @@ export function publicAdminUsageTrend(
     );
   }
 
-  return Array.from({ length: 14 }, (_, index) => {
+  return Array.from({ length: report.period_days }, (_, index) => {
     const date = shiftUsageDate(start, index);
     return {
       date,
@@ -152,10 +166,21 @@ function usageLeadingDeclineText(
 export function summarizePublicAdminUsage(
   report: PublicAdminUsageReport,
   selectedDate: string,
+  selectedChannel = "all",
 ): PublicAdminUsageSelectionSummary {
-  const labels = new Map(report.rows.map((row) => [usageActorKey(row), row.user_label]));
-  const selectedRows = filterPublicAdminUsageRows(report.rows, selectedDate);
+  const channelRows = filterPublicAdminUsageRows(
+    report.rows,
+    "all",
+    selectedChannel,
+  );
+  const labels = new Map(channelRows.map((row) => [usageActorKey(row), row.user_label]));
+  const selectedRows = filterPublicAdminUsageRows(
+    channelRows,
+    selectedDate,
+  );
   const totals = usageTotals(selectedRows);
+  const channelPrefix =
+    selectedChannel === "all" ? "HONE" : `${formatUsageChannel(selectedChannel)} HONE`;
 
   if (selectedDate !== "all") {
     const comparisonDate = shiftUsageDate(selectedDate, -7);
@@ -164,7 +189,7 @@ export function summarizePublicAdminUsage(
       comparisonDate >= report.period_start &&
       comparisonDate <= report.period_end;
     const previousRows = hasComparison
-      ? report.rows.filter((row) => row.date === comparisonDate)
+      ? channelRows.filter((row) => row.date === comparisonDate)
       : [];
     const previousTotals = usageTotals(previousRows);
     const change = hasComparison
@@ -176,7 +201,7 @@ export function summarizePublicAdminUsage(
     const decline = hasComparison
       ? usageLeadingDeclineText(selectedRows, previousRows, labels)
       : "";
-    const text = `${formatUsageDate(selectedDate)} HONE 使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}${decline ? `；${decline}` : ""}。`;
+    const text = `${formatUsageDate(selectedDate)} ${channelPrefix} 使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}${decline ? `；${decline}` : ""}。`;
     return {
       active_users: totals.activeUsers,
       question_count: totals.questionCount,
@@ -188,9 +213,10 @@ export function summarizePublicAdminUsage(
 
   const recentStart = shiftUsageDate(report.period_end, -6);
   const previousEnd = shiftUsageDate(recentStart, -1);
-  const currentRows = report.rows.filter((row) => row.date >= recentStart);
-  const previousRows = report.rows.filter(
-    (row) => row.date >= report.period_start && row.date <= previousEnd,
+  const previousStart = shiftUsageDate(previousEnd, -6);
+  const currentRows = channelRows.filter((row) => row.date >= recentStart);
+  const previousRows = channelRows.filter(
+    (row) => row.date >= previousStart && row.date <= previousEnd,
   );
   const currentTotals = usageTotals(currentRows);
   const previousTotals = usageTotals(previousRows);
@@ -202,7 +228,7 @@ export function summarizePublicAdminUsage(
     question_count: totals.questionCount,
     delivered_push_count: totals.deliveredPushCount,
     comparison_user_change: change,
-    text: `最近 14 天 HONE 总使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}；${decline}。`,
+    text: `最近 ${report.period_days} 天 ${channelPrefix} 总使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}；${decline}。`,
   };
 }
 
@@ -261,6 +287,16 @@ function formatGeneratedAt(value?: string) {
 
 type UsageTrendMetric = "active_users" | "question_count";
 
+const PUBLIC_ADMIN_USAGE_RANGES: PublicAdminUsageRangeDays[] = [14, 30, 90];
+const PUBLIC_ADMIN_USAGE_CHANNELS = [
+  "all",
+  "web",
+  "feishu",
+  "telegram",
+  "discord",
+  "imessage",
+] as const;
+
 function formatTrendDate(value: string) {
   const parsed = new Date(`${value}T00:00:00+08:00`);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -278,6 +314,8 @@ function PublicAdminUsageTrendChart(props: {
   description: string;
   unit: string;
   tone: "users" | "questions";
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
 }) {
   const width = 560;
   const height = 190;
@@ -302,6 +340,7 @@ function PublicAdminUsageTrendChart(props: {
       y: top + ((scaleMax() - point[props.metric]) / scaleMax()) * plotHeight,
     }));
   const latest = () => values().at(-1) ?? 0;
+  const labelStep = () => Math.max(1, Math.ceil(props.points.length / 7));
 
   return (
     <article class={`public-admin-trend-chart is-${props.tone}`}>
@@ -318,7 +357,7 @@ function PublicAdminUsageTrendChart(props: {
         class="public-admin-trend-chart-svg"
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`${props.title}，横轴为最近 14 天日期，纵轴单位为${props.unit}`}
+        aria-label={`${props.title}，横轴为最近 ${props.points.length} 天日期，纵轴单位为${props.unit}；数据点可点击查看精确数值`}
       >
         <For each={[0, 0.5, 1]}>
           {(ratio) => {
@@ -347,7 +386,20 @@ function PublicAdminUsageTrendChart(props: {
         />
         <For each={positions()}>
           {(position, index) => (
-            <g>
+            <g
+              class="public-admin-trend-point-target"
+              classList={{ "is-selected": props.selectedDate === position.point.date }}
+              role="button"
+              tabIndex={0}
+              aria-label={`${formatTrendDate(position.point.date)}，${position.value} ${props.unit}`}
+              onClick={() => props.onSelectDate(position.point.date)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  props.onSelectDate(position.point.date);
+                }
+              }}
+            >
               <line
                 class="public-admin-trend-tick"
                 x1={position.x}
@@ -363,7 +415,18 @@ function PublicAdminUsageTrendChart(props: {
               >
                 <title>{`${formatTrendDate(position.point.date)}：${position.value} ${props.unit}`}</title>
               </circle>
-              <Show when={index() % 2 === 0 || index() === props.points.length - 1}>
+              <circle
+                class="public-admin-trend-point-hitbox"
+                cx={position.x}
+                cy={position.y}
+                r="10"
+              />
+              <Show
+                when={
+                  index() % labelStep() === 0 ||
+                  index() === props.points.length - 1
+                }
+              >
                 <text
                   class="public-admin-trend-x-label"
                   x={position.x}
@@ -383,23 +446,37 @@ function PublicAdminUsageTrendChart(props: {
 
 export function PublicAdminUsagePanel() {
   const [report, setReport] = createSignal<PublicAdminUsageReport | null>(null);
+  const [rangeDays, setRangeDays] =
+    createSignal<PublicAdminUsageRangeDays>(14);
+  const [selectedChannel, setSelectedChannel] = createSignal("all");
   const [selectedDate, setSelectedDate] = createSignal("all");
+  const [selectedTrendDate, setSelectedTrendDate] = createSignal("");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
+  let loadVersion = 0;
 
-  const load = async () => {
+  const load = async (days = rangeDays()) => {
+    const version = ++loadVersion;
     setLoading(true);
     setError("");
     try {
-      const next = await getPublicAdminUsage();
+      const next = await getPublicAdminUsage(days);
+      if (version !== loadVersion) return;
       setReport(next);
       if (!publicAdminUsageDateIsAvailable(next, selectedDate())) {
         setSelectedDate("all");
       }
+      if (
+        selectedTrendDate() &&
+        !publicAdminUsageDateIsAvailable(next, selectedTrendDate())
+      ) {
+        setSelectedTrendDate("");
+      }
     } catch (cause) {
+      if (version !== loadVersion) return;
       setError(cause instanceof Error ? cause.message : "读取使用统计失败");
     } finally {
-      setLoading(false);
+      if (version === loadVersion) setLoading(false);
     }
   };
 
@@ -407,16 +484,31 @@ export function PublicAdminUsagePanel() {
 
   const dates = createMemo(() => publicAdminUsageDates(report()));
   const rows = createMemo(() =>
-    filterPublicAdminUsageRows(report()?.rows ?? [], selectedDate()),
+    filterPublicAdminUsageRows(
+      report()?.rows ?? [],
+      selectedDate(),
+      selectedChannel(),
+    ),
   );
   const summary = createMemo(() => {
     const current = report();
-    return current ? summarizePublicAdminUsage(current, selectedDate()) : null;
+    return current
+      ? summarizePublicAdminUsage(
+          current,
+          selectedDate(),
+          selectedChannel(),
+        )
+      : null;
   });
   const trend = createMemo(() => {
     const current = report();
-    return current ? publicAdminUsageTrend(current) : [];
+    return current
+      ? publicAdminUsageTrend(current, selectedChannel())
+      : [];
   });
+  const selectedTrendPoint = createMemo(() =>
+    trend().find((point) => point.date === selectedTrendDate()),
+  );
 
   return (
     <details
@@ -428,7 +520,7 @@ export function PublicAdminUsagePanel() {
         <span class="public-admin-section-copy">
           <span class="public-workspace-eyebrow">实时统计</span>
           <h2 id="public-admin-usage-title">HONE 使用统计</h2>
-          <p>按北京时间汇总最近 14 天网页、飞书及其它接入渠道；跨渠道未绑定的账号分别计数。</p>
+          <p>按北京时间汇总网页、飞书及其它接入渠道；可切换渠道和追溯周期，跨渠道未绑定的账号分别计数。</p>
         </span>
         <span class="public-admin-section-toggle-label" aria-hidden="true">
           <span class="when-open">收起</span>
@@ -451,12 +543,51 @@ export function PublicAdminUsagePanel() {
               <>
                 <div class="public-admin-usage-toolbar">
                   <label>
+                    <span>追溯范围</span>
+                    <select
+                      value={rangeDays()}
+                      onChange={(event) => {
+                        const days = Number(event.currentTarget.value) as PublicAdminUsageRangeDays;
+                        setRangeDays(days);
+                        setSelectedDate("all");
+                        setSelectedTrendDate("");
+                        void load(days);
+                      }}
+                    >
+                      <For each={PUBLIC_ADMIN_USAGE_RANGES}>
+                        {(days) => <option value={days}>最近 {days} 天</option>}
+                      </For>
+                    </select>
+                  </label>
+                  <label>
+                    <span>渠道分类</span>
+                    <select
+                      value={selectedChannel()}
+                      onChange={(event) => {
+                        setSelectedChannel(event.currentTarget.value);
+                        setSelectedTrendDate("");
+                      }}
+                    >
+                      <For each={PUBLIC_ADMIN_USAGE_CHANNELS}>
+                        {(channel) => (
+                          <option value={channel}>
+                            {channel === "all" ? "全部渠道" : formatUsageChannel(channel)}
+                          </option>
+                        )}
+                      </For>
+                    </select>
+                  </label>
+                  <label>
                     <span>统计日期</span>
                     <select
                       value={selectedDate()}
-                      onChange={(event) => setSelectedDate(event.currentTarget.value)}
+                      onChange={(event) => {
+                        const date = event.currentTarget.value;
+                        setSelectedDate(date);
+                        if (date !== "all") setSelectedTrendDate(date);
+                      }}
                     >
-                      <option value="all">最近 14 天</option>
+                      <option value="all">所选范围全部日期</option>
                       <For each={dates()}>
                         {(date) => <option value={date}>{formatUsageDate(date)}</option>}
                       </For>
@@ -483,7 +614,10 @@ export function PublicAdminUsagePanel() {
                   )}
                 </Show>
 
-                <div class="public-admin-trend-grid" aria-label="最近两周使用趋势">
+                <div
+                  class="public-admin-trend-grid"
+                  aria-label={`最近 ${current().period_days} 天使用趋势`}
+                >
                   <PublicAdminUsageTrendChart
                     points={trend()}
                     metric="active_users"
@@ -491,6 +625,8 @@ export function PublicAdminUsagePanel() {
                     description="当天至少提出 1 个真实问题的去重用户"
                     unit="人"
                     tone="users"
+                    selectedDate={selectedTrendDate()}
+                    onSelectDate={setSelectedTrendDate}
                   />
                   <PublicAdminUsageTrendChart
                     points={trend()}
@@ -499,8 +635,45 @@ export function PublicAdminUsagePanel() {
                     description="当天所有真实用户问题总数"
                     unit="个"
                     tone="questions"
+                    selectedDate={selectedTrendDate()}
+                    onSelectDate={setSelectedTrendDate}
                   />
                 </div>
+
+                <Show
+                  when={selectedTrendPoint()}
+                  fallback={
+                    <p class="public-admin-trend-hint">
+                      点击任一折线数据点，可查看该日期的精确横纵数字。
+                    </p>
+                  }
+                >
+                  {(point) => (
+                    <div class="public-admin-trend-detail" role="status">
+                      <dl>
+                        <div>
+                          <dt>日期（横轴）</dt>
+                          <dd>{formatUsageDate(point().date)}</dd>
+                        </div>
+                        <div>
+                          <dt>使用用户数</dt>
+                          <dd>{point().active_users} 人</dd>
+                        </div>
+                        <div>
+                          <dt>提问量</dt>
+                          <dd>{point().question_count} 个</dd>
+                        </div>
+                      </dl>
+                      <button
+                        type="button"
+                        class="public-admin-refresh"
+                        onClick={() => setSelectedDate(point().date)}
+                      >
+                        查看当天表格
+                      </button>
+                    </div>
+                  )}
+                </Show>
 
                 <Show
                   when={rows().length > 0}

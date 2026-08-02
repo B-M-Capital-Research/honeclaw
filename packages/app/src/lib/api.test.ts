@@ -194,6 +194,7 @@ describe("public administrator whitelist API", () => {
         new Response(
           JSON.stringify({
             generated_at: "2026-08-02T12:00:00+08:00",
+            period_days: 30,
             period_start: "2026-07-20",
             period_end: "2026-08-02",
             summary: {
@@ -213,9 +214,9 @@ describe("public administrator whitelist API", () => {
       );
     }) as typeof fetch;
 
-    const result = await getPublicAdminUsage();
+    const result = await getPublicAdminUsage(30);
 
-    expect(requestedUrl).toContain("/api/public/admin/usage");
+    expect(requestedUrl).toContain("/api/public/admin/usage?days=30");
     expect(requestedInit?.cache).toBe("no-store");
     expect(result.summary.today_question_count).toBe(5);
   });

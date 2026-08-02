@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, TimeZone};
+use serde::Deserialize;
 use serde_json::json;
 
 use hone_memory::cron_job::{CronJobExecutionRecord, ExecutionFilter};
@@ -24,8 +25,9 @@ use crate::types::{
 
 const ADMIN_ACTION_HEADER: &str = "x-hone-admin-action";
 const ADMIN_ACTION_HEADER_VALUE: &str = "whitelist";
-const USAGE_REPORT_DAYS: i64 = 14;
-const USAGE_EXECUTION_LIMIT: usize = 50_000;
+const DEFAULT_USAGE_REPORT_DAYS: i64 = 14;
+const ALLOWED_USAGE_REPORT_DAYS: [i64; 3] = [14, 30, 90];
+const USAGE_EXECUTION_LIMIT_PER_DAY: usize = 5_000;
 const USAGE_QUESTION_PREVIEW_CHARS: usize = 1_000;
 
 #[derive(Default)]
@@ -35,6 +37,18 @@ struct UsageAccumulator {
     delivered_push_count: u32,
     failed_delivery_count: u32,
     latest_activity_at: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct PublicAdminUsageQuery {
+    days: Option<i64>,
+}
+
+impl PublicAdminUsageQuery {
+    fn report_days(&self) -> Option<i64> {
+        let days = self.days.unwrap_or(DEFAULT_USAGE_REPORT_DAYS);
+        ALLOWED_USAGE_REPORT_DAYS.contains(&days).then_some(days)
+    }
 }
 
 pub(crate) async fn handle_list_invites(
@@ -245,15 +259,25 @@ pub(crate) async fn handle_disable_invite(
 
 pub(crate) async fn handle_usage_report(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<PublicAdminUsageQuery>,
     headers: HeaderMap,
 ) -> Response {
     let admin = match require_public_admin(&state, &headers) {
         Ok(admin) => admin,
         Err(response) => return response,
     };
+    let Some(report_days) = query.report_days() else {
+        return crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "统计周期仅支持 14、30 或 90 天",
+        );
+    };
     let now = hone_core::beijing_now();
-    let period_start_date = now.date_naive() - Duration::days(USAGE_REPORT_DAYS - 1);
+    let period_start_date = now.date_naive() - Duration::days(report_days - 1);
     let period_start = start_of_beijing_day(period_start_date, now.offset());
+    let execution_limit = usize::try_from(report_days)
+        .unwrap_or_default()
+        .saturating_mul(USAGE_EXECUTION_LIMIT_PER_DAY);
     let state_for_worker = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let sessions = state_for_worker.core.session_storage.list_sessions()?;
@@ -263,11 +287,22 @@ pub(crate) async fn handle_usage_report(
             .list_recent_executions(&ExecutionFilter {
                 since: Some(period_start.to_rfc3339()),
                 until: Some(now.to_rfc3339()),
-                limit: USAGE_EXECUTION_LIMIT,
+                limit: execution_limit,
                 ..ExecutionFilter::default()
             })?;
+        if executions.len() >= execution_limit {
+            return Err(hone_core::HoneError::Config(format!(
+                "public admin usage execution query reached safety limit {execution_limit}"
+            )));
+        }
         let users = state_for_worker.web_auth.list_invite_users()?;
-        Ok::<_, hone_core::HoneError>(build_usage_report(now, sessions, executions, users))
+        Ok::<_, hone_core::HoneError>(build_usage_report(
+            now,
+            report_days,
+            sessions,
+            executions,
+            users,
+        ))
     })
     .await;
 
@@ -275,6 +310,7 @@ pub(crate) async fn handle_usage_report(
         Ok(Ok(report)) => {
             tracing::info!(
                 admin_user_id = %admin.user_id,
+                report_days,
                 row_count = report.rows.len(),
                 today_questions = report.summary.today_question_count,
                 "public admin usage report loaded"
@@ -308,12 +344,13 @@ pub(crate) async fn handle_usage_report(
 
 fn build_usage_report(
     now: DateTime<FixedOffset>,
+    report_days: i64,
     sessions: Vec<Session>,
     executions: Vec<CronJobExecutionRecord>,
     users: Vec<WebInviteUser>,
 ) -> PublicAdminUsageReport {
     let today = now.date_naive();
-    let period_start_date = today - Duration::days(USAGE_REPORT_DAYS - 1);
+    let period_start_date = today - Duration::days(report_days - 1);
     let period_start = start_of_beijing_day(period_start_date, now.offset());
     let web_phone_numbers = users
         .into_iter()
@@ -427,6 +464,7 @@ fn build_usage_report(
     let summary = build_usage_summary(now, &report_rows);
     PublicAdminUsageReport {
         generated_at: now.to_rfc3339(),
+        period_days: u32::try_from(report_days).unwrap_or_default(),
         period_start: period_start_date.to_string(),
         period_end: today.to_string(),
         summary,
@@ -751,8 +789,9 @@ fn to_public_admin_mutation_invite(
 #[cfg(test)]
 mod tests {
     use super::{
-        ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, build_usage_report,
-        to_public_admin_mutation_invite, to_public_admin_summary, usage_user_is_automation,
+        ADMIN_ACTION_HEADER, ADMIN_ACTION_HEADER_VALUE, DEFAULT_USAGE_REPORT_DAYS,
+        PublicAdminUsageQuery, build_usage_report, to_public_admin_mutation_invite,
+        to_public_admin_summary, usage_user_is_automation,
     };
     use axum::http::{HeaderMap, HeaderValue};
     use chrono::DateTime;
@@ -926,6 +965,7 @@ mod tests {
         )];
         let report = build_usage_report(
             now,
+            DEFAULT_USAGE_REPORT_DAYS,
             sessions,
             vec![
                 usage_execution(
@@ -986,6 +1026,7 @@ mod tests {
         ];
         let report = build_usage_report(
             now,
+            DEFAULT_USAGE_REPORT_DAYS,
             sessions,
             vec![
                 usage_execution(
@@ -1022,6 +1063,7 @@ mod tests {
         };
         let report = build_usage_report(
             now,
+            DEFAULT_USAGE_REPORT_DAYS,
             vec![
                 usage_session_for("web", "shared-user", None, question("网页问题")),
                 usage_session_for("feishu", "shared-user", None, question("飞书问题")),
@@ -1106,6 +1148,7 @@ mod tests {
         alpha_invite.phone_number = "13871396421".to_string();
         let report = build_usage_report(
             now,
+            DEFAULT_USAGE_REPORT_DAYS,
             vec![alpha, beta],
             Vec::new(),
             vec![alpha_invite, invite("web-user-beta5678", false)],
@@ -1121,5 +1164,44 @@ mod tests {
         assert_eq!(report.summary.leading_decline_question_delta, 2);
         assert!(report.summary.text.contains("比上周同日少 1 人"));
         assert!(report.summary.text.contains("138****6421 本周使用频率降低"));
+    }
+
+    #[test]
+    fn usage_query_accepts_only_supported_report_ranges() {
+        assert_eq!(PublicAdminUsageQuery::default().report_days(), Some(14));
+        assert_eq!(
+            PublicAdminUsageQuery { days: Some(30) }.report_days(),
+            Some(30)
+        );
+        assert_eq!(
+            PublicAdminUsageQuery { days: Some(90) }.report_days(),
+            Some(90)
+        );
+        assert_eq!(PublicAdminUsageQuery { days: Some(7) }.report_days(), None);
+    }
+
+    #[test]
+    fn usage_report_uses_requested_period_instead_of_a_fixed_two_weeks() {
+        let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
+        let report = build_usage_report(
+            now,
+            30,
+            vec![usage_session(
+                "web-user-history",
+                vec![session_message_from_text(
+                    "user",
+                    "三周前的问题",
+                    "2026-07-12T10:00:00+08:00",
+                    None,
+                )],
+            )],
+            Vec::new(),
+            Vec::new(),
+        );
+
+        assert_eq!(report.period_days, 30);
+        assert_eq!(report.period_start, "2026-07-04");
+        assert_eq!(report.period_end, "2026-08-02");
+        assert_eq!(report.rows.len(), 1);
     }
 }

@@ -291,13 +291,25 @@
 .public-admin-trend-tick { stroke: #cfd3cd; stroke-width: 1; }
 .public-admin-trend-line { stroke: var(--trend-color); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .public-admin-trend-point { fill: #fff; stroke: var(--trend-color); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.public-admin-trend-point-target { cursor: pointer; outline: none; }
+.public-admin-trend-point-hitbox { fill: transparent; stroke: transparent; }
+.public-admin-trend-point-target:hover .public-admin-trend-point,
+.public-admin-trend-point-target:focus-visible .public-admin-trend-point,
+.public-admin-trend-point-target.is-selected .public-admin-trend-point { fill: var(--trend-color); stroke-width: 3; }
+.public-admin-trend-point-target:focus-visible .public-admin-trend-point-hitbox { stroke: var(--trend-color); stroke-dasharray: 2 2; stroke-width: 1; }
 .public-admin-trend-x-label,
 .public-admin-trend-y-label { fill: #9a9e98; font-size: 8px; }
-.public-admin-usage-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.public-admin-usage-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 12px; }
 .public-admin-usage-toolbar label { display: grid; gap: 5px; color: #777b76; font-size: 10px; font-weight: 650; }
 .public-admin-usage-toolbar select { min-width: 142px; min-height: 36px; padding: 0 30px 0 10px; border: 1px solid #dfe0dd; border-radius: 9px; background: #fff; color: #222522; font: inherit; font-size: 11px; }
 .public-admin-usage-toolbar small { color: #969994; font-size: 10px; text-align: right; }
-.public-admin-usage-actions { display: flex; align-items: center; gap: 10px; }
+.public-admin-usage-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.public-admin-trend-hint { margin: -4px 0 14px; color: #8b8f89; font-size: 10px; text-align: center; }
+.public-admin-trend-detail { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid #e1e5de; border-radius: 11px; background: #fafbf9; }
+.public-admin-trend-detail dl { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 0; }
+.public-admin-trend-detail dl > div { display: grid; gap: 2px; }
+.public-admin-trend-detail dt { color: #92968f; font-size: 9px; }
+.public-admin-trend-detail dd { margin: 0; color: #292d29; font-size: 12px; font-weight: 750; }
 .public-admin-usage-table-wrap { max-height: min(58vh, 540px); overflow: auto; }
 .public-admin-usage-table { min-width: 1000px; }
 .public-admin-usage-table thead { position: sticky; top: 0; z-index: 2; }
@@ -367,7 +379,9 @@
   .public-admin-usage-toolbar { align-items: stretch; flex-direction: column; }
   .public-admin-usage-toolbar label,
   .public-admin-usage-toolbar select { width: 100%; }
-  .public-admin-usage-actions { align-items: center; justify-content: space-between; }
+  .public-admin-usage-actions { align-items: center; justify-content: space-between; margin-left: 0; }
+  .public-admin-trend-detail { align-items: stretch; flex-direction: column; }
+  .public-admin-trend-detail .public-admin-refresh { width: 100%; }
   .public-admin-usage-toolbar small { text-align: left; }
   .public-admin-live-summary { padding: 14px; font-size: 13px; }
   .public-admin-trend-grid { display: grid; grid-auto-columns: minmax(310px, 86vw); grid-auto-flow: column; grid-template-columns: none; padding-bottom: 4px; overflow-x: auto; scroll-snap-type: x proximity; }
@@ -641,6 +655,11 @@
 [data-theme="dark"] .public-admin-trend-chart h3 { color: var(--workspace-ink); }
 [data-theme="dark"] .public-admin-trend-gridline { stroke: var(--workspace-line); }
 [data-theme="dark"] .public-admin-trend-point { fill: var(--workspace-panel); }
+[data-theme="dark"] .public-admin-trend-point-target:hover .public-admin-trend-point,
+[data-theme="dark"] .public-admin-trend-point-target:focus-visible .public-admin-trend-point,
+[data-theme="dark"] .public-admin-trend-point-target.is-selected .public-admin-trend-point { fill: var(--trend-color); }
+[data-theme="dark"] .public-admin-trend-detail { border-color: var(--workspace-line); background: var(--workspace-soft); }
+[data-theme="dark"] .public-admin-trend-detail dd { color: var(--workspace-ink); }
 [data-theme="dark"] .public-admin-question-cell ol { background: var(--workspace-soft); }
 [data-theme="dark"] .public-admin-usage-table td b { color: var(--workspace-ink); }
 [data-theme="dark"] .public-admin-channel { border-color: var(--workspace-line); background: var(--workspace-soft); color: var(--workspace-muted); }

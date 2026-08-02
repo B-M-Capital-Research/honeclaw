@@ -55,9 +55,12 @@ describe("public workspace page contract", () => {
     expect(css).toContain(".public-admin-live-summary");
     expect(css).toContain(".public-admin-table td::before");
     expect(adminUsage).toContain("<details");
-    expect(adminUsage).toContain("summarizePublicAdminUsage(current, selectedDate())");
+    expect(adminUsage).toContain("selectedChannel()");
+    expect(adminUsage).toContain("PUBLIC_ADMIN_USAGE_RANGES");
+    expect(adminUsage).toContain("PUBLIC_ADMIN_USAGE_CHANNELS");
     expect(adminUsage).toContain('title="每日使用用户数"');
     expect(adminUsage).toContain('title="每日提问量"');
+    expect(adminUsage).toContain("public-admin-trend-detail");
     expect(adminUsage).toContain("formatUsageChannel(row.channel)");
     expect(adminWhitelist).toContain("<details");
     expect(css).toContain(".public-admin-section-summary");

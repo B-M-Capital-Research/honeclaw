@@ -321,6 +321,7 @@ pub struct PublicAdminUsageSummary {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct PublicAdminUsageReport {
     pub generated_at: String,
+    pub period_days: u32,
     pub period_start: String,
     pub period_end: String,
     pub summary: PublicAdminUsageSummary,

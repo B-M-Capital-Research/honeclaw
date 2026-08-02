@@ -259,6 +259,7 @@ export type PublicAdminUsageRow = {
 
 export type PublicAdminUsageReport = {
   generated_at: string;
+  period_days: number;
   period_start: string;
   period_end: string;
   summary: {

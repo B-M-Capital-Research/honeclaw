@@ -36,6 +36,7 @@ function row(
 function report(rows: PublicAdminUsageRow[]): PublicAdminUsageReport {
   return {
     generated_at: "2026-08-02T12:00:00+08:00",
+    period_days: 14,
     period_start: "2026-07-20",
     period_end: "2026-08-02",
     summary: {
@@ -87,6 +88,37 @@ describe("public admin usage panel", () => {
     ]);
   });
 
+  it("filters rows by channel and date with one shared scope", () => {
+    const mixedRows = [
+      row("2026-08-01", "u1", 2, 0, "网页用户", "web"),
+      row("2026-08-01", "u2", 3, 0, "飞书用户", "feishu"),
+      row("2026-08-02", "u3", 4, 0, "飞书用户二", "feishu"),
+    ];
+
+    expect(filterPublicAdminUsageRows(mixedRows, "all", "feishu")).toHaveLength(2);
+    expect(
+      filterPublicAdminUsageRows(mixedRows, "2026-08-01", "feishu").map(
+        (item) => item.user_id,
+      ),
+    ).toEqual(["u2"]);
+  });
+
+  it("uses the backend period for longer zero-filled trends and date options", () => {
+    const usage = {
+      ...report([row("2026-07-04", "u1", 2)]),
+      period_days: 30,
+      period_start: "2026-07-04",
+    };
+
+    expect(publicAdminUsageDates(usage)).toHaveLength(30);
+    expect(publicAdminUsageTrend(usage)).toHaveLength(30);
+    expect(publicAdminUsageTrend(usage)[0]).toEqual({
+      date: "2026-07-04",
+      active_users: 1,
+      question_count: 2,
+    });
+  });
+
   it("builds one shared 14-day trend with zero-filled dates and daily user deduplication", () => {
     const trend = publicAdminUsageTrend(
       report([
@@ -129,6 +161,14 @@ describe("public admin usage panel", () => {
       question_count: 5,
     });
     expect(summarizePublicAdminUsage(usage, "2026-08-02").active_users).toBe(2);
+    expect(publicAdminUsageTrend(usage, "feishu").at(-1)).toEqual({
+      date: "2026-08-02",
+      active_users: 1,
+      question_count: 3,
+    });
+    expect(
+      summarizePublicAdminUsage(usage, "2026-08-02", "feishu").text,
+    ).toContain("飞书 HONE 使用人数 1 人");
   });
 
   it("recomputes the top summary for the selected date and its prior-week comparison", () => {
@@ -164,6 +204,23 @@ describe("public admin usage panel", () => {
     expect(summary.comparison_user_change).toBe(-1);
     expect(summary.text).toContain("最近 14 天");
     expect(summary.text).toContain("最近 7 天比前 7 天少 1 人");
+  });
+
+  it("does not widen the previous-seven-day comparison in a 30-day report", () => {
+    const usage = {
+      ...report([
+        row("2026-07-05", "old-user", 8),
+        row("2026-07-26", "previous-user", 2),
+        row("2026-08-02", "current-user", 1),
+      ]),
+      period_days: 30,
+      period_start: "2026-07-04",
+    };
+
+    const summary = summarizePublicAdminUsage(usage, "all");
+
+    expect(summary.comparison_user_change).toBe(0);
+    expect(summary.text).toContain("最近 7 天比前 7 天持平");
   });
 
   it("does not turn a prior-week date outside the report window into a zero baseline", () => {

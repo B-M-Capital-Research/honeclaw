@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-02
-状态：有 9 个活跃任务
+最后更新：2026-08-03
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public Admin Usage 数据探索与统一上线**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-admin-usage-exploration.md`
+  - 摘要：把管理员统计扩展为统一口径的数据探索页，增加渠道分类、14/30/90 天追溯和可点击折线精确数值；补齐长周期查询容量、筛选联动、回归测试和精确 revision 的前后端统一生产更新
 
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`
