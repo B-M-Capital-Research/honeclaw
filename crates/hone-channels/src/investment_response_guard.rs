@@ -2919,13 +2919,26 @@ async fn run_pre_turn_enrichment(
             json!({"data_type": "search", "query": candidate}),
         )
     });
+    // The identity search and the market-data call are two sequential provider
+    // round-trips, and the second one usually asks for the symbol the user
+    // already typed. Speculate on the first candidate in the same batch: when
+    // the registry confirms it resolves to itself the whole second round is
+    // saved, and when it does not the speculative result is simply discarded.
+    let speculative_symbol = candidates.first().cloned();
+    let speculative_snapshot = speculative_symbol.clone().map(|symbol| {
+        registry.execute_tool(
+            "data_fetch",
+            json!({"data_type": "snapshot", "ticker": symbol}),
+        )
+    });
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
-        let (web, identities) = futures::future::join(
+        let (web, identities, mut speculative) = futures::future::join3(
             registry.execute_tool(
                 "web_search",
                 json!({"query": web_query, "time_range": "week"}),
             ),
             futures::future::join_all(identity_lookups),
+            futures::future::OptionFuture::from(speculative_snapshot),
         )
         .await;
 
@@ -2944,13 +2957,40 @@ async fn run_pre_turn_enrichment(
                 Some((candidate.clone(), symbol.to_string()))
             })
             .collect::<Vec<_>>();
-        let snapshots = futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+
+        // Reuse the speculative result only when the registry resolved that
+        // exact candidate to itself; a different symbol must never be answered
+        // with market data fetched for the user's raw token.
+        let mut snapshots = Vec::with_capacity(resolved.len());
+        let mut pending = Vec::new();
+        for (index, (candidate, symbol)) in resolved.iter().enumerate() {
+            let speculation_hit = speculative_symbol.as_deref().is_some_and(|speculated| {
+                speculated == candidate.as_str()
+                    && hone_core::provider_symbols_equivalent(speculated, symbol)
+            });
+            // At most one candidate can match the single speculation, so the
+            // result is moved out rather than shared.
+            if speculation_hit && speculative.is_some() {
+                snapshots.push((index, speculative.take()));
+            } else {
+                pending.push((index, symbol.clone()));
+            }
+        }
+        let fetched = futures::future::join_all(pending.iter().map(|(_, symbol)| {
             registry.execute_tool(
                 "data_fetch",
                 json!({"data_type": "snapshot", "ticker": symbol}),
             )
         }))
         .await;
+        for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
+            snapshots.push((index, Some(value)));
+        }
+        snapshots.sort_by_key(|(index, _)| *index);
+        let snapshots = snapshots
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect::<Vec<_>>();
         (web, identities, resolved, snapshots)
     })
     .await;
@@ -2986,7 +3026,11 @@ async fn run_pre_turn_enrichment(
         }
     }
     for ((_, symbol), snapshot) in resolved.iter().zip(snapshots.iter()) {
-        if let Some(value) = snapshot.as_ref().ok().filter(|v| !value_has_error(v)) {
+        if let Some(value) = snapshot
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .filter(|v| !value_has_error(v))
+        {
             calls += 1;
             sections.push(format!(
                 "- `data_fetch(snapshot, ticker={symbol:?})` →\n{}",

@@ -897,7 +897,25 @@ fn make_strict_tool_loop_test_core_with_config(
     Arc::new(core)
 }
 
-fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::JoinHandle<()>) {
+/// A stub that stays up until the test releases it. It used to stop accepting
+/// once every route had been served once, which was fine while the Agent was
+/// the only caller. The service now runs its own pre-turn evidence pass, so
+/// those first requests would retire the routes and leave the Agent talking to
+/// a closed listener.
+struct FmpRouteStub {
+    shutdown: Arc<std::sync::atomic::AtomicBool>,
+    handle: std::thread::JoinHandle<()>,
+}
+
+impl FmpRouteStub {
+    fn join(self) -> std::thread::Result<()> {
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.handle.join()
+    }
+}
+
+fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, FmpRouteStub) {
     use std::collections::HashSet;
     use std::net::TcpListener;
     use std::sync::Mutex;
@@ -911,6 +929,8 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
         .set_nonblocking(true)
         .expect("set FMP stub nonblocking");
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
+    let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stub_shutdown = shutdown.clone();
     let handle = std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -922,11 +942,10 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
             ready_tx.send(()).expect("signal FMP stub ready");
             let routes = Arc::new(routes);
             let served_routes = Arc::new(Mutex::new(HashSet::new()));
-            let served_count = Arc::new(AtomicUsize::new(0));
             let mut handlers = tokio::task::JoinSet::new();
             let deadline = Instant::now() + Duration::from_secs(15);
 
-            while served_count.load(Ordering::SeqCst) < routes.len() && Instant::now() < deadline {
+            while !stub_shutdown.load(Ordering::SeqCst) && Instant::now() < deadline {
                 let Ok(accepted) =
                     tokio::time::timeout(Duration::from_millis(100), listener.accept()).await
                 else {
@@ -935,7 +954,6 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
                 let (mut stream, _) = accepted.expect("accept FMP stub request");
                 let routes = routes.clone();
                 let served_routes = served_routes.clone();
-                let served_count = served_count.clone();
                 handlers.spawn(async move {
                     let mut request = Vec::new();
                     loop {
@@ -968,9 +986,14 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
                     let matched = routes
                         .iter()
                         .enumerate()
-                        .find(|(_, (needle, _))| request.contains(needle))
-                        .map(|(index, (_, value))| (Some(index), value));
-                    let (route_index, value) = matched.unwrap_or((None, &empty));
+                        .find(|(_, (needle, _))| request.contains(needle));
+                    if let Some((index, _)) = matched {
+                        served_routes
+                            .lock()
+                            .expect("lock served routes")
+                            .insert(index);
+                    }
+                    let value = matched.map(|(_, (_, value))| value).unwrap_or(&empty);
                     let body = value.to_string();
                     let response = format!(
                         "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
@@ -982,13 +1005,6 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
                         .await
                         .expect("write FMP stub response");
                     stream.shutdown().await.expect("shutdown FMP stub response");
-                    if let Some(route_index) = route_index {
-                        let mut served_routes =
-                            served_routes.lock().expect("lock served routes");
-                        if served_routes.insert(route_index) {
-                            served_count.fetch_add(1, Ordering::SeqCst);
-                        }
-                    }
                 });
             }
 
@@ -1009,7 +1025,10 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
         });
     });
     ready_rx.recv().expect("wait for FMP stub ready");
-    (format!("http://{address}/api"), handle)
+    (
+        format!("http://{address}/api"),
+        FmpRouteStub { shutdown, handle },
+    )
 }
 
 #[cfg(unix)]
@@ -7227,6 +7246,76 @@ async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
     // No auxiliary model is involved in enrichment.
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The speculative first-batch snapshot saves a provider round-trip only when
+/// the registry resolves a candidate to itself. When it resolves to a different
+/// symbol the speculation must be discarded: answering with market data fetched
+/// for the user's raw token would attach the wrong company's quote.
+#[tokio::test]
+async fn speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere() {
+    let root = make_temp_dir("hone_channels_preturn_speculation_miss");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        // The typed token resolves to a different listed symbol.
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS.AS",
+                "name": "Nebius Group N.V. Amsterdam",
+                "exchangeShortName": "AMS"
+            }]),
+        ),
+        (
+            "/quote/NBIS.AS".to_string(),
+            serde_json::json!([{"symbol": "NBIS.AS", "price": 64.2, "exchange": "AMS"}]),
+        ),
+        (
+            "/profile/NBIS.AS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS.AS",
+                "companyName": "Nebius Group N.V. Amsterdam",
+                "exchangeShortName": "AMS",
+                "isActivelyTrading": true
+            }]),
+        ),
+        // The speculative call for the raw token returns a decoy that must not
+        // be presented as this turn's market data.
+        (
+            "/quote/NBIS".to_string(),
+            serde_json::json!([{"symbol": "NBIS", "price": 999.99, "exchange": "DECOY"}]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-miss", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-miss",
+        false,
+        "nbis最近怎么看",
+        AgentTurnOrigin::Interactive,
+        "2026-07-19 09:31",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // Market data must be attributed to the symbol the registry actually
+    // resolved, and the decoy price must not appear anywhere.
+    assert!(runtime_input.contains("data_fetch(snapshot, ticker=\"NBIS.AS\")"));
+    assert!(!runtime_input.contains("data_fetch(snapshot, ticker=\"NBIS\")"));
+    assert!(!runtime_input.contains("999.99"), "{runtime_input}");
     fmp_stub.join().expect("join FMP stub");
     let _ = std::fs::remove_dir_all(root);
 }
