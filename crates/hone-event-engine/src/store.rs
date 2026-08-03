@@ -6,6 +6,9 @@
 //! - `engine_meta (key PK, value)` — 存 `baseline_at_ts` 等单例标量
 //! - `delivery_log (rowid AUTOINCREMENT, event_id, actor, channel, severity,
 //!                  sent_at_ts, status, body)` — **append-only** 推送审计
+//! - `delivered_push_context (delivery_log_id UNIQUE, actor, source_id,
+//!                  delivered_at_ms, body, claim/consume state)` — 下一轮 Agent
+//!                  一次性上下文领取状态；只由显式“确认送达”写入创建
 //!
 //! 幂等语义：`insert_event` 使用 `INSERT OR IGNORE`；同 id 只落一次。
 //! baseline：首次打开 DB 时写入 `baseline_at_ts = now`，之后读取；低于 baseline
@@ -19,10 +22,14 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
+use hone_core::ActorIdentity;
 use rusqlite::types::Value as SqlValue;
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use rusqlite::{
+    Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
+};
 
 use crate::event::MarketEvent;
 
@@ -63,12 +70,29 @@ pub struct DeliveryLogRecord {
     pub event_symbols: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeliveredPushContextRecord {
+    pub delivery_log_id: i64,
+    pub source_id: String,
+    pub delivered_at_ms: i64,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeliveredPushContextClaim {
+    pub records: Vec<DeliveredPushContextRecord>,
+    pub remaining_count: usize,
+}
+
 impl EventStore {
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         if let Some(parent) = path.as_ref().parent() {
             std::fs::create_dir_all(parent).ok();
         }
         let conn = Connection::open(path)?;
+        // event-engine 与 channel runtime 会各自打开同一 SQLite。短暂写竞争应
+        // 等待而不是立即丢失已确认送达记录；更长的阻塞仍返回错误交给调用方。
+        conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS events (
@@ -108,6 +132,24 @@ impl EventStore {
                 ON delivery_log(event_id, actor, sent_at_ts);
             CREATE INDEX IF NOT EXISTS idx_delivery_sent_at
                 ON delivery_log(sent_at_ts);
+
+            CREATE TABLE IF NOT EXISTS delivered_push_context (
+                delivery_log_id    INTEGER PRIMARY KEY,
+                actor              TEXT NOT NULL,
+                source_id          TEXT NOT NULL,
+                delivered_at_ms    INTEGER NOT NULL,
+                body               TEXT NOT NULL,
+                observed_native_session_id TEXT,
+                claimed_turn_id    TEXT,
+                claim_expires_at_ms INTEGER,
+                consumed_turn_id   TEXT,
+                consumed_at_ms     INTEGER,
+                UNIQUE(actor, source_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_delivered_push_context_pending
+                ON delivered_push_context(
+                    actor, consumed_at_ms, delivered_at_ms, delivery_log_id
+                );
             "#,
         )?;
         let store = Self {
@@ -221,11 +263,17 @@ impl EventStore {
 
     pub fn purge_delivery_log_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
-        let conn = self.conn.lock().unwrap();
-        let deleted_count = conn.execute(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM delivered_push_context WHERE delivered_at_ms < ?1",
+            params![cutoff.saturating_mul(1000)],
+        )?;
+        let deleted_count = tx.execute(
             "DELETE FROM delivery_log WHERE sent_at_ts < ?1",
             params![cutoff],
         )?;
+        tx.commit()?;
         Ok(deleted_count)
     }
 
@@ -1069,6 +1117,264 @@ impl EventStore {
         Ok(())
     }
 
+    /// 原子记录一条已经获得渠道确认、且应该在用户下一轮进入 Agent 上下文的
+    /// 主动推送。普通 [`Self::log_delivery`] 即使 status 写成 `sent` 也只做审计，
+    /// 不会隐式进入上下文，避免审计字符串意外改变会话语义。
+    ///
+    /// `observed_native_session_id` 表示生成这条文本的原生 Agent session 已经
+    /// 观察过内容；下一次仍使用同一 native session 时只推进消费位点，不重复
+    /// 注入。Replay 或其它 session 仍会领取。
+    pub fn log_confirmed_delivery(
+        &self,
+        event_id: &str,
+        actor: &ActorIdentity,
+        channel: &str,
+        severity: crate::event::Severity,
+        body: &str,
+        observed_native_session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(!body.trim().is_empty(), "确认送达的正文不能为空");
+        let actor = delivery_actor_key(actor);
+        let now = Utc::now();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            r#"
+            INSERT INTO delivery_log
+              (event_id, actor, channel, severity, sent_at_ts, status, body)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+            params![
+                event_id,
+                actor,
+                channel,
+                severity_tag(&severity),
+                now.timestamp(),
+                "sent",
+                body,
+            ],
+        )?;
+        let delivery_log_id = tx.last_insert_rowid();
+        // `(actor, source_id)` 是用户真正看到的一次业务推送的幂等键。
+        // delivery_log 仍完整保留所有 retry attempt；上下文只保留首次成功
+        // 送达，避免同一事件因 transport retry 在下一轮被重复注入。
+        tx.execute(
+            r#"
+            INSERT OR IGNORE INTO delivered_push_context (
+                delivery_log_id, actor, source_id, delivered_at_ms, body,
+                observed_native_session_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+            params![
+                delivery_log_id,
+                actor,
+                event_id,
+                now.timestamp_millis(),
+                body,
+                observed_native_session_id,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 为一个交互 turn 原子领取“在用户消息到达前已经送达”的推送。
+    ///
+    /// - 同一 `turn_id` 重入时返回同一批，保证 runner 内部 retry 稳定；
+    /// - 过期 claim 可被后续 turn 重新领取，避免进程崩溃永久丢消息；
+    /// - 成功/失败由调用方分别 `complete` / `release`；
+    /// - 只读取 `log_delivery` 写入新表后的记录，不回填升级前历史。
+    pub fn claim_delivered_push_context(
+        &self,
+        actor: &ActorIdentity,
+        turn_id: &str,
+        delivered_before_ms: i64,
+        max_records: usize,
+        max_body_chars: usize,
+        lease_ms: i64,
+    ) -> anyhow::Result<DeliveredPushContextClaim> {
+        self.claim_delivered_push_context_with_native_observation(
+            actor,
+            turn_id,
+            delivered_before_ms,
+            max_records,
+            max_body_chars,
+            lease_ms,
+            None,
+        )
+    }
+
+    pub fn claim_delivered_push_context_with_native_observation(
+        &self,
+        actor: &ActorIdentity,
+        turn_id: &str,
+        delivered_before_ms: i64,
+        max_records: usize,
+        max_body_chars: usize,
+        lease_ms: i64,
+        consumer_native_session_id: Option<&str>,
+    ) -> anyhow::Result<DeliveredPushContextClaim> {
+        let actor = delivery_actor_key(actor);
+        let max_records = max_records.clamp(1, 100);
+        let now_ms = Utc::now().timestamp_millis();
+        let claim_expires_at_ms = now_ms.saturating_add(lease_ms.max(1));
+        let mut conn = self.conn.lock().unwrap();
+        // 跨进程 claimant 先抢写锁，再读取/标记批次，避免两个 runtime 在
+        // deferred transaction 的读写升级窗口里同时选中同一条推送。
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let existing = load_claimed_push_context(&tx, &actor, turn_id)?;
+        if !existing.is_empty() {
+            let remaining_count = count_pending_push_context(
+                &tx,
+                &actor,
+                delivered_before_ms,
+                now_ms,
+                Some(turn_id),
+            )?;
+            tx.commit()?;
+            return Ok(DeliveredPushContextClaim {
+                records: existing,
+                remaining_count,
+            });
+        }
+
+        tx.execute(
+            r#"
+            UPDATE delivered_push_context
+            SET claimed_turn_id = NULL, claim_expires_at_ms = NULL
+            WHERE actor = ?1
+              AND consumed_at_ms IS NULL
+              AND claim_expires_at_ms IS NOT NULL
+              AND claim_expires_at_ms <= ?2
+            "#,
+            params![actor, now_ms],
+        )?;
+
+        if let Some(native_session_id) = consumer_native_session_id {
+            // 这些推送已经作为 scheduler turn 的 assistant 输出存在于同一
+            // 原生上游线程。用户下一轮到达时只推进本地消费位点，避免把同一
+            // 文本再作为新的 user prompt 事实重复一次。
+            tx.execute(
+                r#"
+                UPDATE delivered_push_context
+                SET consumed_turn_id = ?3,
+                    consumed_at_ms = ?4,
+                    claimed_turn_id = NULL,
+                    claim_expires_at_ms = NULL
+                WHERE actor = ?1
+                  AND observed_native_session_id = ?2
+                  AND delivered_at_ms <= ?5
+                  AND consumed_at_ms IS NULL
+                  AND claimed_turn_id IS NULL
+                "#,
+                params![
+                    actor,
+                    native_session_id,
+                    turn_id,
+                    now_ms,
+                    delivered_before_ms,
+                ],
+            )?;
+        }
+
+        let ids = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT delivery_log_id, body
+                FROM delivered_push_context
+                WHERE actor = ?1
+                  AND consumed_at_ms IS NULL
+                  AND claimed_turn_id IS NULL
+                  AND delivered_at_ms <= ?2
+                ORDER BY delivered_at_ms ASC, delivery_log_id ASC
+                LIMIT ?3
+                "#,
+            )?;
+            let candidates = stmt
+                .query_map(
+                    params![actor, delivered_before_ms, max_records as i64],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut selected = Vec::with_capacity(candidates.len());
+            let mut selected_chars = 0usize;
+            for (delivery_log_id, body) in candidates {
+                let body_chars = body.chars().count();
+                if !selected.is_empty()
+                    && selected_chars.saturating_add(body_chars) > max_body_chars.max(1)
+                {
+                    break;
+                }
+                selected.push(delivery_log_id);
+                selected_chars = selected_chars.saturating_add(body_chars);
+            }
+            selected
+        };
+        for delivery_log_id in ids {
+            tx.execute(
+                r#"
+                UPDATE delivered_push_context
+                SET claimed_turn_id = ?2, claim_expires_at_ms = ?3
+                WHERE delivery_log_id = ?1
+                  AND consumed_at_ms IS NULL
+                  AND claimed_turn_id IS NULL
+                "#,
+                params![delivery_log_id, turn_id, claim_expires_at_ms],
+            )?;
+        }
+
+        let records = load_claimed_push_context(&tx, &actor, turn_id)?;
+        let remaining_count =
+            count_pending_push_context(&tx, &actor, delivered_before_ms, now_ms, Some(turn_id))?;
+        tx.commit()?;
+        Ok(DeliveredPushContextClaim {
+            records,
+            remaining_count,
+        })
+    }
+
+    pub fn complete_delivered_push_context(
+        &self,
+        actor: &ActorIdentity,
+        turn_id: &str,
+    ) -> anyhow::Result<usize> {
+        let actor = delivery_actor_key(actor);
+        let conn = self.conn.lock().unwrap();
+        Ok(conn.execute(
+            r#"
+            UPDATE delivered_push_context
+            SET consumed_turn_id = ?2,
+                consumed_at_ms = ?3,
+                claimed_turn_id = NULL,
+                claim_expires_at_ms = NULL
+            WHERE actor = ?1
+              AND claimed_turn_id = ?2
+              AND consumed_at_ms IS NULL
+            "#,
+            params![actor, turn_id, Utc::now().timestamp_millis()],
+        )?)
+    }
+
+    pub fn release_delivered_push_context(
+        &self,
+        actor: &ActorIdentity,
+        turn_id: &str,
+    ) -> anyhow::Result<usize> {
+        let actor = delivery_actor_key(actor);
+        let conn = self.conn.lock().unwrap();
+        Ok(conn.execute(
+            r#"
+            UPDATE delivered_push_context
+            SET claimed_turn_id = NULL, claim_expires_at_ms = NULL
+            WHERE actor = ?1
+              AND claimed_turn_id = ?2
+              AND consumed_at_ms IS NULL
+            "#,
+            params![actor, turn_id],
+        )?)
+    }
+
     pub fn list_recent_delivery_logs(
         &self,
         filter: &DeliveryLogFilter,
@@ -1223,6 +1529,68 @@ fn severity_tag(severity: &crate::event::Severity) -> &'static str {
     }
 }
 
+fn delivery_actor_key(actor: &ActorIdentity) -> String {
+    format!(
+        "{}::{}::{}",
+        actor.channel,
+        actor.channel_scope.as_deref().unwrap_or_default(),
+        actor.user_id
+    )
+}
+
+fn load_claimed_push_context(
+    tx: &Transaction<'_>,
+    actor: &str,
+    turn_id: &str,
+) -> anyhow::Result<Vec<DeliveredPushContextRecord>> {
+    let mut stmt = tx.prepare(
+        r#"
+        SELECT delivery_log_id, source_id, delivered_at_ms, body
+        FROM delivered_push_context
+        WHERE actor = ?1
+          AND claimed_turn_id = ?2
+          AND consumed_at_ms IS NULL
+        ORDER BY delivered_at_ms ASC, delivery_log_id ASC
+        "#,
+    )?;
+    Ok(stmt
+        .query_map(params![actor, turn_id], |row| {
+            Ok(DeliveredPushContextRecord {
+                delivery_log_id: row.get(0)?,
+                source_id: row.get(1)?,
+                delivered_at_ms: row.get(2)?,
+                body: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn count_pending_push_context(
+    tx: &Transaction<'_>,
+    actor: &str,
+    delivered_before_ms: i64,
+    now_ms: i64,
+    excluded_turn_id: Option<&str>,
+) -> anyhow::Result<usize> {
+    let count: i64 = tx.query_row(
+        r#"
+        SELECT COUNT(*)
+        FROM delivered_push_context
+        WHERE actor = ?1
+          AND consumed_at_ms IS NULL
+          AND delivered_at_ms <= ?2
+          AND (
+                claimed_turn_id IS NULL
+                OR claim_expires_at_ms <= ?3
+              )
+          AND (?4 IS NULL OR claimed_turn_id IS NULL OR claimed_turn_id <> ?4)
+        "#,
+        params![actor, delivered_before_ms, now_ms, excluded_turn_id],
+        |row| row.get(0),
+    )?;
+    Ok(usize::try_from(count).unwrap_or(usize::MAX))
+}
+
 fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
     match category {
         "price" => Some(&["price_alert", "weekly52_high", "weekly52_low"]),
@@ -1357,6 +1725,316 @@ mod tests {
             )
             .unwrap();
         assert_eq!(last_status, "sent");
+    }
+
+    #[test]
+    fn delivered_push_context_claims_only_explicit_confirmations_in_delivery_order() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = ActorIdentity::new("discord", "u1", Some("dm-1")).unwrap();
+        let other_scope = ActorIdentity::new("discord", "u1", Some("room-2")).unwrap();
+        let actor_key = delivery_actor_key(&actor);
+
+        store
+            .log_delivery(
+                "failed",
+                &actor_key,
+                "sink",
+                Severity::High,
+                "failed",
+                Some("FAILED"),
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "queued",
+                &actor_key,
+                "digest",
+                Severity::Medium,
+                "queued",
+                Some("QUEUED"),
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "dryrun",
+                &actor_key,
+                "sink",
+                Severity::High,
+                "dryrun",
+                Some("DRYRUN"),
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "blank",
+                &actor_key,
+                "sink",
+                Severity::High,
+                "sent",
+                Some("  \n"),
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "audit-only-sent",
+                &actor_key,
+                "sink",
+                Severity::High,
+                "sent",
+                Some("AUDIT ONLY"),
+            )
+            .unwrap();
+        for (source, body) in [("p1", "P1"), ("p2", "P2"), ("p3", "P3")] {
+            store
+                .log_confirmed_delivery(source, &actor, "sink", Severity::High, body, None)
+                .unwrap();
+        }
+        // delivery_log 保留 retry attempt；上下文按业务 source id 去重。
+        store
+            .log_confirmed_delivery("p1", &actor, "sink", Severity::High, "P1 DUPLICATE", None)
+            .unwrap();
+        store
+            .log_confirmed_delivery(
+                "other",
+                &other_scope,
+                "sink",
+                Severity::High,
+                "OTHER SCOPE",
+                None,
+            )
+            .unwrap();
+
+        let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
+        let first = store
+            .claim_delivered_push_context(&actor, "turn-1", cutoff, 2, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(
+            first
+                .records
+                .iter()
+                .map(|record| record.body.as_str())
+                .collect::<Vec<_>>(),
+            vec!["P1", "P2"]
+        );
+        assert_eq!(first.remaining_count, 1);
+
+        // 同一 turn 重入必须返回相同批次，不能把 P3 偷塞进内部 retry。
+        let reentered = store
+            .claim_delivered_push_context(&actor, "turn-1", cutoff, 20, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(reentered.records, first.records);
+        assert_eq!(reentered.remaining_count, 1);
+
+        assert_eq!(
+            store
+                .complete_delivered_push_context(&actor, "turn-1")
+                .unwrap(),
+            2
+        );
+        let second = store
+            .claim_delivered_push_context(&actor, "turn-2", cutoff, 20, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(second.records.len(), 1);
+        assert_eq!(second.records[0].body, "P3");
+        assert_eq!(second.remaining_count, 0);
+
+        assert_eq!(
+            store
+                .release_delivered_push_context(&actor, "turn-2")
+                .unwrap(),
+            1
+        );
+        let reclaimed = store
+            .claim_delivered_push_context(&actor, "turn-3", cutoff, 20, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(reclaimed.records[0].body, "P3");
+        store
+            .complete_delivered_push_context(&actor, "turn-3")
+            .unwrap();
+        assert!(
+            store
+                .claim_delivered_push_context(&actor, "turn-4", cutoff, 20, 12_000, 60_000)
+                .unwrap()
+                .records
+                .is_empty()
+        );
+
+        let other = store
+            .claim_delivered_push_context(&other_scope, "turn-other", cutoff, 20, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(other.records[0].body, "OTHER SCOPE");
+    }
+
+    #[test]
+    fn delivered_push_after_user_cutoff_waits_for_next_turn() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = ActorIdentity::new("telegram", "u1", None::<String>).unwrap();
+        store
+            .log_confirmed_delivery(
+                "future-push",
+                &actor,
+                "sink",
+                Severity::High,
+                "PUSH AFTER U1",
+                None,
+            )
+            .unwrap();
+        let user_cutoff = Utc::now().timestamp_millis();
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE delivered_push_context SET delivered_at_ms = ?1 WHERE source_id = 'future-push'",
+                params![user_cutoff + 1],
+            )
+            .unwrap();
+        }
+
+        assert!(
+            store
+                .claim_delivered_push_context(&actor, "u1", user_cutoff, 20, 12_000, 60_000)
+                .unwrap()
+                .records
+                .is_empty()
+        );
+        let next = store
+            .claim_delivered_push_context(&actor, "u2", user_cutoff + 1, 20, 12_000, 60_000)
+            .unwrap();
+        assert_eq!(next.records[0].body, "PUSH AFTER U1");
+    }
+
+    #[test]
+    fn delivered_push_context_crosses_store_connections_and_respects_body_budget() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        let writer = EventStore::open(&path).unwrap();
+        let reader = EventStore::open(&path).unwrap();
+        let actor = ActorIdentity::new("web", "u1", Some("chat-1")).unwrap();
+
+        for (source, body) in [("p1", "123456"), ("p2", "abcdef")] {
+            writer
+                .log_confirmed_delivery(source, &actor, "sink", Severity::Medium, body, None)
+                .unwrap();
+        }
+
+        let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
+        let first = reader
+            .claim_delivered_push_context(&actor, "u1", cutoff, 20, 8, 60_000)
+            .unwrap();
+        assert_eq!(first.records.len(), 1);
+        assert_eq!(first.records[0].body, "123456");
+        assert_eq!(first.remaining_count, 1);
+
+        reader
+            .complete_delivered_push_context(&actor, "u1")
+            .unwrap();
+        let second = writer
+            .claim_delivered_push_context(&actor, "u2", cutoff, 20, 8, 60_000)
+            .unwrap();
+        assert_eq!(second.records[0].body, "abcdef");
+        assert_eq!(second.remaining_count, 0);
+    }
+
+    #[test]
+    fn native_session_observation_skips_duplicate_but_replay_still_claims() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let native_actor = ActorIdentity::new("cli", "native", None::<String>).unwrap();
+        let replay_actor = ActorIdentity::new("web", "replay", None::<String>).unwrap();
+        store
+            .log_confirmed_delivery(
+                "scheduled:native",
+                &native_actor,
+                "scheduler",
+                Severity::Medium,
+                "NATIVE ALREADY SAW THIS",
+                Some(&native_actor.session_id()),
+            )
+            .unwrap();
+        store
+            .log_confirmed_delivery(
+                "scheduled:replay",
+                &replay_actor,
+                "scheduler",
+                Severity::Medium,
+                "REPLAY NEEDS THIS",
+                Some(&replay_actor.session_id()),
+            )
+            .unwrap();
+        let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
+
+        let native = store
+            .claim_delivered_push_context_with_native_observation(
+                &native_actor,
+                "native-next-turn",
+                cutoff,
+                20,
+                12_000,
+                60_000,
+                Some(&native_actor.session_id()),
+            )
+            .unwrap();
+        assert!(native.records.is_empty());
+
+        let replay = store
+            .claim_delivered_push_context(
+                &replay_actor,
+                "replay-next-turn",
+                cutoff,
+                20,
+                12_000,
+                60_000,
+            )
+            .unwrap();
+        assert_eq!(replay.records.len(), 1);
+        assert_eq!(replay.records[0].body, "REPLAY NEEDS THIS");
+    }
+
+    #[test]
+    fn opening_an_old_delivery_log_does_not_backfill_historical_context() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                r#"
+                CREATE TABLE delivery_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    sent_at_ts INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    body TEXT
+                );
+                INSERT INTO delivery_log (
+                    event_id, actor, channel, severity, sent_at_ts, status, body
+                ) VALUES (
+                    'historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH'
+                );
+                "#,
+            )
+            .unwrap();
+        }
+
+        let store = EventStore::open(&path).unwrap();
+        let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
+        assert!(
+            store
+                .claim_delivered_push_context(
+                    &actor,
+                    "new-turn",
+                    Utc::now().timestamp_millis(),
+                    20,
+                    12_000,
+                    60_000,
+                )
+                .unwrap()
+                .records
+                .is_empty()
+        );
     }
 
     #[test]

@@ -2817,6 +2817,7 @@ dependencies = [
  "hone-agent-codex-cli",
  "hone-agent-gemini-cli",
  "hone-core",
+ "hone-event-engine",
  "hone-llm",
  "hone-memory",
  "hone-scheduler",

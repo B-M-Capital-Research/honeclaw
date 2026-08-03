@@ -246,6 +246,18 @@ pub(crate) async fn handle_scheduler_events(
                         persist_and_emit_web_scheduler_push(&state_clone, &event, response)
                     })
                     .unwrap_or(false);
+                if let Some(response) = response.as_deref()
+                    && event.channel == "web"
+                {
+                    // Web 的 durable push/history 即使当前没有 SSE 订阅者也算已
+                    // 送达；失败提示不是 Agent 原生输出，下一轮必须显式注入。
+                    scheduler::record_confirmed_scheduled_delivery(
+                        &state_clone.core,
+                        &event,
+                        &result,
+                        response,
+                    );
+                }
                 let _ = storage.record_execution_event(
                     &event.actor,
                     &event.job_id,
@@ -379,6 +391,14 @@ pub(crate) async fn handle_scheduler_events(
                     "imessage_http_delivery": delivered,
                     "delivery_channel": event.channel.clone(),
                 });
+            }
+            if delivered {
+                scheduler::record_confirmed_scheduled_delivery(
+                    &state_clone.core,
+                    &event,
+                    &result,
+                    &response,
+                );
             }
             let _ = storage.record_execution_event(
                 &event.actor,

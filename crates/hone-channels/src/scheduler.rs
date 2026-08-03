@@ -1796,6 +1796,54 @@ pub struct ScheduledTaskExecution {
     pub session_id: Option<String>,
 }
 
+/// 渠道确认 scheduled/heartbeat 正文已经真实送达后，统一登记为下一轮
+/// 交互上下文事实。调用必须位于渠道 ACK 成功分支；生成成功但发送失败不能登记。
+///
+/// 原生持久 Agent 若在同一 session 内生成了这条正文，会记录 observation，
+/// 下一轮只推进消费位点而不重复 prompt；Replay/严格 fallback 或 transient
+/// heartbeat 仍会得到 assistant/context 投影。
+pub fn record_confirmed_scheduled_delivery(
+    core: &HoneBotCore,
+    event: &SchedulerEvent,
+    result: &ScheduledTaskExecution,
+    delivered_body: &str,
+) -> bool {
+    if delivered_body.trim().is_empty() {
+        return false;
+    }
+    let Some(store) = core.delivered_push_context_store.as_ref() else {
+        return false;
+    };
+    let observed_native_session_id = (result.error.is_none()
+        && core
+            .effective_runner_conversation_strategy(&event.actor)
+            .retains_native_history())
+    .then(|| result.session_id.as_deref())
+    .flatten();
+    let source_id = format!("scheduler:{}", event.delivery_key);
+    match store.log_confirmed_delivery(
+        &source_id,
+        &event.actor,
+        "scheduler",
+        hone_event_engine::Severity::Medium,
+        delivered_body,
+        observed_native_session_id,
+    ) {
+        Ok(()) => true,
+        Err(err) => {
+            tracing::warn!(
+                channel = %event.actor.channel,
+                user_id = %event.actor.user_id,
+                channel_scope = ?event.actor.channel_scope,
+                job_id = %event.job_id,
+                delivery_key = %event.delivery_key,
+                "recording confirmed scheduled delivery context failed: {err:#}"
+            );
+            false
+        }
+    }
+}
+
 fn cancelled_scheduler_execution(session_id: Option<String>) -> ScheduledTaskExecution {
     ScheduledTaskExecution {
         should_deliver: false,
@@ -4527,6 +4575,7 @@ async fn run_heartbeat_task(
             system_prompt: bundle.system_prompt(),
             runtime_input,
             context: hone_core::agent::AgentContext::new(transient_session_id.clone()),
+            delivered_push_context: crate::runners::DeliveredPushContextBatch::default(),
             timeout,
             gemini_stream: timeout
                 .map(|duration| GeminiStreamOptions {
@@ -4629,8 +4678,8 @@ mod tests {
         heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
         is_empty_success_fallback, is_stale_market_data_success_fallback, load_actor_quiet_hours,
         parse_watchlist_hit_zone_bounds, persist_suppressed_scheduler_failure_turn,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
-        scheduler_suppressed_failure_kind,
+        record_confirmed_scheduled_delivery, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text, scheduler_suppressed_failure_kind,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -7938,6 +7987,56 @@ mod tests {
             last_delivered_previews: vec![],
             bypass_quiet_hours: bypass,
         }
+    }
+
+    #[test]
+    fn confirmed_scheduled_delivery_enters_replay_context_store_only_after_ack_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_scheduler_delivered_context_{}",
+            uuid::Uuid::new_v4()
+        ));
+        let prefs_dir = root.join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "scheduled-user", None::<String>).unwrap();
+        let event = make_event(actor.clone(), false);
+        let result = ScheduledTaskExecution {
+            should_deliver: true,
+            content: "SCHEDULED BODY".to_string(),
+            error: None,
+            metadata: Value::Null,
+            session_id: Some(actor.session_id()),
+        };
+
+        assert!(record_confirmed_scheduled_delivery(
+            &core,
+            &event,
+            &result,
+            "SCHEDULED BODY",
+        ));
+        // 相同 delivery_key 的渠道 retry 只保留一次上下文事实。
+        assert!(record_confirmed_scheduled_delivery(
+            &core,
+            &event,
+            &result,
+            "SCHEDULED BODY DUPLICATE",
+        ));
+        let claim = core
+            .delivered_push_context_store
+            .as_ref()
+            .unwrap()
+            .claim_delivered_push_context(
+                &actor,
+                "interactive-turn",
+                chrono::Utc::now().timestamp_millis() + 1_000,
+                20,
+                12_000,
+                60_000,
+            )
+            .unwrap();
+        assert_eq!(claim.records.len(), 1);
+        assert_eq!(claim.records[0].body, "SCHEDULED BODY");
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     fn persist_event_job(core: &HoneBotCore, event: &SchedulerEvent) {

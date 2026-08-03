@@ -53,7 +53,10 @@ pub use renderer::RenderFormat;
 pub use router::{LogSink, NotificationRouter, OutboundSink};
 pub use sinks::{DiscordSink, FeishuSink, IMessageSink, MultiChannelSink, TelegramSink};
 pub use source::{EventSource, FnSource, SourceSchedule};
-pub use store::{DeliveryLogFilter, DeliveryLogRecord, EventStore};
+pub use store::{
+    DeliveredPushContextClaim, DeliveredPushContextRecord, DeliveryLogFilter, DeliveryLogRecord,
+    EventStore,
+};
 pub use subscription::{
     GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription, SubscriptionRegistry,
     registry_from_portfolios,

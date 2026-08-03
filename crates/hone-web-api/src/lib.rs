@@ -890,15 +890,15 @@ pub async fn start_server(
         );
         let task_runs_dir_arc = std::sync::Arc::new(task_runs_dir.clone());
         let (events_db, events_jsonl, digest_dir) = {
-            // 与 sessions.sqlite3 同目录：events.sqlite3 + events.jsonl + digest_buffer/
-            let session_db =
-                std::path::PathBuf::from(&state.core.config.storage.session_sqlite_db_path);
-            let base = session_db
+            // 统一使用 HoneBotCore 的事件存储路径；其它事件 API、渠道确认与
+            // Agent 下一轮 claim 必须打开同一个 events.sqlite3。
+            let events_db = state.core.configured_event_store_path();
+            let base = events_db
                 .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| std::path::PathBuf::from("./data"));
             (
-                base.join("events.sqlite3"),
+                events_db,
                 base.join("events.jsonl"),
                 base.join("digest_buffer"),
             )

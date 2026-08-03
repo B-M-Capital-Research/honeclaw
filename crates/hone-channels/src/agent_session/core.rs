@@ -4,7 +4,7 @@
 //! restore / progress 这些零件组合成「一次完整对话」的 pipeline。
 //! 详细的 pipeline 步骤见 [`AgentSession::run`] 顶部的分节注释。
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use hone_core::agent::{
     AgentContext, AgentMessage, AgentResponse, NormalizedConversationMessage,
     NormalizedConversationPart, ToolCallMade,
@@ -40,7 +40,7 @@ use crate::response_finalizer::{
 };
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    ServiceOwnedInitialPrefix,
+    DeliveredPushContext, DeliveredPushContextBatch, ServiceOwnedInitialPrefix,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
@@ -99,6 +99,9 @@ pub(super) enum PreparedTurnReexecutionPolicy {
 
 const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
 const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
+const DELIVERED_PUSH_CONTEXT_MAX_RECORDS: usize = 20;
+const DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS: usize = 12_000;
+const DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS: i64 = 60 * 60 * 1_000;
 
 /// Persistent mutations are deliberately classified conservatively before the
 /// runner starts. Observed tool traces are a second defense, but an ACP
@@ -1207,6 +1210,7 @@ impl AgentSession {
         persisted_user_input: &str,
         runtime_user_input: &str,
         options: &AgentRunOptions,
+        delivered_push_context: &DeliveredPushContextBatch,
         restore_max_override: Option<usize>,
         prepared_investment: Option<&PreparedInvestmentContext>,
     ) -> Result<(PreparedExecution, PreparedInvestmentContext), (AgentSessionErrorKind, String)>
@@ -1375,6 +1379,7 @@ impl AgentSession {
                 system_prompt,
                 runtime_input,
                 context,
+                delivered_push_context: delivered_push_context.clone(),
                 timeout: options.timeout,
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
                 session_metadata: restored.session_metadata,
@@ -1674,6 +1679,84 @@ impl AgentSession {
             .core
             .session_storage
             .update_metadata(&self.session_id, metadata);
+    }
+
+    fn claim_delivered_push_context(
+        &self,
+        turn_id: &str,
+        delivered_before_ms: i64,
+    ) -> DeliveredPushContextBatch {
+        let Some(store) = self.core.delivered_push_context_store.as_ref() else {
+            return DeliveredPushContextBatch::default();
+        };
+        let native_session_id = self
+            .core
+            .effective_runner_conversation_strategy(&self.actor)
+            .retains_native_history()
+            .then(|| self.session_id.as_str());
+        match store.claim_delivered_push_context_with_native_observation(
+            &self.actor,
+            turn_id,
+            delivered_before_ms,
+            DELIVERED_PUSH_CONTEXT_MAX_RECORDS,
+            DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS,
+            DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS,
+            native_session_id,
+        ) {
+            Ok(claim) => DeliveredPushContextBatch {
+                records: claim
+                    .records
+                    .into_iter()
+                    .map(|record| DeliveredPushContext {
+                        delivery_log_id: record.delivery_log_id,
+                        source_id: record.source_id,
+                        delivered_at_ms: record.delivered_at_ms,
+                        body: record.body,
+                    })
+                    .collect(),
+                remaining_count: claim.remaining_count,
+            },
+            Err(err) => {
+                tracing::warn!(
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    channel_scope = ?self.actor.channel_scope,
+                    turn_id,
+                    "claiming delivered push context failed: {err:#}"
+                );
+                DeliveredPushContextBatch::default()
+            }
+        }
+    }
+
+    fn complete_delivered_push_context(&self, turn_id: &str) {
+        let Some(store) = self.core.delivered_push_context_store.as_ref() else {
+            return;
+        };
+        if let Err(err) = store.complete_delivered_push_context(&self.actor, turn_id) {
+            tracing::warn!(
+                channel = %self.actor.channel,
+                user_id = %self.actor.user_id,
+                channel_scope = ?self.actor.channel_scope,
+                turn_id,
+                "completing delivered push context failed: {err:#}"
+            );
+        }
+    }
+
+    fn release_delivered_push_context(&self, turn_id: &str) {
+        let Some(store) = self.core.delivered_push_context_store.as_ref() else {
+            return;
+        };
+        if let Err(err) = store.release_delivered_push_context(&self.actor, turn_id) {
+            tracing::warn!(
+                channel = %self.actor.channel,
+                user_id = %self.actor.user_id,
+                channel_scope = ?self.actor.channel_scope,
+                turn_id,
+                "releasing delivered push context failed: {err:#}"
+            );
+        }
     }
 
     #[cfg(test)]
@@ -2010,6 +2093,9 @@ impl AgentSession {
     ///    把 assistant turn 落盘、打 finished 日志;失败时:drop guard 让 release 生效,
     ///    按错误类型翻译 ErrorKind,再 emit Done。
     pub async fn run(&self, user_input: &str, options: AgentRunOptions) -> AgentSessionResult {
+        // 在等待同 session 上一轮结束前固定本轮的 ingress cutoff。等待期间才
+        // 送达的主动推送属于用户发出这条消息之后发生的事实，只能进入下一轮。
+        let interactive_ingress_cutoff_ms = Utc::now().timestamp_millis();
         let session_id = self.session_id();
         let _run_guard = {
             let lock = get_session_run_lock(&session_id);
@@ -2122,6 +2208,15 @@ impl AgentSession {
         } else {
             self.message_metadata.user.clone()
         };
+        let delivered_push_turn_id = format!("interactive:{}", uuid::Uuid::new_v4());
+        let delivered_push_context = if options.turn_origin == AgentTurnOrigin::Interactive {
+            self.claim_delivered_push_context(
+                &delivered_push_turn_id,
+                interactive_ingress_cutoff_ms,
+            )
+        } else {
+            DeliveredPushContextBatch::default()
+        };
 
         // ── Fast Persist: 立即写入用户消息 ──
         // 确保 ensureHistory 轮询时 DB 里已有此消息，避免前端因为竞态丢失消息显示
@@ -2225,6 +2320,7 @@ impl AgentSession {
                 persisted_user_input,
                 runtime_user_input,
                 &options,
+                &delivered_push_context,
                 None,
                 None,
             )
@@ -2232,6 +2328,7 @@ impl AgentSession {
         {
             Ok(prepared) => prepared,
             Err((kind, err)) => {
+                self.release_delivered_push_context(&delivered_push_turn_id);
                 drop(quota_guard);
                 return self.fail_run(session_id, kind, err).await;
             }
@@ -2410,6 +2507,7 @@ impl AgentSession {
                     persisted_user_input,
                     runtime_user_input,
                     &options,
+                    &delivered_push_context,
                     Some(restore_limit),
                     Some(&investment_context),
                 )
@@ -2518,6 +2616,7 @@ impl AgentSession {
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
+            self.complete_delivered_push_context(&delivered_push_turn_id);
             // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
             // 后续 drop 再执行 release。
             quota_guard.commit();
@@ -2594,6 +2693,7 @@ impl AgentSession {
             })
             .await;
         } else {
+            self.release_delivered_push_context(&delivered_push_turn_id);
             // 失败路径：显式 drop 触发 release,让配额回到预留前的状态。
             drop(quota_guard);
             let err = response

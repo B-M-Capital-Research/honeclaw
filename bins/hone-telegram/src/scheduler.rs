@@ -110,6 +110,7 @@ pub(crate) async fn handle_scheduler_events(
             };
             let segments = TelegramSplitter
                 .split_html(&response, core_clone.config.telegram.max_message_length);
+            let context_segments = segments.clone();
             let total_segments = segments.len();
             if !scheduler_event_is_active(&storage, &event) {
                 info!(
@@ -138,6 +139,20 @@ pub(crate) async fn handle_scheduler_events(
                 return;
             }
             let sent = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
+            if sent > 0 {
+                let delivered_context = context_segments
+                    .iter()
+                    .take(sent)
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                scheduler::record_confirmed_scheduled_delivery(
+                    &core_clone,
+                    &event,
+                    &result,
+                    &delivered_context,
+                );
+            }
             let _ = storage.record_execution_event(
                 &event.actor,
                 &event.job_id,

@@ -21,6 +21,7 @@ use std::time::Duration;
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::config::{AgentConversationStrategy, AgentRunnerKind, HoneConfig};
 use hone_core::{ActorIdentity, LlmAuditSink};
+use hone_event_engine::EventStore;
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
@@ -63,6 +64,7 @@ pub struct HoneBotCore {
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub session_storage: SessionStorage,
     pub conversation_quota_storage: ConversationQuotaStorage,
+    pub(crate) delivered_push_context_store: Option<EventStore>,
     pub(super) workflow_runner_http: reqwest::Client,
     pub company_profile_storage: CompanyProfileStorage,
     pub(super) runtime_admin_overrides: RwLock<HashSet<ActorIdentity>>,
@@ -108,6 +110,19 @@ impl HoneBotCore {
             ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
                 .expect("failed to initialize conversation quota storage")
         };
+        let delivered_push_context_store = {
+            let event_store_path = configured_event_store_path(&config);
+            match EventStore::open(&event_store_path) {
+                Ok(store) => Some(store),
+                Err(err) => {
+                    tracing::warn!(
+                        path = %event_store_path.display(),
+                        "failed to open delivered push context store: {err:#}"
+                    );
+                    None
+                }
+            }
+        };
         configure_cloud_skill_registry(cloud_pg_runtime.clone());
         configure_cloud_notification_prefs(cloud_pg_runtime.clone());
         configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
@@ -132,6 +147,7 @@ impl HoneBotCore {
             llm_audit,
             session_storage,
             conversation_quota_storage,
+            delivered_push_context_store,
             workflow_runner_http,
             company_profile_storage,
             runtime_admin_overrides: RwLock::new(HashSet::new()),
@@ -412,7 +428,7 @@ impl HoneBotCore {
         // `<data_dir>/events.sqlite3`。actor 强制绑定调用方 —— 工具层面也
         // 不允许查别人。
         registry.register(Box::new(hone_tools::MissedEventsTool::new(
-            self.configured_data_dir().join("events.sqlite3"),
+            self.configured_event_store_path(),
             actor.cloned(),
         )));
 
@@ -503,6 +519,10 @@ impl HoneBotCore {
             .parent()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("./data"))
+    }
+
+    pub fn configured_event_store_path(&self) -> PathBuf {
+        configured_event_store_path(&self.config)
     }
 
     pub fn configured_runtime_dir(&self) -> PathBuf {
@@ -771,4 +791,15 @@ impl HoneBotCore {
             .compact_session(session_id, trigger, force, user_instructions, false)
             .await
     }
+}
+
+fn configured_event_store_path(config: &HoneConfig) -> PathBuf {
+    if let Ok(root) = std::env::var("HONE_DATA_DIR") {
+        return PathBuf::from(root).join("events.sqlite3");
+    }
+    PathBuf::from(&config.storage.sessions_dir)
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("./data"))
+        .join("events.sqlite3")
 }

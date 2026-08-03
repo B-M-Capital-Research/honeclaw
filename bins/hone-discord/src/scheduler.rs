@@ -126,6 +126,7 @@ pub(crate) async fn handle_scheduler_events(
 
             let segments =
                 split_into_segments(&response, core_clone.config.discord.max_message_length);
+            let context_segments = segments.clone();
             if !scheduler_event_is_active(&storage, &event) {
                 info!(
                     "[Discord] 定时任务已取消，抑制发送: job={} target={}",
@@ -170,6 +171,20 @@ pub(crate) async fn handle_scheduler_events(
                     event.job_name,
                     event.channel_target,
                     send_result.error.as_deref().unwrap_or("unknown")
+                );
+            }
+            if send_result.sent > 0 {
+                let delivered_context = context_segments
+                    .iter()
+                    .take(send_result.sent)
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                channel_scheduler::record_confirmed_scheduled_delivery(
+                    &core_clone,
+                    &event,
+                    &result,
+                    &delivered_context,
                 );
             }
             let _ = storage.record_execution_event(

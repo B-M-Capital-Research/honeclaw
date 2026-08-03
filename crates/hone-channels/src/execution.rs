@@ -12,8 +12,8 @@ use crate::core::runtime_config_path;
 use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
 use crate::runners::{
-    AgentRunner, AgentRunnerRequest, NativeSkillProjection, RunnerConversationInput,
-    TerminalStreamPolicy,
+    AgentRunner, AgentRunnerRequest, DeliveredPushContextBatch, NativeSkillProjection,
+    RunnerConversationInput, TerminalStreamPolicy,
 };
 use crate::sandbox::{ensure_actor_sandbox, sync_native_codex_skill_links};
 
@@ -51,6 +51,7 @@ pub(crate) struct ExecutionRequest {
     pub system_prompt: String,
     pub runtime_input: String,
     pub context: AgentContext,
+    pub delivered_push_context: DeliveredPushContextBatch,
     pub timeout: Option<Duration>,
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
@@ -169,6 +170,7 @@ impl ExecutionService {
             request.system_prompt,
             request.runtime_input,
             request.context,
+            request.delivered_push_context,
         );
         Ok(PreparedExecution {
             runner_name,
@@ -388,6 +390,7 @@ mod tests {
             system_prompt: "system".to_string(),
             runtime_input: "runtime".to_string(),
             context: AgentContext::new("session-1".to_string()),
+            delivered_push_context: crate::runners::DeliveredPushContextBatch::default(),
             timeout: None,
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),

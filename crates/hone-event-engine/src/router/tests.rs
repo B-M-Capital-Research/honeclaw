@@ -85,7 +85,12 @@ fn price_band_event(symbol: &str, direction: &str, band_bps: i64, pct: f64) -> M
     }
 }
 
-fn router_with_aapl_actor() -> (NotificationRouter, Arc<CapturingSink>, tempfile::TempDir) {
+fn router_with_aapl_actor() -> (
+    NotificationRouter,
+    Arc<CapturingSink>,
+    Arc<EventStore>,
+    tempfile::TempDir,
+) {
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
         actor("u1"),
@@ -99,17 +104,18 @@ fn router_with_aapl_actor() -> (NotificationRouter, Arc<CapturingSink>, tempfile
         NotificationRouter::new(
             Arc::new(SharedRegistry::from_registry(reg)),
             sink.clone(),
-            store,
+            store.clone(),
             digest,
         ),
         sink,
+        store,
         dir,
     )
 }
 
 #[tokio::test]
 async fn high_severity_goes_to_sink_immediately() {
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, store, _tmp) = router_with_aapl_actor();
     let (sent, pending) = router
         .dispatch(&earnings_event_with_severity(Severity::High))
         .await
@@ -119,6 +125,18 @@ async fn high_severity_goes_to_sink_immediately() {
     let calls = sink.calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
     assert!(calls[0].1.contains("财报发布"));
+    let delivered_context = store
+        .claim_delivered_push_context(
+            &actor("u1"),
+            "router-confirmed-delivery",
+            Utc::now().timestamp_millis().saturating_add(1_000),
+            20,
+            12_000,
+            60_000,
+        )
+        .unwrap();
+    assert_eq!(delivered_context.records.len(), 1);
+    assert!(delivered_context.records[0].body.contains("财报发布"));
 }
 
 #[tokio::test]
@@ -824,7 +842,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
 
 #[tokio::test]
 async fn medium_and_low_are_deferred_to_digest() {
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let (sent_m, pending_m) = router
         .dispatch(&earnings_event_with_severity(Severity::Medium))
         .await
@@ -1264,7 +1282,7 @@ async fn low_news_upgrades_inside_earnings_window() {
 async fn low_news_stays_low_without_same_day_signal() {
     // 无硬信号时 Low 新闻维持 Low,仍然入 digest(pending=1),但 severity 未升。
     // 间接校验:digest enqueue 行为不变,且未发生 sink 立即推。
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let news = MarketEvent {
         id: "news:AAPL:2".into(),
         kind: EventKind::NewsCritical,
@@ -2381,7 +2399,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
 #[tokio::test]
 async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
     // 不设 prefs override 时,Low PriceAlert 与 Medium Weekly52High 仍走 digest。
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let price_low = MarketEvent {
         id: "price:AAPL:legacy".into(),
         kind: EventKind::PriceAlert {
@@ -2405,7 +2423,7 @@ async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
 
 #[tokio::test]
 async fn event_without_subscribers_is_no_op() {
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let mut event = earnings_event_with_severity(Severity::High);
     event.symbols = vec!["TSLA".into()]; // 无人持仓
     let (sent, pending) = router.dispatch(&event).await.unwrap();

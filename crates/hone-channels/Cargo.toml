@@ -12,6 +12,7 @@ hone-memory = { workspace = true }
 hone-tools = { workspace = true }
 hone-llm = { workspace = true }
 hone-scheduler = { workspace = true }
+hone-event-engine = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

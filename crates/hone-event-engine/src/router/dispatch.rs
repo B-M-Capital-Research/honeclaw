@@ -383,14 +383,26 @@ impl NotificationRouter {
                         continue;
                     }
                     let success_status = self.sink.success_status();
-                    let _ = self.store.log_delivery(
-                        &event.id,
-                        &actor_key(&actor),
-                        "sink",
-                        sev,
-                        success_status,
-                        Some(&body),
-                    );
+                    let delivery_result = if success_status == "sent" {
+                        self.store
+                            .log_confirmed_delivery(&event.id, &actor, "sink", sev, &body, None)
+                    } else {
+                        self.store.log_delivery(
+                            &event.id,
+                            &actor_key(&actor),
+                            "sink",
+                            sev,
+                            success_status,
+                            Some(&body),
+                        )
+                    };
+                    if let Err(error) = delivery_result {
+                        tracing::warn!(
+                            actor = %actor_key(&actor),
+                            event_id = %event.id,
+                            "confirmed delivery audit failed: {error:#}"
+                        );
+                    }
                     tracing::info!(
                         actor = %actor_key(&actor),
                         event_id = %event.id,

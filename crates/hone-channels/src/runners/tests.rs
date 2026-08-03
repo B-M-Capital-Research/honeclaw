@@ -3,7 +3,9 @@ use hone_core::agent::{
     AgentContext, AgentMessage, ToolCallMade, final_assistant_message_content,
     normalize_agent_messages,
 };
-use hone_core::config::{CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig};
+use hone_core::config::{
+    AgentConversationStrategy, CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig,
+};
 use hone_core::{ActorIdentity, ToolExecutionObserver};
 use hone_memory::restore_tool_message;
 use serde_json::Value;
@@ -41,7 +43,8 @@ use super::tool_reasoning::{
 };
 use super::types::{
     AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
-    AgentRunnerEvent, AgentRunnerRequest, RunnerConversationInput, RunnerTimeouts,
+    AgentRunnerEvent, AgentRunnerRequest, DeliveredPushContext, DeliveredPushContextBatch,
+    RunnerConversationInput, RunnerTimeouts,
 };
 use uuid::Uuid;
 
@@ -431,7 +434,23 @@ done
             native_codex_boundary_request(
                 &temp_root,
                 "HONE_DEVELOPER_INSTRUCTIONS",
-                "TURN_TWO",
+                RunnerConversationInput::prepare(
+                    AgentConversationStrategy::NativePersistent,
+                    "HONE_DEVELOPER_INSTRUCTIONS".to_string(),
+                    "【当前时间】\n2026-08-03 10:00:00 (北京时间)\n\n【本轮用户输入】\nTURN_TWO"
+                        .to_string(),
+                    AgentContext::new("codex-boundary-contract".to_string()),
+                    DeliveredPushContextBatch {
+                        records: vec![DeliveredPushContext {
+                            delivery_log_id: 7,
+                            source_id: "push-7".to_string(),
+                            delivered_at_ms: 1_775_356_740_000,
+                            body: "PUSH_BEFORE_TURN_TWO".to_string(),
+                        }],
+                        remaining_count: 0,
+                    },
+                )
+                .current_user_turn(),
                 first.session_metadata_updates.clone(),
             ),
             emitter.clone(),
@@ -487,7 +506,15 @@ done
                 .expect("text prompt")
         })
         .collect::<Vec<_>>();
-    assert_eq!(prompts, vec!["TURN_ONE", "TURN_TWO", "TURN_THREE"]);
+    assert_eq!(prompts[0], "TURN_ONE");
+    assert_eq!(prompts[2], "TURN_THREE");
+    let push_pos = prompts[1]
+        .find("PUSH_BEFORE_TURN_TWO")
+        .expect("delivered push context in Codex ACP 1.1.7 prompt");
+    let current_user_pos = prompts[1]
+        .find("【本轮用户输入】\nTURN_TWO")
+        .expect("current user input in Codex ACP 1.1.7 prompt");
+    assert!(push_pos < current_user_pos);
     for prompt in prompts {
         for forbidden in [
             "HONE_DEVELOPER_INSTRUCTIONS",
@@ -1660,6 +1687,57 @@ async fn opencode_1_18_11_stream_preserves_available_reasoning_answer_and_usage(
                     "used=8505 size=1000000 cost=0.00025996 currency=USD"
                 )
     )));
+}
+
+/// Prompt-role contract paired with the observed OpenCode ACP 1.18.11 fixture
+/// captured on 2026-08-01. Unlike native Codex, OpenCode starts a fresh ACP
+/// session and receives delivered pushes as an assistant/context transcript
+/// record; the current user turn remains byte-for-byte unchanged.
+#[test]
+fn opencode_1_18_11_prompt_keeps_delivered_push_out_of_current_user_input() {
+    let current_user_turn =
+        "【当前时间】\n2026-08-03 11:00:00 (北京时间)\n\n【本轮用户输入】\nTURN_CURRENT";
+    let conversation = RunnerConversationInput::prepare(
+        AgentConversationStrategy::EphemeralCompiledPrompt,
+        "SYSTEM_LAYER".to_string(),
+        current_user_turn.to_string(),
+        AgentContext::new("opencode-1.18.11-context".to_string()),
+        DeliveredPushContextBatch {
+            records: vec![DeliveredPushContext {
+                delivery_log_id: 11,
+                source_id: "push-11".to_string(),
+                delivered_at_ms: 1_775_360_400_000,
+                body: "OPENCODE_PUSH_CONTEXT".to_string(),
+            }],
+            remaining_count: 0,
+        },
+    );
+    let (system_prompt, projected_user_turn, context) = conversation
+        .replay_parts()
+        .expect("OpenCode replay conversation");
+    assert_eq!(projected_user_turn, current_user_turn);
+    assert_eq!(context.messages.len(), 1);
+    assert_eq!(context.messages[0].role, "assistant");
+    assert_eq!(
+        context.messages[0]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("subtype"))
+            .and_then(Value::as_str),
+        Some("delivered_push_context")
+    );
+
+    let prompt = build_opencode_acp_prompt_text(system_prompt, projected_user_turn, Some(context));
+    let push_pos = prompt
+        .find("OPENCODE_PUSH_CONTEXT")
+        .expect("push in restored assistant context");
+    let user_pos = prompt
+        .find("### User Input ###")
+        .expect("OpenCode current user section");
+    assert!(push_pos < user_pos);
+    let user_section = &prompt[user_pos..];
+    assert!(user_section.contains("TURN_CURRENT"));
+    assert!(!user_section.contains("OPENCODE_PUSH_CONTEXT"));
 }
 
 #[tokio::test]

@@ -222,12 +222,7 @@ fn list_event_delivery_records(
 }
 
 fn event_store_path(state: &AppState) -> PathBuf {
-    let session_db = PathBuf::from(&state.core.config.storage.session_sqlite_db_path);
-    let base = session_db
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("./data"));
-    base.join("events.sqlite3")
+    state.core.configured_event_store_path()
 }
 
 fn exact_actor_key(q: &NotificationsQuery) -> Option<String> {

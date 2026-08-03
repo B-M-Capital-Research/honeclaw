@@ -315,6 +315,12 @@ pub(crate) async fn handle_scheduler_events(
                     },
                 );
             } else {
+                scheduler::record_confirmed_scheduled_delivery(
+                    &state_clone.core,
+                    &event,
+                    &result,
+                    &response,
+                );
                 let _ = storage.record_execution_event(
                     &event.actor,
                     &event.job_id,

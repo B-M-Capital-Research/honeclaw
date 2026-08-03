@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
+
+## 2026-08-03
+
+### Confirmed Proactive Deliveries In The Next Agent Turn
+
+- Status: done
+- Date: 2026-08-03
+- Plan: `docs/archive/plans/delivered-push-agent-context.md`
+- Handoff: `docs/handoffs/2026-08-03-delivered-push-agent-context.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-03-01-project-confirmed-proactive-deliveries-into-the-next-interactive-turn`
+- Related PRs / commits: pushed directly to `main`; no PR, deployment, release, or tag
+- Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; Codex ACP `1.1.7` executable JSON-RPC contract, OpenCode ACP `1.18.11` versioned prompt/stream contract and real free-model Hone MCP probe, 556 event-engine tests, 721 channel tests, full workspace check/test, Web 344, Edge 45, and complete CI-safe regressions
+- Current conclusion: only an explicit channel ACK/durable-delivery call creates an actor-scoped journal fact. The next eligible Interactive turn atomically claims an ordered bounded batch, reuses it across retries, consumes on Agent success, and releases on failure. Native runners receive an explicit fact block before current user input; replay runners receive assistant/context. User persistence, developer instructions, historical transcript, tools/results, compact behavior, and adapter-specific streaming remain separate. Ordinary audit `sent`, queued/failed/dry-run output, compact, quota rejection, scheduler, and heartbeat cannot consume or inject by accident.
+- Next entry point: `docs/handoffs/2026-08-03-delivered-push-agent-context.md`; start at `EventStore::log_confirmed_delivery`, then follow AgentSession claim and `RunnerConversationInput::prepare` projection.
 
 ## 2026-08-02
 

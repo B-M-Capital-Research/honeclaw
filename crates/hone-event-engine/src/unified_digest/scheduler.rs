@@ -542,14 +542,28 @@ impl UnifiedDigestScheduler {
                 } else {
                     "failed"
                 };
-                let _ = self.store.log_delivery(
-                    &batch_id,
-                    &actor_key_str,
-                    "digest",
-                    merged[0].severity,
-                    status,
-                    Some(&body),
-                );
+                let delivery_result = if status == "sent" {
+                    self.store.log_confirmed_delivery(
+                        &batch_id,
+                        &actor,
+                        "digest",
+                        merged[0].severity,
+                        &body,
+                        None,
+                    )
+                } else {
+                    self.store.log_delivery(
+                        &batch_id,
+                        &actor_key_str,
+                        "digest",
+                        merged[0].severity,
+                        status,
+                        Some(&body),
+                    )
+                };
+                if let Err(error) = delivery_result {
+                    warn!(actor = %actor_key_str, batch_id, "digest delivery audit failed: {error:#}");
+                }
                 if send_result.is_ok() {
                     for item in &merged {
                         let _ = self.store.log_delivery(
@@ -922,14 +936,28 @@ impl UnifiedDigestScheduler {
         } else {
             "failed"
         };
-        let _ = self.store.log_delivery(
-            &batch_id,
-            actor_key_str,
-            "digest",
-            filtered[0].severity,
-            status,
-            Some(&body),
-        );
+        let delivery_result = if status == "sent" {
+            self.store.log_confirmed_delivery(
+                &batch_id,
+                actor,
+                "digest",
+                filtered[0].severity,
+                &body,
+                None,
+            )
+        } else {
+            self.store.log_delivery(
+                &batch_id,
+                actor_key_str,
+                "digest",
+                filtered[0].severity,
+                status,
+                Some(&body),
+            )
+        };
+        if let Err(error) = delivery_result {
+            warn!(actor = %actor_key_str, batch_id, "quiet flush delivery audit failed: {error:#}");
+        }
         if send_result.is_ok() {
             for item in &filtered {
                 let _ = self.store.log_delivery(

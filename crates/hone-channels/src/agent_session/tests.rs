@@ -83,6 +83,23 @@ fn structured_test_conversation(
     }
 }
 
+fn recorded_runner_result(content: &str, success: bool) -> AgentRunnerResult {
+    AgentRunnerResult {
+        response: AgentResponse {
+            content: content.to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success,
+            error: (!success).then(|| "non-retryable runner failure".to_string()),
+        },
+        streamed_output: false,
+        committed_visible_prefix: None,
+        terminal_error_emitted: false,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    }
+}
+
 #[test]
 fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
     let response = AgentResponse {
@@ -1004,6 +1021,222 @@ fn restore_context_missing_session_returns_empty() {
     let restored_context = restore_context(&storage, "missing", Some(5), None);
     assert!(restored_context.messages.is_empty());
     assert!(restored_context.actor_identity().is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn native_interactive_turn_consumes_delivered_pushes_once_without_mutating_user_text() {
+    let root = make_temp_dir("hone_channels_native_delivered_push_context");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        recorded_runner_result("SCHEDULED_OK", true),
+        recorded_runner_result("U1_OK", true),
+        recorded_runner_result("U2_OK", true),
+    ])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("exclusive test core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+                conversation_strategy: AgentConversationStrategy::NativePersistent,
+                native_skill_projection: None,
+            })
+        }));
+    }
+    let actor = ActorIdentity::new("cli", "delivered-push-user", None::<String>).expect("actor");
+    let store = core
+        .delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store");
+    for (source, body) in [("p1", "PUSH_ONE"), ("p2", "PUSH_TWO")] {
+        store
+            .log_confirmed_delivery(
+                source,
+                &actor,
+                "sink",
+                hone_event_engine::Severity::High,
+                body,
+                None,
+            )
+            .expect("log delivered push");
+    }
+
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    let scheduled = session
+        .run(
+            "SCHEDULED_INTERNAL_TURN",
+            AgentRunOptions {
+                turn_origin: AgentTurnOrigin::Scheduled,
+                ..AgentRunOptions::default()
+            },
+        )
+        .await;
+    assert!(scheduled.response.success);
+    let u1 = session
+        .run("USER_INPUT_ONE", AgentRunOptions::default())
+        .await;
+    assert!(u1.response.success, "{:?}", u1.response.error);
+    let u2 = session
+        .run("USER_INPUT_TWO", AgentRunOptions::default())
+        .await;
+    assert!(u2.response.success, "{:?}", u2.response.error);
+
+    let runtime_inputs = recorded_runtime_inputs
+        .lock()
+        .expect("recorded runtime inputs");
+    assert_eq!(runtime_inputs.len(), 3);
+    assert!(!runtime_inputs[0].contains("PUSH_ONE"));
+    let p1_pos = runtime_inputs[1].find("PUSH_ONE").expect("P1 in U1 turn");
+    let p2_pos = runtime_inputs[1].find("PUSH_TWO").expect("P2 in U1 turn");
+    let user_pos = runtime_inputs[1]
+        .find("【本轮用户输入】\nUSER_INPUT_ONE")
+        .expect("U1 marker");
+    assert!(p1_pos < p2_pos && p2_pos < user_pos);
+    assert!(!runtime_inputs[1].contains("System Instructions"));
+    assert!(!runtime_inputs[1].contains("Restored Conversation Transcript"));
+    assert!(!runtime_inputs[1].contains("tool_call"));
+    assert!(!runtime_inputs[1].contains("tool_result"));
+    assert!(!runtime_inputs[2].contains("PUSH_ONE"));
+    assert!(!runtime_inputs[2].contains("PUSH_TWO"));
+    drop(runtime_inputs);
+
+    let persisted = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let user_messages = persisted
+        .iter()
+        .filter(|message| message.role == "user")
+        .map(session_message_text)
+        .collect::<Vec<_>>();
+    assert!(user_messages.contains(&"USER_INPUT_ONE".to_string()));
+    assert!(user_messages.contains(&"USER_INPUT_TWO".to_string()));
+    assert!(
+        user_messages
+            .iter()
+            .all(|message| !message.contains("PUSH_ONE"))
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn replay_runner_receives_delivered_push_as_assistant_context_and_failure_releases_claim() {
+    let root = make_temp_dir("hone_channels_replay_delivered_push_context");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core(&root, llm);
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        recorded_runner_result("", false),
+        recorded_runner_result("RECOVERED", true),
+        recorded_runner_result("NEXT", true),
+    ])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("exclusive test core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+                conversation_strategy: AgentConversationStrategy::StructuredReplay,
+                native_skill_projection: None,
+            })
+        }));
+    }
+    let actor = ActorIdentity::new("web", "replay-push-user", None::<String>).expect("actor");
+    core.delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store")
+        .log_confirmed_delivery(
+            "push-retry",
+            &actor,
+            "sink",
+            hone_event_engine::Severity::High,
+            "REPLAY_PUSH",
+            None,
+        )
+        .expect("log delivered push");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+
+    let failed = session.run("U_FAIL", AgentRunOptions::default()).await;
+    assert!(!failed.response.success);
+    let recovered = session.run("U_RECOVER", AgentRunOptions::default()).await;
+    assert!(recovered.response.success, "{:?}", recovered.response.error);
+    let next = session.run("U_NEXT", AgentRunOptions::default()).await;
+    assert!(next.response.success, "{:?}", next.response.error);
+
+    let contexts = recorded_contexts.lock().expect("recorded contexts");
+    assert_eq!(contexts.len(), 3);
+    for context in [&contexts[0], &contexts[1]] {
+        let delivered = context
+            .iter()
+            .find(|message| {
+                message
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("subtype"))
+                    .and_then(Value::as_str)
+                    == Some("delivered_push_context")
+            })
+            .expect("assistant delivered context");
+        assert_eq!(delivered.role, "assistant");
+        assert!(
+            delivered
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("REPLAY_PUSH"))
+        );
+    }
+    assert!(contexts[2].iter().all(|message| {
+        message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("subtype"))
+            .and_then(Value::as_str)
+            != Some("delivered_push_context")
+    }));
+    let runtime_inputs = recorded_runtime_inputs
+        .lock()
+        .expect("recorded runtime inputs");
+    assert!(
+        runtime_inputs
+            .iter()
+            .all(|input| !input.contains("REPLAY_PUSH"))
+    );
+
+    let persisted = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let persisted_user = persisted
+        .iter()
+        .filter(|message| message.role == "user")
+        .map(session_message_text)
+        .collect::<Vec<_>>();
+    assert!(persisted_user.contains(&"U_FAIL".to_string()));
+    assert!(persisted_user.contains(&"U_RECOVER".to_string()));
+    assert!(
+        persisted_user
+            .iter()
+            .all(|message| !message.contains("REPLAY_PUSH"))
+    );
+
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -3826,6 +4059,7 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             input,
             input,
             &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
             None,
             None,
         )
@@ -5239,6 +5473,18 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let today = hone_core::beijing_now().format("%F").to_string();
     let daily_limit = core.config.agent.daily_conversation_limit;
+    core.delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store")
+        .log_confirmed_delivery(
+            "push-before-quota-rejection",
+            &actor,
+            "sink",
+            hone_event_engine::Severity::High,
+            "PUSH MUST SURVIVE QUOTA REJECTION",
+            None,
+        )
+        .expect("record delivered push before quota rejection");
 
     for _ in 0..daily_limit {
         let reservation = match core
@@ -5303,6 +5549,24 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         .expect("row");
     assert_eq!(snapshot.success_count, daily_limit);
     assert_eq!(snapshot.in_flight, 0);
+    let pending_after_rejection = core
+        .delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store")
+        .claim_delivered_push_context(
+            &actor,
+            "interactive-after-quota-rejection",
+            chrono::Utc::now().timestamp_millis().saturating_add(1_000),
+            20,
+            12_000,
+            60_000,
+        )
+        .expect("claim after quota rejection");
+    assert_eq!(pending_after_rejection.records.len(), 1);
+    assert_eq!(
+        pending_after_rejection.records[0].body,
+        "PUSH MUST SURVIVE QUOTA REJECTION"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -6783,7 +7047,15 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
         let options = AgentRunOptions::default();
 
         let (execution, _investment_context) = session
-            .prepare_execution_for_turn(&actor.session_id(), input, input, &options, None, None)
+            .prepare_execution_for_turn(
+                &actor.session_id(),
+                input,
+                input,
+                &options,
+                &crate::runners::DeliveredPushContextBatch::default(),
+                None,
+                None,
+            )
             .await
             .unwrap_or_else(|(_, error)| panic!("{channel}: {error}"));
 
@@ -6853,6 +7125,7 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
             "什么是安全边际",
             "什么是安全边际",
             &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
             None,
             None,
         )
@@ -6894,6 +7167,7 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
             input,
             input,
             &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
             None,
             None,
         )
@@ -8547,6 +8821,18 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
     core.session_storage
         .add_message(&actor.session_id(), "assistant", "world", None)
         .expect("seed assistant");
+    core.delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store")
+        .log_confirmed_delivery(
+            "push-before-compact",
+            &actor,
+            "sink",
+            hone_event_engine::Severity::High,
+            "PUSH MUST SURVIVE COMPACT",
+            None,
+        )
+        .expect("record delivered push before compact");
 
     let result = session
         .run(
@@ -8585,6 +8871,24 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
         messages
             .iter()
             .all(|message| !hone_memory::session_message_text(message).contains("/compact"))
+    );
+    let pending_after_compact = core
+        .delivered_push_context_store
+        .as_ref()
+        .expect("delivered push store")
+        .claim_delivered_push_context(
+            &actor,
+            "interactive-after-compact",
+            chrono::Utc::now().timestamp_millis().saturating_add(1_000),
+            20,
+            12_000,
+            60_000,
+        )
+        .expect("claim after compact");
+    assert_eq!(pending_after_compact.records.len(), 1);
+    assert_eq!(
+        pending_after_compact.records[0].body,
+        "PUSH MUST SURVIVE COMPACT"
     );
 
     let _ = std::fs::remove_dir_all(root);
