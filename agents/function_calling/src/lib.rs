@@ -70,6 +70,9 @@ const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const MAX_LISTING_FINAL_CORRECTIONS: u32 = 1;
+/// The one structural marker an investment answer must open with. It is the
+/// existing answer contract, not a classifier vocabulary.
+const CANONICAL_RESEARCH_ANSWER_HEADER: &str = "数据时间：";
 const MAX_LISTING_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS: usize = 48_000;
 const CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS: usize = 6_000;
@@ -4604,35 +4607,29 @@ struct ListingEvidenceState {
     names: BTreeSet<String>,
 }
 
-/// Every string a denial line could use to name this security: the symbol, the
-/// provider company name, and that name's leading word once punctuation and
-/// corporate suffixes are dropped (`CoreWeave, Inc.` → `CoreWeave`).
+/// Every string a denial line could use to name this security: the symbol and
+/// the provider company name, plus the segment before the first comma so
+/// `CoreWeave, Inc.` also matches prose that writes just `CoreWeave`. All of it
+/// comes from the provider payload; nothing here is a maintained word list.
 fn listing_entity_labels(symbol: &str, state: &ListingEvidenceState) -> Vec<String> {
     let mut labels = vec![symbol.to_ascii_uppercase()];
     for name in &state.names {
         let upper = name.to_ascii_uppercase();
-        if upper.len() >= 3 && !labels.contains(&upper) {
-            labels.push(upper.clone());
-        }
         let head = upper
-            .split([',', '.', ' ', '(', ')'])
-            .find(|part| part.len() >= 3)
-            .unwrap_or_default();
-        if !head.is_empty()
-            && !LISTING_NAME_HEAD_STOPWORDS.contains(&head)
-            && !labels.contains(&head.to_string())
-        {
-            labels.push(head.to_string());
+            .split(',')
+            .next()
+            .unwrap_or(&upper)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        for label in [upper, head] {
+            if label.len() >= 3 && !labels.contains(&label) {
+                labels.push(label);
+            }
         }
     }
     labels
 }
-
-/// Corporate-form words that must never become a matchable entity label on
-/// their own; `INC` would match almost any sentence about companies.
-const LISTING_NAME_HEAD_STOPWORDS: [&str; 8] = [
-    "INC", "CORP", "LTD", "PLC", "THE", "CO", "GROUP", "HOLDINGS",
-];
 
 fn canonical_listing_symbol(value: &str) -> Option<String> {
     provider_canonical_key(value).or_else(|| {
@@ -4781,42 +4778,14 @@ fn explicit_security_symbols(runtime_input: &str) -> BTreeSet<String> {
 
 fn listing_denial_line(line: &str) -> bool {
     let normalized = line.to_ascii_lowercase();
-    // Also match with whitespace removed. `还没 IPO`, `还没　IPO` and `还没IPO`
-    // are the same claim, and a recently listed company is most naturally
-    // denied in exactly that shape rather than with the word 退市.
-    let compact = normalized
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
     let denial = [
         "已退市",
         "退市",
         "未上市",
-        "没上市",
         "没有上市",
         "并未上市",
         "不再上市",
-        "未公开上市",
-        "非上市公司",
-        "不是上市公司",
-        "私营公司",
-        "私有公司",
-        "未公开发行",
-        "没有公开交易",
-        "无公开交易",
-        "没有公开交易的股票",
-        "没有股票代码",
-        "没有上市代码",
         "不是当前交易代码",
-        "未ipo",
-        "没ipo",
-        "没有ipo",
-        "尚未ipo",
-        "还没ipo",
-        "还未ipo",
-        "未完成ipo",
-        "pre-ipo",
-        "preipo",
         "is delisted",
         "delisted",
         "was delisted",
@@ -4824,16 +4793,9 @@ fn listing_denial_line(line: &str) -> bool {
         "not listed",
         "no longer listed",
         "not publicly traded",
-        "not gone public",
-        "gone public yet",
-        "still private",
-        "privately held",
-        "not yet public",
-        "yet to go public",
-        "does not trade publicly",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker) || compact.contains(marker));
+    .any(|marker| normalized.contains(marker));
     let rebuttal = [
         "并非已退市",
         "不是已退市",
@@ -4862,32 +4824,8 @@ fn listing_denial_line(line: &str) -> bool {
         "currently listed",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker) || compact.contains(marker));
-    // Corporate history must stay sayable. Broadening the denial markers makes
-    // sentences like `CoreWeave 上市前是私营公司` match, and a true past fact is
-    // not a claim about today.
-    let historical = [
-        "曾",
-        "此前",
-        "历史上",
-        "当年",
-        "过去",
-        "早前",
-        "原本",
-        "一度",
-        "后来",
-        "随后",
-        "上市前",
-        "ipo前",
-        "分拆前",
-        "formerly",
-        "used to be",
-        "before its ipo",
-        "prior to its ipo",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker) || compact.contains(marker));
-    denial && !rebuttal && !historical
+    .any(|marker| normalized.contains(marker));
+    denial && !rebuttal
 }
 
 fn listing_final_violations(
@@ -4930,31 +4868,30 @@ fn listing_final_violations(
     violations.into_iter().collect()
 }
 
-/// Hole the entity-first pipeline cannot see: a current listing/trading status
-/// claim in a turn that called nothing. No identity search ran, so there is no
-/// symbol to match and no structured evidence to contradict — the claim is
-/// simply unverified. The user asking `coreweave 怎么样` and being told it is
-/// still private is exactly this shape, and no request-side classifier can
-/// catch it without reintroducing the false positives that classifier caused.
-fn unverified_listing_status_claim(
-    content: &str,
-    tool_calls_made: &[ToolCallMade],
-) -> Option<String> {
-    // Deliberately the tightest possible trigger: the turn called nothing at
-    // all. Once any tool ran, the evidence-backed guards above own the answer.
+/// The service already requires an investment answer to open with the exact
+/// `数据时间：北京时间 …；行情口径：` line, and the same contract tells the Agent to
+/// skip that format entirely when the turn is not an investment request. So the
+/// header is the Agent's own declaration of what it is about to publish — no
+/// server-side classifier and no keyword list is involved in reading it.
+///
+/// A turn carrying that declaration while having called nothing has answered a
+/// research question from model memory. That is the whole defect class behind
+/// `SNDK 未上市`, `coreweave 还没 IPO`, `无法提供具体的数字`, and any fabricated
+/// price or multiple: not a vocabulary to enumerate, one precondition to hold.
+fn research_answer_without_evidence(content: &str, tool_calls_made: &[ToolCallMade]) -> bool {
     if !tool_calls_made.is_empty() {
-        return None;
+        return false;
     }
-    let line = content
-        .split(['\n', '。', '！', '？'])
-        .find(|line| listing_denial_line(line))?;
-    let bounded = line.chars().take(120).collect::<String>();
-    Some(bounded)
+    content
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .is_some_and(|line| line.starts_with(CANONICAL_RESEARCH_ANSWER_HEADER))
 }
 
-fn unverified_listing_status_correction_prompt(claim: &str) -> String {
+fn research_evidence_precondition_prompt() -> String {
     format!(
-        "【内部终稿证据缺口】上一版终稿尚未发布正文。其中这句对当前上市 / 交易状态下了判断：「{claim}」，但本轮没有执行过任何业务工具，因此这句只来自模型记忆，不是本轮核验结果。公司上市状态会变化（分拆、重新上市、近年 IPO 都很常见），记忆不能作为依据。本轮请先调用真实工具核验：先用 `data_fetch` search 按公司名或代码确认实体，再取同代码 quote/profile 或 snapshot；必要时用 `web_search` 补充 IPO / 上市进展的当前来源。取得证据后按用户原问题重写终稿。若工具确实查不到该实体，只能说明本轮未能核验到该证券，不得把“查不到”写成“未上市”。不要向用户提及本检查。"
+        "【内部取证前置】上一版终稿尚未发布正文。它以 `{CANONICAL_RESEARCH_ANSWER_HEADER}` 开头，即由你自己声明这是一次投研回答，但本轮没有执行过任何业务工具，因此其中的上市状态、价格、估值、财务、事件与结论都只来自模型记忆，不是本轮核验结果。本轮请先取证再作答：按用户原问题的真实主题，用 `data_fetch` 确认实体与同代码行情/资料，并用 `web_search` 取当前公开来源；两者可在同一轮并行。取得真实结果后再按用户原问题重写终稿。若某项确实查不到，只写该项未核验，不得把缺失写成事实。不要向用户提及本检查。"
     )
 }
 
@@ -5807,8 +5744,8 @@ impl Agent for FunctionCallingAgent {
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
         let mut pending_listing_final_correction: Option<String> = None;
-        let mut unverified_listing_corrections = 0u32;
-        let mut unverified_listing_retry_pending = false;
+        let mut research_evidence_retries = 0u32;
+        let mut research_evidence_retry_pending = false;
         let mut listing_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
@@ -5954,7 +5891,7 @@ impl Agent for FunctionCallingAgent {
                 ToolChoiceMode::Auto
             } else if active_business_round && !evidence_floor_satisfied && !force_finance_final {
                 ToolChoiceMode::Required
-            } else if unverified_listing_retry_pending && has_tools {
+            } else if research_evidence_retry_pending && has_tools {
                 // The previous round asserted a current listing status having
                 // called nothing. Asking again without requiring a tool call
                 // just invites the same memory answer.
@@ -5962,7 +5899,7 @@ impl Agent for FunctionCallingAgent {
             } else {
                 ToolChoiceMode::Auto
             };
-            unverified_listing_retry_pending = false;
+            research_evidence_retry_pending = false;
             let round_instruction = Some(if force_context_overflow_final {
                 CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION
             } else if force_persistent_mutation_final {
@@ -6168,22 +6105,21 @@ impl Agent for FunctionCallingAgent {
                             // rewrites a cause.
                             active_business_failures = 0;
                             active_business_outcome = Some("direct_final");
-                            if let Some(claim) =
-                                unverified_listing_status_claim(&response.content, &tool_calls_made)
-                                && unverified_listing_corrections < MAX_LISTING_FINAL_CORRECTIONS
+                            if research_answer_without_evidence(&response.content, &tool_calls_made)
+                                && blocked_tool_finalization.is_none()
+                                && research_evidence_retries < MAX_LISTING_FINAL_CORRECTIONS
                                 && iterations < self.max_iterations
                             {
                                 tracing::warn!(
                                     session_id = %context.session_id,
                                     iteration = iterations,
-                                    claim = %claim,
-                                    "final asserted current listing status with zero business evidence"
+                                    "research answer published no business evidence; requiring tools"
                                 );
-                                unverified_listing_corrections =
-                                    unverified_listing_corrections.saturating_add(1);
-                                unverified_listing_retry_pending = true;
+                                research_evidence_retries =
+                                    research_evidence_retries.saturating_add(1);
+                                research_evidence_retry_pending = true;
                                 pending_listing_final_correction =
-                                    Some(unverified_listing_status_correction_prompt(&claim));
+                                    Some(research_evidence_precondition_prompt());
                                 continue;
                             }
                             let listing_violations = listing_final_violations(
@@ -7407,20 +7343,19 @@ impl Agent for FunctionCallingAgent {
             // is likewise the same Agent's natural final answer and is not sent
             // through another terminal generation or a service semantic gate.
             self.dbg("[Agent] done (no more tool_calls)");
-            if let Some(claim) = unverified_listing_status_claim(&result.content, &tool_calls_made)
-                && unverified_listing_corrections < MAX_LISTING_FINAL_CORRECTIONS
+            if research_answer_without_evidence(&result.content, &tool_calls_made)
+                && blocked_tool_finalization.is_none()
+                && research_evidence_retries < MAX_LISTING_FINAL_CORRECTIONS
                 && iterations < self.max_iterations
             {
                 tracing::warn!(
                     session_id = %context.session_id,
                     iteration = iterations,
-                    claim = %claim,
-                    "final asserted current listing status with zero business evidence"
+                    "research answer published no business evidence; requiring tools"
                 );
-                unverified_listing_corrections = unverified_listing_corrections.saturating_add(1);
-                unverified_listing_retry_pending = true;
-                pending_listing_final_correction =
-                    Some(unverified_listing_status_correction_prompt(&claim));
+                research_evidence_retries = research_evidence_retries.saturating_add(1);
+                research_evidence_retry_pending = true;
+                pending_listing_final_correction = Some(research_evidence_precondition_prompt());
                 continue;
             }
             let listing_violations =
@@ -13490,58 +13425,6 @@ mod tests {
         }
     }
 
-    /// A macro question whose only "ticker" is a strategy acronym must not end
-    /// as an offline answer. The identity registry has no coverage for the
-    /// token, so the turn is required to reach open web research before it may
-    /// close. This is the `美股科技股和半导体股票方面的 CTA 是多少` failure.
-    /// Hole 1: a company question answered entirely from model memory. No tool
-    /// ran, so no identity search, no evidence floor, no forced final and no
-    /// listing evidence exist to contradict it. `coreweave 现在怎么样` answered
-    /// with "尚未上市" is exactly this shape — CRWV listed in March 2025.
-    /// The denial-marker list is the trigger for every listing guard, so a gap
-    /// in it silently disables all of them. A company that listed recently is
-    /// most naturally denied with IPO or private-company wording rather than
-    /// with 退市, and that whole family used to pass straight through.
-    #[test]
-    fn listing_denial_detection_covers_ipo_and_private_company_wording() {
-        for line in [
-            "CoreWeave 目前尚未上市。",
-            "CoreWeave 还没上市。",
-            "CoreWeave 还未上市。",
-            "CoreWeave 至今未上市。",
-            "CoreWeave 还没 IPO。",
-            "CoreWeave 尚未 IPO。",
-            "CoreWeave 还没有 IPO。",
-            "CoreWeave 仍在 pre-IPO 阶段。",
-            "CoreWeave 是一家私营公司。",
-            "CoreWeave 目前是非上市公司。",
-            "CoreWeave 仍未公开上市。",
-            "CoreWeave 尚未公开发行股票。",
-            "CoreWeave 还没有公开交易的股票。",
-            "CoreWeave 没有股票代码。",
-            "CoreWeave has not gone public yet.",
-            "CoreWeave is still private.",
-            "CoreWeave is not yet public.",
-            "CoreWeave 已被收购并退市。",
-        ] {
-            assert!(listing_denial_line(line), "missed denial: {line}");
-        }
-
-        // True current statements, corporate history and risk wording must all
-        // stay publishable; a broader trigger is only safe with these held.
-        for line in [
-            "CoreWeave 当前在 NASDAQ 上市交易。",
-            "CoreWeave 上市后表现不错。",
-            "CoreWeave 上市前是一家私营公司，2025 年 3 月完成 IPO。",
-            "CoreWeave 曾是私营公司。",
-            "SanDisk 此前被 WD 收购后退市，后于 2025 年分拆重新上市。",
-            "关注其退市风险。",
-            "这家公司当前上市交易，估值偏高。",
-        ] {
-            assert!(!listing_denial_line(line), "false denial: {line}");
-        }
-    }
-
     #[tokio::test]
     async fn memory_only_listing_claim_is_sent_back_with_tools_required() {
         let denial = "数据时间：北京时间 2026-07-19 09:31；行情口径：暂无\n\nCoreWeave 目前尚未上市，仍是一家私营公司。";
@@ -13603,7 +13486,7 @@ mod tests {
             "{retry_prompt}"
         );
         assert!(
-            retry_prompt.contains("不得把“查不到”写成“未上市”"),
+            retry_prompt.contains("不得把缺失写成事实"),
             "{retry_prompt}"
         );
     }
@@ -13649,9 +13532,11 @@ mod tests {
         );
     }
 
-    /// A corporate-form word must never become a matchable label on its own.
+    /// Labels are derived from the provider payload, never from a maintained
+    /// list of corporate-form words: the segment before the first comma is
+    /// enough to turn `CoreWeave, Inc.` into a matchable `CoreWeave`.
     #[test]
-    fn company_name_labels_exclude_bare_corporate_suffixes() {
+    fn company_name_labels_come_from_the_provider_payload_only() {
         let mut state = ListingEvidenceState {
             active: true,
             ..Default::default()
@@ -13663,23 +13548,49 @@ mod tests {
         assert!(!labels.iter().any(|label| label == "INC"));
     }
 
-    /// The zero-evidence guard is the tightest possible trigger: once any tool
-    /// ran, the evidence-backed guards own the answer and this one stands down.
+    /// The precondition reads one thing: did the Agent declare an investment
+    /// answer, and did it call anything. No claim vocabulary is involved, so a
+    /// fabricated price is caught by exactly the same rule as a listing denial
+    /// — the case a hand-maintained denial list structurally could not cover.
     #[test]
-    fn unverified_status_guard_only_fires_when_the_turn_called_nothing() {
-        let denial = "CoreWeave 目前尚未上市。";
-        assert!(unverified_listing_status_claim(denial, &[]).is_some());
-        assert!(
-            unverified_listing_status_claim("CoreWeave 当前在 NASDAQ 上市交易。", &[]).is_none()
-        );
+    fn research_evidence_precondition_ignores_what_the_claim_says() {
+        let header = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔";
+        for body in [
+            "CoreWeave 目前尚未上市，仍是一家私营公司。",
+            "CoreWeave 还没 IPO。",
+            "CRWV 当前股价 142.30 美元，Forward PE 约 38 倍，目标价 175 美元。",
+            "CRWV 三季度营收同比增长 210%，自由现金流转正。",
+            "本轮无法提供具体的数字。",
+        ] {
+            assert!(
+                research_answer_without_evidence(&format!("{header}\n\n{body}"), &[]),
+                "missed: {body}"
+            );
+        }
 
+        // An ordinary chat answer never carries the contract header, so it is
+        // untouched: the gate keys on the Agent's own declaration, not on the
+        // user's wording.
+        assert!(!research_answer_without_evidence(
+            "你好，有什么可以帮你的？",
+            &[]
+        ));
+        assert!(!research_answer_without_evidence(
+            "IPO 是指公司首次公开发行股票。未上市公司不能公开交易。",
+            &[]
+        ));
+
+        // Once any tool ran, the evidence-backed guards own the answer.
         let call = ToolCallMade {
             name: "web_search".to_string(),
             arguments: json!({"query": "CoreWeave IPO"}),
             result: json!({"results": []}),
             tool_call_id: Some("tc1".to_string()),
         };
-        assert!(unverified_listing_status_claim(denial, std::slice::from_ref(&call)).is_none());
+        assert!(!research_answer_without_evidence(
+            &format!("{header}\n\nCoreWeave 目前尚未上市。"),
+            std::slice::from_ref(&call)
+        ));
     }
 
     #[tokio::test]

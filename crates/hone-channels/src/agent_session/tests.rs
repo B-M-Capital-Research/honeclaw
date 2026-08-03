@@ -7216,7 +7216,10 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
         "---\nname: Stock Research\ndescription: fast restore fixture\n---\n\nFixture body.",
     )
     .expect("write stock research test skill");
-    let answer = "数据时间：北京时间 2026-07-22 10:00；行情口径：本轮未调用行情工具\n\n先给出数据中心产业链筛选框架。";
+    // Deliberately not a self-declared research answer: this test covers
+    // context restore, not the evidence precondition, and a final carrying the
+    // `数据时间：` contract header with zero tool calls is no longer publishable.
+    let answer = "先给出数据中心产业链筛选框架。";
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
         content: answer.to_string(),
         reasoning_content: None,
@@ -7349,7 +7352,10 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
 async fn strict_initial_research_force_compacts_and_loads_summary_after_overflow() {
     let root = make_temp_dir("hone_channels_strict_overflow_forced_compact");
     std::fs::create_dir_all(&root).expect("create root");
-    let answer = "数据时间：北京时间 2026-07-22 10:00；行情口径：本轮未调用行情工具\n\n压缩恢复后继续给出数据中心产业链筛选框架。";
+    // Deliberately not a self-declared research answer: this test covers
+    // context restore, not the evidence precondition, and a final carrying the
+    // `数据时间：` contract header with zero tool calls is no longer publishable.
+    let answer = "压缩恢复后继续给出数据中心产业链筛选框架。";
     let llm = MockLlmProvider::with_chat_and_tool_responses(
         vec![Ok(ChatResult {
             content: "overflow-summary-must-load-on-retry".to_string(),
