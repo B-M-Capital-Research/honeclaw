@@ -55,6 +55,8 @@ const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
 const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
+const MAX_LISTING_FINAL_CORRECTIONS: u32 = 1;
+const MAX_LISTING_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const CONTEXT_OVERFLOW_RECOVERY_TOTAL_TOOL_CHARS: usize = 48_000;
 const CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS: usize = 6_000;
 const CONTEXT_OVERFLOW_RECOVERY_MIN_RESULT_CHARS: usize = 800;
@@ -3975,6 +3977,46 @@ fn registered_read_only_tool_call_is_well_formed(
     })
 }
 
+fn registered_tool_call_is_known_read_only(
+    tool_call: &ToolCall,
+    registered_tool_names: &BTreeSet<String>,
+) -> bool {
+    registered_tool_names.contains(&tool_call.function.name)
+        && serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok_and(|arguments| {
+            tool_call_is_known_read_only(&tool_call.function.name, &arguments)
+        })
+}
+
+fn malformed_read_only_tool_result(tool_call: &ToolCall) -> Value {
+    let arguments = serde_json::from_str::<Value>(&tool_call.function.arguments).ok();
+    let data_type = arguments
+        .as_ref()
+        .and_then(|arguments| explicit_data_fetch_data_type(arguments));
+    let message = if tool_call.function.name == "data_fetch"
+        && data_type.is_some_and(data_fetch_data_type_uses_security_target)
+    {
+        format!(
+            "DataFetch {} 必须在实体 search 返回标准代码后，使用 ticker 或 symbol 携带该代码重新调用；query 只用于 data_type=search，不能替代证券目标字段",
+            data_type.unwrap_or("证券级接口")
+        )
+    } else if tool_call.function.name == "data_fetch" {
+        "DataFetch 参数结构无效；请依据工具 schema 修正本次只读调用后重试".to_string()
+    } else {
+        format!(
+            "只读工具 {} 的参数结构无效；请依据工具 schema 修正后重试",
+            tool_call.function.name
+        )
+    };
+    serde_json::json!({
+        "error": "invalid_read_only_tool_shape",
+        "status": "rejected_before_execution",
+        "isError": true,
+        "tool": tool_call.function.name,
+        "data_type": data_type,
+        "message": message,
+    })
+}
+
 fn committed_prefix_matches_required(committed: &str, required: Option<&str>) -> bool {
     required.is_some_and(|required| committed == required || committed.starts_with(required))
 }
@@ -4533,6 +4575,290 @@ fn broad_us_market_symbol_group(symbol: &str) -> Option<&'static str> {
         "IWM" | "RUT" | "^RUT" => Some("罗素2000"),
         _ => None,
     }
+}
+
+#[derive(Debug, Default)]
+struct ListingEvidenceState {
+    active: bool,
+    inactive: bool,
+    current_quote: bool,
+    active_profile: bool,
+}
+
+fn canonical_listing_symbol(value: &str) -> Option<String> {
+    provider_canonical_key(value).or_else(|| {
+        let normalized = value.trim().to_ascii_uppercase();
+        (!normalized.is_empty()).then_some(normalized)
+    })
+}
+
+fn collect_listing_markers(value: &Value, states: &mut BTreeMap<String, ListingEvidenceState>) {
+    match value {
+        Value::Object(fields) => {
+            if let Some(marker) = fields.get("hone_security_listing_evidence")
+                && let Some(marker_fields) = marker.as_object()
+            {
+                let symbol = ["requested_symbol", "quote_symbol", "profile_symbol"]
+                    .into_iter()
+                    .find_map(|key| marker_fields.get(key).and_then(Value::as_str))
+                    .and_then(canonical_listing_symbol);
+                if let Some(symbol) = symbol {
+                    let state = states.entry(symbol).or_default();
+                    match marker_fields.get("status").and_then(Value::as_str) {
+                        Some("active_listing") => state.active = true,
+                        Some("inactive_listing") => state.inactive = true,
+                        _ => {}
+                    }
+                }
+            }
+            for child in fields.values() {
+                collect_listing_markers(child, states);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_listing_markers(item, states);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn current_turn_listing_states(
+    tool_calls_made: &[ToolCallMade],
+) -> BTreeMap<String, ListingEvidenceState> {
+    let mut states = BTreeMap::new();
+    for call in tool_calls_made {
+        collect_listing_markers(&call.result, &mut states);
+        if call.name != "data_fetch" {
+            continue;
+        }
+        let Some(data_type) = call.arguments.get("data_type").and_then(Value::as_str) else {
+            continue;
+        };
+        if !matches!(data_type, "quote" | "profile") {
+            continue;
+        }
+        let Some(data) = call.result.get("data") else {
+            continue;
+        };
+        let rows = data
+            .as_array()
+            .map(|items| items.iter().collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![data]);
+        for row in rows {
+            let Some(fields) = row.as_object() else {
+                continue;
+            };
+            let Some(symbol) = fields
+                .get("symbol")
+                .and_then(Value::as_str)
+                .and_then(canonical_listing_symbol)
+            else {
+                continue;
+            };
+            let state = states.entry(symbol).or_default();
+            if data_type == "quote" {
+                state.current_quote = fields
+                    .get("price")
+                    .and_then(Value::as_f64)
+                    .is_some_and(|price| price.is_finite() && price > 0.0);
+            } else {
+                let active = fields.get("isActivelyTrading").and_then(Value::as_bool) == Some(true);
+                let exchange_present = fields
+                    .get("exchangeShortName")
+                    .or_else(|| fields.get("exchange"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|exchange| !exchange.trim().is_empty());
+                state.active_profile = active && exchange_present;
+            }
+        }
+    }
+    for state in states.values_mut() {
+        state.active |= state.current_quote && state.active_profile;
+    }
+    states
+}
+
+fn explicit_security_symbols(runtime_input: &str) -> BTreeSet<String> {
+    let request = original_market_move_request(runtime_input);
+    let token =
+        Regex::new(r"\$?[A-Za-z][A-Za-z0-9./-]*").expect("explicit security candidate regex");
+    let code_shape =
+        Regex::new(r"^[A-Za-z]{1,5}(?:[./-][A-Za-z])?$").expect("security code shape regex");
+    token
+        .find_iter(request)
+        .filter_map(|matched| {
+            let raw = matched.as_str();
+            let value = raw.strip_prefix('$').unwrap_or(raw);
+            if !code_shape.is_match(value) {
+                return None;
+            }
+            let uppercase = value.chars().any(|ch| ch.is_ascii_uppercase())
+                && value
+                    .chars()
+                    .filter(|ch| ch.is_ascii_alphabetic())
+                    .all(|ch| ch.is_ascii_uppercase());
+            let adjacent_non_ascii = request[..matched.start()]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| !ch.is_ascii())
+                || request[matched.end()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| !ch.is_ascii());
+            (raw.starts_with('$') || uppercase || adjacent_non_ascii)
+                .then(|| canonical_listing_symbol(value))
+                .flatten()
+        })
+        .collect()
+}
+
+fn listing_denial_line(line: &str) -> bool {
+    let normalized = line.to_ascii_lowercase();
+    let denial = [
+        "已退市",
+        "退市",
+        "未上市",
+        "没有上市",
+        "并未上市",
+        "不再上市",
+        "不是当前交易代码",
+        "is delisted",
+        "delisted",
+        "was delisted",
+        "has been delisted",
+        "not listed",
+        "no longer listed",
+        "not publicly traded",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let rebuttal = [
+        "并非已退市",
+        "不是已退市",
+        "没有退市",
+        "尚未退市",
+        "不能断言",
+        "不得断言",
+        "不能用历史",
+        "不得用历史",
+        "错误声称",
+        "错误地声称",
+        "退市风险",
+        "是否退市",
+        "会不会退市",
+        "可能退市",
+        "重新上市",
+        "恢复上市",
+        "当前上市",
+        "目前上市",
+        "not delisted",
+        "incorrectly",
+        "delisting risk",
+        "could be delisted",
+        "may be delisted",
+        "relisted",
+        "currently listed",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    denial && !rebuttal
+}
+
+fn listing_final_violations(
+    runtime_input: &str,
+    content: &str,
+    tool_calls_made: &[ToolCallMade],
+) -> Vec<String> {
+    let states = current_turn_listing_states(tool_calls_made);
+    let mut symbols = explicit_security_symbols(runtime_input);
+    symbols.extend(states.keys().cloned());
+    let mut violations = BTreeSet::new();
+    for line in content.split(['\n', '。', '！', '？']) {
+        if !listing_denial_line(line) {
+            continue;
+        }
+        let upper = line.to_ascii_uppercase();
+        for symbol in &symbols {
+            if !upper.contains(symbol) {
+                continue;
+            }
+            let state = states.get(symbol);
+            if state.is_some_and(|state| state.inactive && !state.active) {
+                continue;
+            }
+            let reason = if state.is_some_and(|state| state.active) {
+                "本轮结构化证据已确认 active_listing，终稿却断言退市或未上市"
+            } else {
+                "本轮没有 inactive_listing 结构化证据，终稿却用历史记忆断言退市或未上市"
+            };
+            violations.insert(format!("{symbol}: {reason}"));
+        }
+    }
+    violations.into_iter().collect()
+}
+
+fn listing_final_correction_prompt(
+    violations: &[String],
+    draft: &str,
+    tool_calls_made: &[ToolCallMade],
+) -> String {
+    let states = current_turn_listing_states(tool_calls_made);
+    let active = states
+        .iter()
+        .filter(|(_, state)| state.active)
+        .map(|(symbol, _)| symbol.as_str())
+        .collect::<Vec<_>>();
+    let active = if active.is_empty() {
+        "无；必须继续取得同代码 quote/profile 或 earnings_outlook 后再判断上市状态".to_string()
+    } else {
+        active.join("、")
+    };
+    let bounded_draft = draft
+        .chars()
+        .take(MAX_LISTING_DRAFT_FEEDBACK_CHARS)
+        .collect::<String>();
+    format!(
+        "【内部终稿上市状态纠正】上一版终稿尚未发布正文。逐项修正：{}。本轮 active_listing 标的：{active}。不得用历史收购或旧退市记忆断言当前未上市，也不得引导用户改问旧母公司；已有 active_listing 时直接按当前上市证券完成原问题。尚无当前状态证据时，优先继续调用同代码 quote/profile、snapshot 或 earnings_outlook；若工具已关闭，只能披露当前状态未核验，绝不能把证据缺失写成退市事实。不要向用户提及本检查。重写稿仍须遵守精确数据时间首行。\n<unpublished_draft>\n{bounded_draft}\n</unpublished_draft>",
+        violations.join("；")
+    )
+}
+
+fn deterministic_listing_gap_response(
+    required_prefix: Option<&str>,
+    tool_calls_made: &[ToolCallMade],
+    violations: &[String],
+) -> String {
+    let first_line = match required_prefix {
+        Some(prefix) if prefix.ends_with("；行情口径：") => {
+            format!("{prefix}本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露")
+        }
+        Some(prefix) => prefix.to_string(),
+        None => "本轮仅使用可核验资料。".to_string(),
+    };
+    let states = current_turn_listing_states(tool_calls_made);
+    let active = states
+        .iter()
+        .filter(|(_, state)| state.active)
+        .map(|(symbol, _)| symbol.as_str())
+        .collect::<Vec<_>>();
+    if !active.is_empty() {
+        return format!(
+            "{first_line}\n\n{} 的本轮同代码结构化行情与公司资料已确认其当前上市交易；不能用历史收购或旧退市记录否认当前上市。财报前瞻的其它项目本轮未形成足够可靠的完整证据，因此不补写未经核验的数字。",
+            active.join("、")
+        );
+    }
+    let symbols = violations
+        .iter()
+        .filter_map(|violation| violation.split(':').next())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join("、");
+    format!(
+        "{first_line}\n\n本轮没有取得足以判断 {symbols} 当前上市状态的结构化证据，因此不能用历史并购或旧代码记忆断言其已退市或未上市。财报前瞻的其它项目也暂不补写未经核验的数字。"
+    )
 }
 
 fn is_broad_us_market_request(runtime_input: &str) -> bool {
@@ -5290,6 +5616,8 @@ impl Agent for FunctionCallingAgent {
         let mut active_business_failures = 0u32;
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
+        let mut pending_listing_final_correction: Option<String> = None;
+        let mut listing_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
         let mut persistent_mutation_finalization = false;
@@ -5496,6 +5824,16 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
+            if let Some(feedback) = pending_listing_final_correction.as_deref() {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(feedback.to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             if force_finance_final && let Some(blocked_call) = blocked_tool_finalization.as_deref()
             {
                 messages.push(Message {
@@ -5586,6 +5924,38 @@ impl Agent for FunctionCallingAgent {
                             // rewrites a cause.
                             active_business_failures = 0;
                             active_business_outcome = Some("direct_final");
+                            let listing_violations = listing_final_violations(
+                                user_input,
+                                &response.content,
+                                &tool_calls_made,
+                            );
+                            if !listing_violations.is_empty() {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    iteration = iterations,
+                                    violations = %listing_violations.join(" | "),
+                                    listing_final_corrections,
+                                    "agent-owned listing final contradicted or exceeded current-turn listing evidence"
+                                );
+                                if listing_final_corrections < MAX_LISTING_FINAL_CORRECTIONS
+                                    && iterations < self.max_iterations
+                                {
+                                    listing_final_corrections =
+                                        listing_final_corrections.saturating_add(1);
+                                    pending_listing_final_correction =
+                                        Some(listing_final_correction_prompt(
+                                            &listing_violations,
+                                            &response.content,
+                                            &tool_calls_made,
+                                        ));
+                                    continue;
+                                }
+                                response.content = deterministic_listing_gap_response(
+                                    required_final_answer_prefix.as_deref(),
+                                    &tool_calls_made,
+                                    &listing_violations,
+                                );
+                            }
                             let violations = market_move_final_violations(
                                 user_input,
                                 &response.content,
@@ -6054,7 +6424,7 @@ impl Agent for FunctionCallingAgent {
                             || round_starts_investment_research);
                     let finance_round_is_known_read_only =
                         actionable_tool_calls.iter().all(|tool_call| {
-                            registered_read_only_tool_call_is_well_formed(
+                            registered_tool_call_is_known_read_only(
                                 tool_call,
                                 &registered_tool_names,
                             )
@@ -6064,12 +6434,13 @@ impl Agent for FunctionCallingAgent {
                     }
 
                     // A finance/read-only turn must never execute an
-                    // unregistered, malformed, unknown-effect, or
-                    // write-capable batch. Blocking the tool is not authority
-                    // to refuse the user's business question: keep the batch
-                    // outside the assistant frame/observer/registry/network,
-                    // then give the same Agent one tools-disabled natural
-                    // continuation from evidence already in context.
+                    // unregistered, unknown-effect, or write-capable batch.
+                    // A registered, known-read-only batch is handled per call
+                    // below: malformed siblings receive a structured rejection
+                    // while valid searches and evidence reads still execute.
+                    // Blocking an unsafe batch is not authority to refuse the
+                    // user's business question, so the same Agent receives one
+                    // tools-disabled continuation from evidence already held.
                     if finance_round_is_read_only && !finance_round_is_known_read_only {
                         let blocked_calls = actionable_tool_calls
                             .iter()
@@ -6297,6 +6668,33 @@ impl Agent for FunctionCallingAgent {
                             match serde_json::from_str::<Value>(tool_args_str) {
                                 Ok(tool_args) => {
                                     self.dbg(&format!("[Agent] tool_call name={tool_name}"));
+                                    if finance_round_is_read_only
+                                        && !registered_read_only_tool_call_is_well_formed(
+                                            tc,
+                                            &registered_tool_names,
+                                        )
+                                    {
+                                        let error_result = malformed_read_only_tool_result(tc);
+                                        tracing::warn!(
+                                            session_id = %context.session_id,
+                                            iteration = iterations,
+                                            tool = %tool_name,
+                                            "rejected one malformed read-only finance call while preserving the valid batch siblings"
+                                        );
+                                        tool_calls_made.push(ToolCallMade {
+                                            name: tool_name.clone(),
+                                            arguments: tool_args,
+                                            result: error_result.clone(),
+                                            tool_call_id: Some(tool_call_id.clone()),
+                                        });
+                                        context.add_tool_result(
+                                            tool_call_id,
+                                            tool_name,
+                                            &serde_json::to_string(&error_result)
+                                                .unwrap_or_default(),
+                                        );
+                                        continue;
+                                    }
                                     let (effective_max_tool_calls, effective_tool_call_limits) =
                                         if finance_round_is_read_only {
                                             (finance_max_tool_calls, &finance_tool_call_limits)
@@ -6708,6 +7106,41 @@ impl Agent for FunctionCallingAgent {
             // is likewise the same Agent's natural final answer and is not sent
             // through another terminal generation or a service semantic gate.
             self.dbg("[Agent] done (no more tool_calls)");
+            let listing_violations =
+                listing_final_violations(user_input, &result.content, &tool_calls_made);
+            if !listing_violations.is_empty() {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    iteration = iterations,
+                    violations = %listing_violations.join(" | "),
+                    listing_final_corrections,
+                    "listing final contradicted or exceeded current-turn listing evidence"
+                );
+                if listing_final_corrections < MAX_LISTING_FINAL_CORRECTIONS
+                    && iterations < self.max_iterations
+                {
+                    listing_final_corrections = listing_final_corrections.saturating_add(1);
+                    pending_listing_final_correction = Some(listing_final_correction_prompt(
+                        &listing_violations,
+                        &result.content,
+                        &tool_calls_made,
+                    ));
+                    continue;
+                }
+                let content = deterministic_listing_gap_response(
+                    required_final_answer_prefix.as_deref(),
+                    &tool_calls_made,
+                    &listing_violations,
+                );
+                context.add_assistant_message_with_metadata(&content, None, None);
+                return AgentResponse {
+                    content,
+                    tool_calls_made,
+                    iterations,
+                    success: true,
+                    error: None,
+                };
+            }
             let metadata = if active_business_round {
                 None
             } else {
@@ -7313,6 +7746,63 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
             Ok(json!({"data_type":data_type,"data":data}))
+        }
+    }
+
+    struct SndkFinanceEvidenceTool {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for SndkFinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "SNDK listing and earnings evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match args.get("data_type").and_then(Value::as_str) {
+                Some("search") => Ok(json!({
+                    "data_type": "search",
+                    "data": [{
+                        "symbol": "SNDK",
+                        "name": "Sandisk Corporation",
+                        "exchangeShortName": "NASDAQ"
+                    }]
+                })),
+                Some("earnings_outlook") => Ok(json!({
+                    "data_type": "earnings_outlook",
+                    "ticker": "SNDK",
+                    "data": {
+                        "quote": [{"symbol":"SNDK","price":238.15,"exchange":"NASDAQ"}],
+                        "profile": [{
+                            "symbol":"SNDK",
+                            "companyName":"Sandisk Corporation",
+                            "exchangeShortName":"NASDAQ",
+                            "isActivelyTrading":true
+                        }],
+                        "earnings": [{"date":"2026-08-05"}]
+                    },
+                    "hone_security_listing_evidence": {
+                        "status":"active_listing",
+                        "requested_symbol":"SNDK",
+                        "quote_symbol":"SNDK",
+                        "profile_symbol":"SNDK",
+                        "exchange":"NASDAQ",
+                        "profile_is_actively_trading":true,
+                        "current_quote_available":true
+                    }
+                })),
+                _ => Ok(json!({"data":[]})),
+            }
         }
     }
 
@@ -13941,6 +14431,201 @@ mod tests {
                 })
             })
         }));
+    }
+
+    #[test]
+    fn listing_final_requires_current_inactive_evidence_before_delisting_claim() {
+        let runtime_input =
+            "【本轮用户输入】\nsndk财报前瞻\n\n【本轮最终回答契约：由主 Agent 一次完成】";
+        let denied = "数据时间：北京时间 2026-08-03 12:52；行情口径：可核验\n\nSNDK（Sandisk Corporation）已退市，无法提供当前财报前瞻。";
+
+        assert_eq!(
+            explicit_security_symbols(runtime_input),
+            BTreeSet::from(["SNDK".to_string()])
+        );
+        assert!(explicit_security_symbols("Sandisk公司财报前瞻").is_empty());
+
+        let unsupported = listing_final_violations(runtime_input, denied, &[]);
+        assert_eq!(unsupported.len(), 1);
+        assert!(unsupported[0].contains("没有 inactive_listing"));
+
+        let active = vec![ToolCallMade {
+            name: "data_fetch".to_string(),
+            arguments: json!({"data_type":"earnings_outlook","ticker":"SNDK"}),
+            result: json!({
+                "hone_security_listing_evidence": {
+                    "status":"active_listing",
+                    "requested_symbol":"SNDK"
+                }
+            }),
+            tool_call_id: Some("tc_sndk_outlook".to_string()),
+        }];
+        let contradicted = listing_final_violations(runtime_input, denied, &active);
+        assert_eq!(contradicted.len(), 1);
+        assert!(contradicted[0].contains("已确认 active_listing"));
+        let deterministic = deterministic_listing_gap_response(
+            Some("数据时间：北京时间 2026-08-03 12:52；行情口径："),
+            &active,
+            &contradicted,
+        );
+        assert!(deterministic.contains("SNDK"));
+        assert!(deterministic.contains("当前上市交易"));
+        assert!(!deterministic.contains("WDC"));
+        assert!(
+            listing_final_violations(
+                runtime_input,
+                "SNDK 当前在 Nasdaq 上市交易；历史收购不能覆盖后续重新上市事实。",
+                &active,
+            )
+            .is_empty()
+        );
+
+        let inactive = vec![ToolCallMade {
+            name: "data_fetch".to_string(),
+            arguments: json!({"data_type":"snapshot","ticker":"SNDK"}),
+            result: json!({
+                "hone_security_listing_evidence": {
+                    "status":"inactive_listing",
+                    "requested_symbol":"SNDK"
+                }
+            }),
+            tool_call_id: Some("tc_sndk_inactive".to_string()),
+        }];
+        assert!(listing_final_violations(runtime_input, denied, &inactive).is_empty());
+    }
+
+    #[test]
+    fn separate_quote_and_profile_form_active_listing_evidence() {
+        let calls = vec![
+            ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: json!({"data_type":"quote","ticker":"SNDK"}),
+                result: json!({"data":[{"symbol":"SNDK","price":238.15}]}),
+                tool_call_id: Some("tc_quote".to_string()),
+            },
+            ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: json!({"data_type":"profile","ticker":"SNDK"}),
+                result: json!({"data":[{
+                    "symbol":"SNDK",
+                    "exchangeShortName":"NASDAQ",
+                    "isActivelyTrading":true
+                }]}),
+                tool_call_id: Some("tc_profile".to_string()),
+            },
+        ];
+        let states = current_turn_listing_states(&calls);
+        assert!(states.get("SNDK").is_some_and(|state| state.active));
+        assert!(
+            listing_final_violations(
+                "【本轮用户输入】SNDK 财报前瞻",
+                "SNDK 当前上市交易。",
+                &calls,
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            listing_final_violations("【本轮用户输入】SNDK 财报前瞻", "SNDK 已退市。", &calls,)
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn sndk_malformed_outlook_keeps_valid_search_and_corrects_delisting_final() {
+        let wrong = concat!(
+            "数据时间：北京时间 2026-08-03 13:19；行情口径：本轮仅使用可核验资料\n\n",
+            "SNDK 已于 2016 年退市，无法提供财报前瞻，请改看 WDC。"
+        );
+        let corrected = concat!(
+            "数据时间：北京时间 2026-08-03 13:19；行情口径：DataFetch 最新可得、非逐笔\n\n",
+            "SNDK（Sandisk Corporation）当前在 Nasdaq 上市交易。本轮 earnings_outlook 已取得 2026-08-05 财报日历覆盖，以下按当前上市公司完成前瞻。"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_sndk".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"SNDK","entity_route":"sndk","identity_match":"exact_symbol"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_bad_outlook".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"earnings_outlook","query":"SNDK","entity_route":"sndk"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 2,
+                    id: Some("tc_web_sndk".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"Sandisk SNDK earnings August 2026 investor relations"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_outlook_sndk".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"earnings_outlook","ticker":"SNDK","entity_route":"sndk"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(wrong.to_string())],
+            vec![ChatStreamEvent::ContentDelta(corrected.to_string())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let data_calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(SndkFinanceEvidenceTool {
+            calls: data_calls.clone(),
+        }));
+        registry.register(Box::new(WebSearchEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_agent_owned_finance_loop(true)
+                .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("sndk-malformed-outlook-recovery".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】\nsndk财报前瞻\n\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-08-03 13:19；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, corrected);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(data_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(response.tool_calls_made.len(), 4);
+        let rejected = response
+            .tool_calls_made
+            .iter()
+            .find(|call| call.tool_call_id.as_deref() == Some("tc_bad_outlook"))
+            .expect("malformed outlook should remain auditable");
+        assert_eq!(rejected.result["error"], "invalid_read_only_tool_shape");
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .as_slice(),
+            [
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:web_search",
+                "done:web_search:true",
+                "start:data_fetch",
+                "done:data_fetch:true",
+            ]
+        );
+        let messages = seen_messages.lock().expect("seen messages");
+        let correction = messages
+            .last()
+            .and_then(|round| round.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("listing correction prompt");
+        assert!(correction.contains("内部终稿上市状态纠正"));
+        assert!(correction.contains("active_listing 标的：SNDK"));
     }
 
     #[test]
