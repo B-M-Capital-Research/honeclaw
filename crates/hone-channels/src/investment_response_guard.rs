@@ -2863,6 +2863,27 @@ const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
 const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
 const PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT: usize = 3_000;
 
+/// Anchor the pre-turn search on absolute dates. The target market's local date
+/// has to travel with it: a Beijing morning is still the previous New York
+/// session, so a Beijing-only anchor points at a US date that has not happened
+/// yet and pulls nothing or the wrong day.
+fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
+    let beijing_date = answer_time_beijing
+        .split_whitespace()
+        .next()
+        .unwrap_or(answer_time_beijing);
+    let new_york_date = hone_core::beijing_now()
+        .with_timezone(&chrono_tz::America::New_York)
+        .format("%Y-%m-%d")
+        .to_string();
+    let bounded_input = truncate_chars(user_input, 1_000);
+    if new_york_date == beijing_date {
+        format!("{beijing_date} {bounded_input}")
+    } else {
+        format!("{beijing_date} ({new_york_date} ET) {bounded_input}")
+    }
+}
+
 /// Evidence the service fetched before the first model call.
 struct PreTurnEnrichment {
     calls: u32,
@@ -2891,14 +2912,7 @@ async fn run_pre_turn_enrichment(
         .take(PRETURN_ENRICHMENT_MAX_CANDIDATES)
         .collect::<Vec<_>>();
 
-    // Anchor the search on the absolute local date the way the rest of the
-    // codebase does. Appending a time of day only gives the search engine a
-    // literal `09:31` to match on.
-    let search_local_date = answer_time_beijing
-        .split_whitespace()
-        .next()
-        .unwrap_or(answer_time_beijing);
-    let web_query = format!("{search_local_date} {}", truncate_chars(user_input, 1_000));
+    let web_query = pre_turn_web_query(user_input, answer_time_beijing);
     let identity_lookups = candidates.iter().map(|candidate| {
         registry.execute_tool(
             "data_fetch",
@@ -2907,7 +2921,10 @@ async fn run_pre_turn_enrichment(
     });
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
         let (web, identities) = futures::future::join(
-            registry.execute_tool("web_search", json!({"query": web_query})),
+            registry.execute_tool(
+                "web_search",
+                json!({"query": web_query, "time_range": "week"}),
+            ),
             futures::future::join_all(identity_lookups),
         )
         .await;
@@ -2955,7 +2972,7 @@ async fn run_pre_turn_enrichment(
     if let Some(value) = web.as_ref().ok().filter(|v| !value_has_error(v)) {
         calls += 1;
         sections.push(format!(
-            "- `web_search(query={web_query:?})` →\n{}",
+            "- `web_search(query={web_query:?}, time_range=\"week\")` →\n{}",
             bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
         ));
     }
@@ -15946,6 +15963,30 @@ mod tests {
     /// exact-symbol entity route for a strategy term and never researched what
     /// the user asked. Uppercase shape is not listing evidence, and no
     /// maintained acronym deny-list can close this class.
+
+    /// The pre-turn search must be anchored on absolute dates, and must carry
+    /// the target market's local date whenever it differs from Beijing's —
+    /// otherwise a Beijing morning searches a US date that has not happened.
+    #[test]
+    fn pre_turn_web_query_carries_both_market_dates() {
+        let beijing = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+        let new_york = hone_core::beijing_now()
+            .with_timezone(&chrono_tz::America::New_York)
+            .format("%Y-%m-%d")
+            .to_string();
+        let query = super::pre_turn_web_query("nbis最近怎么看", &format!("{beijing} 09:31"));
+
+        assert!(query.starts_with(&beijing), "{query}");
+        assert!(query.contains("nbis最近怎么看"), "{query}");
+        // The time of day never enters the query: it only gives the search
+        // engine a literal `09:31` to match on.
+        assert!(!query.contains("09:31"), "{query}");
+        if new_york == beijing {
+            assert!(!query.contains(" ET)"), "{query}");
+        } else {
+            assert!(query.contains(&format!("({new_york} ET)")), "{query}");
+        }
+    }
 
     #[test]
     fn clause_subject_grammar_alone_yields_a_tentative_seed_not_an_explicit_code() {

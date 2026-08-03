@@ -7099,6 +7099,7 @@ async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
     assert!(preloaded > 0, "enrichment loaded no evidence");
     assert!(runtime_input.contains("【本轮前置检索结果：上下文，不是结论】"));
     assert!(runtime_input.contains("data_fetch(search, query=\"NBIS\")"));
+
     // The registry resolved a unique symbol, so market data was fetched too.
     assert!(runtime_input.contains("data_fetch(snapshot, ticker=\"NBIS\")"));
     assert!(runtime_input.contains("Nebius"));

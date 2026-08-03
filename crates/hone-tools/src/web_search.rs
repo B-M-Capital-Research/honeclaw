@@ -120,8 +120,13 @@ impl WebSearchTool {
     }
 
     /// 用指定 key 执行一次 Tavily 搜索，返回结果或错误
-    async fn search_with_key(&self, key: &str, query: &str) -> Result<Value, String> {
-        let body = serde_json::json!({
+    async fn search_with_key(
+        &self,
+        key: &str,
+        query: &str,
+        time_range: Option<&str>,
+    ) -> Result<Value, String> {
+        let mut body = serde_json::json!({
             "query": query,
             "search_depth": "basic",
             "max_results": self.max_results,
@@ -130,6 +135,11 @@ impl WebSearchTool {
             "include_images": false,
             "include_usage": true
         });
+        // A date inside the query text is only a ranking hint. Recency has to be
+        // an actual provider constraint or a stale page can still win.
+        if let Some(time_range) = time_range {
+            body["time_range"] = Value::String(time_range.to_string());
+        }
 
         let response = self
             .http
@@ -473,18 +483,40 @@ impl Tool for WebSearchTool {
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
-        vec![ToolParameter {
+        vec![
+            ToolParameter {
             name: "query".to_string(),
             param_type: "string".to_string(),
             description: "搜索关键词（英文效果更好），例如 'AAPL latest news'、'CoreWeave NVIDIA customer supplier cloud capacity contract SEC'、'CoreWeave NVIDIA investment ownership beneficial owner 13G' 或 'Bitcoin market news'；关系核验应同时包含双方标准名称和本次待证的具体关系维度，宽泛关系问题通常需要多条不同维度查询".to_string(),
             required: true,
             r#enum: None,
             items: None,
-        }]
+        },
+            ToolParameter {
+                name: "time_range".to_string(),
+                param_type: "string".to_string(),
+                description:
+                    "只保留该时间窗内发布的结果。强时效问题（今天/最新/刚刚/盘前盘后/近期催化/事件归因）应显式传 day 或 week；概念、定义、历史与长期基本面问题不要传，否则会滤掉权威旧文。"
+                        .to_string(),
+                required: false,
+                r#enum: Some(vec![
+                    "day".into(),
+                    "week".into(),
+                    "month".into(),
+                    "year".into(),
+                ]),
+                items: None,
+            },
+        ]
     }
 
     async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let time_range = args
+            .get("time_range")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| matches!(*value, "day" | "week" | "month" | "year"));
 
         if self.keys.is_empty() {
             tracing::warn!(tool = "web_search", "tavily keys are empty");
@@ -503,7 +535,7 @@ impl Tool for WebSearchTool {
                 skipped_disabled += 1;
                 continue;
             }
-            match self.search_with_key(key, query).await {
+            match self.search_with_key(key, query, time_range).await {
                 Ok(data) => {
                     if let Some(credits) = data
                         .get("usage")
@@ -574,6 +606,31 @@ mod tests {
 
     fn assert_message_hides_raw_tavily_upgrade_copy(message: &str) {
         assert_text_contains_none(message, &["support@tavily.com", "upgrade your plan"]);
+    }
+
+    /// A date inside the query string is only a ranking hint. Recency has to
+    /// reach the provider as a real constraint, and it must stay opt-in so a
+    /// definitional or historical question is not stripped of authoritative
+    /// older sources.
+    #[test]
+    fn time_range_is_an_opt_in_provider_constraint() {
+        let tool = WebSearchTool::new(vec!["k".to_string()], 5);
+        let schema = tool.to_openai_schema();
+        let params = schema["function"]["parameters"]["properties"]
+            .as_object()
+            .expect("parameter properties");
+        assert!(params.contains_key("time_range"));
+        let required = schema["function"]["parameters"]["required"]
+            .as_array()
+            .expect("required list");
+        assert!(!required.iter().any(|value| value == "time_range"));
+        let allowed = params["time_range"]["enum"]
+            .as_array()
+            .expect("time_range enum")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(allowed, ["day", "week", "month", "year"]);
     }
 
     #[test]
