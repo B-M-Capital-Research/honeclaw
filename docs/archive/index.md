@@ -2104,3 +2104,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_backend_runtime_env_contract.sh`; complete `tests/regression/run_ci.sh`
 - Current conclusion: Production SMS had returned generic acceptance while the detached provider call failed because the managed Web service lacked its Aliyun AccessKey. The canonical credential pair is now persisted in the protected host environment, and a root-owned systemd `ExecStartPre` gate blocks future starts with missing, empty, or placeholder credentials. Zero-chat restart, exact revision, PostgreSQL/R2, Web/Feishu, public canary acceptance, cleanup, and restored OS Login 2FA all passed.
 - Next entry point: `docs/handoffs/2026-08-02-gce-sms-runtime-env-persistence.md`; use the committed validator before changing any managed backend environment.
+
+### SNDK Current-listing Evidence And GCE Rollout
+
+- Status: done
+- Date: 2026-08-03
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (this SNDK phase is done; the parent ticker/scheduler umbrella remains active)
+- Handoff: `docs/handoffs/2026-08-03-sndk-listing-evidence-and-gce-rollout.md`
+- Decision / ADR: N/A; the durable current-listing evidence boundary is recorded in `docs/invariants.md`
+- Related PRs / commits: `116dc54b3540e30b8420aaacf007ede33f0b9f5d`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; focused SNDK snapshot/outlook and conflict regressions; three-package check; finance contracts 44/44; exact GCE canary
+- Current conclusion: The SNDK failure was not a missing DataFetch call; the Agent overrode successful current data with stale 2016 acquisition memory. Snapshot and earnings-outlook now emit conservative same-symbol listing evidence, and all Agent-facing contracts give verified current listing precedence over stale acquisition/delisting memory. Exact GCE release `116dc54b` is active after an approximately three-second zero-chat Web cutover with healthy PostgreSQL/S3 authority, public auth boundaries, zero warning logs, and a fresh SNDK earnings canary that no longer denies the listing or redirects to WDC.
+- Next entry point: use the handoff for rollback and for the separately observed current-time versus future-earnings-date wording defect; do not weaken the listing evidence gate while fixing that independent issue.

@@ -1,5 +1,5 @@
 - title: SNDK current-listing evidence and GCE rollout
-- status: in_progress
+- status: done
 - created_at: 2026-08-03
 - updated_at: 2026-08-03
 - owner: Codex
@@ -25,14 +25,20 @@
 - Passed: SNDK snapshot/outlook, conflicting listing evidence, snapshot aggregation, partial earnings-outlook coverage, Agent prompt, and channel soul-contract focused Rust tests.
 - Passed: `cargo check -p hone-tools -p hone-agent -p hone-channels --tests`.
 - Passed: all 44 finance contract checks, changed Rust-file `rustfmt --check`, and `git diff --check`.
-- Pending: immutable GCE release build, two zero-active-chat checks, service switch, `/api/meta`, cloud authority, public auth boundary, and SNDK production canary.
+- Commit `116dc54b3540e30b8420aaacf007ede33f0b9f5d` passed the pre-push rustfmt and gitleaks hooks and was pushed to `main`.
+- GCE built all six production binaries from that exact commit with `profile=release`, `source=workspace`; the immutable release manifest verified six binaries plus `soul.md` and the stock-research skill.
+- Before cutover, Web was active, Feishu was already inactive, the protected runtime-env validator passed, cloud PostgreSQL/S3 authority passed, and two separate active-chat reads returned zero. The atomic Web-only cutover became ready on probe 2 with about three seconds of downtime; Feishu remained inactive.
+- After cutover, `/api/meta` reported the exact SHA, release/workspace provenance, cloud mode, healthy PostgreSQL/S3, authoritative cloud storage, and zero local durable dependencies. Ports 8077/8088 were listening, both public unauthenticated boundaries returned `401`, Web warning-level journal lines were zero, and active chats were zero.
+- Fresh direct actor `codex-canary-116dc54b-sndk-1785732115` replayed `sndk财报前瞻`. It completed in 92 seconds with current-turn DataFetch search/quote/profile/earnings-outlook/news plus Web evidence, exactly one start, one assistant answer, one successful finish, zero reset/error, byte-identical SSE/history, explicit SNDK earnings coverage, no “未上市/改看 WDC” denial, and active chats returning to zero.
+- Temporary remote clone, canary files, and the temporary build swap were removed. Disk returned to 8.5 GiB free. The old immutable release and protected asset rollback copy remain available.
 
 ## Risks / Follow-ups
 
 - `active_listing` is intentionally conservative and provider-derived; absence of the marker must not be interpreted as delisted.
 - A future provider schema change could omit `exchange` or `isActivelyTrading`; the result will degrade to `unverified` instead of making a false claim.
-- Rollout must preserve the previous immutable GCE release symlink for immediate rollback.
+- The listing-regression canary passed, but the same generated earnings answer contained a separate temporal-tense inconsistency: at Beijing 2026-08-03 it described a 2026-08-05 result as already released. This rollout does not claim that independent earnings-date wording issue fixed; treat it as a follow-up evidence-ordering defect rather than weakening the listing proof.
+- Immediate GCE rollback remains `/opt/hone/releases/c4c217236fae8bbe571f259cd46b6b4768178bcf-all-channel-usage-20260802`; the matching pre-rollout prompt/skill copy is `/srv/honeclaw/.rollbacks/pre-116dc54b-20260803`.
 
 ## Next Entry Point
 
-Run the focused regressions from the isolated worktree, push the exact commit, then follow `docs/runbooks/backend-deployment.md` for a zero-active-chat GCE release switch and canary verification.
+For the separate earnings-date tense defect, start from the exact SNDK canary evidence and add a focused current-time versus earnings-event-date regression without weakening current-listing precedence. For rollback, drain active chats twice, stop Web, restore the prior release symlink and asset copy, then start Web and repeat the same meta/auth/authority gates.
