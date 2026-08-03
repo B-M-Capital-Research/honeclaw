@@ -7,6 +7,12 @@
 
 ## 最新进展
 
+- `2026-08-03 18:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 17:00 `存储板块关键事件心跳提醒` deliver preview 直接以 fenced JSON 开头，包含 `status`、`timestamp`、`source`、`events`、`symbol`、`kind` 等协议字段。
+    - 同窗还可见 raw preview 中模型继续讨论“不要输出 fenced JSON / 直接给最终 JSON”等格式契约，说明 heartbeat 输出格式仍由 prompt 约束而非稳定渲染层兜底。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并送达或进入送达预览，用户可从字段中读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-03 14:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 10:30 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced JSON 开头，包含 `status`、`triggered`、`symbol`、`condition` 等协议字段。
