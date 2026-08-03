@@ -8,6 +8,14 @@
 
 ## 最新进展
 
+- 本轮 `2026-08-03 22:01-2026-08-04 02:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 近窗有 2 条“周日 / 休市”类错误交易日口径信号。
+    - 01:30 `AI与科技持仓观察关键事件心跳提醒` deliver preview 写“美东当前为周日 13:30（非交易日）”；实际北京时间 2026-08-04 01:30 对应美东 2026-08-03 周一 13:30，处于美股常规交易日盘中。
+    - 02:00 同 job duplicate suppression matched preview 继续复用上述周日 / 非交易日口径，说明错误时间口径还能参与去重基线。
+  - 会话质量对照：同窗本地 `data/sessions.sqlite3` 仍未追入真实 direct final，未发现新的 ordinary direct assistant final 可检查同类时间口径错误。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 交易日上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投到其他用户、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-08-03 18:02-22:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 近窗有 17 条“劳动节 / 周日 / 休市”类错误交易日口径信号。
