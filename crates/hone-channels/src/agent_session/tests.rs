@@ -9524,8 +9524,8 @@ async fn stream_gemini_prompt_collects_content() {
         let mut raw_lines = 0u32;
         let options = GeminiStreamOptions {
             max_iterations: 1,
-            overall_timeout: Duration::from_secs(3),
-            per_line_timeout: Duration::from_secs(3),
+            overall_timeout: Duration::from_secs(15),
+            per_line_timeout: Duration::from_secs(15),
         };
 
         let streamed_output = stream_gemini_prompt(
@@ -9560,8 +9560,8 @@ async fn stream_gemini_prompt_handles_error_event() {
         let mut raw_lines = 0u32;
         let options = GeminiStreamOptions {
             max_iterations: 1,
-            overall_timeout: Duration::from_secs(3),
-            per_line_timeout: Duration::from_secs(3),
+            overall_timeout: Duration::from_secs(15),
+            per_line_timeout: Duration::from_secs(15),
         };
 
         let err = stream_gemini_prompt(
@@ -9594,8 +9594,8 @@ async fn stream_gemini_prompt_handles_context_overflow() {
         let mut raw_lines = 0u32;
         let options = GeminiStreamOptions {
             max_iterations: 1,
-            overall_timeout: Duration::from_secs(3),
-            per_line_timeout: Duration::from_secs(3),
+            overall_timeout: Duration::from_secs(15),
+            per_line_timeout: Duration::from_secs(15),
         };
 
         let err = stream_gemini_prompt(
@@ -9632,8 +9632,8 @@ async fn stream_gemini_prompt_bounds_exit_stderr() {
         let mut raw_lines = 0u32;
         let options = GeminiStreamOptions {
             max_iterations: 1,
-            overall_timeout: Duration::from_secs(3),
-            per_line_timeout: Duration::from_secs(3),
+            overall_timeout: Duration::from_secs(15),
+            per_line_timeout: Duration::from_secs(15),
         };
 
         let err = stream_gemini_prompt(

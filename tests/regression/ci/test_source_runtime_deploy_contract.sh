@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DEPLOY_SCRIPT="$REPO_ROOT/scripts/deploy_source_runtime.sh"
 TMP_ROOT="$(mktemp -d)"
+TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 PROJECT="$TMP_ROOT/project"

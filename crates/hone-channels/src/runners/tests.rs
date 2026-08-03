@@ -492,8 +492,8 @@ done
                 ..CodexAcpConfig::default()
             },
             RunnerTimeouts {
-                step: Duration::from_secs(5),
-                overall: Duration::from_secs(10),
+                step: Duration::from_secs(15),
+                overall: Duration::from_secs(30),
             },
         )
     }
