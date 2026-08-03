@@ -2,6 +2,7 @@
 //!
 //! 使用 JSON 文件存储。
 
+pub mod billing;
 pub mod company_profile;
 pub mod cron_job;
 pub mod llm_audit;
@@ -12,6 +13,13 @@ pub mod session;
 pub mod session_sqlite;
 pub mod web_auth;
 
+pub use billing::{
+    BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE, BILLING_ACCESS_PENDING,
+    BILLING_EVENT_FAILED, BILLING_EVENT_PROCESSED, BILLING_EVENT_PROCESSING,
+    BILLING_EVENT_RECEIVED, BILLING_PROVIDER_DOMESTIC_INVITE, BILLING_PROVIDER_STRIPE,
+    BILLING_PROVIDER_WHOP, BillingEntitlement, BillingEntitlementUpsertOutcome, BillingStorage,
+    BillingWebhookEvent, BillingWebhookRecordOutcome,
+};
 pub use company_profile::{
     AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,
     CompanyProfileEventDocument, CompanyProfileImportApplyInput, CompanyProfileImportApplyResult,
@@ -51,9 +59,8 @@ pub use session::{
 };
 pub use session_sqlite::InterruptedSessionInfo;
 pub use web_auth::{
-    EmailVerificationResult, REGISTRATION_POLICY_CN_DOMESTIC,
-    REGISTRATION_POLICY_WHOP_INTERNATIONAL, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT,
-    WEB_ADMIN_DAILY_INVITE_LIMIT, WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome,
-    WebAdminInviteSummary, WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult,
-    WebUserExternalProfile, WhopMembershipEvent, WhopMembershipRecord, WhopMembershipUpsertOutcome,
+    EmailVerificationResult, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT,
+    WEB_ADMIN_DAILY_INVITE_LIMIT, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,
+    WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome, WebAdminInviteSummary,
+    WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult, WebUserExternalProfile,
 };

@@ -12,6 +12,8 @@ import type {
   PublicPushListResponse,
   PublicPushOpenResponse,
   PublicAuthUserInfo,
+  PublicBillingConfig,
+  PublicBillingStatus,
   PublicAdminInviteList,
   PublicAdminInviteMutation,
   PublicAdminUsageReport,
@@ -307,11 +309,14 @@ export async function publicSmsLogin(input: {
   return payload.user;
 }
 
-export async function publicSendEmailCode(emailAddress: string) {
+export async function publicSendEmailCode(
+  emailAddress: string,
+  intent?: "stripe_checkout",
+) {
   const response = await apiFetch("/api/public/auth/email/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email_address: emailAddress }),
+    body: JSON.stringify({ email_address: emailAddress, intent }),
   });
   return parseJson<{ ok: boolean; message: string }>(response);
 }
@@ -348,6 +353,36 @@ export async function getPublicAuthMe(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/auth/me", { signal });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
   return payload.user;
+}
+
+export async function getPublicBillingConfig(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/billing/config", {
+    signal,
+    cache: "no-store",
+  });
+  return parseJson<PublicBillingConfig>(response);
+}
+
+export async function getPublicBillingStatus(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/billing/status", {
+    signal,
+    cache: "no-store",
+  });
+  return parseJson<PublicBillingStatus>(response);
+}
+
+export async function createStripeCheckout() {
+  const response = await apiFetch("/api/public/billing/checkout/stripe", {
+    method: "POST",
+  });
+  return parseJson<{ checkout_url: string }>(response);
+}
+
+export async function createStripePortal() {
+  const response = await apiFetch("/api/public/billing/portal/stripe", {
+    method: "POST",
+  });
+  return parseJson<{ portal_url: string }>(response);
 }
 
 const PUBLIC_ADMIN_ACTION_HEADERS = {

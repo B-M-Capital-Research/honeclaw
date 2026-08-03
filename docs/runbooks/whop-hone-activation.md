@@ -1,9 +1,9 @@
-# Runbook: Whop To HONE Email Activation
+# Runbook: Whop Adapter To Unified HONE Billing
 
-Last updated: 2026-07-28
+Last updated: 2026-08-03
 
-Use this runbook to configure and verify the international Whop purchase →
-HONE purchase-email verification → application entitlement path. Discord role
+Use this runbook to configure and verify the Whop adapter feeding HONE's
+provider-neutral Billing ledger and purchase-email verification path. Discord role
 fulfillment remains separate in `docs/runbooks/whop-discord-fulfillment.md`.
 
 ## Canonical Scope
@@ -12,7 +12,7 @@ fulfillment remains separate in `docs/runbooks/whop-discord-fulfillment.md`.
 - Product: `prod_9jQsUKaifh6ZA`
 - Plan: `plan_ZXfsAisr4UOaw`
 - Public webhook: `POST https://hone-claw.com/api/public/integrations/whop/webhook`
-- Buyer activation: `https://hone-claw.com/activate/whop`
+- Buyer activation: `https://hone-claw.com/activate?provider=whop`
 - Required Whop webhook API version: `v1`
 - Events:
   - `membership.activated`
@@ -126,16 +126,24 @@ In Whop Developer → Webhooks:
 The endpoint verifies the Standard Webhooks signature over the untouched raw
 body using the complete `ws_...` value as the HMAC key, checks a five-minute
 delivery window, requires matching header/body event IDs, and then checks
-company, product, and plan before writing anything. Legacy `whsec_...`
-credentials are intentionally rejected.
+company, product, and plan before writing a normalized event to
+`billing_webhook_events`. Successful processing projects a Whop row into the
+canonical `billing_entitlements` table. Legacy `whsec_...` credentials are
+intentionally rejected.
+
+Processing uses the shared Billing inbox recovery contract: five-minute claim
+leases, at most ten durable attempts, a 30-second recovery scan, and completion
+fenced by the claimed attempt count. A timed-out worker therefore cannot mark a
+reclaimed event processed or failed after a newer worker owns the lease.
 
 ## Acceptance Matrix
 
 Automated local proof:
 
 ```bash
-cargo test -p hone-memory web_auth
-cargo test -p hone-web-api whop
+cargo test -p hone-memory billing
+cargo test -p hone-memory legacy_whop_projection_is_migrated_once_and_removed
+cargo test -p hone-web-api routes::whop::tests
 cargo test -p hone-web-api email_verification
 cargo check -p hone-web-api --all-targets
 bun run test:web
@@ -147,7 +155,7 @@ Before production release, use a non-owner buyer and a distinct test email:
 1. Complete the canonical Whop purchase without an existing HONE session.
 2. Confirm one `membership.activated` delivery returns `2xx`; resend the same
    event and confirm it is idempotent.
-3. Open `/activate/whop`, request the code, and confirm Cloudflare Email
+3. Open `/activate?provider=whop`, request the code, and confirm Cloudflare Email
    Sending activity reports `delivered` or `queued`. Verify the email in the
    real inbox, enter the code, and land on `/me`.
 4. Confirm `/me` shows the masked purchase email, Whop status, renewal end, and
@@ -175,7 +183,7 @@ Before production release, use a non-owner buyer and a distinct test email:
   and recipient bounce state. Never paste the token into logs or tickets.
 - HONE paid route `402`: the stored Whop status does not grant access.
 
-Inspect Whop's webhook event log and the HONE membership projection before any
+Inspect Whop's webhook event log and the HONE Billing entitlement before any
 manual account edit. Do not use a checkout redirect, query parameter, Discord
 role, or manually supplied email as an entitlement override.
 

@@ -10,10 +10,15 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::billing::{
+    BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE, BILLING_PROVIDER_WHOP,
+    BillingEntitlement, BillingStorage,
+};
+
 pub const SESSION_TTL_DAYS_LONG: i64 = 30;
 pub const SESSION_TTL_DAYS_SHORT: i64 = 1;
-pub const REGISTRATION_POLICY_CN_DOMESTIC: &str = "cn_domestic";
-pub const REGISTRATION_POLICY_WHOP_INTERNATIONAL: &str = "whop_international";
+pub const WEB_IDENTITY_DOMESTIC_INVITE: &str = "domestic_invite";
+pub const WEB_IDENTITY_INTERNATIONAL_EMAIL: &str = "international_email";
 pub const WEB_ADMIN_DAILY_INVITE_LIMIT: u32 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +52,7 @@ pub struct WebAdminInviteSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WhopMembershipRecord {
+struct LegacyWhopMembershipRecord {
     pub membership_id: String,
     pub whop_user_id: String,
     pub company_id: String,
@@ -63,46 +68,22 @@ pub struct WhopMembershipRecord {
     pub updated_at: String,
 }
 
-impl WhopMembershipRecord {
-    pub fn grants_paid_access(&self) -> bool {
-        matches!(
-            self.status.as_str(),
-            "active" | "trialing" | "past_due" | "canceling"
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WhopMembershipEvent {
-    pub membership_id: String,
-    pub whop_user_id: String,
-    pub email_address: String,
-    pub company_id: String,
-    pub product_id: String,
-    pub plan_id: String,
-    pub status: String,
-    pub manage_url: Option<String>,
-    pub renewal_period_start: Option<String>,
-    pub renewal_period_end: Option<String>,
-    pub cancel_at_period_end: bool,
-    pub event_id: String,
-    pub event_at: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WhopMembershipUpsertOutcome {
-    Created,
-    Updated,
-    Duplicate,
-    Stale,
+#[derive(Debug, Clone)]
+struct LegacyWhopMigrationRecord {
+    user_id: String,
+    email_address: Option<String>,
+    membership: LegacyWhopMembershipRecord,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebUserExternalProfile {
     pub email_address: Option<String>,
     pub email_verified_at: Option<String>,
-    pub registration_policy: String,
-    pub whop_membership: Option<WhopMembershipRecord>,
+    #[serde(
+        default = "default_identity_kind",
+        deserialize_with = "deserialize_identity_kind"
+    )]
+    pub identity_kind: String,
 }
 
 impl Default for WebUserExternalProfile {
@@ -110,8 +91,7 @@ impl Default for WebUserExternalProfile {
         Self {
             email_address: None,
             email_verified_at: None,
-            registration_policy: REGISTRATION_POLICY_CN_DOMESTIC.to_string(),
-            whop_membership: None,
+            identity_kind: WEB_IDENTITY_DOMESTIC_INVITE.to_string(),
         }
     }
 }
@@ -285,8 +265,7 @@ impl WebAuthStorage {
                 user_id TEXT PRIMARY KEY,
                 email_address TEXT,
                 email_verified_at TEXT,
-                registration_policy TEXT NOT NULL DEFAULT 'cn_domestic',
-                whop_membership_json TEXT,
+                identity_kind TEXT NOT NULL DEFAULT 'domestic_invite',
                 email_challenge_json TEXT,
                 FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
             );
@@ -332,6 +311,26 @@ impl WebAuthStorage {
             "is_admin",
             "INTEGER NOT NULL DEFAULT 0",
         )?;
+        ensure_column(
+            &conn,
+            "web_user_external_state",
+            "identity_kind",
+            "TEXT NOT NULL DEFAULT 'domestic_invite'",
+        )?;
+        if column_exists(&conn, "web_user_external_state", "registration_policy")? {
+            conn.execute(
+                "
+                UPDATE web_user_external_state
+                SET identity_kind = CASE registration_policy
+                    WHEN 'cn_domestic' THEN 'domestic_invite'
+                    WHEN 'whop_international' THEN 'international_email'
+                    ELSE registration_policy
+                END
+                ",
+                [],
+            )
+            .map_err(sql_err)?;
+        }
         conn.execute(
             "
             CREATE UNIQUE INDEX IF NOT EXISTS idx_web_invite_users_api_key_hash
@@ -400,8 +399,7 @@ impl WebAuthStorage {
     fn cloud_record_to_user(
         value: serde_json::Value,
     ) -> HoneResult<(WebInviteUser, Option<String>)> {
-        let record: CloudWebInviteRecord = serde_json::from_value(value)
-            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let record = cloud_record_from_value(value)?;
         Ok((record.user, record.api_key_hash))
     }
 
@@ -418,9 +416,7 @@ impl WebAuthStorage {
         run_cloud_web_auth(
             async move { postgres.find_web_invite_user_record(&field, &value).await },
         )?
-        .map(|value| {
-            serde_json::from_value(value).map_err(|err| HoneError::Serialization(err.to_string()))
-        })
+        .map(cloud_record_from_value)
         .transpose()
     }
 
@@ -440,25 +436,23 @@ impl WebAuthStorage {
         };
         run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?
             .into_iter()
-            .map(|value| {
-                serde_json::from_value(value)
-                    .map_err(|err| HoneError::Serialization(err.to_string()))
-            })
+            .map(cloud_record_from_value)
             .collect()
     }
 
     fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
         if self.cloud_postgres().is_some() {
-            return Ok(self
+            let state = self
                 .cloud_find_record_by("user_id", user_id)?
                 .map(|record| record.external_state)
-                .unwrap_or_default());
+                .unwrap_or_default();
+            return Ok(state);
         }
         let conn = self.sqlite_conn()?;
         conn.query_row(
             "
-            SELECT email_address, email_verified_at, registration_policy,
-                   whop_membership_json, email_challenge_json
+            SELECT email_address, email_verified_at, identity_kind,
+                   email_challenge_json
             FROM web_user_external_state
             WHERE user_id = ?1
             ",
@@ -479,13 +473,6 @@ impl WebAuthStorage {
         if self.cloud_postgres().is_some() {
             return self.cloud_upsert_invite_with_state(user, api_key_hash, state);
         }
-        let membership_json = state
-            .profile
-            .whop_membership
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let challenge_json = state
             .email_challenge
             .as_ref()
@@ -496,24 +483,22 @@ impl WebAuthStorage {
         conn.execute(
             "
             INSERT INTO web_user_external_state(
-                user_id, email_address, email_verified_at, registration_policy,
-                whop_membership_json, email_challenge_json
+                user_id, email_address, email_verified_at, identity_kind,
+                email_challenge_json
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5)
             ON CONFLICT(user_id)
             DO UPDATE SET
                 email_address = excluded.email_address,
                 email_verified_at = excluded.email_verified_at,
-                registration_policy = excluded.registration_policy,
-                whop_membership_json = excluded.whop_membership_json,
+                identity_kind = excluded.identity_kind,
                 email_challenge_json = excluded.email_challenge_json
             ",
             params![
                 &user.user_id,
                 &state.profile.email_address,
                 &state.profile.email_verified_at,
-                &state.profile.registration_policy,
-                membership_json,
+                &state.profile.identity_kind,
                 challenge_json,
             ],
         )
@@ -541,59 +526,6 @@ impl WebAuthStorage {
             )
             .optional()
             .map_err(sql_err)?
-        };
-        let Some(user_id) = user_id else {
-            return Ok(None);
-        };
-        let Some(user) = self.find_invite_user(&user_id)? else {
-            return Ok(None);
-        };
-        let state = self.load_external_state(&user_id)?;
-        Ok(Some((user, None, state)))
-    }
-
-    fn find_external_user_by_membership(
-        &self,
-        membership_id: &str,
-    ) -> HoneResult<Option<(WebInviteUser, Option<String>, WebUserExternalState)>> {
-        if self.cloud_postgres().is_some() {
-            return Ok(self.cloud_list_records()?.into_iter().find_map(|record| {
-                (record
-                    .external_state
-                    .profile
-                    .whop_membership
-                    .as_ref()
-                    .is_some_and(|membership| membership.membership_id == membership_id))
-                .then_some((record.user, record.api_key_hash, record.external_state))
-            }));
-        }
-        let user_id = {
-            let conn = self.sqlite_conn()?;
-            let mut stmt = conn
-                .prepare(
-                    "
-                    SELECT user_id, whop_membership_json
-                    FROM web_user_external_state
-                    WHERE whop_membership_json IS NOT NULL
-                    ",
-                )
-                .map_err(sql_err)?;
-            let rows = stmt
-                .query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                })
-                .map_err(sql_err)?;
-            let mut matched = None;
-            for row in rows {
-                let (user_id, raw) = row.map_err(sql_err)?;
-                let membership: WhopMembershipRecord = serde_json::from_str(&raw)
-                    .map_err(|err| HoneError::Serialization(err.to_string()))?;
-                if membership.membership_id == membership_id {
-                    matched = Some(user_id);
-                    break;
-                }
-            }
-            matched
         };
         let Some(user_id) = user_id else {
             return Ok(None);
@@ -1101,97 +1033,191 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             .map(|(user, _, _)| user))
     }
 
-    pub fn user_has_paid_access(&self, user_id: &str) -> HoneResult<bool> {
-        let state = self.load_external_state(user_id)?;
-        if state.profile.registration_policy != REGISTRATION_POLICY_WHOP_INTERNATIONAL {
-            return Ok(true);
-        }
-        Ok(state
-            .profile
-            .whop_membership
-            .as_ref()
-            .is_some_and(WhopMembershipRecord::grants_paid_access))
-    }
-
-    pub fn upsert_whop_membership(
+    pub fn ensure_international_email_user(
         &self,
-        event: WhopMembershipEvent,
-    ) -> HoneResult<(WebInviteUser, WhopMembershipUpsertOutcome)> {
-        validate_whop_membership_event(&event)?;
-        let email_address = normalize_email_address(&event.email_address)?;
-        let existing_by_membership = self.find_external_user_by_membership(&event.membership_id)?;
-        let existing_by_email = self.find_external_user_by_email(&email_address)?;
-        let existing = match (existing_by_membership, existing_by_email) {
-            (Some(by_membership), Some(by_email))
-                if by_membership.0.user_id != by_email.0.user_id =>
-            {
-                return Err(HoneError::Storage(
-                    "Whop membership 与付款邮箱已绑定到不同 HONE 用户".to_string(),
-                ));
-            }
-            (Some(record), _) | (_, Some(record)) => Some(record),
-            (None, None) => None,
-        };
-
-        let membership = WhopMembershipRecord {
-            membership_id: event.membership_id,
-            whop_user_id: event.whop_user_id,
-            company_id: event.company_id,
-            product_id: event.product_id,
-            plan_id: event.plan_id,
-            status: event.status,
-            manage_url: event.manage_url,
-            renewal_period_start: event.renewal_period_start,
-            renewal_period_end: event.renewal_period_end,
-            cancel_at_period_end: event.cancel_at_period_end,
-            last_event_id: event.event_id,
-            last_event_at: event.event_at,
-            updated_at: beijing_now_rfc3339(),
-        };
-
-        if let Some((user, api_key_hash, mut state)) = existing {
-            if let Some(current) = state.profile.whop_membership.as_ref() {
-                if current.whop_user_id != membership.whop_user_id {
-                    return Err(HoneError::Storage(
-                        "付款邮箱已绑定到另一个 Whop 用户".to_string(),
-                    ));
-                }
-                if current.membership_id != membership.membership_id {
-                    // A repurchase can create a fresh membership ID for the same Whop
-                    // user. Only an access-granting, newer membership may replace the
-                    // current record. Late deactivation events from the old membership
-                    // must not revoke the newly purchased access.
-                    if !membership.grants_paid_access()
-                        || !event_is_older(&current.last_event_at, &membership.last_event_at)?
-                    {
-                        return Ok((user, WhopMembershipUpsertOutcome::Stale));
-                    }
-                }
-                if current.last_event_id == membership.last_event_id {
-                    return Ok((user, WhopMembershipUpsertOutcome::Duplicate));
-                }
-                if current.membership_id == membership.membership_id
-                    && event_is_older(&membership.last_event_at, &current.last_event_at)?
-                {
-                    return Ok((user, WhopMembershipUpsertOutcome::Stale));
-                }
-            }
+        email_address: &str,
+    ) -> HoneResult<WebInviteUser> {
+        let email_address = normalize_email_address(email_address)?;
+        if let Some((user, api_key_hash, mut state)) =
+            self.find_external_user_by_email(&email_address)?
+        {
             if state.profile.email_verified_at.is_some()
                 && state.profile.email_address.as_deref() != Some(email_address.as_str())
             {
                 return Err(HoneError::Storage(
-                    "已验证邮箱与 Whop 付款邮箱不一致，拒绝自动覆盖".to_string(),
+                    "已验证邮箱不允许被外部付款事件覆盖".to_string(),
                 ));
             }
             state.profile.email_address = Some(email_address);
-            state.profile.registration_policy = REGISTRATION_POLICY_WHOP_INTERNATIONAL.to_string();
-            state.profile.whop_membership = Some(membership);
+            state.profile.identity_kind = WEB_IDENTITY_INTERNATIONAL_EMAIL.to_string();
             self.save_external_state(&user, api_key_hash, state)?;
-            return Ok((user, WhopMembershipUpsertOutcome::Updated));
+            return Ok(user);
+        }
+        self.create_international_email_user(email_address)
+    }
+
+    pub fn migrate_legacy_whop_billing(&self, billing: &BillingStorage) -> HoneResult<usize> {
+        let legacy = self.legacy_whop_migration_records()?;
+        for record in &legacy {
+            let access_state = match record.membership.status.as_str() {
+                "active" | "trialing" | "canceling" => BILLING_ACCESS_ACTIVE,
+                "past_due" => BILLING_ACCESS_GRACE,
+                _ => BILLING_ACCESS_INACTIVE,
+            };
+            let created_at = record.membership.last_event_at.clone();
+            billing.upsert_entitlement(BillingEntitlement {
+                entitlement_id: BillingStorage::entitlement_id(
+                    BILLING_PROVIDER_WHOP,
+                    &record.membership.membership_id,
+                ),
+                user_id: record.user_id.clone(),
+                provider: BILLING_PROVIDER_WHOP.to_string(),
+                provider_customer_id: Some(record.membership.whop_user_id.clone()),
+                provider_subscription_id: record.membership.membership_id.clone(),
+                provider_product_id: Some(record.membership.product_id.clone()),
+                provider_price_id: Some(record.membership.plan_id.clone()),
+                purchase_email_normalized: record.email_address.clone(),
+                raw_status: record.membership.status.clone(),
+                access_state: access_state.to_string(),
+                current_period_start: record.membership.renewal_period_start.clone(),
+                current_period_end: record.membership.renewal_period_end.clone(),
+                cancel_at_period_end: record.membership.cancel_at_period_end,
+                manage_url: record.membership.manage_url.clone(),
+                grace_expires_at: (access_state == BILLING_ACCESS_GRACE)
+                    .then(|| legacy_grace_deadline(&record.membership.last_event_at))
+                    .transpose()?,
+                last_event_id: record.membership.last_event_id.clone(),
+                last_event_created_at: record.membership.last_event_at.clone(),
+                created_at,
+                updated_at: record.membership.updated_at.clone(),
+            })?;
+        }
+        self.finalize_external_identity_migration()?;
+        Ok(legacy.len())
+    }
+
+    fn legacy_whop_migration_records(&self) -> HoneResult<Vec<LegacyWhopMigrationRecord>> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let values =
+                run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
+            let mut records = Vec::new();
+            for value in values {
+                let Some(user_id) = value.get("user_id").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let Some(external_state) = value.get("external_state") else {
+                    continue;
+                };
+                let Some(membership) = external_state.get("whop_membership") else {
+                    continue;
+                };
+                let membership: LegacyWhopMembershipRecord =
+                    serde_json::from_value(membership.clone())
+                        .map_err(|err| HoneError::Serialization(err.to_string()))?;
+                let email_address = external_state
+                    .get("email_address")
+                    .and_then(serde_json::Value::as_str)
+                    .map(normalize_email_address)
+                    .transpose()?;
+                records.push(LegacyWhopMigrationRecord {
+                    user_id: user_id.to_string(),
+                    email_address,
+                    membership,
+                });
+            }
+            return Ok(records);
         }
 
-        let user = self.create_whop_user(email_address, membership)?;
-        Ok((user, WhopMembershipUpsertOutcome::Created))
+        let conn = self.sqlite_conn()?;
+        if !column_exists(&conn, "web_user_external_state", "whop_membership_json")? {
+            return Ok(Vec::new());
+        }
+        let mut stmt = conn
+            .prepare(
+                "
+                SELECT user_id, email_address, whop_membership_json
+                FROM web_user_external_state
+                WHERE whop_membership_json IS NOT NULL
+                ",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(sql_err)?;
+        let mut records = Vec::new();
+        for row in rows {
+            let (user_id, email_address, raw) = row.map_err(sql_err)?;
+            let membership: LegacyWhopMembershipRecord = serde_json::from_str(&raw)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            records.push(LegacyWhopMigrationRecord {
+                user_id,
+                email_address: email_address
+                    .map(|value| normalize_email_address(&value))
+                    .transpose()?,
+                membership,
+            });
+        }
+        Ok(records)
+    }
+
+    fn finalize_external_identity_migration(&self) -> HoneResult<()> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let values =
+                run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
+            for value in values {
+                let (record, changed) = migrate_legacy_cloud_record(value)?;
+                if changed {
+                    self.cloud_upsert_invite_with_state(
+                        &record.user,
+                        record.api_key_hash,
+                        record.external_state,
+                    )?;
+                }
+            }
+            return Ok(());
+        }
+
+        let conn = self.sqlite_conn()?;
+        let has_registration_policy =
+            column_exists(&conn, "web_user_external_state", "registration_policy")?;
+        let has_whop_membership =
+            column_exists(&conn, "web_user_external_state", "whop_membership_json")?;
+        if !has_registration_policy && !has_whop_membership {
+            return Ok(());
+        }
+        let transaction = conn.unchecked_transaction().map_err(sql_err)?;
+        transaction
+            .execute_batch(
+                "
+            DROP TABLE IF EXISTS web_user_external_state_v2;
+            CREATE TABLE web_user_external_state_v2 (
+                user_id TEXT PRIMARY KEY,
+                email_address TEXT,
+                email_verified_at TEXT,
+                identity_kind TEXT NOT NULL DEFAULT 'domestic_invite',
+                email_challenge_json TEXT,
+                FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
+            );
+            INSERT INTO web_user_external_state_v2(
+                user_id, email_address, email_verified_at, identity_kind, email_challenge_json
+            )
+            SELECT user_id, email_address, email_verified_at, identity_kind, email_challenge_json
+            FROM web_user_external_state;
+            DROP TABLE web_user_external_state;
+            ALTER TABLE web_user_external_state_v2 RENAME TO web_user_external_state;
+            CREATE UNIQUE INDEX idx_web_user_external_email
+                ON web_user_external_state(email_address)
+                WHERE email_address IS NOT NULL;
+            ",
+            )
+            .map_err(sql_err)?;
+        transaction.commit().map_err(sql_err)
     }
 
     pub fn begin_email_verification(
@@ -1257,19 +1283,14 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         })
     }
 
-    fn create_whop_user(
-        &self,
-        email_address: String,
-        membership: WhopMembershipRecord,
-    ) -> HoneResult<WebInviteUser> {
+    fn create_international_email_user(&self, email_address: String) -> HoneResult<WebInviteUser> {
         let created_at = beijing_now_rfc3339();
         let user_id = generate_user_id();
         let external_state = WebUserExternalState {
             profile: WebUserExternalProfile {
                 email_address: Some(email_address),
                 email_verified_at: None,
-                registration_policy: REGISTRATION_POLICY_WHOP_INTERNATIONAL.to_string(),
-                whop_membership: Some(membership),
+                identity_kind: WEB_IDENTITY_INTERNATIONAL_EMAIL.to_string(),
             },
             email_challenge: None,
         };
@@ -1307,27 +1328,18 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             params![&user_id, &invite_code, &created_at],
         )
         .map_err(sql_err)?;
-        let membership_json = serde_json::to_string(
-            external_state
-                .profile
-                .whop_membership
-                .as_ref()
-                .expect("membership"),
-        )
-        .map_err(|err| HoneError::Serialization(err.to_string()))?;
         tx.execute(
             "
             INSERT INTO web_user_external_state(
-                user_id, email_address, email_verified_at, registration_policy,
-                whop_membership_json, email_challenge_json
+                user_id, email_address, email_verified_at, identity_kind,
+                email_challenge_json
             )
-            VALUES (?1, ?2, NULL, ?3, ?4, NULL)
+            VALUES (?1, ?2, NULL, ?3, NULL)
             ",
             params![
                 &user_id,
                 &external_state.profile.email_address,
-                REGISTRATION_POLICY_WHOP_INTERNATIONAL,
-                membership_json,
+                WEB_IDENTITY_INTERNATIONAL_EMAIL,
             ],
         )
         .map_err(sql_err)?;
@@ -2277,8 +2289,8 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
                        u.last_login_at, u.revoked_at, u.password_hash, u.password_set_at,
                        u.tos_accepted_at, u.tos_version, u.api_key_prefix,
                        u.api_key_created_at, u.api_key_last_used_at, u.api_key_hash,
-                       e.email_address, e.email_verified_at, e.registration_policy,
-                       e.whop_membership_json, e.email_challenge_json
+                       e.email_address, e.email_verified_at, e.identity_kind,
+                       e.email_challenge_json
                 FROM web_invite_users u
                 LEFT JOIN web_user_external_state e ON e.user_id = u.user_id
                 ORDER BY u.created_at DESC
@@ -2309,7 +2321,6 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
                     row.get(15)?,
                     row.get(16)?,
                     row.get(17)?,
-                    row.get(18)?,
                 )?;
                 Ok((user, api_key_hash, external_state))
             })
@@ -2593,44 +2604,85 @@ fn normalize_email_address(email_address: &str) -> HoneResult<String> {
     Ok(normalized)
 }
 
-fn validate_whop_membership_event(event: &WhopMembershipEvent) -> HoneResult<()> {
-    for (label, value, prefix) in [
-        ("membership_id", event.membership_id.as_str(), "mem_"),
-        ("whop_user_id", event.whop_user_id.as_str(), "user_"),
-        ("company_id", event.company_id.as_str(), "biz_"),
-        ("product_id", event.product_id.as_str(), "prod_"),
-        ("plan_id", event.plan_id.as_str(), "plan_"),
-        ("event_id", event.event_id.as_str(), "msg_"),
-    ] {
-        if !value.starts_with(prefix) || value.len() <= prefix.len() {
-            return Err(HoneError::Config(format!("Whop {label} 格式不合法")));
-        }
-    }
-    if !matches!(
-        event.status.as_str(),
-        "trialing"
-            | "active"
-            | "past_due"
-            | "completed"
-            | "canceled"
-            | "expired"
-            | "unresolved"
-            | "drafted"
-            | "canceling"
-    ) {
-        return Err(HoneError::Config("Whop membership 状态不合法".to_string()));
-    }
-    chrono::DateTime::parse_from_rfc3339(&event.event_at)
-        .map_err(|_| HoneError::Config("Whop event_at 格式不合法".to_string()))?;
-    Ok(())
+fn legacy_grace_deadline(event_at: &str) -> HoneResult<String> {
+    let event_at = chrono::DateTime::parse_from_rfc3339(event_at)
+        .map_err(|_| HoneError::Config("旧 Whop 宽限期时间格式不合法".to_string()))?;
+    Ok((event_at + chrono::Duration::days(7)).to_rfc3339())
 }
 
-fn event_is_older(candidate: &str, current: &str) -> HoneResult<bool> {
-    let candidate = chrono::DateTime::parse_from_rfc3339(candidate)
-        .map_err(|_| HoneError::Config("Whop candidate event time 格式不合法".to_string()))?;
-    let current = chrono::DateTime::parse_from_rfc3339(current)
-        .map_err(|_| HoneError::Config("Whop current event time 格式不合法".to_string()))?;
-    Ok(candidate < current)
+fn default_identity_kind() -> String {
+    WEB_IDENTITY_DOMESTIC_INVITE.to_string()
+}
+
+fn canonical_identity_kind(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        WEB_IDENTITY_DOMESTIC_INVITE => Some(WEB_IDENTITY_DOMESTIC_INVITE),
+        WEB_IDENTITY_INTERNATIONAL_EMAIL => Some(WEB_IDENTITY_INTERNATIONAL_EMAIL),
+        _ => None,
+    }
+}
+
+fn deserialize_identity_kind<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    canonical_identity_kind(&value)
+        .map(str::to_string)
+        .ok_or_else(|| serde::de::Error::custom(format!("未知 Web 身份类型: {value}")))
+}
+
+fn cloud_record_from_value(value: serde_json::Value) -> HoneResult<CloudWebInviteRecord> {
+    if let Some(external_state) = value
+        .get("external_state")
+        .and_then(serde_json::Value::as_object)
+    {
+        if external_state.contains_key("registration_policy")
+            || external_state.contains_key("whop_membership")
+        {
+            return Err(HoneError::Serialization(
+                "检测到未迁移的旧 Web 身份或 Whop 权益字段".to_string(),
+            ));
+        }
+        if !external_state.contains_key("identity_kind") {
+            return Err(HoneError::Serialization(
+                "Web 外部状态缺少 identity_kind".to_string(),
+            ));
+        }
+    }
+    serde_json::from_value(value).map_err(|err| HoneError::Serialization(err.to_string()))
+}
+
+fn migrate_legacy_cloud_record(
+    mut value: serde_json::Value,
+) -> HoneResult<(CloudWebInviteRecord, bool)> {
+    let mut changed = false;
+    if let Some(external_state) = value
+        .get_mut("external_state")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        let legacy_policy = external_state.remove("registration_policy");
+        changed |= legacy_policy.is_some();
+        if !external_state.contains_key("identity_kind") {
+            if let Some(policy) = legacy_policy.as_ref().and_then(serde_json::Value::as_str) {
+                let identity_kind = match policy {
+                    "cn_domestic" => WEB_IDENTITY_DOMESTIC_INVITE,
+                    "whop_international" => WEB_IDENTITY_INTERNATIONAL_EMAIL,
+                    other => {
+                        return Err(HoneError::Serialization(format!(
+                            "未知旧 Web 身份类型: {other}"
+                        )));
+                    }
+                };
+                external_state.insert(
+                    "identity_kind".to_string(),
+                    serde_json::Value::String(identity_kind.to_string()),
+                );
+            }
+        }
+        changed |= external_state.remove("whop_membership").is_some();
+    }
+    Ok((cloud_record_from_value(value)?, changed))
 }
 
 fn generate_email_verification_code() -> String {
@@ -2660,32 +2712,35 @@ fn sql_err(err: rusqlite::Error) -> HoneError {
 }
 
 fn external_state_from_row(row: &Row<'_>) -> rusqlite::Result<WebUserExternalState> {
-    external_state_from_values(
-        row.get(0)?,
-        row.get(1)?,
-        row.get(2)?,
-        row.get(3)?,
-        row.get(4)?,
-    )
+    external_state_from_values(row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)
 }
 
 fn external_state_from_values(
     email_address: Option<String>,
     email_verified_at: Option<String>,
-    registration_policy: Option<String>,
-    membership_json: Option<String>,
+    identity_kind: Option<String>,
     challenge_json: Option<String>,
 ) -> rusqlite::Result<WebUserExternalState> {
-    let whop_membership = parse_json_column(membership_json, 3)?;
-    let email_challenge = parse_json_column(challenge_json, 4)?;
+    let email_challenge = parse_json_column(challenge_json, 3)?;
     Ok(WebUserExternalState {
         profile: WebUserExternalProfile {
             email_address,
             email_verified_at,
-            registration_policy: registration_policy
+            identity_kind: identity_kind
                 .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| REGISTRATION_POLICY_CN_DOMESTIC.to_string()),
-            whop_membership,
+                .map(|value| {
+                    canonical_identity_kind(&value)
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                2,
+                                rusqlite::types::Type::Text,
+                                format!("未知 Web 身份类型: {value}").into(),
+                            )
+                        })
+                })
+                .transpose()?
+                .unwrap_or_else(default_identity_kind),
         },
         email_challenge,
     })
@@ -2778,15 +2833,31 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
     Ok(())
 }
 
+fn column_exists(conn: &Connection, table: &str, column: &str) -> HoneResult<bool> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(sql_err)?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sql_err)?;
+    for value in columns {
+        if value.map_err(sql_err)? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CloudWebInviteRecord, EmailVerificationResult, REGISTRATION_POLICY_WHOP_INTERNATIONAL,
-        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAdminInviteCreateOutcome,
-        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, WhopMembershipEvent,
-        WhopMembershipUpsertOutcome, generate_api_key, generate_invite_code,
-        generate_session_token, hash_session_token,
+        CloudWebInviteRecord, EmailVerificationResult, SESSION_TTL_DAYS_LONG,
+        SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebAdminInviteCreateOutcome,
+        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult,
+        cloud_record_from_value, generate_api_key, generate_invite_code, generate_session_token,
+        hash_session_token, migrate_legacy_cloud_record,
     };
+    use crate::billing::{BILLING_PROVIDER_WHOP, BillingStorage};
     use hone_core::beijing_now;
     use rusqlite::{Connection, params};
 
@@ -2794,24 +2865,6 @@ mod tests {
         let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("root");
         WebAuthStorage::new(root.join("sessions.sqlite3")).expect("storage")
-    }
-
-    fn whop_event(event_id: &str, event_at: &str, status: &str) -> WhopMembershipEvent {
-        WhopMembershipEvent {
-            membership_id: "mem_test123".to_string(),
-            whop_user_id: "user_test123".to_string(),
-            email_address: "Buyer@Example.com".to_string(),
-            company_id: "biz_test123".to_string(),
-            product_id: "prod_test123".to_string(),
-            plan_id: "plan_test123".to_string(),
-            status: status.to_string(),
-            manage_url: Some("https://whop.com/billing/manage/mem_test123".to_string()),
-            renewal_period_start: Some("2026-07-26T00:00:00Z".to_string()),
-            renewal_period_end: Some("2027-07-26T00:00:00Z".to_string()),
-            cancel_at_period_end: status == "canceling",
-            event_id: event_id.to_string(),
-            event_at: event_at.to_string(),
-        }
     }
 
     #[test]
@@ -2866,6 +2919,41 @@ mod tests {
         let restored: CloudWebInviteRecord =
             serde_json::from_value(value).expect("deserialize legacy cloud invite");
         assert!(restored.user.api_key_plaintext.is_none());
+    }
+
+    #[test]
+    fn legacy_cloud_fields_are_accepted_only_by_the_one_time_migrator() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        let mut value = serde_json::to_value(CloudWebInviteRecord {
+            user: created,
+            api_key_hash: Some("hashed-key".to_string()),
+            external_state: Default::default(),
+        })
+        .expect("serialize");
+        value.as_object_mut().expect("record").insert(
+            "external_state".to_string(),
+            serde_json::json!({
+                "email_address": "buyer@example.com",
+                "registration_policy": "whop_international",
+                "whop_membership": {"membership_id": "mem_legacy"}
+            }),
+        );
+
+        assert!(cloud_record_from_value(value.clone()).is_err());
+        let (migrated, changed) = migrate_legacy_cloud_record(value).expect("migrate");
+        assert!(changed);
+        assert_eq!(
+            migrated.external_state.profile.identity_kind,
+            WEB_IDENTITY_INTERNATIONAL_EMAIL
+        );
+        let canonical = serde_json::to_value(migrated).expect("canonical");
+        let external = canonical
+            .get("external_state")
+            .and_then(serde_json::Value::as_object)
+            .expect("external state");
+        assert!(!external.contains_key("registration_policy"));
+        assert!(!external.contains_key("whop_membership"));
     }
 
     #[test]
@@ -3627,48 +3715,20 @@ mod tests {
     }
 
     #[test]
-    fn whop_membership_creates_an_international_email_user_idempotently() {
+    fn international_email_identity_is_provider_neutral_and_verifiable() {
         let storage = test_storage();
-        let (created, outcome) = storage
-            .upsert_whop_membership(whop_event("msg_test001", "2026-07-26T00:00:00Z", "active"))
-            .expect("activate");
-        assert_eq!(outcome, WhopMembershipUpsertOutcome::Created);
+        let created = storage
+            .ensure_international_email_user("Buyer@Example.com")
+            .expect("create identity");
+        let same = storage
+            .ensure_international_email_user("buyer@example.com")
+            .expect("idempotent identity");
+        assert_eq!(same.user_id, created.user_id);
         assert!(created.phone_number.is_empty());
-        assert!(
-            storage
-                .user_has_paid_access(&created.user_id)
-                .expect("access")
-        );
-
         let profile = storage.external_profile(&created.user_id).expect("profile");
         assert_eq!(profile.email_address.as_deref(), Some("buyer@example.com"));
-        assert_eq!(
-            profile.registration_policy,
-            REGISTRATION_POLICY_WHOP_INTERNATIONAL
-        );
-        assert!(profile.email_verified_at.is_none());
-        assert_eq!(
-            profile
-                .whop_membership
-                .as_ref()
-                .map(|membership| membership.status.as_str()),
-            Some("active")
-        );
+        assert_eq!(profile.identity_kind, WEB_IDENTITY_INTERNATIONAL_EMAIL);
 
-        let (same, duplicate) = storage
-            .upsert_whop_membership(whop_event("msg_test001", "2026-07-26T00:00:00Z", "active"))
-            .expect("duplicate");
-        assert_eq!(same.user_id, created.user_id);
-        assert_eq!(duplicate, WhopMembershipUpsertOutcome::Duplicate);
-        assert_eq!(storage.list_invite_users().expect("users").len(), 1);
-    }
-
-    #[test]
-    fn email_challenge_verifies_the_webhook_created_user() {
-        let storage = test_storage();
-        let (created, _) = storage
-            .upsert_whop_membership(whop_event("msg_test002", "2026-07-26T00:00:00Z", "active"))
-            .expect("activate");
         let code = storage
             .begin_email_verification("BUYER@example.com", 10)
             .expect("challenge")
@@ -3704,72 +3764,102 @@ mod tests {
     }
 
     #[test]
-    fn newer_deactivation_revokes_paid_access_and_older_events_stay_stale() {
-        let storage = test_storage();
-        let (created, _) = storage
-            .upsert_whop_membership(whop_event("msg_test003", "2026-07-26T00:00:00Z", "active"))
-            .expect("activate");
-        let (_, updated) = storage
-            .upsert_whop_membership(whop_event("msg_test004", "2026-07-27T00:00:00Z", "expired"))
-            .expect("deactivate");
-        assert_eq!(updated, WhopMembershipUpsertOutcome::Updated);
-        assert!(
-            !storage
-                .user_has_paid_access(&created.user_id)
-                .expect("access")
-        );
+    fn legacy_whop_projection_is_migrated_once_and_removed() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_web_auth_billing_migrate_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let path = root.join("sessions.sqlite3");
+        let conn = Connection::open(&path).expect("open");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE web_invite_users (
+                user_id TEXT PRIMARY KEY,
+                invite_code TEXT NOT NULL UNIQUE,
+                phone_number TEXT,
+                created_at TEXT NOT NULL,
+                last_login_at TEXT,
+                revoked_at TEXT
+            );
+            CREATE TABLE web_auth_sessions (
+                session_token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            );
+            CREATE TABLE web_user_external_state (
+                user_id TEXT PRIMARY KEY,
+                email_address TEXT,
+                email_verified_at TEXT,
+                registration_policy TEXT NOT NULL DEFAULT 'cn_domestic',
+                whop_membership_json TEXT,
+                email_challenge_json TEXT
+            );
+            INSERT INTO web_invite_users(user_id, invite_code, phone_number, created_at)
+            VALUES ('user_legacy', 'HONE-AAAAA-BBBBB-CCCCC-DDDDD', '', '2026-07-26T00:00:00+00:00');
+            "#,
+        )
+        .expect("legacy schema");
+        let membership = serde_json::json!({
+            "membership_id": "mem_legacy",
+            "whop_user_id": "user_whop_legacy",
+            "company_id": "biz_legacy",
+            "product_id": "prod_legacy",
+            "plan_id": "plan_legacy",
+            "status": "active",
+            "manage_url": "https://whop.com/billing/manage/mem_legacy",
+            "renewal_period_start": "2026-07-26T00:00:00Z",
+            "renewal_period_end": "2027-07-26T00:00:00Z",
+            "cancel_at_period_end": false,
+            "last_event_id": "msg_legacy",
+            "last_event_at": "2026-07-26T00:00:00Z",
+            "updated_at": "2026-07-26T00:00:01Z"
+        });
+        conn.execute(
+            "
+            INSERT INTO web_user_external_state(
+                user_id, email_address, registration_policy, whop_membership_json
+            ) VALUES (?1, ?2, ?3, ?4)
+            ",
+            params![
+                "user_legacy",
+                "buyer@example.com",
+                "whop_international",
+                membership.to_string()
+            ],
+        )
+        .expect("legacy row");
+        drop(conn);
 
-        let (_, stale) = storage
-            .upsert_whop_membership(whop_event("msg_test005", "2026-07-26T12:00:00Z", "active"))
-            .expect("stale");
-        assert_eq!(stale, WhopMembershipUpsertOutcome::Stale);
-        assert!(
-            !storage
-                .user_has_paid_access(&created.user_id)
-                .expect("access")
-        );
-    }
-
-    #[test]
-    fn newer_repurchase_replaces_membership_and_old_deactivation_cannot_revoke_it() {
-        let storage = test_storage();
-        let mut first = whop_event("msg_test006", "2026-07-26T00:00:00Z", "expired");
-        first.membership_id = "mem_first".to_string();
-        let (created, _) = storage
-            .upsert_whop_membership(first)
-            .expect("first membership");
-
-        let mut repurchase = whop_event("msg_test007", "2026-07-27T00:00:00Z", "active");
-        repurchase.membership_id = "mem_second".to_string();
-        let (_, replaced) = storage
-            .upsert_whop_membership(repurchase)
-            .expect("repurchase");
-        assert_eq!(replaced, WhopMembershipUpsertOutcome::Updated);
-        assert!(
-            storage
-                .user_has_paid_access(&created.user_id)
-                .expect("access")
-        );
-
-        let mut old_deactivation = whop_event("msg_test008", "2026-07-28T00:00:00Z", "canceled");
-        old_deactivation.membership_id = "mem_first".to_string();
-        let (_, stale) = storage
-            .upsert_whop_membership(old_deactivation)
-            .expect("late old event");
-        assert_eq!(stale, WhopMembershipUpsertOutcome::Stale);
-        assert!(
-            storage
-                .user_has_paid_access(&created.user_id)
-                .expect("access")
-        );
+        let auth = WebAuthStorage::new(&path).expect("auth");
+        let billing = BillingStorage::new(&path).expect("billing");
         assert_eq!(
-            storage
-                .external_profile(&created.user_id)
-                .expect("profile")
-                .whop_membership
-                .expect("membership")
-                .membership_id,
-            "mem_second"
+            auth.migrate_legacy_whop_billing(&billing).expect("migrate"),
+            1
         );
+        let entitlement = billing
+            .find_entitlement(BILLING_PROVIDER_WHOP, "mem_legacy")
+            .expect("read")
+            .expect("entitlement");
+        assert!(entitlement.grants_paid_access());
+        assert_eq!(entitlement.user_id, "user_legacy");
+        assert_eq!(
+            auth.external_profile("user_legacy")
+                .expect("profile")
+                .identity_kind,
+            WEB_IDENTITY_INTERNATIONAL_EMAIL
+        );
+        let conn = Connection::open(&path).expect("reopen");
+        let columns = conn
+            .prepare("PRAGMA table_info(web_user_external_state)")
+            .expect("pragma")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("columns")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect");
+        assert!(!columns.iter().any(|value| value == "whop_membership_json"));
+        assert!(!columns.iter().any(|value| value == "registration_policy"));
     }
 }

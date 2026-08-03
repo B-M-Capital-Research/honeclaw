@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-03
-状态：有 10 个活跃任务
+状态：有 11 个活跃任务
 
 ## 说明
 
@@ -16,6 +16,11 @@
 
 ## 活跃任务
 
+- **Stripe + Whop 并行计费接入**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/stripe-whop-parallel-billing.md`
+  - 摘要：按用户最新要求采用无兼容层重构：旧 Whop 投影一次性迁到 provider-neutral Billing 唯一权益账本，后端/前端/法律文案、故障恢复、本地自动化和桌面/iOS 浏览器验收已完成。Stripe CLI OAuth、真实测试目录、Checkout 公共测试卡付款、签名 listener、Customer Portal 与 HONE `active` 页面均已验收；真实事件暴露了 Checkout completion 晚于 invoice/subscription 的排序边界，已改为仅用 Session creation 排序 provisional pending，并以单元测试、隔离签名 HTTP 和同一笔真实事件重放证明 1 条 active 权益及付费 API `402→200`。本地 CLI、线上 test endpoint、线上 live endpoint 的 URL/签名 secret 已明确分离；当前尚未创建或验证线上注册 endpoint，也未执行真实失败/恢复/取消矩阵。真实非 owner Whop buyer 验收仍待本人邮箱挑战，现有 live catalog/config 保持不动
+
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-admin-usage-exploration.md`
@@ -24,7 +29,7 @@
 - **Whop 购买邮箱真实投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/whop-email-delivery.md`
-  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略且权限为 `0600` 的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已从 `/activate/whop` 成功进入 `/me`。Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值只保留在忽略的 `.env`。Whop verifier 已切换为当前原始 `ws_...` secret 格式并拒绝旧格式；精确提交 `482c34d5` 已构建为不可变包并在零活跃会话后受控部署，生产公网有效签名的无副作用事件返回 `200`、篡改正文与无签名请求返回 `401`，邮箱、PostgreSQL、R2、Web 与 Feishu 均健康。当前仅剩真实非 owner Whop buyer 的同一挑战验证码最终生产验收
+  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略且权限为 `0600` 的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已迁到统一 `/activate?provider=whop` 并成功进入 `/me`。Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值只保留在忽略的 `.env`。Whop verifier 已切换为当前原始 `ws_...` secret 格式并拒绝旧格式；精确提交 `482c34d5` 已构建为不可变包并在零活跃会话后受控部署，生产公网有效签名的无副作用事件返回 `200`、篡改正文与无签名请求返回 `401`，邮箱、PostgreSQL、R2、Web 与 Feishu 均健康。当前仅剩真实非 owner Whop buyer 的同一挑战验证码最终生产验收
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

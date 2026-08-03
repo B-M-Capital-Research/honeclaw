@@ -1,4 +1,5 @@
 pub(crate) mod auth;
+pub(crate) mod billing;
 pub(crate) mod channel_settings;
 pub(crate) mod chat;
 pub(crate) mod company_profiles;
@@ -25,6 +26,7 @@ pub(crate) mod public_quotes;
 pub(crate) mod research;
 pub(crate) mod schedule;
 pub(crate) mod skills;
+pub(crate) mod stripe;
 pub(crate) mod task_runs;
 pub(crate) mod users;
 pub(crate) mod web_users;
@@ -56,7 +58,7 @@ async fn handle_api_not_found() -> Response {
     common::json_error(StatusCode::NOT_FOUND, "api route not found")
 }
 
-fn public_origin_allowed(origin: &HeaderValue, configured_origins: &str) -> bool {
+pub(crate) fn public_origin_allowed(origin: &HeaderValue, configured_origins: &str) -> bool {
     let Ok(origin) = origin.to_str() else {
         return false;
     };
@@ -288,6 +290,17 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/email/login", post(public::handle_email_login))
         .route("/auth/logout", post(public::handle_logout))
         .route("/auth/me", get(public::handle_me))
+        .route("/billing/config", get(billing::handle_billing_config))
+        .route("/billing/status", get(billing::handle_billing_status))
+        .route(
+            "/billing/entitlements",
+            get(billing::handle_billing_entitlements),
+        )
+        .route(
+            "/billing/checkout/stripe",
+            post(stripe::handle_create_checkout),
+        )
+        .route("/billing/portal/stripe", post(stripe::handle_create_portal))
         .route(
             "/admin/invites",
             get(public_admin::handle_list_invites).post(public_admin::handle_create_invite),
@@ -300,6 +313,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route(
             "/integrations/whop/webhook",
             post(whop::handle_whop_webhook),
+        )
+        .route(
+            "/integrations/stripe/webhook",
+            post(stripe::handle_stripe_webhook),
         )
         .route("/bootstrap", get(public::handle_bootstrap))
         .route("/history", get(public::handle_history))

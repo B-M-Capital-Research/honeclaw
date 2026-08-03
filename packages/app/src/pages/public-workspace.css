@@ -197,6 +197,14 @@
 .public-vip-list { display: grid; gap: 9px; margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid #ecece9; list-style: none; }
 .public-vip-list li { display: flex; align-items: flex-start; gap: 9px; color: #2f332f; font-size: 12px; line-height: 1.6; }
 .public-vip-list svg { width: 13px; height: 13px; flex: 0 0 13px; margin-top: 2px; color: #f06449; }
+.public-billing-warning { padding: 10px 12px; border: 1px solid color-mix(in srgb, #b06a26 35%, transparent); border-radius: 10px; background: color-mix(in srgb, #d98b34 8%, #fff); color: #80501e !important; }
+.public-billing-entitlements { display: grid; gap: 10px; margin-top: 16px; }
+.public-billing-entitlement { padding: 12px 14px; border: 1px solid #ecece9; border-radius: 12px; background: #fff; }
+.public-billing-entitlement .public-account-row { min-height: 34px; }
+.public-billing-entitlement p { margin: 8px 0; color: #777b76; font-size: 11px; line-height: 1.5; }
+.public-billing-entitlement button,
+.public-billing-entitlement a { display: inline-flex; margin-top: 6px; padding: 7px 10px; border: 1px solid #e1e2de; border-radius: 8px; background: #fff; color: #d7533d; cursor: pointer; font: 700 11px var(--hone-font-body); text-decoration: none; }
+.public-billing-entitlement small { display: block; margin-top: 8px; color: #9b625a; font-size: 10px; }
 .public-vip-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 16px 14px; border: 1px solid #ecece9; border-radius: 13px; background: #fff; text-align: center; }
 .public-vip-qr { padding: 0; border: 1px solid #e6e7e3; border-radius: 10px; background: #fff; overflow: hidden; cursor: zoom-in; }
 .public-vip-qr img { width: 118px; height: 118px; display: block; object-fit: cover; }

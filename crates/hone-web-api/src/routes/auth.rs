@@ -108,18 +108,17 @@ mod tests {
 
     fn test_state(token: Option<&str>) -> AppState {
         let (push_tx, _) = broadcast::channel(8);
+        let storage_path = std::env::temp_dir()
+            .join(format!("hone_web_auth_auth_test_{}", uuid::Uuid::new_v4()))
+            .join("sessions.sqlite3");
+        let web_auth = hone_memory::WebAuthStorage::new(&storage_path).expect("web auth");
+        let billing = hone_memory::BillingStorage::new(&storage_path).expect("billing");
         AppState {
             core: Arc::new(hone_channels::HoneBotCore::new(
                 hone_core::HoneConfig::default(),
             )),
-            web_auth: Arc::new(
-                hone_memory::WebAuthStorage::new(
-                    std::env::temp_dir()
-                        .join(format!("hone_web_auth_auth_test_{}", uuid::Uuid::new_v4()))
-                        .join("sessions.sqlite3"),
-                )
-                .expect("web auth"),
-            ),
+            web_auth: Arc::new(web_auth),
+            billing: Arc::new(billing),
             email_verification_sender: Arc::new(
                 crate::email_verification::UnconfiguredEmailVerificationSender,
             ),

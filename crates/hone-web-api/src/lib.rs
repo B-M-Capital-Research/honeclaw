@@ -688,20 +688,31 @@ pub async fn start_server(
     config.ensure_runtime_dirs();
 
     let core = Arc::new(hone_channels::HoneBotCore::new(config));
-    let web_auth = Arc::new(
-        if core.config.cloud.effective_mode().is_cloud_authoritative()
-            && core.config.cloud.postgres.is_configured()
-        {
+    let cloud_postgres = if core.config.cloud.effective_mode().is_cloud_authoritative()
+        && core.config.cloud.postgres.is_configured()
+    {
+        Some(
             CloudPgRuntime::from_cloud_config(&core.config.cloud)
-                .map(hone_memory::WebAuthStorage::new_cloud)
-                .transpose()
-                .map_err(|e| format!("Web Auth cloud 存储初始化失败: {e}"))?
-                .ok_or_else(|| "Web Auth cloud 存储初始化失败: Postgres 未配置".to_string())?
-        } else {
-            hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
-                .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?
-        },
-    );
+                .ok_or_else(|| "Cloud Billing/Auth 初始化失败: Postgres 未配置".to_string())?,
+        )
+    } else {
+        None
+    };
+    let web_auth = Arc::new(match cloud_postgres.as_ref() {
+        Some(postgres) => hone_memory::WebAuthStorage::new_cloud(postgres.clone())
+            .map_err(|e| format!("Web Auth cloud 存储初始化失败: {e}"))?,
+        None => hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
+            .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?,
+    });
+    let billing = Arc::new(match cloud_postgres {
+        Some(postgres) => hone_memory::BillingStorage::new_cloud(postgres)
+            .map_err(|e| format!("Billing cloud 存储初始化失败: {e}"))?,
+        None => hone_memory::BillingStorage::new(&core.config.storage.session_sqlite_db_path)
+            .map_err(|e| format!("Billing 存储初始化失败: {e}"))?,
+    });
+    web_auth
+        .migrate_legacy_whop_billing(&billing)
+        .map_err(|e| format!("旧 Whop 权益迁移失败: {e}"))?;
 
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────
     // 必须使用 global_log_buffer()：tracing 全局订阅者只能 set 一次，
@@ -777,7 +788,7 @@ pub async fn start_server(
     if email_verification_sender.is_configured() {
         info!("Cloudflare 邮箱验证码服务已装配");
     } else {
-        warn!("邮箱验证码服务未配置，Whop 购买邮箱激活将返回 503");
+        warn!("邮箱验证码服务未配置，国际会员激活将返回 503");
     }
     let bearer_token = {
         let v = core.config.web.auth_token.trim().to_string();
@@ -786,6 +797,7 @@ pub async fn start_server(
     let state = Arc::new(InnerAppState {
         core,
         web_auth,
+        billing,
         email_verification_sender,
         public_auth_limiter: Default::default(),
         push_tx,
@@ -800,6 +812,9 @@ pub async fn start_server(
         active_chat_runs: Default::default(),
     });
     let runtime_role = RuntimeRole::from_env();
+    task_handles.push(crate::routes::billing::spawn_billing_recovery_worker(
+        state.clone(),
+    ));
 
     // ── UDP 日志接收（收集各 channel sidecar 的日志）────────────────
     let udp_port = state.core.config.logging.udp_port.unwrap_or(18118);

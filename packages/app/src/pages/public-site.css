@@ -112,35 +112,174 @@ html {
   color: var(--hone-link);
   font-weight: 700;
 }
-.public-whop-activate a {
+.public-activate {
+  min-height: 100dvh;
+  padding: 48px 20px;
+  background: var(--hone-paper-100);
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  font-family: var(--hone-font-body);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.public-activate a {
   color: var(--hone-link);
 }
-.public-whop-activate-inner {
+.public-activate-inner {
+  width: min(100%, 500px);
   min-width: 0;
+}
+.public-activate-header {
+  margin-bottom: 22px;
+  text-align: center;
+}
+.public-activate-provider {
+  display: inline-flex;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent);
+  color: var(--hone-link);
+  font-size: 12px;
+  font-weight: 700;
+}
+.public-activate-header h1 {
+  margin: 0 0 8px;
+  color: var(--hone-ink-950);
+  font-size: 26px;
+  line-height: 1.25;
+}
+.public-activate-header p {
+  margin: 0;
+  color: var(--hone-ink-600);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.public-activate-card {
+  padding: 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  box-shadow: var(--hone-login-shadow);
+}
+.public-activate-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.public-activate-steps span {
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.public-activate-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: var(--hone-ink-800);
+  font-size: 12px;
+  font-weight: 700;
+}
+.public-activate-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-sm);
+  outline: none;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  font: 400 14px var(--hone-font-body);
+}
+.public-activate-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  gap: 10px;
+}
+.public-activate-code-row > button {
+  align-self: start;
+  height: 41px;
+  margin-top: 25px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-control-surface);
+  color: var(--hone-link);
+  cursor: pointer;
+  font: 700 12px var(--hone-font-body);
+}
+.public-activate-code-row > button:disabled,
+.public-activate-submit:disabled {
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-600);
+  cursor: not-allowed;
+}
+.public-activate-consents {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.public-activate-feedback {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: var(--hone-radius-sm);
+  background: rgba(22, 163, 74, 0.06);
+  color: var(--hone-success-600);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.public-activate-feedback.is-error {
+  border-color: color-mix(in srgb, #b0443b 20%, transparent);
+  background: color-mix(in srgb, #b0443b 8%, transparent);
+  color: var(--hone-error-600);
+}
+.public-activate-submit {
+  width: 100%;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  cursor: pointer;
+  font: 700 15px var(--hone-font-body);
+}
+.public-activate-footer {
+  margin: 16px 0 0;
+  color: var(--hone-ink-500);
+  text-align: center;
+  font-size: 12px;
 }
 
 @media (max-width: 600px) {
-  .public-whop-activate {
+  .public-activate {
     min-height: 100svh !important;
     place-items: start center !important;
     padding: max(64px, calc(env(safe-area-inset-top) + 54px)) 14px max(24px, env(safe-area-inset-bottom)) !important;
     overflow: visible !important;
   }
-  .public-whop-activate-card {
+  .public-activate-card {
     padding: 18px !important;
   }
-  .public-whop-code-row {
+  .public-activate-code-row {
     grid-template-columns: minmax(0, 1fr) 112px !important;
     gap: 8px !important;
   }
 }
 
 @media (max-width: 360px) {
-  .public-whop-code-row {
+  .public-activate-code-row {
     grid-template-columns: minmax(0, 1fr) !important;
   }
-  .public-whop-code-row > button {
+  .public-activate-code-row > button {
     width: 100%;
+    margin-top: 0;
   }
 }
 

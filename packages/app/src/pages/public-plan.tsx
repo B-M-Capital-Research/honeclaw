@@ -3,9 +3,11 @@
 // 缩略图 + Bilibili + HONE 工具）｜右栏会员转化（价格 + 权益 + 免费体验群）
 // → 六张海报横滑条。中文「立即购买」弹知识星球二维码，英文跳 Whop。
 
-import { createSignal, For, Match, Show, Switch, onCleanup, createEffect } from "solid-js"
+import { createSignal, For, Match, Show, Switch, onCleanup, createEffect, onMount } from "solid-js"
 import { CONTENT } from "@/lib/public-content"
+import { getPublicBillingConfig } from "@/lib/api"
 import { useLocale } from "@/lib/i18n"
+import type { PublicBillingConfig } from "@/lib/types"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
@@ -97,6 +99,7 @@ function Lightbox(props: {
 
 export default function PublicPlanPage() {
   const C = () => CONTENT.plan
+  const [billingConfig, setBillingConfig] = createSignal<PublicBillingConfig>()
   const [lightbox, setLightbox] = createSignal<
     | { kind: "poster"; index: number }
     | { kind: "join" }
@@ -104,10 +107,29 @@ export default function PublicPlanPage() {
     | null
   >(null)
   const isZh = () => useLocale() === "zh"
+  const purchasesAllowed = () => billingConfig()?.purchases_allowed_on_this_client === true
+  const stripePrimary = () =>
+    billingConfig()?.primary_provider === "stripe" &&
+    billingConfig()?.stripe_checkout_enabled === true
+
+  onMount(async () => {
+    try {
+      setBillingConfig(await getPublicBillingConfig())
+    } catch {
+      // Purchase UI fails closed. Existing members can still use the restore link.
+      setBillingConfig(undefined)
+    }
+  })
 
   const buy = () => {
-    if (isZh()) setLightbox({ kind: "join" })
-    else window.open(WHOP_URL, "_blank", "noopener,noreferrer")
+    if (!purchasesAllowed()) return
+    if (isZh()) {
+      setLightbox({ kind: "join" })
+    } else if (stripePrimary()) {
+      window.location.assign("/activate")
+    } else {
+      window.open(WHOP_URL, "_blank", "noopener,noreferrer")
+    }
   }
 
   const activePoster = () => {
@@ -145,9 +167,11 @@ export default function PublicPlanPage() {
               <a class="hone-hub-social is-bilibili" href={BILIBILI_URL} target="_blank" rel="noopener noreferrer" title="Bilibili">
                 <BrandIcon name="bilibili" /><span>Bilibili</span>
               </a>
-              <button type="button" class="hone-hub-social is-zsxq" onClick={buy} title={C().full.qr_title}>
-                <BrandIcon name="zsxq" /><span>{C().socials.zsxq}</span>
-              </button>
+              <Show when={purchasesAllowed()}>
+                <button type="button" class="hone-hub-social is-zsxq" onClick={buy} title={C().full.qr_title}>
+                  <BrandIcon name="zsxq" /><span>{C().socials.zsxq}</span>
+                </button>
+              </Show>
               <button type="button" class="hone-hub-social is-wechat" onClick={() => setLightbox({ kind: "support" })} title={C().support.title}>
                 <BrandIcon name="wechat" /><span>{C().socials.wechat}</span>
               </button>
@@ -207,10 +231,12 @@ export default function PublicPlanPage() {
               <div class="hone-hub-label">{C().member.label}</div>
               <div class="hone-hub-member-head">
                 <strong>{C().member.title}</strong>
-                <div class="hone-hub-price">
-                  <b>{C().full.price}</b>
-                  <span>{C().full.period}</span>
-                </div>
+                <Show when={purchasesAllowed()}>
+                  <div class="hone-hub-price">
+                    <b>{C().full.price}</b>
+                    <span>{C().full.period}</span>
+                  </div>
+                </Show>
               </div>
               <Show when={C().full.promos.length > 0}>
                 <div class="hone-share-promos">
@@ -227,14 +253,27 @@ export default function PublicPlanPage() {
                   )}
                 </For>
               </ul>
-              <button type="button" class="hone-share-buy hone-hub-buy" onClick={buy}>
-                {C().full.cta}
-              </button>
+              <Show
+                when={purchasesAllowed()}
+                fallback={<p class="hone-hub-trial-hint">App 内仅支持登录并恢复已在网站购买的会员权益。</p>}
+              >
+                <button type="button" class="hone-share-buy hone-hub-buy" onClick={buy}>
+                  {!isZh() && stripePrimary() ? "Subscribe securely with Stripe" : C().full.cta}
+                </button>
+                <Show when={!isZh() && stripePrimary() && billingConfig()?.whop_new_purchases_enabled}>
+                  <a class="hone-hub-trial-btn" href={WHOP_URL} target="_blank" rel="noopener noreferrer">
+                    Prefer Whop? Buy there instead
+                  </a>
+                </Show>
+                <Show when={!isZh() && !stripePrimary() && billingConfig()?.stripe_checkout_enabled}>
+                  <a class="hone-hub-trial-btn" href="/activate">Subscribe with Stripe</a>
+                </Show>
+              </Show>
               <button type="button" class="hone-hub-trial-btn" onClick={() => setLightbox({ kind: "support" })}>
                 {C().member.trial_cta}
               </button>
               <p class="hone-hub-trial-hint">{C().member.trial_hint}</p>
-              <a class="hone-hub-trial-btn" href="/activate/whop">
+              <a class="hone-hub-trial-btn" href="/activate?provider=whop">
                 {C().member.activation_cta}
               </a>
               <p class="hone-hub-foot">{C().foot}</p>
@@ -292,15 +331,17 @@ export default function PublicPlanPage() {
       </main>
 
       {/* 移动端吸附购买栏 */}
-      <div class="hone-share-dock">
-        <button type="button" class="hone-share-buy" onClick={buy}>
-          <span>{C().full.cta}</span>
-          <b>{C().full.price}{C().full.period}</b>
-        </button>
-        <button type="button" class="hone-share-service" onClick={() => setLightbox({ kind: "support" })}>
-          {C().support.title}
-        </button>
-      </div>
+      <Show when={purchasesAllowed()}>
+        <div class="hone-share-dock">
+          <button type="button" class="hone-share-buy" onClick={buy}>
+            <span>{!isZh() && stripePrimary() ? "Stripe checkout" : C().full.cta}</span>
+            <b>{C().full.price}{C().full.period}</b>
+          </button>
+          <button type="button" class="hone-share-service" onClick={() => setLightbox({ kind: "support" })}>
+            {C().support.title}
+          </button>
+        </div>
+      </Show>
 
       <PublicFooter />
 

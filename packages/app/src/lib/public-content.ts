@@ -126,7 +126,7 @@ const CONTENT_ZH = {
       ],
       trial_cta: "先加免费体验群",
       trial_hint: "加客服微信，先进免费群感受氛围，合适再付费。",
-      activation_cta: "Whop 海外买家：开通 HONE 账号",
+      activation_cta: "海外会员：开通或恢复 HONE 账号",
     },
     posters_label: "六张海报看懂完整服务",
     posters_hint: "点击任意海报可放大查看，长按或右键即可保存转发。",
@@ -520,7 +520,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/activate/whop`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；国内 `/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，海外 Whop 买家则在 `/activate/whop` 使用购买邮箱和 HONE 邮箱验证码激活，`/me` 展示服务端记录的会员与续费状态；桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/activate`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；国内 `/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，海外用户则在 `/activate` 使用邮箱验证码完成 Stripe 购买或恢复 Whop 权益，`/me` 展示服务端统一记录的会员与续费状态；桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "存储与云运行时",
@@ -1218,7 +1218,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "中国大陆渠道用户使用经我们登记的中国大陆手机号作为账号，并通过短信验证码完成身份验证；海外 Whop 购买用户可使用购买邮箱和邮箱验证码完成身份验证。账号必须对应有效的邀请资格或会员权益。",
+                "中国大陆渠道用户使用经我们登记的中国大陆手机号作为账号，并通过短信验证码完成身份验证；海外 Stripe 或 Whop 用户可使用购买邮箱和邮箱验证码完成身份验证。账号必须对应有效的邀请资格或会员权益。",
               ],
             },
             {
@@ -1298,7 +1298,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Whop 处理海外付款与会员状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
+                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Stripe 或 Whop 处理海外付款与订阅状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
               ],
             },
             {
@@ -1310,7 +1310,24 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "7. 服务变更、中断与终止",
+          title: "7. 订阅、自动续费、取消与退款",
+          body: [
+            {
+              kind: "p",
+              parts: [
+                "海外年度会员通过 Stripe 或 Whop 结算。结账页会显示币种、价格、计费周期和适用税费；除非您在当前周期结束前取消，订阅将按结账时披露的周期自动续费并由原付款方式扣款。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您可通过账户页进入相应付款平台管理或取消订阅。取消通常在当前已付款周期结束时生效，不会自动退还已开始周期的费用。退款申请依购买页面披露、适用法律、我们明确作出的书面承诺及相应付款平台规则处理；适用法律要求退款的情形不受本条限制。",
+              ],
+            },
+          ],
+        },
+        {
+          title: "8. 服务变更、中断与终止",
           body: [
             {
               kind: "p",
@@ -1327,7 +1344,7 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "8. 免责与责任限制",
+          title: "9. 免责与责任限制",
           body: [
             {
               kind: "p",
@@ -1338,13 +1355,13 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本服务目前以免费形式提供。在适用法律允许的最大范围内，我们不对您因使用或无法使用本服务而遭受的任何直接或间接损失（包括但不限于投资或交易损失、数据丢失、利润损失等）承担金钱赔偿责任。",
+                "部分能力仅向有效会员开放。在适用法律允许的最大范围内，我们不对您因使用或无法使用本服务而遭受的任何间接、附带或后果性损失（包括但不限于投资或交易损失、数据丢失、利润损失等）承担责任；适用法律不得排除或限制的责任不受本条限制。",
               ],
             },
           ],
         },
         {
-          title: "9. 协议变更与通知",
+          title: "10. 协议变更与通知",
           body: [
             {
               kind: "p",
@@ -1361,7 +1378,7 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "10. 适用法律与争议解决",
+          title: "11. 适用法律与争议解决",
           body: [
             {
               kind: "p",
@@ -1386,7 +1403,7 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "11. 联系方式",
+          title: "12. 联系方式",
           body: [
             {
               kind: "p",
@@ -1450,11 +1467,11 @@ const CONTENT_ZH = {
               items: [
                 [
                   { strong: "账号信息：" },
-                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Whop 用户、会员、产品、套餐、状态、续费周期和 webhook 事件标识；",
+                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Stripe 或 Whop 的 Customer、Subscription、Invoice、会员、产品、价格、状态、续费周期和 webhook 事件标识；",
                 ],
                 [
                   { strong: "付款信息：" },
-                  "海外付款由 Whop 处理。我们接收用于确认权益的订单或会员状态，但不接收或存储完整银行卡号；",
+                  "海外付款由 Stripe 或 Whop 处理。我们接收用于确认权益的客户、订阅、账单或会员状态标识，但不接收或存储完整银行卡号、安全码或磁条数据；",
                 ],
                 [
                   { strong: "使用数据：" },
@@ -1518,7 +1535,7 @@ const CONTENT_ZH = {
               kind: "ul",
               items: [
                 ["短信与邮件服务商（用于发送登录验证码）；"],
-                ["Whop（用于处理海外付款并同步会员、产品和续费状态）；"],
+                ["Stripe 与 Whop（用于处理海外付款、创建订阅管理会话并同步产品、账单和续费状态）；"],
                 ["大型语言模型提供方（用于生成回复）；"],
                 ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
               ],
@@ -1827,7 +1844,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       ],
       trial_cta: "Join the free group first",
       trial_hint: "Add support on WeChat to try the free group before you pay.",
-      activation_cta: "Already paid on Whop? Activate HONE",
+      activation_cta: "Already subscribed? Activate or restore HONE",
     },
     posters_label: "Six posters that explain the full service",
     posters_hint: "Tap any poster to enlarge; long-press or right-click to save and share.",
@@ -1853,7 +1870,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       badge: "Recommended",
       price: "$199.99",
       period: "/ year",
-      promos: ["USD · via Whop"],
+      promos: ["USD · Stripe or Whop"],
       desc: "Live deep dives, the VIP community, research notes, and unlimited HONE — one subscription.",
       features: [
         "Thursday live deep dives — the host walks through companies in depth, ask anything live",
@@ -1861,7 +1878,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Zhishixingqiu & community — full company reports, valuations, and strategy write-ups",
         "Unlimited HONE — every question gets a timely answer in the community",
       ],
-      cta: "Buy on Whop",
+      cta: "Subscribe",
       qr_title: "Scan to join",
       qr_hint: "Long-press or right-click to save; scan to subscribe.",
     },
@@ -2212,7 +2229,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/activate/whop`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; mainland-China `/chat` admission uses Aliyun behavior captcha plus phone/SMS verification from the admin invite list, while overseas Whop buyers activate through `/activate/whop` using their purchase email and a HONE email code, and `/me` renders server-recorded membership and renewal status; the client uses a collapsible desktop left rail plus full-height conversation workspace and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/activate`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; mainland-China `/chat` admission uses Aliyun behavior captcha plus phone/SMS verification from the admin invite list, while overseas users verify email through `/activate` to purchase with Stripe or restore Whop access, and `/me` renders the server-owned unified billing state; the client uses a collapsible desktop left rail plus full-height conversation workspace and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Storage and cloud runtime",
@@ -2953,7 +2970,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Users entering through mainland China channels sign in with a registered mainland China phone number and an SMS code. Overseas Whop buyers may verify with their purchase email and an email code. Every account must correspond to a valid invitation or membership entitlement.",
+                "Users entering through mainland China channels sign in with a registered mainland China phone number and an SMS code. Overseas Stripe or Whop users may verify with their purchase email and an email code. Every account must correspond to a valid invitation or membership entitlement.",
               ],
             },
             {
@@ -3039,7 +3056,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Whop for overseas payment processing and membership synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
+                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Stripe or Whop for overseas payment processing and subscription synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
               ],
             },
             {
@@ -3051,7 +3068,24 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "7. Service changes, suspension & termination",
+          title: "7. Subscriptions, renewal, cancellation & refunds",
+          body: [
+            {
+              kind: "p",
+              parts: [
+                "Overseas annual memberships are billed through Stripe or Whop. Checkout displays the currency, price, billing interval, and applicable taxes. Unless you cancel before the end of the current period, the subscription automatically renews on the disclosed interval and charges the original payment method.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "You can open the applicable provider from your account page to manage or cancel. Cancellation normally takes effect at the end of the paid period and does not automatically refund a period that has begun. Refund requests are handled under checkout disclosures, applicable law, our express written commitments, and the provider's rules; nothing here limits a refund required by law.",
+              ],
+            },
+          ],
+        },
+        {
+          title: "8. Service changes, suspension & termination",
           body: [
             {
               kind: "p",
@@ -3068,7 +3102,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "8. Disclaimers & limitation of liability",
+          title: "9. Disclaimers & limitation of liability",
           body: [
             {
               kind: "p",
@@ -3079,13 +3113,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "The service is currently provided free of charge. To the maximum extent permitted by applicable law, we are not liable for any direct or indirect monetary loss you suffer from using or being unable to use the service (including but not limited to investment or trading losses, data loss, or lost profits).",
+                "Some capabilities require an active paid membership. To the maximum extent permitted by applicable law, we are not liable for indirect, incidental, or consequential loss from using or being unable to use the service (including investment or trading losses, data loss, or lost profits). This does not limit liability that applicable law does not permit us to exclude.",
               ],
             },
           ],
         },
         {
-          title: "9. Changes to these Terms",
+          title: "10. Changes to these Terms",
           body: [
             {
               kind: "p",
@@ -3102,7 +3136,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "10. Governing law & dispute resolution",
+          title: "11. Governing law & dispute resolution",
           body: [
             {
               kind: "p",
@@ -3127,7 +3161,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "11. Contact",
+          title: "12. Contact",
           body: [
             {
               kind: "p",
@@ -3198,11 +3232,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 [
                   { strong: "Account info:" },
-                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Whop user, membership, product, plan, status, renewal-period, and webhook event identifiers;",
+                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Stripe or Whop Customer, Subscription, Invoice, membership, product, price, status, renewal-period, and webhook event identifiers;",
                 ],
                 [
                   { strong: "Payment info:" },
-                  " overseas payments are processed by Whop. We receive order or membership status needed to confirm entitlements, but we do not receive or store full payment-card numbers;",
+                  " overseas payments are processed by Stripe or Whop. We receive customer, subscription, invoice, or membership identifiers needed to confirm entitlements, but we do not receive or store full card numbers, security codes, or magnetic-stripe data;",
                 ],
                 [
                   { strong: "Usage data:" },
@@ -3282,7 +3316,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 ["SMS and email providers (to deliver login codes);"],
                 [
-                  "Whop (to process overseas payments and synchronize membership, product, and renewal status);",
+                  "Stripe and Whop (to process overseas payments, create subscription-management sessions, and synchronize product, invoice, and renewal status);",
                 ],
                 ["large language model providers (to generate responses);"],
                 [

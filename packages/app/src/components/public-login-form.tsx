@@ -361,9 +361,9 @@ export function PublicLoginForm(props: Props) {
               "font-size": "12px",
             }}
           >
-            Whop 海外会员？{" "}
-            <a class="public-login-member-link" href="/activate/whop">
-              使用购买邮箱开通或登录
+            海外会员？{" "}
+            <a class="public-login-member-link" href="/activate">
+              使用邮箱开通或恢复权益
             </a>
           </p>
         </div>

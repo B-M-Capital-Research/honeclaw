@@ -22,7 +22,7 @@ describe("public theme surface contract", () => {
       "/me",
       "/portfolio",
       "/invest",
-      "/activate/whop",
+      "/activate",
       "/community",
       "/terms",
       "/privacy",

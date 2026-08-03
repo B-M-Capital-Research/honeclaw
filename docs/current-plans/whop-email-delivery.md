@@ -36,7 +36,7 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
 - `bun run test:web`
 - `bun run typecheck:web`
 - Cloudflare 控制台确认发送域状态正常。
-- 浏览器从 `/activate/whop` 请求验证码，真实邮箱收到并完成 `/me` 登录。
+- 浏览器从统一 `/activate?provider=whop` 请求验证码，真实邮箱收到并完成 `/me` 登录。
 
 ## Progress
 
@@ -50,7 +50,7 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
   delivered/queued 数组；sender 已兼容该接受态并增加回归测试。
 - Cloudflare Activity Log 确认两次真实验证码投递均为 `Delivered`。
 - 浏览器在隔离 SQLite membership 上完成
-  `/activate/whop` → `/me?checkout=success`，会员状态、周期、邮箱掩码和
+  `/activate?provider=whop` → `/me?checkout=success`，会员状态、周期、邮箱掩码和
   Whop 管理入口均正确。
 - Gmail connector 未连接，Chrome 登录的是另一个邮箱；因此没有读取用户
   指定收件箱。浏览器登录阶段使用隔离数据库的等价已知 challenge，真实

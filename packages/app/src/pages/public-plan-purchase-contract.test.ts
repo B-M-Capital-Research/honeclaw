@@ -7,10 +7,19 @@ const publicPlan = readFileSync(
 );
 
 describe("public plan purchase contract", () => {
-  it("opens the canonical Whop membership for English buyers", () => {
+  it("loads server billing policy and keeps Stripe primary with canonical Whop secondary", () => {
+    expect(publicPlan).toContain("getPublicBillingConfig");
+    expect(publicPlan).toContain('window.location.assign("/activate")');
+    expect(publicPlan).toContain("stripePrimary()");
     expect(publicPlan).toContain(
       "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/bm-research-membership/",
     );
+    expect(publicPlan).toContain('href="/activate?provider=whop"');
     expect(publicPlan).not.toContain("/vip-copy-18/");
+  });
+
+  it("fails closed for the HONE iOS purchase surface", () => {
+    expect(publicPlan).toContain("purchases_allowed_on_this_client");
+    expect(publicPlan).toContain("App 内仅支持登录并恢复");
   });
 });

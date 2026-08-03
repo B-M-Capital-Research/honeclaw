@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::body::Bytes;
@@ -8,12 +9,17 @@ use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use hmac::{Hmac, Mac};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
+use tracing::{info, warn};
 
-use hone_memory::WhopMembershipEvent;
+use hone_memory::{
+    BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE, BILLING_EVENT_RECEIVED,
+    BILLING_PROVIDER_WHOP, BillingEntitlement, BillingEntitlementUpsertOutcome, BillingStorage,
+    BillingWebhookEvent,
+};
 
 use crate::state::AppState;
 
@@ -62,6 +68,23 @@ struct WhopWebhookEnvelope {
     company_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WhopEntitlementEvent {
+    membership_id: String,
+    whop_user_id: String,
+    email_address: String,
+    company_id: String,
+    product_id: String,
+    plan_id: String,
+    status: String,
+    manage_url: Option<String>,
+    renewal_period_start: Option<String>,
+    renewal_period_end: Option<String>,
+    cancel_at_period_end: bool,
+    event_id: String,
+    event_at: String,
+}
+
 pub(crate) async fn handle_whop_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -106,24 +129,47 @@ pub(crate) async fn handle_whop_webhook(
         Ok(event) => event,
         Err(error) => return crate::routes::json_error(StatusCode::UNPROCESSABLE_ENTITY, error),
     };
-    match state.web_auth.upsert_whop_membership(event) {
-        Ok((user, outcome)) => Json(json!({
-            "ok": true,
-            "user_id": user.user_id,
-            "outcome": format!("{outcome:?}").to_ascii_lowercase(),
-        }))
-        .into_response(),
-        Err(error) => crate::routes::json_error(
+    let webhook = BillingWebhookEvent {
+        provider: BILLING_PROVIDER_WHOP.to_string(),
+        event_id: event.event_id.clone(),
+        event_type: envelope.event_type,
+        object_id: Some(event.membership_id.clone()),
+        payload_sha256: sha256_hex(&body),
+        provider_created_at: event.event_at.clone(),
+        processing_state: BILLING_EVENT_RECEIVED.to_string(),
+        attempt_count: 0,
+        last_error: None,
+        received_at: hone_core::beijing_now_rfc3339(),
+        processing_started_at: None,
+        processed_at: None,
+        normalized_payload: match serde_json::to_value(&event) {
+            Ok(value) => value,
+            Err(error) => {
+                return crate::routes::json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Whop 标准事件序列化失败: {error}"),
+                );
+            }
+        },
+    };
+    if let Err(error) = state.billing.record_webhook_event(webhook) {
+        return crate::routes::json_error(
             StatusCode::CONFLICT,
-            format!("Whop membership 写入失败: {error}"),
-        ),
+            format!("Whop webhook 收件失败: {error}"),
+        );
     }
+    spawn_whop_processing(state, event.event_id);
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({ "ok": true, "queued": true })),
+    )
+        .into_response()
 }
 
 fn membership_event_from_envelope(
     envelope: &WhopWebhookEnvelope,
     config: &WhopWebhookConfig,
-) -> Result<WhopMembershipEvent, String> {
+) -> Result<WhopEntitlementEvent, String> {
     if envelope.api_version != "v1" {
         return Err("Whop webhook API version 必须为 v1".to_string());
     }
@@ -158,7 +204,41 @@ fn membership_event_from_envelope(
         }
         .to_string()
     });
-    Ok(WhopMembershipEvent {
+    if !matches!(
+        status.as_str(),
+        "trialing"
+            | "active"
+            | "past_due"
+            | "completed"
+            | "canceled"
+            | "expired"
+            | "unresolved"
+            | "drafted"
+            | "canceling"
+    ) {
+        return Err("Whop membership 状态不合法".to_string());
+    }
+    for (label, value, prefix) in [
+        ("membership_id", membership_id.as_str(), "mem_"),
+        ("whop_user_id", whop_user_id.as_str(), "user_"),
+        ("event_id", envelope.id.as_str(), "msg_"),
+    ] {
+        if !value.starts_with(prefix) || value.len() <= prefix.len() {
+            return Err(format!("Whop {label} 格式不合法"));
+        }
+    }
+    let manage_url = json_optional_string(&envelope.data, &["manage_url"]);
+    if let Some(value) = manage_url.as_deref() {
+        let parsed = url::Url::parse(value).map_err(|_| "Whop manage_url 不合法".to_string())?;
+        if parsed.scheme() != "https"
+            || !parsed
+                .host_str()
+                .is_some_and(|host| host == "whop.com" || host.ends_with(".whop.com"))
+        {
+            return Err("Whop manage_url 必须是 whop.com HTTPS 地址".to_string());
+        }
+    }
+    Ok(WhopEntitlementEvent {
         membership_id,
         whop_user_id,
         email_address,
@@ -166,13 +246,163 @@ fn membership_event_from_envelope(
         product_id,
         plan_id,
         status,
-        manage_url: json_optional_string(&envelope.data, &["manage_url"]),
+        manage_url,
         renewal_period_start: json_optional_string(&envelope.data, &["renewal_period_start"]),
         renewal_period_end: json_optional_string(&envelope.data, &["renewal_period_end"]),
         cancel_at_period_end,
         event_id: envelope.id.clone(),
         event_at: envelope.timestamp.clone(),
     })
+}
+
+pub(crate) fn spawn_whop_processing(state: Arc<AppState>, event_id: String) {
+    tokio::spawn(async move {
+        for attempt in 1..=3u32 {
+            let claimed = match state
+                .billing
+                .claim_webhook_event(BILLING_PROVIDER_WHOP, &event_id)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    warn!(%event_id, %error, "Whop billing event claim failed");
+                    return;
+                }
+            };
+            let Some(claimed) = claimed else {
+                return;
+            };
+            let claim_attempt = claimed.attempt_count;
+            let event: WhopEntitlementEvent =
+                match serde_json::from_value(claimed.normalized_payload) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let message = format!("Whop 标准事件反序列化失败: {error}");
+                        let _ = state.billing.finish_webhook_event(
+                            BILLING_PROVIDER_WHOP,
+                            &event_id,
+                            claim_attempt,
+                            Err(&message),
+                        );
+                        return;
+                    }
+                };
+            match apply_whop_entitlement(&state, &event) {
+                Ok(outcome) => {
+                    match state.billing.finish_webhook_event(
+                        BILLING_PROVIDER_WHOP,
+                        &event_id,
+                        claim_attempt,
+                        Ok(()),
+                    ) {
+                        Err(error) => {
+                            warn!(%event_id, %error, "Whop billing event completion failed");
+                        }
+                        Ok(false) => {
+                            warn!(%event_id, claim_attempt, "Whop billing event completion lost its lease");
+                        }
+                        Ok(true) => {
+                            info!(
+                                %event_id,
+                                outcome = ?outcome,
+                                "Whop billing entitlement processed"
+                            );
+                        }
+                    }
+                    return;
+                }
+                Err(error) => {
+                    let _ = state.billing.finish_webhook_event(
+                        BILLING_PROVIDER_WHOP,
+                        &event_id,
+                        claim_attempt,
+                        Err(&error),
+                    );
+                    if attempt == 3 {
+                        warn!(%event_id, %error, "Whop billing event exhausted retries");
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(250 * u64::from(attempt))).await;
+                }
+            }
+        }
+    });
+}
+
+fn apply_whop_entitlement(
+    state: &AppState,
+    event: &WhopEntitlementEvent,
+) -> Result<BillingEntitlementUpsertOutcome, String> {
+    let user = state
+        .web_auth
+        .ensure_international_email_user(&event.email_address)
+        .map_err(|error| error.to_string())?;
+    let profile = state
+        .web_auth
+        .external_profile(&user.user_id)
+        .map_err(|error| error.to_string())?;
+    let existing = state
+        .billing
+        .find_entitlement(BILLING_PROVIDER_WHOP, &event.membership_id)
+        .map_err(|error| error.to_string())?;
+    if existing
+        .as_ref()
+        .is_some_and(|current| current.user_id != user.user_id)
+    {
+        return Err("Whop membership 已绑定到另一个 HONE 用户".to_string());
+    }
+    let access_state = match event.status.as_str() {
+        "active" | "trialing" | "canceling" => BILLING_ACCESS_ACTIVE,
+        "past_due" => BILLING_ACCESS_GRACE,
+        _ => BILLING_ACCESS_INACTIVE,
+    };
+    let grace_expires_at = if access_state == BILLING_ACCESS_GRACE {
+        existing
+            .as_ref()
+            .filter(|value| value.access_state == BILLING_ACCESS_GRACE)
+            .and_then(|value| value.grace_expires_at.clone())
+            .or(Some(grace_deadline(&event.event_at)?))
+    } else {
+        None
+    };
+    let now = hone_core::beijing_now_rfc3339();
+    state
+        .billing
+        .upsert_entitlement(BillingEntitlement {
+            entitlement_id: BillingStorage::entitlement_id(
+                BILLING_PROVIDER_WHOP,
+                &event.membership_id,
+            ),
+            user_id: user.user_id,
+            provider: BILLING_PROVIDER_WHOP.to_string(),
+            provider_customer_id: Some(event.whop_user_id.clone()),
+            provider_subscription_id: event.membership_id.clone(),
+            provider_product_id: Some(event.product_id.clone()),
+            provider_price_id: Some(event.plan_id.clone()),
+            purchase_email_normalized: profile.email_address,
+            raw_status: event.status.clone(),
+            access_state: access_state.to_string(),
+            current_period_start: event.renewal_period_start.clone(),
+            current_period_end: event.renewal_period_end.clone(),
+            cancel_at_period_end: event.cancel_at_period_end,
+            manage_url: event.manage_url.clone(),
+            grace_expires_at,
+            last_event_id: event.event_id.clone(),
+            last_event_created_at: event.event_at.clone(),
+            created_at: existing
+                .as_ref()
+                .map(|value| value.created_at.clone())
+                .unwrap_or_else(|| event.event_at.clone()),
+            updated_at: now,
+        })
+        .map_err(|error| error.to_string())
+}
+
+fn sha256_hex(body: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(body)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn verify_standard_webhook(headers: &HeaderMap, body: &[u8], secret: &str) -> Result<(), String> {
@@ -263,6 +493,20 @@ fn env_or(key: &str, fallback: &str) -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| fallback.to_string())
+}
+
+fn grace_deadline(event_at: &str) -> Result<String, String> {
+    let event_at = chrono::DateTime::parse_from_rfc3339(event_at)
+        .map_err(|_| "Whop event timestamp 格式不合法".to_string())?;
+    Ok((event_at + chrono::Duration::days(billing_grace_days())).to_rfc3339())
+}
+
+fn billing_grace_days() -> i64 {
+    std::env::var("HONE_BILLING_GRACE_DAYS")
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .filter(|value| (1..=30).contains(value))
+        .unwrap_or(7)
 }
 
 #[cfg(test)]

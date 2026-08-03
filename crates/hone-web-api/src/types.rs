@@ -48,6 +48,7 @@ pub struct PublicSmsLoginRequest {
 #[derive(Deserialize)]
 pub struct PublicEmailCodeRequest {
     pub email_address: Option<String>,
+    pub intent: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -251,10 +252,30 @@ pub struct PublicAuthUserInfo {
     pub has_password: bool,
     pub tos_accepted_at: Option<String>,
     pub tos_version: Option<String>,
-    pub registration_policy: String,
+    pub identity_kind: String,
     pub email_hint: Option<String>,
-    pub whop_membership: Option<hone_memory::WhopMembershipRecord>,
+    pub billing: PublicBillingSummary,
     pub is_admin: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicBillingEntitlement {
+    pub entitlement_id: String,
+    pub provider: String,
+    pub raw_status: String,
+    pub access_state: String,
+    pub current_period_start: Option<String>,
+    pub current_period_end: Option<String>,
+    pub cancel_at_period_end: bool,
+    pub manage_url: Option<String>,
+    pub grace_expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicBillingSummary {
+    pub access_granted: bool,
+    pub entitlements: Vec<PublicBillingEntitlement>,
+    pub has_duplicate_active_subscriptions: bool,
 }
 
 #[derive(Serialize)]

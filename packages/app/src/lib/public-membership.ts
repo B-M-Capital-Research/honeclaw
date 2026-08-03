@@ -1,47 +1,52 @@
-import type { PublicAuthUserInfo, WhopMembershipInfo } from "@/lib/types";
+import type {
+  PublicAuthUserInfo,
+  PublicBillingEntitlement,
+} from "@/lib/types";
 
-const WHOP_ACCESS_STATUSES = new Set([
-  "active",
-  "trialing",
-  "past_due",
-  "canceling",
-]);
-
-export function whopMembershipGrantsAccess(
-  membership?: WhopMembershipInfo,
+export function billingEntitlementGrantsAccess(
+  entitlement: PublicBillingEntitlement,
 ): boolean {
-  return membership
-    ? WHOP_ACCESS_STATUSES.has(membership.status.toLowerCase())
-    : false;
+  if (entitlement.access_state === "active") return true;
+  if (entitlement.access_state !== "grace" || !entitlement.grace_expires_at) return false;
+  const deadline = Date.parse(entitlement.grace_expires_at);
+  return Number.isFinite(deadline) && deadline >= Date.now();
 }
 
 export function publicUserHasProductAccess(user: PublicAuthUserInfo): boolean {
-  if (user.registration_policy !== "whop_international") return true;
-  return whopMembershipGrantsAccess(user.whop_membership);
+  return user.billing.access_granted;
 }
 
-export function whopMembershipStatusLabel(
-  membership: WhopMembershipInfo,
+export function billingEntitlementStatusLabel(
+  entitlement: PublicBillingEntitlement,
 ): string {
-  if (membership.cancel_at_period_end || membership.status === "canceling") {
+  if (entitlement.cancel_at_period_end && entitlement.access_state === "active") {
     return "本周期结束后停止续费";
   }
-  switch (membership.status.toLowerCase()) {
+  switch (entitlement.access_state) {
     case "active":
       return "生效中";
-    case "trialing":
-      return "试用中";
-    case "past_due":
-      return "付款待处理";
-    case "completed":
-      return "已完成";
-    case "canceled":
-      return "已取消";
-    case "expired":
-      return "已到期";
-    case "unresolved":
+    case "grace":
+      return billingEntitlementGrantsAccess(entitlement)
+        ? "付款待恢复（宽限期）"
+        : "宽限期已结束";
+    case "pending":
       return "待处理";
+    case "inactive":
+      return entitlement.raw_status === "canceled" ? "已取消" : "已失效";
     default:
-      return membership.status || "未知";
+      return entitlement.raw_status || "未知";
+  }
+}
+
+export function billingProviderLabel(provider: string): string {
+  switch (provider) {
+    case "stripe":
+      return "Stripe";
+    case "whop":
+      return "Whop";
+    case "domestic_invite":
+      return "国内邀请";
+    default:
+      return provider;
   }
 }

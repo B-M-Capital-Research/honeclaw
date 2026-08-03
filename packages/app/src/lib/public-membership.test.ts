@@ -1,33 +1,27 @@
 import { describe, expect, it } from "bun:test";
-import type { PublicAuthUserInfo, WhopMembershipInfo } from "@/lib/types";
+import type { PublicAuthUserInfo, PublicBillingEntitlement } from "@/lib/types";
 import {
+  billingEntitlementGrantsAccess,
+  billingEntitlementStatusLabel,
   publicUserHasProductAccess,
-  whopMembershipGrantsAccess,
-  whopMembershipStatusLabel,
 } from "./public-membership";
 
-function membership(
-  status: string,
+function entitlement(
+  accessState: string,
   cancelAtPeriodEnd = false,
-): WhopMembershipInfo {
+  provider = "stripe",
+): PublicBillingEntitlement {
   return {
-    membership_id: "mem_1",
-    whop_user_id: "user_1",
-    company_id: "biz_1",
-    product_id: "prod_1",
-    plan_id: "plan_1",
-    status,
+    entitlement_id: "ent_1",
+    provider,
+    raw_status: accessState,
+    access_state: accessState,
     cancel_at_period_end: cancelAtPeriodEnd,
-    last_event_id: "event_1",
-    last_event_at: "2026-07-26T00:00:00Z",
-    updated_at: "2026-07-26T00:00:00Z",
+    grace_expires_at: accessState === "grace" ? "2099-08-03T00:00:00Z" : undefined,
   };
 }
 
-function user(
-  policy: string,
-  whopMembership?: WhopMembershipInfo,
-): PublicAuthUserInfo {
+function user(accessGranted: boolean): PublicAuthUserInfo {
   return {
     user_id: "web-user",
     created_at: "2026-07-26T00:00:00Z",
@@ -36,36 +30,51 @@ function user(
     in_flight: 0,
     remaining_today: 20,
     has_password: false,
-    registration_policy: policy,
-    whop_membership: whopMembership,
+    identity_kind: "international_email",
+    billing: {
+      access_granted: accessGranted,
+      entitlements: [],
+      has_duplicate_active_subscriptions: false,
+    },
     is_admin: false,
   };
 }
 
 describe("public membership policy", () => {
-  it("matches the backend Whop access-granting statuses", () => {
-    for (const status of ["active", "trialing", "past_due", "canceling"]) {
-      expect(whopMembershipGrantsAccess(membership(status))).toBe(true);
-    }
-    for (const status of ["canceled", "expired", "completed", "unresolved"]) {
-      expect(whopMembershipGrantsAccess(membership(status))).toBe(false);
+  it("treats any provider active or grace entitlement as access granting", () => {
+    for (const provider of ["stripe", "whop"]) {
+      expect(billingEntitlementGrantsAccess(entitlement("active", false, provider))).toBe(true);
+      expect(billingEntitlementGrantsAccess(entitlement("grace", false, provider))).toBe(true);
+      expect(billingEntitlementGrantsAccess(entitlement("pending", false, provider))).toBe(false);
+      expect(billingEntitlementGrantsAccess(entitlement("inactive", false, provider))).toBe(false);
     }
   });
 
-  it("keeps the domestic phone path independent from Whop", () => {
-    expect(publicUserHasProductAccess(user("cn_domestic"))).toBe(true);
-    expect(
-      publicUserHasProductAccess(
-        user("whop_international", membership("canceled")),
-      ),
-    ).toBe(false);
+  it("fails closed when grace has no valid future deadline", () => {
+    const missing = entitlement("grace");
+    missing.grace_expires_at = undefined;
+    expect(billingEntitlementGrantsAccess(missing)).toBe(false);
+
+    const expired = entitlement("grace");
+    expired.grace_expires_at = "2020-08-03T00:00:00Z";
+    expect(billingEntitlementGrantsAccess(expired)).toBe(false);
+    expect(billingEntitlementStatusLabel(expired)).toBe("宽限期已结束");
   });
 
-  it("explains cancel-at-period-end without revoking the current period", () => {
-    const canceling = membership("active", true);
-    expect(whopMembershipGrantsAccess(canceling)).toBe(true);
-    expect(whopMembershipStatusLabel(canceling)).toBe(
+  it("uses the backend policy result and fails closed", () => {
+    expect(publicUserHasProductAccess(user(true))).toBe(true);
+    expect(publicUserHasProductAccess(user(false))).toBe(false);
+  });
+
+  it("explains cancel-at-period-end without revoking current access", () => {
+    const canceling = entitlement("active", true);
+    expect(billingEntitlementGrantsAccess(canceling)).toBe(true);
+    expect(billingEntitlementStatusLabel(canceling)).toBe(
       "本周期结束后停止续费",
     );
+
+    const ended = entitlement("inactive", true);
+    ended.raw_status = "canceled";
+    expect(billingEntitlementStatusLabel(ended)).toBe("已取消");
   });
 });

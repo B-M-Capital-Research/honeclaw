@@ -13,6 +13,11 @@ const SMS_SEND_PHONE_WINDOW: Duration = Duration::from_secs(24 * 60 * 60);
 const SMS_SEND_PHONE_LIMIT: usize = 10;
 const SMS_SEND_IP_WINDOW: Duration = Duration::from_secs(60 * 60);
 const SMS_SEND_IP_LIMIT: usize = 60;
+const EMAIL_SEND_COOLDOWN: Duration = Duration::from_secs(60);
+const EMAIL_SEND_ADDRESS_WINDOW: Duration = Duration::from_secs(24 * 60 * 60);
+const EMAIL_SEND_ADDRESS_LIMIT: usize = 10;
+const EMAIL_SEND_IP_WINDOW: Duration = Duration::from_secs(60 * 60);
+const EMAIL_SEND_IP_LIMIT: usize = 60;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublicAuthLimitStatus {
@@ -118,12 +123,48 @@ impl PublicAuthLimiter {
     }
 
     pub fn consume_sms_send(&self, ip_key: &str, phone_key: &str) -> PublicAuthLimitStatus {
+        self.consume_send_attempt(
+            &format!("sms-send:{ip_key}"),
+            phone_key,
+            SMS_SEND_IP_WINDOW,
+            SMS_SEND_IP_LIMIT,
+            SMS_SEND_PHONE_WINDOW,
+            SMS_SEND_PHONE_LIMIT,
+            SMS_SEND_COOLDOWN,
+        )
+    }
+
+    pub fn consume_email_send(&self, ip_key: &str, email_address: &str) -> PublicAuthLimitStatus {
+        self.consume_send_attempt(
+            &format!("email-send-ip:{ip_key}"),
+            &format!(
+                "email-send-address:{}",
+                email_address.trim().to_ascii_lowercase()
+            ),
+            EMAIL_SEND_IP_WINDOW,
+            EMAIL_SEND_IP_LIMIT,
+            EMAIL_SEND_ADDRESS_WINDOW,
+            EMAIL_SEND_ADDRESS_LIMIT,
+            EMAIL_SEND_COOLDOWN,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn consume_send_attempt(
+        &self,
+        ip_key: &str,
+        target_key: &str,
+        ip_window: Duration,
+        ip_limit: usize,
+        target_window: Duration,
+        target_limit: usize,
+        target_cooldown: Duration,
+    ) -> PublicAuthLimitStatus {
         let now = Instant::now();
         let mut state = self.state.lock().unwrap();
-        let ip_key = format!("sms-send:{ip_key}");
 
-        if tracker_for_key(&mut state, &ip_key, now).is_none()
-            || tracker_for_key(&mut state, phone_key, now).is_none()
+        if tracker_for_key(&mut state, ip_key, now).is_none()
+            || tracker_for_key(&mut state, target_key, now).is_none()
         {
             return PublicAuthLimitStatus::Blocked {
                 retry_after_secs: FULL_PRUNE_INTERVAL.as_secs(),
@@ -131,36 +172,39 @@ impl PublicAuthLimiter {
         }
 
         let ip_status = {
-            let tracker = state.trackers.get_mut(&ip_key).expect("tracker inserted");
-            check_attempt_window(tracker, now, SMS_SEND_IP_WINDOW, SMS_SEND_IP_LIMIT, None)
+            let tracker = state.trackers.get_mut(ip_key).expect("tracker inserted");
+            check_attempt_window(tracker, now, ip_window, ip_limit, None)
         };
         if let PublicAuthLimitStatus::Blocked { .. } = ip_status {
             return ip_status;
         }
 
-        let phone_status = {
-            let tracker = state.trackers.get_mut(phone_key).expect("tracker inserted");
+        let target_status = {
+            let tracker = state
+                .trackers
+                .get_mut(target_key)
+                .expect("tracker inserted");
             check_attempt_window(
                 tracker,
                 now,
-                SMS_SEND_PHONE_WINDOW,
-                SMS_SEND_PHONE_LIMIT,
-                Some(SMS_SEND_COOLDOWN),
+                target_window,
+                target_limit,
+                Some(target_cooldown),
             )
         };
-        if let PublicAuthLimitStatus::Blocked { .. } = phone_status {
-            return phone_status;
+        if let PublicAuthLimitStatus::Blocked { .. } = target_status {
+            return target_status;
         }
 
         state
             .trackers
-            .get_mut(&ip_key)
+            .get_mut(ip_key)
             .expect("tracker inserted")
             .attempts
             .push(now);
         state
             .trackers
-            .get_mut(phone_key)
+            .get_mut(target_key)
             .expect("tracker inserted")
             .attempts
             .push(now);
@@ -301,6 +345,22 @@ mod tests {
                 assert!(retry_after_secs > 0);
             }
             PublicAuthLimitStatus::Allowed => panic!("expected SMS resend cooldown"),
+        }
+    }
+
+    #[test]
+    fn email_send_success_budget_enforces_address_cooldown() {
+        let limiter = PublicAuthLimiter::default();
+
+        assert_eq!(
+            limiter.consume_email_send("ip:203.0.113.2", "Buyer@Example.com"),
+            PublicAuthLimitStatus::Allowed
+        );
+        match limiter.consume_email_send("ip:203.0.113.2", "buyer@example.com") {
+            PublicAuthLimitStatus::Blocked { retry_after_secs } => {
+                assert!(retry_after_secs > 0);
+            }
+            PublicAuthLimitStatus::Allowed => panic!("expected email resend cooldown"),
         }
     }
 }

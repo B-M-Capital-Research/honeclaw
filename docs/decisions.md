@@ -590,6 +590,10 @@ Last updated: 2026-08-03
 - Status: Accepted; implementation and local automated checks pass. Browser
   acceptance and real email-provider / non-owner purchase acceptance remain
   required before production release.
+- Superseded by: `D-2026-08-03-01` for application-entitlement persistence,
+  access-state policy, public API shape, and the international activation route.
+  The identity/authentication separation and Whop-owned Discord role boundary
+  remain in force.
 - Context: International Whop checkout does not need to force a customer
   through Whop OAuth in order to use HONE, while mainland-China acquisition
   still needs a traceable phone identity. Payment, login, Discord linking, and
@@ -630,6 +634,76 @@ Last updated: 2026-08-03
   the Whop webhook secret, add refund/dispute handling plus periodic
   reconciliation, and run a non-owner buy → email activate → HONE access →
   Discord claim → cancel/revoke → repurchase acceptance matrix.
+
+## D-2026-08-03-01 Make Billing A Provider-Neutral Domain Without A Compatibility Layer
+
+- Status: Accepted; implementation and local automated verification complete,
+  Stripe sandbox and controlled live acceptance pending.
+- Created: 2026-08-03
+- Owner: Codex
+- Supersedes: `D-2026-07-26-06` only for application-entitlement persistence,
+  access policy, provider-specific public fields, and `/activate/whop`.
+- Related files: `memory/src/billing.rs`, `memory/src/web_auth.rs`,
+  `crates/hone-web-api/src/routes/{billing,stripe,whop}.rs`,
+  `packages/app/src/pages/{public-activate,public-me,public-plan}.tsx`
+- Related docs: `docs/runbooks/stripe-billing.md`,
+  `docs/runbooks/whop-hone-activation.md`
+- Context: Adding Stripe beside Whop would otherwise spread provider-specific
+  identity fields and access checks through authentication, public APIs, and
+  UI. Dual-reading the old Whop projection while adding a second ledger would
+  create two access truths, make out-of-order revocation unsafe, and preserve
+  an architecture the owner explicitly authorized replacing.
+- Decision: Identity, Billing persistence, access policy, and provider adapters
+  are separate layers. SQLite and PostgreSQL persist canonical
+  `billing_entitlements` plus `billing_webhook_events`. Stripe and Whop verify
+  raw signed events, enforce exact catalog boundaries, normalize only fields
+  needed for access, and write the same ledger. Paid access is granted when any
+  row is active or in an unexpired bounded grace period. A redirect, email
+  login, frontend state, or Discord role never grants access.
+- Migration: Startup performs a one-time forward migration of legacy Whop JSON
+  into the Billing ledger, then removes old SQLite columns and rewrites cloud
+  identity records in canonical form. Runtime APIs expose `identity_kind` plus
+  provider-neutral `billing`; there is no dual-read, old `whop_membership`
+  response, or `/activate/whop` route.
+- Stripe boundary: Checkout and Portal are authenticated same-origin server
+  operations. The browser cannot submit price/product IDs. Test/live key modes
+  cannot mix. Checkout can be disabled independently while webhooks and Portal
+  remain available. First access requires a paid event; subscription status by
+  itself cannot activate a never-paid account. HONE iOS exposes only login,
+  restore, and status; separate server-owned purchase and management policies
+  hide external digital-purchase pricing, calls to action, Portal, and Whop
+  management links fail-closed.
+- Stripe ordering and endpoint boundary: `checkout.session.completed` is only a
+  provisional pending marker and orders from the Checkout Session creation
+  time, because Stripe can create the authoritative invoice/subscription
+  events immediately before the later completion envelope. The inbox retains
+  the actual envelope time for audit. Local CLI, registered test, and
+  registered live destinations have distinct signing secrets; a deployment
+  accepts exactly one `HONE_STRIPE_MODE` and endpoint secret, and
+  `HONE_STRIPE_PUBLIC_BASE_URL` is never treated as webhook configuration.
+- Consequences: This is a deliberate breaking internal/public API migration.
+  All in-repository callers move in the same change. Rollback disables new
+  Checkout but does not delete ledger rows or stop webhook ingestion. Missed
+  event reconciliation and owner-approved refund/dispute automation remain
+  explicit follow-ups.
+- Recovery: Webhook projection runs from the durable inbox with bounded retry,
+  a five-minute lease, and a periodic recovery scan. Completion is conditional
+  on the claim's attempt count, preventing an expired worker from overwriting a
+  newer claim; provider timestamps separately protect entitlement state from
+  out-of-order events.
+- Verification: Provider-neutral storage tests cover multi-provider access,
+  stale-event rejection, webhook idempotency/hash conflicts, processing state,
+  finite grace, and one-time legacy projection removal. Stripe tests cover raw
+  signature verification, current Invoice/Subscription shapes, exact catalog
+  filtering, paid-versus-status signals, and the real provider topology where
+  invoice/subscription event timestamps precede Checkout completion. Frontend contracts cover the
+  single activation route, webhook-authoritative success polling, duplicate
+  warnings, Portal, and iOS purchase/management hiding. A CI-safe regression
+  starts an isolated real backend and drives raw signed Stripe/Whop HTTP events
+  through the durable inbox without external credentials. Local automated
+  gates are complete; external Stripe sandbox acceptance remains
+  tracked in `docs/current-plans/stripe-whop-parallel-billing.md`.
+
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 
 - Status: Accepted and production-verified on exact commit `84ca1f2114c059a157cd893c84067638c7618e84`.

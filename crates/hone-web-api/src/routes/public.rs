@@ -60,7 +60,7 @@ const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
 
 /// 当前生效的协议版本。改动 /terms /privacy 文本时手动 bump,
 /// 并让已登录用户重新勾选接受(可后续增强)。
-pub(crate) const TOS_VERSION: &str = "2.2";
+pub(crate) const TOS_VERSION: &str = "2.3";
 
 pub(crate) async fn handle_captcha_config() -> Response {
     Json(crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env()).into_response()
@@ -366,6 +366,29 @@ pub(crate) async fn handle_email_send_code(
             return json_rate_limited(retry_after_secs);
         }
     }
+    if let PublicAuthLimitStatus::Blocked { retry_after_secs } = state
+        .public_auth_limiter
+        .consume_email_send(&ip_key, &email_address)
+    {
+        return json_rate_limited(retry_after_secs);
+    }
+    if request.intent.as_deref() == Some("stripe_checkout") {
+        if !crate::routes::billing::stripe_activation_enabled() {
+            return crate::routes::json_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Stripe 订阅入口尚未开放",
+            );
+        }
+        if let Err(error) = state
+            .web_auth
+            .ensure_international_email_user(&email_address)
+        {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建国际邮箱身份失败: {error}"),
+            );
+        }
+    }
     let code = match state.web_auth.begin_email_verification(&email_address, 10) {
         Ok(value) => value,
         Err(error) if error.to_string().contains("邮箱格式不合法") => {
@@ -399,7 +422,7 @@ pub(crate) async fn handle_email_send_code(
     state.public_auth_limiter.record_success(&email_key);
     Json(json!({
         "ok": true,
-        "message": "如果该邮箱存在可用的 HONE 账号或 Whop 会员，验证码已发送"
+        "message": "如果该邮箱可用于 HONE 登录或订阅，验证码已发送"
     }))
     .into_response()
 }
@@ -1353,11 +1376,11 @@ fn require_user_paid_access(
     state: &AppState,
     user: &hone_memory::WebInviteUser,
 ) -> Result<(), Response> {
-    match state.web_auth.user_has_paid_access(&user.user_id) {
+    match crate::routes::billing::user_has_product_access(state, user) {
         Ok(true) => Ok(()),
         Ok(false) => Err(crate::routes::json_error(
             StatusCode::PAYMENT_REQUIRED,
-            "Whop 会员当前不可用，请在账户页查看付款状态",
+            "会员权益当前不可用，请在账户页查看付款状态",
         )),
         Err(error) => Err(crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1733,6 +1756,13 @@ fn to_public_auth_user(
     user: hone_memory::WebInviteUser,
 ) -> PublicAuthUserInfo {
     let external_profile = state.web_auth.external_profile(user_id).unwrap_or_default();
+    let billing = crate::routes::billing::public_billing_summary(state, &user).unwrap_or(
+        crate::types::PublicBillingSummary {
+            access_granted: false,
+            entitlements: Vec::new(),
+            has_duplicate_active_subscriptions: false,
+        },
+    );
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::beijing_now().format("%F").to_string();
@@ -1766,12 +1796,12 @@ fn to_public_auth_user(
         has_password: user.password_hash.is_some(),
         tos_accepted_at: user.tos_accepted_at,
         tos_version: user.tos_version,
-        registration_policy: external_profile.registration_policy,
+        identity_kind: external_profile.identity_kind,
         email_hint: external_profile
             .email_address
             .as_deref()
             .map(mask_email_address),
-        whop_membership: external_profile.whop_membership,
+        billing,
         is_admin: state.web_auth.is_web_admin(user_id).unwrap_or(false),
     }
 }

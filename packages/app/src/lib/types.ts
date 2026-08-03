@@ -208,10 +208,41 @@ export type PublicAuthUserInfo = {
   has_password: boolean;
   tos_accepted_at?: string;
   tos_version?: string;
-  registration_policy: "cn_domestic" | "whop_international" | string;
+  identity_kind: "domestic_invite" | "international_email" | string;
   email_hint?: string;
-  whop_membership?: WhopMembershipInfo;
+  billing: PublicBillingSummary;
   is_admin: boolean;
+};
+
+export type PublicBillingEntitlement = {
+  entitlement_id: string;
+  provider: "stripe" | "whop" | "domestic_invite" | string;
+  raw_status: string;
+  access_state: "pending" | "active" | "grace" | "inactive" | string;
+  current_period_start?: string;
+  current_period_end?: string;
+  cancel_at_period_end: boolean;
+  manage_url?: string;
+  grace_expires_at?: string;
+};
+
+export type PublicBillingSummary = {
+  access_granted: boolean;
+  entitlements: PublicBillingEntitlement[];
+  has_duplicate_active_subscriptions: boolean;
+};
+
+export type PublicBillingConfig = {
+  primary_provider: "stripe" | "whop";
+  stripe_checkout_enabled: boolean;
+  whop_new_purchases_enabled: boolean;
+  purchases_allowed_on_this_client: boolean;
+  management_allowed_on_this_client: boolean;
+};
+
+export type PublicBillingStatus = {
+  billing: PublicBillingSummary;
+  config: PublicBillingConfig;
 };
 
 export type PublicAdminInviteInfo = {
@@ -274,32 +305,6 @@ export type PublicAdminUsageReport = {
     text: string;
   };
   rows: PublicAdminUsageRow[];
-};
-
-export type WhopMembershipInfo = {
-  membership_id: string;
-  whop_user_id: string;
-  company_id: string;
-  product_id: string;
-  plan_id: string;
-  status:
-    | "trialing"
-    | "active"
-    | "past_due"
-    | "completed"
-    | "canceled"
-    | "expired"
-    | "unresolved"
-    | "drafted"
-    | "canceling"
-    | string;
-  manage_url?: string;
-  renewal_period_start?: string;
-  renewal_period_end?: string;
-  cancel_at_period_end: boolean;
-  last_event_id: string;
-  last_event_at: string;
-  updated_at: string;
 };
 
 export type MetaInfo = {

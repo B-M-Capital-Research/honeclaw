@@ -1368,6 +1368,66 @@ CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
   expires_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS billing_entitlements (
+  entitlement_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id) ON DELETE CASCADE,
+  provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe', 'domestic_invite')),
+  provider_customer_id TEXT,
+  provider_subscription_id TEXT NOT NULL,
+  provider_product_id TEXT,
+  provider_price_id TEXT,
+  purchase_email_normalized TEXT,
+  raw_status TEXT NOT NULL,
+  access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
+  current_period_start TEXT,
+  current_period_end TEXT,
+  cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+  manage_url TEXT,
+  grace_expires_at TEXT,
+  last_event_id TEXT NOT NULL,
+  last_event_created_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  record JSONB NOT NULL,
+  UNIQUE (provider, provider_subscription_id)
+);
+ALTER TABLE billing_entitlements
+  ADD COLUMN IF NOT EXISTS manage_url TEXT;
+ALTER TABLE billing_entitlements
+  ADD COLUMN IF NOT EXISTS grace_expires_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_billing_entitlements_user_access
+  ON billing_entitlements(user_id, access_state);
+CREATE INDEX IF NOT EXISTS idx_billing_entitlements_purchase_email
+  ON billing_entitlements(purchase_email_normalized)
+  WHERE purchase_email_normalized IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_billing_entitlements_customer
+  ON billing_entitlements(provider, provider_customer_id)
+  WHERE provider_customer_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS billing_webhook_events (
+  provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe')),
+  event_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  object_id TEXT,
+  payload_sha256 TEXT NOT NULL,
+  provider_created_at TEXT NOT NULL,
+  processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  received_at TEXT NOT NULL,
+  processing_started_at TEXT,
+  processed_at TEXT,
+  normalized_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  record JSONB NOT NULL,
+  PRIMARY KEY (provider, event_id)
+);
+ALTER TABLE billing_webhook_events
+  ADD COLUMN IF NOT EXISTS normalized_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE billing_webhook_events
+  ADD COLUMN IF NOT EXISTS processing_started_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_processing
+  ON billing_webhook_events(processing_state, received_at);
+CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
+  ON billing_webhook_events(provider, processing_state, processing_started_at, received_at);
 CREATE TABLE IF NOT EXISTS cloud_llm_audit_records (
   id TEXT PRIMARY KEY,
   actor_storage_key TEXT,
@@ -2481,6 +2541,291 @@ DO UPDATE SET
             .await
             .map_err(|err| HoneError::Config(format!("Postgres web invite 读取失败: {err}")))?;
         Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn upsert_billing_entitlement_record(
+        &self,
+        record: serde_json::Value,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let changed = client
+            .execute(
+                r#"
+INSERT INTO billing_entitlements(
+  entitlement_id, user_id, provider, provider_customer_id,
+  provider_subscription_id, provider_product_id, provider_price_id,
+  purchase_email_normalized, raw_status, access_state,
+  current_period_start, current_period_end, cancel_at_period_end, manage_url,
+  grace_expires_at,
+  last_event_id, last_event_created_at, created_at, updated_at, record
+)
+VALUES (
+  $1->>'entitlement_id', $1->>'user_id', $1->>'provider',
+  NULLIF($1->>'provider_customer_id', ''), $1->>'provider_subscription_id',
+  NULLIF($1->>'provider_product_id', ''), NULLIF($1->>'provider_price_id', ''),
+  NULLIF($1->>'purchase_email_normalized', ''), $1->>'raw_status',
+  $1->>'access_state', NULLIF($1->>'current_period_start', ''),
+  NULLIF($1->>'current_period_end', ''),
+  COALESCE(($1->>'cancel_at_period_end')::BOOLEAN, FALSE),
+  NULLIF($1->>'manage_url', ''),
+  NULLIF($1->>'grace_expires_at', ''),
+  $1->>'last_event_id', $1->>'last_event_created_at',
+  $1->>'created_at', $1->>'updated_at', $1
+)
+ON CONFLICT (provider, provider_subscription_id)
+DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  provider_customer_id = EXCLUDED.provider_customer_id,
+  provider_product_id = EXCLUDED.provider_product_id,
+  provider_price_id = EXCLUDED.provider_price_id,
+  purchase_email_normalized = EXCLUDED.purchase_email_normalized,
+  raw_status = EXCLUDED.raw_status,
+  access_state = EXCLUDED.access_state,
+  current_period_start = EXCLUDED.current_period_start,
+  current_period_end = EXCLUDED.current_period_end,
+  cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+  manage_url = EXCLUDED.manage_url,
+  grace_expires_at = EXCLUDED.grace_expires_at,
+  last_event_id = EXCLUDED.last_event_id,
+  last_event_created_at = EXCLUDED.last_event_created_at,
+  updated_at = EXCLUDED.updated_at,
+  record = EXCLUDED.record
+WHERE EXCLUDED.last_event_created_at > billing_entitlements.last_event_created_at
+   OR (
+     EXCLUDED.last_event_created_at = billing_entitlements.last_event_created_at
+     AND EXCLUDED.last_event_id > billing_entitlements.last_event_id
+   )
+"#,
+                &[&record],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing entitlement 写入失败: {err}"))
+            })?;
+        Ok(changed > 0)
+    }
+
+    pub async fn find_billing_entitlement_record(
+        &self,
+        provider: &str,
+        provider_subscription_id: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT record
+FROM billing_entitlements
+WHERE provider = $1 AND provider_subscription_id = $2
+"#,
+                &[&provider, &provider_subscription_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing entitlement 读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn list_billing_entitlement_records(
+        &self,
+        user_id: &str,
+    ) -> HoneResult<Vec<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT record
+FROM billing_entitlements
+WHERE user_id = $1
+ORDER BY updated_at DESC, entitlement_id DESC
+"#,
+                &[&user_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing entitlement 列表读取失败: {err}"))
+            })?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn insert_billing_webhook_event_record(
+        &self,
+        record: serde_json::Value,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let inserted = client
+            .execute(
+                r#"
+INSERT INTO billing_webhook_events(
+  provider, event_id, event_type, object_id, payload_sha256,
+  provider_created_at, processing_state, attempt_count, last_error,
+  received_at, processing_started_at, processed_at, normalized_payload, record
+)
+VALUES (
+  $1->>'provider', $1->>'event_id', $1->>'event_type',
+  NULLIF($1->>'object_id', ''), $1->>'payload_sha256',
+  $1->>'provider_created_at', $1->>'processing_state',
+  COALESCE(($1->>'attempt_count')::INTEGER, 0),
+  NULLIF($1->>'last_error', ''), $1->>'received_at',
+  NULLIF($1->>'processing_started_at', ''), NULLIF($1->>'processed_at', ''),
+  COALESCE($1->'normalized_payload', '{}'::jsonb), $1
+)
+ON CONFLICT (provider, event_id) DO NOTHING
+"#,
+                &[&record],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing webhook 收件失败: {err}"))
+            })?;
+        Ok(inserted > 0)
+    }
+
+    pub async fn billing_webhook_event_record(
+        &self,
+        provider: &str,
+        event_id: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT record
+FROM billing_webhook_events
+WHERE provider = $1 AND event_id = $2
+"#,
+                &[&provider, &event_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing webhook 读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn claim_billing_webhook_event(
+        &self,
+        provider: &str,
+        event_id: &str,
+        stale_before: &str,
+        max_attempts: u32,
+        updated_record: serde_json::Value,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let max_attempts = i32::try_from(max_attempts).unwrap_or(i32::MAX);
+        let changed = client
+            .execute(
+                r#"
+UPDATE billing_webhook_events
+SET processing_state = 'processing',
+    attempt_count = attempt_count + 1,
+    last_error = NULL,
+    processing_started_at = NULLIF($5->>'processing_started_at', ''),
+    record = $5
+WHERE provider = $1
+  AND event_id = $2
+  AND attempt_count < $4
+  AND (
+    processing_state IN ('received', 'failed')
+    OR (
+      processing_state = 'processing'
+      AND (processing_started_at IS NULL OR processing_started_at <= $3)
+    )
+  )
+"#,
+                &[
+                    &provider,
+                    &event_id,
+                    &stale_before,
+                    &max_attempts,
+                    &updated_record,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing webhook claim 失败: {err}"))
+            })?;
+        Ok(changed > 0)
+    }
+
+    pub async fn list_claimable_billing_webhook_event_ids(
+        &self,
+        provider: &str,
+        stale_before: &str,
+        max_attempts: u32,
+        limit: usize,
+    ) -> HoneResult<Vec<String>> {
+        let client = self.connect_client().await?;
+        let max_attempts = i32::try_from(max_attempts).unwrap_or(i32::MAX);
+        let limit = i64::try_from(limit.clamp(1, 1000)).unwrap_or(1000);
+        let rows = client
+            .query(
+                r#"
+SELECT event_id
+FROM billing_webhook_events
+WHERE provider = $1
+  AND attempt_count < $3
+  AND (
+    processing_state IN ('received', 'failed')
+    OR (
+      processing_state = 'processing'
+      AND (processing_started_at IS NULL OR processing_started_at <= $2)
+    )
+  )
+ORDER BY received_at, event_id
+LIMIT $4
+"#,
+                &[&provider, &stale_before, &max_attempts, &limit],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing webhook 恢复队列读取失败: {err}"))
+            })?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn finish_billing_webhook_event(
+        &self,
+        provider: &str,
+        event_id: &str,
+        expected_attempt_count: u32,
+        processing_state: &str,
+        last_error: Option<&str>,
+        processed_at: Option<&str>,
+        updated_record: serde_json::Value,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let expected_attempt_count = i32::try_from(expected_attempt_count).unwrap_or(i32::MAX);
+        let changed = client
+            .execute(
+                r#"
+UPDATE billing_webhook_events
+SET processing_state = $3,
+    last_error = $4,
+    processed_at = $5,
+    processing_started_at = NULL,
+    record = $6
+WHERE provider = $1
+  AND event_id = $2
+  AND processing_state = 'processing'
+  AND attempt_count = $7
+"#,
+                &[
+                    &provider,
+                    &event_id,
+                    &processing_state,
+                    &last_error,
+                    &processed_at,
+                    &updated_record,
+                    &expected_attempt_count,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres billing webhook 完成写入失败: {err}"))
+            })?;
+        Ok(changed > 0)
     }
 
     pub async fn web_invite_user_is_admin(&self, user_id: &str) -> HoneResult<bool> {
