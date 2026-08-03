@@ -14,13 +14,25 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-04 06:02 CST 运行态复核：`a16ec378 fix: extend scheduler watchlist price guard coverage` 已在 03:09 CST 进入仓库，但 live source 出站候选在该提交之后仍继续复发，状态从误列 `Fixed / P0` 修正回 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-04 02:00-06:02 CST。
+    - 近窗 `SNDK $1,` 异常数量级价格命中 11 次；03:10 CST 之后仍命中 8 次。
+    - 03:30 `NBIS关键事件心跳提醒` deliver preview 写 `SNDK $1,296.27`；同一时间 `中际旭创关键事件心跳提醒` deliver preview 写 `SNDK $1,294.50`。
+    - 04:00 `NBIS关键事件心跳提醒` deliver preview 写 `SNDK $1,288.03`；04:00 `持仓财报与重大新闻心跳提醒` deliver preview 写 `SNDK $1,288.03 / AAOI $110.21`。
+    - 04:30 / 05:30 / 06:00 `NBIS关键事件心跳提醒`、`闪迪关键事件心跳提醒`、`存储板块关键事件心跳提醒` 继续以 `SNDK $1,298.25` 或 `SNDK $1,288.03` 作为行情口径组织正文。
+  - 判断：
+    - 该样本发生在最新非文档修复提交之后，说明当前 live source runtime 仍会向用户侧出站候选传播异常数量级价格；可能是 live 未加载最新修复、修复覆盖仍不足，或上游行情源 / quote sanity guard 仍有漏口。
+    - 缺陷仍为同一异常价格锚链路，不新建重复文档。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断；本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
 
 - 2026-08-03 03:06 CST `bug-2` 代码级修复，状态更新为 `Fixed / P0`：
   - 根因补强：

@@ -4,10 +4,21 @@
 - Bug Type：Business Error
 - 严重等级：P2
 - 状态：New
-- 修复情况：2026-08-04 02:02 运行态继续复发：event-engine Web sink 在 `web push broadcast failed: channel closed` 后退到 `[dryrun sink]`，但 dispatch 仍记 `status=sent`；这会继续把未送达的 Web push / SSE 当作已送达。2026-05-16 的手机系统通知能力边界修复仍成立，但投递结果台账语义再次不可信。
+- 修复情况：2026-08-04 06:02 运行态继续复发：event-engine Web sink 在 `web push broadcast failed: channel closed` 后退到 `[dryrun sink]`，但 dispatch 仍记 `status=sent`；这会继续把未送达的 Web push / SSE 当作已送达。2026-05-16 的手机系统通知能力边界修复仍成立，但投递结果台账语义再次不可信。
 - GitHub issue：无；当前不是 P1，未创建 issue。
 
 ## 最新进展
+
+- `2026-08-04 06:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-04 02:00-06:02 CST`。
+    - 近窗统计到 26 条 `web push broadcast failed: channel closed`，以及 30 条 `[dryrun sink]` fallback。
+    - 代表样本：02:00 CST 后多个 Web actor 先记录 `channel sink failed, falling back to log: web push broadcast failed: channel closed`，随后 `[dryrun sink]` 写出 body preview；dispatch 层仍把这些事件计为 `sent`。
+    - `data/sessions.sqlite3` 同窗 `web_push_messages` 增量为 0，`web_push_messages.max(created_at)` 仍停在 `2026-07-19T13:30:44.965959+08:00`。
+  - 判断：
+    - 这不是 2026-05 原始问题中的“assistant 承诺手机系统通知”复发；旧能力边界提示仍可视为已修。
+    - 但同一 Web 投递链路仍把实际 channel closed / dryrun fallback 记为 `sent`，会误导用户、调度审计和后续补发判断，因此维持功能性 `P2/New`。
+    - 同窗 event-engine 和 scheduler 仍有运行 / 送达样本，未见全渠道不可用、错对象投递、敏感泄露或数据破坏，非 P1，不创建 GitHub Issue。
 
 - `2026-08-04 02:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
