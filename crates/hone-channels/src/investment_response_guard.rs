@@ -7816,15 +7816,16 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                             .is_some_and(|base| base.len() <= 3)
                 }
             };
-        if is_identifier_grammar_word(&symbol)
-            && !(explicit_ticker_label
+        // Typed scheduled/heartbeat work resolves these mentions into a
+        // contract with no Agent reading the request, so it still needs a
+        // deterministic brake. Interactive turns have the Agent itself and get
+        // raw candidates instead.
+        if origin != AgentTurnOrigin::Interactive
+            && deterministic_non_security_token(&symbol)
+            && !(exact_input
+                || explicit_ticker_label
                 || explicit_ticker_binding
-                || (token_letters_are_uppercase
-                    && (exact_input
-                        || direct_market_binding
-                        || chinese_analysis_binding
-                        || english_analysis_binding)
-                    && is_recoverable_grammar_ticker(&symbol)))
+                || direct_market_binding)
         {
             continue;
         }
@@ -7911,30 +7912,6 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 continue;
             }
             if symbol.len() == 1 && !explicit_context {
-                continue;
-            }
-            // Financial metrics and technical abbreviations are much more
-            // likely to be concepts than securities in generic prose. They
-            // remain fully supported as exact inputs, cashtags, or when the
-            // user binds them directly to a ticker/price/stock expression.
-            if identifier_requires_explicit_security_binding(&symbol)
-                && !(exact_input
-                    || explicit_ticker_label
-                    || explicit_ticker_binding
-                    || direct_market_binding)
-            {
-                continue;
-            }
-            if is_non_security_acronym(&symbol)
-                && !(exact_input
-                    || explicit_ticker_label
-                    || explicit_ticker_binding
-                    || direct_market_binding
-                    || chinese_analysis_binding
-                    || english_analysis_binding
-                    || symbol_cluster_binding
-                    || clause_subject_binding)
-            {
                 continue;
             }
             if uppercase
@@ -8393,66 +8370,184 @@ fn is_ascii_title_case_word(word: &str) -> bool {
             .all(|character| character.is_ascii_alphabetic())
 }
 
-fn has_security_discussion_context(normalized: &str) -> bool {
-    [
-        "股票",
-        "证券",
-        "股价",
-        "现价",
-        "价格",
-        "行情",
-        "报价",
-        "盘前",
-        "盘后",
-        "财报",
-        "业绩",
-        "估值",
-        "目标价",
-        "持仓",
-        "持有",
-        "成分股",
-        "费率",
-        "跟踪误差",
-        "加仓",
-        "减仓",
-        "买入",
-        "卖出",
-        "能买吗",
-        "推荐",
-        "安全区间",
-        "能不能",
-        "起飞",
-        "怎么看",
-        "怎么样",
-        "走势",
-        "前景",
-        "查不到",
-        "关键事件",
-        "重大事件",
-        "大事件",
-        "异动",
-        "触发条件",
-        "心跳监控",
-        "心跳检测",
-        "破位预警",
-        "价格播报",
-        "ticker",
-        "symbol",
-        "stock price",
-        "share price",
-        "market price",
-        "quote",
-        "earnings",
-        "valuation",
-        "premarket",
-        "pre-market",
-        "after-hours",
-        "after hours",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-        || has_current_price_intent(normalized)
-        || (normalized.contains("how is") && normalized.contains("doing"))
+/// The one remaining hand-maintained token set in this file, and it applies
+/// only where no Agent reads the request: typed scheduled and heartbeat work
+/// turns these mentions into a deterministic contract with no model in the
+/// loop, so an unchecked `PCE` or `GDP` would silently become a security.
+/// Interactive turns do not consult it — there the Agent reads the full query
+/// and resolves entities against the live registry itself.
+///
+/// Consolidated from three separate lists (`is_non_security_acronym`,
+/// `identifier_requires_explicit_security_binding`, `is_identifier_grammar_word`).
+/// Removing it entirely requires routing scheduled entity resolution through
+/// the same Agent loop; it is not removable while that path stays deterministic.
+fn deterministic_non_security_token(token: &str) -> bool {
+    matches!(
+        token.to_ascii_uppercase().as_str(),
+        "AI" | "ML"
+            | "LLM"
+            | "GPU"
+            | "CPU"
+            | "TPU"
+            | "NPU"
+            | "HBM"
+            | "CPO"
+            | "LPO"
+            | "API"
+            | "HTTP"
+            | "JSON"
+            | "SQL"
+            | "SSE"
+            | "CLI"
+            | "UI"
+            | "PE"
+            | "PB"
+            | "PS"
+            | "PEG"
+            | "EPS"
+            | "DPS"
+            | "ROE"
+            | "ROA"
+            | "ROI"
+            | "ROIC"
+            | "WACC"
+            | "DCF"
+            | "FCF"
+            | "IRR"
+            | "NPV"
+            | "CAGR"
+            | "ARR"
+            | "MRR"
+            | "EBITDA"
+            | "EBIT"
+            | "EBITA"
+            | "NOPAT"
+            | "CAPEX"
+            | "OPEX"
+            | "AUM"
+            | "NAV"
+            | "SEC"
+            | "GAAP"
+            | "IFRS"
+            | "IPO"
+            | "ETF"
+            | "REIT"
+            | "ADR"
+            | "OTC"
+            | "NYSE"
+            | "NASDAQ"
+            | "USD"
+            | "RMB"
+            | "CNY"
+            | "US"
+            | "USA"
+            | "CN"
+            | "HK"
+            | "JP"
+            | "EU"
+            | "IT"
+            | "ON"
+            | "BE"
+            | "NOW"
+            | "ARM"
+            | "IS"
+            | "AS"
+            | "AT"
+            | "IN"
+            | "OF"
+            | "TO"
+            | "FOR"
+            | "WITH"
+            | "FROM"
+            | "THE"
+            | "AND"
+            | "OR"
+            | "WHAT"
+            | "HOW"
+            | "GOOD"
+            | "AAA"
+            | "AA"
+            | "BBB"
+            | "BB"
+            | "CNN"
+            | "URL"
+            | "PPI"
+            | "FDA"
+            | "MONITOR"
+            | "WATCHLIST"
+            | "DAILY"
+            | "HOURLY"
+            | "REPEAT"
+            | "PCE"
+            | "CPI"
+            | "GDP"
+            | "FOMC"
+            | "NFP"
+            | "PMI"
+            | "NASA"
+            | "PDUFA"
+            | "ARK"
+            | "BUY"
+            | "HOLD"
+            | "BULL"
+            | "BEAR"
+            | "CASE"
+            | "TICKER"
+            | "SYMBOL"
+            | "STOCK"
+            | "SHARE"
+            | "PRICE"
+            | "QUOTE"
+            | "MARKET"
+            | "SECTOR"
+            | "INDUSTRY"
+            | "HELLO"
+            | "HI"
+            | "THANKS"
+            | "UPDATE"
+            | "OUTPUT"
+            | "NEWS"
+            | "HELP"
+            | "WEATHER"
+            | "STATUS"
+            | "OPENAI"
+            | "CODEX"
+            | "ABOUT"
+            | "PLEASE"
+            | "ANALYZE"
+            | "COMPARE"
+            | "TODAY"
+            | "RECENTLY"
+            | "LATELY"
+    )
+}
+
+/// Whether a bare ASCII token in this span is shaped like a code rather than
+/// like prose: uppercase, or sitting directly against non-ASCII text, or being
+/// the whole query. All structural. Deciding *which* codes are real securities
+/// is the Agent's job with a live registry lookup, not a maintained vocabulary.
+fn identifier_is_code_shaped_in_source(input: &str, start: usize, end: usize) -> bool {
+    let raw = &input[start..end];
+    let letters = raw
+        .chars()
+        .filter(|character| character.is_ascii_alphabetic());
+    let mut letters = letters.peekable();
+    let uppercase = letters.peek().is_some() && letters.all(|c| c.is_ascii_uppercase());
+    if uppercase {
+        return true;
+    }
+    // `nbis`, `isrg` and `googl` are structurally identical to `hi`, `stock`
+    // and `about`; only a registry lookup separates them, and that lookup is
+    // exactly what the Agent performs. Candidates stay wide on purpose.
+    input.trim() == raw
+        || input[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| !character.is_ascii())
+        || input[end..]
+            .chars()
+            .next()
+            .is_some_and(|character| !character.is_ascii())
 }
 
 fn identifier_has_direct_market_binding(input: &str, start: usize, end: usize) -> bool {
@@ -8580,7 +8675,7 @@ fn identifier_analysis_bindings(input: &str, start: usize, end: usize) -> (bool,
     let chinese_prefix = ["今天", "最近", "近期", "现在", "目前"]
         .iter()
         .any(|marker| before.ends_with(marker))
-        && has_security_discussion_context(&after);
+        && identifier_is_code_shaped_in_source(input, start, end);
     let chinese = chinese_suffix
         || chinese_prefix
         || after.starts_with("是前面提到的")
@@ -8725,11 +8820,10 @@ fn identifier_has_clause_subject_binding(
     if !current_is_code_shaped {
         return false;
     }
-    let (clause_start, clause_end) = identifier_clause_bounds(input, start, end);
-    let clause = input[clause_start..clause_end].to_ascii_lowercase();
-    if !has_security_discussion_context(&clause) {
+    if !identifier_is_code_shaped_in_source(input, start, end) {
         return false;
     }
+    let (clause_start, _) = identifier_clause_bounds(input, start, end);
     !identifiers.iter().any(|candidate| {
         candidate.start >= clause_start
             && candidate.end <= start
@@ -8783,50 +8877,6 @@ fn identifier_is_metadata_assignment(input: &str, start: usize, end: usize) -> b
     previous == Some('=') || next == Some('=')
 }
 
-fn is_identifier_grammar_word(symbol: &str) -> bool {
-    matches!(
-        symbol,
-        "TICKER"
-            | "SYMBOL"
-            | "STOCK"
-            | "SHARE"
-            | "PRICE"
-            | "QUOTE"
-            | "MARKET"
-            | "SECTOR"
-            | "INDUSTRY"
-            | "MONITOR"
-            | "WATCHLIST"
-            | "REPEAT"
-            | "DAILY"
-            | "HOURLY"
-            | "HELLO"
-            | "HI"
-            | "THANKS"
-            | "UPDATE"
-            | "OUTPUT"
-            | "NEWS"
-            | "HELP"
-            | "WEATHER"
-            | "STATUS"
-            | "OPENAI"
-            | "CODEX"
-            | "HOW"
-            | "WHAT"
-            | "ABOUT"
-            | "PLEASE"
-            | "ANALYZE"
-            | "COMPARE"
-            | "TODAY"
-            | "RECENTLY"
-            | "LATELY"
-    )
-}
-
-fn is_recoverable_grammar_ticker(symbol: &str) -> bool {
-    matches!(symbol, "HI" | "NEWS" | "UPDATE")
-}
-
 fn identifier_is_conceptual_use(symbol: &str, normalized_context: &str) -> bool {
     if symbol == "A" && normalized_context.contains("a股") {
         return true;
@@ -8856,7 +8906,7 @@ fn identifier_is_conceptual_use(symbol: &str, normalized_context: &str) -> bool 
     ]
     .iter()
     .any(|marker| normalized_context.contains(marker));
-    concept_marker && is_common_theme_acronym(symbol)
+    concept_marker
 }
 
 fn merge_entity_mentions(
@@ -9253,169 +9303,6 @@ fn is_plain_lowercase_non_ticker_token(token: &str) -> bool {
     )
 }
 
-fn is_non_security_acronym(token: &str) -> bool {
-    matches!(
-        token.to_ascii_uppercase().as_str(),
-        "AI" | "ML"
-            | "LLM"
-            | "GPU"
-            | "CPU"
-            | "TPU"
-            | "NPU"
-            | "HBM"
-            | "CPO"
-            | "LPO"
-            | "API"
-            | "HTTP"
-            | "JSON"
-            | "SQL"
-            | "SSE"
-            | "CLI"
-            | "UI"
-            | "PE"
-            | "PB"
-            | "PS"
-            | "PEG"
-            | "EPS"
-            | "DPS"
-            | "ROE"
-            | "ROA"
-            | "ROI"
-            | "ROIC"
-            | "WACC"
-            | "DCF"
-            | "FCF"
-            | "IRR"
-            | "NPV"
-            | "CAGR"
-            | "ARR"
-            | "MRR"
-            | "EBITDA"
-            | "EBIT"
-            | "EBITA"
-            | "NOPAT"
-            | "CAPEX"
-            | "OPEX"
-            | "AUM"
-            | "NAV"
-            | "SEC"
-            | "GAAP"
-            | "IFRS"
-            | "IPO"
-            | "ETF"
-            | "REIT"
-            | "ADR"
-            | "OTC"
-            | "NYSE"
-            | "NASDAQ"
-            | "USD"
-            | "RMB"
-            | "CNY"
-            | "US"
-            | "USA"
-            | "CN"
-            | "HK"
-            | "JP"
-            | "EU"
-            | "IT"
-            | "ON"
-            | "BE"
-            | "NOW"
-            | "ARM"
-            | "IS"
-            | "AS"
-            | "AT"
-            | "IN"
-            | "OF"
-            | "TO"
-            | "FOR"
-            | "WITH"
-            | "FROM"
-            | "THE"
-            | "AND"
-            | "OR"
-            | "WHAT"
-            | "HOW"
-            | "GOOD"
-            | "AAA"
-            | "AA"
-            | "BBB"
-            | "BB"
-            | "CNN"
-            | "URL"
-            | "PPI"
-            | "FDA"
-            | "MONITOR"
-            | "WATCHLIST"
-            | "DAILY"
-            | "HOURLY"
-            | "REPEAT"
-    )
-}
-
-fn identifier_requires_explicit_security_binding(token: &str) -> bool {
-    matches!(
-        token.to_ascii_uppercase().as_str(),
-        "ML" | "LLM"
-            | "GPU"
-            | "CPU"
-            | "TPU"
-            | "NPU"
-            | "HBM"
-            | "CPO"
-            | "LPO"
-            | "API"
-            | "HTTP"
-            | "JSON"
-            | "SQL"
-            | "SSE"
-            | "CLI"
-            | "UI"
-            | "PE"
-            | "PB"
-            | "PS"
-            | "PEG"
-            | "EPS"
-            | "DPS"
-            | "ROE"
-            | "ROA"
-            | "ROI"
-            | "ROIC"
-            | "WACC"
-            | "DCF"
-            | "FCF"
-            | "IRR"
-            | "NPV"
-            | "CAGR"
-            | "ARR"
-            | "MRR"
-            | "EBITDA"
-            | "EBIT"
-            | "EBITA"
-            | "NOPAT"
-            | "CAPEX"
-            | "OPEX"
-            | "AUM"
-            | "NAV"
-            | "PCE"
-            | "CPI"
-            | "GDP"
-            | "FOMC"
-            | "NFP"
-            | "PMI"
-            | "SEC"
-            | "FDA"
-            | "NASA"
-            | "PDUFA"
-            | "ARK"
-            | "BUY"
-            | "HOLD"
-            | "BULL"
-            | "BEAR"
-            | "CASE"
-    )
-}
-
 fn has_explicit_ticker_label(input: &str, token: &str) -> bool {
     Regex::new(&format!(
         r"(?i)(?:ticker|symbol|股票代码|证券代码|代码)\s*[:：=]?\s*{}(?:$|[^a-z0-9./^-])",
@@ -9432,11 +9319,6 @@ fn has_explicit_ticker_binding(input: &str, token: &str) -> bool {
     ))
     .expect("ticker identity binding regex")
     .is_match(input)
-}
-
-fn is_common_theme_acronym(token: &str) -> bool {
-    is_non_security_acronym(token)
-        || matches!(token.to_ascii_uppercase().as_str(), "EV" | "AR" | "VR")
 }
 
 fn should_run_entity_stage(input: &str, _origin: AgentTurnOrigin) -> bool {
@@ -9780,14 +9662,6 @@ fn complete_entity_extraction_with_auxiliary(
 #[cfg(test)]
 fn auxiliary_entity_is_grounded_in_current_input(input: &str, mention: &EntityMention) -> bool {
     let normalized = input.to_ascii_lowercase();
-    if is_broad_scope_request(input)
-        && mention
-            .explicit_symbol
-            .as_deref()
-            .is_some_and(is_common_theme_acronym)
-    {
-        return false;
-    }
     let explicit_grounded = mention.explicit_symbol.as_deref().is_some_and(|symbol| {
         Regex::new(&format!(
             r"(?i)(?:^|[^a-z0-9.-]){}(?:$|[^a-z0-9.-])",
@@ -12078,7 +11952,7 @@ mod tests {
         }
         for ordinary in ["hello", "hello-0", "new-user"] {
             assert!(
-                plain_ticker_mentions(ordinary, AgentTurnOrigin::Interactive).is_empty(),
+                interactive_claims_no_settled_ticker(ordinary),
                 "an ordinary lowercase token is not enough to claim ticker intent: {ordinary}"
             );
         }
@@ -12292,7 +12166,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["500"]
         );
-        assert!(plain_ticker_mentions("2026年市场展望", AgentTurnOrigin::Interactive).is_empty());
+        assert!(interactive_claims_no_settled_ticker("2026年市场展望"));
     }
 
     #[test]
@@ -12348,10 +12222,7 @@ mod tests {
             "AT&T stock price",
             "Johnson & Johnson stock price",
         ] {
-            assert!(
-                plain_ticker_mentions(named, AgentTurnOrigin::Interactive).is_empty(),
-                "{named}"
-            );
+            assert!(interactive_claims_no_settled_ticker(named), "{named}");
             assert!(matches!(
                 extract_entity_scope(named, AgentTurnOrigin::Interactive),
                 EntityResolutionScope::AgentToolDiscovery(_)
@@ -12376,10 +12247,7 @@ mod tests {
             );
         }
         for input in ["brand ABC", "sector GDP", "ABC orange"] {
-            assert!(
-                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
-                "{input}"
-            );
+            assert!(interactive_claims_no_settled_ticker(input), "{input}");
         }
         let outlook = plain_ticker_mentions("AAPL price and outlook", AgentTurnOrigin::Interactive);
         assert!(deterministic_ticker_scope_is_complete(
@@ -12387,12 +12255,20 @@ mod tests {
             &outlook
         ));
 
+        // Extra low-confidence candidates such as `stock` are expected: the
+        // scanner no longer filters words by vocabulary, and the Agent
+        // dismisses them with a real lookup. What matters is that the company
+        // name is present and stays a candidate rather than a settled code.
         let ford = plain_ticker_mentions("Ford stock price", AgentTurnOrigin::Interactive);
-        assert_eq!(ford.len(), 1, "{ford:?}");
+        let ford = ford
+            .into_iter()
+            .find(|mention| mention.search_query == "FORD")
+            .expect("Ford candidate");
         assert_eq!(
-            ford[0].provenance(),
+            ford.provenance(),
             super::EntityMentionProvenance::TentativeCodeOrName
         );
+        let ford = [ford];
         let exact = resolve_entity_match(
             &ford[0],
             &json!({"data":[{"symbol":"FORD","name":"Forward Industries"}]}),
@@ -12548,10 +12424,7 @@ mod tests {
     #[test]
     fn operational_checks_and_scheduler_conditions_do_not_become_tickers() {
         for input in ["检查 JVM 状态", "check DNS status", "监控 CPU 温度"] {
-            assert!(
-                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
-                "{input}"
-            );
+            assert!(interactive_claims_no_settled_ticker(input), "{input}");
             assert!(matches!(
                 extract_entity_scope(input, AgentTurnOrigin::Interactive),
                 EntityResolutionScope::AgentToolDiscovery(_)
@@ -12598,8 +12471,8 @@ mod tests {
                 "{input}"
             );
         }
-        assert!(plain_ticker_mentions("hi", AgentTurnOrigin::Interactive).is_empty());
-        assert!(plain_ticker_mentions("plan-B", AgentTurnOrigin::Interactive).is_empty());
+        assert!(interactive_claims_no_settled_ticker("hi"));
+        assert!(interactive_claims_no_settled_ticker("plan-B"));
     }
 
     #[test]
@@ -12621,9 +12494,16 @@ mod tests {
             ("F最近怎么样", "F"),
             ("How is T doing?", "T"),
         ] {
+            // Short real tickers must still be found; co-occurring words such
+            // as `stock` may ride along as low-confidence candidates for the
+            // Agent to dismiss with a registry lookup.
             let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
-            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
-            assert_eq!(mentions[0].explicit_symbol.as_deref(), Some(expected));
+            assert!(
+                mentions
+                    .iter()
+                    .any(|mention| mention.explicit_symbol.as_deref() == Some(expected)),
+                "{input}: {mentions:?}"
+            );
         }
         for exact in ["AI", "API", "NOW", "IT", "ARM", "BE"] {
             let mentions = plain_ticker_mentions(exact, AgentTurnOrigin::Interactive);
@@ -12648,8 +12528,7 @@ mod tests {
             "plan-B",
             "grade-A",
         ] {
-            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
-            assert!(mentions.is_empty(), "{input}: {mentions:?}");
+            assert!(interactive_claims_no_settled_ticker(input), "{input}");
         }
 
         for (input, expected) in [
@@ -12657,13 +12536,13 @@ mod tests {
             ("AAPL股价和PE", "AAPL"),
             ("RKLB股价和EPS", "RKLB"),
         ] {
+            // The intended ticker must be found and bound; other low-confidence
+            // candidates in the same sentence are the Agent's to dismiss.
             let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
-            assert_eq!(
+            assert!(
                 mentions
                     .iter()
-                    .filter_map(|mention| mention.explicit_symbol.as_deref())
-                    .collect::<Vec<_>>(),
-                [expected],
+                    .any(|mention| mention.explicit_symbol.as_deref() == Some(expected)),
                 "{input}: {mentions:?}"
             );
         }
@@ -12880,8 +12759,7 @@ mod tests {
             "US market today",
             "S&P 500指数怎么看",
         ] {
-            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
-            assert!(mentions.is_empty(), "{input}: {mentions:?}");
+            assert!(interactive_claims_no_settled_ticker(input), "{input}");
         }
         assert_eq!(
             broad_analysis_kind("A股怎么看"),
@@ -12906,6 +12784,19 @@ mod tests {
         assert!(scheduled.is_empty(), "{scheduled:?}");
     }
 
+    /// Interactive seeds are advisory: the Agent reads the full query and
+    /// resolves entities against the live registry itself. The invariant that
+    /// still matters is that the scope never closes into a deterministic
+    /// `Securities` decision. Whether `PE` / `US` / `FCF` shows up as a
+    /// candidate is the Agent's to dismiss with a real lookup, not a
+    /// maintained vocabulary's to pre-empt.
+    fn interactive_claims_no_settled_ticker(input: &str) -> bool {
+        matches!(
+            extract_entity_scope(input, AgentTurnOrigin::Interactive),
+            EntityResolutionScope::AgentToolDiscovery(_)
+        )
+    }
+
     #[test]
     fn finance_and_technical_acronyms_never_become_implicit_tickers() {
         for input in [
@@ -12917,10 +12808,7 @@ mod tests {
             "看 API 状态",
             "GPU 最近怎么样",
         ] {
-            assert!(
-                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
-                "{input}"
-            );
+            assert!(interactive_claims_no_settled_ticker(input), "{input}");
             assert!(matches!(
                 extract_entity_scope(input, AgentTurnOrigin::Interactive),
                 EntityResolutionScope::AgentToolDiscovery(_)
@@ -14824,7 +14712,7 @@ mod tests {
             deterministic_sector_symbols("HBM 产业链怎么看"),
             vec!["MU", "NVDA", "AMD", "RMBS"]
         );
-        assert!(plain_ticker_mentions("HBM 产业链怎么看", AgentTurnOrigin::Interactive).is_empty());
+        assert!(interactive_claims_no_settled_ticker("HBM 产业链怎么看"));
 
         let symbols = parse_representative_symbols(
             "reasoning... {\"symbols\":[\"rmbs\",\"NVDA\",\"bad ticker!\",\"TOO-LONG-SYMBOL\"]}",
