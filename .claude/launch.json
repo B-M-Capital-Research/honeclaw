@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "public-app",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_HONE_APP_SURFACE=public",
+        "bun",
+        "run",
+        "--cwd",
+        "packages/app",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4174"
+      ],
+      "port": 4174
+    }
+  ]
+}
