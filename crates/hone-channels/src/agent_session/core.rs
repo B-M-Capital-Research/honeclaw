@@ -77,6 +77,9 @@ pub(super) struct PreparedInvestmentContext {
     prompt_time_beijing: DateTime<FixedOffset>,
     reexecution_policy: PreparedTurnReexecutionPolicy,
     main_agent_entity_discovery_input: Option<String>,
+    /// Business evidence the service loaded into `runtime_suffix` before the
+    /// first model call. Context only; it never becomes a contract.
+    preloaded_evidence_calls: u32,
 }
 
 struct RestoredRuntimeContext {
@@ -1288,6 +1291,9 @@ impl AgentSession {
                     options.turn_origin,
                 )
                 .then(|| entity_resolution_input.to_string()),
+                // Native runners keep their own turn input; the service does
+                // not preload evidence into it.
+                preloaded_evidence_calls: 0,
             }
         } else {
             let suffix_start = runtime_input.len();
@@ -1307,6 +1313,7 @@ impl AgentSession {
                 self.emit(session_progress_event("entity_resolution.preflight", None))
                     .await;
             }
+            let mut preloaded_evidence_calls = 0u32;
             let contract_result = prepare_verified_investment_turn(
                 &self.core,
                 &self.actor,
@@ -1316,6 +1323,7 @@ impl AgentSession {
                 options.turn_origin,
                 &answer_time_beijing,
                 &mut runtime_input,
+                &mut preloaded_evidence_calls,
             )
             .await;
             if emit_market_data_progress {
@@ -1340,6 +1348,7 @@ impl AgentSession {
                 reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
                 main_agent_entity_discovery_input: main_agent_entity_discovery
                     .then(|| entity_resolution_input.to_string()),
+                preloaded_evidence_calls,
             }
         };
         if prepared_investment.is_none()
@@ -1409,6 +1418,11 @@ impl AgentSession {
                 };
                 (kind, err)
             })?;
+        // Preloaded evidence is context for the same Agent loop, not a
+        // contract: it never fixes an entity or constrains the answer, it only
+        // means the turn did not start evidence-free.
+        execution.runner_request.preloaded_evidence_calls =
+            investment_context.preloaded_evidence_calls;
         execution.runner_request.agent_owned_finance_loop = options.turn_origin
             == AgentTurnOrigin::Interactive
             && execution.runner_name == "function_calling"

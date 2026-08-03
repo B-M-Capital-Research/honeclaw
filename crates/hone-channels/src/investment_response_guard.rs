@@ -2856,6 +2856,134 @@ async fn prepare_verified_broad_investment_turn(
     Ok(contract)
 }
 
+/// How many scanner candidates the pre-turn enrichment will try to resolve.
+const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
+/// Wall-clock ceiling for the whole enrichment stage. Exceeding it degrades to
+/// an ordinary Agent-owned turn rather than delaying the user.
+const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
+const PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT: usize = 3_000;
+
+/// Evidence the service fetched before the first model call.
+struct PreTurnEnrichment {
+    calls: u32,
+    block: String,
+}
+
+/// Run one unconditional evidence pass before the Agent thinks: an open
+/// `web_search` on the user's own words, plus registry lookups for whatever
+/// candidates the scanner produced. The result is **context, not a contract** —
+/// it fixes no entity, constrains no answer, and the Agent stays free to
+/// ignore it and run its own tools. It exists so the first thinking round is
+/// never evidence-free, instead of catching an evidence-free answer afterwards.
+async fn run_pre_turn_enrichment(
+    core: &Arc<HoneBotCore>,
+    actor: &ActorIdentity,
+    channel_target: &str,
+    allow_cron: bool,
+    user_input: &str,
+    seed_mentions: &[EntityMention],
+    answer_time_beijing: &str,
+) -> PreTurnEnrichment {
+    let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
+    let candidates = seed_mentions
+        .iter()
+        .filter_map(|mention| mention.explicit_symbol.clone())
+        .take(PRETURN_ENRICHMENT_MAX_CANDIDATES)
+        .collect::<Vec<_>>();
+
+    let web_query = format!("{user_input} {answer_time_beijing}");
+    let identity_lookups = candidates.iter().map(|candidate| {
+        registry.execute_tool(
+            "data_fetch",
+            json!({"data_type": "search", "query": candidate}),
+        )
+    });
+    let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
+        let (web, identities) = futures::future::join(
+            registry.execute_tool("web_search", json!({"query": web_query})),
+            futures::future::join_all(identity_lookups),
+        )
+        .await;
+
+        // Only a unique registry hit earns a market-data call. The service does
+        // not decide that a token is a security; the registry does.
+        let resolved = candidates
+            .iter()
+            .zip(identities.iter())
+            .filter_map(|(candidate, identity)| {
+                let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
+                let rows = value.get("data")?.as_array()?;
+                let symbol = match rows.as_slice() {
+                    [only] => only.get("symbol")?.as_str()?,
+                    _ => return None,
+                };
+                Some((candidate.clone(), symbol.to_string()))
+            })
+            .collect::<Vec<_>>();
+        let snapshots = futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+            registry.execute_tool(
+                "data_fetch",
+                json!({"data_type": "snapshot", "ticker": symbol}),
+            )
+        }))
+        .await;
+        (web, identities, resolved, snapshots)
+    })
+    .await;
+
+    let Ok((web, identities, resolved, snapshots)) = staged else {
+        tracing::warn!(
+            channel = %actor.channel,
+            user_id = %actor.user_id,
+            "pre-turn enrichment exceeded its deadline; continuing without preloaded evidence"
+        );
+        return PreTurnEnrichment {
+            calls: 0,
+            block: String::new(),
+        };
+    };
+
+    let mut sections = Vec::new();
+    let mut calls = 0u32;
+    if let Some(value) = web.as_ref().ok().filter(|v| !value_has_error(v)) {
+        calls += 1;
+        sections.push(format!(
+            "- `web_search(query={web_query:?})` →\n{}",
+            bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+        ));
+    }
+    for (candidate, identity) in candidates.iter().zip(identities.iter()) {
+        if let Some(value) = identity.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            sections.push(format!(
+                "- `data_fetch(search, query={candidate:?})` →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+            ));
+        }
+    }
+    for ((_, symbol), snapshot) in resolved.iter().zip(snapshots.iter()) {
+        if let Some(value) = snapshot.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            sections.push(format!(
+                "- `data_fetch(snapshot, ticker={symbol:?})` →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+            ));
+        }
+    }
+    if sections.is_empty() {
+        return PreTurnEnrichment {
+            calls: 0,
+            block: String::new(),
+        };
+    }
+
+    let block = format!(
+        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。",
+        sections.join("\n")
+    );
+    PreTurnEnrichment { calls, block }
+}
+
 pub(crate) async fn prepare_verified_investment_turn(
     core: &Arc<HoneBotCore>,
     actor: &ActorIdentity,
@@ -2865,7 +2993,9 @@ pub(crate) async fn prepare_verified_investment_turn(
     origin: AgentTurnOrigin,
     answer_time_beijing: &str,
     runtime_input: &mut String,
+    preloaded_evidence_calls: &mut u32,
 ) -> Result<Option<InvestmentResponseContract>, String> {
+    let preloaded_evidence_calls = preloaded_evidence_calls;
     let scope = extract_entity_scope(user_input, origin);
     let mentions = match scope {
         EntityResolutionScope::Securities(mentions) => mentions,
@@ -2876,6 +3006,20 @@ pub(crate) async fn prepare_verified_investment_turn(
                 &seed_mentions,
                 answer_time_beijing,
             );
+            if origin == AgentTurnOrigin::Interactive {
+                let enrichment = run_pre_turn_enrichment(
+                    core,
+                    actor,
+                    channel_target,
+                    allow_cron,
+                    user_input,
+                    &seed_mentions,
+                    answer_time_beijing,
+                )
+                .await;
+                runtime_input.push_str(&enrichment.block);
+                *preloaded_evidence_calls = enrichment.calls;
+            }
             return Ok(None);
         }
         EntityResolutionScope::Portfolio(explicit_mentions) => {
@@ -15795,6 +15939,7 @@ mod tests {
     /// exact-symbol entity route for a strategy term and never researched what
     /// the user asked. Uppercase shape is not listing evidence, and no
     /// maintained acronym deny-list can close this class.
+
     #[test]
     fn clause_subject_grammar_alone_yields_a_tentative_seed_not_an_explicit_code() {
         let seeds = super::plain_ticker_mentions(

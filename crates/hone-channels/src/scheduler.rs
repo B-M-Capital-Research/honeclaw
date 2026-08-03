@@ -4552,6 +4552,8 @@ async fn run_heartbeat_task(
         AgentTurnOrigin::Heartbeat,
         &bundle.answer_time_beijing,
         &mut investment_runtime_suffix,
+        // Heartbeat work never takes the Interactive enrichment path.
+        &mut 0,
     )
     .await?;
     let mut profile = HeartbeatExecutionProfile::Primary;

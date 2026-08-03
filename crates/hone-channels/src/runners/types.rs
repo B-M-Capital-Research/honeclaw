@@ -385,6 +385,11 @@ pub struct AgentRunnerRequest {
     /// commit it only after a valid read-only DataFetch batch activates the
     /// finance protocol. This is never parsed from user text.
     pub service_owned_initial_prefix: Option<ServiceOwnedInitialPrefix>,
+    /// Business evidence the service already fetched into this turn's input
+    /// before the first model call. It is context, never a contract: it does
+    /// not fix an entity, constrain the answer, or replace the Agent's own
+    /// tool work. It only tells the loop that the turn is not evidence-free.
+    pub preloaded_evidence_calls: u32,
     pub terminal_stream_policy: TerminalStreamPolicy,
 }
 

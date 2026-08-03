@@ -307,6 +307,7 @@ fn native_codex_boundary_request(
         max_tool_calls: None,
         tool_call_limits: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
     }

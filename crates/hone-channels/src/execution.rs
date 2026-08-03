@@ -194,6 +194,7 @@ impl ExecutionService {
                 max_tool_calls: request.max_tool_calls,
                 tool_call_limits: request.tool_call_limits,
                 agent_owned_finance_loop: false,
+                preloaded_evidence_calls: 0,
                 service_owned_initial_prefix: None,
                 terminal_stream_policy: TerminalStreamPolicy::Disabled,
             },

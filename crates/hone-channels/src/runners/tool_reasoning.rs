@@ -757,6 +757,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.llm_audit.clone(),
         )
         .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
+        .with_preloaded_evidence_calls(request.preloaded_evidence_calls)
         .with_service_owned_initial_prefix(
             service_owned_prefix_content,
             precommitted_service_prefix,

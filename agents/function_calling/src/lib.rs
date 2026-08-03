@@ -1126,6 +1126,10 @@ pub struct FunctionCallingAgent {
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
     pub agent_owned_finance_loop: bool,
+    /// Business evidence the service loaded into this turn's input before the
+    /// first model call. Context only — it never fixes an entity or constrains
+    /// the answer; it only means the turn did not start evidence-free.
+    pub preloaded_evidence_calls: u32,
     pub service_owned_initial_prefix: Option<String>,
     pub precommitted_service_prefix: Option<String>,
     #[cfg(test)]
@@ -1158,6 +1162,7 @@ impl FunctionCallingAgent {
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
             agent_owned_finance_loop: false,
+            preloaded_evidence_calls: 0,
             service_owned_initial_prefix: None,
             precommitted_service_prefix: None,
             #[cfg(test)]
@@ -1220,6 +1225,11 @@ impl FunctionCallingAgent {
     /// after the floor it may either use another real tool or return one
     /// natural `Stop + Done` answer. This mode never exposes a retired control
     /// tool and never starts a tool-free rewrite.
+    pub fn with_preloaded_evidence_calls(mut self, calls: u32) -> Self {
+        self.preloaded_evidence_calls = calls;
+        self
+    }
+
     pub fn with_agent_owned_finance_loop(mut self, enabled: bool) -> Self {
         self.agent_owned_finance_loop = enabled;
         #[cfg(test)]
@@ -4878,8 +4888,15 @@ fn listing_final_violations(
 /// research question from model memory. That is the whole defect class behind
 /// `SNDK 未上市`, `coreweave 还没 IPO`, `无法提供具体的数字`, and any fabricated
 /// price or multiple: not a vocabulary to enumerate, one precondition to hold.
-fn research_answer_without_evidence(content: &str, tool_calls_made: &[ToolCallMade]) -> bool {
-    if !tool_calls_made.is_empty() {
+fn research_answer_without_evidence(
+    content: &str,
+    tool_calls_made: &[ToolCallMade],
+    preloaded_evidence_calls: u32,
+) -> bool {
+    // Service-preloaded evidence sits in the turn input rather than in
+    // `tool_calls_made`, so a turn that answered straight from a rich
+    // preloaded context is evidence-backed, not evidence-free.
+    if preloaded_evidence_calls > 0 || !tool_calls_made.is_empty() {
         return false;
     }
     content
@@ -6105,8 +6122,11 @@ impl Agent for FunctionCallingAgent {
                             // rewrites a cause.
                             active_business_failures = 0;
                             active_business_outcome = Some("direct_final");
-                            if research_answer_without_evidence(&response.content, &tool_calls_made)
-                                && blocked_tool_finalization.is_none()
+                            if research_answer_without_evidence(
+                                &response.content,
+                                &tool_calls_made,
+                                self.preloaded_evidence_calls,
+                            ) && blocked_tool_finalization.is_none()
                                 && research_evidence_retries < MAX_LISTING_FINAL_CORRECTIONS
                                 && iterations < self.max_iterations
                             {
@@ -7343,8 +7363,11 @@ impl Agent for FunctionCallingAgent {
             // is likewise the same Agent's natural final answer and is not sent
             // through another terminal generation or a service semantic gate.
             self.dbg("[Agent] done (no more tool_calls)");
-            if research_answer_without_evidence(&result.content, &tool_calls_made)
-                && blocked_tool_finalization.is_none()
+            if research_answer_without_evidence(
+                &result.content,
+                &tool_calls_made,
+                self.preloaded_evidence_calls,
+            ) && blocked_tool_finalization.is_none()
                 && research_evidence_retries < MAX_LISTING_FINAL_CORRECTIONS
                 && iterations < self.max_iterations
             {
@@ -13563,7 +13586,7 @@ mod tests {
             "本轮无法提供具体的数字。",
         ] {
             assert!(
-                research_answer_without_evidence(&format!("{header}\n\n{body}"), &[]),
+                research_answer_without_evidence(&format!("{header}\n\n{body}"), &[], 0),
                 "missed: {body}"
             );
         }
@@ -13573,11 +13596,21 @@ mod tests {
         // user's wording.
         assert!(!research_answer_without_evidence(
             "你好，有什么可以帮你的？",
-            &[]
+            &[],
+            0
         ));
         assert!(!research_answer_without_evidence(
             "IPO 是指公司首次公开发行股票。未上市公司不能公开交易。",
-            &[]
+            &[],
+            0
+        ));
+
+        // Service-preloaded evidence stands the guard down: the turn is not
+        // evidence-free just because the Agent itself called nothing.
+        assert!(!research_answer_without_evidence(
+            &format!("{header}\n\nCoreWeave（CRWV）当前在 NASDAQ 上市交易。"),
+            &[],
+            3
         ));
 
         // Once any tool ran, the evidence-backed guards own the answer.
@@ -13589,7 +13622,8 @@ mod tests {
         };
         assert!(!research_answer_without_evidence(
             &format!("{header}\n\nCoreWeave 目前尚未上市。"),
-            std::slice::from_ref(&call)
+            std::slice::from_ref(&call),
+            0
         ));
     }
 

@@ -932,12 +932,17 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
                         }
                     }
                     let request = String::from_utf8_lossy(&request);
-                    let (route_index, value) = routes
+                    // The service now runs one pre-turn enrichment pass before the
+                    // Agent's own loop, so a stub may legitimately see requests a
+                    // test did not enumerate. Serve those an empty payload instead
+                    // of failing: the test is about the Agent's own tool work.
+                    let empty = serde_json::json!([]);
+                    let matched = routes
                         .iter()
                         .enumerate()
                         .find(|(_, (needle, _))| request.contains(needle))
-                        .map(|(index, (_, value))| (index, value))
-                        .unwrap_or_else(|| panic!("unmatched FMP stub request: {request}"));
+                        .map(|(index, (_, value))| (Some(index), value));
+                    let (route_index, value) = matched.unwrap_or((None, &empty));
                     let body = value.to_string();
                     let response = format!(
                         "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
@@ -949,9 +954,12 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::J
                         .await
                         .expect("write FMP stub response");
                     stream.shutdown().await.expect("shutdown FMP stub response");
-                    let mut served_routes = served_routes.lock().expect("lock served routes");
-                    if served_routes.insert(route_index) {
-                        served_count.fetch_add(1, Ordering::SeqCst);
+                    if let Some(route_index) = route_index {
+                        let mut served_routes =
+                            served_routes.lock().expect("lock served routes");
+                        if served_routes.insert(route_index) {
+                            served_count.fetch_add(1, Ordering::SeqCst);
+                        }
                     }
                 });
             }
@@ -1353,6 +1361,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -1439,6 +1448,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -1522,6 +1532,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -1741,6 +1752,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2312,6 +2324,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2394,6 +2407,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2485,6 +2499,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2576,6 +2591,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2652,6 +2668,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2850,6 +2867,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -2990,6 +3008,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -3110,6 +3129,7 @@ fn repair_trace_request(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -3433,6 +3453,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -3542,6 +3563,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -6921,6 +6943,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
         service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
@@ -6968,6 +6991,50 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// The turn's first thinking round must already hold evidence. The service runs
+/// one open `web_search` plus registry lookups for the scanner's candidates
+/// before the Agent is asked anything, and injects the raw results as *context*
+/// — no contract, no fixed entity, no constrained answer. Registry misses and
+/// provider errors contribute nothing and must not fail or stall the turn.
+#[tokio::test]
+async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
+    let root = make_temp_dir("hone_channels_preturn_enrichment");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "preturn", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    let contract = crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn",
+        false,
+        "nbis最近怎么看",
+        AgentTurnOrigin::Interactive,
+        "2026-07-19 09:31",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // Non-binding by construction: enrichment never produces a contract.
+    assert!(contract.is_none());
+    // The candidate still reaches the Agent as a candidate, not a decision.
+    assert!(runtime_input.contains("主 Agent 工具循环"));
+    assert!(runtime_input.contains("\"candidate_symbol\":\"NBIS\""));
+    // With no provider credentials every lookup errors, so nothing is preloaded
+    // and the turn degrades to an ordinary Agent-owned turn instead of failing.
+    assert_eq!(preloaded, 0);
+    assert!(!runtime_input.contains("【本轮前置检索结果"));
+    // No auxiliary model is involved in enrichment.
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
@@ -6995,6 +7062,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
             AgentTurnOrigin::Interactive,
             "2026-07-19 09:31",
             &mut runtime_input,
+            &mut 0,
         )
         .await
         .expect("interactive entity discovery must not fail before the runner");
@@ -8044,6 +8112,7 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
             origin,
             "2026-07-19 09:31",
             &mut runtime_input,
+            &mut 0,
         )
         .await
         .expect_err("test config has no FMP key, so deterministic DataFetch must fail");
@@ -8236,6 +8305,7 @@ async fn interactive_portfolio_wording_stays_inside_the_main_agent_tool_loop() {
         AgentTurnOrigin::Interactive,
         "2026-07-19 09:31",
         &mut runtime_input,
+        &mut 0,
     )
     .await
     .expect("interactive portfolio wording must reach the main agent");
