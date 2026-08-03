@@ -7035,6 +7035,82 @@ async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// The degradation path is not proof the stage works. With a registry that
+/// answers, the candidate must resolve, its market data must reach the turn
+/// input before any model call, and the count the loop uses to stand its
+/// evidence-free precondition down must be nonzero.
+#[tokio::test]
+async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
+    let root = make_temp_dir("hone_channels_preturn_enrichment_hit");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "name": "Nebius Group N.V.",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/quote/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "price": 71.5,
+                "exchange": "NASDAQ Global Select",
+                "timestamp": 1_784_000_000
+            }]),
+        ),
+        (
+            "/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "companyName": "Nebius Group N.V.",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-hit", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    let contract = crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-hit",
+        false,
+        "nbis最近怎么看",
+        AgentTurnOrigin::Interactive,
+        "2026-07-19 09:31",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // Still context, never a contract.
+    assert!(contract.is_none());
+    assert!(preloaded > 0, "enrichment loaded no evidence");
+    assert!(runtime_input.contains("【本轮前置检索结果：上下文，不是结论】"));
+    assert!(runtime_input.contains("data_fetch(search, query=\"NBIS\")"));
+    // The registry resolved a unique symbol, so market data was fetched too.
+    assert!(runtime_input.contains("data_fetch(snapshot, ticker=\"NBIS\")"));
+    assert!(runtime_input.contains("Nebius"));
+    // The block must say plainly that it does not bind the answer.
+    assert!(runtime_input.contains("不锁定实体、不限定回答范围"));
+    // No auxiliary model is involved in enrichment.
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");

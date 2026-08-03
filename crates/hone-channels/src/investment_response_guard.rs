@@ -2891,7 +2891,14 @@ async fn run_pre_turn_enrichment(
         .take(PRETURN_ENRICHMENT_MAX_CANDIDATES)
         .collect::<Vec<_>>();
 
-    let web_query = format!("{user_input} {answer_time_beijing}");
+    // Anchor the search on the absolute local date the way the rest of the
+    // codebase does. Appending a time of day only gives the search engine a
+    // literal `09:31` to match on.
+    let search_local_date = answer_time_beijing
+        .split_whitespace()
+        .next()
+        .unwrap_or(answer_time_beijing);
+    let web_query = format!("{search_local_date} {}", truncate_chars(user_input, 1_000));
     let identity_lookups = candidates.iter().map(|candidate| {
         registry.execute_tool(
             "data_fetch",
