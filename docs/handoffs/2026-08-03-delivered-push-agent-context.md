@@ -39,8 +39,8 @@
 - 定向回归覆盖：P1/P2 → U1 → U2、用户持久化字节不变、actor/scope 隔离、cutoff race、retry dedupe、失败释放、compact/配额不消费、历史不回填、两 SQLite 连接与正文预算、直接 Router ACK。
 - Codex ACP `1.1.7` executable JSON-RPC 回归覆盖 compact signal 后的 current-turn-only prompt；OpenCode ACP `1.18.11` 回归覆盖 assistant/context 与未改写 user section，版本和 2026-08-01 真实 capture 边界写在测试中。
 - `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` 通过。
-- `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` 通过；其中 `hone-event-engine` 556 项、`hone-channels` 721 项，凭据/主机依赖项按既有规则 ignored。
-- `bun run test:web`：344 项通过；Public Community Edge typecheck 与 45 项测试通过；`bash tests/regression/run_ci.sh` 通过。
+- `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` 在同步最新 `origin/main` 后通过；其中 `hone-event-engine` 556 项、`hone-channels` 725 项，凭据/主机依赖项按既有规则 ignored。同步进来的上市证据规则曾让 `soul.md` 超出既定 12,000 字符预算；通过删除重复实体校验文案修复，未放宽测试阈值。
+- `bun run test:web`：347 项通过；Public Community Edge typecheck 与 45 项测试通过；`bash tests/regression/run_ci.sh` 通过。
 - 真实 OpenCode `1.18.11` 使用隔离免费模型完成 `initialize → session/new → session/set_model → session/prompt → Hone MCP → end_turn`。默认 OpenAI OAuth 另行返回 `401 Token refresh failed`，确认是外部凭据状态；未改动全局 OpenCode 配置。
 
 ## Risks / Follow-ups

@@ -46,8 +46,8 @@
 
 ## Verification Result
 
-- `hone-event-engine` 556 项通过；`hone-channels` 720 项通过后新增 compact/quota 边界，workspace 最终 721 项通过。
-- Workspace all-target `cargo check/test`（排除 Apple release-only crates）、Web 344 项、Edge 45 项、CI-safe regression 全部通过。
+- `hone-event-engine` 556 项通过；`hone-channels` 720 项通过后新增 compact/quota 边界，并在同步最新主干后以 725 项通过。
+- Workspace all-target `cargo check/test`（排除 Apple release-only crates）、Web 347 项、Edge 45 项、CI-safe regression 全部通过。
 - 本机 OpenCode `1.18.11` 的真实 `initialize → session/new → session/set_model → session/prompt → Hone MCP → end_turn` 使用隔离免费探针模型通过；本机默认 OpenAI OAuth 同时被真实边界确认返回 `401 Token refresh failed`，属于外部凭据状态，不影响版本/协议验收，也未修改全局配置。
 
 ## Documentation Sync
