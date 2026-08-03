@@ -488,6 +488,7 @@ impl DataFetchTool {
         };
 
         let all_failed = quote_value.is_null() && profile_value.is_null() && news_value.is_null();
+        let listing_evidence = security_listing_evidence(ticker, &quote_value, &profile_value);
 
         let mut payload = serde_json::json!({
             "data_type": "snapshot",
@@ -496,7 +497,8 @@ impl DataFetchTool {
                 "quote": quote_value,
                 "profile": profile_value,
                 "news": news_value,
-            }
+            },
+            "hone_security_listing_evidence": listing_evidence,
         });
 
         if !errors.is_empty() {
@@ -514,6 +516,7 @@ impl DataFetchTool {
         &self,
         ticker: &str,
         quote: Result<Value, String>,
+        profile: Result<Value, String>,
         earnings: Result<Value, String>,
         analyst_estimates: Result<Value, String>,
         price_target_consensus: Result<Value, String>,
@@ -530,6 +533,7 @@ impl DataFetchTool {
         };
 
         let quote_value = component("quote", quote);
+        let profile_value = component("profile", profile);
         let earnings_value = component("earnings", earnings);
         let estimates_value = component("analyst_estimates", analyst_estimates);
         let target_value = component("price_target_consensus", price_target_consensus);
@@ -537,9 +541,11 @@ impl DataFetchTool {
         let financials_value = component("financials", financials);
         let current_price = first_positive_number(&quote_value, &["price"]);
         let target_quality = price_target_consensus_quality(&target_value, current_price);
+        let listing_evidence = security_listing_evidence(ticker, &quote_value, &profile_value);
 
         let coverage = [
             ("quote", &quote_value),
+            ("profile", &profile_value),
             ("earnings", &earnings_value),
             ("analyst_estimates", &estimates_value),
             ("price_target_consensus", &target_value),
@@ -564,6 +570,7 @@ impl DataFetchTool {
 
         let all_failed = [
             &quote_value,
+            &profile_value,
             &earnings_value,
             &estimates_value,
             &target_value,
@@ -578,6 +585,7 @@ impl DataFetchTool {
             "ticker": ticker,
             "data": {
                 "quote": quote_value,
+                "profile": profile_value,
                 "earnings": earnings_value,
                 "analyst_estimates": estimates_value,
                 "price_target_consensus": target_value,
@@ -585,8 +593,9 @@ impl DataFetchTool {
                 "financials": financials_value,
             },
             "coverage": Value::Object(coverage),
+            "hone_security_listing_evidence": listing_evidence,
             "hone_target_consensus_quality": target_quality,
-            "evidence_policy": "Use only component fields whose Hone quality flags authorize that claim type. Missing or quarantined components must be disclosed; do not infer them from another component."
+            "evidence_policy": "Use only component fields whose Hone quality flags authorize that claim type. Missing or quarantined components must be disclosed; do not infer them from another component. An active_listing result is current-turn provider evidence and must not be contradicted by stale acquisition or delisting memory."
         });
 
         if !errors.is_empty() {
@@ -937,6 +946,57 @@ fn first_positive_number(value: &Value, keys: &[&str]) -> Option<f64> {
         .filter(|value| *value > 0.0)
 }
 
+fn security_listing_evidence(ticker: &str, quote: &Value, profile: &Value) -> Value {
+    let quote_row = quote
+        .as_array()
+        .and_then(|items| items.first())
+        .unwrap_or(quote);
+    let profile_row = profile
+        .as_array()
+        .and_then(|items| items.first())
+        .unwrap_or(profile);
+    let quote_symbol = quote_row.get("symbol").and_then(Value::as_str);
+    let profile_symbol = profile_row.get("symbol").and_then(Value::as_str);
+    let quote_matches =
+        quote_symbol.is_some_and(|symbol| hone_core::provider_symbols_equivalent(ticker, symbol));
+    let profile_matches =
+        profile_symbol.is_some_and(|symbol| hone_core::provider_symbols_equivalent(ticker, symbol));
+    let current_quote_available =
+        quote_matches && first_positive_number(quote_row, &["price"]).is_some();
+    let is_actively_trading = profile_row
+        .get("isActivelyTrading")
+        .and_then(Value::as_bool);
+    let exchange = profile_row
+        .get("exchangeShortName")
+        .or_else(|| profile_row.get("exchange"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let status = if quote_matches
+        && profile_matches
+        && current_quote_available
+        && is_actively_trading == Some(true)
+        && exchange.is_some()
+    {
+        "active_listing"
+    } else if profile_matches && is_actively_trading == Some(false) && !current_quote_available {
+        "inactive_listing"
+    } else {
+        "unverified"
+    };
+
+    serde_json::json!({
+        "status": status,
+        "requested_symbol": ticker,
+        "quote_symbol": quote_symbol,
+        "profile_symbol": profile_symbol,
+        "company_name": profile_row.get("companyName").and_then(Value::as_str),
+        "exchange": exchange,
+        "profile_is_actively_trading": is_actively_trading,
+        "current_quote_available": current_quote_available,
+        "policy": "active_listing is current-turn same-symbol provider evidence that the security is currently listed and trading. It overrides stale model memory about an earlier acquisition or delisting; old corporate history alone cannot negate a later relisting or spin-off listing. If a current authoritative regulatory filing conflicts, fetch and disclose that evidence instead of deciding from memory."
+    })
+}
+
 fn finite_number(value: Option<&Value>) -> Option<f64> {
     value
         .and_then(Value::as_f64)
@@ -1153,7 +1213,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -1161,7 +1221,7 @@ impl Tool for DataFetchTool {
             ToolParameter {
                 name: "data_type".to_string(),
                 param_type: "string".to_string(),
-                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回各组件覆盖状态和数值质量标记。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论。".to_string(),
+                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回 profile、各组件覆盖状态、数值质量标记和当前上市证据。hone_security_listing_evidence.status=active_listing 时不得用旧收购/退市记忆否认当前上市。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论。".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "quote".into(),
@@ -1298,6 +1358,7 @@ impl Tool for DataFetchTool {
                 .expect("validated earnings symbol");
             let (
                 quote,
+                profile,
                 earnings,
                 analyst_estimates,
                 price_target_consensus,
@@ -1305,6 +1366,7 @@ impl Tool for DataFetchTool {
                 financials,
             ) = tokio::join!(
                 self.fetch_data_type("quote", ticker),
+                self.fetch_data_type("profile", ticker),
                 self.fetch_from_url_cached(
                     &earnings_url,
                     ttl_for_data_type(data_type),
@@ -1330,6 +1392,7 @@ impl Tool for DataFetchTool {
             return Ok(self.build_earnings_outlook_response(
                 ticker,
                 quote.map(normalize_quote_timestamp_metadata),
+                profile,
                 earnings,
                 analyst_estimates,
                 price_target_consensus,
@@ -1396,8 +1459,8 @@ mod tests {
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
         nonempty_fmp_error_message, normalize_extended_hours_bar,
         normalize_quote_timestamp_metadata, price_target_consensus_quality,
-        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
-        validated_data_fetch_search_query, validated_data_fetch_symbols,
+        sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
+        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -1877,7 +1940,12 @@ mod tests {
         let payload = tool.build_snapshot_response(
             "AAPL",
             Ok(json!([{ "symbol": "AAPL", "price": 100.0 }])),
-            Ok(json!([{ "symbol": "AAPL", "companyName": "Apple Inc." }])),
+            Ok(json!([{
+                "symbol": "AAPL",
+                "companyName": "Apple Inc.",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }])),
             Ok(json!([{ "title": "Example headline" }])),
         );
 
@@ -1886,7 +1954,91 @@ mod tests {
         assert_eq!(payload["data"]["quote"][0]["symbol"], "AAPL");
         assert_eq!(payload["data"]["profile"][0]["companyName"], "Apple Inc.");
         assert_eq!(payload["data"]["news"][0]["title"], "Example headline");
+        assert_eq!(
+            payload["hone_security_listing_evidence"]["status"],
+            "active_listing"
+        );
         assert!(payload.get("error").is_none());
+    }
+
+    #[test]
+    fn sndk_active_listing_evidence_overrides_stale_delisting_memory() {
+        let tool = tool_with_test_key();
+        let payload = tool.build_snapshot_response(
+            "sndk",
+            Ok(json!([{ "symbol": "SNDK", "price": 245.81 }])),
+            Ok(json!([{
+                "symbol": "SNDK",
+                "companyName": "Sandisk Corporation",
+                "exchange": "NASDAQ Global Select",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }])),
+            Ok(json!([])),
+        );
+
+        let evidence = &payload["hone_security_listing_evidence"];
+        assert_eq!(evidence["status"], "active_listing");
+        assert_eq!(evidence["requested_symbol"], "sndk");
+        assert_eq!(evidence["quote_symbol"], "SNDK");
+        assert_eq!(evidence["profile_symbol"], "SNDK");
+        assert_eq!(evidence["exchange"], "NASDAQ");
+        assert_eq!(evidence["profile_is_actively_trading"], true);
+        assert_eq!(evidence["current_quote_available"], true);
+        assert!(
+            evidence["policy"]
+                .as_str()
+                .is_some_and(|policy| policy.contains("stale model memory"))
+        );
+    }
+
+    #[test]
+    fn sndk_earnings_outlook_carries_current_listing_evidence() {
+        let tool = tool_with_test_key();
+        let payload = tool.build_earnings_outlook_response(
+            "sndk",
+            Ok(json!([{ "symbol": "SNDK", "price": 245.81 }])),
+            Ok(json!([{
+                "symbol": "SNDK",
+                "companyName": "Sandisk Corporation",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }])),
+            Ok(json!([{ "symbol": "SNDK", "date": "2026-08-06" }])),
+            Ok(json!([])),
+            Ok(json!([])),
+            Ok(json!([])),
+            Ok(json!([])),
+        );
+
+        assert_eq!(payload["data_type"], "earnings_outlook");
+        assert_eq!(payload["coverage"]["profile"], "available");
+        assert_eq!(payload["data"]["profile"][0]["symbol"], "SNDK");
+        assert_eq!(
+            payload["hone_security_listing_evidence"]["status"],
+            "active_listing"
+        );
+        assert_eq!(
+            payload["hone_security_listing_evidence"]["requested_symbol"],
+            "sndk"
+        );
+    }
+
+    #[test]
+    fn listing_evidence_stays_unverified_when_quote_and_profile_conflict() {
+        let evidence = security_listing_evidence(
+            "SNDK",
+            &json!([{ "symbol": "SNDK", "price": 245.81 }]),
+            &json!([{
+                "symbol": "SNDK",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": false
+            }]),
+        );
+
+        assert_eq!(evidence["status"], "unverified");
+        assert_eq!(evidence["current_quote_available"], true);
+        assert_eq!(evidence["profile_is_actively_trading"], false);
     }
 
     #[test]
@@ -1974,6 +2126,12 @@ mod tests {
                 "symbol": "COHR",
                 "price": 282.39
             }]))),
+            Ok(json!([{
+                "symbol": "COHR",
+                "companyName": "Coherent Corp.",
+                "exchangeShortName": "NYSE",
+                "isActivelyTrading": true
+            }])),
             Ok(json!([{"symbol":"COHR","date":"2026-08-12"}])),
             Err("estimates unavailable".to_string()),
             Ok(json!([{
@@ -1988,6 +2146,7 @@ mod tests {
 
         assert_eq!(payload["data_type"], "earnings_outlook");
         assert_eq!(payload["coverage"]["quote"], "available");
+        assert_eq!(payload["coverage"]["profile"], "available");
         assert_eq!(payload["coverage"]["analyst_estimates"], "unavailable");
         assert_eq!(
             payload["errors"]["analyst_estimates"],
@@ -1996,6 +2155,10 @@ mod tests {
         assert_eq!(
             payload["hone_target_consensus_quality"]["usable_for_target_claims"],
             true
+        );
+        assert_eq!(
+            payload["hone_security_listing_evidence"]["status"],
+            "active_listing"
         );
         assert!(payload.get("error").is_none());
     }
