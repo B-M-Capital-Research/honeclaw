@@ -919,7 +919,7 @@ fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, FmpRouteStub) 
     use std::collections::HashSet;
     use std::net::TcpListener;
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering;
     use std::time::Instant;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -7244,6 +7244,78 @@ async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
     // The block must say plainly that it does not bind the answer.
     assert!(runtime_input.contains("不锁定实体、不限定回答范围"));
     // No auxiliary model is involved in enrichment.
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The production incident symbol must carry current listing evidence into the
+/// very first Agent input. A later publication guard is still retained, but it
+/// must be the fallback rather than the first point at which stale delisting
+/// memory meets provider truth.
+#[tokio::test]
+async fn sndk_pre_turn_enrichment_injects_current_active_listing_before_agent_call() {
+    let root = make_temp_dir("hone_channels_preturn_sndk_listing");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=SNDK".to_string(),
+            serde_json::json!([{
+                "symbol": "SNDK",
+                "name": "Sandisk Corporation",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/quote/SNDK".to_string(),
+            serde_json::json!([{
+                "symbol": "SNDK",
+                "price": 48.25,
+                "exchange": "NASDAQ Global Select",
+                "timestamp": 1_786_000_000
+            }]),
+        ),
+        (
+            "/profile/SNDK".to_string(),
+            serde_json::json!([{
+                "symbol": "SNDK",
+                "companyName": "Sandisk Corporation",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-sndk", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    let contract = crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-sndk",
+        false,
+        "sndk财报前瞻",
+        AgentTurnOrigin::Interactive,
+        "2026-08-03 20:35",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("SNDK enrichment must not fail the turn");
+
+    assert!(contract.is_none());
+    assert!(preloaded >= 2, "{runtime_input}");
+    assert!(runtime_input.contains("data_fetch(search, query=\"SNDK\")"));
+    assert!(runtime_input.contains("data_fetch(snapshot, ticker=\"SNDK\")"));
+    assert!(runtime_input.contains("hone_security_listing_evidence"));
+    assert!(runtime_input.contains("active_listing"));
+    assert!(runtime_input.contains("Sandisk Corporation"));
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);
     fmp_stub.join().expect("join FMP stub");

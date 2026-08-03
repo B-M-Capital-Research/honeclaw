@@ -927,7 +927,10 @@ mod tests {
             keys: vec!["key1".to_string(), "key2".to_string()],
             max_results: 3,
             endpoint: format!("http://{addr}"),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("build loopback test client"),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
         };
 
@@ -975,7 +978,10 @@ mod tests {
             keys: vec!["key1".to_string()],
             max_results: 3,
             endpoint: format!("http://{addr}"),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("build loopback test client"),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
         };
 

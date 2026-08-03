@@ -635,7 +635,7 @@ fn default_runtime_admin_registration_passphrase_env() -> String {
 }
 
 fn default_daily_conversation_limit() -> u32 {
-    12
+    100
 }
 
 fn default_agent_step_timeout_seconds() -> u64 {
@@ -707,8 +707,8 @@ mod tests {
     use super::{AgentConversationStrategy, AgentRunnerKind};
 
     #[test]
-    fn agent_default_daily_conversation_limit_is_twelve() {
-        assert_eq!(super::AgentConfig::default().daily_conversation_limit, 12);
+    fn agent_default_daily_conversation_limit_is_one_hundred() {
+        assert_eq!(super::AgentConfig::default().daily_conversation_limit, 100);
     }
 
     #[test]

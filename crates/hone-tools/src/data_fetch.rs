@@ -159,25 +159,57 @@ pub struct DataFetchTool {
     cache: Arc<Mutex<HashMap<String, CachedFmpValue>>>,
 }
 
+fn fmp_base_url_is_loopback(base_url: &str) -> bool {
+    let Some(host) = url::Url::parse(base_url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_string))
+    else {
+        return false;
+    };
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(&host);
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+fn fmp_http_client(base_url: &str) -> reqwest::Client {
+    let builder = reqwest::Client::builder();
+    let builder = if fmp_base_url_is_loopback(base_url) {
+        // Local provider adapters and test stubs must never be sent through a
+        // workstation HTTP proxy. Apart from making tests environment-bound,
+        // proxying a loopback URL can silently contact the wrong process.
+        builder.no_proxy()
+    } else {
+        builder
+    };
+    builder.build().expect("build FMP HTTP client")
+}
+
 impl DataFetchTool {
     pub fn new(keys: Vec<String>, base_url: &str, timeout: u64) -> Self {
         let pool = hone_core::ApiKeyPool::new(keys);
+        let base_url = base_url.trim_end_matches('/').to_string();
         Self {
             keys: pool.keys().to_vec(),
-            base_url: base_url.trim_end_matches('/').to_string(),
+            http: fmp_http_client(&base_url),
+            base_url,
             timeout,
-            http: reqwest::Client::new(),
             cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     pub fn from_config(config: &hone_core::config::HoneConfig) -> Self {
         let pool = config.fmp.effective_key_pool();
+        let base_url = config.fmp.base_url.trim_end_matches('/').to_string();
         Self {
             keys: pool.keys().to_vec(),
-            base_url: config.fmp.base_url.trim_end_matches('/').to_string(),
+            http: fmp_http_client(&base_url),
+            base_url,
             timeout: config.fmp.timeout,
-            http: reqwest::Client::new(),
             cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -1457,7 +1489,7 @@ mod tests {
     use super::{
         DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
-        nonempty_fmp_error_message, normalize_extended_hours_bar,
+        fmp_base_url_is_loopback, nonempty_fmp_error_message, normalize_extended_hours_bar,
         normalize_quote_timestamp_metadata, price_target_consensus_quality,
         sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
         ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
@@ -1473,6 +1505,16 @@ mod tests {
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn loopback_fmp_adapters_bypass_workstation_proxies() {
+        assert!(fmp_base_url_is_loopback("http://127.0.0.1:8080/api"));
+        assert!(fmp_base_url_is_loopback("http://[::1]:8080/api"));
+        assert!(fmp_base_url_is_loopback("http://localhost:8080/api"));
+        assert!(!fmp_base_url_is_loopback(
+            "https://financialmodelingprep.com/api"
+        ));
+    }
 
     #[test]
     fn quote_timestamp_metadata_exposes_unambiguous_new_york_and_beijing_times() {
