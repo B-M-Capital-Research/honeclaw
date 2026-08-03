@@ -443,6 +443,92 @@ fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
             "北京时间 20:30 · 二季度",
             "bls.gov",
         ),
+        (
+            "2026-08-03",
+            "ISM 制造业 PMI",
+            "北京时间 22:00 · 7月",
+            "ismworld.org",
+        ),
+        (
+            "2026-08-05",
+            "ISM 服务业 PMI",
+            "北京时间 22:00 · 7月",
+            "ismworld.org",
+        ),
+        (
+            "2026-08-05",
+            "美国贸易帐",
+            "北京时间 20:30 · 6月",
+            "bea.gov",
+        ),
+        (
+            "2026-08-07",
+            "美国非农就业报告",
+            "北京时间 20:30 · 7月",
+            "bls.gov",
+        ),
+        ("2026-08-12", "美国 CPI", "北京时间 20:30 · 7月", "bls.gov"),
+        ("2026-08-13", "美国 PPI", "北京时间 20:30 · 7月", "bls.gov"),
+        (
+            "2026-08-14",
+            "美国零售销售",
+            "北京时间 20:30 · 7月",
+            "census.gov",
+        ),
+        (
+            "2026-08-14",
+            "美国工业产出",
+            "北京时间 21:15 · 7月",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-08-18",
+            "美国新屋开工",
+            "北京时间 20:30 · 7月",
+            "census.gov",
+        ),
+        (
+            "2026-08-20",
+            "FOMC 会议纪要",
+            "北京时间 02:00 · 7月会议",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-08-21",
+            "杰克逊霍尔央行年会·美联储主席讲话",
+            "北京时间 22:00 前后 · 年会 8/20-8/22",
+            "kansascityfed.org",
+        ),
+        (
+            "2026-08-25",
+            "美国新屋销售",
+            "北京时间 22:00 · 7月",
+            "census.gov",
+        ),
+        (
+            "2026-08-26",
+            "美国耐用品订单",
+            "北京时间 20:30 · 7月",
+            "census.gov",
+        ),
+        (
+            "2026-08-27",
+            "美国二季度 GDP 修正值",
+            "北京时间 20:30",
+            "bea.gov",
+        ),
+        (
+            "2026-08-28",
+            "美国 PCE 物价指数",
+            "北京时间 20:30 · 7月",
+            "bea.gov",
+        ),
+        (
+            "2026-08-28",
+            "密歇根大学消费者信心终值",
+            "北京时间 22:00 · 8月",
+            "umich.edu",
+        ),
     ]
     .into_iter()
     .map(|(date, title, subtitle, source)| FinanceCalendarEvent {
@@ -808,7 +894,36 @@ mod tests {
             year: 2026,
             month: 8,
         };
-        assert!(macro_events_for_month(&august).is_empty());
+        let august_events = macro_events_for_month(&august);
+        assert_eq!(august_events.len(), 16);
+        assert_eq!(august_events[0].date, "2026-08-03");
+        assert!(
+            august_events
+                .iter()
+                .any(|event| event.title.contains("非农"))
+        );
+        assert!(
+            august_events
+                .iter()
+                .any(|event| event.title.contains("CPI"))
+        );
+        assert!(
+            august_events
+                .iter()
+                .any(|event| event.title.contains("杰克逊霍尔"))
+        );
+        assert!(
+            august_events
+                .iter()
+                .all(|event| event.date.starts_with("2026-08"))
+        );
+        assert!(august_events.iter().all(|event| event.subtitle.is_some()));
+
+        let september = MonthSpec {
+            year: 2026,
+            month: 9,
+        };
+        assert!(macro_events_for_month(&september).is_empty());
     }
 
     #[test]
