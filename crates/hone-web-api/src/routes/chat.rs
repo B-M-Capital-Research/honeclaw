@@ -115,7 +115,7 @@ impl AgentSessionListener for SseSessionListener {
                 reasoning,
                 message,
             }) => {
-                let status_text = public_tool_status_text(&status);
+                let status_text = public_tool_status_text(&status, &tool);
                 if let Some(active_run) = &self.active_run {
                     let _ = active_run.update("running", status_text);
                 }
@@ -280,6 +280,8 @@ fn emit_web_progress_heartbeat(
 fn public_progress_status(stage: &str) -> (&'static str, &'static str) {
     match stage {
         "session.compress" => ("thinking", "正在整理会话上下文"),
+        "preturn.enrichment" => ("running", "正在进行搜索引擎查询并读取行情数据"),
+        "preturn.enrichment.done" => ("running", "资料已就绪，正在分析"),
         "entity_resolution.preflight" => ("running", "正在识别当前问题中的公司或证券实体"),
         "entity_resolution.preflight.done" => ("running", "实体范围已确认，正在整理回答"),
         "entity_resolution.preflight.failed" => {
@@ -293,13 +295,60 @@ fn public_progress_status(stage: &str) -> (&'static str, &'static str) {
     }
 }
 
-fn public_tool_status_text(status: &str) -> &'static str {
-    match status.trim().to_ascii_lowercase().as_str() {
-        "completed" | "complete" | "success" | "succeeded" | "finished" | "done" => {
-            "数据核验完成，正在组织回答"
-        }
-        _ => "正在查询并核验所需数据",
+/// User-facing wording for the tool the turn is currently running. The runner
+/// label carries internal names and raw arguments, so it is only read here to
+/// pick a product phrase — nothing from it reaches the browser. Public chat
+/// shows this beside the pending turn, never inside the answer body.
+fn public_tool_status_text(status: &str, tool: &str) -> &'static str {
+    if matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "completed" | "complete" | "success" | "succeeded" | "finished" | "done"
+    ) {
+        return "数据核验完成，正在组织回答";
     }
+    let label = tool.trim().to_ascii_lowercase();
+    if label.starts_with("web_search") || label.starts_with("deep_research") {
+        return "正在进行搜索引擎查询";
+    }
+    if label.starts_with("data_fetch") {
+        // The label is `data_fetch <data_type> <symbol>`; the data type decides
+        // what the user is actually waiting for.
+        if label.contains("search") {
+            return "正在确认标的实体";
+        }
+        if label.contains("news") {
+            return "正在读取相关新闻";
+        }
+        if label.contains("financials") || label.contains("earnings") {
+            return "正在读取财务与财报数据";
+        }
+        if label.contains("etf_holdings") {
+            return "正在读取基金持仓";
+        }
+        if label.contains("sector_performance") || label.contains("gainers_losers") {
+            return "正在读取板块与涨跌数据";
+        }
+        return "正在读取行情数据";
+    }
+    if label.starts_with("portfolio") {
+        return "正在读取你的持仓与关注";
+    }
+    if label.starts_with("cron_job") || label.starts_with("notification_prefs") {
+        return "正在处理你的提醒设置";
+    }
+    if label.starts_with("missed_events") {
+        return "正在整理你错过的推送";
+    }
+    if label.starts_with("skill_tool")
+        || label.starts_with("load_skill")
+        || label.starts_with("discover_skills")
+    {
+        return "正在加载分析方法";
+    }
+    if label.starts_with("local_") {
+        return "正在读取你的历史研究记录";
+    }
+    "正在查询并核验所需数据"
 }
 
 pub(crate) fn build_chat_sse(
@@ -504,6 +553,58 @@ mod tests {
     use crate::state::ActiveChatRunRegistry;
 
     use super::{SseSessionListener, emit_web_progress_heartbeat};
+
+    /// Public chat must tell the user what the turn is waiting on, in product
+    /// language, beside the pending turn rather than inside the answer. The
+    /// runner label carries internal tool names and raw arguments; it is only
+    /// read to pick a phrase, and none of it may reach the browser.
+    #[test]
+    fn public_tool_status_names_the_work_without_leaking_internals() {
+        use super::public_tool_status_text;
+
+        for (label, expected) in [
+            ("web_search query=\"CoreWeave IPO\"", "正在进行搜索引擎查询"),
+            ("data_fetch search NBIS", "正在确认标的实体"),
+            ("data_fetch quote NBIS", "正在读取行情数据"),
+            ("data_fetch snapshot NBIS", "正在读取行情数据"),
+            ("data_fetch news NBIS", "正在读取相关新闻"),
+            ("data_fetch financials NBIS", "正在读取财务与财报数据"),
+            ("portfolio view", "正在读取你的持仓与关注"),
+            ("cron_job list", "正在处理你的提醒设置"),
+            ("skill_tool stock_research", "正在加载分析方法"),
+            ("some_unknown_tool", "正在查询并核验所需数据"),
+        ] {
+            let text = public_tool_status_text("start", label);
+            assert_eq!(text, expected, "{label}");
+            // No internal tool name, argument or symbol may survive into the
+            // user-visible string.
+            for leaked in ["web_search", "data_fetch", "portfolio", "cron_job", "NBIS"] {
+                assert!(!text.contains(leaked), "{label} leaked {leaked}: {text}");
+            }
+        }
+
+        // Completion wording does not depend on which tool ran.
+        assert_eq!(
+            public_tool_status_text("done", "web_search query=\"x\""),
+            "数据核验完成，正在组织回答"
+        );
+    }
+
+    /// The pre-turn evidence pass runs before any runner exists, so it emits no
+    /// tool status of its own. Public chat still has to show something, or the
+    /// user watches a silent window for the whole enrichment budget.
+    #[test]
+    fn pre_turn_enrichment_window_is_not_silent() {
+        use super::public_progress_status;
+
+        let (phase, text) = public_progress_status("preturn.enrichment");
+        assert_eq!(phase, "running");
+        assert!(text.contains("搜索引擎查询"), "{text}");
+        assert!(text.contains("行情"), "{text}");
+        let (done_phase, done_text) = public_progress_status("preturn.enrichment.done");
+        assert_eq!(done_phase, "running");
+        assert!(done_text.contains("正在分析"), "{done_text}");
+    }
 
     #[tokio::test]
     async fn stream_reset_clears_sent_count_and_emits_assistant_reset() {
@@ -884,11 +985,15 @@ mod tests {
         );
         let (event, payload) = rx.recv().await.expect("tool status event");
         assert_eq!(event, "tool_call");
-        assert_eq!(
-            payload
-                .get("public_status_text")
-                .and_then(|value| value.as_str()),
-            Some("正在查询并核验所需数据")
-        );
+        let public_status = payload
+            .get("public_status_text")
+            .and_then(|value| value.as_str())
+            .expect("public status text");
+        // Named in product language now, but still derived only from the tool
+        // kind: no raw provider detail, internal reasoning or tool name.
+        assert_eq!(public_status, "正在读取行情数据");
+        for leaked in ["raw provider detail", "internal reasoning", "data_fetch"] {
+            assert!(!public_status.contains(leaked), "{public_status}");
+        }
     }
 }

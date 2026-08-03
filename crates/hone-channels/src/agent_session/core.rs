@@ -1313,6 +1313,15 @@ impl AgentSession {
                 self.emit(session_progress_event("entity_resolution.preflight", None))
                     .await;
             }
+            // The Interactive pre-turn evidence pass runs before any runner
+            // exists, so it emits no runner ToolStatus of its own. Without this
+            // the user watches a silent window for the whole enrichment budget.
+            let emit_preturn_progress =
+                options.turn_origin == AgentTurnOrigin::Interactive && main_agent_entity_discovery;
+            if emit_preturn_progress {
+                self.emit(session_progress_event("preturn.enrichment", None))
+                    .await;
+            }
             let mut preloaded_evidence_calls = 0u32;
             let contract_result = prepare_verified_investment_turn(
                 &self.core,
@@ -1326,6 +1335,10 @@ impl AgentSession {
                 &mut preloaded_evidence_calls,
             )
             .await;
+            if emit_preturn_progress {
+                self.emit(session_progress_event("preturn.enrichment.done", None))
+                    .await;
+            }
             if emit_market_data_progress {
                 let completed_stage = match &contract_result {
                     Ok(Some(_)) => "market_data.preflight.done",
