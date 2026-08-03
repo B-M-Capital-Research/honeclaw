@@ -187,6 +187,9 @@
 
 ## CI 契约
 
+- 根工作区的 `[profile.dev]` 与 `[profile.test]` 固定为 `debug=1`、`incremental=false`；开发、检查和测试仍保留行号级回溯，但不得在每个 worktree 长期累积 incremental object graph
+- revision-bound 直接源码部署固定使用 `[profile.source-runtime]` 和 `target/source-runtime/`；不同 worktree 不得共享一个可写 Cargo target，避免并发构建让 revision provenance 与二进制内容失配
+
 - PR / push 默认门禁仅包含：
   - Rust 格式检查（仅改动文件，`bash scripts/ci/check_fmt_changed.sh`）
   - Rust 编译检查（`cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`）

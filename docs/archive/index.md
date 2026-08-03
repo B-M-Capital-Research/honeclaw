@@ -4,6 +4,18 @@ Last updated: 2026-08-03
 
 ## 2026-08-03
 
+### Bounded Local Build Storage And Source Release Retention
+
+- Status: done
+- Date: 2026-08-03
+- Plan: `docs/archive/plans/build-storage-optimization.md`
+- Handoff: `docs/handoffs/2026-08-03-build-storage-optimization.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-03-03-bound-local-build-storage-without-sharing-writable-targets`
+- Related PRs / commits: pushed directly to `main`; no PR, deployment, release, or tag
+- Related runbooks / regressions: `docs/runbooks/source-web-startup.md`; `tests/regression/ci/test_source_runtime_deploy_contract.sh`; complete workspace, Web, Edge Worker, and CI-safe gates
+- Current conclusion: dev/test/source-runtime keep line-level debuginfo and no incremental state while each worktree retains an isolated writable target. Source deployment records its profile, preserves current + previous, and prunes only strict known old release directories after rollback is disarmed. Two audited Codex worktrees were removed, stale targets were cleaned, and the fully rebuilt/validated active target is `8.3G` with zero incremental payload instead of the prior roughly 50GB multi-worktree footprint.
+- Next entry point: `docs/handoffs/2026-08-03-build-storage-optimization.md`; the current local runtime was deliberately not redeployed, so the next successful revision-bound deployment is where live release retention first applies.
+
 ### Confirmed Proactive Deliveries In The Next Agent Turn
 
 - Status: done

@@ -11,13 +11,13 @@ FAKE_BIN="$TMP_ROOT/fake-bin"
 STATE="$TMP_ROOT/state"
 LAUNCH_AGENTS="$TMP_ROOT/launch-agents"
 mkdir -p "$PROJECT/data/logs" "$PROJECT/data/runtime/locks" "$PROJECT/skills" \
-    "$PROJECT/target/debug" "$PROJECT/old" "$FAKE_BIN" "$STATE" "$LAUNCH_AGENTS"
+    "$PROJECT/target/source-runtime" "$PROJECT/old" "$FAKE_BIN" "$STATE" "$LAUNCH_AGENTS"
 printf 'agent:\n  runner: codex_acp\n' > "$PROJECT/config.yaml"
 touch "$PROJECT/skills/.gitkeep"
 printf 'data/\ntarget/\nold/\n' > "$PROJECT/.gitignore"
 for binary in hone-console-page hone-discord hone-mcp; do
-    printf '#!/bin/sh\nexit 0\n' > "$PROJECT/target/debug/$binary"
-    chmod 0755 "$PROJECT/target/debug/$binary"
+    printf '#!/bin/sh\nexit 0\n' > "$PROJECT/target/source-runtime/$binary"
+    chmod 0755 "$PROJECT/target/source-runtime/$binary"
 done
 for binary in hone-cli hone-console-page hone-discord; do
     printf '#!/bin/sh\nexit 0\n' > "$PROJECT/old/$binary"
@@ -118,6 +118,19 @@ done
 exit 1
 EOF
 
+cat > "$FAKE_BIN/ln" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+target="${!#}"
+failure_marker="${FAKE_STATE:?}/failed_previous_link_once"
+if [[ "$target" == */previous && "${FAKE_FAIL_PREVIOUS_LINK:-0}" == 1 \
+    && ! -e "$failure_marker" ]]; then
+    : > "$failure_marker"
+    exit 1
+fi
+exec /bin/ln "$@"
+EOF
+
 cat > "$FAKE_BIN/ps" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -205,7 +218,7 @@ case "$url" in
 esac
 EOF
 
-chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/kill" "$FAKE_BIN/ps" \
+chmod 0755 "$FAKE_BIN/launchctl" "$FAKE_BIN/kill" "$FAKE_BIN/ln" "$FAKE_BIN/ps" \
     "$FAKE_BIN/lsof" "$FAKE_BIN/curl"
 
 write_fake_managed_plist() {
@@ -279,9 +292,30 @@ assert_old_state() {
     [[ "$(<"$STATE/com.honeclaw.source.discord.binary")" == "$PROJECT/old/hone-discord" ]]
 }
 
+make_prunable_release() {
+    local revision="$1" release_dir="$PROJECT/data/releases/source/$1"
+    mkdir -p "$release_dir"
+    for binary in hone-console-page hone-discord hone-mcp; do
+        printf 'old release %s %s\n' "$revision" "$binary" > "$release_dir/$binary"
+    done
+    printf '{"git_sha":"%s"}\n' "$revision" > "$release_dir/manifest.json"
+}
+
+RETAINED_PREVIOUS="1111111111111111111111111111111111111111"
+PRUNABLE_OLD="2222222222222222222222222222222222222222"
+SUSPICIOUS_OLD="3333333333333333333333333333333333333333"
+make_prunable_release "$RETAINED_PREVIOUS"
+make_prunable_release "$PRUNABLE_OLD"
+make_prunable_release "$SUSPICIOUS_OLD"
+printf 'must be retained\n' > "$PROJECT/data/releases/source/$SUSPICIOUS_OLD/unexpected.txt"
+mkdir -p "$PROJECT/data/releases/source/operator-notes"
+ln -s "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" \
+    "$PROJECT/data/releases/source/current"
+
 reset_old_state
 run_deploy env
 grep -q '"build_source":"direct_source_runtime"' "$PROJECT/data/releases/source/$REVISION/manifest.json"
+grep -q '"cargo_profile":"source-runtime"' "$PROJECT/data/releases/source/$REVISION/manifest.json"
 grep -q "/releases/source/$REVISION/hone-console-page" "$STATE/com.honeclaw.source.web.binary"
 grep -q "/releases/source/$REVISION/hone-discord" "$STATE/com.honeclaw.source.discord.binary"
 grep -q "remove com.honeclaw.source.web" "$STATE/events"
@@ -293,10 +327,30 @@ grep -q "$REVISION/hone-discord" "$LAUNCH_AGENTS/com.honeclaw.source.discord.pli
 ! grep -q '/.codex/tmp/' "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist"
 plist_runtime_path="$(grep -o '<key>PATH</key><string>[^<]*' "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist" | sed 's#.*<string>##')"
 PATH="$plist_runtime_path" codex --version >/dev/null
+[[ -d "$PROJECT/data/releases/source/$REVISION" ]]
+[[ -d "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" ]]
+[[ ! -e "$PROJECT/data/releases/source/$PRUNABLE_OLD" ]]
+[[ -f "$PROJECT/data/releases/source/$SUSPICIOUS_OLD/unexpected.txt" ]]
+[[ -d "$PROJECT/data/releases/source/operator-notes" ]]
+[[ "$(readlink "$PROJECT/data/releases/source/current")" == "$PROJECT/data/releases/source/$REVISION" ]]
+[[ "$(readlink "$PROJECT/data/releases/source/previous")" == "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" ]]
 if command -v plutil >/dev/null 2>&1; then
     plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.web.plist" >/dev/null
     plutil -lint "$LAUNCH_AGENTS/com.honeclaw.source.discord.plist" >/dev/null
 fi
+
+reset_old_state
+ln -sfn "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" \
+    "$PROJECT/data/releases/source/current"
+if run_deploy env FAKE_FAIL_PREVIOUS_LINK=1; then
+    echo "expected source release link commit failure" >&2
+    exit 1
+fi
+assert_old_state
+[[ "$(readlink "$PROJECT/data/releases/source/current")" == "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" ]]
+[[ "$(readlink "$PROJECT/data/releases/source/previous")" == "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" ]]
+ln -sfn "$PROJECT/data/releases/source/$REVISION" \
+    "$PROJECT/data/releases/source/current"
 
 reset_legacy_state
 run_deploy env
@@ -356,11 +410,16 @@ fi
 git -C "$PROJECT" restore config.yaml
 
 reset_old_state
+ROLLBACK_PROTECTED="4444444444444444444444444444444444444444"
+make_prunable_release "$ROLLBACK_PROTECTED"
 if run_deploy env FAKE_FAIL_NEW_WEB=1; then
     echo "expected new web readiness failure" >&2
     exit 1
 fi
 assert_old_state
+[[ -d "$PROJECT/data/releases/source/$ROLLBACK_PROTECTED" ]]
+[[ "$(readlink "$PROJECT/data/releases/source/current")" == "$PROJECT/data/releases/source/$REVISION" ]]
+[[ "$(readlink "$PROJECT/data/releases/source/previous")" == "$PROJECT/data/releases/source/$RETAINED_PREVIOUS" ]]
 grep -q "bootstrap com.honeclaw.source.web" "$STATE/events"
 
 reset_old_state

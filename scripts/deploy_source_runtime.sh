@@ -16,6 +16,7 @@ TERMINATE_GRACE=20
 SKIP_BUILD=0
 ALLOW_UNPUSHED=0
 DISCORD_MODE=auto
+SOURCE_RUNTIME_CARGO_PROFILE="source-runtime"
 
 usage() {
     cat <<'EOF'
@@ -31,7 +32,7 @@ Usage: scripts/deploy_source_runtime.sh [options]
   --poll-interval SEC       Poll interval; decimals allowed (default: 1)
   --terminate-grace SEC     TERM grace before exact-PID KILL escalation (default: 20)
   --discord auto|yes|no     Restart Discord when previously running, always, or never
-  --skip-build              Reuse target/debug binaries
+  --skip-build              Reuse target/source-runtime binaries
   --allow-unpushed          Permit a revision absent from origin/*
 EOF
 }
@@ -91,13 +92,64 @@ LEGACY_RUNTIME_DISABLED_PLIST="$LEGACY_RUNTIME_PLIST.disabled-by-hone-source-dep
 LOG_DIR="$DATA_DIR/logs"
 LOCK_DIR="$DATA_DIR/runtime/locks"
 RELEASE_ROOT="$DATA_DIR/releases/source"
+SOURCE_RUNTIME_TARGET_DIR="$PROJECT_ROOT/target/$SOURCE_RUNTIME_CARGO_PROFILE"
 WEB_LOG="$LOG_DIR/hone-console-page-source.log"
 WEB_ERR="$LOG_DIR/hone-console-page-source.err.log"
 DISCORD_LOG="$LOG_DIR/hone-discord-source.log"
 DISCORD_ERR="$LOG_DIR/hone-discord-source.err.log"
 mkdir -p "$LOG_DIR" "$RELEASE_ROOT"
+RELEASE_ROOT="$(cd "$RELEASE_ROOT" && pwd -P)"
 
 log() { printf '[deploy] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+
+source_release_link_dir() {
+    local release_link="$RELEASE_ROOT/$1" target resolved name
+    [[ -L "$release_link" ]] || return 0
+    target="$(readlink "$release_link")" || return 0
+    if [[ "$target" != /* ]]; then
+        target="$RELEASE_ROOT/$target"
+    fi
+    [[ -d "$target" ]] || return 0
+    resolved="$(cd "$target" && pwd -P)"
+    name="${resolved##*/}"
+    [[ "${resolved%/*}" == "$RELEASE_ROOT" && "$name" =~ ^[0-9a-f]{40}$ ]] || return 0
+    printf '%s' "$resolved"
+}
+
+prune_old_source_releases() {
+    local candidate name entry unexpected
+    for candidate in "$RELEASE_ROOT"/*; do
+        [[ -d "$candidate" && ! -L "$candidate" ]] || continue
+        name="${candidate##*/}"
+        [[ "$name" =~ ^[0-9a-f]{40}$ ]] || continue
+        [[ "$candidate" == "$RELEASE_DIR" || "$candidate" == "$PREVIOUS_RELEASE_DIR" ]] && continue
+
+        unexpected=0
+        while IFS= read -r -d '' entry; do
+            case "${entry##*/}" in
+                hone-console-page|hone-discord|hone-mcp|manifest.json)
+                    [[ -f "$entry" && ! -L "$entry" ]] || unexpected=1
+                    ;;
+                *) unexpected=1 ;;
+            esac
+        done < <(find "$candidate" -mindepth 1 -maxdepth 1 -print0)
+        if (( unexpected )); then
+            log "retaining unrecognized source release $candidate"
+            continue
+        fi
+
+        if ! rm -f "$candidate/hone-console-page" "$candidate/hone-discord" \
+            "$candidate/hone-mcp" "$candidate/manifest.json"; then
+            log "warning: could not remove known files from old source release $candidate"
+            continue
+        fi
+        if rmdir "$candidate"; then
+            log "pruned old source release $candidate"
+        else
+            log "warning: old source release was not empty and was retained $candidate"
+        fi
+    done
+}
 
 yaml_agent_value() {
     local section="$1" key="$2" default_value="$3" value
@@ -440,6 +492,11 @@ ORIGINAL_DISCORD_PLIST_EXISTS=0
 LEGACY_PLIST_DISABLED_DURING_DEPLOY=0
 ROLLBACK_ARMED=0
 DEPLOY_COMMITTED=0
+ORIGINAL_CURRENT_RELEASE_LINK_EXISTS=0
+ORIGINAL_PREVIOUS_RELEASE_LINK_EXISTS=0
+ORIGINAL_CURRENT_RELEASE_LINK_TARGET=""
+ORIGINAL_PREVIOUS_RELEASE_LINK_TARGET=""
+SOURCE_RELEASE_LINKS_TOUCHED=0
 STAGING_DIR=""
 ROLLBACK_DIR=""
 WEB_PLIST_CANDIDATE=""
@@ -478,6 +535,21 @@ restore_launch_agent_files() {
     fi
 }
 
+restore_source_release_links() {
+    (( SOURCE_RELEASE_LINKS_TOUCHED )) || return 0
+    if (( ORIGINAL_CURRENT_RELEASE_LINK_EXISTS )); then
+        ln -sfn "$ORIGINAL_CURRENT_RELEASE_LINK_TARGET" "$RELEASE_ROOT/current"
+    else
+        rm -f "$RELEASE_ROOT/current"
+    fi
+    if (( ORIGINAL_PREVIOUS_RELEASE_LINK_EXISTS )); then
+        ln -sfn "$ORIGINAL_PREVIOUS_RELEASE_LINK_TARGET" "$RELEASE_ROOT/previous"
+    else
+        rm -f "$RELEASE_ROOT/previous"
+    fi
+    SOURCE_RELEASE_LINKS_TOUCHED=0
+}
+
 rollback() {
     local failure=0 pid offset
     log "rollback begin failed_state=$DEPLOY_STATE"
@@ -501,6 +573,7 @@ rollback() {
             wait_legacy_child_binary "hone-discord" || failure=1
         fi
     fi
+    restore_source_release_links || failure=1
     if (( failure )); then
         echo "[deploy] rollback incomplete; inspect launchctl and logs immediately" >&2
         return 1
@@ -569,7 +642,25 @@ if [[ -n "$current_listener_pid" ]]; then
     fi
 fi
 
+for release_link in current previous; do
+    if { [[ -e "$RELEASE_ROOT/$release_link" ]] || [[ -L "$RELEASE_ROOT/$release_link" ]]; } \
+        && [[ ! -L "$RELEASE_ROOT/$release_link" ]]; then
+        echo "[deploy] source release $release_link must be a symlink: $RELEASE_ROOT/$release_link" >&2
+        exit 1
+    fi
+done
+if [[ -L "$RELEASE_ROOT/current" ]]; then
+    ORIGINAL_CURRENT_RELEASE_LINK_EXISTS=1
+    ORIGINAL_CURRENT_RELEASE_LINK_TARGET="$(readlink "$RELEASE_ROOT/current")"
+fi
+if [[ -L "$RELEASE_ROOT/previous" ]]; then
+    ORIGINAL_PREVIOUS_RELEASE_LINK_EXISTS=1
+    ORIGINAL_PREVIOUS_RELEASE_LINK_TARGET="$(readlink "$RELEASE_ROOT/previous")"
+fi
+
 RELEASE_DIR="$RELEASE_ROOT/$REVISION"
+CURRENT_RELEASE_DIR_BEFORE_DEPLOY="$(source_release_link_dir current || true)"
+PREVIOUS_RELEASE_DIR="$(source_release_link_dir previous || true)"
 BUILD_SOURCE="direct_source_runtime"
 if [[ -d "$RELEASE_DIR" ]]; then
     [[ -f "$RELEASE_DIR/manifest.json" ]] || { echo "[deploy] release manifest missing: $RELEASE_DIR" >&2; exit 1; }
@@ -581,6 +672,7 @@ if [[ -d "$RELEASE_DIR" ]]; then
     MCP_SHA="$(shasum -a 256 "$RELEASE_DIR/hone-mcp" | awk '{print $1}')"
     grep -q "\"git_sha\":\"$REVISION\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"build_source\":\"$BUILD_SOURCE\"" "$RELEASE_DIR/manifest.json" \
+        && grep -q "\"cargo_profile\":\"$SOURCE_RUNTIME_CARGO_PROFILE\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-console-page\":\"$WEB_SHA\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-discord\":\"$DISCORD_SHA\"" "$RELEASE_DIR/manifest.json" \
         && grep -q "\"hone-mcp\":\"$MCP_SHA\"" "$RELEASE_DIR/manifest.json" || {
@@ -594,21 +686,26 @@ else
         log "building revision $REVISION"
         HONE_BUILD_GIT_SHA="$REVISION" HONE_BUILD_TIMESTAMP="$BUILD_TIMESTAMP" \
             HONE_BUILD_SOURCE="$BUILD_SOURCE" \
-            cargo build -p hone-console-page -p hone-discord -p hone-mcp
+            cargo build --profile "$SOURCE_RUNTIME_CARGO_PROFILE" \
+                -p hone-console-page -p hone-discord -p hone-mcp
     fi
     for binary in hone-console-page hone-discord hone-mcp; do
-        [[ -x "$PROJECT_ROOT/target/debug/$binary" ]] || { echo "[deploy] binary missing: target/debug/$binary" >&2; exit 1; }
+        [[ -x "$SOURCE_RUNTIME_TARGET_DIR/$binary" ]] || {
+            echo "[deploy] binary missing: target/$SOURCE_RUNTIME_CARGO_PROFILE/$binary" >&2
+            exit 1
+        }
     done
     STAGING_DIR="$(mktemp -d "$RELEASE_ROOT/.staging.XXXXXX")"
     for binary in hone-console-page hone-discord hone-mcp; do
-        cp "$PROJECT_ROOT/target/debug/$binary" "$STAGING_DIR/$binary"
+        cp "$SOURCE_RUNTIME_TARGET_DIR/$binary" "$STAGING_DIR/$binary"
         chmod 0755 "$STAGING_DIR/$binary"
     done
     WEB_SHA="$(shasum -a 256 "$STAGING_DIR/hone-console-page" | awk '{print $1}')"
     DISCORD_SHA="$(shasum -a 256 "$STAGING_DIR/hone-discord" | awk '{print $1}')"
     MCP_SHA="$(shasum -a 256 "$STAGING_DIR/hone-mcp" | awk '{print $1}')"
-    printf '{"git_sha":"%s","build_timestamp":"%s","build_source":"%s","binaries":{"hone-console-page":"%s","hone-discord":"%s","hone-mcp":"%s"}}\n' \
-        "$REVISION" "$BUILD_TIMESTAMP" "$BUILD_SOURCE" "$WEB_SHA" "$DISCORD_SHA" "$MCP_SHA" > "$STAGING_DIR/manifest.json"
+    printf '{"git_sha":"%s","build_timestamp":"%s","build_source":"%s","cargo_profile":"%s","binaries":{"hone-console-page":"%s","hone-discord":"%s","hone-mcp":"%s"}}\n' \
+        "$REVISION" "$BUILD_TIMESTAMP" "$BUILD_SOURCE" "$SOURCE_RUNTIME_CARGO_PROFILE" \
+        "$WEB_SHA" "$DISCORD_SHA" "$MCP_SHA" > "$STAGING_DIR/manifest.json"
     mv "$STAGING_DIR" "$RELEASE_DIR"
     STAGING_DIR=""
 fi
@@ -726,7 +823,15 @@ if [[ -f "$LEGACY_RUNTIME_PLIST" ]]; then
     mv "$LEGACY_RUNTIME_PLIST" "$LEGACY_RUNTIME_DISABLED_PLIST"
     LEGACY_PLIST_DISABLED_DURING_DEPLOY=1
 fi
+SOURCE_RELEASE_LINKS_TOUCHED=1
+if [[ -n "$CURRENT_RELEASE_DIR_BEFORE_DEPLOY" \
+    && "$CURRENT_RELEASE_DIR_BEFORE_DEPLOY" != "$RELEASE_DIR" ]]; then
+    ln -sfn "$CURRENT_RELEASE_DIR_BEFORE_DEPLOY" "$RELEASE_ROOT/previous"
+    PREVIOUS_RELEASE_DIR="$CURRENT_RELEASE_DIR_BEFORE_DEPLOY"
+fi
 ln -sfn "$RELEASE_DIR" "$RELEASE_ROOT/current"
 DEPLOY_COMMITTED=1
 ROLLBACK_ARMED=0
+SOURCE_RELEASE_LINKS_TOUCHED=0
+prune_old_source_releases
 log "deployment complete revision=$REVISION web_pid=$running_web_pid discord=${START_DISCORD}"

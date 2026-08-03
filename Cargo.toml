@@ -106,3 +106,22 @@ hone-scheduler = { path = "crates/hone-scheduler" }
 hone-channels  = { path = "crates/hone-channels" }
 hone-web-api   = { path = "crates/hone-web-api" }
 hone-event-engine = { path = "crates/hone-event-engine" }
+
+# The workspace is large enough that full dev debuginfo plus incremental object
+# graphs dominate local storage. Line-level backtraces remain available.
+[profile.dev]
+debug = 1
+incremental = false
+
+# Direct-source deployments need useful line-level backtraces without retaining
+# full dev debuginfo or incremental object graphs in every worktree.
+[profile.source-runtime]
+inherits = "dev"
+debug = 1
+incremental = false
+
+# Tests are rebuilt by CI and local validation frequently. Keeping incremental
+# state here costs substantially more disk than it saves for this workspace.
+[profile.test]
+debug = 1
+incremental = false

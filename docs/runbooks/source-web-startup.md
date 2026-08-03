@@ -1,6 +1,6 @@
 # Runbook: Source Web Startup
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 This runbook covers starting the full local source checkout Web stack with the local CLI build path.
 Use it when you need the backend, enabled channel listeners, admin Vite frontend, and public Vite frontend running from the latest local code.
@@ -92,18 +92,44 @@ bash scripts/deploy_source_runtime.sh \
 The checkout may be a clean feature worktree while config/data/skills remain in the normal runtime checkout. The command:
 
 1. refuses a dirty, unexpected, or unpushed revision by default;
-2. builds Web, Discord, and MCP with compile-time Git SHA/build timestamp plus the closed provenance kind `direct_source_runtime`;
-3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256/build-source manifest;
+2. builds Web, Discord, and MCP under the checkout-local `target/source-runtime/` with the root `source-runtime` Cargo profile (`debug=1`, `incremental=false`), compile-time Git SHA/build timestamp, and the closed provenance kind `direct_source_runtime`;
+3. copies them into the immutable `data/releases/source/<git-sha>/` package and verifies its SHA-256/build-source/profile manifest;
 4. waits for active chats to drain;
 5. validates the configured Codex/OpenCode commands on an explicit persistent runtime `PATH`; this path excludes turn-local `.codex/tmp` and `.cache/codex-runtimes` entries even when the deployment is invoked from Codex Desktop;
 6. rejects an unknown owner of port `8077`, then removes either the managed Web/Discord jobs or the legacy `com.honeclaw.source.runtime` supervisor; any captured child reparented to PID 1 is executable-reverified, sent TERM, and only then subject to bounded exact-PID KILL escalation before locks are checked;
 7. atomically installs the revision-bound Web/Discord plists under `~/Library/LaunchAgents` and bootstraps those exact files, so the canary and next login use identical working-directory/environment semantics;
 8. requires `/api/meta.build.git_sha` and `/api/meta.build.source=direct_source_runtime` plus ports `8077/8088`, then requires a fresh Discord login when Discord was previously running;
-9. verifies the running executable paths, moves the legacy supervisor plist to the recoverable `.disabled-by-hone-source-deploy` name, and updates the `current` symlink only after success.
+9. verifies the running executable paths, moves the legacy supervisor plist to the recoverable `.disabled-by-hone-source-deploy` name, and updates the `current` symlink only after success;
+10. records the replaced `current` as `previous`, then prunes only older strictly recognized release directories after rollback is disarmed. Unknown names, symlinks, unexpected contents, and cleanup failures are retained.
 
 One exit trap owns rollback. Any failure after the old runtime is stopped removes all partially started managed jobs, restores and bootstraps the previous managed plists, or restores and bootstraps the legacy supervisor plist, then verifies the services that were running before deployment. A loaded-but-crashed launchd job is still removed even when it no longer has a PID. The disabled legacy plist is retained as a rollback asset; do not load it alongside the managed Web plist because both would compete for the same backend ports.
 
-Use `--allow-unpushed` only for an explicitly accepted local canary. `--skip-build` is for the isolated CI contract or a separately verified exact build, not the normal deployment path. Frontend Vite processes on `3000/3001` remain independent and are not restarted by this command.
+Use `--allow-unpushed` only for an explicitly accepted local canary. `--skip-build` reuses exact binaries from `target/source-runtime/` and is for the isolated CI contract or a separately verified build, not the normal deployment path. Frontend Vite processes on `3000/3001` remain independent and are not restarted by this command.
+
+## Build Storage Policy
+
+Every worktree keeps its own writable Cargo `target/`. Do not point two worktrees at one shared target: concurrent builds can overwrite same-named outputs and invalidate the revision-to-binary proof used by direct deployment. The repository instead bounds the high-churn non-release lanes:
+
+- `[profile.dev]`: line-level debug information and no incremental state for ordinary build/check/run work;
+- `[profile.source-runtime]`: line-level debug information, no incremental state, output under `target/source-runtime/`;
+- `[profile.test]`: line-level debug information, no incremental state, while the normal `cargo test ...` command remains unchanged.
+
+The source release store keeps the verified `current` and `previous` revisions. Inspect both with:
+
+```bash
+readlink data/releases/source/current
+readlink data/releases/source/previous
+du -sh target data/releases/source
+```
+
+Old target trees are rebuildable caches, but clean only an exact checkout after verifying no running process executes from that target:
+
+```bash
+lsof +D /absolute/path/to/checkout/target
+cargo clean --manifest-path /absolute/path/to/checkout/Cargo.toml
+```
+
+Do not delete a whole checkout to clean artifacts, and do not delete `data/releases/source/current` or `previous` manually while a managed runtime is active. A future cross-worktree content-addressed compiler cache may reduce repeated dependency compilation further; it is a separate optimization and must not change the per-worktree output boundary.
 
 ## macOS Rollup Native Addon Failure
 
@@ -161,6 +187,7 @@ For a revision-bound deployment, also require:
 ```bash
 curl -fsS http://127.0.0.1:8077/api/meta
 readlink data/releases/source/current
+readlink data/releases/source/previous
 ```
 
 `build.git_sha` must equal the requested revision, `build.source` must be `direct_source_runtime`, and `build.binary_sha256` must be nonempty. Startup logs must record the same bounded Git SHA/timestamp/profile/source/hash line. `acp_profiles` may be empty until a real adapter connection initializes; after a Codex/OpenCode turn it must report the detected adapter version, selected dialect, compatibility status, detection time, and runner build SHA without paths or credentials. The matching dialect-selection log must include the actual adapter version/status and, for Codex ACP, the companion Codex CLI version/status.
