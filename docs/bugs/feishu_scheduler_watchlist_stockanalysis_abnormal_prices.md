@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 2026-08-03 10:03 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-03 06:02-10:03 CST。
+    - 近窗 `SNDK $1,214.83` 命中 10 次、`MU $823.03` 命中 2 次。
+    - 06:00 `光模块板块关键事件心跳提醒` / `持仓财报与重大新闻心跳提醒` / `存储板块关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,214.83`，其中存储板块样本同时使用 `MU $823.03`。
+    - 09:30 `存储板块关键事件心跳提醒` deliver preview 写 `SNDK $1,214.83 / MU $823.03`，并以“存储价格周期结构性数据更新”落成 `triggered`。
+    - 10:00 `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK $1,214.83 / AAOI $94.32`，并写 `状态：noop`。
+  - 判断：
+    - 最新样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选；不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+
 - 2026-08-03 06:02 CST 运行态复核：`3ee146d8 fix: guard scheduler prices with verified quotes` 已在仓库中完成代码级价格一致性守卫，但本轮自然运行窗口仍观察到 live source 出站候选继续使用异常价格锚，状态从代码级 `Fixed` 回退为运行态 `New`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-03 02:02-06:02 CST。

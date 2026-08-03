@@ -3,10 +3,17 @@
 - 发现时间：2026-06-02 23:06 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：无，非 P1
 
 ## 证据来源
+
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-03 08:40 CST 运行态回退：Web scheduler 发现 2 个到期任务，其中 `187只关注股临近财报日提醒` 已按 `repeat=trading_day` 触发，session `Actor_web__direct__web-user-266454c88ed6` 写入 `session.persist_user detail=done` 和 `recv`。
+  - 同一 session 在后续 source log 中没有对应 `session.persist_assistant`、产品化失败提示、`runner.finished` 或成功正文；`data/sessions.sqlite3` 中该 session 仍停在 2026-05-30 的旧 user 尾部，未追入本次触发。
+  - 08:40-08:44 CST 可见 `portfolio` 工具启动后，云端 portfolio / notif prefs 多次报 Postgres 连接失败并回退，订阅 registry 从 `56` 刷新为 `0`；10:01 CST 后 source log 仍有其它 heartbeat / event-engine 运行，说明不是全局 runtime 缺席。
+  - 同窗 `cron_job_runs.max(executed_at)` 仍停在 `2026-08-01T14:00:52.724451+08:00`，本地台账没有该 Web scheduler 的成功或失败终态。
+  - 判断：这与本单“Web scheduler 触发后没有业务正文、也没有产品化失败回复作为结果”的同根问题一致。虽然本次证据不是 ACP `stream disconnected` 原文字段，而是 handler / runner 无终态，仍落在 2026-06-03 曾补 timeout 收口的边界；当前运行态回退为 `New/P2`。
 
 - `data/runtime/logs/acp-events.log`
   - 时间窗：2026-06-02 20:00-21:05 CST。
@@ -53,6 +60,11 @@
 - 该问题也不同于已归档的 unfinished tool send_failed：本轮没有看到已产出正文后 SSE 离线或工具未完成尾部，而是 ACP transport 断连和缺失最终 `end_turn`。
 
 ## 修复记录
+
+- `2026-08-03 10:03 CST` 运行态复核回退为 `New/P2`：
+  - 08:40 CST `187只关注股临近财报日提醒` 到点触发并持久化 user，但未看到 assistant 成功或失败终态。
+  - 该问题阻断单个 Web scheduler 交付链路；同窗其它 heartbeat / event-engine 仍运行，未见跨渠道全局不可用、错投、敏感泄露或数据破坏，因此仍为 `P2`，非 P1，不创建 GitHub Issue。
+  - 下一步应优先确认 Web scheduler 入口 watchdog 是否在当前 source runtime 生效，以及云端 Postgres 连接失败 / subscription registry 归零是否会绕过 `web_scheduler_handler_timeout` 合成失败结果。
 
 - `2026-06-03 03:07 CST` 已修复：
   - `crates/hone-web-api/src/routes/events.rs` 现在会把 Web scheduler 的产品化失败提示同时广播为 `scheduled_message` SSE 事件，不再只落库到 session history。
