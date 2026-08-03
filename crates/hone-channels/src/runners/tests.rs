@@ -25,7 +25,7 @@ use super::acp_common::{
 use super::codex_acp::{
     codex_acp_effective_args, codex_acp_process_config, codex_instruction_fingerprint,
     configured_codex_model_id, configured_codex_reasoning_effort,
-    patch_codex_session_update_params, render_codex_tool_status, reusable_codex_acp_session_id,
+    patch_codex_session_update_params, persisted_codex_acp_session_id, render_codex_tool_status,
     validate_codex_version_matrix,
 };
 use super::gemini_acp::{gemini_acp_effective_args, validate_gemini_version};
@@ -43,8 +43,8 @@ use super::tool_reasoning::{
 };
 use super::types::{
     AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
-    AgentRunnerEvent, AgentRunnerRequest, DeliveredPushContext, DeliveredPushContextBatch,
-    RunnerConversationInput, RunnerTimeouts,
+    AgentRunnerEvent, AgentRunnerRequest, AgentSessionMetadataCheckpoint, DeliveredPushContext,
+    DeliveredPushContextBatch, RunnerConversationInput, RunnerTimeouts,
 };
 use uuid::Uuid;
 
@@ -235,7 +235,7 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
 }
 
 #[test]
-fn codex_acp_reuses_only_matching_native_turn_generation() {
+fn codex_acp_persisted_id_is_the_only_native_session_binding() {
     let fingerprint = codex_instruction_fingerprint("SYSTEM");
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -243,7 +243,10 @@ fn codex_acp_reuses_only_matching_native_turn_generation() {
         Value::String("old-remote-session".to_string()),
     );
 
-    assert!(reusable_codex_acp_session_id(&metadata, &fingerprint).is_none());
+    assert_eq!(
+        persisted_codex_acp_session_id(&metadata).as_deref(),
+        Some("old-remote-session")
+    );
 
     metadata.insert(
         "codex_acp_session_mode".to_string(),
@@ -254,17 +257,24 @@ fn codex_acp_reuses_only_matching_native_turn_generation() {
         Value::String(fingerprint.clone()),
     );
     assert_eq!(
-        reusable_codex_acp_session_id(&metadata, &fingerprint).as_deref(),
+        persisted_codex_acp_session_id(&metadata).as_deref(),
         Some("old-remote-session")
     );
 
-    assert!(reusable_codex_acp_session_id(&metadata, "changed").is_none());
+    metadata.insert(
+        "codex_acp_instruction_fingerprint".to_string(),
+        Value::String("changed".to_string()),
+    );
+    assert_eq!(
+        persisted_codex_acp_session_id(&metadata).as_deref(),
+        Some("old-remote-session")
+    );
 
     metadata.insert(
         "codex_acp_session_id".to_string(),
         Value::String("  ".to_string()),
     );
-    assert!(reusable_codex_acp_session_id(&metadata, &fingerprint).is_none());
+    assert!(persisted_codex_acp_session_id(&metadata).is_none());
 }
 
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
@@ -286,6 +296,7 @@ fn native_codex_boundary_request(
     developer_instructions: &str,
     current_user_turn: &str,
     session_metadata: HashMap<String, Value>,
+    session_metadata_checkpoint: Option<Arc<dyn AgentSessionMetadataCheckpoint>>,
 ) -> AgentRunnerRequest {
     AgentRunnerRequest {
         session_id: "codex-boundary-contract".to_string(),
@@ -302,6 +313,7 @@ fn native_codex_boundary_request(
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata,
+        session_metadata_checkpoint,
         working_directory: working_directory.display().to_string(),
         allowed_tools: Some(vec![EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL.to_string()]),
         max_tool_calls: None,
@@ -313,23 +325,92 @@ fn native_codex_boundary_request(
     }
 }
 
-/// External-boundary contract observed against @agentclientprotocol/codex-acp 1.1.7.
-/// The double speaks real stdio JSON-RPC and emits the adapter's structured
-/// contextCompaction notification between native turns. Assertions target only
-/// outbound ACP roles/session lifecycle, not private prompt-builder functions.
-#[cfg(unix)]
-#[tokio::test]
-async fn codex_acp_1_1_7_boundary_keeps_every_prompt_current_turn_only() {
-    use std::os::unix::fs::PermissionsExt;
+struct FileMetadataCheckpoint {
+    marker: PathBuf,
+    failure: Option<String>,
+    snapshots: Mutex<Vec<HashMap<String, Value>>>,
+}
 
-    let temp_root =
-        std::env::temp_dir().join(format!("hone-codex-acp-boundary-{}", Uuid::new_v4()));
-    fs::create_dir_all(&temp_root).expect("create boundary temp dir");
-    let adapter = temp_root.join("fake-codex-acp");
-    let capture = temp_root.join("requests.jsonl");
-    let config_capture = temp_root.join("codex-config.jsonl");
-    let session_counter = temp_root.join("session-counter");
-    let script = r#"#!/bin/sh
+impl FileMetadataCheckpoint {
+    fn succeeds(marker: PathBuf) -> Self {
+        Self {
+            marker,
+            failure: None,
+            snapshots: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn fails(marker: PathBuf, message: &str) -> Self {
+        Self {
+            marker,
+            failure: Some(message.to_string()),
+            snapshots: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn latest(&self) -> HashMap<String, Value> {
+        self.snapshots
+            .lock()
+            .expect("checkpoint snapshots lock")
+            .last()
+            .cloned()
+            .expect("at least one metadata checkpoint")
+    }
+
+    fn count(&self) -> usize {
+        self.snapshots
+            .lock()
+            .expect("checkpoint snapshots lock")
+            .len()
+    }
+}
+
+impl AgentSessionMetadataCheckpoint for FileMetadataCheckpoint {
+    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
+        if let Some(message) = self.failure.as_ref() {
+            return Err(message.clone());
+        }
+        self.snapshots
+            .lock()
+            .map_err(|_| "checkpoint snapshots lock poisoned".to_string())?
+            .push(updates);
+        fs::write(&self.marker, "persisted")
+            .map_err(|error| format!("write checkpoint marker: {error}"))?;
+        Ok(())
+    }
+}
+
+/// Executable stdio fixture captured from the Codex CLI 0.146.0 /
+/// @agentclientprotocol/codex-acp 1.1.7 protocol boundary. It intentionally
+/// models only externally observable JSON-RPC behavior that may change when
+/// either executable version changes.
+#[cfg(unix)]
+struct CodexAcp117BoundaryFixture {
+    root: PathBuf,
+    adapter: PathBuf,
+    capture: PathBuf,
+    config_capture: PathBuf,
+    session_counter: PathBuf,
+    checkpoint_marker: PathBuf,
+    crash_on_prompt_marker: PathBuf,
+    fail_resume_marker: PathBuf,
+}
+
+#[cfg(unix)]
+impl CodexAcp117BoundaryFixture {
+    fn new() -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!("hone-codex-acp-boundary-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create boundary temp dir");
+        let adapter = root.join("fake-codex-acp");
+        let capture = root.join("requests.jsonl");
+        let config_capture = root.join("codex-config.jsonl");
+        let session_counter = root.join("session-counter");
+        let checkpoint_marker = root.join("metadata-checkpoint");
+        let crash_on_prompt_marker = root.join("crash-on-prompt");
+        let fail_resume_marker = root.join("fail-resume");
+        let script = r#"#!/bin/sh
 if [ "${1:-}" = "--version" ]; then
   echo "codex-cli 0.146.0"
   exit 0
@@ -349,64 +430,126 @@ while IFS= read -r line; do
       printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"fake-native-%s"}}\n' "$count"
       ;;
     *'"method":"session/resume"'*)
-      echo '{"jsonrpc":"2.0","id":2,"result":{}}'
+      if [ -f "__FAIL_RESUME__" ]; then
+        echo '{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"forced resume failure"}}'
+      else
+        echo '{"jsonrpc":"2.0","id":2,"result":{}}'
+      fi
       ;;
     *'"method":"session/prompt"'*)
-      case "$line" in
-        *'TURN_ONE'*)
-          echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","_meta":{"contextCompaction":true}}}}'
-          ;;
-      esac
-      echo '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+      if [ ! -f "__CHECKPOINT__" ]; then
+        echo '{"jsonrpc":"2.0","id":3,"error":{"code":-32001,"message":"prompt preceded metadata checkpoint"}}'
+      elif [ -f "__CRASH_ON_PROMPT__" ]; then
+        rm -f "__CRASH_ON_PROMPT__"
+        exit 23
+      else
+        case "$line" in
+          *'TURN_ONE'*)
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","_meta":{"contextCompaction":true}}}}'
+            ;;
+        esac
+        echo '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+      fi
       ;;
   esac
 done
 "#
-    .replace("__CAPTURE__", &capture.display().to_string())
-    .replace("__CONFIG_CAPTURE__", &config_capture.display().to_string())
-    .replace("__SESSION_COUNTER__", &session_counter.display().to_string());
-    fs::write(&adapter, script).expect("write fake ACP adapter");
-    let mut permissions = fs::metadata(&adapter)
-        .expect("adapter metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&adapter, permissions).expect("make adapter executable");
+        .replace("__CAPTURE__", &capture.display().to_string())
+        .replace("__CONFIG_CAPTURE__", &config_capture.display().to_string())
+        .replace("__SESSION_COUNTER__", &session_counter.display().to_string())
+        .replace("__CHECKPOINT__", &checkpoint_marker.display().to_string())
+        .replace(
+            "__CRASH_ON_PROMPT__",
+            &crash_on_prompt_marker.display().to_string(),
+        )
+        .replace("__FAIL_RESUME__", &fail_resume_marker.display().to_string());
+        fs::write(&adapter, script).expect("write fake ACP adapter");
+        let mut permissions = fs::metadata(&adapter)
+            .expect("adapter metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&adapter, permissions).expect("make adapter executable");
 
-    let config = CodexAcpConfig {
-        command: adapter.display().to_string(),
-        codex_command: adapter.display().to_string(),
-        model: "gpt-5.6-sol".to_string(),
-        variant: "xhigh".to_string(),
-        ..CodexAcpConfig::default()
-    };
-    let runner = super::CodexAcpRunner::new(
-        config,
-        RunnerTimeouts {
-            step: Duration::from_secs(5),
-            overall: Duration::from_secs(10),
-        },
-    );
+        Self {
+            root,
+            adapter,
+            capture,
+            config_capture,
+            session_counter,
+            checkpoint_marker,
+            crash_on_prompt_marker,
+            fail_resume_marker,
+        }
+    }
+
+    fn runner(&self) -> super::CodexAcpRunner {
+        super::CodexAcpRunner::new(
+            CodexAcpConfig {
+                command: self.adapter.display().to_string(),
+                codex_command: self.adapter.display().to_string(),
+                model: "gpt-5.6-sol".to_string(),
+                variant: "xhigh".to_string(),
+                ..CodexAcpConfig::default()
+            },
+            RunnerTimeouts {
+                step: Duration::from_secs(5),
+                overall: Duration::from_secs(10),
+            },
+        )
+    }
+
+    fn requests(&self) -> Vec<Value> {
+        fs::read_to_string(&self.capture)
+            .expect("captured ACP requests")
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).expect("captured JSON-RPC request"))
+            .collect()
+    }
+
+    fn session_actions(&self) -> Vec<String> {
+        self.requests()
+            .into_iter()
+            .filter_map(|payload| {
+                payload
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .filter(|method| matches!(*method, "session/new" | "session/resume"))
+                    .map(ToString::to_string)
+            })
+            .collect()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for CodexAcp117BoundaryFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+/// External-boundary contract observed against @agentclientprotocol/codex-acp 1.1.7.
+/// The double speaks real stdio JSON-RPC and emits the adapter's structured
+/// contextCompaction notification between native turns. Assertions target only
+/// outbound ACP roles/session lifecycle, not private prompt-builder functions.
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_boundary_keeps_every_prompt_current_turn_only() {
+    let fixture = CodexAcp117BoundaryFixture::new();
+    let runner = fixture.runner();
     assert_eq!(runner.acp_adapter_kind(), Some(AcpAdapterKind::CodexAcp));
     let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
-    let legacy_metadata = HashMap::from([
-        (
-            "codex_acp_session_id".to_string(),
-            Value::String("polluted-v1-session".to_string()),
-        ),
-        (
-            "codex_acp_session_mode".to_string(),
-            Value::String("persistent_resume_v1".to_string()),
-        ),
-        ("acp_needs_sp_reseed".to_string(), Value::Bool(true)),
-    ]);
+    let checkpoint = Arc::new(FileMetadataCheckpoint::succeeds(
+        fixture.checkpoint_marker.clone(),
+    ));
 
     let first = runner
         .run(
             native_codex_boundary_request(
-                &temp_root,
+                &fixture.root,
                 "HONE_DEVELOPER_INSTRUCTIONS",
                 "TURN_ONE",
-                legacy_metadata,
+                HashMap::new(),
+                Some(checkpoint.clone()),
             ),
             emitter.clone(),
         )
@@ -433,7 +576,7 @@ done
     let second = runner
         .run(
             native_codex_boundary_request(
-                &temp_root,
+                &fixture.root,
                 "HONE_DEVELOPER_INSTRUCTIONS",
                 RunnerConversationInput::prepare(
                     AgentConversationStrategy::NativePersistent,
@@ -453,6 +596,7 @@ done
                 )
                 .current_user_turn(),
                 first.session_metadata_updates.clone(),
+                Some(checkpoint.clone()),
             ),
             emitter.clone(),
         )
@@ -466,10 +610,11 @@ done
     let third = runner
         .run(
             native_codex_boundary_request(
-                &temp_root,
+                &fixture.root,
                 "CHANGED_DEVELOPER_INSTRUCTIONS",
                 "TURN_THREE",
                 second.session_metadata_updates.clone(),
+                Some(checkpoint.clone()),
             ),
             emitter,
         )
@@ -481,22 +626,19 @@ done
     );
     assert_eq!(
         third.session_metadata_updates["codex_acp_session_id"],
-        "fake-native-2"
+        "fake-native-1"
+    );
+    assert_eq!(checkpoint.count(), 1);
+    assert_eq!(
+        fs::read_to_string(&fixture.session_counter).expect("session/new counter"),
+        "1\n"
     );
 
-    let requests = fs::read_to_string(&capture).expect("captured ACP requests");
-    let payloads = requests
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("captured JSON-RPC request"))
-        .collect::<Vec<_>>();
-    let session_actions = payloads
-        .iter()
-        .filter_map(|payload| payload.get("method").and_then(Value::as_str))
-        .filter(|method| matches!(*method, "session/new" | "session/resume"))
-        .collect::<Vec<_>>();
+    let payloads = fixture.requests();
+    let session_actions = fixture.session_actions();
     assert_eq!(
         session_actions,
-        vec!["session/new", "session/resume", "session/new"]
+        vec!["session/new", "session/resume", "session/resume"]
     );
     let prompts = payloads
         .iter()
@@ -531,7 +673,8 @@ done
         }
     }
 
-    let process_configs = fs::read_to_string(&config_capture).expect("captured CODEX_CONFIG");
+    let process_configs =
+        fs::read_to_string(&fixture.config_capture).expect("captured CODEX_CONFIG");
     let developer_layers = process_configs
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
@@ -550,8 +693,163 @@ done
             "CHANGED_DEVELOPER_INSTRUCTIONS",
         ]
     );
+}
 
-    let _ = fs::remove_dir_all(&temp_root);
+/// Codex CLI 0.146.0 / codex-acp 1.1.7 regression: a persistent host must
+/// durably record the native ID before the adapter can observe session/prompt.
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_checkpoint_failure_blocks_first_prompt() {
+    let fixture = CodexAcp117BoundaryFixture::new();
+    let runner = fixture.runner();
+    let checkpoint = Arc::new(FileMetadataCheckpoint::fails(
+        fixture.checkpoint_marker.clone(),
+        "forced metadata checkpoint failure",
+    ));
+
+    let result = runner
+        .run(
+            native_codex_boundary_request(
+                &fixture.root,
+                "HONE_DEVELOPER_INSTRUCTIONS",
+                "CHECKPOINT_FAILURE_TURN",
+                HashMap::new(),
+                Some(checkpoint.clone()),
+            ),
+            Arc::new(NoopEmitter),
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert!(
+        result
+            .response
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("forced metadata checkpoint failure"))
+    );
+    assert_eq!(checkpoint.count(), 0);
+    assert_eq!(fixture.session_actions(), vec!["session/new"]);
+    assert!(
+        fixture
+            .requests()
+            .iter()
+            .all(|payload| payload["method"] != "session/prompt")
+    );
+}
+
+/// Codex CLI 0.146.0 / codex-acp 1.1.7 regression: if the process dies after
+/// prompt dispatch, the pre-prompt checkpoint survives and the retry resumes
+/// the same native ID instead of creating another visible Codex task.
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_restart_after_prompt_dispatch_resumes_checkpointed_id() {
+    let fixture = CodexAcp117BoundaryFixture::new();
+    fs::write(&fixture.crash_on_prompt_marker, "crash").expect("arm prompt crash");
+    let runner = fixture.runner();
+    let checkpoint = Arc::new(FileMetadataCheckpoint::succeeds(
+        fixture.checkpoint_marker.clone(),
+    ));
+
+    let interrupted = runner
+        .run(
+            native_codex_boundary_request(
+                &fixture.root,
+                "HONE_DEVELOPER_INSTRUCTIONS",
+                "INTERRUPTED_TURN",
+                HashMap::new(),
+                Some(checkpoint.clone()),
+            ),
+            Arc::new(NoopEmitter),
+        )
+        .await;
+    assert!(!interrupted.response.success);
+
+    let durable_metadata = checkpoint.latest();
+    assert_eq!(durable_metadata["codex_acp_session_id"], "fake-native-1");
+    let resumed = runner
+        .run(
+            native_codex_boundary_request(
+                &fixture.root,
+                "CHANGED_AFTER_RESTART",
+                "RETRY_AFTER_RESTART",
+                durable_metadata,
+                Some(checkpoint.clone()),
+            ),
+            Arc::new(NoopEmitter),
+        )
+        .await;
+
+    assert!(
+        resumed.response.success,
+        "resume: {:?}",
+        resumed.response.error
+    );
+    assert_eq!(
+        resumed.session_metadata_updates["codex_acp_session_id"],
+        "fake-native-1"
+    );
+    assert_eq!(checkpoint.count(), 1);
+    assert_eq!(
+        fixture.session_actions(),
+        vec!["session/new", "session/resume"]
+    );
+    assert_eq!(
+        fs::read_to_string(&fixture.session_counter).expect("session/new counter"),
+        "1\n"
+    );
+}
+
+/// Codex CLI 0.146.0 / codex-acp 1.1.7 regression: an existing binding is
+/// fail-closed. A resume protocol error cannot fall back to session/new.
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_resume_failure_never_forks_a_new_session() {
+    let fixture = CodexAcp117BoundaryFixture::new();
+    fs::write(&fixture.fail_resume_marker, "fail").expect("arm resume failure");
+    let runner = fixture.runner();
+    let checkpoint = Arc::new(FileMetadataCheckpoint::succeeds(
+        fixture.checkpoint_marker.clone(),
+    ));
+    let stale_metadata = HashMap::from([
+        (
+            "codex_acp_session_id".to_string(),
+            Value::String("existing-native-session".to_string()),
+        ),
+        (
+            "codex_acp_session_mode".to_string(),
+            Value::String("persistent_resume_v1".to_string()),
+        ),
+        (
+            "codex_acp_instruction_fingerprint".to_string(),
+            Value::String("stale".to_string()),
+        ),
+    ]);
+
+    let result = runner
+        .run(
+            native_codex_boundary_request(
+                &fixture.root,
+                "CHANGED_DEVELOPER_INSTRUCTIONS",
+                "RESUME_FAILURE_TURN",
+                stale_metadata,
+                Some(checkpoint.clone()),
+            ),
+            Arc::new(NoopEmitter),
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(checkpoint.count(), 0);
+    assert_eq!(fixture.session_actions(), vec!["session/resume"]);
+    assert!(
+        fixture
+            .requests()
+            .iter()
+            .all(|payload| payload["method"] != "session/new"
+                && payload["method"] != "session/prompt")
+    );
+    assert!(!fixture.session_counter.exists());
 }
 
 #[test]

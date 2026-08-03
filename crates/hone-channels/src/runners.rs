@@ -19,8 +19,9 @@ pub(crate) use opencode_acp::OpencodeAcpRunner;
 pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    DeliveredPushContext, DeliveredPushContextBatch, NativeSkillProjection,
-    RunnerConversationInput, RunnerTimeouts, ServiceOwnedInitialPrefix, TerminalStreamPolicy,
+    AgentSessionMetadataCheckpoint, DeliveredPushContext, DeliveredPushContextBatch,
+    NativeSkillProjection, RunnerConversationInput, RunnerTimeouts, ServiceOwnedInitialPrefix,
+    TerminalStreamPolicy,
 };
 
 #[cfg(test)]

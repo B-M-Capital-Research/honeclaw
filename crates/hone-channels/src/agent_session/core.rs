@@ -619,6 +619,7 @@ impl AgentSession {
         emitter: Arc<dyn AgentRunnerEmitter>,
         reexecution_policy: PreparedTurnReexecutionPolicy,
     ) -> AgentRunnerResult {
+        let retains_native_history = runner.conversation_strategy().retains_native_history();
         let mut last_result = self
             .run_runner_with_progress_watchdog(
                 runner,
@@ -633,7 +634,12 @@ impl AgentSession {
         let mut empty_success_retry_count = 0usize;
 
         loop {
-            let retry_blocked = reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+            // A native thread may already have accepted the current prompt
+            // even when its transport result is empty or disconnected. Never
+            // resend that turn automatically: the caller can retry after the
+            // pre-prompt native ID checkpoint has been reloaded from storage.
+            let retry_blocked = retains_native_history
+                || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
                 || !response_has_only_known_read_only_calls(&last_result.response.tool_calls_made)
                 || response_has_persistent_side_effect(&last_result.response.tool_calls_made)
                 || last_result.committed_visible_prefix.is_some();

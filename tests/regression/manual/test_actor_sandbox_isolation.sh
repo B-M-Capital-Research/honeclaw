@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TARGET_FILE="$ROOT_DIR/AGENTS.md"
 EXPECTED_FIRST_LINE="$(head -n 1 "$TARGET_FILE" | tr -d '\r')"
+source "$ROOT_DIR/tests/regression/manual/codex_probe_home.sh"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -41,6 +42,7 @@ make_tmp_file() {
 
 echo "[INFO] verifying codex workspace-write is still read-permissive outside sandbox"
 CODEX_WS="$(make_tmp_dir)"
+hone_prepare_isolated_codex_home "$CODEX_WS"
 CODEX_OUT="$(make_tmp_file)"
 CODEX_STDOUT="$(make_tmp_file)"
 CODEX_STDERR="$(make_tmp_file)"

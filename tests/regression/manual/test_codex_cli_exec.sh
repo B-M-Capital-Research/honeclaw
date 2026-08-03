@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "$ROOT_DIR/tests/regression/manual/codex_probe_home.sh"
+
 EXPECTED_TOKEN="CODEX_CLI_OK"
 PROMPT="Reply with exactly one line: ${EXPECTED_TOKEN}"
 
@@ -14,10 +17,12 @@ if ! command -v codex >/dev/null 2>&1; then
   exit 1
 fi
 
-OUT_FILE="$(mktemp "${TMPDIR:-/tmp}/hone_codex_test_out.XXXXXX")"
-STDOUT_FILE="$(mktemp "${TMPDIR:-/tmp}/hone_codex_test_stdout.XXXXXX")"
-STDERR_FILE="$(mktemp "${TMPDIR:-/tmp}/hone_codex_test_stderr.XXXXXX")"
-trap 'rm -f "$OUT_FILE" "$STDOUT_FILE" "$STDERR_FILE"' EXIT
+PROBE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/hone_codex_test.XXXXXX")"
+OUT_FILE="$PROBE_ROOT/result.txt"
+STDOUT_FILE="$PROBE_ROOT/stdout.log"
+STDERR_FILE="$PROBE_ROOT/stderr.log"
+trap 'rm -rf "$PROBE_ROOT"' EXIT
+hone_prepare_isolated_codex_home "$PROBE_ROOT"
 
 if ! printf '%s\n' "$PROMPT" | codex exec --skip-git-repo-check -o "$OUT_FILE" - >"$STDOUT_FILE" 2>"$STDERR_FILE"; then
   echo "[FAIL] codex exec returned non-zero exit code" >&2

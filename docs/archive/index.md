@@ -4,6 +4,18 @@ Last updated: 2026-08-03
 
 ## 2026-08-03
 
+### One Codex Native Session Per Persistent Hone Conversation
+
+- Status: done
+- Date: 2026-08-03
+- Plan: `docs/current-plans/acp-runtime-refactor.md` (active umbrella plan remains open)
+- Handoff: `docs/handoffs/2026-08-03-codex-single-native-session.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-03-11-make-the-persisted-codex-native-id-the-sole-conversation-identity`; `docs/adr/0002-agent-runtime-acp-refactor.md`
+- Related PRs / commits: delivered directly through `main`; exact revision remains discoverable from Git history and the source-runtime release manifest; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`; Codex CLI `0.146.0` / codex-acp `1.1.7` executable boundary; isolated manual Codex probe home
+- Current conclusion: a nonempty persisted native ID is the sole identity binding. Missing ID alone permits `session/new`; the returned ID is checkpointed before prompt, mode/fingerprint changes resume in place, resume failure cannot fork, and native transport failures are never automatically resent.
+- Next entry point: `docs/handoffs/2026-08-03-codex-single-native-session.md`. The umbrella ACP runtime refactor remains active and is not archived by this completed subphase.
+
 ### Bounded Local Build Storage And Source Release Retention
 
 - Status: done

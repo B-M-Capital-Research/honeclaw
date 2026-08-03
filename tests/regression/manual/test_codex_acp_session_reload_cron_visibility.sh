@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
+source "$ROOT_DIR/tests/regression/manual/codex_probe_home.sh"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -157,6 +158,7 @@ EOF
 
 HONE_MCP_BIN="$(ensure_hone_mcp_binary)"
 WORK_DIR="$(make_tmp_dir)"
+hone_prepare_isolated_codex_home "$WORK_DIR"
 IN_PIPE="$WORK_DIR/in.pipe"
 OUT_PIPE="$WORK_DIR/out.pipe"
 STDOUT_LOG="$WORK_DIR/codex_acp.stdout.log"

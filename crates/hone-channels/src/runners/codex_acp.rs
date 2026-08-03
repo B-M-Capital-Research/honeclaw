@@ -41,31 +41,18 @@ const MIN_CODEX_VERSION: CliVersion = CliVersion {
 };
 const CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS: &[u64] = &[200, 500];
 
-pub(crate) fn reusable_codex_acp_session_id(
+pub(crate) fn persisted_codex_acp_session_id(
     session_metadata: &HashMap<String, Value>,
-    instruction_fingerprint: &str,
 ) -> Option<String> {
-    // Only sessions created under the role-clean contract and the exact same
-    // developer instruction generation may be resumed. Older mode markers or
-    // changed instructions deliberately rotate to a new native task.
-    let contract_matches = session_metadata
-        .get(CODEX_ACP_SESSION_MODE_KEY)
+    // The persisted native ID is the identity binding. Mode and instruction
+    // fingerprint are audit/migration metadata only: changing either must not
+    // fork a second visible Codex task for the same logical Hone session.
+    session_metadata
+        .get(CODEX_ACP_SESSION_KEY)
         .and_then(Value::as_str)
-        .is_some_and(|value| value == CODEX_ACP_PERSISTENT_SESSION_MODE)
-        && session_metadata
-            .get(CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY)
-            .and_then(Value::as_str)
-            .is_some_and(|value| value == instruction_fingerprint);
-    contract_matches
-        .then(|| {
-            session_metadata
-                .get(CODEX_ACP_SESSION_KEY)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
-        .flatten()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 pub(crate) struct CodexAcpRunner {
@@ -652,9 +639,19 @@ async fn run_codex_acp(
         }
         next_id += 1;
 
-        let codex_session_id = if let Some(session_id) =
-            reusable_codex_acp_session_id(&request.session_metadata, &instruction_fingerprint)
+        let (codex_session_id, created_codex_session) = if let Some(session_id) =
+            persisted_codex_acp_session_id(&request.session_metadata)
         {
+            let previous_fingerprint = request
+                .session_metadata
+                .get(CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY)
+                .and_then(Value::as_str);
+            if previous_fingerprint.is_some_and(|value| value != instruction_fingerprint) {
+                tracing::info!(
+                    "[AgentRunner/codex] session={} developer instructions changed; retaining native acp session={session_id}",
+                    request.session_id,
+                );
+            }
             tracing::info!(
                 "[AgentRunner/codex] session={} resuming persistent acp session={session_id}",
                 request.session_id,
@@ -672,24 +669,27 @@ async fn run_codex_acp(
                 Some(&acp_log),
             )
             .await?;
-            session_id
+            (session_id, false)
         } else {
             tracing::info!(
                 "[AgentRunner/codex] session={} creating native-turn-v2 acp session",
                 request.session_id,
             );
-            create_acp_session(
-                "codex",
-                &mut stdin,
-                &mut reader,
-                next_id,
-                &request.working_directory,
-                mcp_servers.clone(),
-                startup_timeout,
-                stderr_buffer.clone(),
-                Some(&acp_log),
+            (
+                create_acp_session(
+                    "codex",
+                    &mut stdin,
+                    &mut reader,
+                    next_id,
+                    &request.working_directory,
+                    mcp_servers.clone(),
+                    startup_timeout,
+                    stderr_buffer.clone(),
+                    Some(&acp_log),
+                )
+                .await?,
+                true,
             )
-            .await?
         };
         next_id += 1;
 
@@ -705,6 +705,16 @@ async fn run_codex_acp(
             CODEX_ACP_INSTRUCTION_FINGERPRINT_KEY.to_string(),
             Value::String(instruction_fingerprint.clone()),
         );
+        if created_codex_session
+            && let Some(checkpoint) = request.session_metadata_checkpoint.as_ref()
+        {
+            checkpoint
+                .persist(metadata_updates.clone())
+                .map_err(|message| AgentSessionError {
+                    kind: AgentSessionErrorKind::Io,
+                    message,
+                })?;
+        }
         write_jsonrpc_request(
             &mut stdin,
             next_id,

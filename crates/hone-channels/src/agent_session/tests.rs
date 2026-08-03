@@ -325,6 +325,11 @@ struct MockSequencedRunner {
     results: Arc<Mutex<std::collections::VecDeque<AgentRunnerResult>>>,
 }
 
+#[derive(Clone)]
+struct MockNativeSequencedRunner {
+    results: Arc<Mutex<std::collections::VecDeque<AgentRunnerResult>>>,
+}
+
 struct MockStreamingRun {
     events: Vec<AgentRunnerEvent>,
     result: AgentRunnerResult,
@@ -448,6 +453,29 @@ impl AgentRunner for MockSequencedRunner {
             .expect("lock results")
             .pop_front()
             .expect("queued runner result")
+    }
+}
+
+#[async_trait]
+impl AgentRunner for MockNativeSequencedRunner {
+    fn name(&self) -> &'static str {
+        "mock_native_sequenced"
+    }
+
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::NativePersistent
+    }
+
+    async fn run(
+        &self,
+        _request: AgentRunnerRequest,
+        _emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        self.results
+            .lock()
+            .expect("lock native results")
+            .pop_front()
+            .expect("queued native runner result")
     }
 }
 
@@ -1357,6 +1385,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -1444,6 +1473,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -1468,6 +1498,82 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
     assert!(result.response.success);
     assert_eq!(result.response.content, "重试后成功");
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn native_persistent_failure_never_resends_the_current_turn_automatically() {
+    let root = make_temp_dir("hone_channels_native_persistent_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("discord", "native-no-retry", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: true,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::from([(
+                "codex_acp_session_id".to_string(),
+                Value::String("checkpointed-native-id".to_string()),
+            )]),
+            context_messages: None,
+        },
+        recorded_runner_result("duplicate turn must not run", true),
+    ])));
+    let runner = MockNativeSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "native-no-retry-session".to_string(),
+        actor_label: "discord:native-no-retry".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        conversation: RunnerConversationInput::NativePersistent {
+            developer_instructions: "system".to_string(),
+            current_user_turn: "one user turn".to_string(),
+        },
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        agent_owned_finance_loop: false,
+        preloaded_evidence_calls: 0,
+        service_owned_initial_prefix: None,
+        terminal_stream_policy: Default::default(),
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_empty_success_retry(
+            &runner,
+            "mock_native_sequenced",
+            "native-no-retry-session",
+            request,
+            Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(results.lock().expect("results lock").len(), 1);
+    assert_eq!(
+        result.session_metadata_updates["codex_acp_session_id"],
+        "checkpointed-native-id"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -1528,6 +1634,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -1748,6 +1855,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2320,6 +2428,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2403,6 +2512,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2495,6 +2605,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2587,6 +2698,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2664,6 +2776,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -2863,6 +2976,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -3004,6 +3118,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -3125,6 +3240,7 @@ fn repair_trace_request(
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -3449,6 +3565,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -3559,6 +3676,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
@@ -6939,6 +7057,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         timeout: None,
         gemini_stream: GeminiStreamOptions::default(),
         session_metadata: HashMap::new(),
+        session_metadata_checkpoint: None,
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,

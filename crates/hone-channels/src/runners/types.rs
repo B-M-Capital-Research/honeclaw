@@ -137,6 +137,16 @@ pub trait AgentRunnerEmitter: Send + Sync {
     }
 }
 
+/// Narrow host-owned persistence boundary for runner metadata that must be
+/// durable before the runner performs the next irreversible protocol step.
+///
+/// Runners still cannot read session storage. The session/execution layer
+/// supplies this checkpoint only for persistent logical conversations; a
+/// transient task has no durable native-session identity to checkpoint.
+pub trait AgentSessionMetadataCheckpoint: Send + Sync {
+    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String>;
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunnerTimeouts {
     pub step: Duration,
@@ -373,6 +383,7 @@ pub struct AgentRunnerRequest {
     pub timeout: Option<Duration>,
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
+    pub session_metadata_checkpoint: Option<Arc<dyn AgentSessionMetadataCheckpoint>>,
     pub working_directory: String,
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,

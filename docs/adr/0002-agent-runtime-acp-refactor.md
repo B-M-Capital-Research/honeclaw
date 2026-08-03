@@ -1,7 +1,7 @@
 # ADR 0002: ACP-Aligned Agent Runtime Refactor
 
 Date: 2026-03-17
-Updated: 2026-08-02
+Updated: 2026-08-03
 Status: Accepted
 Owner: shared
 Related docs: `docs/decisions.md`, `docs/current-plans/acp-runtime-refactor.md`, `docs/archive/index.md`
@@ -31,7 +31,7 @@ Superseded by: N/A
 - Keep adapter-specific workspace preparation orthogonal to conversation ownership and stream shape. `NativeSkillProjection::CodexWorkspace` is an explicit runner capability; a future native-persistent runner must not inherit Codex skill links or MCP filtering merely because it retains history.
 - Take one Beijing clock reading per turn and reuse it across automatic attempts. For a trusted persistent Codex ACP Interactive turn, the current-turn payload is only that time plus normalized current user/attachment content; the native thread owns retained history, tool/MCP lifecycle, and compaction.
 - Provision the complete Hone instructions as Codex `developer_instructions` through the adapter-supported `CODEX_CONFIG` process boundary. Every Codex ACP `session/prompt`, including the first prompt and the first prompt after native compaction, contains only the canonical current user turn. Compaction is telemetry and never requests a user-message seed or reseed.
-- Bind each native Codex generation to `codex_acp_session_mode=native_turn_v2` and a SHA-256 instruction fingerprint. Legacy or instruction-mismatched metadata deliberately creates a new native session; an exact v2 match resumes and still fails closed if resume fails.
+- Bind each persistent Hone logical session to the first nonempty `codex_acp_session_id` it receives. `codex_acp_session_mode=native_turn_v2` and the SHA-256 instruction fingerprint remain audit/migration metadata but never rotate the identity. Only missing ID calls `session/new`; the new ID plus mode/fingerprint is checkpointed through a narrow host-owned persistence boundary before the first `session/prompt`. Existing IDs always resume and fail closed on resume failure. Native prompt results are not automatically resent because transport failure does not prove the native thread rejected the turn.
 - Before starting a trusted persistent Codex ACP turn, expose each enabled Hone system/custom skill as an individual symlink under the actor workspace's `.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone MCP remains for live data/action tools, not Codex skill loading.
 - Session storage now writes the normalized version-4 user/assistant `content[] + status` model. Hone-managed replay runners may consume it, but Codex native prompts never serialize that local transcript, including during migration or compaction.
 - Choose `opencode acp` over stdio / JSON-RPC as the production integration path for `opencode`, instead of CLI text parsing or a `serve` compatibility layer.
@@ -46,6 +46,7 @@ Superseded by: N/A
 - Existing callers, frontend streaming consumers, config files, and session file formats all need to migrate together
 - Prompt-prefix cache hits should become more stable, but large static instructions must stay in the native developer layer and mutable content such as summaries must not be pushed into it or into a later user turn
 - Persistent Codex Interactive input must not duplicate Harness-owned history/tool/compaction semantics or stable answer/tool-loop contracts; OpenCode and Hone-managed execution paths retain their separately validated context behavior
+- Any nonempty persisted Codex native ID, including a legacy pre-marker value, remains authoritative until an operator explicitly repairs or resets it; instruction/config changes update audit metadata in place and never create a replacement task.
 - A new same-major adapter version is operationally compatible, not validated. Its profile and logs must retain the detected version, baseline dialect, and compatibility status until a real captured fixture promotes it to a new validated dialect.
 - Runtime profile files and `/api/meta` must not contain prompt text, credentials, absolute tool paths, user data, or raw protocol payloads.
 - Native Codex skill projection must preserve actor-owned `.agents/skills` entries, remove only Hone-managed stale `hone__*` symlinks, and follow the shared skill registry's enabled state

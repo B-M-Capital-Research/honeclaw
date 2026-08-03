@@ -12,8 +12,8 @@ use crate::core::runtime_config_path;
 use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
 use crate::runners::{
-    AgentRunner, AgentRunnerRequest, DeliveredPushContextBatch, NativeSkillProjection,
-    RunnerConversationInput, TerminalStreamPolicy,
+    AgentRunner, AgentRunnerRequest, AgentSessionMetadataCheckpoint, DeliveredPushContextBatch,
+    NativeSkillProjection, RunnerConversationInput, TerminalStreamPolicy,
 };
 use crate::sandbox::{ensure_actor_sandbox, sync_native_codex_skill_links};
 
@@ -71,6 +71,31 @@ pub(crate) struct PreparedExecution {
 
 pub(crate) struct ExecutionService {
     core: Arc<HoneBotCore>,
+}
+
+struct PersistentSessionMetadataCheckpoint {
+    core: Arc<HoneBotCore>,
+    session_id: String,
+}
+
+impl AgentSessionMetadataCheckpoint for PersistentSessionMetadataCheckpoint {
+    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
+        match self
+            .core
+            .session_storage
+            .update_metadata(&self.session_id, updates)
+        {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(format!(
+                "persistent session metadata checkpoint target is missing: {}",
+                self.session_id
+            )),
+            Err(error) => Err(format!(
+                "persistent session metadata checkpoint failed for {}: {error}",
+                self.session_id
+            )),
+        }
+    }
 }
 
 impl ExecutionService {
@@ -164,6 +189,16 @@ impl ExecutionService {
             ExecutionMode::PersistentConversation => request.actor.user_id.clone(),
             ExecutionMode::TransientTask => request.actor.session_id(),
         };
+        let session_metadata_checkpoint = match request.mode {
+            ExecutionMode::PersistentConversation => {
+                Some(Arc::new(PersistentSessionMetadataCheckpoint {
+                    core: self.core.clone(),
+                    session_id: request.session_id.clone(),
+                })
+                    as Arc<dyn AgentSessionMetadataCheckpoint>)
+            }
+            ExecutionMode::TransientTask => None,
+        };
 
         let conversation = RunnerConversationInput::prepare(
             conversation_strategy,
@@ -189,6 +224,7 @@ impl ExecutionService {
                 timeout: request.timeout,
                 gemini_stream: request.gemini_stream,
                 session_metadata: request.session_metadata,
+                session_metadata_checkpoint,
                 working_directory,
                 allowed_tools: request.allowed_tools,
                 max_tool_calls: request.max_tool_calls,
@@ -418,6 +454,13 @@ mod tests {
             .expect("prepare should succeed");
 
         assert_eq!(prepared.runner_request.actor_label, actor.user_id);
+        assert!(
+            prepared
+                .runner_request
+                .session_metadata_checkpoint
+                .is_some(),
+            "persistent conversations must expose a pre-prompt metadata checkpoint"
+        );
         assert_eq!(
             prepared.runner_request.terminal_stream_policy,
             TerminalStreamPolicy::Disabled,
@@ -440,6 +483,49 @@ mod tests {
             .expect("prepare should succeed");
 
         assert_eq!(prepared.runner_request.actor_label, actor.session_id());
+        assert!(
+            prepared
+                .runner_request
+                .session_metadata_checkpoint
+                .is_none(),
+            "transient tasks must not acquire a persistent native-session binding"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn persistent_metadata_checkpoint_updates_authoritative_session_storage() {
+        let root = temp_root("execution_persistent_metadata_checkpoint");
+        let core = make_test_core(&root, "codex_cli");
+        let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
+        core.session_storage
+            .create_session(Some("session-1"), Some(actor.clone()), None)
+            .expect("create persistent session");
+        let prepared = ExecutionService::new(core.clone())
+            .prepare(make_request(
+                actor,
+                ExecutionMode::PersistentConversation,
+                ExecutionRunnerSelection::Configured,
+            ))
+            .expect("prepare should succeed");
+        let checkpoint = prepared
+            .runner_request
+            .session_metadata_checkpoint
+            .expect("persistent checkpoint");
+
+        checkpoint
+            .persist(HashMap::from([(
+                "codex_acp_session_id".to_string(),
+                Value::String("native-session-1".to_string()),
+            )]))
+            .expect("checkpoint metadata");
+
+        let stored = core
+            .session_storage
+            .load_session("session-1")
+            .expect("load session")
+            .expect("session exists");
+        assert_eq!(stored.metadata["codex_acp_session_id"], "native-session-1");
         let _ = std::fs::remove_dir_all(root);
     }
 

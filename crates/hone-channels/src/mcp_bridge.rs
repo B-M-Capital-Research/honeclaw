@@ -896,6 +896,7 @@ mod tests {
             timeout: Some(Duration::from_secs(30)),
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),
+            session_metadata_checkpoint: None,
             working_directory: ".".to_string(),
             allowed_tools: Some(vec![
                 "discover_skills".to_string(),

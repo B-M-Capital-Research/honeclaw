@@ -11,6 +11,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "$ROOT_DIR/tests/regression/manual/codex_probe_home.sh"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -54,6 +55,9 @@ make_tmp_dir() {
   TMP_ITEMS+=("$dir")
   printf '%s\n' "$dir"
 }
+
+CODEX_PROBE_ROOT="$(make_tmp_dir)"
+hone_prepare_isolated_codex_home "$CODEX_PROBE_ROOT"
 
 write_override_config() {
   local case_dir="$1"

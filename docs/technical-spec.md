@@ -225,7 +225,7 @@ This rule is already applied to:
 - Defaults to `gpt-5.6-sol` with `xhigh` reasoning effort
 - Requires `@openai/codex >= 0.146.0` and `@agentclientprotocol/codex-acp >= 1.1.7` before starting a turn
 - Applies model, reasoning effort, safety settings, extra overrides, and Hone developer instructions through the adapter-supported `CODEX_CONFIG`; Codex ACP `session/set_model` is not used
-- Maps one deterministic Hone logical session to one fingerprint-compatible `native_turn_v2` Codex generation: the cold start uses `session/new`, later turns use `session/resume`
+- Maps one deterministic persistent Hone logical session to one stored Codex native ID: only a missing ID uses `session/new`, the returned binding is checkpointed before the first prompt, and all later turns use fail-closed `session/resume` regardless of mode/fingerprint changes
 - Sends only the canonical current user turn to every `session/prompt`; static instructions, local transcript, historical tool protocol, and compact summaries never enter that user payload
 - Treats native compact updates as internal telemetry and never seeds or reseeds instructions through a later user turn
 - Never uses `session/load` for continuation because it can replay historical ACP updates into the current stream

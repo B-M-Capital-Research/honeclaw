@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-08-02
+- updated_at: 2026-08-03
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -13,6 +13,7 @@
   - `crates/hone-channels/src/outbound.rs`
   - `bins/hone-imessage/src/main.rs`
   - `crates/hone-channels/src/runners/types.rs`
+  - `crates/hone-channels/src/agent_session/emitter.rs`
   - `crates/hone-channels/src/turn_builder.rs`
   - `crates/hone-channels/src/execution.rs`
   - `crates/hone-channels/src/sandbox.rs`
@@ -30,6 +31,7 @@
   - `crates/hone-web-api/src/routes/meta.rs`
   - `crates/hone-web-api/src/types.rs`
   - `scripts/deploy_source_runtime.sh`
+  - `tests/regression/manual/codex_probe_home.sh`
   - `tests/regression/ci/test_source_runtime_deploy_contract.sh`
   - `docs/runbooks/source-web-startup.md`
   - `config.example.yaml`
@@ -43,6 +45,7 @@
   - `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
   - `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
   - `docs/handoffs/2026-08-02-acp-tool-status-projection.md`
+  - `docs/handoffs/2026-08-03-codex-single-native-session.md`
 
 ## Goal
 
@@ -71,13 +74,13 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-07-13 follow-up: the simplification task removed the in-process `function_calling` agent and sequential `multi-agent` runner, moved current defaults to Codex ACP with GPT-5.6 Sol / xhigh, and reduced duplicated prompt layers. This plan remains the parent ACP architecture record.
 - 2026-07-13 completion: the simplification follow-up is done and archived at `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`; verification and migration details are in `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`.
 - 2026-07-29 follow-up: a real Discord admin turn proved that `codex-acp 1.1.7` creates the intended `gpt-5.6-sol[xhigh]` session but rejected Hone's subsequent bare `gpt-5.6-sol` legacy `session/set_model` request before `session/prompt`. The selector is now normalized and covered. A second real image turn then exposed a separate 95.5-second pre-placeholder delay: two optional Apple Vision OCR helper compilation timeouts ran before ACP even started. Codex ACP admin image turns now bypass that redundant pre-extraction and use native image reads; Kimi/Hone session compaction remains unchanged and out of scope.
-- 2026-07-30 live continuity diagnosis: Codex ACP still intentionally creates one fresh upstream ACP session per Hone turn. A controlled two-turn Discord probe kept one deterministic Hone session, created two distinct Codex rollout/session IDs, injected the first `user/assistant` pair into the second turn's `### Restored Conversation Transcript ###`, and recovered the exact sentinel. Native Codex session views therefore show separate one-turn rollouts even though semantic conversation continuity is preserved by Hone's local transcript restore. Evidence and local adapter compatibility findings are recorded in `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`.
+- 2026-07-30 historical continuity diagnosis (superseded): the then-current Codex ACP path created one fresh upstream session per Hone turn and replayed the local transcript. The evidence remains in `docs/handoffs/2026-07-30-codex-acp-session-continuity-diagnosis.md`, but both fresh-session replay and the later fingerprint-rotation rule are replaced by current-turn-only prompts plus one persisted native ID per logical session.
 - 2026-07-30 compatibility follow-up: replaced the unrelated Homebrew `zed-industries/codex-acp 0.11.1` with npm `@agentclientprotocol/codex-acp 1.1.7`, installed npm `@openai/codex 0.146.0`, raised Hone's validated floors, and moved Codex model/reasoning selection into process `-c` overrides before `session/new`. This avoids adapter-specific `session/set_model` model-id formatting and makes version probes use the same `CODEX_PATH` as real turns.
 - 2026-07-30 persistent-session follow-up: the preceding fresh-session diagnosis is retained as historical evidence of the old behavior, but its contract is superseded by `D-2026-07-30-01`. Hone now creates one native Codex session for each deterministic Hone logical session, stores a mode-marked native ID, resumes it on every later turn with `session/resume`, and seeds local transcript only once when entering persistent mode. Codex owns history and automatic compaction; a resume failure fails closed instead of silently forking the Codex page.
 - 2026-07-31 static-prompt lifecycle follow-up: Codex persistent sessions now send the complete static Hone system prompt only in the first native prompt. Ordinary `session/resume` turns send the freshly assembled runtime input without repeating the static prompt. Codex ACP 1.1.7 `_meta.contextCompaction=true` updates are treated as internal harness lifecycle events and set one pending reseed; the next successful prompt includes the static prompt once and clears the flag. The legacy compact text and usage-drop paths remain fallback detection. OpenCode behavior is unchanged.
 - 2026-07-31 minimal native-turn follow-up: trusted Codex ACP Interactive turns now treat the native harness as owner of retained history, tool/MCP lifecycle, and compaction. Their user payload contains only current Beijing time plus normalized current user content, including attachment/image material or an explicit slash-skill task. Hone no longer repeats Session IDs/history, receive-routing metadata, related-skill hints, entity-loop instructions, or final-answer contracts on those turns. OpenCode, scheduled/heartbeat tasks, and strict actor fallback remain unchanged.
 - 2026-07-31 native-skill follow-up: trusted persistent Codex ACP workspaces expose each enabled Hone system/custom skill through an individual symlink under `<actor sandbox>/.agents/skills/`. Codex owns skill discovery and progressive `SKILL.md` loading; Hone no longer repeats the MCP `SkillTool` loading contract or exposes skill-loading MCP schemas on that path. MCP remains the transport for live Hone data/action tools, while legacy runners retain the existing skill bridge.
-- 2026-08-01 native-turn contract follow-up (done; parent plan remains active): replaced the seed/reseed user-message convention with an explicit runner conversation strategy. Persistent Codex sessions receive Hone instructions through Codex's native `developer_instructions` configuration and every ACP `session/prompt` contains only the canonical current user turn. Native compaction never causes Hone to replay system instructions, local transcript, historical user/assistant messages, tool calls, or tool results. The persistent-session mode and instruction fingerprint form a generation boundary so pre-contract or instruction-mismatched native sessions rotate deliberately instead of being resumed as if clean. OpenCode remains a fresh-session Hone-replay adapter until its own resume/event contract is independently proven.
+- 2026-08-01 native-turn contract follow-up (done; identity subdecision superseded 2026-08-03; parent plan remains active): replaced the seed/reseed user-message convention with an explicit runner conversation strategy. Persistent Codex sessions receive Hone instructions through Codex's native `developer_instructions` configuration and every ACP `session/prompt` contains only the canonical current user turn. Native compaction never causes Hone to replay system instructions, local transcript, historical user/assistant messages, tool calls, or tool results. The original mode/fingerprint generation-rotation rule is historical and replaced by the 2026-08-03 stable persisted-ID binding. OpenCode remains a fresh-session Hone-replay adapter until its own resume/event contract is independently proven.
 - 2026-08-02 MCP startup and execute-status follow-up (done; parent plan remains active): `codex-acp 1.1.7` can report a cancelled MCP startup watcher as a synthetic terminal `tool_call` with `toolCallId=mcp_startup.<server>` and `status=failed`. Hone now retains that adapter lifecycle telemetry in the raw ACP log while excluding it from visible progress, pending/restored tool state, and business tool counts. Structured MCP calls and actual shell execution are distinguished from `rawInput`; MCP calls use bounded tool/argument summaries, shell calls use safe categories without arguments, secrets, or full paths, and completion events inherit the same start summary when Codex omits start metadata. Discord, Telegram, and Feishu direct/group projections share the Full/Compact rendering contract, while iMessage forwards safe tool-start state to its console pending view.
 - 2026-08-02 version-aware dialect and source-deployment follow-up (done locally; GCE rollout paused): keep the existing Codex/OpenCode conversation ownership split, but replace static observed-version labels with one shared runtime adapter profile selected from actual CLI/adapter probes. Known profiles bind adapter identity, detected version, compatibility status, stream dialect, and fixture provenance; unknown newer versions run only through an explicit conservative compatibility policy with visible telemetry, while older/structurally incompatible versions fail before a turn. Runtime metadata exposes sanitized build provenance and selected profiles. Direct source deployment is one repository-owned state machine with active-turn drain, exact PID/lock release, startup/readiness separation, all-service rollback, immutable commit provenance, and no credential output. A real preflight found the existing `com.honeclaw.source.runtime` parent/child topology, so the state machine now explicitly migrates that supervisor to persistent revision-bound Web/Discord LaunchAgents, rejects unknown port owners, and restores the old plist/job on failure. Final local implementation revision `ee9da19a9ac3d30e5df52c32dff7c40a387948dd` is deployed and accepted; GCE rollout is deliberately paused by user direction.
 
@@ -116,13 +119,30 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - [x] Define runner conversation strategies so native persistence, structured replay, and single-prompt compilation are not inferred from one ambiguous `manages_own_context` boolean.
 - [x] Provision Codex developer instructions through the adapter-supported configuration boundary and bind the native session to an instruction fingerprint.
 - [x] Make every Codex `session/prompt` current-turn-only on new, resumed, and post-compaction turns; remove local transcript/system reseeding from that transport.
-- [x] Rotate legacy `persistent_resume_v1` and instruction-mismatched session metadata to a new native generation without deleting the old Codex task.
+- [x] Historical 2026-08-01 acceptance: rotate legacy `persistent_resume_v1` and instruction-mismatched metadata. Superseded on 2026-08-03 by stable persisted-ID resume; retained here only as completed historical evidence.
 - [x] Validate observable JSON-RPC requests against an ACP boundary double, including a compact notification between turns; avoid tests coupled only to private prompt-builder implementation.
 - [x] Model Codex ACP and OpenCode ACP as versioned stream dialects. Preserve every safely available visible/progress/reasoning/tool/usage lifecycle detail without requiring byte-identical cross-runner channel output, and label fixtures with the adapter versions they were observed from.
 - [x] Probe the installed real Codex ACP and OpenCode ACP entrypoints without changing provider authentication or exposing credentials.
 - [x] Run the repository gates, synchronize ADR/decision/invariant/repo-map/handoff/archive evidence, and commit only the reviewed task files.
 
 ## Validation
+
+### 2026-08-03 Discord/Codex 唯一原生会话验收清单
+
+- [x] 同一持久 `SessionIdentity` 只在没有任何原生 ID 时调用一次 `session/new`；提示词指纹、代码版本、compact、进程重启和普通失败都不得自动换会话。
+- [x] 首次 `session/new` 返回 ID 后、发送首个 `session/prompt` 前，必须把 ID、模式和当前指令指纹检查点写入 Hone 权威 session 存储；写入失败则不得继续提示模型。
+- [x] 已有 ID 的 `session/resume` 失败必须 fail closed，不得回退到 `session/new`；旧 mode/fingerprint 只作为审计信息更新，不再作为轮换条件。
+- [x] Codex 每轮 `session/prompt` 继续只包含本轮时间、用户输入和必要的已送达推送事实，不包含系统提示词、Hone 历史、工具调用或结果。
+- [x] 固定 Codex CLI `0.146.0` / codex-acp `1.1.7` 外部边界样本，验证同一个 ID 能在指令变化、compact 和跨进程 resume 后继续使用；版本变化必须重新录制并注明来源版本。
+- [x] 真实 ACP 手工探针使用隔离的 Codex 数据目录或其它不会污染用户 Codex Desktop 任务列表的运行方式；不得再把验收任务写入日常任务索引。
+- [x] 覆盖首次创建中断后恢复、metadata 检查点写失败、提示词变化不分叉、resume 失败不分叉和连续多轮唯一 ID 的自动化回归。
+- [x] 完成 focused tests、workspace check/test、Web、Edge Worker、CI-safe regression、diff/format 检查，并更新 ADR、decision、invariants、repo-map、handoff/archive 证据。
+
+- 2026-08-03 唯一原生会话验收结果：
+  - 版本化可执行边界固定 Codex CLI `0.146.0` / codex-acp `1.1.7`，观察到 `session/new -> session/resume -> session/resume`，compact、指令变化和重启恢复始终保留 `fake-native-1`；每个 prompt 仍是 current-turn-only。
+  - checkpoint 写失败时没有 `session/prompt`；模拟 prompt dispatch 后 adapter 崩溃，下一进程从 checkpoint 恢复并 resume；强制 resume 失败时既没有 new 也没有 prompt；native runner 的 generic automatic retry 被禁止。
+  - 真实隔离 `codex exec` 返回 `CODEX_CLI_OK`；真实隔离 codex-acp 完成 initialize/session-new。两者使用临时 `CODEX_HOME`，仅链接既有 auth，退出后清理，不写入主任务索引。
+  - `bash scripts/ci/check_fmt_changed.sh`、workspace all-target check/test、Web `347/347`、Edge typecheck + `45/45`、`bash tests/regression/run_ci.sh` 和 `git diff --check` 全部通过；`hone-channels` 为 `738 passed / 1 ignored`。仅有既有 dead-code warning 与上游 future-compatibility 提示。
 
 - 2026-08-02 version-aware dialect and source-deployment follow-up:
   - `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed.
