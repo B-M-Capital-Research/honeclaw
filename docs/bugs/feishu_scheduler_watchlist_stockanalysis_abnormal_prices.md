@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 2026-08-03 14:03 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-03 10:01-14:01 CST。
+    - 近窗 `SNDK $1,214.83` / `MU $823.03` 命中 23 次。
+    - 10:30 `存储板块关键事件心跳提醒` deliver preview 写 `SNDK $1,214.83 / MU $823.03`，并以 TrendForce 存储市场预测落成 `triggered`。
+    - 11:00 / 12:00 / 12:30 `持仓财报与重大新闻心跳提醒` 多次使用 `SNDK $1,214.83 / AAOI $94.32` 作为行情口径，并写 `状态：noop`。
+    - 13:00 `闪迪关键事件心跳提醒` deliver preview 继续使用 `SNDK 报价 $1,214.83`；13:30 duplicate preview 继续匹配同一异常价格锚。
+  - 判断：
+    - 最新样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选；不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+
 - 2026-08-03 10:03 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-03 06:02-10:03 CST。
