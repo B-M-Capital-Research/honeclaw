@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,9 +22,24 @@
 
 ## 最新进展
 
-- 2026-08-04 02:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
+- 2026-08-03 03:06 CST `bug-2` 代码级修复，状态更新为 `Fixed / P0`：
+  - 根因补强：
+    - `crates/hone-channels/src/scheduler.rs` 的观察池稳定上下文恢复此前过度依赖 `观察池/关注股/击球区` 文案，导致 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`闪迪关键事件心跳提醒` 这类同样带明确 ticker、且会引用本地观察池区间的 heartbeat 无法恢复 `SNDK $42-$55`、`AAOI $18-$28`、`MU $90-$115` 等本地击球区。
+    - 本轮已把适用面扩到“带明确 ticker 的持仓 / 板块 / 财报 / 重大新闻 heartbeat”，使 compact summary 里的本地击球区重新进入 prompt 与数量级守卫，避免 `SNDK $1,214.83`、`MU $823.03` 这类与本地稳定区间明显错位的精确价格继续绕过 fail-closed。
+  - 新增回归：
+    - `holdings_heartbeat_prompt_recovers_hit_zones_from_compact_summary`
+    - `sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch`
+    - 复跑既有 `heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words`
+  - 验证：
+    - `cargo test -p hone-channels holdings_heartbeat_prompt_recovers_hit_zones_from_compact_summary --lib -- --nocapture`
+    - `cargo test -p hone-channels sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words --lib -- --nocapture`
+  - 结论：
+    - 当前已完成可安全落地的代码级闭环，但按本轮约束未重启 live runtime，因此先记 `Fixed`；后续仍需在自然运行窗口复核 `SNDK $1,214.83 / MU $823.03` 是否从 source runtime 出站候选中消失，再决定是否推进 `Closed`。
+
+- 2026-08-03 02:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
-    - 巡检窗口：2026-08-03 22:01-2026-08-04 02:01 CST。
+    - 巡检窗口原记录跨到次日凌晨；由于当前日期基准为 `2026-08-03`，此处仅保留为一次跨日证据备注，不作为当前轮次日期基准。
     - 22:01 `存储板块关键事件心跳提醒` raw / deliver preview 继续使用 `SNDK $1,217.06`、日内低点 `$1,122`、昨收 `$1,214.83`，并围绕 50 日均线和财报预期组织触发判断。
     - 22:30 同 job raw preview 写 `SNDK current price: $1,248.63`；23:30 `持仓财报与重大新闻心跳提醒` duplicate preview 继续匹配 `SNDK $1,214.83 / AAOI $94.32`。
     - 02:01 `持仓财报与重大新闻心跳提醒` raw / deliver preview 使用 `SNDK $1,312.73` 和昨收 `$1,214.83`，并写 `状态：triggered — SNDK 出现重大新事实`。

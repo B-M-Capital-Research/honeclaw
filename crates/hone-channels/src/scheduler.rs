@@ -3098,6 +3098,9 @@ fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
         || event.task_prompt.contains("击球区")
         || haystack.contains("hit zone")
         || haystack.contains("hit-zone");
+    let has_explicit_ticker = regex::Regex::new(r"\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b")
+        .expect("valid stable local context ticker regex")
+        .is_match(&event.task_prompt);
     let has_watch_pool = event.job_name.contains("观察池")
         || event.job_name.contains("观察股池")
         || event.job_name.contains("关注股")
@@ -3113,7 +3116,24 @@ fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
         || event.task_prompt.contains("阈值")
         || event.task_prompt.contains("跌破")
         || event.task_prompt.contains("突破");
-    has_watch_pool && (has_hit_zone || has_watchlist_monitoring_shape)
+    let has_holdings_or_sector_monitoring_shape = event.job_name.contains("持仓")
+        || event.task_prompt.contains("持仓")
+        || event.job_name.contains("板块")
+        || event.task_prompt.contains("板块")
+        || event.job_name.contains("财报")
+        || event.task_prompt.contains("财报")
+        || event.job_name.contains("重大新闻")
+        || event.task_prompt.contains("重大新闻")
+        || haystack.contains("portfolio")
+        || haystack.contains("holdings")
+        || haystack.contains("sector")
+        || haystack.contains("earnings")
+        || haystack.contains("news");
+    (has_watch_pool && (has_hit_zone || has_watchlist_monitoring_shape))
+        || (has_explicit_ticker
+            && (has_hit_zone
+                || has_watchlist_monitoring_shape
+                || has_holdings_or_sector_monitoring_shape))
 }
 
 fn extract_watchlist_tickers(task_prompt: &str) -> Vec<String> {
@@ -7920,6 +7940,76 @@ mod tests {
         assert!(prompt.contains("- MU: $90-$115"));
         assert!(prompt.contains("- LITE: $52-$68"));
         assert!(prompt.contains("- RKLB: $18-$25"));
+    }
+
+    #[test]
+    fn holdings_heartbeat_prompt_recovers_hit_zones_from_compact_summary() {
+        let root = std::env::temp_dir().join(format!(
+            "scheduler_holdings_heartbeat_prompt_{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let prefs_dir = root.join("prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor =
+            ActorIdentity::new("web", "web-user-watch-holdings", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        core.session_storage
+            .append_session_messages(
+                &session_id,
+                vec![session_message_from_text(
+                    "system",
+                    "【Compact Summary】\n观察池击球区：SNDK $42-$55；AAOI $18-$28；MU $90-$115。",
+                    hone_core::beijing_now_rfc3339(),
+                    Some(build_compact_summary_metadata("test")),
+                )],
+            )
+            .expect("append summary");
+
+        let event = SchedulerEvent {
+            actor,
+            job_id: "job-holdings-heartbeat".to_string(),
+            job_name: "持仓财报与重大新闻心跳提醒".to_string(),
+            task_prompt: "每30分钟检查一次用户持仓 SNDK、AAOI 的财报和重大新闻。输出时必须先给已核验事实，再给对持仓风险暴露和估值预期的影响；过滤单纯股价波动和低权重噪音。"
+                .to_string(),
+            channel: "web".to_string(),
+            channel_scope: None,
+            channel_target: "web-user-watch-holdings".to_string(),
+            delivery_key: "delivery-holdings-heartbeat".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        assert!(prompt.contains("【已恢复的本地击球区参考】"));
+        assert!(prompt.contains("- SNDK: $42-$55"));
+        assert!(prompt.contains("- AAOI: $18-$28"));
+    }
+
+    #[test]
+    fn sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch() {
+        let zones = watchlist_guard_zones_from_source("观察池击球区：SNDK $42-$55；MU $90-$115。");
+        let detected = detect_unstable_watchlist_price_anchor(
+            "数据时间：北京时间 2026-08-03 01:30；行情口径：SNDK $1,214.83 / MU $823.03（2026-07-31 纽约时间 16:00，来源 financialmodelingprep.com），最新可得、非逐笔。",
+            &zones,
+        )
+        .expect("holdings or sector heartbeat prices should be guarded by recovered watchlist zones");
+
+        assert_eq!(detected.0, "SNDK");
+        assert_eq!(detected.1, 1214.83);
+        assert_eq!(detected.2, "$42-$55");
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {
