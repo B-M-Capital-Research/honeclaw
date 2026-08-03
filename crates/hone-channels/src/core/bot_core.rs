@@ -337,25 +337,48 @@ impl HoneBotCore {
             let admin_bypass = actor
                 .map(|actor| self.is_admin_actor(actor))
                 .unwrap_or(false);
+            // Deleting every cron job does not stop the daily digest. The tool
+            // needs the digest schedule to say so instead of reporting an empty
+            // job list as "nothing will push you any more".
+            let default_digest_slot_times = self
+                .config
+                .event_engine
+                .digest
+                .default_slots
+                .iter()
+                .map(|slot| slot.time.clone())
+                .collect::<Vec<_>>();
             let cron_tool: Box<dyn hone_tools::Tool> =
                 if self.config.cloud.effective_mode().is_cloud_authoritative()
                     && self.config.cloud.postgres.is_configured()
                     && let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud)
                 {
-                    Box::new(CronJobTool::new_cloud(
-                        &self.config.storage.cron_jobs_dir,
-                        actor.cloned(),
-                        channel_target,
-                        admin_bypass,
-                        postgres,
-                    ))
+                    Box::new(
+                        CronJobTool::new_cloud(
+                            &self.config.storage.cron_jobs_dir,
+                            actor.cloned(),
+                            channel_target,
+                            admin_bypass,
+                            postgres,
+                        )
+                        .with_push_context(
+                            &self.config.storage.notif_prefs_dir,
+                            default_digest_slot_times.clone(),
+                        ),
+                    )
                 } else {
-                    Box::new(CronJobTool::new(
-                        &self.config.storage.cron_jobs_dir,
-                        actor.cloned(),
-                        channel_target,
-                        admin_bypass,
-                    ))
+                    Box::new(
+                        CronJobTool::new(
+                            &self.config.storage.cron_jobs_dir,
+                            actor.cloned(),
+                            channel_target,
+                            admin_bypass,
+                        )
+                        .with_push_context(
+                            &self.config.storage.notif_prefs_dir,
+                            default_digest_slot_times.clone(),
+                        ),
+                    )
                 };
             registry.register(cron_tool);
         } else {

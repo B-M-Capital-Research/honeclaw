@@ -2156,7 +2156,9 @@ fn soul_prompt_keeps_the_full_investment_contract() {
     );
     assert!(
         soul.chars().count() <= 12_000,
-        "soul.md grew beyond the reviewed full-prompt budget"
+        "soul.md grew beyond the reviewed full-prompt budget. Compact duplicated wording, \
+         never delete a rule listed below — every one of them is load-bearing and at least \
+         one was lost to a budget-driven compaction before"
     );
     for required in [
         "B. 单股深度分析",
@@ -2169,5 +2171,23 @@ fn soul_prompt_keeps_the_full_investment_contract() {
         "十一、系统边界",
     ] {
         assert!(soul.contains(required), "soul.md missing: {required}");
+    }
+    // Tool-calling rules. These were previously guarded only by the finance
+    // acceptance shell script; a compaction deleted the mandatory-search rule
+    // and reached `main` with that check red. Guarding them from `cargo test`
+    // makes the loss cost one test run instead of one production incident.
+    for required in [
+        "每个公司或证券问题先调用 DataFetch `search`",
+        "实体校验服务于用户原问题，不能取代它",
+        "改用 web_search 围绕用户真问题取证作答",
+        "证券实体发现不可跳过，须在主 agent loop 内完成",
+        "hone_security_listing_evidence.status=active_listing",
+        "禁止声称“没有实时行情”",
+        "DataFetch 本轮同代码 quote",
+    ] {
+        assert!(
+            soul.contains(required),
+            "soul.md lost a load-bearing tool-calling rule: {required}"
+        );
     }
 }

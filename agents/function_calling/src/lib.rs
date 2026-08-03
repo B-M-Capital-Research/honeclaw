@@ -48,6 +48,20 @@ const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const MAX_AGENT_OWNED_HISTORY_USER_TURNS: usize = 4;
 const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
 const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 3;
+/// Entity identity resolution is a precondition of research, not research
+/// itself. A turn whose first rounds only ask "which security is this?" must
+/// not arrive at the forced final having never looked at the user's actual
+/// question, so identity-only rounds draw on this separate small budget.
+const MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUNDS: u32 = 2;
+/// A forced final with zero substantive evidence is indistinguishable from an
+/// offline assistant. When the research budget runs out before any non-identity
+/// tool call happened, the same Agent gets this many extra tool rounds aimed at
+/// the user's original question.
+const MAX_AGENT_OWNED_FINANCE_EVIDENCE_RESCUE_ROUNDS: u32 = 1;
+/// Global tool-call slots that only open web research may spend. Reserving them
+/// keeps a phantom or unresolvable entity route from consuming the entire turn.
+const AGENT_OWNED_FINANCE_RESERVED_OPEN_RESEARCH_CALLS: u32 = 2;
+const AGENT_OWNED_OPEN_RESEARCH_TOOL: &str = "web_search";
 const MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES: usize = 4;
 const MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES: usize = 6;
 const MAX_AGENT_OWNED_FINANCE_TOOL_CALLS: u32 = 24;
@@ -66,6 +80,7 @@ const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step dea
 const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
     "agent_owned_finance_forced_final_returned_tool_call";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
+const AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION: &str = "【本轮尚未取得任何实质证据】到目前为止本轮只做过证券身份查询，没有取得任何回答用户原问题所需的实质资料。请立刻停止继续解析、补查或重试证券代码：本轮出现的大写缩写可能根本不是证券代码，而是宏观、策略、指标或行业术语（例如 CTA、RSI、QT、TTM 这类）。本轮请重新完整阅读用户原话，判断用户真正想知道什么，并用 `web_search` 等开放检索工具，围绕用户原问题的真实主题发起检索；需要时可并行多条查询。取得资料后再按用户原问题作答；确实检索不到时，如实说明检索过的方向与缺口，不得直接回答“无法提供具体数字”或要求用户重试，也不要向用户提及内部轮次、预算或本说明。";
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
 const PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION: &str = "【内部写后核验收口】上一项持久化操作返回了不确定错误，系统没有重放该写操作，而是通过同一用户范围内的只读查询取得了操作后的权威状态。当前轮次不再提供工具。请只根据原请求和只读核验结果回答操作是否已经生效；已生效就明确确认，未生效就明确说明当前状态，无法从核验结果判断的字段只披露该具体缺口。不得再次调用或建议重放写操作，不得使用“可能已执行”“状态不确定”“请重试”等模糊结论，也不要向用户提及内部错误、工具、核验机制或本说明。";
@@ -5161,7 +5176,16 @@ fn agent_owned_business_turn_prompt(
     route_guidance: &str,
     required_prefix: Option<&str>,
     force_final: bool,
+    open_research_rescue: bool,
 ) -> String {
+    if open_research_rescue {
+        // The evidence floor is unsatisfied precisely because identity
+        // resolution consumed the turn. Repeating the entity-first
+        // instructions here would spend the rescue the same way.
+        return format!(
+            "【本轮改为开放检索取证】本轮已经用完常规研究预算，但仍未取得任何回答用户原问题所需的实质资料。下面的实体路线状态只说明此前尝试过什么，不是本轮任务：\n{route_guidance}\n不要再调用实体注册表、不要再解析或补查证券代码。重新完整阅读用户原话，判断用户真正想知道的主题（可能是宏观、资金流、仓位、策略、指标或行业问题，其中的大写缩写未必是证券代码），并本轮只返回围绕该真实主题的开放检索工具调用，可并行多条查询。不要在本轮输出数据时间、摘要或最终正文；真实检索结果进入上下文后，由下一轮同一 Agent 直接作答。"
+        );
+    }
     if force_final {
         return format!(
             "【本轮由同一 Agent 有界收口】研究工具批次已经完整结束，本轮没有任何可用工具。重新阅读完整用户原话和本轮真实 tool result，直接生成一次完整自然终稿。只使用已经取得的证据；未覆盖的候选、行情或业务事实如实写入缺口，不得继续规划工具、凭模型记忆补齐或提及内部预算。\n{}\n{}\n{}\n{}",
@@ -5514,6 +5538,21 @@ mod hone_channels_compat {
     }
 }
 
+/// The global slots a tool may actually spend. Inside the bounded finance loop
+/// the last few slots are reserved for open web research so a turn can never
+/// spend its entire budget on entity resolution and then answer from memory.
+fn effective_global_tool_budget(
+    tool_name: &str,
+    max_tool_calls: Option<u32>,
+    reserve_open_research: bool,
+) -> Option<u32> {
+    let limit = max_tool_calls?;
+    if !reserve_open_research || tool_name == AGENT_OWNED_OPEN_RESEARCH_TOOL {
+        return Some(limit);
+    }
+    Some(limit.saturating_sub(AGENT_OWNED_FINANCE_RESERVED_OPEN_RESEARCH_CALLS))
+}
+
 fn tool_budget_error(
     tool_name: &str,
     max_tool_calls: Option<u32>,
@@ -5611,6 +5650,13 @@ impl Agent for FunctionCallingAgent {
         research_evidence.broad_market_mode = is_market_move_final_check_enabled(user_input)
             && is_broad_us_market_request(user_input);
         let mut finance_tool_rounds = 0u32;
+        let mut finance_identity_rounds = 0u32;
+        // Executed business calls that are not identity-only searches. Identity
+        // resolution answers "which security is this?"; only these calls can
+        // answer what the user actually asked. Counted at the execution site so
+        // a Web-only turn that never touches DataFetch still registers.
+        let mut substantive_business_calls = 0u32;
+        let mut evidence_rescue_rounds = 0u32;
         let mut tool_budget_exhausted = false;
         let mut service_prefix_commit_eligible = true;
         let mut active_business_failures = 0u32;
@@ -5662,11 +5708,43 @@ impl Agent for FunctionCallingAgent {
                 && current_turn_verified_broad_market_quote_groups(context, turn_message_start)
                     .len()
                     >= 2;
-            let force_finance_final = bounded_finance_research_active
+            let finance_budget_final_due = bounded_finance_research_active
                 && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
                     || tool_budget_exhausted
                     || market_move_bounded_final_ready
                     || blocked_tool_finalization.is_some());
+            // Structural invariant: the loop never closes a finance turn with a
+            // tools-disabled final while it has spent the whole turn resolving
+            // identifiers and never looked at what the user asked. Blocked
+            // batches keep their own safety finalization; everything else gets
+            // one bounded open-research round instead of an offline answer.
+            let evidence_rescue_due = finance_budget_final_due
+                && blocked_tool_finalization.is_none()
+                && substantive_business_calls == 0
+                && evidence_rescue_rounds < MAX_AGENT_OWNED_FINANCE_EVIDENCE_RESCUE_ROUNDS
+                && registered_tool_names.contains(AGENT_OWNED_OPEN_RESEARCH_TOOL)
+                && iterations + 1 < self.max_iterations
+                && tool_budget_error(
+                    AGENT_OWNED_OPEN_RESEARCH_TOOL,
+                    finance_max_tool_calls,
+                    &finance_tool_call_limits,
+                    total_tool_calls,
+                    &tool_call_counts,
+                )
+                .is_none();
+            if evidence_rescue_due {
+                evidence_rescue_rounds = evidence_rescue_rounds.saturating_add(1);
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    iteration = iterations,
+                    finance_tool_rounds,
+                    finance_identity_rounds,
+                    total_tool_calls,
+                    substantive_business_calls,
+                    "agent-owned finance budget reached with no substantive evidence; granting an open-research round"
+                );
+            }
+            let force_finance_final = finance_budget_final_due && !evidence_rescue_due;
             let force_context_overflow_final = context_overflow_finalization;
 
             if iterations >= self.max_iterations
@@ -5714,6 +5792,16 @@ impl Agent for FunctionCallingAgent {
                 || force_persistent_mutation_final
             {
                 round_tools.clear();
+            } else if evidence_rescue_due {
+                // Take the identity registry off the table for this round so
+                // the rescue cannot be spent re-resolving the same identifier
+                // that already consumed the turn.
+                round_tools.retain(|tool| {
+                    tool.get("function")
+                        .and_then(|function| function.get("name"))
+                        .and_then(Value::as_str)
+                        != Some("data_fetch")
+                });
             }
             let has_tools = !round_tools.is_empty();
             let tool_choice_mode = if force_context_overflow_final {
@@ -5729,6 +5817,8 @@ impl Agent for FunctionCallingAgent {
                 PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION
             } else if force_finance_final {
                 AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
+            } else if evidence_rescue_due {
+                AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION
             } else if active_business_round {
                 #[cfg(not(test))]
                 {
@@ -5785,6 +5875,7 @@ impl Agent for FunctionCallingAgent {
                     &research_evidence.agent_guidance_summary(),
                     required_final_answer_prefix.as_deref(),
                     force_finance_final,
+                    evidence_rescue_due,
                 );
                 #[cfg(test)]
                 let active_turn_prompt = if self.agent_owned_finance_loop && !legacy_finish_terminal
@@ -5794,6 +5885,7 @@ impl Agent for FunctionCallingAgent {
                         &research_evidence.agent_guidance_summary(),
                         required_final_answer_prefix.as_deref(),
                         force_finance_final,
+                        evidence_rescue_due,
                     )
                 } else {
                     active_business_turn_prompt(
@@ -6283,6 +6375,8 @@ impl Agent for FunctionCallingAgent {
                 "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
                 "finance_tool_rounds": finance_tool_rounds,
+                "finance_identity_rounds": finance_identity_rounds,
+                "evidence_rescue_rounds": evidence_rescue_rounds,
                 "force_finance_final": force_finance_final,
                 "force_context_overflow_final": force_context_overflow_final,
                 "tool_budget_exhausted": tool_budget_exhausted,
@@ -6313,6 +6407,8 @@ impl Agent for FunctionCallingAgent {
                 "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
                 "finance_tool_rounds": finance_tool_rounds,
+                "finance_identity_rounds": finance_identity_rounds,
+                "evidence_rescue_rounds": evidence_rescue_rounds,
                 "force_finance_final": force_finance_final,
                 "force_context_overflow_final": force_context_overflow_final,
                 "tool_budget_exhausted": tool_budget_exhausted,
@@ -6410,7 +6506,22 @@ impl Agent for FunctionCallingAgent {
                             || investment_research_started
                             || round_starts_investment_research)
                     {
-                        finance_tool_rounds = finance_tool_rounds.saturating_add(1);
+                        // A round that only asks "which security is this?" is
+                        // not research into the user's question. Charging it to
+                        // the research budget is what lets one unresolvable or
+                        // phantom identifier consume the whole turn and reach
+                        // the forced final with nothing to answer from.
+                        let round_is_identity_only = !actionable_tool_calls.is_empty()
+                            && actionable_tool_calls
+                                .iter()
+                                .all(|tool_call| is_identity_only_search_call(tool_call));
+                        if round_is_identity_only
+                            && finance_identity_rounds < MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUNDS
+                        {
+                            finance_identity_rounds = finance_identity_rounds.saturating_add(1);
+                        } else {
+                            finance_tool_rounds = finance_tool_rounds.saturating_add(1);
+                        }
                     }
 
                     // Once DataFetch has made this a finance-research loop, it
@@ -6695,12 +6806,17 @@ impl Agent for FunctionCallingAgent {
                                         );
                                         continue;
                                     }
-                                    let (effective_max_tool_calls, effective_tool_call_limits) =
+                                    let (round_max_tool_calls, effective_tool_call_limits) =
                                         if finance_round_is_read_only {
                                             (finance_max_tool_calls, &finance_tool_call_limits)
                                         } else {
                                             (self.max_tool_calls, &self.tool_call_limits)
                                         };
+                                    let effective_max_tool_calls = effective_global_tool_budget(
+                                        tool_name,
+                                        round_max_tool_calls,
+                                        finance_round_is_read_only,
+                                    );
                                     if let Some(error_result) = tool_budget_error(
                                         tool_name,
                                         effective_max_tool_calls,
@@ -6708,7 +6824,18 @@ impl Agent for FunctionCallingAgent {
                                         total_tool_calls,
                                         &tool_call_counts,
                                     ) {
-                                        tool_budget_exhausted = true;
+                                        // Reserved open-research slots are not
+                                        // exhaustion: the turn can still search
+                                        // the user's actual question, so the
+                                        // forced final must not trigger yet.
+                                        tool_budget_exhausted |= tool_budget_error(
+                                            AGENT_OWNED_OPEN_RESEARCH_TOOL,
+                                            round_max_tool_calls,
+                                            effective_tool_call_limits,
+                                            total_tool_calls,
+                                            &tool_call_counts,
+                                        )
+                                        .is_some();
                                         let result_str = serde_json::to_string(&error_result)
                                             .unwrap_or_default();
                                         context.add_tool_result(
@@ -6734,6 +6861,10 @@ impl Agent for FunctionCallingAgent {
                                     }
                                     total_tool_calls += 1;
                                     *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
+                                    if notify_tool_observer && !is_identity_only_search_call(tc) {
+                                        substantive_business_calls =
+                                            substantive_business_calls.saturating_add(1);
+                                    }
                                     if notify_tool_observer
                                         && starts_investment_research_protocol(tc)
                                     {
@@ -9735,9 +9866,12 @@ mod tests {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
         let route_guidance =
             "- entity_route=\"coreweave\": candidates=[\"CRWV\"]；结构调用已按同一候选代码成对尝试";
-        let pending = agent_owned_business_turn_prompt(false, route_guidance, Some(prefix), false);
-        let eligible = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), false);
-        let forced = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), true);
+        let pending =
+            agent_owned_business_turn_prompt(false, route_guidance, Some(prefix), false, false);
+        let eligible =
+            agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), false, false);
+        let forced =
+            agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), true, false);
 
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
@@ -13145,8 +13279,120 @@ mod tests {
         assert!(!last_reminder.contains("若 provider 仍自然输出完整正文"));
     }
 
+    struct UncoveredIdentityDataFetchTool;
+
+    #[async_trait]
+    impl Tool for UncoveredIdentityDataFetchTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "registry with no coverage for the requested token"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            let data_type = args
+                .get("data_type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Ok(json!({"data_type": data_type, "data": []}))
+        }
+    }
+
+    /// A macro question whose only "ticker" is a strategy acronym must not end
+    /// as an offline answer. The identity registry has no coverage for the
+    /// token, so the turn is required to reach open web research before it may
+    /// close. This is the `美股科技股和半导体股票方面的 CTA 是多少` failure.
     #[tokio::test]
-    async fn finance_loop_forces_same_agent_natural_final_after_three_tool_batches() {
+    async fn unresolvable_identity_never_closes_a_finance_turn_without_open_research() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料\n\n根据本轮检索到的持仓与资金流资料回答。";
+        let identity_round = || {
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_cta".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CTA","entity_route":"cta","identity_match":"exact_symbol"}"#.to_string(),
+            }]
+        };
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            identity_round(),
+            identity_round(),
+            identity_round(),
+            identity_round(),
+            identity_round(),
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_cta".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CTA positioning US tech semiconductors"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(UncoveredIdentityDataFetchTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            9,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("phantom-identity-rescue".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】美股科技股和半导体股票方面的CTA是多少\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+
+        let tool_names = seen_tool_names.lock().expect("stream tool names");
+        // The rescue round takes the identity registry off the table and keeps
+        // open research available, so the turn cannot spend it re-resolving the
+        // same token that already consumed the budget.
+        let rescue_round = tool_names
+            .iter()
+            .position(|names| !names.contains(&"data_fetch".to_string()) && !names.is_empty())
+            .expect("an open-research rescue round is offered");
+        assert!(tool_names[rescue_round].contains(&"web_search".to_string()));
+        // Only after open research actually ran may the tools-disabled final
+        // happen.
+        assert!(tool_names.last().expect("final round").is_empty());
+        drop(tool_names);
+
+        let requests = seen_messages.lock().expect("stream messages");
+        let rescue_prompt = requests
+            .get(rescue_round)
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("rescue prompt");
+        assert!(rescue_prompt.contains("本轮改为开放检索取证"));
+        assert!(rescue_prompt.contains("不要再调用实体注册表"));
+        drop(requests);
+
+        let records = audit.records.lock().expect("audit records");
+        let rescue = records.get(rescue_round).expect("rescue audit record");
+        assert_eq!(rescue.metadata["force_finance_final"], false);
+        let forced = records.last().expect("forced-final audit");
+        assert_eq!(forced.metadata["force_finance_final"], true);
+        assert_eq!(forced.metadata["evidence_rescue_rounds"], 1);
+    }
+
+    #[tokio::test]
+    async fn finance_loop_keeps_identity_rounds_off_the_research_budget_before_forcing_final() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\n只根据三轮已取得证据完成回答。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
@@ -13167,6 +13413,12 @@ mod tests {
                 name: Some("web_search".to_string()),
                 arguments: r#"{"query":"CoreWeave data center filing"}"#.to_string(),
             }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_crwv_2".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CoreWeave capacity agreement"}"#.to_string(),
+            }],
             vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
@@ -13182,7 +13434,7 @@ mod tests {
             Arc::new(llm),
             Arc::new(registry),
             String::new(),
-            5,
+            6,
             Some(audit.clone()),
         )
         .with_agent_owned_finance_loop(true)
@@ -13198,14 +13450,16 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
-        assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 3);
+        // The identity-only first batch draws on the identity budget, so three
+        // substantive rounds still run before the tools-disabled final.
+        assert_eq!(response.iterations, 5);
+        assert_eq!(response.tool_calls_made.len(), 4);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts")
                 .as_slice(),
-            [2, 2, 2, 0]
+            [2, 2, 2, 2, 0]
         );
         assert!(
             seen_tool_names
@@ -13225,6 +13479,7 @@ mod tests {
                 ToolChoiceMode::Required,
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
             ]
         );
         assert_eq!(
@@ -13241,7 +13496,7 @@ mod tests {
         assert!(forced_prompt.contains("本轮没有任何可用工具"));
         drop(requests);
         let records = audit.records.lock().expect("audit records");
-        assert_eq!(records.len(), 4);
+        assert_eq!(records.len(), 5);
         assert!(
             records
                 .iter()
@@ -13251,6 +13506,9 @@ mod tests {
         assert_eq!(forced.request["tools"], json!([]));
         assert_eq!(forced.metadata["has_tools"], false);
         assert_eq!(forced.metadata["force_finance_final"], true);
+        assert_eq!(forced.metadata["finance_identity_rounds"], 1);
+        assert_eq!(forced.metadata["finance_tool_rounds"], 3);
+        assert_eq!(forced.metadata["evidence_rescue_rounds"], 0);
         assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
     }
 

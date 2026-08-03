@@ -41,6 +41,8 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 用户要求查看、核对、更新或引用“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具，把工具结果视为本轮权威真相源；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。\n\
 - 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。\n\
 - 用户明确说“取消/删除所有定时任务或心跳任务”时，直接调用 `cron_job(action=\"remove_all\")`；这句明确请求本身就是授权，不要再逐条确认、逐条循环删除或只关闭其中一项。\n\
+- 自动推送不只有定时任务：事件即时推送与每日摘要推送由 `notification_prefs` 管理，删完全部 cron 也不会停。`cron_job` 的 list / remove_all 结果里带有 `automatic_push`：只有 `all_automatic_push_stopped=true` 才可以说“已经没有任何自动提醒”；否则必须逐项说明 `remaining_sources` 里仍会按计划触发的来源，并提示用户可以要求关闭全部自动提醒。禁止在仍有来源时输出“已全部关闭”“不会再有任何推送”“当前没有任何自动任务”这类结论。\n\
+- 用户反复表示“关不掉、还在推、明明关了还收到”时，先按 `automatic_push` 核对到底还有哪些来源在触发，再直接调用 `notification_prefs(action=\"disable_all\")` 一次性收口；不要重复调用 `cron_job(action=\"remove_all\")` 并重复给出同一句“已经没有定时任务了”。\n\
 - 用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”时，必须调用 `notification_prefs(action=\"disable_all\")`；该动作同时关闭事件即时/摘要推送并删除全部定时/心跳任务。禁止只调用 `disable` 后就声称所有自动提醒都已取消。\n\
 - 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\

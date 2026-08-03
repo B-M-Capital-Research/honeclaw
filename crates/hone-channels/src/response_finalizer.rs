@@ -390,14 +390,47 @@ fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {
             .get("removed_count")
             .and_then(Value::as_u64)
             .map(|removed_count| {
-                if removed_count == 0 {
+                let mut message = if removed_count == 0 {
                     "你当前没有需要删除的定时或心跳任务。".to_string()
                 } else {
                     format!("已删除全部 {removed_count} 个定时或心跳任务。")
-                }
+                };
+                message.push_str(&remaining_automatic_push_note(call));
+                message
             }),
         _ => None,
     }
+}
+
+/// `cron_job` owns one of several scheduled-push stores. A recovered
+/// confirmation must never let "no cron jobs" read as "nothing will push you"
+/// while daily digests or event pushes are still scheduled.
+fn remaining_automatic_push_note(call: &ToolCallMade) -> String {
+    let Some(summary) = call.result.get("automatic_push") else {
+        return String::new();
+    };
+    if summary
+        .get("all_automatic_push_stopped")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return String::new();
+    }
+    let remaining = summary
+        .get("remaining_sources")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("、")
+        })
+        .unwrap_or_default();
+    if remaining.is_empty() {
+        return String::new();
+    }
+    format!("不过{remaining}仍会按计划触发；需要一并停掉的话直接说“关闭所有自动提醒”。")
 }
 
 fn recover_notification_prefs_confirmation(call: &ToolCallMade) -> Option<String> {
@@ -419,7 +452,10 @@ fn recover_notification_prefs_confirmation(call: &ToolCallMade) -> Option<String
 fn recover_cron_job_list_confirmation(call: &ToolCallMade) -> Option<String> {
     let jobs = call.result.get("jobs")?.as_array()?;
     if jobs.is_empty() {
-        return Some("你当前没有定时任务。".to_string());
+        return Some(format!(
+            "你当前没有定时任务。{}",
+            remaining_automatic_push_note(call)
+        ));
     }
 
     let shown: Vec<String> = jobs
@@ -1053,6 +1089,78 @@ mod tests {
         assert_eq!(
             recover_user_facing_tool_outcome(&[call]).as_deref(),
             Some("已删除全部 3 个定时或心跳任务。")
+        );
+    }
+
+    /// The reported Feishu failure: cron jobs really were deleted, the reply
+    /// really did say so, and the daily digest kept pushing. A recovered
+    /// confirmation must carry the remaining sources with it.
+    #[test]
+    fn remove_all_confirmation_discloses_push_sources_that_survive_it() {
+        let call = tool_call(
+            "cron_job",
+            "remove_all",
+            json!({
+                "success": true,
+                "action": "remove_all",
+                "removed_count": 3,
+                "remaining_count": 0,
+                "automatic_push": {
+                    "all_automatic_push_stopped": false,
+                    "remaining_sources": ["事件即时推送", "每日摘要推送（08:30、09:00）"],
+                },
+            }),
+        );
+        let message = recover_user_facing_tool_outcome(&[call]).expect("confirmation");
+        assert!(
+            message.starts_with("已删除全部 3 个定时或心跳任务。"),
+            "{message}"
+        );
+        assert!(
+            message.contains("每日摘要推送（08:30、09:00）"),
+            "{message}"
+        );
+        assert!(message.contains("仍会按计划触发"), "{message}");
+    }
+
+    #[test]
+    fn empty_cron_list_does_not_read_as_no_automatic_pushes() {
+        let call = tool_call(
+            "cron_job",
+            "list",
+            json!({
+                "action": "list",
+                "jobs": [],
+                "automatic_push": {
+                    "all_automatic_push_stopped": false,
+                    "remaining_sources": ["每日摘要推送（08:30）"],
+                },
+            }),
+        );
+        let message = recover_user_facing_tool_outcome(&[call]).expect("confirmation");
+        assert!(message.contains("你当前没有定时任务。"), "{message}");
+        assert!(message.contains("每日摘要推送（08:30）"), "{message}");
+    }
+
+    #[test]
+    fn a_full_stop_confirmation_stays_unqualified() {
+        let call = tool_call(
+            "cron_job",
+            "remove_all",
+            json!({
+                "success": true,
+                "action": "remove_all",
+                "removed_count": 1,
+                "remaining_count": 0,
+                "automatic_push": {
+                    "all_automatic_push_stopped": true,
+                    "remaining_sources": [],
+                },
+            }),
+        );
+        assert_eq!(
+            recover_user_facing_tool_outcome(&[call]).as_deref(),
+            Some("已删除全部 1 个定时或心跳任务。")
         );
     }
 

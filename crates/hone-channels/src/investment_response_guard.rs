@@ -7496,6 +7496,15 @@ fn append_agent_entity_discovery_context(
          search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，并把其它依赖 symbol 且彼此独立的财务、持仓、新闻工具放进同一批次；已在首轮开始的 Web、公告与行业查询不得无理由重复。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
          Value::Array(seed_snapshot)
     ));
+    if !seed_mentions.is_empty() && seed_mentions.iter().all(|mention| mention.tentative_symbol) {
+        // Every seed here rests on weak positional grammar. Uppercase shape is
+        // not evidence of a listing: macro, strategy, indicator and industry
+        // acronyms take the same shape, and the turn must stay owned by what
+        // the user actually asked rather than by the scanner's guess.
+        runtime_input.push_str(
+            "\n【本轮候选种子均为低置信】上述候选全部来自弱语法信号，没有一个带有 $ 代码、`股票代码/ticker` 标注或明确的行情、财报、持仓绑定。它们同样可能是宏观、资金流、仓位、策略、指标、行业或产品缩写（例如 CTA、RSI、QT、TTM），不得默认当成证券代码。请先判断用户原问题的真实主题：若主题并非这些代码本身，就直接围绕真实主题使用 web_search 等开放检索工具取证并作答，不要为这些候选建立实体路线；若确需确认某个候选是不是证券，最多用一次 search 核验，核验不成立即放弃该候选并继续回答用户原问题，绝不能把整轮预算耗在实体解析上。",
+        );
+    }
     if let Some(context) = market_move_temporal_context(user_input, answer_time) {
         runtime_input.push_str(&context);
     }
@@ -7969,14 +7978,31 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             symbol.clone()
         };
         if seen.insert(dedupe_key) {
+            // Clause-subject binding only proves the token sits in a sentence
+            // that mentions securities somewhere — "美股科技股和半导体股票方面
+            // 的 CTA 是多少" satisfies it through 股票 while CTA is a strategy
+            // acronym, not a code. That is a candidate, never an explicit code,
+            // and no maintained acronym deny-list can close this class.
+            let only_clause_subject_support = clause_subject_binding
+                && !explicit_ticker_label
+                && !explicit_ticker_binding
+                && !strong_exact_shape
+                && !direct_market_binding
+                && !chinese_analysis_binding
+                && !english_analysis_binding
+                && !comparison_binding
+                && !symbol_cluster_binding
+                && numeric_market.is_none()
+                && numeric_asset.is_none();
             let tentative_symbol = identifier.kind == SecurityIdentifierKind::Bare
                 && !explicit_ticker_label
                 && !explicit_ticker_binding
-                && !identifier
-                    .raw
-                    .chars()
-                    .filter(|character| character.is_ascii_alphabetic())
-                    .all(|character| character.is_ascii_uppercase());
+                && (only_clause_subject_support
+                    || !identifier
+                        .raw
+                        .chars()
+                        .filter(|character| character.is_ascii_alphabetic())
+                        .all(|character| character.is_ascii_uppercase()));
             candidates.push(EntityMention {
                 mention: identifier.raw,
                 search_query: symbol.clone(),
@@ -15873,5 +15899,69 @@ mod tests {
             missing_investment_response_sections(&contract, &missing_rmbs)
                 .contains(&"6. 代表证券逐一现价")
         );
+    }
+
+    /// `美股科技股和半导体股票方面的CTA是多少` used to promote CTA to a
+    /// non-tentative explicit security code: the clause mentions 股票, so
+    /// clause-subject grammar alone bound the acronym. The turn then owned an
+    /// exact-symbol entity route for a strategy term and never researched what
+    /// the user asked. Uppercase shape is not listing evidence, and no
+    /// maintained acronym deny-list can close this class.
+    #[test]
+    fn clause_subject_grammar_alone_yields_a_tentative_seed_not_an_explicit_code() {
+        let seeds = super::plain_ticker_mentions(
+            "美股科技股和半导体股票方面的CTA是多少",
+            AgentTurnOrigin::Interactive,
+        );
+        assert_eq!(seeds.len(), 1);
+        assert_eq!(seeds[0].search_query, "CTA");
+        assert!(
+            seeds[0].tentative_symbol,
+            "a domain acronym supported only by clause grammar is a candidate, not a code"
+        );
+    }
+
+    #[test]
+    fn a_bound_uppercase_ticker_stays_an_explicit_code() {
+        for input in [
+            "sndk财报前瞻",
+            "AAPL 现价是多少",
+            "帮我看看 NVDA 的估值",
+            "股票代码 CTA 现在多少钱",
+        ] {
+            let seeds = super::plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(seeds.len(), 1, "{input}");
+        }
+        let explicit =
+            super::plain_ticker_mentions("AAPL 现价是多少", AgentTurnOrigin::Interactive);
+        assert!(!explicit[0].tentative_symbol);
+        let labelled =
+            super::plain_ticker_mentions("股票代码 CTA 现在多少钱", AgentTurnOrigin::Interactive);
+        assert!(!labelled[0].tentative_symbol);
+    }
+
+    #[test]
+    fn all_tentative_seeds_add_a_low_confidence_discovery_clause() {
+        let mut weak = String::new();
+        append_agent_entity_discovery_context(
+            &mut weak,
+            "美股科技股和半导体股票方面的CTA是多少",
+            &super::plain_ticker_mentions(
+                "美股科技股和半导体股票方面的CTA是多少",
+                AgentTurnOrigin::Interactive,
+            ),
+            "2026-08-03 13:00",
+        );
+        assert!(weak.contains("本轮候选种子均为低置信"));
+        assert!(weak.contains("绝不能把整轮预算耗在实体解析上"));
+
+        let mut strong = String::new();
+        append_agent_entity_discovery_context(
+            &mut strong,
+            "AAPL 现价是多少",
+            &super::plain_ticker_mentions("AAPL 现价是多少", AgentTurnOrigin::Interactive),
+            "2026-08-03 13:00",
+        );
+        assert!(!strong.contains("本轮候选种子均为低置信"));
     }
 }

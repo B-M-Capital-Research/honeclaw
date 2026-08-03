@@ -2,9 +2,12 @@
 //!
 //! 通过 Agent 会话管理用户的定时任务。
 
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_event_engine::prefs::{FilePrefsStorage, PrefsProvider};
 use hone_memory::cron_job::{CronJobUpdate, CronSchedule};
 use serde_json::Value;
 
@@ -17,6 +20,12 @@ pub struct CronJobTool {
     channel_target: String,
     admin_bypass: bool,
     postgres: Option<CloudPgRuntime>,
+    /// Where per-actor notification prefs live. Cron jobs are only one of the
+    /// stores that can push on a schedule; without this the tool can report an
+    /// empty job list while daily digests keep firing.
+    notif_prefs_dir: Option<PathBuf>,
+    /// Digest slot times that fire when the actor has no explicit `digest_slots`.
+    default_digest_slot_times: Vec<String>,
 }
 
 impl CronJobTool {
@@ -32,6 +41,8 @@ impl CronJobTool {
             channel_target: channel_target.to_string(),
             admin_bypass,
             postgres: None,
+            notif_prefs_dir: None,
+            default_digest_slot_times: Vec::new(),
         }
     }
 
@@ -48,7 +59,72 @@ impl CronJobTool {
             channel_target: channel_target.to_string(),
             admin_bypass,
             postgres: Some(postgres),
+            notif_prefs_dir: None,
+            default_digest_slot_times: Vec::new(),
         }
+    }
+
+    /// Give the tool the other scheduled-push store so `list` / `remove_all`
+    /// can state whether anything still pushes on a schedule.
+    pub fn with_push_context(
+        mut self,
+        notif_prefs_dir: impl Into<PathBuf>,
+        default_digest_slot_times: Vec<String>,
+    ) -> Self {
+        self.notif_prefs_dir = Some(notif_prefs_dir.into());
+        self.default_digest_slot_times = default_digest_slot_times;
+        self
+    }
+
+    /// Automatic pushes that survive a cron-only change. `cron_job` owns one
+    /// store; event pushes and daily digests live in notification prefs and
+    /// keep firing after every cron job is deleted. Reporting only the cron
+    /// store is what lets an honest tool result become a false "已全部关闭".
+    fn remaining_automatic_push_sources(
+        &self,
+        actor: &ActorIdentity,
+        remaining_cron_jobs: usize,
+    ) -> Option<Value> {
+        let prefs_dir = self.notif_prefs_dir.as_ref()?;
+        let storage = FilePrefsStorage::new(prefs_dir).ok()?;
+        let prefs = storage.load(actor);
+
+        let (digest_source, digest_times) = match prefs.effective_digest_slots() {
+            Some(slots) if slots.is_empty() => ("disabled", Vec::new()),
+            Some(slots) => (
+                "user",
+                slots.into_iter().map(|slot| slot.time).collect::<Vec<_>>(),
+            ),
+            None => ("system_default", self.default_digest_slot_times.clone()),
+        };
+        let digest_active = !digest_times.is_empty();
+        let all_stopped = remaining_cron_jobs == 0 && !prefs.enabled && !digest_active;
+
+        let mut remaining = Vec::new();
+        if prefs.enabled {
+            remaining.push("事件即时推送".to_string());
+        }
+        if digest_active {
+            remaining.push(format!("每日摘要推送（{}）", digest_times.join("、")));
+        }
+        if remaining_cron_jobs > 0 {
+            remaining.push(format!("{remaining_cron_jobs} 个定时/心跳任务"));
+        }
+
+        Some(serde_json::json!({
+            "all_automatic_push_stopped": all_stopped,
+            "remaining_sources": remaining,
+            "event_push_enabled": prefs.enabled,
+            "digest_source": digest_source,
+            "digest_times": digest_times,
+            "remaining_cron_jobs": remaining_cron_jobs,
+            "stop_all_action": "notification_prefs(action=\"disable_all\")",
+            "disclosure": if all_stopped {
+                "本 actor 当前没有任何自动推送来源。"
+            } else {
+                "定时/心跳任务之外仍有自动推送来源在按计划触发。回答不得表述为“已全部关闭”“没有任何自动提醒”；必须逐项说明上面 remaining_sources，并告诉用户可以用一句话要求关闭全部自动提醒。"
+            }
+        }))
     }
 
     fn actor(&self) -> hone_core::HoneResult<&ActorIdentity> {
@@ -210,10 +286,14 @@ impl Tool for CronJobTool {
         match action {
             "list" => {
                 let jobs = storage.list_jobs(actor);
-                Ok(serde_json::json!({
+                let mut result = serde_json::json!({
                     "action": "list",
                     "jobs": serde_json::to_value(&jobs).unwrap_or_default()
-                }))
+                });
+                if let Some(sources) = self.remaining_automatic_push_sources(actor, jobs.len()) {
+                    result["automatic_push"] = sources;
+                }
+                Ok(result)
             }
             "add" => {
                 let name = args
@@ -340,13 +420,19 @@ impl Tool for CronJobTool {
             }
             "remove_all" => {
                 let removed_jobs = storage.remove_all_jobs(actor)?;
-                Ok(serde_json::json!({
+                let mut result = serde_json::json!({
                     "success": true,
                     "action": "remove_all",
                     "removed_count": removed_jobs.len(),
                     "removed_jobs": removed_jobs,
+                    // Cron jobs only. `remaining_count: 0` never meant that
+                    // nothing pushes any more; `automatic_push` says that.
                     "remaining_count": 0,
-                }))
+                });
+                if let Some(sources) = self.remaining_automatic_push_sources(actor, 0) {
+                    result["automatic_push"] = sources;
+                }
+                Ok(result)
             }
             "update" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -639,6 +725,101 @@ mod tests {
         assert_eq!(add_response["success"].as_bool(), Some(true));
         assert_eq!(add_response["job"]["channel"], "telegram");
         assert_eq!(add_response["job"]["channel_target"], "-1001234567890");
+    }
+
+    /// Feishu users kept asking to turn scheduled tasks off, were told they
+    /// were off, and kept receiving pushes. Cron jobs are one store; the daily
+    /// digest is another. `remove_all` must say what still fires instead of
+    /// letting an empty job list read as "nothing pushes any more".
+    #[tokio::test]
+    async fn cron_removal_discloses_digest_and_event_pushes_that_still_fire() {
+        let data_dir = make_temp_dir("hone_cron_tool_remaining_push");
+        let prefs_dir = format!("{data_dir}/notif_prefs");
+        std::fs::create_dir_all(&prefs_dir).expect("prefs dir");
+        let actor = ActorIdentity::new("feishu", "ou_remaining", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor), "ou_remaining", false)
+            .with_push_context(&prefs_dir, vec!["08:30".to_string(), "09:00".to_string()]);
+
+        tool.execute(serde_json::json!({
+            "action": "add",
+            "name": "daily report",
+            "hour": 9,
+            "minute": 0,
+            "repeat": "daily",
+            "task_prompt": "task"
+        }))
+        .await
+        .expect("add job");
+
+        let removed = tool
+            .execute(serde_json::json!({"action": "remove_all"}))
+            .await
+            .expect("remove_all");
+        assert_eq!(removed["removed_count"], 1);
+        // The cron store is empty, but the actor has no prefs file yet, so the
+        // system-default digest slots still fire every morning.
+        let summary = &removed["automatic_push"];
+        assert_eq!(summary["all_automatic_push_stopped"], false);
+        assert_eq!(summary["digest_source"], "system_default");
+        let remaining = summary["remaining_sources"]
+            .as_array()
+            .expect("remaining sources")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(remaining.contains("每日摘要推送"), "{remaining}");
+        assert!(remaining.contains("08:30"), "{remaining}");
+        assert!(remaining.contains("事件即时推送"), "{remaining}");
+
+        let listed = tool
+            .execute(serde_json::json!({"action": "list"}))
+            .await
+            .expect("list");
+        assert!(listed["jobs"].as_array().expect("jobs").is_empty());
+        assert_eq!(
+            listed["automatic_push"]["all_automatic_push_stopped"],
+            false
+        );
+    }
+
+    #[tokio::test]
+    async fn cron_removal_reports_a_full_stop_once_every_push_source_is_off() {
+        use hone_event_engine::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let data_dir = make_temp_dir("hone_cron_tool_full_stop");
+        let prefs_dir = format!("{data_dir}/notif_prefs");
+        std::fs::create_dir_all(&prefs_dir).expect("prefs dir");
+        let actor = ActorIdentity::new("feishu", "ou_full_stop", None::<String>).expect("actor");
+
+        let storage = FilePrefsStorage::new(&prefs_dir).expect("prefs storage");
+        storage
+            .save(
+                &actor,
+                &NotificationPrefs {
+                    enabled: false,
+                    digest_slots: Some(Vec::new()),
+                    ..Default::default()
+                },
+            )
+            .expect("save prefs");
+
+        let tool = CronJobTool::new(&data_dir, Some(actor), "ou_full_stop", false)
+            .with_push_context(&prefs_dir, vec!["08:30".to_string()]);
+        let removed = tool
+            .execute(serde_json::json!({"action": "remove_all"}))
+            .await
+            .expect("remove_all");
+        assert_eq!(
+            removed["automatic_push"]["all_automatic_push_stopped"],
+            true
+        );
+        assert!(
+            removed["automatic_push"]["remaining_sources"]
+                .as_array()
+                .expect("remaining sources")
+                .is_empty()
+        );
     }
 
     #[tokio::test]
