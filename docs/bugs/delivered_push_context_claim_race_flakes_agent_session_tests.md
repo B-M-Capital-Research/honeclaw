@@ -8,12 +8,17 @@
 
 ## 证据来源
 
-- 在 `main`（`d52cc768`，未包含本轮任何改动）上连续运行 `cargo test -p hone-channels --lib` 16 次，2 次失败。
+- 连续运行 `cargo test -p hone-channels --lib` 的失败率按提交明显分层（同一台机器，相同并发）：
+  - `d52cc768`（`39470783` 之前）：2/16 失败。
+  - `215004fb`（含 `39470783 fix(agent): require current evidence for listing denials`，不含本轮改动）：7/10 失败。
+  - `1a55c2da`（`215004fb` + 本轮改动）：8/10 失败。
+  即失败率的跃升出现在 `39470783`，与本轮交互式研究预算改动无关；后者只在同一水平上下浮动。
 - 失败集中在 `agent_session::tests` 的两个家族，每次只挂其中一个，且单独运行必过：
   - `native_interactive_turn_consumes_delivered_pushes_once_without_mutating_user_text`
     —— `crates/hone-channels/src/agent_session/tests.rs:1100` `.expect("P1 in U1 turn")` 失败，即已投递推送没有被投影进 U1 的 runtime input。
   - `run_zero_daily_conversation_limit_bypasses_quota` / `run_rejects_over_daily_limit_with_user_turn_and_friendly_error`
-- 该家族由当日提交 `f90fcfe0 feat(agent): 将已送达推送接入下一轮上下文` 引入。
+- 该家族由当日提交 `f90fcfe0 feat(agent): 将已送达推送接入下一轮上下文` 引入；`39470783` 之后失败率从偶发变成多数轮次失败。
+- `39470783` 大幅改写了 `agents/function_calling` 的批次执行与终稿发布路径（逐个隔离格式错误只读调用、上市发布边界与一次同-Agent 纠正轮），会改变一次 Agent turn 的实际轮数与耗时，因而直接影响这条依赖墙钟时序的断言。
 
 ## 初步分析（未定论）
 
@@ -34,4 +39,5 @@
 
 ## 备注
 
-- 本条不是 2026-08-03 交互式研究预算修复引入的：该修复只触及 `investment_response_guard`、`response_finalizer`、`prompt`、`bot_core` 工具注册与 `function_calling` 循环，未触及 delivered-push 或 quota 链路，且干净 `main` 同样复现。
+- 本条不是 2026-08-03 交互式研究预算修复引入的：该修复只触及 `investment_response_guard`、`response_finalizer`、`prompt`、`bot_core` 工具注册与 `function_calling` 循环，未触及 delivered-push 或 quota 链路；按上面的分层数据，去掉该修复后失败率不变。
+- 当前 `main` 上 `cargo test -p hone-channels --lib` 多数轮次会红，等同于该 crate 的测试门实际失效。建议优先处理：在修好时序之前，CI 上的绿灯不再能证明 hone-channels 无回归。
