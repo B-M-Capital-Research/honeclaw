@@ -2131,12 +2131,12 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ### SNDK Current-listing Evidence And GCE Rollout
 
-- Status: in_progress
+- Status: done
 - Date: 2026-08-03
 - Plan: `docs/current-plans/ticker-resolution-architecture.md` (this SNDK phase is done; the parent ticker/scheduler umbrella remains active)
 - Handoff: `docs/handoffs/2026-08-03-sndk-listing-evidence-and-gce-rollout.md`
 - Decision / ADR: `docs/decisions.md#d-2026-08-03-02-reject-malformed-read-only-calls-individually-and-require-listing-evidence`
-- Related PRs / commits: `116dc54b3540e30b8420aaacf007ede33f0b9f5d`; replacement commit pending
-- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; focused SNDK snapshot/outlook and conflict regressions; exact malformed-read-only batch/listing-final Agent regression; replacement GCE canaries pending
-- Current conclusion: Exact GCE release `116dc54b` remains active, but a real public Web request after its first successful canary reproduced the stale “SNDK delisted/redirect to WDC” answer. The exact strict-runner branch is now understood: one malformed read-only outlook call cancelled valid discovery siblings, then a tools-disabled final published stale memory. The replacement keeps valid read-only siblings running, rejects the malformed call individually, and requires current inactive evidence before any explicit delisting denial can publish. The combined replacement rollout also raises the production per-user daily conversation limit from 12 to 100; deployment and multi-canary acceptance are in progress.
-- Next entry point: finish the exact candidate build, zero-chat GCE cutover, repeated public-user strict-runner SNDK acceptance, quota verification, and then return this entry to `done` with the exact release/commit.
+- Related PRs / commits: initial `116dc54b3540e30b8420aaacf007ede33f0b9f5d`; replacement `aed36044`; deployed main `5028870dcb341476e17b57fdfa84d72624b04200`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; focused SNDK snapshot/outlook, pre-turn and listing-conflict regressions; exact malformed-read-only batch/listing-final Agent regression; complete CI-safe suite; two independent strict production Web canaries
+- Current conclusion: The exact strict-runner failure was one malformed read-only outlook call cancelling valid discovery siblings, followed by a tools-disabled final publishing stale acquisition memory. The replacement rejects that bad call individually, keeps valid siblings running, preloads current same-symbol identity/listing evidence before the first model call, and requires current `inactive_listing` before any explicit delisting denial can publish. Exact GCE revision `5028870d` is active with healthy authoritative PostgreSQL/S3 and effective per-user daily quota 100. The Web-only atomic restart restored listeners in about two seconds; two independent fresh SNDK canaries both recognized SanDisk/闪迪, exercised current quote/earnings evidence, and contained none of “已退市 / 未上市 / 无法提供当前财报前瞻”.
+- Next entry point: `docs/handoffs/2026-08-03-sndk-listing-evidence-and-gce-rollout.md`; the parent ticker plan remains active only for scheduler `800G` / `NAND` / `AST` / `SEC` P2. Immediate rollback is the retained `116dc54b` release plus `config-pre-5028870d-20260803T151518Z.yaml`.
