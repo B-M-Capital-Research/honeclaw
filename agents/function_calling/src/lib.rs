@@ -4598,7 +4598,41 @@ struct ListingEvidenceState {
     inactive: bool,
     current_quote: bool,
     active_profile: bool,
+    /// Provider company names for this symbol. A user asking about
+    /// `coreweave` reads an answer written about "CoreWeave", not "CRWV", so
+    /// symbol-only matching leaves the most natural denial phrasing unguarded.
+    names: BTreeSet<String>,
 }
+
+/// Every string a denial line could use to name this security: the symbol, the
+/// provider company name, and that name's leading word once punctuation and
+/// corporate suffixes are dropped (`CoreWeave, Inc.` → `CoreWeave`).
+fn listing_entity_labels(symbol: &str, state: &ListingEvidenceState) -> Vec<String> {
+    let mut labels = vec![symbol.to_ascii_uppercase()];
+    for name in &state.names {
+        let upper = name.to_ascii_uppercase();
+        if upper.len() >= 3 && !labels.contains(&upper) {
+            labels.push(upper.clone());
+        }
+        let head = upper
+            .split([',', '.', ' ', '(', ')'])
+            .find(|part| part.len() >= 3)
+            .unwrap_or_default();
+        if !head.is_empty()
+            && !LISTING_NAME_HEAD_STOPWORDS.contains(&head)
+            && !labels.contains(&head.to_string())
+        {
+            labels.push(head.to_string());
+        }
+    }
+    labels
+}
+
+/// Corporate-form words that must never become a matchable entity label on
+/// their own; `INC` would match almost any sentence about companies.
+const LISTING_NAME_HEAD_STOPWORDS: [&str; 8] = [
+    "INC", "CORP", "LTD", "PLC", "THE", "CO", "GROUP", "HOLDINGS",
+];
 
 fn canonical_listing_symbol(value: &str) -> Option<String> {
     provider_canonical_key(value).or_else(|| {
@@ -4623,6 +4657,14 @@ fn collect_listing_markers(value: &Value, states: &mut BTreeMap<String, ListingE
                         Some("active_listing") => state.active = true,
                         Some("inactive_listing") => state.inactive = true,
                         _ => {}
+                    }
+                    if let Some(company_name) = marker_fields
+                        .get("company_name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())
+                    {
+                        state.names.insert(company_name.to_string());
                     }
                 }
             }
@@ -4673,6 +4715,14 @@ fn current_turn_listing_states(
                 continue;
             };
             let state = states.entry(symbol).or_default();
+            if let Some(company_name) = fields
+                .get("companyName")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            {
+                state.names.insert(company_name.to_string());
+            }
             if data_type == "quote" {
                 state.current_quote = fields
                     .get("price")
@@ -4731,14 +4781,42 @@ fn explicit_security_symbols(runtime_input: &str) -> BTreeSet<String> {
 
 fn listing_denial_line(line: &str) -> bool {
     let normalized = line.to_ascii_lowercase();
+    // Also match with whitespace removed. `还没 IPO`, `还没　IPO` and `还没IPO`
+    // are the same claim, and a recently listed company is most naturally
+    // denied in exactly that shape rather than with the word 退市.
+    let compact = normalized
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
     let denial = [
         "已退市",
         "退市",
         "未上市",
+        "没上市",
         "没有上市",
         "并未上市",
         "不再上市",
+        "未公开上市",
+        "非上市公司",
+        "不是上市公司",
+        "私营公司",
+        "私有公司",
+        "未公开发行",
+        "没有公开交易",
+        "无公开交易",
+        "没有公开交易的股票",
+        "没有股票代码",
+        "没有上市代码",
         "不是当前交易代码",
+        "未ipo",
+        "没ipo",
+        "没有ipo",
+        "尚未ipo",
+        "还没ipo",
+        "还未ipo",
+        "未完成ipo",
+        "pre-ipo",
+        "preipo",
         "is delisted",
         "delisted",
         "was delisted",
@@ -4746,9 +4824,16 @@ fn listing_denial_line(line: &str) -> bool {
         "not listed",
         "no longer listed",
         "not publicly traded",
+        "not gone public",
+        "gone public yet",
+        "still private",
+        "privately held",
+        "not yet public",
+        "yet to go public",
+        "does not trade publicly",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
+    .any(|marker| normalized.contains(marker) || compact.contains(marker));
     let rebuttal = [
         "并非已退市",
         "不是已退市",
@@ -4777,8 +4862,32 @@ fn listing_denial_line(line: &str) -> bool {
         "currently listed",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
-    denial && !rebuttal
+    .any(|marker| normalized.contains(marker) || compact.contains(marker));
+    // Corporate history must stay sayable. Broadening the denial markers makes
+    // sentences like `CoreWeave 上市前是私营公司` match, and a true past fact is
+    // not a claim about today.
+    let historical = [
+        "曾",
+        "此前",
+        "历史上",
+        "当年",
+        "过去",
+        "早前",
+        "原本",
+        "一度",
+        "后来",
+        "随后",
+        "上市前",
+        "ipo前",
+        "分拆前",
+        "formerly",
+        "used to be",
+        "before its ipo",
+        "prior to its ipo",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker) || compact.contains(marker));
+    denial && !rebuttal && !historical
 }
 
 fn listing_final_violations(
@@ -4796,10 +4905,17 @@ fn listing_final_violations(
         }
         let upper = line.to_ascii_uppercase();
         for symbol in &symbols {
-            if !upper.contains(symbol) {
+            let state = states.get(symbol);
+            // A denial may name the security by symbol or by provider company
+            // name; `CoreWeave 尚未上市` and `CRWV 尚未上市` are the same claim.
+            let named = state
+                .map(|state| listing_entity_labels(symbol, state))
+                .unwrap_or_else(|| vec![symbol.to_ascii_uppercase()])
+                .into_iter()
+                .any(|label| upper.contains(&label));
+            if !named {
                 continue;
             }
-            let state = states.get(symbol);
             if state.is_some_and(|state| state.inactive && !state.active) {
                 continue;
             }
@@ -4812,6 +4928,34 @@ fn listing_final_violations(
         }
     }
     violations.into_iter().collect()
+}
+
+/// Hole the entity-first pipeline cannot see: a current listing/trading status
+/// claim in a turn that called nothing. No identity search ran, so there is no
+/// symbol to match and no structured evidence to contradict — the claim is
+/// simply unverified. The user asking `coreweave 怎么样` and being told it is
+/// still private is exactly this shape, and no request-side classifier can
+/// catch it without reintroducing the false positives that classifier caused.
+fn unverified_listing_status_claim(
+    content: &str,
+    tool_calls_made: &[ToolCallMade],
+) -> Option<String> {
+    // Deliberately the tightest possible trigger: the turn called nothing at
+    // all. Once any tool ran, the evidence-backed guards above own the answer.
+    if !tool_calls_made.is_empty() {
+        return None;
+    }
+    let line = content
+        .split(['\n', '。', '！', '？'])
+        .find(|line| listing_denial_line(line))?;
+    let bounded = line.chars().take(120).collect::<String>();
+    Some(bounded)
+}
+
+fn unverified_listing_status_correction_prompt(claim: &str) -> String {
+    format!(
+        "【内部终稿证据缺口】上一版终稿尚未发布正文。其中这句对当前上市 / 交易状态下了判断：「{claim}」，但本轮没有执行过任何业务工具，因此这句只来自模型记忆，不是本轮核验结果。公司上市状态会变化（分拆、重新上市、近年 IPO 都很常见），记忆不能作为依据。本轮请先调用真实工具核验：先用 `data_fetch` search 按公司名或代码确认实体，再取同代码 quote/profile 或 snapshot；必要时用 `web_search` 补充 IPO / 上市进展的当前来源。取得证据后按用户原问题重写终稿。若工具确实查不到该实体，只能说明本轮未能核验到该证券，不得把“查不到”写成“未上市”。不要向用户提及本检查。"
+    )
 }
 
 fn listing_final_correction_prompt(
@@ -5663,6 +5807,8 @@ impl Agent for FunctionCallingAgent {
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
         let mut pending_listing_final_correction: Option<String> = None;
+        let mut unverified_listing_corrections = 0u32;
+        let mut unverified_listing_retry_pending = false;
         let mut listing_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
@@ -5808,9 +5954,15 @@ impl Agent for FunctionCallingAgent {
                 ToolChoiceMode::Auto
             } else if active_business_round && !evidence_floor_satisfied && !force_finance_final {
                 ToolChoiceMode::Required
+            } else if unverified_listing_retry_pending && has_tools {
+                // The previous round asserted a current listing status having
+                // called nothing. Asking again without requiring a tool call
+                // just invites the same memory answer.
+                ToolChoiceMode::Required
             } else {
                 ToolChoiceMode::Auto
             };
+            unverified_listing_retry_pending = false;
             let round_instruction = Some(if force_context_overflow_final {
                 CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION
             } else if force_persistent_mutation_final {
@@ -6016,6 +6168,24 @@ impl Agent for FunctionCallingAgent {
                             // rewrites a cause.
                             active_business_failures = 0;
                             active_business_outcome = Some("direct_final");
+                            if let Some(claim) =
+                                unverified_listing_status_claim(&response.content, &tool_calls_made)
+                                && unverified_listing_corrections < MAX_LISTING_FINAL_CORRECTIONS
+                                && iterations < self.max_iterations
+                            {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    iteration = iterations,
+                                    claim = %claim,
+                                    "final asserted current listing status with zero business evidence"
+                                );
+                                unverified_listing_corrections =
+                                    unverified_listing_corrections.saturating_add(1);
+                                unverified_listing_retry_pending = true;
+                                pending_listing_final_correction =
+                                    Some(unverified_listing_status_correction_prompt(&claim));
+                                continue;
+                            }
                             let listing_violations = listing_final_violations(
                                 user_input,
                                 &response.content,
@@ -7237,6 +7407,22 @@ impl Agent for FunctionCallingAgent {
             // is likewise the same Agent's natural final answer and is not sent
             // through another terminal generation or a service semantic gate.
             self.dbg("[Agent] done (no more tool_calls)");
+            if let Some(claim) = unverified_listing_status_claim(&result.content, &tool_calls_made)
+                && unverified_listing_corrections < MAX_LISTING_FINAL_CORRECTIONS
+                && iterations < self.max_iterations
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    iteration = iterations,
+                    claim = %claim,
+                    "final asserted current listing status with zero business evidence"
+                );
+                unverified_listing_corrections = unverified_listing_corrections.saturating_add(1);
+                unverified_listing_retry_pending = true;
+                pending_listing_final_correction =
+                    Some(unverified_listing_status_correction_prompt(&claim));
+                continue;
+            }
             let listing_violations =
                 listing_final_violations(user_input, &result.content, &tool_calls_made);
             if !listing_violations.is_empty() {
@@ -13308,6 +13494,194 @@ mod tests {
     /// as an offline answer. The identity registry has no coverage for the
     /// token, so the turn is required to reach open web research before it may
     /// close. This is the `美股科技股和半导体股票方面的 CTA 是多少` failure.
+    /// Hole 1: a company question answered entirely from model memory. No tool
+    /// ran, so no identity search, no evidence floor, no forced final and no
+    /// listing evidence exist to contradict it. `coreweave 现在怎么样` answered
+    /// with "尚未上市" is exactly this shape — CRWV listed in March 2025.
+    /// The denial-marker list is the trigger for every listing guard, so a gap
+    /// in it silently disables all of them. A company that listed recently is
+    /// most naturally denied with IPO or private-company wording rather than
+    /// with 退市, and that whole family used to pass straight through.
+    #[test]
+    fn listing_denial_detection_covers_ipo_and_private_company_wording() {
+        for line in [
+            "CoreWeave 目前尚未上市。",
+            "CoreWeave 还没上市。",
+            "CoreWeave 还未上市。",
+            "CoreWeave 至今未上市。",
+            "CoreWeave 还没 IPO。",
+            "CoreWeave 尚未 IPO。",
+            "CoreWeave 还没有 IPO。",
+            "CoreWeave 仍在 pre-IPO 阶段。",
+            "CoreWeave 是一家私营公司。",
+            "CoreWeave 目前是非上市公司。",
+            "CoreWeave 仍未公开上市。",
+            "CoreWeave 尚未公开发行股票。",
+            "CoreWeave 还没有公开交易的股票。",
+            "CoreWeave 没有股票代码。",
+            "CoreWeave has not gone public yet.",
+            "CoreWeave is still private.",
+            "CoreWeave is not yet public.",
+            "CoreWeave 已被收购并退市。",
+        ] {
+            assert!(listing_denial_line(line), "missed denial: {line}");
+        }
+
+        // True current statements, corporate history and risk wording must all
+        // stay publishable; a broader trigger is only safe with these held.
+        for line in [
+            "CoreWeave 当前在 NASDAQ 上市交易。",
+            "CoreWeave 上市后表现不错。",
+            "CoreWeave 上市前是一家私营公司，2025 年 3 月完成 IPO。",
+            "CoreWeave 曾是私营公司。",
+            "SanDisk 此前被 WD 收购后退市，后于 2025 年分拆重新上市。",
+            "关注其退市风险。",
+            "这家公司当前上市交易，估值偏高。",
+        ] {
+            assert!(!listing_denial_line(line), "false denial: {line}");
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_only_listing_claim_is_sent_back_with_tools_required() {
+        let denial = "数据时间：北京时间 2026-07-19 09:31；行情口径：暂无\n\nCoreWeave 目前尚未上市，仍是一家私营公司。";
+        let corrected = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\nCoreWeave（CRWV）当前在 NASDAQ 上市交易。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ContentDelta(denial.to_string())],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CoreWeave","entity_route":"crwv","identity_match":"name_or_alias"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(corrected.to_string())],
+        ]);
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 6, None)
+                .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("memory-only-listing".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】coreweave 现在怎么样，值得买吗\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, corrected);
+        assert!(!response.content.contains("尚未上市"));
+        // The retry must actually require a tool call; asking again politely is
+        // how the same memory answer comes back.
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .as_slice(),
+            // Round 2 is forced by this guard; round 3 stays forced by the
+            // ordinary evidence floor, which now has an identity search but no
+            // post-identity quote/profile yet.
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Required,
+            ]
+        );
+        let requests = seen_messages.lock().expect("stream messages");
+        let retry_prompt = requests
+            .get(1)
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("retry prompt");
+        assert!(
+            retry_prompt.contains("本轮没有执行过任何业务工具"),
+            "{retry_prompt}"
+        );
+        assert!(
+            retry_prompt.contains("不得把“查不到”写成“未上市”"),
+            "{retry_prompt}"
+        );
+    }
+
+    /// Hole 2: the turn did fetch CRWV and got `active_listing`, but the denial
+    /// names the company rather than the symbol — the natural phrasing.
+    #[test]
+    fn listing_denial_by_company_name_is_caught_like_a_symbol_denial() {
+        let call = ToolCallMade {
+            name: "data_fetch".to_string(),
+            arguments: json!({"data_type": "snapshot", "ticker": "CRWV"}),
+            result: json!({
+                "hone_security_listing_evidence": {
+                    "status": "active_listing",
+                    "requested_symbol": "CRWV",
+                    "company_name": "CoreWeave, Inc.",
+                    "exchange": "NASDAQ"
+                }
+            }),
+            tool_call_id: Some("tc1".to_string()),
+        };
+        let input = "【本轮用户输入】coreweave怎么样";
+        for draft in [
+            "CoreWeave 目前尚未上市，还没有公开交易的股票。",
+            "CRWV 目前尚未上市。",
+            "CoreWeave 已退市。",
+        ] {
+            let violations = listing_final_violations(input, draft, std::slice::from_ref(&call));
+            assert_eq!(violations.len(), 1, "{draft}");
+            assert!(
+                violations[0].starts_with("CRWV:"),
+                "{draft} -> {violations:?}"
+            );
+        }
+        // A true statement about the current listing stays publishable.
+        assert!(
+            listing_final_violations(
+                input,
+                "CoreWeave（CRWV）当前在 NASDAQ 上市交易。",
+                std::slice::from_ref(&call),
+            )
+            .is_empty()
+        );
+    }
+
+    /// A corporate-form word must never become a matchable label on its own.
+    #[test]
+    fn company_name_labels_exclude_bare_corporate_suffixes() {
+        let mut state = ListingEvidenceState {
+            active: true,
+            ..Default::default()
+        };
+        state.names.insert("CoreWeave, Inc.".to_string());
+        let labels = listing_entity_labels("CRWV", &state);
+        assert!(labels.contains(&"CRWV".to_string()));
+        assert!(labels.contains(&"COREWEAVE".to_string()));
+        assert!(!labels.iter().any(|label| label == "INC"));
+    }
+
+    /// The zero-evidence guard is the tightest possible trigger: once any tool
+    /// ran, the evidence-backed guards own the answer and this one stands down.
+    #[test]
+    fn unverified_status_guard_only_fires_when_the_turn_called_nothing() {
+        let denial = "CoreWeave 目前尚未上市。";
+        assert!(unverified_listing_status_claim(denial, &[]).is_some());
+        assert!(
+            unverified_listing_status_claim("CoreWeave 当前在 NASDAQ 上市交易。", &[]).is_none()
+        );
+
+        let call = ToolCallMade {
+            name: "web_search".to_string(),
+            arguments: json!({"query": "CoreWeave IPO"}),
+            result: json!({"results": []}),
+            tool_call_id: Some("tc1".to_string()),
+        };
+        assert!(unverified_listing_status_claim(denial, std::slice::from_ref(&call)).is_none());
+    }
+
     #[tokio::test]
     async fn unresolvable_identity_never_closes_a_finance_turn_without_open_research() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料\n\n根据本轮检索到的持仓与资金流资料回答。";
