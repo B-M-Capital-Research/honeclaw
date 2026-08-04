@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-04 22:01-2026-08-05 02:01 CST。
+  - 22:30-23:00 CST 多条 Web scheduler / heartbeat 记录 `定时任务执行失败，跳过发送`，错误包括 `heartbeat 输出不是结构化 JSON，任务已标记失败`、`persistent_tool_failure: read-after-write reconciliation failed` 和 runner failure；同窗还有完整业务正文被失败字段承载的同类信号。
+  - 同窗 source runtime 仍有 `run_start=96`、`run_finish=98`、`deliver=59`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message 增量。
+  - 判断：该样本仍属于“投研完整性 / evidence 门禁 fail-closed 后用户无法获得任务正文或只看到失败路径”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-04 18:00-22:02 CST。
   - 20:02 CST Web scheduler session `Actor_web__direct__web-user-ba50cb9401c0` 记录 `[MsgFlow/web] failed ... error="数据时间：北京时间 2026-08-04 20:02；行情口径：报价源时间：北京时间 2026-08-04 04:00 至 2026-08-04 04:00（最新可得，非逐笔）...`；错误字段是一段完整投研正文开头，而不是结构化失败分类。
   - 21:01 CST Web scheduler `Actor_web__direct__web-user-afc1cabadbf8` 再次记录 `定时任务执行失败: 数据时间：北京时间 2026-08-04 21:01；数据口径：本轮查询时间...`，同样显示业务正文已形成但被失败路径承载。
