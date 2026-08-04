@@ -16,10 +16,18 @@ describe("provider-neutral billing activation contract", () => {
     expect(login).toContain('href="/activate"');
     expect(activation).toContain("useSearchParams");
     expect(activation).toContain("const provider = createMemo");
-    expect(activation).toContain('searchParams.provider === "whop"');
+    expect(activation).toContain("billingActivationProvider(searchParams.provider, config())");
     expect(activation).toContain('provider() === "stripe"');
     expect(activation).toContain('provider() === "whop"');
     expect(activation).not.toContain("new URLSearchParams(window.location.search)");
+  });
+
+  it("follows the server billing provider and fails closed when Stripe Checkout is disabled", () => {
+    expect(activation).toContain("billingActivationProvider");
+    expect(activation).toContain("getPublicBillingConfig");
+    expect(activation).toContain("config()");
+    expect(activation).toContain("configReady()");
+    expect(activation).toContain("正在确认会员渠道");
   });
 
   it("creates Checkout only after HONE email verification", () => {

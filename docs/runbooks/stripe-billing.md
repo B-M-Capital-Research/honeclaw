@@ -205,6 +205,26 @@ HONE_STRIPE_WEBHOOK_URL=http://127.0.0.1:8088/api/public/integrations/stripe/web
 bash tests/regression/manual/test_stripe_billing_sandbox.sh
 ```
 
+The complete external test-mode lifecycle is also opt-in and requires an
+already exported protected test key:
+
+```bash
+HONE_RUN_STRIPE_LIFECYCLE=1 \
+bash tests/regression/manual/test_stripe_billing_lifecycle.sh
+```
+
+The lifecycle script never reads a key from a repository file and refuses any
+key that is not `sk_test_*`. It builds an isolated HONE backend and SQLite
+database, creates a disposable wrong-catalog Product/Price, starts a local
+Stripe CLI listener, and exercises real Stripe Checkout creation, initial paid
+access, Customer Portal creation, Test Clock renewal failure, bounded grace,
+invoice recovery, period-end cancellation, immediate end, and repurchase. It
+then proves every accepted webhook was processed once, deletes the disposable
+customer and subscriptions with the Test Clock, and archives the Price and
+Product. The deliberately different catalog also means a concurrently enabled
+registered HONE endpoint can only return `catalog_mismatch`; it cannot grant a
+production entitlement.
+
 Local visual evidence is stored outside the repository so it cannot capture
 secrets in Git. The current acceptance set is under
 `/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`
@@ -215,18 +235,26 @@ account (`12-hone-account-stripe-active.png`). Production evidence `13`–`17`
 covers the registered endpoint `200`, safe-stage public pages, and the Whop
 same-route query transition without reload.
 
-The real test payment produced `checkout.session.completed`, `invoice.paid`,
-and `customer.subscription.created` through the CLI listener. It exposed the
-provisional-ordering edge above; after the fix, the same provider events passed
-through a fresh signed endpoint exactly once, produced one active entitlement,
-and changed the paid API from `402` to `200`. The registered deployed test
-endpoint was subsequently accepted with a signed wrong-catalog event returning
-`200 catalog_mismatch` and zero inbox/entitlement mutation.
+The first real test payment produced `checkout.session.completed`,
+`invoice.paid`, and `customer.subscription.created` through the CLI listener.
+It exposed the provisional-ordering edge above; after the fix, the same
+provider events passed through a fresh signed endpoint exactly once, produced
+one active entitlement, and changed the paid API from `402` to `200`. The
+automated external lifecycle subsequently processed 13 real Stripe events once
+with no projection errors and proved Checkout creation, paid access, Portal,
+renewal failure/grace, recovery, cancellation, and repurchase. The registered
+deployed test endpoint was also accepted with a signed wrong-catalog event
+returning `200 catalog_mismatch` and zero inbox/entitlement mutation.
 
-The unified activation page must read `provider` reactively from the router.
-Test both direct load and same-route navigation from `/activate` to
-`/activate?provider=whop`; the Whop badge, heading, email label, steps, and
-submit action must change without a browser reload.
+The unified activation page must read `provider` reactively from the router and
+resolve it against the server Billing configuration. Test direct load,
+same-route navigation from `/activate` to `/activate?provider=whop`, and a stale
+`/activate?provider=stripe` link while Checkout is disabled. The Whop badge,
+heading, email label, steps, and submit action must change without a reload,
+and a disabled Stripe flow must fail closed to the available Whop recovery
+surface instead of inviting a checkout that the server will reject. Before the
+configuration arrives, render only neutral loading copy and no account inputs;
+on failure, expose one obvious reload action rather than guessing a provider.
 
 ## Sandbox Acceptance Matrix
 

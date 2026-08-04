@@ -266,7 +266,7 @@ export default function PublicPlanPage() {
                   </a>
                 </Show>
                 <Show when={!isZh() && !stripePrimary() && billingConfig()?.stripe_checkout_enabled}>
-                  <a class="hone-hub-trial-btn" href="/activate">Subscribe with Stripe</a>
+                  <a class="hone-hub-trial-btn" href="/activate?provider=stripe">Subscribe with Stripe</a>
                 </Show>
               </Show>
               <button type="button" class="hone-hub-trial-btn" onClick={() => setLightbox({ kind: "support" })}>

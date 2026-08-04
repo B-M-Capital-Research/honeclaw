@@ -3,3 +3,6 @@ f6cc1ff279218647908f7f747f260ae3beb7ee3e:tests/test_x_oauth1.py:generic-api-key:
 f6cc1ff279218647908f7f747f260ae3beb7ee3e:tests/test_x_oauth1.py:generic-api-key:16
 f6cc1ff279218647908f7f747f260ae3beb7ee3e:tests/test_x_oauth1.py:generic-api-key:24
 4ec8737fbbdb41881e94fa4a1763e7b4be48b577:docs/technical-spec.md:generic-api-key:1013
+# Alipay skill reference assets: a dynamically assembled PEM header and a sandbox-only example field.
+6ee4c827bd90b62beb95415f30fbe8379c89baf0:.agents/skills/alipay-aipay/references/integration/modules/code-examples/php/4-按量付费/A2MPaymentDemo.php:private-key:82
+6ee4c827bd90b62beb95415f30fbe8379c89baf0:.agents/skills/alipay-aipay/references/integration/modules/sandbox/alipay-sandbox-tool.md:generic-api-key:90

@@ -26,7 +26,7 @@ Status: Internal reference
 - `.editorconfig`
 - `.gitattributes`
 - `config.example.yaml`
-- `gitleaks.toml`, `.gitleaksignore`, and the matching secret-scan workflow (the current allowlist covers `config.yaml`, while `.gitleaksignore` pins the historical sample findings in `scripts/diagnose_llm.sh`, `docs/technical-spec.md`, and the deleted `tests/test_x_oauth1.py`)
+- `gitleaks.toml`, `.gitleaksignore`, and the matching secret-scan workflow (the current allowlist covers `config.yaml`, while `.gitleaksignore` pins only exact historical sample fingerprints in `scripts/diagnose_llm.sh`, `docs/technical-spec.md`, the deleted `tests/test_x_oauth1.py`, and the bundled Alipay integration references)
 - `crates/`
 - `bins/`
 - `agents/`

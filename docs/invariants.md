@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## Source of Truth and Document Priority
 
@@ -45,6 +45,7 @@ Last updated: 2026-08-03
 - Provider webhooks must verify the untouched raw body, enforce the configured account/catalog boundary, persist an idempotent inbox event before processing, and reject stale state transitions. Inbox recovery uses bounded attempts and a lease whose completion is fenced to the claiming attempt, so an expired worker cannot overwrite a newer claim. Persist only a digest plus necessary normalized fields, never full payment-card data.
 - A Stripe `checkout.session.completed` row is provisional and orders from the Checkout Session creation time, because the authoritative invoice/subscription events can have slightly earlier envelope timestamps. The inbox still preserves the real envelope time. Local CLI, registered test, and registered live webhook destinations each use their own signing secret; one runtime accepts only its configured mode/secret pair.
 - Disabling new Checkout must not disable webhook ingestion or existing subscription management. Billing migrations are forward-only: the one-time legacy Whop projection migration removes old runtime columns and provider-specific public API fields rather than maintaining a dual-read compatibility layer.
+- `/activate` resolves its visible provider from the server Billing policy, not from a stale URL alone. An explicit Whop recovery link remains Whop; an explicit Stripe link is honored only while Stripe Checkout is enabled, otherwise the page fails closed to Whop. The UI must never solicit data for a Checkout path the server has disabled.
 - Browser Checkout and Portal creation require an authenticated, same-origin request and server-owned catalog IDs. HONE iOS clients may log in and restore existing access but must not expose price or external digital-purchase calls to action.
 
 ## Investment Response Prompt Contract

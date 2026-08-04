@@ -1,10 +1,28 @@
 import { describe, expect, it } from "bun:test";
-import type { PublicAuthUserInfo, PublicBillingEntitlement } from "@/lib/types";
+import type {
+  PublicAuthUserInfo,
+  PublicBillingConfig,
+  PublicBillingEntitlement,
+} from "@/lib/types";
 import {
+  billingActivationProvider,
   billingEntitlementGrantsAccess,
   billingEntitlementStatusLabel,
   publicUserHasProductAccess,
 } from "./public-membership";
+
+function billingConfig(
+  primaryProvider: "stripe" | "whop",
+  stripeCheckoutEnabled: boolean,
+): PublicBillingConfig {
+  return {
+    primary_provider: primaryProvider,
+    stripe_checkout_enabled: stripeCheckoutEnabled,
+    whop_new_purchases_enabled: true,
+    purchases_allowed_on_this_client: true,
+    management_allowed_on_this_client: true,
+  };
+}
 
 function entitlement(
   accessState: string,
@@ -41,6 +59,14 @@ function user(accessGranted: boolean): PublicAuthUserInfo {
 }
 
 describe("public membership policy", () => {
+  it("routes activation through the server-selected available provider", () => {
+    expect(billingActivationProvider(undefined, billingConfig("whop", false))).toBe("whop");
+    expect(billingActivationProvider(undefined, billingConfig("stripe", true))).toBe("stripe");
+    expect(billingActivationProvider("stripe", billingConfig("whop", true))).toBe("stripe");
+    expect(billingActivationProvider("stripe", billingConfig("whop", false))).toBe("whop");
+    expect(billingActivationProvider("whop", billingConfig("stripe", true))).toBe("whop");
+  });
+
   it("treats any provider active or grace entitlement as access granting", () => {
     for (const provider of ["stripe", "whop"]) {
       expect(billingEntitlementGrantsAccess(entitlement("active", false, provider))).toBe(true);

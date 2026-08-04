@@ -15,6 +15,7 @@ describe("public plan purchase contract", () => {
       "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/bm-research-membership/",
     );
     expect(publicPlan).toContain('href="/activate?provider=whop"');
+    expect(publicPlan).toContain('href="/activate?provider=stripe"');
     expect(publicPlan).not.toContain("/vip-copy-18/");
   });
 

@@ -1,7 +1,24 @@
 import type {
   PublicAuthUserInfo,
+  PublicBillingConfig,
   PublicBillingEntitlement,
 } from "@/lib/types";
+
+export type BillingActivationProvider = "stripe" | "whop";
+
+export function billingActivationProvider(
+  requestedProvider: string | undefined,
+  config: PublicBillingConfig | undefined,
+): BillingActivationProvider {
+  if (requestedProvider === "whop") return "whop";
+  if (config === undefined) return "stripe";
+  if (requestedProvider === "stripe") {
+    return config.stripe_checkout_enabled ? "stripe" : "whop";
+  }
+  return config.primary_provider === "stripe" && config.stripe_checkout_enabled
+    ? "stripe"
+    : "whop";
+}
 
 export function billingEntitlementGrantsAccess(
   entitlement: PublicBillingEntitlement,

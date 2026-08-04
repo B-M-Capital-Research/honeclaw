@@ -11,14 +11,15 @@
   - `crates/hone-core/src/cloud_runtime.rs`
   - `crates/hone-web-api/src/routes/{billing,stripe,whop,public}.rs`
   - `packages/app/src/pages/{public-activate,public-me,public-plan}.tsx`
+  - `packages/app/{playwright.config.ts,e2e/public-billing-activation.spec.ts}`
   - `tests/regression/{ci,manual}/test_*billing*.sh`
 - related_docs:
   - `docs/current-plans/stripe-whop-parallel-billing.md`
   - `docs/runbooks/stripe-billing.md`
   - `docs/runbooks/whop-hone-activation.md`
 - related_prs: no PR; Billing landed on `main` through `92e87a94`, `5028870d`, and Whop route fix `e31c29ac`; no release or tag was created
-- verification: local automated/browser acceptance, real Stripe test Checkout, CLI delivery, active entitlement, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, and reactive Whop route regression passed
-- risks: non-owner Whop buyer and real failure/cancel/recovery/repurchase cases remain pending; GitHub CI still has the known missing-`rg` and two legacy reference-asset findings; live catalog/configuration remains untouched
+- verification: local automated/browser acceptance, real Stripe test Checkout and 13-event Test Clock lifecycle, CLI delivery, active/grace/inactive/repurchase transitions, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, no-`rg` Billing contract, focused gitleaks history allowlist, and provider-policy activation regressions passed
+- risks: non-owner Whop buyer and owner live-promotion policy remain pending; live catalog/configuration remains untouched
 
 ## Summary
 
@@ -40,7 +41,13 @@ own email challenge. Production now runs exact backend `5028870d`; the
 registered Stripe test endpoint is online with its rotated secret, while
 Checkout remains disabled and Whop remains the temporary primary channel.
 Commit `e31c29ac` also fixes the Whop recovery link so changing only the query
-on `/activate` updates the page immediately instead of requiring a reload.
+on `/activate` updates the page immediately instead of requiring a reload. An
+opt-in external regression now completes the remaining real Stripe test-mode
+lifecycle with a disposable Test Clock: 13 events prove paid access, renewal
+failure/grace, recovery, cancellation, and repurchase, then all generated
+customer/subscription objects are deleted and the disposable catalog is
+archived. The activation page also follows the server provider policy, so a
+stale Stripe URL cannot present an unusable form while Checkout is disabled.
 
 ## 2026-08-04 Deployment And Online Acceptance
 
@@ -70,6 +77,11 @@ on `/activate` updates the page immediately instead of requiring a reload.
   from a temporary working directory, never loads the repository `.env`, and
   drives signed Stripe and Whop events through the public routes and SQLite
   inbox without contacting either provider.
+- Added an opt-in external Stripe lifecycle regression that creates only
+  disposable test-mode objects and proves real Checkout/Portal creation,
+  payment, renewal failure, grace, recovery, cancellation, and repurchase. It
+  deletes the Test Clock and its customer/subscriptions and archives the
+  disposable catalog on completion.
 - Replaced `/activate/whop` with unified `/activate`, moved `/me` and `/plan` to
   server-authoritative Billing data, and made HONE-iOS restore-only with no
   price or external purchase CTA.
@@ -86,6 +98,13 @@ on `/activate` updates the page immediately instead of requiring a reload.
 - Replaced the activation page's one-time `window.location.search` snapshot
   with a reactive Solid Router search-param source. Contract and Playwright
   regressions prove `/activate` can switch to `?provider=whop` without reload.
+- Centralized activation provider resolution against the live Billing config.
+  Explicit Whop remains available, while default or explicit Stripe falls back
+  to Whop when Checkout is disabled. A browser regression covers the stale URL.
+- Made the Billing CI contract portable to runners without `rg`; the fallback
+  branch was exercised with `rg` deliberately absent. Added only the two exact
+  legacy Alipay history fingerprints to `.gitleaksignore`; a complete fake RSA
+  key remains detected, proving the rule itself was not disabled.
 
 ## Verification
 
@@ -94,7 +113,7 @@ on `/activate` updates the page immediately instead of requiring a reload.
 - The fifth Billing regression proves that a late cancellation for an older
   Stripe subscription cannot revoke a newer repurchase, and that access is
   denied only once every entitlement is inactive.
-- Web: typecheck, public production build, and `350/350` tests passed.
+- Web: typecheck, public production build, and `352/352` tests passed.
 - Public Community Edge Worker: typecheck and `45/45` tests passed.
 - Billing CI contract passed. The final aggregate CI-safe rerun included both
   Billing regressions, reached `43/44`, and failed only the unrelated existing finance automation
@@ -112,6 +131,12 @@ on `/activate` updates the page immediately instead of requiring a reload.
   Stripe entitlement, and changed the paid API from `402` to `200`. Customer
   Portal exposed payment-method update, period-end cancellation, and the paid
   invoice; cancellation was not executed.
+- Real Stripe lifecycle regression: an isolated HONE runtime and a disposable
+  Stripe Test Clock processed 13 provider-generated events exactly once with
+  no errors. Access moved `402 → 200`, into bounded grace, back to active,
+  through cancellation to `402`, and through repurchase to `200`; the final
+  ledger had one active and one inactive Stripe row. The clock-owned objects
+  were deleted and the Price/Product were archived.
 - Browser: desktop `/plan`, `/activate`, and `/me` plus 390×844 HONE-iOS
   variants passed visual/DOM checks. An iOS restore-step copy defect was found,
   fixed, and re-captured. A later audit found `/me` still exposed external
@@ -128,25 +153,36 @@ on `/activate` updates the page immediately instead of requiring a reload.
   and entitlement counts remained `0 | 0`. The Whop route fix passed full Web
   tests, typecheck, public production build, and a real Playwright same-route
   transition test before push.
+- The activation provider matrix passed focused unit/contract tests and a real
+  Playwright check that `/activate?provider=stripe` renders Whop and no Stripe
+  submit action when the server reports Whop primary with Checkout disabled.
+  A third browser case holds the Billing config response and proves the page
+  displays only neutral loading copy with zero textboxes until policy arrives;
+  config failure offers one reload action. The Billing Playwright scope is
+  `3/3` and is excluded from the admin project by configuration.
+- The missing-`rg` Billing contract passed in an intentionally restricted
+  `PATH`. Gitleaks 8.30.1 scanned complete history with zero findings, while a
+  fake complete RSA private key negative control was still detected.
 
 ## Risks / Follow-ups
 
 - Local CLI, registered online test, and registered live webhook destinations
   require distinct signing secrets. The registered test endpoint is now
   accepted online; no live endpoint or live secret exists for this rollout.
-- Finish the real failure/recovery, cancel/end, and repurchase cases from the
-  sandbox matrix. Obtain action-time confirmation before canceling even the
-  test subscription.
 - Tax, refund, statement descriptor, support, dispute, and live promotion
   policy require explicit owner approval. Keep Stripe Tax off in the sandbox.
+- A real non-owner Whop buyer still must complete their own email challenge;
+  Codex can navigate and inspect everything around that sensitive step.
+- A repository-wide Playwright audit still has 7 failures outside Billing
+  (admin/company-profile/chat-upload/mobile-overlay/SMS), reproducible with one
+  worker. Billing remains `3/3`; the unrelated suite is not a default CI gate
+  and this task did not change those pages or fixtures.
 - The user-owned untracked `.claude/worktrees/` directory was not modified.
 
 ## Next Entry Point
 
-After explicit owner approval, make only the focused GitHub CI fixes already
-identified: a `grep` fallback for the Billing contract and the narrowest safe
-allowlist for two legacy Alipay reference assets. Then finish the real
-failure/recovery/cancel/end/repurchase and non-owner Whop matrices. Obtain
-action-time approval before canceling any test subscription and a separate
-business approval before live promotion. Keep this task active until those
-items pass; only then archive the plan and update `docs/archive/index.md`.
+Push and follow the current change through GitHub CI, fixing any related failure
+without owner intervention. Then use a real non-owner Whop buyer for the one
+remaining production email challenge. Obtain separate business approval before
+live promotion. Keep this task active until Whop acceptance and the live-policy
+decision pass; only then archive the plan and update `docs/archive/index.md`.

@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -637,8 +637,8 @@ Last updated: 2026-08-03
 
 ## D-2026-08-03-01 Make Billing A Provider-Neutral Domain Without A Compatibility Layer
 
-- Status: Accepted; implementation and local automated verification complete,
-  Stripe sandbox and controlled live acceptance pending.
+- Status: Accepted; implementation, local automated verification, and Stripe
+  external test-mode lifecycle complete; controlled live acceptance pending.
 - Created: 2026-08-03
 - Owner: Codex
 - Supersedes: `D-2026-07-26-06` only for application-entitlement persistence,
@@ -672,7 +672,10 @@ Last updated: 2026-08-03
   itself cannot activate a never-paid account. HONE iOS exposes only login,
   restore, and status; separate server-owned purchase and management policies
   hide external digital-purchase pricing, calls to action, Portal, and Whop
-  management links fail-closed.
+  management links fail-closed. The unified activation page also resolves its
+  adapter against that server policy: explicit Whop remains available for
+  recovery, while an explicit Stripe URL falls back to Whop whenever Checkout
+  is disabled instead of presenting a form whose server action must fail.
 - Stripe ordering and endpoint boundary: `checkout.session.completed` is only a
   provisional pending marker and orders from the Checkout Session creation
   time, because Stripe can create the authoritative invoice/subscription
@@ -700,9 +703,13 @@ Last updated: 2026-08-03
   single activation route, webhook-authoritative success polling, duplicate
   warnings, Portal, and iOS purchase/management hiding. A CI-safe regression
   starts an isolated real backend and drives raw signed Stripe/Whop HTTP events
-  through the durable inbox without external credentials. Local automated
-  gates are complete; external Stripe sandbox acceptance remains
-  tracked in `docs/current-plans/stripe-whop-parallel-billing.md`.
+  through the durable inbox without external credentials. A separate opt-in
+  external regression uses a disposable Stripe catalog, Test Clock, customer,
+  subscriptions, invoices, Checkout Session, and Portal Session to prove the
+  real paid/failure/recovery/cancel/repurchase lifecycle before deleting the
+  clock-owned objects and archiving the catalog. External non-owner Whop and
+  owner-approved live promotion remain tracked in
+  `docs/current-plans/stripe-whop-parallel-billing.md`.
 
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 

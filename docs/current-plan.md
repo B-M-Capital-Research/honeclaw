@@ -19,7 +19,7 @@
 - **Stripe + Whop 并行计费接入**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/stripe-whop-parallel-billing.md`
-  - 摘要：最终业务方向是新用户默认 Stripe、Whop 保留给老用户及次级渠道；当前仍是安全验收阶段，不代表最终渠道排序。无兼容层的 provider-neutral Billing 已随精确 `5028870d` 部署，生产保持 Whop 主通道、Stripe Checkout 关闭。Stripe test endpoint `we_1U0N6iEK7h1dD4JHy3zsfiN2` 的旧 signing secret 因意外暴露已立即轮换，新值已受保护写入 `root:root 0600` 的 runtime env；线上安全事件 `evt_1U0ZKeEK7h1dD4JHB59OFEjY` 返回 `200 catalog_mismatch`，PostgreSQL inbox/权益计数前后均为 0。生产 `/plan`、`/activate`、`/me` 与 Workbench delivery 已留去敏截图；`e31c29ac` 进一步修复同一 `/activate` 路由切换到 `?provider=whop` 时仍显示 Stripe 的响应式 bug，并新增浏览器回归。live mode/catalog/webhook 未动；剩余真实失败/恢复/取消/重购矩阵、非 owner Whop buyer、GitHub CI 两处门禁和 live promotion 决策，因此不归档
+  - 摘要：最终业务方向是新用户默认 Stripe、Whop 保留给老用户及次级渠道；当前仍是安全验收阶段，不代表最终渠道排序。无兼容层的 provider-neutral Billing 已随精确 `5028870d` 部署，生产保持 Whop 主通道、Stripe Checkout 关闭。Stripe test endpoint `we_1U0N6iEK7h1dD4JHy3zsfiN2` 的旧 signing secret 因意外暴露已立即轮换，新值已受保护写入 `root:root 0600` 的 runtime env；线上安全事件 `evt_1U0ZKeEK7h1dD4JHB59OFEjY` 返回 `200 catalog_mismatch`，PostgreSQL inbox/权益计数前后均为 0。生产 `/plan`、`/activate`、`/me` 与 Workbench delivery 已留去敏截图；`e31c29ac` 修复同路由切换 Whop 的响应式 bug，当前改动再让激活页遵循服务端 provider/Checkout 开关，避免关闭 Stripe 时仍展示不可用表单。真实 Stripe Test Clock 生命周期已处理 13 条 provider 事件，完成失败/宽限/恢复/取消/重购与清理；缺少 `rg` 的 CI 合同和两条精确 gitleaks 历史误报也已修复。live mode/catalog/webhook 未动；仅剩当前提交 CI、真实非 owner Whop buyer 与 live promotion 决策，因此不归档
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
