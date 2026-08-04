@@ -1,4 +1,5 @@
 import { Show, createMemo, createSignal, onCleanup, onMount, type ParentProps } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 import { useNavigate } from "@solidjs/router";
 import { HoneBrand } from "@/components/hone-brand";
 import { PublicCheckbox } from "@/components/public-checkbox";
@@ -48,8 +49,8 @@ export default function PublicActivatePage() {
     () => !restoreOnly() && config()?.stripe_checkout_enabled === true,
   );
   const activationSteps = createMemo(() => {
-    if (!purchaseAvailable()) return ["验证邮箱", "登录账户", "恢复权益"];
-    return ["验证邮箱", "Stripe 付款", "确认权益"];
+    if (!purchaseAvailable()) return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_login, CONTENT.chat_page.activate_page.step_restore];
+    return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_pay, CONTENT.chat_page.activate_page.step_confirm];
   });
 
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
@@ -115,7 +116,7 @@ export default function PublicActivatePage() {
         return;
       }
       if (!purchaseAvailable()) {
-        setError("Stripe 结账暂不可用，请稍后再试。已有会员仍可正常登录和恢复权益。");
+        setError(CONTENT.chat_page.activate_page.checkout_down);
         return;
       }
       const { checkout_url } = await createStripeCheckout();
@@ -132,9 +133,9 @@ export default function PublicActivatePage() {
   };
 
   const title = () => {
-    if (!configReady()) return "正在确认会员渠道";
-    if (!purchaseAvailable()) return "恢复你的 HONE 会员权益";
-    return "验证邮箱并安全结账";
+    if (!configReady()) return CONTENT.chat_page.activate_page.confirming;
+    if (!purchaseAvailable()) return CONTENT.chat_page.activate_page.restore_title;
+    return CONTENT.chat_page.activate_page.checkout_title;
   };
 
   return (
@@ -145,22 +146,22 @@ export default function PublicActivatePage() {
           <HoneBrand class="public-login-brand" />
           <span class="public-activate-provider">
             {!configReady()
-              ? "会员渠道确认中"
+              ? CONTENT.chat_page.activate_page.channel_pending
               : restoreOnly()
-                ? "会员恢复"
+                ? CONTENT.chat_page.activate_page.restore_badge
                 : purchaseAvailable()
-                  ? "STRIPE 安全结账"
-                  : "会员恢复"}
+                  ? CONTENT.chat_page.activate_page.checkout_badge
+                  : CONTENT.chat_page.activate_page.restore_badge}
           </span>
           <h1>{title()}</h1>
           <p>
             {!configReady()
-              ? "正在读取当前可用的安全支付与会员恢复方式。"
+              ? CONTENT.chat_page.activate_page.reading_methods
               : restoreOnly()
-                ? "在这里登录并恢复已在网站购买的权益；App 内不展示价格，也不会跳转外部购买。"
+                ? CONTENT.chat_page.activate_page.restore_hint
                 : purchaseAvailable()
-                  ? "邮箱验证后由 HONE 创建 Stripe Checkout。付款完成需等待服务端确认，成功跳转本身不会开通权益。"
-                  : "Stripe 结账正在维护。已有会员可以验证邮箱并恢复权益。"}
+                  ? CONTENT.chat_page.activate_page.checkout_hint
+                  : CONTENT.chat_page.activate_page.checkout_maint}
           </p>
         </header>
 
@@ -169,7 +170,7 @@ export default function PublicActivatePage() {
           fallback={
             <section class="public-activate-card">
               <Feedback
-                message={error() || "正在读取可用的会员渠道…"}
+                message={error() || CONTENT.chat_page.activate_page.loading_channels}
                 error={Boolean(error())}
               />
               <Show when={error()}>
@@ -178,57 +179,59 @@ export default function PublicActivatePage() {
                   type="button"
                   onClick={() => window.location.reload()}
                 >
-                  重新加载
+                  {CONTENT.chat_page.activate_page.reload}
                 </button>
               </Show>
             </section>
           }
         >
           <section class="public-activate-card">
-            <div class="public-activate-steps" aria-label="开通步骤">
+            <div class="public-activate-steps" aria-label={CONTENT.chat_page.activate_page.steps_title}>
               {activationSteps().map((label, index) => <span>{index + 1}. {label}</span>)}
             </div>
 
             <label class="public-activate-field">
-              <FieldLabel>账户邮箱</FieldLabel>
+              <FieldLabel>{CONTENT.chat_page.activate_page.account_email}</FieldLabel>
               <TextInput
                 type="email"
                 value={emailAddress()}
                 onInput={setEmailAddress}
                 placeholder="name@example.com"
                 autoComplete="email"
-                ariaLabel="账户邮箱"
+                ariaLabel={CONTENT.chat_page.activate_page.account_email}
               />
             </label>
 
             <div class="public-activate-code-row">
               <label class="public-activate-field">
-                <FieldLabel>邮箱验证码</FieldLabel>
+                <FieldLabel>{CONTENT.chat_page.activate_page.email_code}</FieldLabel>
                 <TextInput
                   value={verifyCode()}
                   onInput={(value) => setVerifyCode(value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="8 位验证码"
+                  placeholder={CONTENT.chat_page.activate_page.code_placeholder}
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  ariaLabel="邮箱验证码"
+                  ariaLabel={CONTENT.chat_page.activate_page.email_code}
                   onEnter={submit}
                 />
               </label>
               <button type="button" disabled={!sendReady()} onClick={sendCode}>
                 {sending()
-                  ? "发送中…"
+                  ? CONTENT.chat_page.activate_page.sending
                   : cooldown() > 0
-                    ? `${cooldown()} 秒后重发`
-                    : "发送验证码"}
+                    ? CONTENT.chat_page.activate_page.resend_in.replace("{seconds}", String(cooldown()))
+                    : CONTENT.chat_page.activate_page.send_code}
               </button>
             </div>
 
             <div class="public-activate-consents">
-              <PublicCheckbox checked={remember()} onChange={setRemember}>保持登录 30 天</PublicCheckbox>
+              <PublicCheckbox checked={remember()} onChange={setRemember}>{CONTENT.chat_page.activate_page.keep_signed_in}</PublicCheckbox>
               <PublicCheckbox checked={agreed()} onChange={setAgreed}>
-                我已阅读并同意<a href="/terms" target="_blank" rel="noopener noreferrer">《用户协议》</a>
-                与<a href="/privacy" target="_blank" rel="noopener noreferrer">《隐私政策》</a>
-                （版本 {TOS_VERSION}）
+                {CONTENT.chat_page.activate_page.agree_prefix}
+                <a href="/terms" target="_blank" rel="noopener noreferrer">{CONTENT.chat_page.activate_page.tos_link}</a>
+                {CONTENT.chat_page.activate_page.and}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer">{CONTENT.chat_page.activate_page.privacy_link}</a>
+                （{CONTENT.chat_page.activate_page.version_label} {TOS_VERSION}）
               </PublicCheckbox>
             </div>
 
@@ -242,15 +245,15 @@ export default function PublicActivatePage() {
               onClick={submit}
             >
               {submitting()
-                ? "正在处理…"
+                ? CONTENT.chat_page.activate_page.processing
                 : !purchaseAvailable()
-                  ? "验证并恢复权益"
-                  : "验证并前往 Stripe"}
+                  ? CONTENT.chat_page.activate_page.verify_restore
+                  : CONTENT.chat_page.activate_page.verify_stripe}
             </button>
           </section>
 
           <p class="public-activate-footer">
-            国内手机号用户？ <a href="/chat">使用短信验证码登录</a>
+            {CONTENT.chat_page.activate_page.cn_user} <a href="/chat">{CONTENT.chat_page.activate_page.sms_login}</a>
           </p>
         </Show>
       </div>

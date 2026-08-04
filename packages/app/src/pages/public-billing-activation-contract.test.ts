@@ -25,8 +25,8 @@ describe("Stripe-only billing activation contract", () => {
     expect(activation).toContain("purchaseAvailable()");
     expect(activation).toContain("stripe_checkout_enabled");
     expect(activation).toContain("configReady()");
-    expect(activation).toContain("正在确认会员渠道");
-    expect(activation).toContain("Stripe 结账暂不可用");
+    expect(activation).toContain("CONTENT.chat_page.activate_page.confirming");
+    expect(activation).toContain("CONTENT.chat_page.activate_page.checkout_down");
   });
 
   it("creates Checkout only after HONE email verification", () => {
@@ -40,7 +40,10 @@ describe("Stripe-only billing activation contract", () => {
   });
 
   it("removes purchase language from the restore-only client flow", () => {
-    expect(activation).toContain('if (!purchaseAvailable()) return ["验证邮箱", "登录账户", "恢复权益"]');
+    // The restore-only flow must never offer purchase steps.
+    expect(activation).toContain("if (!purchaseAvailable())");
+    expect(activation).toContain("CONTENT.chat_page.activate_page.step_restore");
+    expect(activation).not.toContain("CONTENT.chat_page.activate_page.step_pay,\n      CONTENT.chat_page.activate_page.step_login");
     expect(activation).toContain("restoreOnly() || user.billing.access_granted");
     expect(activation).toContain('purchaseAvailable() ? "stripe_checkout" : undefined');
   });

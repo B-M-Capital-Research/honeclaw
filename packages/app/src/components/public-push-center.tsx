@@ -1,4 +1,5 @@
 import { Markdown } from "@hone-financial/ui/markdown";
+import { CONTENT } from "@/lib/public-content";
 import { For, Show } from "solid-js";
 import { useLocale } from "@/lib/i18n";
 import type { PublicPushDetail, PublicPushListItem } from "@/lib/types";
@@ -37,7 +38,7 @@ export function PushUnreadDot(props: { count: number }) {
         class="public-push-unread-dot"
         aria-label={
           useLocale() === "zh"
-            ? `${props.count} 条新推送`
+            ? `${props.count}${CONTENT.chat_page.push_center.new_count}`
             : `${props.count} new pushes`
         }
       />
@@ -250,20 +251,20 @@ function pushCopy(locale: "zh" | "en") {
     };
   }
   return {
-    brief: "定时简报",
-    viewFull: "查看完整内容",
-    listAria: "推送列表",
-    centerTitle: "推送中心",
-    centerIntro: "所有定时简报，在一个地方安静归档。",
-    closeCenter: "关闭推送中心",
-    loadingList: "正在整理推送…",
-    emptyTitle: "还没有定时推送",
-    emptyBody: "任务产生新简报后，会自动收进这里。",
-    loadingMore: "加载中…",
-    loadMore: "查看更多推送",
-    detailAria: "推送完整内容",
-    opening: "正在打开推送",
-    closeDetail: "关闭完整内容",
-    loadingDetail: "正在加载完整内容…",
+    brief: CONTENT.chat_page.push_center.scheduled,
+    viewFull: CONTENT.chat_page.push_center.view_full,
+    listAria: CONTENT.chat_page.push_center.list_aria,
+    centerTitle: CONTENT.chat_page.push_center.center_title,
+    centerIntro: CONTENT.chat_page.push_center.center_hint,
+    closeCenter: CONTENT.chat_page.push_center.close_center,
+    loadingList: CONTENT.chat_page.push_center.sorting,
+    emptyTitle: CONTENT.chat_page.push_center.empty_title,
+    emptyBody: CONTENT.chat_page.push_center.empty_hint,
+    loadingMore: CONTENT.chat_page.push_center.loading,
+    loadMore: CONTENT.chat_page.push_center.load_more,
+    detailAria: CONTENT.chat_page.push_center.detail_title,
+    opening: CONTENT.chat_page.push_center.opening,
+    closeDetail: CONTENT.chat_page.push_center.close_detail,
+    loadingDetail: CONTENT.chat_page.push_center.loading_detail,
   };
 }

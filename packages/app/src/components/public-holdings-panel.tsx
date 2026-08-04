@@ -3,6 +3,7 @@
 // 持仓一律以仓位占比展示；不填占比即为自选。
 
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 import { useNavigate } from "@solidjs/router";
 import {
   createPublicHolding,
@@ -28,9 +29,9 @@ type EditorState =
   | null;
 
 const ASK_ACTIONS: Array<{ kind: HoldingAskKind; label: string }> = [
-  { kind: "news", label: "问问新闻" },
-  { kind: "valuation", label: "问问估值" },
-  { kind: "earnings", label: "问问财报" },
+  { kind: "news", label: CONTENT.chat_page.holdings.ask_news },
+  { kind: "valuation", label: CONTENT.chat_page.holdings.ask_valuation },
+  { kind: "earnings", label: CONTENT.chat_page.holdings.ask_earnings },
 ];
 
 function HoldingEditor(props: {
@@ -63,8 +64,10 @@ function HoldingEditor(props: {
     <div class="public-holding-modal-overlay" onClick={props.onCancel}>
       <div class="public-holding-modal" onClick={(event) => event.stopPropagation()}>
         <header>
-          <strong>{props.state.mode === "create" ? "添加自选或持仓" : `调整 ${props.state.row.symbol}`}</strong>
-          <button type="button" aria-label="关闭" onClick={props.onCancel}>×</button>
+          <strong>{props.state.mode === "create"
+              ? CONTENT.chat_page.holdings.add_title
+              : CONTENT.chat_page.holdings.edit_title.replace("{symbol}", props.state.row.symbol)}</strong>
+          <button type="button" aria-label={CONTENT.chat_page.holdings.close} onClick={props.onCancel}>×</button>
         </header>
         <form
           onSubmit={(event) => {
@@ -73,56 +76,56 @@ function HoldingEditor(props: {
           }}
         >
           <label>
-            <span>股票代码</span>
+            <span>{CONTENT.chat_page.holdings.ticker}</span>
             <input
               value={symbol()}
               disabled={props.state.mode === "edit"}
-              placeholder="例如 AAPL"
+              placeholder={CONTENT.chat_page.holdings.ticker_eg}
               onInput={(event) => setSymbol(event.currentTarget.value)}
             />
           </label>
           <label>
-            <span>公司名称<em>可选</em></span>
+            <span>{CONTENT.chat_page.holdings.company}<em>{CONTENT.chat_page.holdings.optional}</em></span>
             <input
               value={name()}
-              placeholder="例如 苹果"
+              placeholder={CONTENT.chat_page.holdings.company_eg}
               onInput={(event) => setName(event.currentTarget.value)}
             />
           </label>
           <div class="public-holding-form-row">
             <label>
-              <span>仓位占比 %<em>可选</em></span>
+              <span>{CONTENT.chat_page.holdings.weight}<em>{CONTENT.chat_page.holdings.optional}</em></span>
               <input
                 value={weight()}
                 inputmode="decimal"
-                placeholder="留空 = 只加自选"
+                placeholder={CONTENT.chat_page.holdings.weight_hint}
                 onInput={(event) => setWeight(event.currentTarget.value)}
               />
             </label>
             <label>
-              <span>成本价<em>可选</em></span>
+              <span>{CONTENT.chat_page.holdings.cost}<em>{CONTENT.chat_page.holdings.optional}</em></span>
               <input
                 value={avgCost()}
                 inputmode="decimal"
-                placeholder="例如 180.25"
+                placeholder={CONTENT.chat_page.holdings.cost_eg}
                 onInput={(event) => setAvgCost(event.currentTarget.value)}
               />
             </label>
           </div>
-          <p class="public-holding-form-hint">不填仓位占比就只加入观察列表；填了占比才算持仓。</p>
+          <p class="public-holding-form-hint">{CONTENT.chat_page.holdings.form_hint}</p>
           <Show when={props.error}>
             <p class="public-holding-form-error" role="alert">{props.error}</p>
           </Show>
           <footer>
             <Show when={props.onDelete}>
               {(onDelete) => (
-                <button type="button" class="is-danger" onClick={() => onDelete()()}>删除</button>
+                <button type="button" class="is-danger" onClick={() => onDelete()()}>{CONTENT.chat_page.holdings.delete}</button>
               )}
             </Show>
             <span class="public-holding-form-spacer" />
-            <button type="button" onClick={props.onCancel}>取消</button>
+            <button type="button" onClick={props.onCancel}>{CONTENT.chat_page.holdings.cancel}</button>
             <button type="submit" class="is-primary" disabled={props.saving}>
-              {props.saving ? "保存中…" : "保存"}
+              {props.saving ? CONTENT.chat_page.holdings.saving : CONTENT.chat_page.holdings.save}
             </button>
           </footer>
         </form>
@@ -150,7 +153,7 @@ export function PublicHoldingsPanel() {
       setRows(payload.holdings ?? []);
       setLimit(payload.limit ?? 50);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "自选与持仓加载失败");
+      setError(cause instanceof Error ? cause.message : CONTENT.chat_page.holdings.load_failed);
     } finally {
       setLoading(false);
     }
@@ -195,7 +198,7 @@ export function PublicHoldingsPanel() {
       setLimit(payload.limit ?? 50);
       setEditor(null);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : "保存失败，请稍后再试");
+      setFormError(cause instanceof Error ? cause.message : CONTENT.chat_page.holdings.save_failed);
     } finally {
       setSaving(false);
     }
@@ -209,49 +212,57 @@ export function PublicHoldingsPanel() {
       setRows(payload.holdings ?? []);
       setEditor(null);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : "删除失败，请稍后再试");
+      setFormError(cause instanceof Error ? cause.message : CONTENT.chat_page.holdings.delete_failed);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <section class="public-workspace-panel public-holdings-panel" aria-label="我的自选与持仓">
+    <section class="public-workspace-panel public-holdings-panel" aria-label={CONTENT.chat_page.holdings.panel_title}>
       <header class="public-holdings-head">
         <div>
-          <h2>我的自选与持仓</h2>
+          <h2>{CONTENT.chat_page.holdings.panel_title}</h2>
           <p>
-            {positions().length} 只持仓 · 合计 {totalWeight().toFixed(1)}% · 共 {rows().length}/{limit()} 条
+            {CONTENT.chat_page.holdings.summary_line
+              .replace("{positions}", String(positions().length))
+              .replace("{weight}", totalWeight().toFixed(1))
+              .replace("{rows}", String(rows().length))
+              .replace("{limit}", String(limit()))}
           </p>
         </div>
         <button
           type="button"
           class="public-workspace-primary-action"
           disabled={!canAddHolding(rows().length, limit())}
-          title={canAddHolding(rows().length, limit()) ? "" : `最多 ${limit()} 条`}
+          title={
+            canAddHolding(rows().length, limit())
+              ? ""
+              : CONTENT.chat_page.holdings.max_hint.replace("{max}", String(limit()))
+          }
           onClick={() => {
             setFormError(undefined);
             setEditor({ mode: "create" });
           }}
         >
-          ＋ 添加
+          ＋ {CONTENT.chat_page.holdings.add}
         </button>
       </header>
 
-      <Show when={!loading()} fallback={<div class="public-workspace-state">正在加载自选与持仓…</div>}>
+      <Show when={!loading()} fallback={<div class="public-workspace-state">{CONTENT.chat_page.holdings.loading}</div>}>
         <Show when={!error()} fallback={
           <div class="public-workspace-state is-error" role="alert">
             <p>{error()}</p>
-            <button type="button" onClick={() => void load()}>重新加载</button>
+            <button type="button" onClick={() => void load()}>{CONTENT.chat_page.holdings.reload}</button>
           </div>
         }>
           <Show
             when={rows().length > 0}
             fallback={
               <div class="public-holdings-empty">
-                <strong>还没有自选或持仓</strong>
-                <p>添加后，HONE 的新闻、财报与推送都会围绕这些标的展开。</p>
-                <button type="button" onClick={() => setEditor({ mode: "create" })}>添加第一只</button>
+                <strong>{CONTENT.chat_page.holdings.empty_title}</strong>
+                <p>{CONTENT.chat_page.holdings.empty_hint}</p>
+                <button type="button" onClick={() => setEditor({ mode: "create" })}>{CONTENT.chat_page.holdings.add_first}</button>
               </div>
             }
           >
@@ -290,7 +301,7 @@ export function PublicHoldingsPanel() {
                             setEditor({ mode: "edit", row: row as HoldingRow });
                           }}
                         >
-                          调整
+                          {CONTENT.chat_page.holdings.edit}
                         </button>
                         <For each={ASK_ACTIONS}>
                           {(action) => (
