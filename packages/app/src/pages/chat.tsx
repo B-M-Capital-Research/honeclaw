@@ -59,6 +59,7 @@ import {
   getPublicFinanceCalendar,
   getPublicHistory,
   getPublicPushes,
+  getPublicGeneratedFileBlob,
   connectPublicEvents,
   isUnauthorizedApiError,
   publicLogout,
@@ -166,7 +167,6 @@ const ICONS = {
 };
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
-const PUBLIC_FILE_ENDPOINT = "/api/public/file";
 // 侧栏/抽屉聊天记录上限:要能覆盖“加载更早”翻出来的历史,太小会让记录
 // 看起来永远只有最近几条。
 const SIDEBAR_HISTORY_LIMIT = 80;
@@ -282,12 +282,6 @@ function publicAttachmentUrl(att: PublicChatAttachment): string {
   if (att.previewUrl) return att.previewUrl;
   return buildApiUrl(
     `${PUBLIC_IMAGE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
-  );
-}
-
-function publicAttachmentDownloadUrl(att: PublicChatAttachment): string {
-  return buildApiUrl(
-    `${PUBLIC_FILE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
   );
 }
 
@@ -519,6 +513,10 @@ function FileCard(props: {
   file: PublicChatAttachment;
   inUserBubble?: boolean;
 }) {
+  const [downloadState, setDownloadState] = createSignal<
+    "idle" | "working" | "done" | "error"
+  >("idle");
+  const [downloadError, setDownloadError] = createSignal("");
   const ext = () => publicAttachmentFileLabel(props.file.name);
   const iconBg = () =>
     props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(23, 32, 31, 0.05)";
@@ -527,6 +525,43 @@ function FileCard(props: {
     props.inUserBubble ? "rgba(255,255,255,0.95)" : "var(--hone-ink-950)";
   const subColor = () =>
     props.inUserBubble ? "rgba(255,255,255,0.7)" : "var(--hone-ink-600)";
+  const downloadStatus = () => {
+    if (downloadState() === "working") {
+      return CONTENT.chat_page.attachments.downloading;
+    }
+    if (downloadState() === "done") {
+      return CONTENT.chat_page.attachments.downloaded;
+    }
+    if (downloadState() === "error") {
+      return downloadError() || CONTENT.chat_page.attachments.download_failed;
+    }
+    return CONTENT.chat_page.attachments.click_download;
+  };
+  const download = async () => {
+    if (downloadState() === "working") return;
+    setDownloadError("");
+    setDownloadState("working");
+    try {
+      const blob = await getPublicGeneratedFileBlob(props.file.path);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = props.file.name;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+      setDownloadState("done");
+    } catch (cause) {
+      setDownloadError(
+        cause instanceof Error
+          ? cause.message
+          : CONTENT.chat_page.attachments.download_failed,
+      );
+      setDownloadState("error");
+    }
+  };
   const card = (
     <div
       style={{
@@ -574,34 +609,46 @@ function FileCard(props: {
         >
           {props.file.name}
         </div>
-        <Show when={props.file.size}>
-          <div
-            style={{
-              "font-family": "var(--hone-font-label)",
-              "font-size": "12px",
-              color: subColor(),
-              "margin-top": "3px",
-            }}
-          >
-            {formatPublicAttachmentBytes(props.file.size)}
-          </div>
-        </Show>
+        <div
+          role={downloadState() === "error" ? "alert" : "status"}
+          aria-live="polite"
+          style={{
+            "font-family": "var(--hone-font-label)",
+            "font-size": "12px",
+            color:
+              downloadState() === "error" ? "var(--hone-danger-700)" : subColor(),
+            "margin-top": "3px",
+          }}
+        >
+          <Show when={props.file.size}>
+            {formatPublicAttachmentBytes(props.file.size)} · {" "}
+          </Show>
+          {downloadStatus()}
+        </div>
       </div>
     </div>
   );
   if (props.file.kind === "image") return card;
   return (
-    <a
-      href={publicAttachmentDownloadUrl(props.file)}
-      download={props.file.name}
+    <button
+      type="button"
+      aria-label={`${CONTENT.chat_page.attachments.click_download} ${props.file.name}`}
+      aria-busy={downloadState() === "working"}
+      disabled={downloadState() === "working"}
+      onClick={() => void download()}
       style={{
         display: "block",
+        width: "100%",
+        padding: "0",
+        border: "0",
+        background: "transparent",
         color: "inherit",
-        "text-decoration": "none",
+        "text-align": "left",
+        cursor: downloadState() === "working" ? "wait" : "pointer",
       }}
     >
       {card}
-    </a>
+    </button>
   );
 }
 

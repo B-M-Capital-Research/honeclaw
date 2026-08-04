@@ -1013,6 +1013,10 @@ const CONTENT_ZH = {
       image_subtitle: "照片与截图",
       file_title: "文件",
       file_subtitle: "PDF · 文档 · 其他",
+      click_download: "点击下载",
+      downloading: "正在下载…",
+      downloaded: "已开始下载",
+      download_failed: "下载失败，请重试",
     },
     composer: {
       quota_exhausted: "今日对话次数已用完",
@@ -3318,6 +3322,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       image_subtitle: "Photos and screenshots",
       file_title: "File",
       file_subtitle: "PDF · documents · other",
+      click_download: "Download",
+      downloading: "Downloading…",
+      downloaded: "Download started",
+      download_failed: "Download failed. Please try again.",
     },
     composer: {
       quota_exhausted: "You've used today's chat quota",

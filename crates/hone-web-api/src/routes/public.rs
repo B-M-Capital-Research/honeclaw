@@ -1413,15 +1413,17 @@ fn content_type_for_attachment(name: &str) -> &'static str {
 pub(crate) async fn handle_public_image(
     state: State<Arc<AppState>>,
     headers: HeaderMap,
-    query: axum::extract::Query<crate::types::ImageQuery>,
+    mut query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
     let user = match require_public_user(&state, &headers) {
         Ok(user) => user,
         Err(response) => return response,
     };
-    if let Err(response) = validate_public_proxy_path(&state, &user.user_id, &query.path) {
-        return response;
-    }
+    let resolved = match resolve_public_proxy_path(&state, &user.user_id, &query.path) {
+        Ok(path) => path,
+        Err(response) => return response,
+    };
+    query.path = Some(resolved);
     crate::routes::files::handle_image(state, query)
         .await
         .into_response()
@@ -1430,25 +1432,27 @@ pub(crate) async fn handle_public_image(
 pub(crate) async fn handle_public_file(
     state: State<Arc<AppState>>,
     headers: HeaderMap,
-    query: axum::extract::Query<crate::types::ImageQuery>,
+    mut query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
     let user = match require_public_user(&state, &headers) {
         Ok(user) => user,
         Err(response) => return response,
     };
-    if let Err(response) = validate_public_proxy_path(&state, &user.user_id, &query.path) {
-        return response;
-    }
+    let resolved = match resolve_public_proxy_path(&state, &user.user_id, &query.path) {
+        Ok(path) => path,
+        Err(response) => return response,
+    };
+    query.path = Some(resolved);
     crate::routes::files::handle_file(state, query)
         .await
         .into_response()
 }
 
-fn validate_public_proxy_path(
+fn resolve_public_proxy_path(
     state: &AppState,
     user_id: &str,
     raw_path: &Option<String>,
-) -> Result<(), Response> {
+) -> Result<String, Response> {
     let Some(raw_path) = raw_path.as_deref() else {
         return Err(crate::routes::json_error(
             StatusCode::BAD_REQUEST,
@@ -1457,23 +1461,43 @@ fn validate_public_proxy_path(
     };
     let user_upload_root = public_upload_dir(state, user_id);
     let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
-    if validate_public_upload_path(&user_upload_root, oss.as_ref(), user_id, raw_path).is_ok() {
-        return Ok(());
+    if let Ok(path) =
+        validate_public_upload_path(&user_upload_root, oss.as_ref(), user_id, raw_path)
+    {
+        return Ok(path);
     }
 
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None)
         .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))?;
     let sandbox_root = hone_channels::actor_sandbox_root(&actor);
-    validate_public_generated_file_path(&sandbox_root, raw_path)
+    resolve_public_generated_file_path(&sandbox_root, raw_path)
 }
 
+#[cfg(test)]
 fn validate_public_generated_file_path(root: &Path, raw_path: &str) -> Result<(), Response> {
+    resolve_public_generated_file_path(root, raw_path).map(|_| ())
+}
+
+fn resolve_public_generated_file_path(root: &Path, raw_path: &str) -> Result<String, Response> {
     let cleaned = raw_path
         .trim()
         .strip_prefix("file://")
         .unwrap_or(raw_path.trim());
-    let target = PathBuf::from(cleaned);
     let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let target = if let Some(filename) = cleaned.strip_prefix("<absolute-path>/") {
+        let relative = Path::new(filename);
+        if filename.is_empty()
+            || relative.file_name().and_then(|value| value.to_str()) != Some(filename)
+        {
+            return Err(crate::routes::json_error(
+                StatusCode::BAD_REQUEST,
+                "生成文件占位路径无效",
+            ));
+        }
+        canonical_root.join(relative)
+    } else {
+        PathBuf::from(cleaned)
+    };
     let canonical_target = std::fs::canonicalize(&target)
         .map_err(|_| crate::routes::json_error(StatusCode::NOT_FOUND, "生成文件不存在"))?;
     if !canonical_target.is_file() || !canonical_target.starts_with(&canonical_root) {
@@ -1482,7 +1506,7 @@ fn validate_public_generated_file_path(root: &Path, raw_path: &str) -> Result<()
             "生成文件路径不在当前用户空间内",
         ));
     }
-    Ok(())
+    Ok(canonical_target.to_string_lossy().to_string())
 }
 
 pub(crate) async fn handle_events(
@@ -2040,7 +2064,8 @@ mod tests {
         infer_canonical_earnings_workflow, is_earnings_research_skill_command,
         logout_success_response, public_active_state_response, public_api_failure_message,
         public_api_finish_reason, public_attachment_filename, public_client_key,
-        public_sms_phone_candidates, sms_login_rejected_response, sms_send_accepted_response,
+        public_sms_phone_candidates, resolve_public_generated_file_path,
+        sms_login_rejected_response, sms_send_accepted_response,
         validate_public_generated_file_path, validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
@@ -2169,6 +2194,20 @@ mod tests {
         assert!(
             validate_public_generated_file_path(&actor_root, outside.to_string_lossy().as_ref())
                 .is_err()
+        );
+        assert_eq!(
+            resolve_public_generated_file_path(&actor_root, "<absolute-path>/report.pdf")
+                .expect("resolve redacted generated path"),
+            std::fs::canonicalize(&own)
+                .expect("canonical own path")
+                .to_string_lossy()
+        );
+        assert!(
+            resolve_public_generated_file_path(&actor_root, "<absolute-path>/../outside/other.pdf")
+                .is_err()
+        );
+        assert!(
+            resolve_public_generated_file_path(&actor_root, "<absolute-path>/missing.pdf").is_err()
         );
         let _ = std::fs::remove_dir_all(root);
     }

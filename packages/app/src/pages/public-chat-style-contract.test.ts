@@ -103,6 +103,13 @@ describe("public chat visual contract", () => {
     expect(chat).toContain('aria-haspopup="menu"');
   });
 
+  it("downloads generated files through an authenticated blob with visible status", () => {
+    expect(chat).toContain("getPublicGeneratedFileBlob");
+    expect(chat).toContain('aria-busy={downloadState() === "working"}');
+    expect(chat).toContain("CONTENT.chat_page.attachments.download_failed");
+    expect(chat).not.toContain("href={publicAttachmentDownloadUrl(props.file)}");
+  });
+
   it("keeps the exported share card readable under the dark application theme", () => {
     expect(shareCard).toContain('"--hone-ink-950": "#17201f"');
     expect(shareCard).toContain('"--hone-paper-100": "#f8f4ec"');

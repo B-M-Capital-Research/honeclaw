@@ -778,6 +778,14 @@ export async function uploadPublicAttachments(files: File[]) {
   return payload.attachments ?? [];
 }
 
+export async function getPublicGeneratedFileBlob(path: string) {
+  const response = await apiFetch(
+    `/api/public/file?path=${encodeURIComponent(path)}`,
+  );
+  if (!response.ok) throw await apiErrorFromResponse(response);
+  return response.blob();
+}
+
 export async function connectPublicEvents() {
   return createEventSource("/api/public/events");
 }

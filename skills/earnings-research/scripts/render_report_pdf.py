@@ -110,6 +110,10 @@ def expectation_call(value: str) -> str | None:
     return next((item for item in EXPECTATION_CALLS if normalized.startswith(item)), None)
 
 
+def expectation_calls_in(value: str) -> set[str]:
+    return {item for item in EXPECTATION_CALLS if item in value}
+
+
 def reject_ai_style_markers(report: str) -> None:
     found = [marker for marker in AI_STYLE_MARKERS if marker in report]
     if found:
@@ -123,6 +127,35 @@ def finite_number(value: object, field: str) -> float:
     if not math.isfinite(number):
         raise ValueError(f"{field} must be a finite number")
     return number
+
+
+def first_report_number(value: str, field: str) -> float:
+    match = re.search(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", value.replace(",", ""))
+    if not match:
+        raise ValueError(f"{field} must contain a numeric value")
+    return float(match.group(0))
+
+
+def validate_report_scaled_value(
+    *,
+    raw_value: float,
+    report_value: object,
+    report_text: str,
+    report_scale: float,
+    report_unit: str,
+    field: str,
+) -> float:
+    displayed = finite_number(report_value, field + "_value")
+    expected = raw_value * report_scale
+    epsilon = max(1e-9, abs(expected) * 1e-6)
+    if abs(displayed - expected) > epsilon:
+        raise ValueError(f"{field}_value must equal the audited value times report_scale")
+    if report_unit not in report_text:
+        raise ValueError(f"{field} must include report_unit")
+    parsed = first_report_number(report_text, field)
+    if abs(parsed - displayed) > epsilon:
+        raise ValueError(f"{field} numeric text must match {field}_value")
+    return displayed
 
 
 def nonempty_string(value: object, field: str) -> str:
@@ -148,7 +181,7 @@ def parse_iso_date(value: object, field: str) -> date:
 
 def validate_preview_audit(
     preview_audit: object,
-) -> tuple[str, dict[str, tuple[float, float, float, str, str]]]:
+) -> tuple[str, dict[str, dict[str, object]]]:
     if not isinstance(preview_audit, dict):
         raise ValueError("preview_audit is required for preview reports")
 
@@ -176,10 +209,28 @@ def validate_preview_audit(
     profit_metrics = {"adjusted_eps", "gaap_eps", "operating_income", "ebitda", "net_income"}
     if not profit_metrics.intersection(metrics):
         raise ValueError("preview_audit.metrics must contain at least one profit metric")
-    parsed_metrics: dict[str, tuple[float, float, float, str, str]] = {}
+    parsed_metrics: dict[str, dict[str, object]] = {}
+    allowed_anchor_kinds = {
+        "management_guidance_midpoint",
+        "management_guidance_point",
+        "segment_model",
+        "margin_model",
+    }
     for metric_name, metric in metrics.items():
         if not isinstance(metric, dict):
             raise ValueError(f"preview_audit.metrics.{metric_name} must be an object")
+        anchor = finite_number(
+            metric.get("anchor"), f"preview_audit.metrics.{metric_name}.anchor"
+        )
+        anchor_kind = nonempty_string(
+            metric.get("anchor_kind"), f"preview_audit.metrics.{metric_name}.anchor_kind"
+        )
+        if anchor_kind not in allowed_anchor_kinds:
+            raise ValueError(
+                f"preview_audit.metrics.{metric_name}.anchor_kind must identify guidance or a model"
+            )
+        if metric_name == "revenue" and anchor_kind == "margin_model":
+            raise ValueError("preview_audit.metrics.revenue cannot use a margin-model anchor")
         consensus = finite_number(
             metric.get("consensus"), f"preview_audit.metrics.{metric_name}.consensus"
         )
@@ -189,9 +240,54 @@ def validate_preview_audit(
         tolerance = finite_number(
             metric.get("tolerance"), f"preview_audit.metrics.{metric_name}.tolerance"
         )
-        if tolerance < 0:
-            raise ValueError(f"preview_audit.metrics.{metric_name}.tolerance cannot be negative")
+        if tolerance <= 0:
+            raise ValueError(f"preview_audit.metrics.{metric_name}.tolerance must be positive")
+        tolerance_components = metric.get("tolerance_components")
+        if not isinstance(tolerance_components, dict):
+            raise ValueError(
+                f"preview_audit.metrics.{metric_name}.tolerance_components must be an object"
+            )
+        component_values = []
+        for component_name in (
+            "estimate_dispersion",
+            "revision_magnitude",
+            "measurement_precision",
+        ):
+            component = finite_number(
+                tolerance_components.get(component_name),
+                f"preview_audit.metrics.{metric_name}.tolerance_components.{component_name}",
+            )
+            if component < 0:
+                raise ValueError(
+                    f"preview_audit.metrics.{metric_name}.tolerance_components.{component_name} "
+                    "cannot be negative"
+                )
+            component_values.append(component)
+        if component_values[-1] <= 0:
+            raise ValueError(
+                f"preview_audit.metrics.{metric_name}.tolerance_components.measurement_precision "
+                "must be positive"
+            )
+        expected_tolerance = max(component_values)
+        tolerance_epsilon = max(1e-9, abs(expected_tolerance) * 1e-6)
+        if abs(tolerance - expected_tolerance) > tolerance_epsilon:
+            raise ValueError(
+                f"preview_audit.metrics.{metric_name}.tolerance must equal the largest evidenced "
+                "tolerance component"
+            )
         nonempty_string(metric.get("unit"), f"preview_audit.metrics.{metric_name}.unit")
+        report_scale = finite_number(
+            metric.get("report_scale"), f"preview_audit.metrics.{metric_name}.report_scale"
+        )
+        if report_scale <= 0:
+            raise ValueError(f"preview_audit.metrics.{metric_name}.report_scale must be positive")
+        report_unit = nonempty_string(
+            metric.get("report_unit"), f"preview_audit.metrics.{metric_name}.report_unit"
+        )
+        report_anchor = nonempty_string(
+            metric.get("report_anchor"),
+            f"preview_audit.metrics.{metric_name}.report_anchor",
+        )
         report_consensus = nonempty_string(
             metric.get("report_consensus"),
             f"preview_audit.metrics.{metric_name}.report_consensus",
@@ -200,13 +296,55 @@ def validate_preview_audit(
             metric.get("report_forecast"),
             f"preview_audit.metrics.{metric_name}.report_forecast",
         )
-        parsed_metrics[str(metric_name)] = (
-            consensus,
-            forecast,
-            tolerance,
-            report_consensus,
-            report_forecast,
+        report_tolerance = nonempty_string(
+            metric.get("report_tolerance"),
+            f"preview_audit.metrics.{metric_name}.report_tolerance",
         )
+        validate_report_scaled_value(
+            raw_value=anchor,
+            report_value=metric.get("report_anchor_value"),
+            report_text=report_anchor,
+            report_scale=report_scale,
+            report_unit=report_unit,
+            field=f"preview_audit.metrics.{metric_name}.report_anchor",
+        )
+        validate_report_scaled_value(
+            raw_value=consensus,
+            report_value=metric.get("report_consensus_value"),
+            report_text=report_consensus,
+            report_scale=report_scale,
+            report_unit=report_unit,
+            field=f"preview_audit.metrics.{metric_name}.report_consensus",
+        )
+        validate_report_scaled_value(
+            raw_value=forecast,
+            report_value=metric.get("report_forecast_value"),
+            report_text=report_forecast,
+            report_scale=report_scale,
+            report_unit=report_unit,
+            field=f"preview_audit.metrics.{metric_name}.report_forecast",
+        )
+        validate_report_scaled_value(
+            raw_value=tolerance,
+            report_value=metric.get("report_tolerance_value"),
+            report_text=report_tolerance,
+            report_scale=report_scale,
+            report_unit=report_unit,
+            field=f"preview_audit.metrics.{metric_name}.report_tolerance",
+        )
+        parsed_metrics[str(metric_name)] = {
+            "anchor": anchor,
+            "anchor_kind": anchor_kind,
+            "consensus": consensus,
+            "forecast": forecast,
+            "tolerance": tolerance,
+            "report_scale": report_scale,
+            "report_unit": report_unit,
+            "report_anchor": report_anchor,
+            "report_consensus": report_consensus,
+            "report_forecast": report_forecast,
+            "report_tolerance": report_tolerance,
+        }
 
     decision_metrics = preview_audit.get("decision_metrics")
     if not isinstance(decision_metrics, list) or len(decision_metrics) < 2:
@@ -220,7 +358,10 @@ def validate_preview_audit(
     for metric_name in decision_metrics:
         if metric_name not in parsed_metrics:
             raise ValueError(f"decision metric is missing from preview_audit.metrics: {metric_name}")
-        consensus, forecast, tolerance, _, _ = parsed_metrics[metric_name]
+        metric = parsed_metrics[metric_name]
+        consensus = float(metric["consensus"])
+        forecast = float(metric["forecast"])
+        tolerance = float(metric["tolerance"])
         delta = forecast - consensus
         if delta > tolerance:
             states.append("above")
@@ -288,6 +429,20 @@ def validate_preview_audit(
     bridge = preview_audit.get("forecast_bridge")
     if not isinstance(bridge, list) or len(bridge) < 3:
         raise ValueError("preview_audit.forecast_bridge must contain at least three operating drivers")
+    bridge_deltas: dict[str, list[float]] = {}
+    has_revenue_history_bias = False
+    allowed_categories = {
+        "historical_bias",
+        "volume",
+        "price",
+        "mix",
+        "cost",
+        "capacity",
+        "product_ramp",
+        "customer_timing",
+        "fx",
+        "other",
+    }
     for index, item in enumerate(bridge):
         if not isinstance(item, dict):
             raise ValueError(f"preview_audit.forecast_bridge[{index}] must be an object")
@@ -299,6 +454,71 @@ def validate_preview_audit(
         if direction not in {"up", "down", "neutral"}:
             raise ValueError(
                 f"preview_audit.forecast_bridge[{index}].direction must be up, down, or neutral"
+            )
+        category = nonempty_string(
+            item.get("category"), f"preview_audit.forecast_bridge[{index}].category"
+        )
+        if category not in allowed_categories:
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}].category must be a supported bridge category"
+            )
+        metric_name = nonempty_string(
+            item.get("metric"), f"preview_audit.forecast_bridge[{index}].metric"
+        )
+        if metric_name not in parsed_metrics:
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}].metric is missing from metrics"
+            )
+        delta = finite_number(
+            item.get("delta"), f"preview_audit.forecast_bridge[{index}].delta"
+        )
+        report_delta = nonempty_string(
+            item.get("report_delta"), f"preview_audit.forecast_bridge[{index}].report_delta"
+        )
+        metric = parsed_metrics[metric_name]
+        validate_report_scaled_value(
+            raw_value=delta,
+            report_value=item.get("report_delta_value"),
+            report_text=report_delta,
+            report_scale=float(metric["report_scale"]),
+            report_unit=str(metric["report_unit"]),
+            field=f"preview_audit.forecast_bridge[{index}].report_delta",
+        )
+        if (delta > 0 and direction != "up") or (delta < 0 and direction != "down"):
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}].direction conflicts with delta"
+            )
+        if delta == 0 and direction != "neutral":
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}].zero delta must be neutral"
+            )
+        bridge_deltas.setdefault(metric_name, []).append(delta)
+        item["_validated_report_delta"] = report_delta
+        if metric_name == "revenue" and category == "historical_bias":
+            has_revenue_history_bias = True
+
+    if not has_revenue_history_bias:
+        raise ValueError(
+            "preview_audit.forecast_bridge must explicitly apply or reject the historical "
+            "guidance bias for revenue"
+        )
+    for metric_name in decision_metrics:
+        deltas = bridge_deltas.get(metric_name, [])
+        if not deltas:
+            raise ValueError(
+                f"preview_audit.forecast_bridge must quantify at least one delta for {metric_name}"
+            )
+        if not any(delta != 0 for delta in deltas):
+            raise ValueError(
+                f"preview_audit.forecast_bridge cannot leave every {metric_name} adjustment at zero"
+            )
+        metric = parsed_metrics[metric_name]
+        bridged_forecast = float(metric["anchor"]) + sum(deltas)
+        forecast = float(metric["forecast"])
+        bridge_epsilon = max(1e-9, abs(forecast) * 1e-6)
+        if abs(bridged_forecast - forecast) > bridge_epsilon:
+            raise ValueError(
+                f"preview_audit.forecast_bridge does not reconcile anchor to forecast for {metric_name}"
             )
     return audit_call, parsed_metrics
 
@@ -341,17 +561,48 @@ def validate_workflow_report(
             raise ValueError(
                 "preview overall analysis must begin with 超出分析师预期、低于分析师预期、or 与分析师持平"
             )
+        overall_text = overall.group(1).strip()
+        compact_overall = re.sub(r"\s+", "", overall_text)
+        if len(compact_overall) < 55 or len(re.findall(r"[。！？]", overall_text)) < 2:
+            raise ValueError(
+                "preview overall analysis must explain the call in at least two substantive sentences"
+            )
+        first_sentence = re.split(r"[。！？]", overall_text, maxsplit=1)[0].strip()
+        if len(re.sub(r"\s+", "", first_sentence)) < 28 or not re.search(r"\d", first_sentence):
+            raise ValueError(
+                "preview overall analysis must attach a numerical reason to the call in its first sentence"
+            )
+        operating_terms = (
+            "收入",
+            "EPS",
+            "每股收益",
+            "利润",
+            "毛利",
+            "订单",
+            "出货",
+            "价格",
+            "成本",
+            "产能",
+            "客户",
+            "产品",
+            "需求",
+        )
+        if sum(term in overall_text for term in operating_terms) < 2:
+            raise ValueError(
+                "preview overall analysis must name at least two company-relevant operating variables"
+            )
         conclusion = re.search(
             r"^### 1\.2\.1 核心结论\s*$\n+(.+?)(?=^### 1\.2\.2 财报假设\s*$)",
             report,
             flags=re.MULTILINE | re.DOTALL,
         )
-        conclusion_call = expectation_call(conclusion.group(1)) if conclusion else None
-        if conclusion_call is None:
+        conclusion_text = conclusion.group(1) if conclusion else ""
+        conclusion_calls = expectation_calls_in(conclusion_text)
+        if not conclusion_calls:
             raise ValueError(
-                "preview 1.2.1 must start with 超出分析师预期、低于分析师预期、or 与分析师持平"
+                "preview 1.2.1 must make the expectation call unambiguous in its first paragraph"
             )
-        if overall_call != conclusion_call:
+        if conclusion_calls != {overall_call}:
             raise ValueError("preview overall analysis and 1.2.1 must use the same expectation call")
         if overall_call != audit_call:
             raise ValueError("preview report call must match preview_audit.call")
@@ -379,10 +630,25 @@ def validate_workflow_report(
         if fiscal_period not in assumptions_text:
             raise ValueError("preview 1.2.2 must use the audited fiscal period")
         for metric_name in preview_audit["decision_metrics"]:
-            _, _, _, report_consensus, report_forecast = parsed_metrics[metric_name]
-            if report_consensus not in assumptions_text or report_forecast not in assumptions_text:
+            metric = parsed_metrics[metric_name]
+            report_anchor = str(metric["report_anchor"])
+            report_consensus = str(metric["report_consensus"])
+            report_forecast = str(metric["report_forecast"])
+            report_tolerance = str(metric["report_tolerance"])
+            if (
+                report_anchor not in assumptions_text
+                or report_consensus not in assumptions_text
+                or report_forecast not in assumptions_text
+                or report_tolerance not in assumptions_text
+            ):
                 raise ValueError(
-                    "preview 1.2.2 published values must match preview_audit for " + metric_name
+                    "preview 1.2.2 published anchor, forecast, and tolerance values must match preview_audit for "
+                    + metric_name
+                )
+        for item in preview_audit["forecast_bridge"]:
+            if item.get("delta") != 0 and item.get("_validated_report_delta") not in assumptions_text:
+                raise ValueError(
+                    "preview 1.2.2 must publish every non-zero forecast-bridge delta in its audited display unit"
                 )
         factor = re.search(
             r"^## 1\.1 核心股价因素\s*$\n+(.+?)(?=^## 1\.2 业绩指引 vs 机构观点\s*$)",

@@ -87,14 +87,14 @@ module.validate_workflow_report("NVIDIA", "analysis", analysis)
 preview = (
     "# NVIDIA公司财报前瞻分析\n"
     "# 1. 整体分析\n"
-    "超出分析师预期。独立预测高于当前机构预期，订单和供给改善足以覆盖差额。\n"
+    "超出分析师预期，独立预测收入高出当前共识 2.2%，每股收益高出 5.6%。客户订单兑现与供给改善共同抬高本季出货，但成本回落仍需验证；财报后的关键不是需求有无，而是产品组合能否把收入增量转成利润。\n"
     "## 1.1 核心股价因素\n"
     "数据中心GPU供需与毛利率\n"
     "## 1.2 业绩指引 vs 机构观点\n"
     "### 1.2.1 核心结论\n"
-    "超出分析师预期。独立预测高于当前机构预期，订单与供给改善支撑收入和利润。\n"
+    "过去三季的指引偏差没有因基数抬高而消失，订单与供给改善仍支撑收入和利润同时越过市场门槛，因此维持超出分析师预期的判断。\n"
     "### 1.2.2 财报假设\n"
-    "FY2026 Q1 机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%。收入中性带为 1.0%，EPS 中性区间为 2.0%。数据中心出货增加将推高收入，供应改善则有利于毛利率。\n"
+    "FY2026 Q1 管理层指引锚点为收入 450 亿美元、调整后 EPS 0.90 美元；机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%。收入中性带为 4.5 亿美元，EPS 中性区间为 0.018 美元。收入桥把历史指引偏差计入 +4.0 亿美元，数据中心出货再增加 +6.0 亿美元；产品组合和成本分别为 EPS 带来 +0.04 美元和 +0.01 美元。\n"
     "### 1.2.3 和机构分析对比\n"
     "历史上过去三季实际收入均高于管理层指引上限。当前指引低于机构当前预期，但最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
     "## 1.3 近期新闻\n"
@@ -116,8 +116,8 @@ preview_audit = {
         {"name": "Provider B", "as_of": "2026-08-03"},
     ],
     "metrics": {
-        "revenue": {"consensus": 45.0, "forecast": 46.0, "unit": "USD billions", "tolerance": 0.45, "report_consensus": "450 亿美元", "report_forecast": "460 亿美元"},
-        "adjusted_eps": {"consensus": 0.90, "forecast": 0.95, "unit": "USD/share", "tolerance": 0.018, "report_consensus": "0.90 美元", "report_forecast": "0.95 美元"},
+        "revenue": {"anchor": 45.0, "anchor_kind": "management_guidance_midpoint", "consensus": 45.0, "forecast": 46.0, "unit": "USD billions", "tolerance": 0.45, "tolerance_components": {"estimate_dispersion": 0.30, "revision_magnitude": 0.45, "measurement_precision": 0.10}, "report_scale": 10, "report_unit": "亿美元", "report_anchor_value": 450, "report_consensus_value": 450, "report_forecast_value": 460, "report_tolerance_value": 4.5, "report_anchor": "450 亿美元", "report_consensus": "450 亿美元", "report_forecast": "460 亿美元", "report_tolerance": "4.5 亿美元"},
+        "adjusted_eps": {"anchor": 0.90, "anchor_kind": "management_guidance_point", "consensus": 0.90, "forecast": 0.95, "unit": "USD/share", "tolerance": 0.018, "tolerance_components": {"estimate_dispersion": 0.010, "revision_magnitude": 0.018, "measurement_precision": 0.005}, "report_scale": 1, "report_unit": "美元", "report_anchor_value": 0.90, "report_consensus_value": 0.90, "report_forecast_value": 0.95, "report_tolerance_value": 0.018, "report_anchor": "0.90 美元", "report_consensus": "0.90 美元", "report_forecast": "0.95 美元", "report_tolerance": "0.018 美元"},
     },
     "decision_metrics": ["revenue", "adjusted_eps"],
     "call": "超出分析师预期",
@@ -130,12 +130,51 @@ preview_audit = {
         {"catalyst": "new product", "affected_period": "FY2026 Q1", "status": "partial", "evidence": "earnings call 2026-07-01"}
     ],
     "forecast_bridge": [
-        {"driver": "volume", "metric": "revenue", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings deck"},
-        {"driver": "mix", "metric": "adjusted_eps", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings call"},
-        {"driver": "cost", "metric": "adjusted_eps", "direction": "down", "affected_period": "FY2026 Q1", "evidence": "company filing"},
+        {"driver": "repeatable guidance bias", "category": "historical_bias", "metric": "revenue", "delta": 0.40, "report_delta_value": 4.0, "report_delta": "+4.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "three comparable company releases"},
+        {"driver": "volume", "category": "volume", "metric": "revenue", "delta": 0.60, "report_delta_value": 6.0, "report_delta": "+6.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings deck"},
+        {"driver": "mix", "category": "mix", "metric": "adjusted_eps", "delta": 0.04, "report_delta_value": 0.04, "report_delta": "+0.04 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings call"},
+        {"driver": "cost", "category": "cost", "metric": "adjusted_eps", "delta": 0.01, "report_delta_value": 0.01, "report_delta": "+0.01 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "company filing"},
     ],
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
+
+inline_audit = deepcopy(preview_audit)
+inline_audit["call"] = "与分析师持平"
+inline_audit["metrics"]["revenue"]["forecast"] = 45.2
+inline_audit["metrics"]["revenue"]["report_forecast_value"] = 452
+inline_audit["metrics"]["revenue"]["report_forecast"] = "452 亿美元"
+inline_audit["metrics"]["adjusted_eps"]["forecast"] = 0.91
+inline_audit["metrics"]["adjusted_eps"]["report_forecast_value"] = 0.91
+inline_audit["metrics"]["adjusted_eps"]["report_forecast"] = "0.91 美元"
+inline_audit["forecast_bridge"][0]["delta"] = 0.10
+inline_audit["forecast_bridge"][0]["report_delta_value"] = 1.0
+inline_audit["forecast_bridge"][0]["report_delta"] = "+1.0 亿美元"
+inline_audit["forecast_bridge"][1]["delta"] = 0.10
+inline_audit["forecast_bridge"][1]["report_delta_value"] = 1.0
+inline_audit["forecast_bridge"][1]["report_delta"] = "+1.0 亿美元"
+inline_audit["forecast_bridge"][2]["delta"] = 0.005
+inline_audit["forecast_bridge"][2]["report_delta_value"] = 0.005
+inline_audit["forecast_bridge"][2]["report_delta"] = "+0.005 美元"
+inline_audit["forecast_bridge"][3]["delta"] = 0.005
+inline_audit["forecast_bridge"][3]["report_delta_value"] = 0.005
+inline_audit["forecast_bridge"][3]["report_delta"] = "+0.005 美元"
+assert module.validate_preview_audit(inline_audit)[0] == "与分析师持平"
+
+miss_audit = deepcopy(preview_audit)
+miss_audit["call"] = "低于分析师预期"
+miss_audit["metrics"]["revenue"]["forecast"] = 44.0
+miss_audit["metrics"]["revenue"]["report_forecast_value"] = 440
+miss_audit["metrics"]["revenue"]["report_forecast"] = "440 亿美元"
+miss_audit["metrics"]["adjusted_eps"]["forecast"] = 0.85
+miss_audit["metrics"]["adjusted_eps"]["report_forecast_value"] = 0.85
+miss_audit["metrics"]["adjusted_eps"]["report_forecast"] = "0.85 美元"
+for item in miss_audit["forecast_bridge"]:
+    item["delta"] = -abs(item["delta"])
+    item["direction"] = "down"
+    metric = miss_audit["metrics"][item["metric"]]
+    item["report_delta_value"] = item["delta"] * metric["report_scale"]
+    item["report_delta"] = f'{item["report_delta_value"]} {metric["report_unit"]}'
+assert module.validate_preview_audit(miss_audit)[0] == "低于分析师预期"
 
 try:
     module.validate_workflow_report("NVIDIA", "preview", preview.replace("# 1. 整体分析", "## 1. 整体分析"), preview_audit)
@@ -149,8 +188,8 @@ try:
         "NVIDIA",
         "preview",
         preview.replace(
-            "超出分析师预期。独立预测高于当前机构预期，订单与供给改善支撑收入和利润。",
-            "低于分析师预期。独立预测高于当前机构预期，订单与供给改善支撑收入和利润。",
+            "因此维持超出分析师预期的判断",
+            "因此改为低于分析师预期的判断",
         ),
         preview_audit,
     )
@@ -201,13 +240,81 @@ else:
 
 contradictory = deepcopy(preview_audit)
 contradictory["metrics"]["revenue"]["forecast"] = 44.0
+contradictory["metrics"]["revenue"]["report_forecast_value"] = 440
+contradictory["metrics"]["revenue"]["report_forecast"] = "440 亿美元"
 contradictory["metrics"]["adjusted_eps"]["forecast"] = 0.85
+contradictory["metrics"]["adjusted_eps"]["report_forecast_value"] = 0.85
+contradictory["metrics"]["adjusted_eps"]["report_forecast"] = "0.85 美元"
+for item in contradictory["forecast_bridge"]:
+    item["delta"] = -abs(item["delta"])
+    item["direction"] = "down"
+    metric = contradictory["metrics"][item["metric"]]
+    item["report_delta_value"] = item["delta"] * metric["report_scale"]
+    item["report_delta"] = f'{item["report_delta_value"]} {metric["report_unit"]}'
 try:
     module.validate_workflow_report("NVIDIA", "preview", preview, contradictory)
 except ValueError as exc:
     assert "conflicts" in str(exc)
 else:
     raise AssertionError("preview must reject a call that conflicts with the independent forecast")
+
+arbitrary_tolerance = deepcopy(preview_audit)
+arbitrary_tolerance["metrics"]["revenue"]["tolerance"] = 0.90
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, arbitrary_tolerance)
+except ValueError as exc:
+    assert "largest evidenced" in str(exc)
+else:
+    raise AssertionError("preview must reject an arbitrary neutral band")
+
+broken_bridge = deepcopy(preview_audit)
+broken_bridge["metrics"]["revenue"]["forecast"] = 46.2
+broken_bridge["metrics"]["revenue"]["report_forecast_value"] = 462
+broken_bridge["metrics"]["revenue"]["report_forecast"] = "462 亿美元"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, broken_bridge)
+except ValueError as exc:
+    assert "does not reconcile" in str(exc)
+else:
+    raise AssertionError("preview bridge must reconcile anchor and numeric deltas to forecast")
+
+missing_history_bias = deepcopy(preview_audit)
+missing_history_bias["forecast_bridge"][0]["category"] = "volume"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, missing_history_bias)
+except ValueError as exc:
+    assert "historical" in str(exc)
+else:
+    raise AssertionError("preview must explicitly assess historical guidance bias")
+
+consensus_copy = deepcopy(preview_audit)
+consensus_copy["call"] = "与分析师持平"
+for metric in consensus_copy["metrics"].values():
+    metric["forecast"] = metric["consensus"]
+    metric["report_forecast_value"] = metric["report_consensus_value"]
+    metric["report_forecast"] = metric["report_consensus"]
+for item in consensus_copy["forecast_bridge"]:
+    item["delta"] = 0
+    item["direction"] = "neutral"
+    item["report_delta_value"] = 0
+    item["report_delta"] = f'0 {consensus_copy["metrics"][item["metric"]]["report_unit"]}'
+try:
+    module.validate_preview_audit(consensus_copy)
+except ValueError as exc:
+    assert "cannot leave every" in str(exc)
+else:
+    raise AssertionError("preview cannot copy consensus without a quantified independent bridge")
+
+thin_opening = preview.replace(
+    "超出分析师预期，独立预测收入高出当前共识 2.2%，每股收益高出 5.6%。客户订单兑现与供给改善共同抬高本季出货，但成本回落仍需验证；财报后的关键不是需求有无，而是产品组合能否把收入增量转成利润。",
+    "超出分析师预期。收入和利润走强。",
+)
+try:
+    module.validate_workflow_report("NVIDIA", "preview", thin_opening, preview_audit)
+except ValueError as exc:
+    assert "substantive sentences" in str(exc)
+else:
+    raise AssertionError("preview opening must explain the call instead of printing a bare label")
 
 single_source = deepcopy(preview_audit)
 single_source["consensus_sources"] = [{"name": "Provider A", "as_of": "2026-08-04"}]
@@ -241,9 +348,19 @@ published_mismatch["metrics"]["revenue"]["report_forecast"] = "470 亿美元"
 try:
     module.validate_workflow_report("NVIDIA", "preview", preview, published_mismatch)
 except ValueError as exc:
-    assert "published values" in str(exc)
+    assert "numeric text" in str(exc)
 else:
     raise AssertionError("published forecast values must match the structured audit")
+
+unit_mismatch = deepcopy(preview_audit)
+unit_mismatch["forecast_bridge"][0]["report_delta_value"] = 0.40
+unit_mismatch["forecast_bridge"][0]["report_delta"] = "+0.40 亿美元"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, unit_mismatch)
+except ValueError as exc:
+    assert "report_scale" in str(exc)
+else:
+    raise AssertionError("preview must reject a bridge delta that misses the display-unit scale")
 
 try:
     module.validate_workflow_report(

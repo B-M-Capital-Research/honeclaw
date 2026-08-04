@@ -8,6 +8,7 @@ import {
   getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
+  getPublicGeneratedFileBlob,
   getPublicCommunity,
   getPublicCommunityResourceBlob,
   getPublicHistory,
@@ -641,6 +642,31 @@ describe("public community API", () => {
     );
     expect(credentials).toBe("include");
     expect(blob.size).toBe(3);
+  });
+
+  test("downloads a generated file through the authenticated public route", async () => {
+    let requestedUrl = "";
+    let credentials: RequestCredentials | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(url);
+      credentials = init?.credentials;
+      return Promise.resolve(
+        new Response(new Uint8Array([37, 80, 68, 70, 45]), {
+          headers: { "content-type": "application/pdf" },
+        }),
+      );
+    }) as typeof fetch;
+
+    const blob = await getPublicGeneratedFileBlob(
+      "<absolute-path>/ANET-财报前瞻.pdf",
+    );
+
+    expect(requestedUrl).toContain(
+      "/api/public/file?path=%3Cabsolute-path%3E%2FANET-%E8%B4%A2%E6%8A%A5%E5%89%8D%E7%9E%BB.pdf",
+    );
+    expect(credentials).toBe("include");
+    expect(blob.type).toBe("application/pdf");
+    expect(blob.size).toBe(5);
   });
 
   test("keeps legacy resources revalidating while versioning hashed resources", () => {

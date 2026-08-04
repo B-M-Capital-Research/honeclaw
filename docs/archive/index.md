@@ -2191,6 +2191,18 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: The SNDK preview PDF follows the old Workflow's dense A4 visual grammar while remaining searchable, uses the exact `知识星球：巴芒科技` watermark, includes two recent-news pages and the original final share image, and appears in the HONE assistant bubble as a direct authenticated download card. Current-source real-browser acceptance is complete: native Codex invoked the host-owned official renderer, the 620338-byte five-page artifact passed full-page inspection, and the card click path was exercised.
 - Next entry point: production deployment is a separate decision; after deployment, repeat one attachment-backed `财报分析` with a real administrator file upload.
 
+### Earnings PDF Download Recovery And Preview Call Calibration
+
+- Status: done
+- Date: 2026-08-04
+- Plan: `docs/archive/plans/earnings-pdf-download-and-call-calibration.md`
+- Handoff: `docs/handoffs/2026-08-04-earnings-pdf-download-and-call-calibration.md`
+- Decision / ADR: no new ADR; the durable download, audit, display-unit, and prose constraints are recorded in `docs/invariants.md`
+- Related PRs / commits: uncommitted local change set; no PR, release, or deployment
+- Related runbooks / regressions: `cargo test -p hone-web-api`; `bun run test:web`; `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; real local ANET browser/PDF acceptance
+- Current conclusion: authenticated Blob downloads now provide visible success/failure state and safely recover sanitized generated-file placeholders only inside the current actor sandbox. Preview calls are recomputed from a guidance/segment anchor, exact bridge, historical bias and evidenced tolerance with base/display-unit validation. The old Workflow section skeleton remains, while company-specific opening and core prose are no longer locked to a common sentence template. A real ANET run remained inline for its own audited reasons rather than a global neutral default.
+- Next entry point: `docs/handoffs/2026-08-04-earnings-pdf-download-and-call-calibration.md`; after deployment, rerun fresh ANET/ALAB/AMD samples under the final display-unit contract before delivering those PDFs.
+
 ### Reviewed Main Sync And GCE Production Deployment
 
 - Status: done
