@@ -1,6 +1,6 @@
 # Runbook: Stripe-only Billing
 
-- status: `live_promotion_in_progress`
+- status: `production_live`
 - last_updated: `2026-08-04`
 - owner: `Codex`
 
@@ -60,6 +60,25 @@ the browser must never select or override them.
 Never reuse a listener secret for a registered destination or a test secret in
 production. `HONE_STRIPE_PUBLIC_BASE_URL` controls Checkout and Portal return
 URLs only; it does not configure webhook delivery.
+
+### Verification email runtime
+
+`/activate` verifies the HONE account email before creating Checkout. Production
+therefore also requires the complete Cloudflare Email Sending runtime set:
+
+```text
+HONE_CLOUDFLARE_ACCOUNT_ID=<account id>
+HONE_CLOUDFLARE_EMAIL_API_TOKEN=<account token with Email Sending Write only>
+HONE_EMAIL_FROM=verify@hone-claw.com
+```
+
+These values belong in the production secret manager and the owner-only
+`/etc/hone/runtime.env`, not only in a developer's ignored `.env`. All three
+missing intentionally leaves the endpoint fail-closed with `503`; a partial or
+malformed set is a startup error. After a deployment or host migration, require
+the non-secret startup message `Cloudflare 邮箱验证码服务已装配`, request one real
+code, receive it in the intended inbox, and use that same challenge to create
+Checkout. Never print the token, code, or recipient address during diagnosis.
 
 ## Live Stripe Authority
 
@@ -197,6 +216,31 @@ disposable object after acceptance.
 9. Verify `/plan`, `/activate`, and `/me`; create a live Checkout Session but do
    not submit a real payment solely for technical smoke testing.
 10. Retain redacted screenshots and event/status evidence outside Git.
+
+## Accepted Production State (2026-08-04)
+
+- Source revision:
+  `edddfc5b890d124d76d8c6eddc9aa85f2e94b807`
+- GHCR digest:
+  `sha256:0dcd14a825a124344908b34f6cab19f83eca1f614a40eb2bdf08df2f093f0eee`
+- Release:
+  `/opt/hone/releases/edddfc5b890d124d76d8c6eddc9aa85f2e94b807-ghcr-runtime`
+- Runtime Image workflow run: `30893733765`
+- `/api/meta`: exact revision, `ghcr_linux_oci`, healthy authoritative
+  PostgreSQL/S3, zero local durable dependency
+- Service: `hone-web.service` active, `NRestarts=0`, ports `8077/8088`
+- Database: Stripe-only constraints installed; entitlement and webhook tables
+  both empty at cutover
+- Security: invalid public webhook `401` with no mutation; unauthenticated
+  Checkout `401`; protected runtime environment `root:root 0600`
+- Email: real inbox receipt and same-challenge verification passed after the
+  Cloudflare runtime set was moved into the formal production environment
+- Checkout: official Stripe live Session and page showed USD 199.99/year,
+  `open` and `unpaid`; no payment was submitted and `/me` remained inactive
+- Retired channel: Whop product/plan hidden, public purchase CTA absent, HONE
+  webhook deleted
+- Redacted evidence: `20-plan-live.png` through
+  `24-whop-product-plan-hidden.png` in the plan's acceptance directory
 
 ## Rollback
 

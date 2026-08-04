@@ -4,6 +4,18 @@ Last updated: 2026-08-04
 
 ## 2026-08-04
 
+### Stripe-only Production Billing Cutover
+
+- Status: done; deployed to production from exact GHCR image; no formal release or tag
+- Date: 2026-08-04
+- Plan: `docs/archive/plans/stripe-whop-parallel-billing.md`; superseded email task `docs/archive/plans/whop-email-delivery.md`
+- Handoff: `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-04-01-make-stripe-the-only-external-billing-provider`; `docs/decisions.md#d-2026-08-04-03-build-managed-linux-runtimes-in-actions-and-deliver-them-through-ghcr`
+- Related PRs / commits: direct `main` commits `9961652f`, `91e93b51`, and exact deployed `edddfc5b890d124d76d8c6eddc9aa85f2e94b807`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/stripe-billing.md`; `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_billing_contract.sh`; `tests/regression/ci/test_billing_http_e2e.sh`; `tests/regression/ci/test_runtime_image_contract.sh`; GitHub Runtime Image run `30893733765`
+- Current conclusion: HONE production is Stripe-only and runs the exact source revision above from GHCR digest `sha256:0dcd14a825a124344908b34f6cab19f83eca1f614a40eb2bdf08df2f093f0eee`. Live account/catalog/Portal/eight-event webhook/minimal restricted key, Cloudflare email verification, official open/unpaid USD 199.99/year Checkout, fail-closed unpaid entitlement, Stripe-only database constraints, and public auth boundaries passed. In the correct `bamang_research` profile, the Whop product and annual plan were hidden and the HONE webhook deleted. No real live payment was submitted.
+- Next entry point: `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`; obtain explicit owner authorization before any live-money proof, then separately address reconciliation, refunds/disputes, and Stripe Tax policy.
+
 ### Administrator Earnings Research Chat Entry And PDF Delivery
 
 - Status: done; committed to `main`, not released or deployed

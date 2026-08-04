@@ -8,6 +8,13 @@
 > and recovery UI described below were removed by the Stripe-only migration.
 > Do not re-enable them or use this runbook for a new deployment.
 
+Final external retirement on 2026-08-04 used the correct
+`bamang_research` Chrome profile: the canonical product was hidden from the
+store, its annual plan was hidden, the public page no longer exposed a price or
+purchase action, and the HONE company webhook was deleted. Active users and
+lifetime revenue were both zero at retirement. The company-level API key was
+left untouched pending a separate non-Billing usage audit.
+
 Use this runbook to configure and verify the Whop adapter feeding HONE's
 provider-neutral Billing ledger and purchase-email verification path. Discord role
 fulfillment remains separate in `docs/runbooks/whop-discord-fulfillment.md`.

@@ -1,9 +1,9 @@
 # Whop 购买邮箱真实投递
 
 - title: Whop 购买邮箱真实投递
-- status: in_progress
+- status: done
 - created_at: 2026-07-28
-- updated_at: 2026-07-28
+- updated_at: 2026-08-04
 - owner: Codex
 - related_files:
   - `.env.example`
@@ -13,6 +13,9 @@
   - `docs/runbooks/whop-hone-activation.md`
 - related_docs:
   - `docs/handoffs/whop-email-delivery.md`
+  - `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
+  - `docs/decisions.md#d-2026-08-04-01-make-stripe-the-only-external-billing-provider`
+- superseded_by: `docs/archive/plans/stripe-whop-parallel-billing.md`
 
 ## Goal
 
@@ -82,8 +85,15 @@ Sending 的真实事务邮件投递，并用真实收件箱完成购买邮箱激
 
 ## Risks / Open Questions
 
-- 生产最终验收仍应使用真实 Whop 非 owner buyer，并从实际收件箱输入同一
-  封邮件中的验证码；本地真实收件已由用户回传验证码确认。
-- 本机忽略的 `.env` 不会随 Git 推送。更换 supervisor 工作目录、轮换
-  secret 或迁移主机时，必须通过安全 secret 管理重新注入 `.env.example`
-  定义的完整配置；聊天中出现过的 webhook secret 应在方便时轮换。
+- Owner 已决定永久退出 Whop，因此真实非 owner buyer 的最终 Whop 验收被
+  有意取消，不再是阻塞项。Whop 产品/计划已隐藏，HONE webhook 已删除。
+- Cloudflare Email Sending 能力仍被 Stripe-only `/activate` 复用，并已在
+  生产通过真实收件、同 challenge 验证与 Checkout 创建。其三个变量必须
+  由生产 secret 管理注入 `/etc/hone/runtime.env`，不能依赖开发机忽略的
+  `.env`；缺失时接口按设计 fail-closed `503`。
+
+## Completion
+
+本任务的邮件发送目标已经通过 Stripe-only 激活链路完成真实生产验收；
+Whop 专属验证范围由 owner 决策终止。历史实现和证据保留，本计划随
+Stripe-only 生产切换一起归档。

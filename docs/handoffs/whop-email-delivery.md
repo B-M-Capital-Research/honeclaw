@@ -1,9 +1,9 @@
 # Whop 购买邮箱真实投递 Handoff
 
 - title: Whop 购买邮箱真实投递
-- status: in_progress
+- status: superseded
 - created_at: 2026-07-28
-- updated_at: 2026-07-28
+- updated_at: 2026-08-04
 - owner: Codex
 - related_files:
   - `.env.example`
@@ -11,12 +11,18 @@
   - `crates/hone-web-api/src/lib.rs`
   - `crates/hone-web-api/src/routes/whop.rs`
 - related_docs:
-  - `docs/current-plans/whop-email-delivery.md`
+  - `docs/archive/plans/whop-email-delivery.md`
+  - `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
   - `docs/runbooks/whop-hone-activation.md`
   - `docs/decisions.md`
 - related_prs: none; source is published directly to `main`
 
 ## Summary
+
+The email sender itself remains production infrastructure, but the Whop buyer
+workflow is retired. The owner chose Stripe-only billing; the same Cloudflare
+sender was live-proven through `/activate` with real delivery, same-challenge
+code verification, and successful creation of an unpaid live Stripe Checkout.
 
 HONE now has a concrete Cloudflare Email Sending REST implementation for Whop
 purchase-email verification. It remains inactive when all three runtime
@@ -24,10 +30,11 @@ variables are absent and refuses partial/invalid configuration at startup.
 The owner approved Workers Paid, the sending domain and scoped token are
 configured, and controlled delivery/browser acceptance passed. The working
 tree is published directly to `main` without a release tag. Exact commit
-`482c34d5` is now deployed in production with the current `ws_...` signing
-contract and complete Cloudflare/Whop runtime configuration. The only remaining
-acceptance item is a real non-owner Whop buyer completing the same production
-challenge from purchase through inbox code entry.
+`482c34d5` was deployed in the historical Whop stage with the then-current
+`ws_...` signing contract and complete Cloudflare/Whop runtime configuration.
+That buyer acceptance was intentionally canceled by the later Stripe-only
+decision; Cloudflare delivery itself has since passed the production Stripe
+activation flow.
 
 ## What Changed
 
@@ -118,11 +125,12 @@ challenge from purchase through inbox code entry.
 
 - This is a direct `main` source publication, not a formal release, and must
   not create a tag.
-- Final production acceptance still needs a real non-owner Whop purchase and
-  same-challenge code entry; local real inbox receipt itself is confirmed.
-- The ignored local `.env` does not travel with Git. Host migration, secret
-  rotation, or supervisor working-directory changes must re-inject the complete
-  `.env.example` contract through approved secret management.
+- No Whop buyer acceptance remains: the product and plan are hidden and the
+  HONE webhook is deleted.
+- The ignored local `.env` does not travel with Git. Production must inject the
+  three Cloudflare sender values through approved secret management into the
+  owner-only runtime environment; otherwise `/activate` fails closed with
+  `503`.
 - Because the webhook secret appeared in the private task conversation, rotate
   it when operationally convenient and update the ignored runtime environment
   before another controlled restart.
@@ -133,8 +141,5 @@ challenge from purchase through inbox code entry.
 
 ## Next Entry Point
 
-Use a real non-owner Whop buyer for `/activate/whop` → purchase-email challenge
-→ same inbox code → `/me` production acceptance. Then cover cancel, expiry,
-repurchase, and Discord role lifecycle. If the secret is rotated first, follow
-`docs/runbooks/backend-deployment.md` for the same zero-active-chat controlled
-restart and repeat the signed no-side-effect probe.
+Use `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`. Retain the
+Cloudflare sender for Stripe activation; do not restore Whop-specific routes.

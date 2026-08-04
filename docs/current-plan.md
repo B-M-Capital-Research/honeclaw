@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-04
-状态：有 11 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -16,20 +16,10 @@
 
 ## 活跃任务
 
-- **Stripe-only 计费切换**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/stripe-whop-parallel-billing.md`
-  - 摘要：2026-08-04 owner 明确废止 Stripe + Whop 并行方案，改为 Stripe-only 且不保留 Whop 兼容。Stripe live 账户、目录、Portal、精确八事件 Webhook 与永久最小权限受限 key 均已完成；运行时代码、数据约束、前端与本地全量门禁已收口，提交 `9961652f` 已推送。部署按 owner 新要求改为固定 Debian `linux/amd64` 的 GitHub Actions 云端构建、GHCR 精确产物和 GCE 无守护进程拉取，不再在生产机编译；GHCR 链路验证后继续受保护密钥安装、原子切换、公网验收和旧外部资源归档，任务完成前不归档
-
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-admin-usage-exploration.md`
   - 摘要：把管理员统计扩展为统一口径的数据探索页，增加渠道分类、14/30/90 天追溯和可点击折线精确数值；补齐长周期查询容量、筛选联动、回归测试和精确 revision 的前后端统一生产更新
-
-- **Whop 购买邮箱真实投递**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/whop-email-delivery.md`
-  - 摘要：Workers Paid 已由用户确认并开通，`hone-claw.com` Email Sending 域名与 DNS 已启用，最小权限 token 已安装到本机忽略且权限为 `0600` 的 `.env`；Cloudflare 活动日志确认两次真实投递均为 `Delivered`，用户随后回传验证码确认真实收件箱收到邮件，隔离 Whop membership 的浏览器流程已迁到统一 `/activate?provider=whop` 并成功进入 `/me`。Cloudflare/Whop 环境变量清单已统一到 `.env.example`，实际值只保留在忽略的 `.env`。Whop verifier 已切换为当前原始 `ws_...` secret 格式并拒绝旧格式；精确提交 `482c34d5` 已构建为不可变包并在零活跃会话后受控部署，生产公网有效签名的无副作用事件返回 `200`、篡改正文与无签名请求返回 `401`，邮箱、PostgreSQL、R2、Web 与 Feishu 均健康。当前仅剩真实非 owner Whop buyer 的同一挑战验证码最终生产验收
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

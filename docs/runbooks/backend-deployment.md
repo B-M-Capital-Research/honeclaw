@@ -143,9 +143,17 @@ The expected result is
 `/opt/hone/releases/<revision>-ghcr-runtime`. Keep the current release intact,
 then continue with environment validation, two idle reads, atomic symlink
 replacement, systemd restart, exact `/api/meta` verification, and rollback
-retention below. If anonymous GHCR export fails, stop: do not install a broad
-personal token on production. First confirm that the repository-linked runtime
-package has public visibility.
+retention below.
+
+Prefer anonymous export when package visibility and organization policy allow
+it. If the repository-linked package is private, use only a short-lived or
+operator-provided credential scoped to `read:packages`. Transfer it through the
+approved secret channel, pass it to `crane auth login` over standard input, and
+set `DOCKER_CONFIG` to a newly created mode-`0700` temporary directory. Stage
+and verify the exact digest, then delete that directory immediately. Do not put
+the token in command arguments/history, reuse a broad personal token, copy the
+temporary config into `/root/.docker`, or leave any registry credential on the
+host. A failed minimal-auth export stops before staging or cutover.
 
 Before updating the backend origin:
 

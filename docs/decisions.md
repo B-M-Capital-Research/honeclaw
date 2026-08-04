@@ -709,15 +709,14 @@ Last updated: 2026-08-04
   external regression uses a disposable Stripe catalog, Test Clock, customer,
   subscriptions, invoices, Checkout Session, and Portal Session to prove the
   real paid/failure/recovery/cancel/repurchase lifecycle before deleting the
-  clock-owned objects and archiving the catalog. External non-owner Whop and
-  owner-approved live promotion remain tracked in
-  `docs/current-plans/stripe-whop-parallel-billing.md`.
+  clock-owned objects and archiving the catalog. The later owner decision and
+  production cutover are recorded in
+  `docs/archive/plans/stripe-whop-parallel-billing.md`.
 
 ## D-2026-08-04-01 Make Stripe The Only External Billing Provider
 
-- Status: Accepted; implementation and live Stripe control-plane setup are
-  complete, while exact-revision production deployment and final public
-  acceptance remain in progress.
+- Status: Accepted and production-complete on exact commit
+  `edddfc5b890d124d76d8c6eddc9aa85f2e94b807`.
 - Created: 2026-08-04
 - Owner: Codex
 - Supersedes: `D-2026-07-26-04`, all Whop-specific portions of
@@ -727,7 +726,7 @@ Last updated: 2026-08-04
   `crates/hone-core/src/cloud_runtime.rs`,
   `crates/hone-web-api/src/routes/{billing,stripe}.rs`,
   `packages/app/src/pages/{public-activate,public-me,public-plan}.tsx`
-- Related docs: `docs/current-plans/stripe-whop-parallel-billing.md`,
+- Related docs: `docs/archive/plans/stripe-whop-parallel-billing.md`,
   `docs/runbooks/stripe-billing.md`
 - Context: The owner explicitly directed HONE to stop validating or preserving
   the retired payment channel, archive its external resources, move all future
@@ -777,13 +776,19 @@ Last updated: 2026-08-04
   source scans, frontend contracts, Web tests, restricted-key mode tests, full
   repository gates, exact revision checks, redacted production screenshots,
   and post-deploy PostgreSQL constraints/data counts are required before this
-  decision is marked production-complete.
+  decision is marked production-complete. Those checks passed: production
+  reports the exact source revision above from a verified GHCR bundle, uses
+  Stripe live mode with the exact catalog and no retired-provider runtime
+  variables, rejects invalid webhooks without mutation, creates an official
+  live USD 199.99/year Checkout, and preserves inactive entitlement while that
+  Session remains unpaid. The retired Whop product/plan are hidden and the HONE
+  webhook is deleted.
 
 ## D-2026-08-04-03 Build Managed Linux Runtimes In Actions And Deliver Them Through GHCR
 
-- Status: Accepted; implementation and local bundle-contract verification are
-  complete, while the first GHCR publication and production pull remain in
-  progress.
+- Status: Accepted and production-verified on exact commit
+  `edddfc5b890d124d76d8c6eddc9aa85f2e94b807` and manifest digest
+  `sha256:0dcd14a825a124344908b34f6cab19f83eca1f614a40eb2bdf08df2f093f0eee`.
 - Created: 2026-08-04
 - Owner: Codex
 - Related files: `.github/workflows/runtime-image.yml`,
@@ -791,7 +796,7 @@ Last updated: 2026-08-04
   `scripts/verify_runtime_bundle.sh`, `scripts/stage_ghcr_runtime.sh`,
   `tests/regression/ci/test_runtime_image_contract.sh`
 - Related docs: `docs/runbooks/backend-deployment.md`,
-  `docs/current-plans/stripe-whop-parallel-billing.md`
+  `docs/archive/plans/stripe-whop-parallel-billing.md`
 - Context: The workstation is macOS while production is Debian Linux, and
   compiling the large workspace on the production VM is slow, consumes several
   GiB of transient disk, and couples deployment safety to mutable build-host
@@ -812,12 +817,15 @@ Last updated: 2026-08-04
   or a revision mismatch, then stops without changing current or restarting a
   service. Existing two-read active-chat drain and rollback rules remain the
   only cutover authority.
-- Secrets and visibility: Runtime images contain compiled public-repository
+- Secrets and visibility: Runtime images contain compiled repository
   source outputs, `soul.md`, the stock-research Skill, verification tooling, and
   metadata only. They contain no `.env`, config, credentials, data, logs, or
-  local worktrees. Prefer a public repository-linked GHCR package so production
-  can pull anonymously; do not persist a broad personal GitHub token merely to
-  download a runtime.
+  local worktrees. Prefer anonymous pull when organization policy permits a
+  public repository-linked package. When policy keeps the package private,
+  production may use only a short-lived or operator-provided credential scoped
+  to `read:packages`, supplied over standard input into a temporary `0700`
+  `DOCKER_CONFIG` and deleted immediately after export. Never persist a broad
+  personal token or registry login on the host.
 - Rollback: Keep the previous release directory and environment backup. A bad
   image is rejected before cutover; a post-cutover failure restores the prior
   symlink and restarts through the same systemd boundary after a fresh drain.
@@ -825,10 +833,11 @@ Last updated: 2026-08-04
 - Verification: The CI-safe contract proves fixed Linux architecture, pinned
   Debian builder, scoped GHA cache, repository label, scratch final image,
   complete bundle verification, and tamper rejection without network or Docker.
-  Production acceptance additionally requires a successful Actions build,
-  recorded digest, anonymous daemonless export, exact metadata/SHA verification,
-  embedded `/api/meta` revision, cloud authority, ports, auth boundaries, and
-  retained rollback release.
+  Runtime Image run `30893733765` passed in about 5 minutes 23 seconds. GCE
+  exported the exact private digest daemonlessly with ephemeral minimal auth;
+  staging verified metadata, embedded SHA and every payload hash before the
+  atomic cutover. `/api/meta`, cloud authority, ports, auth boundaries, service
+  stability and the retained rollback release all passed after cutover.
 
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 

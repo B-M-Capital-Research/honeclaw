@@ -1,7 +1,7 @@
 # Stripe + Whop Provider-Neutral Billing Handoff
 
 - title: Stripe + Whop provider-neutral Billing handoff
-- status: `in_progress`
+- status: `superseded`
 - created_at: `2026-08-03`
 - updated_at: `2026-08-04`
 - owner: `Codex + owner`
@@ -14,14 +14,20 @@
   - `packages/app/{playwright.config.ts,e2e/public-billing-activation.spec.ts}`
   - `tests/regression/{ci,manual}/test_*billing*.sh`
 - related_docs:
-  - `docs/current-plans/stripe-whop-parallel-billing.md`
+  - `docs/archive/plans/stripe-whop-parallel-billing.md`
+  - `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
   - `docs/runbooks/stripe-billing.md`
   - `docs/runbooks/whop-hone-activation.md`
 - related_prs: no PR; Billing landed on `main` through `92e87a94`, `5028870d`, Whop route fix `e31c29ac`, lifecycle/provider-policy completion `c32eae92`, and CI portability fix `cc185abd`; no release or tag was created
 - verification: local automated/browser acceptance, real Stripe test Checkout and 13-event Test Clock lifecycle, CLI delivery, active/grace/inactive/repurchase transitions, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, external-Chrome SSH read-only production recheck, no-`rg`/no-Bun Billing contract, focused gitleaks history allowlist, provider-policy activation regressions, and GitHub CI/Secret Scan/CodeQL passed
-- risks: non-owner Whop buyer and owner live-promotion policy remain pending; live catalog/configuration remains untouched
+- risks: historical safe-stage only; do not restore Whop or reuse test credentials in the Stripe-only runtime
 
 ## Summary
+
+This handoff preserves the completed multi-provider sandbox and safe-stage
+evidence only. The owner subsequently chose a destructive Stripe-only cutover;
+the final production state and current operational entry point are recorded in
+`docs/handoffs/2026-08-04-stripe-only-production-cutover.md`.
 
 HONE now has a provider-neutral Billing domain with Stripe and Whop adapters,
 one canonical entitlement ledger, and no runtime compatibility layer. The
@@ -35,9 +41,9 @@ is `HoneClaw`, the real-account catalog check passed, and the ignored local
 Stripe's public test card for a real test-mode Checkout. The CLI delivered the
 three resulting signed events and the Customer Portal displayed the paid
 subscription. That run exposed a real provider-ordering edge; the fix and
-replay now produce one active entitlement and paid API `200`. The remaining
-Whop production acceptance still needs a real non-owner buyer to complete their
-own email challenge. Production now runs exact backend `5028870d`; the
+replay now produce one active entitlement and paid API `200`. At that historical
+stage, Whop buyer acceptance and live promotion were still pending. Production
+then ran exact backend `5028870d`; the
 registered Stripe test endpoint is online with its rotated secret, while
 Checkout remains disabled and Whop remains the temporary primary channel.
 Commit `e31c29ac` also fixes the Whop recovery link so changing only the query
@@ -176,13 +182,10 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
 
 ## Risks / Follow-ups
 
-- Local CLI, registered online test, and registered live webhook destinations
-  require distinct signing secrets. The registered test endpoint is now
-  accepted online; no live endpoint or live secret exists for this rollout.
-- Tax, refund, statement descriptor, support, dispute, and live promotion
-  policy require explicit owner approval. Keep Stripe Tax off in the sandbox.
-- A real non-owner Whop buyer still must complete their own email challenge;
-  Codex can navigate and inspect everything around that sensitive step.
+- This document describes a superseded safe stage. Do not restore its Whop
+  runtime policy or reuse its test destination secret in production.
+- Tax, refund, statement descriptor, support, dispute, and reconciliation
+  remain follow-ups for the Stripe-only production path.
 - A repository-wide Playwright audit still has 7 failures outside Billing
   (admin/company-profile/chat-upload/mobile-overlay/SMS), reproducible with one
   worker. Billing remains `3/3`; the unrelated suite is not a default CI gate
@@ -191,7 +194,5 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
 
 ## Next Entry Point
 
-Use a real non-owner Whop buyer for the one remaining production email
-challenge. Obtain separate business approval before live promotion. Keep this
-task active until Whop acceptance and the live-policy decision pass; only then
-archive the plan and update `docs/archive/index.md`.
+Use `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`; no Whop buyer
+acceptance remains planned.

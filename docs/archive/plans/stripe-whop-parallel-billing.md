@@ -1,7 +1,7 @@
 # Stripe-only 计费切换计划
 
 - title: Stripe-only 计费切换
-- status: `in_progress`
+- status: `done`
 - created_at: `2026-08-03`
 - updated_at: `2026-08-04`
 - owner: `Codex`
@@ -17,6 +17,8 @@
   - `scripts/{package,verify,stage}_runtime_bundle.sh`
 - related_docs:
   - `docs/current-plan.md`
+  - `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
+  - `docs/archive/index.md`
 
 ## Goal
 
@@ -50,7 +52,7 @@
 - Web/Worker 验证：Web `352/352`、`bun run typecheck:web`、`bun run build:web:public` 通过；Public Community Edge Worker typecheck 与 `45/45` 测试通过。
 - 回归门禁：`tests/regression/ci/test_billing_contract.sh` 与新增的 `test_billing_http_e2e.sh` 全部通过。后者启动隔离真实后端，以临时 SQLite 和假测试密钥执行 Stripe/Whop 原始签名 HTTP webhook，覆盖 `pending/402`、付款激活、重放、乱序、错误目录、失败宽限、恢复、周期结束取消、删除、双 provider、全部失效与重购；不读取仓库 `.env`、不访问外部账号。Billing 合同现有 `rg`/`grep` 等价分支，并适配 Rust CI job 不安装 Bun 的既有矩阵：静态前端合同始终执行，有 Bun 时追加定向 Web 测试，无 Bun 时由独立 `frontend-checks` 的完整 `352/352` 接管；“无 `rg` + 无 Bun”和本机完整两条分支均通过。Secret Scan 只对两条精确的既有支付宝参考资产历史指纹放行；完整历史扫描为 0，完整假 RSA 私钥负向控制仍被 `private-key` 规则检出，没有泛化关闭规则。
 - 视觉验收：已用实际 Vite 页面与隔离后端 fixture 在浏览器打开 `/plan`、`/activate`、`/me`，并检查 390×844 的 HONE-iOS 购买隔离状态。发现并修复 iOS 恢复页错误显示“Stripe 付款”步骤；后续审计又发现 `/me` 仍暴露外部账单管理入口，已拆分服务端购买/管理策略并 fail-closed 隐藏。最终 `/me` 截图证明 Stripe/Whop 状态和重复订阅警告可见、外部管理动作为空且横向溢出为 `0`。
-- 去敏截图目录：`/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`；本地/沙箱证据为 `01`–`12`，生产在线验收为 `13-production-webhook-delivery-200.png`、`14-production-plan-safe-stage.png`、`15-production-activate-safe-stage.png`、`16-production-me-unauthenticated.png`、`17-production-whop-reactive-route.png`、`18-production-whop-safe-stage-final.png` 与 `19-production-ssh-readonly-acceptance.png`。
+- 去敏截图目录：`/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`；本地/沙箱证据为 `01`–`12`，安全灰度证据为 `13`–`19`，最终生产证据为 `20-plan-live.png`、`21-activate-stripe-only.png`、`22-live-checkout-summary.png`、`23-me-unpaid-entitlement.png` 与 `24-whop-product-plan-hidden.png`。
 - Stripe 沙箱进度：owner 已在操作发生前确认；测试模式已创建独立 Product `prod_V0J9fIdOhCrS4z` 与年度 Price `price_1U0IXPEK7h1dD4JHHavBWqmr`，页面证明名称、US$199.99、USD、每年、无试用且 live catalog 未改。测试 Customer Portal 已保存为配置 `bpc_1U0IZEEK7h1dD4JHxYx1GhDy`：允许更新支付方式、周期结束取消，禁止切换方案/改数量，返回 `https://hone-claw.com/me`。
 - Stripe CLI 与真实付款：已通过官方 Homebrew tap 安装 `stripe 1.45.0`，owner 已亲自完成验证器挑战与配对授权，`stripe login list` 显示活动 profile `HoneClaw`。本机忽略的 `.env` 已保存 test secret；`tests/regression/manual/test_stripe_billing_sandbox.sh` 通过真实账户目录核验。Codex 经 owner 明确授权填写 Stripe 公共测试卡并提交 US$199.99/年测试订阅，CLI listener 将 `checkout.session.completed`、`invoice.paid`、`customer.subscription.created` 各投递一次且后端均返回 `202`。真实事件暴露 provisional ordering 缺陷；修复后，同一批真实事件经新签名 endpoint 重放后全部 `processed/attempt_count=1`，只生成 1 条 `active` 权益，付费 API 从 `402` 变为 `200`。测试 Customer Portal 实际显示支付方式更新、周期结束取消和已付账单；未执行取消。
 - 真实 Stripe 全生命周期：新增 opt-in `tests/regression/manual/test_stripe_billing_lifecycle.sh`，使用隔离 HONE 后端、临时 SQLite、一次性错误目录 Product/Price 和 Stripe Test Clock，真实创建 Checkout/Portal、付费订阅、续费失败、有限宽限、账单恢复、周期结束取消、立即终止与新订阅重购。最终 13 条真实 Stripe webhook 均 `processed`、`attempt_count=1`、无错误，权益为 1 条 active + 1 条 inactive，付费 API 完成 `402 → 200 → 402 → 200`；Test Clock 删除全部 customer/subscription，对应 Price/Product 已归档，未留下活跃测试对象。
@@ -62,8 +64,12 @@
 - 运行时代码已删除旧 provider adapter、路由、配置、前端购买/恢复分支与专用测试脚本；所有可执行源码仅保留 Stripe，仓库中的旧名称只允许出现在历史文档与“禁止回归”的负向断言中。
 - SQLite 启动时通用重建旧 provider 约束并只复制 Stripe/国内邀请 entitlement 与 Stripe webhook；PostgreSQL 通过 `20260804_stripe_only_billing` forward migration 在 advisory lock 下删除非目标 provider 行并替换约束。
 - 受限 key 前缀 `rk_test_`/`rk_live_` 与标准 key `sk_test_`/`sk_live_` 均按 mode 严格匹配；生产使用受限 key，不再依赖 90 天过期的 CLI key。
-- 2026-08-04 最新部署前只读检查：`hone-web.service` active，当前仍运行 `5028870dcb341476e17b57fdfa84d72624b04200`；PostgreSQL/R2 健康、cloud authority 为真、local durable dependency 为 0、active chats 为 0；`/etc/hone/runtime.env` 为 `root:root 0600`。待本次精确提交、完整门禁与第二次 idle 检查后执行原子切换。
+- 生产已切换到精确提交 `edddfc5b890d124d76d8c6eddc9aa85f2e94b807`，GHCR digest 为 `sha256:0dcd14a825a124344908b34f6cab19f83eca1f614a40eb2bdf08df2f093f0eee`，release 为 `/opt/hone/releases/edddfc5b890d124d76d8c6eddc9aa85f2e94b807-ghcr-runtime`。`/api/meta` 逐字返回该 SHA 与 `ghcr_linux_oci`，PostgreSQL/R2 健康、cloud authority 为真、local durable dependency 为 0；`hone-web.service` active、`NRestarts=0`、端口 `8077/8088` 正常。
 - owner 在部署阶段要求停止 GCE 本机编译，改由 GitHub Actions 在固定 Debian Bookworm `linux/amd64` 镜像内编译，并通过 GHCR 交付。新链路把 Git SHA 写入二进制、OCI label 与 `RELEASE_METADATA`，用 GHA BuildKit cache 加速后续构建；GCE 仅用无守护进程 `crane` 拉取、逐文件 SHA-256 校验并暂存，现有 systemd、runtime env、双 idle drain、原子 symlink 与回滚边界保持不变。
+- Runtime Image run `30893733765` 通过，首次复用缓存的精确镜像构建耗时约 5 分 23 秒。组织策略使 GHCR package 保持私有；部署只使用临时 `0700` `DOCKER_CONFIG` 与仅 `read:packages` 的短期凭证，通过标准输入登录，镜像导出后立即清除，生产主机没有持久化 registry credential。
+- `/etc/hone/runtime.env` 保持 `root:root 0600`，仅包含 Stripe live 计费变量和 Cloudflare Email Sending 三项运行时变量，不再包含 Whop provider/runtime 变量；切换前备份为 `/etc/hone/runtime.env.pre-stripe-live-20260804T084657Z`。Cloudflare account token 仅授予 `Email Sending: Write`，发件人为 `verify@hone-claw.com`。验证码真实送达、同一 challenge 校验成功并进入 live Checkout。
+- Live Checkout Session 经 Stripe API 与官方页面双重确认：`livemode=true`、`mode=subscription`、USD 199.99/年、`status=open`、`payment_status=unpaid`。未输入支付信息、未产生收费；取消返回 HONE 后 `/me` 仍显示权益不可用，证明成功 URL 与未付款 Session 不会误授权。
+- 正确的外部 Chrome `bamang_research` Profile 中，Whop 公司 `biz_h0UKqlfUJI55Am` 的产品 `prod_9jQsUKaifh6ZA` 已从商店隐藏，计划 `plan_ZXfsAisr4UOaw` 已隐藏，公开页无价格或购买按钮，active users 为 0、lifetime revenue 为 US$0.00；HONE webhook 已删除。公司级旧 API key 未删除，因为它不是生产 Billing runtime 所需资源且可能服务于其它公司管理操作。
 
 ## Completion Audit
 
@@ -74,13 +80,13 @@
 | 重复、乱序、租约恢复与旧 worker fencing | Billing inbox/Stripe adapter/隔离签名 HTTP 生命周期 | `automated_complete` |
 | Checkout 由服务端锁定目录，成功跳转不授予权益 | Checkout/normalization 单测、`pending/402`、iOS fail-closed | `automated_complete` |
 | Stripe live 收款能力、目录、Portal、Webhook、最小权限 key | live Dashboard 与 API 状态，key 权限截图复核 | `external_complete` |
-| 生产 Stripe-only 部署与 forward migration | Stripe-only 提交已推送；正在建立 Linux Actions → GHCR 精确产物，随后执行 idle drain、受保护 secret 安装与服务切换 | `in_progress` |
-| 公网 Checkout/Portal/webhook/页面与截图验收 | 待部署后执行；技术 smoke 不提交真实收费 | `pending` |
-| 旧外部产品、计划与 webhook 归档 | 仅在 Stripe 公网 smoke 通过后执行 | `pending` |
+| 生产 Stripe-only 部署与 forward migration | exact SHA/digest/release、idle drain、受保护 live secret 安装、PG 约束与 0 行盘点、`/api/meta`/health | `external_complete` |
+| 公网 Checkout/Portal/webhook/页面与截图验收 | live Checkout 为 open/unpaid、官方页面 USD 199.99/年；未付费 `/me` 不授权；无效 webhook `401` 且数据库不变；截图 `20`–`23` | `external_complete_without_charge` |
+| 旧外部产品、计划与 webhook 归档 | bamang Profile 中产品/计划隐藏、公开购买入口消失、HONE webhook 删除；截图 `24` | `external_complete` |
 
 ## Documentation Sync
 
-- 本轮同步 `docs/current-plan.md`、本计划、`docs/repo-map.md`、`docs/invariants.md`、`docs/decisions.md`、`docs/runbooks/stripe-billing.md`；退出活跃态时再更新 handoff、archive index 并归档计划。
+- 已同步 `docs/current-plan.md`、本计划、`docs/invariants.md`、`docs/decisions.md`、Billing/部署 runbook、最终 handoff 与 archive index；本计划与被替代的 Whop 邮件计划退出活跃态并归档。
 - 原始并行方案保留在下方 verbatim 区块作为历史证据，不再构成实现或运维指令。
 
 ## Risks / Open Questions
@@ -88,13 +94,11 @@
 - live signing secret 与 restricted key 不得进入 Git、命令输出、截图或 shell history；只通过受控内存/标准输入写入 owner-only 环境文件。
 - Stripe Tax、退款/争议自动化和跨 jurisdiction 税务仍是明确 follow-up，不阻塞已获 owner 授权的 Stripe-only 技术切换。
 - 回滚只能关闭新 Checkout 或恢复上一不可变 release；不得停用 live webhook 或删除现有 Stripe 账单对象。
+- Live 验收有意停在 `open/unpaid` Checkout；完整“实际扣款 → live webhook → 权益开通”未执行，因为这会产生真实 US$199.99 收费。相同行为已由 Stripe test-mode 真支付和 13 事件 Test Clock 全生命周期自动化证明。
 
-## Resume Entry Point
+## Completion / Next Entry Point
 
-1. 完成并验证固定 `linux/amd64` 的 GHCR runtime image workflow，记录不可变 digest。
-2. GCE 通过 `crane` 拉取并严格校验精确 revision；备份并原子更新 runtime env，连续两次确认 active chats 为 0 后切换不可变 release。
-3. 完成公网页面、Checkout 创建、Portal、webhook 与数据库约束验收并保存去敏截图。
-4. 归档旧外部资源，更新 handoff/archive，关闭本计划。
+本计划已完成。后续若要补最后一项真实资金闭环，必须由 owner 明确授权一笔 live 收费，再验证 `invoice.paid`、Stripe 权益激活、Portal 和退款/取消；否则从 `docs/handoffs/2026-08-04-stripe-only-production-cutover.md` 进入日常运维即可。
 
 ## 持久化会话原始方案
 
