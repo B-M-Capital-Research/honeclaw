@@ -105,6 +105,10 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
   branch was exercised with `rg` deliberately absent. Added only the two exact
   legacy Alipay history fingerprints to `.gitleaksignore`; a complete fake RSA
   key remains detected, proving the rule itself was not disabled.
+- Kept the Rust CI job independent of Bun: static Web Billing contracts always
+  run, focused Web tests run when Bun exists, and the separate frontend job
+  owns the complete `352/352` suite. Both the no-`rg`/no-Bun branch and the
+  full local branch passed.
 
 ## Verification
 

@@ -44,6 +44,9 @@ contains 'POST /api/public/integrations/stripe/webhook' docs/runbooks/stripe-bil
 contains 'HONE_STRIPE_CHECKOUT_ENABLED=false' .env.example
 contains 'HONE_STRIPE_MODE=test' .env.example
 contains 'window.location.assign(checkout_url)' packages/app/src/pages/public-activate.tsx
+contains 'billingActivationProvider(searchParams.provider, config())' packages/app/src/pages/public-activate.tsx
+contains 'configReady()' packages/app/src/pages/public-activate.tsx
+contains 'href="/activate?provider=stripe"' packages/app/src/pages/public-plan.tsx
 contains 'purchases_allowed_on_this_client' packages/app/src/pages/public-plan.tsx
 contains 'management_allowed_on_this_client' packages/app/src/pages/public-me.tsx
 contains 'billing_entitlements' memory/src/billing.rs
@@ -52,9 +55,13 @@ contains 'billing_webhook_events' memory/src/billing.rs
 cargo test -p hone-memory billing::tests --quiet
 cargo test -p hone-web-api routes::stripe::tests --quiet
 cargo test -p hone-web-api routes::whop::tests --quiet
-bun test --preload ./packages/app/happydom.ts \
-  packages/app/src/lib/public-membership.test.ts \
-  packages/app/src/pages/public-billing-activation-contract.test.ts \
-  packages/app/src/pages/public-plan-purchase-contract.test.ts
+if command -v bun >/dev/null 2>&1; then
+  bun test --preload ./packages/app/happydom.ts \
+    packages/app/src/lib/public-membership.test.ts \
+    packages/app/src/pages/public-billing-activation-contract.test.ts \
+    packages/app/src/pages/public-plan-purchase-contract.test.ts
+else
+  echo "[INFO] bun unavailable; frontend-checks owns the complete Web unit suite"
+fi
 
 echo "[PASS] provider-neutral Stripe + Whop billing contract"
