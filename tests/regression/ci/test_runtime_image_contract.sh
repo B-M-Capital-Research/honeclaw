@@ -12,6 +12,7 @@ fail() {
 
 WORKFLOW=.github/workflows/runtime-image.yml
 DOCKERFILE=deploy/runtime/Dockerfile
+STAGE_SCRIPT=scripts/stage_ghcr_runtime.sh
 
 grep -Fq 'platforms: linux/amd64' "$WORKFLOW" \
     || fail "runtime workflow must publish only linux/amd64"
@@ -33,6 +34,10 @@ grep -Fq 'cargo chef cook --locked --profile source-runtime' "$DOCKERFILE" \
     || fail "runtime builder must export reusable dependency layers"
 grep -Fq 'FROM scratch' "$DOCKERFILE" \
     || fail "runtime artifact image must not add an unrelated runtime filesystem"
+grep -Fq 'runtime image must be an exact ghcr.io digest reference' "$STAGE_SCRIPT" \
+    || fail "runtime staging must reject mutable GHCR tags"
+grep -Fq 'crane export --platform linux/amd64 "$IMAGE_REF" -' "$STAGE_SCRIPT" \
+    || fail "runtime staging must select the Linux manifest instead of an attestation"
 
 tmp_dir="$(mktemp -d)"
 cleanup() {

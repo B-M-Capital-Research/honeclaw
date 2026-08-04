@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 pub enum BuildSource {
     Workspace,
     DirectSourceRuntime,
+    GhcrLinuxOci,
     Unknown,
 }
 
@@ -18,6 +19,7 @@ impl BuildSource {
         match self {
             Self::Workspace => "workspace",
             Self::DirectSourceRuntime => "direct_source_runtime",
+            Self::GhcrLinuxOci => "ghcr_linux_oci",
             Self::Unknown => "unknown",
         }
     }
@@ -64,6 +66,7 @@ fn normalized_build_source(raw: Option<&str>) -> BuildSource {
     match raw.map(str::trim).filter(|value| !value.is_empty()) {
         None | Some("workspace") => BuildSource::Workspace,
         Some("direct_source_runtime") => BuildSource::DirectSourceRuntime,
+        Some("ghcr_linux_oci") => BuildSource::GhcrLinuxOci,
         Some(_) => BuildSource::Unknown,
     }
 }
@@ -103,6 +106,10 @@ mod tests {
         assert_eq!(
             normalized_build_source(Some("direct_source_runtime")),
             BuildSource::DirectSourceRuntime
+        );
+        assert_eq!(
+            normalized_build_source(Some("ghcr_linux_oci")),
+            BuildSource::GhcrLinuxOci
         );
         assert_eq!(
             normalized_build_source(Some("/private/tmp/custom-build")),

@@ -50,8 +50,8 @@ if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
     echo "revision must be an exact 40-character lowercase Git SHA" >&2
     exit 2
 fi
-if [[ "$IMAGE_REF" != ghcr.io/* ]]; then
-    echo "runtime image must come from ghcr.io" >&2
+if [[ ! "$IMAGE_REF" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]; then
+    echo "runtime image must be an exact ghcr.io digest reference" >&2
     exit 2
 fi
 if [[ ! -d "$RELEASE_ROOT" ]]; then
@@ -84,7 +84,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-crane export "$IMAGE_REF" - | tar -xf - -C "$STAGING_DIR"
+crane export --platform linux/amd64 "$IMAGE_REF" - | tar -xf - -C "$STAGING_DIR"
 
 if [[ ! -d "$STAGING_DIR/release" ]]; then
     echo "OCI image did not contain /release" >&2
