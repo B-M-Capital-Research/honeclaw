@@ -155,6 +155,44 @@ the token in command arguments/history, reuse a broad personal token, copy the
 temporary config into `/root/.docker`, or leave any registry credential on the
 host. A failed minimal-auth export stops before staging or cutover.
 
+The current GHCR runtime bundle is executable-only: it contains the six managed
+binaries, release metadata, the soul asset, and verification tooling, but it
+does not contain the repository `skills/` tree or public share images. A
+revision that adds or changes a runtime skill is therefore not deployable merely
+because the new binary image is active. Before cutover:
+
+1. Read the live process's `HONE_SKILLS_DIR` without printing the rest of its
+   environment. Confirm that it is absolute and readable by the service user.
+2. Stage only the changed skill directory from the exact target revision,
+   reject symlinks, compare every file to a recorded SHA-256 manifest, and move
+   the verified directory into place atomically. Never run `git pull` over a
+   dirty host checkout or overwrite an existing modified skill directory.
+3. Query loopback `GET /api/skills` and require the target skill to be present,
+   enabled, and loaded from the system root. This readback is the runtime proof;
+   finding a `SKILL.md` on disk is insufficient.
+4. When a renderer resolves a repository-relative public asset, verify that
+   asset separately. The earnings renderer accepts an explicit
+   `HONE_ZSXQ_SHARE_IMAGE`; otherwise it expects
+   `packages/app/public/membership_zsxq.jpg` relative to its installed skill.
+
+The earnings PDF renderer also needs a Linux Chromium executable and a CJK font
+available to the service account. On a Debian managed host, install and verify
+the minimal runtime dependencies before enabling the entry:
+
+```bash
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  chromium fonts-noto-cjk
+chromium --version
+fc-match "Noto Sans CJK SC"
+```
+
+Run the repository-owned renderer as the actual service user, then render every
+page of the resulting PDF to PNG for visual acceptance. Require A4 pages,
+legible Chinese text, the exact `知识星球：巴芒科技` watermark, the Knowledge
+Planet share page, and no tofu-square glyphs, clipping, or overlap. A successful
+renderer exit or `%PDF` header alone does not prove that the host has usable CJK
+fonts.
+
 Before updating the backend origin:
 
 1. Confirm the current production branch and release target.

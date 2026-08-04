@@ -2190,3 +2190,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; `tests/regression/manual/test_earnings_research_pdf.sh`; `packages/app/e2e/public-chat-pdf-download.spec.ts`
 - Current conclusion: The SNDK preview PDF follows the old Workflow's dense A4 visual grammar while remaining searchable, uses the exact `知识星球：巴芒科技` watermark, includes two recent-news pages and the original final share image, and appears in the HONE assistant bubble as a direct authenticated download card. Current-source real-browser acceptance is complete: native Codex invoked the host-owned official renderer, the 620338-byte five-page artifact passed full-page inspection, and the card click path was exercised.
 - Next entry point: production deployment is a separate decision; after deployment, repeat one attachment-backed `财报分析` with a real administrator file upload.
+
+### Reviewed Main Sync And GCE Production Deployment
+
+- Status: done
+- Date: 2026-08-04
+- Plan: `docs/archive/plans/production-deployment-dede2d61.md`
+- Handoff: `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`
+- Decision / ADR: no new architecture decision; runtime asset/dependency requirements were added to the backend deployment runbook
+- Related PRs / commits: reviewed `ee7024b6..dede2d61`; deployed fix revision `3b01aa2c4567f80ebe2c77fc096887d46b4b634f`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; complete Rust/Web/Worker/Public/CI-safe gates; GHCR bundle verifier; production cloud-authority, skill registry and official PDF renderer smoke
+- Current conclusion: the reviewed internationalization and extended-hours changes are live from the exact immutable GHCR digest with healthy authoritative PostgreSQL/S3, zero active chats, a healthy public API and the current Pages bundle. Production now has the exact `earnings-research` skill, Chromium and Noto CJK; a service-user renderer smoke passed full-page PDF inspection with readable Chinese, the exact `知识星球：巴芒科技` watermark and the Knowledge Planet share page. The stale Sunny-Ngrok `origin.hone-claw.com` alias remains a separately recorded legacy-fallback risk and was not changed during this deployment.
+- Next entry point: `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`; use the retained previous GHCR release for rollback, and do not enable community-edge legacy fallback until the origin alias contract is reconciled.

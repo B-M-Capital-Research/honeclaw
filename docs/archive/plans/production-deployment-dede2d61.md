@@ -1,7 +1,7 @@
 # Production Deployment dede2d61
 
 - title: 远端 10 提交审查与生产部署
-- status: in_progress
+- status: archived
 - created_at: 2026-08-04
 - updated_at: 2026-08-04
 - owner: Codex
@@ -12,7 +12,6 @@
   - .github/workflows/runtime-image.yml
   - scripts/stage_ghcr_runtime.sh
 - related_docs:
-  - docs/current-plan.md
   - docs/runbooks/backend-deployment.md
   - docs/handoffs/2026-08-04-production-deployment-dede2d61.md
 
@@ -26,7 +25,7 @@
 - 跑仓库默认 CI 门禁、Public 生产构建和与变更相关的聚焦回归；发现阻断问题时先修复并形成新目标 revision。
 - 等待目标 revision 的 GitHub Actions runtime image，核验镜像 provenance 和 immutable digest。
 - 通过私有 IAP 连接核对 GCE 生产基线，执行 runtime env 检查、两次 active-chat idle 读取、不可变 staging、原子切换、systemd 重启与回滚保留。
-- 验收 `/api/meta` 云权威字段、origin/public 未登录边界、前端资产 revision、管理员入口和扩展时段行情行为。
+- 验收 `/api/meta` 云权威字段、public 未登录边界、前端资产 revision、管理员权限边界和财报 skill/PDF 运行依赖。
 
 ## Validation
 
@@ -37,15 +36,14 @@
 - `cd workers/public-community-edge && bun run typecheck && bun run test`
 - `bash tests/regression/run_ci.sh`
 - `bun run build:web:public`
-- GitHub Actions runtime-image SHA/digest/provenance；生产 `/api/meta`、active-chat、origin/public API、Cloudflare Pages 资产与真实管理员 smoke。
+- GitHub Actions runtime-image SHA/digest/provenance；生产 `/api/meta`、active-chat、public API、Cloudflare Pages 资产、skill registry 和官方 PDF renderer smoke。
 
 ## Documentation Sync
 
-- 将不含具体生产主机标识的稳定 GCE/IAP/OS Login 约束更新到 `docs/runbooks/backend-deployment.md`；具体连接命令只保存在被忽略的 `.git-tools/production-gce.md`。
-- 完成后新增 `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`，将本计划移入 `docs/archive/plans/`，更新 `docs/current-plan.md` 与 `docs/archive/index.md`。
+- 已将不含具体生产主机标识的稳定 IAP/OS Login、外置 skill 与 PDF runtime 依赖更新到 `docs/runbooks/backend-deployment.md`；具体连接命令仅保存在被忽略的 `.git-tools/production-gce.md`。
+- 已新增 `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`，本计划已归档并从 active index 移除。
 
 ## Risks / Open Questions
 
-- 远端同时包含大规模国际化和投研运行时修复，必须防止只验证 UI 而遗漏 prompt/API 契约变化。
-- 生产重启必须以两次零活跃会话和可回滚旧 release 为前置；任何云权威、环境校验、镜像 provenance 或公网验收失败都应立即停止或回滚。
-- 关闭实例级 OS Login 2FA 降低登录摩擦，也降低一层访问防护；只能保留 IAP、IAM/OS Login 最小权限和审计，不把具体主机或项目标识写进公开仓库。
+- `origin.hone-claw.com` 的旧 Sunny-Ngrok alias 仍失效；用户主站 API 健康，但 legacy fallback 激活前必须单独修复或重新决策。
+- executable-only GHCR release 与外置技能资产可能发生 revision 漂移；本次已增加强制 hash/readback/renderer 门禁，长期应考虑将版本化技能纳入 immutable release。
