@@ -2886,6 +2886,26 @@ fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
     format!("{prefix}{}", truncate_chars(user_input, remaining))
 }
 
+/// Whether a New York moment sits outside the regular session but inside pre-
+/// or post-market. Pure so the window itself is testable; a Beijing evening is
+/// a New York pre-market morning, and the regular-session quote still reports
+/// the previous close then.
+pub(crate) fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
+    if matches!(at.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+        return false;
+    }
+    let time = at.time();
+    let pre_open = chrono::NaiveTime::from_hms_opt(4, 0, 0).expect("premarket open");
+    let regular_open = chrono::NaiveTime::from_hms_opt(9, 30, 0).expect("regular open");
+    let regular_close = chrono::NaiveTime::from_hms_opt(16, 0, 0).expect("regular close");
+    let post_close = chrono::NaiveTime::from_hms_opt(20, 0, 0).expect("postmarket close");
+    (time >= pre_open && time < regular_open) || (time > regular_close && time <= post_close)
+}
+
+fn us_extended_session_now() -> bool {
+    is_us_extended_session(hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York))
+}
+
 /// Evidence the service fetched before the first model call.
 struct PreTurnEnrichment {
     calls: u32,
@@ -2933,6 +2953,7 @@ async fn run_pre_turn_enrichment(
             json!({"data_type": "snapshot", "ticker": symbol}),
         )
     });
+    let extended_session = us_extended_session_now();
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
         let (web, identities, mut speculative) = futures::future::join3(
             registry.execute_tool(
@@ -2985,6 +3006,20 @@ async fn run_pre_turn_enrichment(
             )
         }))
         .await;
+        // A regular-session quote reports the previous close while pre/post
+        // market is running, so the extended bar has to come with it or the
+        // turn reads a moving stock as an unopened one.
+        let extended = if extended_session {
+            futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+                registry.execute_tool(
+                    "data_fetch",
+                    json!({"data_type": "extended_hours", "ticker": symbol}),
+                )
+            }))
+            .await
+        } else {
+            Vec::new()
+        };
         for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
             snapshots.push((index, Some(value)));
         }
@@ -2993,11 +3028,11 @@ async fn run_pre_turn_enrichment(
             .into_iter()
             .map(|(_, value)| value)
             .collect::<Vec<_>>();
-        (web, identities, resolved, snapshots)
+        (web, identities, resolved, snapshots, extended)
     })
     .await;
 
-    let Ok((web, identities, resolved, snapshots)) = staged else {
+    let Ok((web, identities, resolved, snapshots, extended)) = staged else {
         tracing::warn!(
             channel = %actor.channel,
             user_id = %actor.user_id,
@@ -3040,6 +3075,15 @@ async fn run_pre_turn_enrichment(
             ));
         }
     }
+    for ((_, symbol), bar) in resolved.iter().zip(extended.iter()) {
+        if let Some(value) = bar.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            sections.push(format!(
+                "- `data_fetch(extended_hours, ticker={symbol:?})` →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+            ));
+        }
+    }
     if sections.is_empty() {
         return PreTurnEnrichment {
             calls: 0,
@@ -3048,8 +3092,13 @@ async fn run_pre_turn_enrichment(
     }
 
     let block = format!(
-        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。",
-        sections.join("\n")
+        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}",
+        sections.join("\n"),
+        if extended_session {
+            "\n本轮美股正处于盘前或盘后时段：常规 quote 仍报上一交易日收盘价，因此上面附带了同代码 `extended_hours` 规范化 bar（含 session 与该 bar 的时间）。用户问“现在/刚刚/为什么大涨大跌”时，必须以扩展时段 bar 为当前价与涨跌依据，并写明是盘前还是盘后；不得因为常规时段未开盘就回答“没开盘”“暂无数据”。若某个标的没有取到扩展时段 bar，只说明该标的扩展时段未取到，不要推广成整个市场没开盘。"
+        } else {
+            ""
+        }
     );
     PreTurnEnrichment { calls, block }
 }
@@ -16013,6 +16062,45 @@ mod tests {
     /// The pre-turn search must be anchored on absolute dates, and must carry
     /// the target market's local date whenever it differs from Beijing's —
     /// otherwise a Beijing morning searches a US date that has not happened.
+    /// A Beijing evening is a New York pre-market morning. The regular-session
+    /// quote still reports the previous close then, so a turn asking why a
+    /// stock jumped gets told the market has not opened — which is what users
+    /// reported for LITE and COHR.
+    #[test]
+    fn us_extended_session_covers_pre_and_post_market_only() {
+        use chrono::TimeZone;
+
+        let ny = chrono_tz::America::New_York;
+        // Tuesday 2026-08-04, a regular trading day.
+        for (hour, minute, expected) in [
+            (3, 30, false), // before pre-market
+            (7, 33, true),  // pre-market — the reported case
+            (9, 29, true),
+            (9, 30, false), // regular session
+            (15, 59, false),
+            (16, 30, true), // post-market
+            (20, 0, true),
+            (21, 0, false), // closed
+        ] {
+            let at = ny
+                .with_ymd_and_hms(2026, 8, 4, hour, minute, 0)
+                .single()
+                .expect("valid New York time");
+            assert_eq!(
+                super::is_us_extended_session(at),
+                expected,
+                "{hour}:{minute:02} ET"
+            );
+        }
+
+        // Weekends have no extended session even at a pre-market hour.
+        let saturday = ny
+            .with_ymd_and_hms(2026, 8, 8, 7, 33, 0)
+            .single()
+            .expect("valid Saturday");
+        assert!(!super::is_us_extended_session(saturday));
+    }
+
     #[test]
     fn pre_turn_web_query_carries_both_market_dates() {
         let beijing = hone_core::beijing_now().format("%Y-%m-%d").to_string();

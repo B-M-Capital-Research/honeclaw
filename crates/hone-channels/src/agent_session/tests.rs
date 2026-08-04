@@ -7526,6 +7526,93 @@ async fn speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere(
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Users asked why LITE and COHR jumped and were told the market had not
+/// opened. Beijing evening is New York pre-market: the regular-session quote
+/// still reports the previous close, so unless the extended bar is preloaded
+/// the turn's first context genuinely looks like an unopened market.
+#[tokio::test]
+async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
+    let root = make_temp_dir("hone_channels_preturn_extended_hours");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=COHR".to_string(),
+            serde_json::json!([{
+                "symbol": "COHR",
+                "name": "Coherent Corp.",
+                "exchangeShortName": "NYSE"
+            }]),
+        ),
+        // The regular quote still reports the prior close during pre-market.
+        (
+            "/quote/COHR".to_string(),
+            serde_json::json!([{"symbol": "COHR", "price": 100.0, "exchange": "NYSE"}]),
+        ),
+        (
+            "/profile/COHR".to_string(),
+            serde_json::json!([{
+                "symbol": "COHR",
+                "companyName": "Coherent Corp.",
+                "exchangeShortName": "NYSE",
+                "isActivelyTrading": true
+            }]),
+        ),
+        (
+            "historical-chart/1min/COHR".to_string(),
+            serde_json::json!([
+                {"date": "2026-08-04 07:31:00", "close": 118.5, "high": 119.0, "low": 118.0, "volume": 12000},
+                {"date": "2026-08-04 07:30:00", "close": 117.2, "high": 117.6, "low": 117.0, "volume": 9000}
+            ]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-extended", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-extended",
+        false,
+        "COHR 为什么大涨",
+        AgentTurnOrigin::Interactive,
+        "2026-08-04 19:33",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // Only assert the extended leg while the clock is actually inside a US
+    // extended session; outside it the turn correctly skips the call.
+    let extended_now = crate::investment_response_guard::is_us_extended_session(
+        hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York),
+    );
+    if extended_now {
+        assert!(
+            runtime_input.contains("data_fetch(extended_hours, ticker=\"COHR\")"),
+            "{runtime_input}"
+        );
+        // The latest bar, not the older one, and labelled as pre-market.
+        assert!(runtime_input.contains("118.5"), "{runtime_input}");
+        assert!(runtime_input.contains("\"pre\""), "{runtime_input}");
+        // And the Agent is told not to answer "not open" from the regular quote.
+        assert!(
+            runtime_input.contains("不得因为常规时段未开盘就回答"),
+            "{runtime_input}"
+        );
+    } else {
+        assert!(!runtime_input.contains("extended_hours"), "{runtime_input}");
+    }
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
