@@ -1,4 +1,6 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
+import { useLocale } from "@/lib/i18n";
 import { useNavigate } from "@solidjs/router";
 import { PublicChatStartup } from "@/components/public-chat-startup";
 import { PublicLoginForm } from "@/components/public-login-form";
@@ -27,7 +29,7 @@ import type {
 
 function formatDate(value?: string) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("zh-CN", {
+  return new Date(value).toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -38,11 +40,13 @@ function AccountRow(props: { label: string; value: string }) {
   return <div class="public-account-row"><span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
-const VIP_BENEFITS = [
-  "每周四主理人深度公司讲解，在线直播可任意提问",
-  "VIP 群与 500+ 高手畅聊，持续分享深度投研资料与实时动态",
-  "知识星球与社区：完整的公司研报、估值和投资策略分享",
-  "HONE 畅享：任何问题在社区都能得到及时反馈",
+/// Read at render time; a module-level const would freeze whichever language
+/// was active at import.
+const vipBenefits = () => [
+  CONTENT.chat_page.me_page.plan_live,
+  CONTENT.chat_page.me_page.plan_group,
+  CONTENT.chat_page.me_page.plan_planet,
+  CONTENT.chat_page.me_page.plan_qa,
 ];
 
 function EntitlementRow(props: {
@@ -61,18 +65,20 @@ function EntitlementRow(props: {
       <Show when={props.entitlement.current_period_end}>
         {(periodEnd) => (
           <p>
-            当前周期至 {formatDate(periodEnd())}
-            {props.entitlement.cancel_at_period_end ? "，到期后不再自动续费。" : "。"}
+            {CONTENT.chat_page.me_page.cycle_until} {formatDate(periodEnd())}
+            {props.entitlement.cancel_at_period_end
+              ? CONTENT.chat_page.me_page.no_renew
+              : ""}
           </p>
         )}
       </Show>
       <Show when={props.managementAllowed && props.entitlement.provider === "stripe"}>
         <button type="button" disabled={props.managing} onClick={props.onStripeManage}>
-          {props.managing ? "正在打开…" : "在 Stripe 管理订阅"}
+          {props.managing ? CONTENT.chat_page.me_page.opening : CONTENT.chat_page.me_page.manage_stripe}
         </button>
       </Show>
       <Show when={!active()}>
-        <small>这条订阅当前不授予 HONE 访问权限。</small>
+        <small>{CONTENT.chat_page.me_page.no_access_sub}</small>
       </Show>
     </article>
   );
@@ -106,25 +112,25 @@ function MembershipCard(props: {
       <div class="public-vip-main">
         <div class="public-vip-head">
           <span class="public-vip-badge">
-            {international() ? "国际会员 · 统一权益" : "HONE 账号 · 国内邀请"}
+            {international() ? CONTENT.chat_page.me_page.intl_member : CONTENT.chat_page.me_page.cn_invite}
           </span>
         </div>
-        <h2>{active() ? "你的 HONE 权益已启用" : "会员权益当前不可用"}</h2>
+        <h2>{active() ? CONTENT.chat_page.me_page.entitled : CONTENT.chat_page.me_page.not_entitled}</h2>
         <Show when={props.syncing && !active()}>
-          <p role="status">正在等待付款平台确认。页面会自动刷新；成功跳转不会直接开通权益。</p>
+          <p role="status">{CONTENT.chat_page.me_page.awaiting_payment}</p>
         </Show>
         <Show when={props.user.billing.has_duplicate_active_subscriptions}>
           <p class="public-billing-warning" role="alert">
-            检测到多条有效 Stripe 订阅。HONE 访问不会中断，但你可能被重复扣费，请在 Stripe 中取消不需要的一条。
+            {CONTENT.chat_page.me_page.duplicate_subs}
           </p>
         </Show>
         <Show
           when={active()}
-          fallback={<p>账号资料仍会保留，付费功能已暂停。你可以恢复付款或重新订阅，服务端确认后会自动恢复访问。</p>}
+          fallback={<p>{CONTENT.chat_page.me_page.paused_note}</p>}
         >
-          <p>{international() ? "任意一条有效 Stripe 权益都可授予访问：" : "该账号由国内邀请渠道授予访问："}</p>
+          <p>{international() ? CONTENT.chat_page.me_page.any_stripe_grants : CONTENT.chat_page.me_page.cn_channel_grants}</p>
           <ul class="public-vip-list">
-            {VIP_BENEFITS.map((benefit) => (
+            {vipBenefits().map((benefit) => (
               <li>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
                 <span>{benefit}</span>
@@ -151,22 +157,22 @@ function MembershipCard(props: {
       </div>
       <div class="public-vip-side">
         <button type="button" class="public-vip-qr" onClick={() => setQrOpen(true)}>
-          <img src="/membership_wechat.jpg" alt="企业微信客服二维码" loading="lazy" />
+          <img src="/membership_wechat.jpg" alt={CONTENT.chat_page.me_page.wecom_qr_alt} loading="lazy" />
         </button>
         <span class="public-vip-side-copy">
-          <strong>有疑问？加客服微信</strong>
-          <small>扫码添加企业微信客服，会员与账单问题随时咨询。</small>
+          <strong>{CONTENT.chat_page.me_page.support_cta}</strong>
+          <small>{CONTENT.chat_page.me_page.support_hint}</small>
         </span>
       </div>
       <Show when={qrOpen()}>
         <div class="public-vip-qr-pop" onClick={() => setQrOpen(false)}>
           <figure onClick={(event) => event.stopPropagation()}>
             <figcaption>
-              <strong>企业微信客服</strong>
-              <button type="button" aria-label="关闭" onClick={() => setQrOpen(false)}>×</button>
+              <strong>{CONTENT.chat_page.me_page.support_title}</strong>
+              <button type="button" aria-label={CONTENT.chat_page.me_page.close} onClick={() => setQrOpen(false)}>×</button>
             </figcaption>
-            <img src="/membership_wechat.jpg" alt="企业微信客服二维码" />
-            <small>长按或右键保存图片，扫码添加客服。</small>
+            <img src="/membership_wechat.jpg" alt={CONTENT.chat_page.me_page.wecom_qr_alt} />
+            <small>{CONTENT.chat_page.me_page.save_qr_hint}</small>
           </figure>
         </div>
       </Show>
@@ -186,9 +192,9 @@ function AccountView(props: {
       <div class="public-workspace-inner">
         <header class="public-workspace-page-heading">
           <div>
-            <span class="public-workspace-eyebrow">个人研究空间</span>
-            <h1>我的</h1>
-            <p>自选与持仓、投资画像风格、账户信息和订阅都在这里管理。</p>
+            <span class="public-workspace-eyebrow">{CONTENT.chat_page.me_page.personal_space}</span>
+            <h1>{CONTENT.chat_page.me_page.me}</h1>
+            <p>{CONTENT.chat_page.me_page.me_subtitle}</p>
           </div>
         </header>
         <Show when={publicUserHasProductAccess(props.user)}>
@@ -206,46 +212,52 @@ function AccountView(props: {
         />
         <div class="public-account-grid">
           <section class="public-workspace-panel public-account-card">
-            <h2>账户信息</h2>
-            <AccountRow label="账户" value={props.user.user_id} />
+            <h2>{CONTENT.chat_page.me_page.account_info}</h2>
+            <AccountRow label={CONTENT.chat_page.me_page.account} value={props.user.user_id} />
             <AccountRow
-              label="验证渠道"
+              label={CONTENT.chat_page.me_page.verify_channel}
               value={props.user.identity_kind === "international_email"
-                ? `邮箱${props.user.email_hint ? ` · ${props.user.email_hint}` : ""}`
-                : "国内手机号邀请"}
+                ? CONTENT.chat_page.me_page.email_channel.replace(
+                    "{value}",
+                    props.user.email_hint ? ` · ${props.user.email_hint}` : "",
+                  )
+                : CONTENT.chat_page.me_page.cn_phone_invite}
             />
-            <AccountRow label="注册时间" value={formatDate(props.user.created_at)} />
-            <AccountRow label="最近登录" value={formatDate(props.user.last_login_at)} />
+            <AccountRow label={CONTENT.chat_page.me_page.registered_at} value={formatDate(props.user.created_at)} />
+            <AccountRow label={CONTENT.chat_page.me_page.last_login} value={formatDate(props.user.last_login_at)} />
             <AccountRow
-              label="访问权限"
+              label={CONTENT.chat_page.me_page.access}
               value={publicUserHasProductAccess(props.user)
                 ? props.user.daily_limit > 0
-                  ? `已启用 · 每日 ${props.user.daily_limit} 次`
-                  : "已启用"
-                : "已暂停"}
+                  ? CONTENT.chat_page.me_page.enabled_quota.replace(
+                      "{count}",
+                      String(props.user.daily_limit),
+                    )
+                  : CONTENT.chat_page.me_page.enabled
+                : CONTENT.chat_page.me_page.paused}
             />
           </section>
           <section>
             <div class="public-account-actions">
               <Show
                 when={publicUserHasProductAccess(props.user)}
-                fallback={<button type="button" class="is-primary" onClick={() => navigate("/plan")}>查看会员与续费</button>}
+                fallback={<button type="button" class="is-primary" onClick={() => navigate("/plan")}>{CONTENT.chat_page.me_page.view_membership}</button>}
               >
-                <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
-                <button type="button" onClick={() => navigate("/community")}>去社区看看</button>
+                <button type="button" class="is-primary" onClick={() => navigate("/chat")}>{CONTENT.chat_page.me_page.open_agent}</button>
+                <button type="button" onClick={() => navigate("/community")}>{CONTENT.chat_page.me_page.open_community}</button>
               </Show>
-              <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
+              <button type="button" class="is-danger" onClick={props.onLogout}>{CONTENT.chat_page.me_page.sign_out}</button>
             </div>
-            <p class="public-account-note">Stripe 负责海外账单处理；HONE 以服务端权益记录决定访问权限。</p>
+            <p class="public-account-note">{CONTENT.chat_page.me_page.billing_note}</p>
           </section>
         </div>
         <section class="public-workspace-panel public-account-card public-account-links">
-          <h2>关于与帮助</h2>
-          <nav aria-label="关于与帮助">
-            <a href="/">官网首页</a><a href="/plan">会员与定价</a><a href="/blog">Blog</a>
-            <a href="/roadmap">路线图与文档</a><a href="/terms">用户协议</a><a href="/privacy">隐私政策</a>
+          <h2>{CONTENT.chat_page.me_page.about_help}</h2>
+          <nav aria-label={CONTENT.chat_page.me_page.about_help}>
+            <a href="/">{CONTENT.chat_page.me_page.home}</a><a href="/plan">{CONTENT.chat_page.me_page.pricing}</a><a href="/blog">Blog</a>
+            <a href="/roadmap">{CONTENT.chat_page.me_page.roadmap}</a><a href="/terms">{CONTENT.chat_page.me_page.tos}</a><a href="/privacy">{CONTENT.chat_page.me_page.privacy}</a>
           </nav>
-          <p class="public-account-note">内容仅供研究参考，不构成投资建议。市场有风险，决策需独立判断。</p>
+          <p class="public-account-note">{CONTENT.chat_page.me_page.disclaimer}</p>
         </section>
       </div>
     </PublicWorkspaceShell>
@@ -314,7 +326,7 @@ export default function PublicMePage() {
   };
 
   return (
-    <Show when={!loading()} fallback={<PublicChatStartup title="正在加载个人空间" description="正在确认账户与研究权限。" />}>
+    <Show when={!loading()} fallback={<PublicChatStartup title={CONTENT.chat_page.me_page.loading_title} description={CONTENT.chat_page.me_page.loading_detail} />}>
       <Show when={user()} fallback={<PublicLoginForm onLogin={() => void load(true)} />}>
         {(currentUser) => (
           <AccountView

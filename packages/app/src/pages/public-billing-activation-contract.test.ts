@@ -47,7 +47,8 @@ describe("Stripe-only billing activation contract", () => {
 
   it("never equates a success redirect with paid access", () => {
     expect(account).toContain("billing.access_granted");
-    expect(account).toContain("正在等待付款平台确认");
+    // The copy is localized now; the contract is that the waiting state exists.
+    expect(account).toContain("CONTENT.chat_page.me_page.awaiting_payment");
     expect(account).toContain("getPublicAuthMe");
     expect(account).not.toContain("checkout=success");
   });

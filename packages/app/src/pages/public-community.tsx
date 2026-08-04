@@ -1,4 +1,5 @@
 import { Title } from "@solidjs/meta";
+import { CONTENT } from "@/lib/public-content";
 import {
   For,
   Match,
@@ -51,7 +52,7 @@ function normalizedContentType(resource: PublicCommunityResource) {
 
 function formatPublishedAt(item: PublicCommunityContent) {
   const raw = item.published_at_raw || item.published_at;
-  if (!raw) return "刚刚";
+  if (!raw) return CONTENT.chat_page.community_page.just_now;
   return raw.replace("T", " ").replace(/\+\d\d:\d\d$/, "").slice(0, 16);
 }
 
@@ -414,14 +415,14 @@ function CommunityMediaPreview(props: {
       >
         <header>
           <div>
-            <small>HONE 官方社区</small>
-            <strong id={titleId}>{props.resource.display_name || "社区资源"}</strong>
+            <small>{CONTENT.chat_page.community_page.official}</small>
+            <strong id={titleId}>{props.resource.display_name || CONTENT.chat_page.community_page.resources}</strong>
           </div>
           <button
             ref={(element) => { closeButtonEl = element; }}
             type="button"
             onClick={props.onClose}
-            aria-label="关闭预览"
+            aria-label={CONTENT.chat_page.community_page.close_preview}
           >
             ×
           </button>
@@ -435,17 +436,17 @@ function CommunityMediaPreview(props: {
                   when={documentState() !== "error"}
                   fallback={
                     <div class="public-community-document-fallback" role="alert">
-                      <strong>当前宿主无法显示这份 PDF</strong>
-                      <span>文件本身仍可访问，请使用下方“下载资源”继续查看。</span>
+                      <strong>{CONTENT.chat_page.community_page.pdf_unsupported}</strong>
+                      <span>{CONTENT.chat_page.community_page.pdf_fallback}</span>
                     </div>
                   }
                 >
                   <Show
                     when={documentSource()}
-                    fallback={<div class="public-workspace-state" role="status">正在准备 PDF 安全预览…</div>}
+                    fallback={<div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.pdf_preparing}</div>}
                   >
                     <iframe
-                      title={props.resource.display_name || "社区文件预览"}
+                      title={props.resource.display_name || CONTENT.chat_page.community_page.file_preview}
                       src={documentSource()!}
                       sandbox="allow-downloads allow-same-origin"
                       referrerPolicy="no-referrer"
@@ -466,12 +467,12 @@ function CommunityMediaPreview(props: {
                   role="status"
                 >
                   {documentState() === "slow"
-                    ? "内嵌预览响应较慢；若画面仍为空白，请直接下载资源。"
+                    ? CONTENT.chat_page.community_page.pdf_slow
                     : documentState() === "error"
-                      ? "内嵌预览不可用，请直接下载资源。"
+                      ? CONTENT.chat_page.community_page.pdf_unavailable
                     : documentState() === "ready"
-                      ? "PDF 已载入；若宿主未绘制页面，可直接下载资源。"
-                      : "正在校验并载入 PDF…"}
+                      ? CONTENT.chat_page.community_page.pdf_loaded
+                      : CONTENT.chat_page.community_page.pdf_verifying}
                 </div>
               </div>
             }
@@ -490,7 +491,7 @@ function CommunityMediaPreview(props: {
                     transform: `translate3d(${pan().x}px, ${pan().y}px, 0) scale(${zoom()})`,
                   }}
                   src={source()}
-                  alt={props.resource.display_name || "社区图片"}
+                  alt={props.resource.display_name || CONTENT.chat_page.community_page.image}
                   onLoad={fitImageToViewport}
                   onError={(event) => {
                     const fallback = legacySource();
@@ -506,24 +507,24 @@ function CommunityMediaPreview(props: {
         <footer>
           <span>
             {isImage()
-              ? "双指或滚轮缩放，放大后可拖动"
+              ? CONTENT.chat_page.community_page.zoom_hint
               : documentState() === "error"
-                ? "内嵌预览不可用，下载后可完整查看"
-                : "PDF 已通过安全沙箱载入"}
+                ? CONTENT.chat_page.community_page.preview_na_hint
+                : CONTENT.chat_page.community_page.sandboxed}
           </span>
           <Show when={isImage()}>
-            <div class="public-community-zoom-controls" aria-label="图片缩放">
-              <button type="button" aria-label="缩小" disabled={zoom() <= 1} onClick={() => changeZoom(-1)}>−</button>
+            <div class="public-community-zoom-controls" aria-label={CONTENT.chat_page.community_page.image_zoom}>
+              <button type="button" aria-label={CONTENT.chat_page.community_page.zoom_out} disabled={zoom() <= 1} onClick={() => changeZoom(-1)}>−</button>
               <output aria-live="polite">{Math.round(zoom() * 100)}%</output>
-              <button type="button" aria-label="放大" disabled={zoom() >= 3} onClick={() => changeZoom(1)}>+</button>
-              <button type="button" disabled={zoom() === 1} onClick={fitPreview}>适应屏幕</button>
+              <button type="button" aria-label={CONTENT.chat_page.community_page.zoom_in} disabled={zoom() >= 3} onClick={() => changeZoom(1)}>+</button>
+              <button type="button" disabled={zoom() === 1} onClick={fitPreview}>{CONTENT.chat_page.community_page.fit_screen}</button>
             </div>
           </Show>
           <button type="button" class="public-community-download" disabled={downloadState() === "working"} onClick={() => void download()}>
-            {downloadState() === "working" ? "正在下载…" : "下载资源"}
+            {downloadState() === "working" ? CONTENT.chat_page.community_page.downloading : CONTENT.chat_page.community_page.download}
           </button>
           <Show when={downloadState() === "error"}>
-            <small role="alert">下载失败，请重试</small>
+            <small role="alert">{CONTENT.chat_page.community_page.download_failed}</small>
           </Show>
         </footer>
       </div>
@@ -572,9 +573,9 @@ export default function PublicCommunityPage() {
       if (isUnauthorizedApiError(cause)) {
         setState("login");
       } else if (more) {
-        setLoadMoreError(cause instanceof Error ? cause.message : "更早动态加载失败");
+        setLoadMoreError(cause instanceof Error ? cause.message : CONTENT.chat_page.community_page.older_failed);
       } else {
-        setError(cause instanceof Error ? cause.message : "社区内容暂时无法加载");
+        setError(cause instanceof Error ? cause.message : CONTENT.chat_page.community_page.load_failed);
         setState("error");
       }
     } finally {
@@ -589,7 +590,7 @@ export default function PublicCommunityPage() {
     try {
       await downloadCommunityResource(resource);
     } catch (cause) {
-      setDownloadError(cause instanceof Error ? cause.message : "资源下载失败");
+      setDownloadError(cause instanceof Error ? cause.message : CONTENT.chat_page.community_page.resource_failed);
     } finally {
       setDownloadingResourceId(null);
     }
@@ -599,13 +600,13 @@ export default function PublicCommunityPage() {
 
   return (
     <div class="hone-landing-v4 public-community-page">
-      <Title>HONE 官方社区</Title>
+      <Title>{CONTENT.chat_page.community_page.official}</Title>
       <Show
         when={state() !== "login"}
         fallback={
           <PublicLoginForm
-            title="登录后查看 HONE 社区"
-            subtitle="社区当前为只读，内容仅向已登录用户展示。"
+            title={CONTENT.chat_page.community_page.login_title}
+            subtitle={CONTENT.chat_page.community_page.login_hint}
             onLogin={() => void load()}
           />
         }
@@ -613,32 +614,32 @@ export default function PublicCommunityPage() {
         <PublicWorkspaceShell
           active="insights"
           communityUnread={false}
-          searchPlaceholder="搜索社区、公司或主题"
+          searchPlaceholder={CONTENT.chat_page.community_page.search}
           onSearch={setQuery}
         >
           <div class="public-workspace-inner">
             <header class="public-workspace-page-heading">
               <div>
-                <span class="public-workspace-eyebrow">社区研究 · 只读</span>
-                <h1>社区</h1>
-                <p>来自 HONE 社区的研究判断、市场观察与关键资料，按发生时间连续沉淀。</p>
+                <span class="public-workspace-eyebrow">{CONTENT.chat_page.community_page.eyebrow}</span>
+                <h1>{CONTENT.chat_page.community_page.title}</h1>
+                <p>{CONTENT.chat_page.community_page.subtitle}</p>
               </div>
             </header>
             <main class="public-community-shell">
 
           <Switch>
             <Match when={state() === "loading"}>
-              <div class="public-workspace-state" role="status">正在加载社区内容…</div>
+              <div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.loading}</div>
             </Match>
             <Match when={state() === "error"}>
               <div class="public-workspace-state is-error" role="alert">
                 <p>{error()}</p>
-                <button type="button" onClick={() => void load()}>重新加载</button>
+                <button type="button" onClick={() => void load()}>{CONTENT.chat_page.community_page.reload}</button>
               </div>
             </Match>
             <Match when={state() === "ready"}>
-              <section class="public-community-timeline" aria-label="HONE 官方社区动态">
-                <Show when={filteredItems().length > 0} fallback={<div class="public-workspace-state">没有匹配的社区内容。</div>}>
+              <section class="public-community-timeline" aria-label={CONTENT.chat_page.community_page.feed_title}>
+                <Show when={filteredItems().length > 0} fallback={<div class="public-workspace-state">{CONTENT.chat_page.community_page.no_match}</div>}>
                   <For each={filteredItems()}>
                     {(item) => {
                       const images = item.resources.filter(resourceIsImage);
@@ -651,7 +652,7 @@ export default function PublicCommunityPage() {
                               <strong>{item.author_name}</strong>
                               <time dateTime={item.published_at ?? undefined}>{formatPublishedAt(item)}</time>
                             </div>
-                            <em>只读</em>
+                            <em>{CONTENT.chat_page.community_page.read_only}</em>
                           </header>
                           <Show when={item.body_text.trim()}>
                             <p class="public-community-body">{item.body_text}</p>
@@ -667,12 +668,16 @@ export default function PublicCommunityPage() {
                                     type="button"
                                     class="public-community-image"
                                     disabled={!resourceCanInlinePreview(resource)}
-                                    aria-label={`预览${resource.display_name || "社区图片"}`}
+                                    aria-label={CONTENT.chat_page.community_page.preview_label.replace(
+                                      "{name}",
+                                      resource.display_name ||
+                                        CONTENT.chat_page.community_page.image,
+                                    )}
                                     onClick={() => setPreview(resource)}
                                   >
                                     <Show
                                       when={resourceCanInlinePreview(resource)}
-                                      fallback={<span>图片受来源保护</span>}
+                                      fallback={<span>{CONTENT.chat_page.community_page.image_protected}</span>}
                                     >
                                       <img
                                         src={publicCommunityResourceUrl(
@@ -680,7 +685,7 @@ export default function PublicCommunityPage() {
                                           resource.version,
                                           resource.delivery_path,
                                         )}
-                                        alt={resource.display_name || "社区图片"}
+                                        alt={resource.display_name || CONTENT.chat_page.community_page.image}
                                         loading="lazy"
                                         onError={(event) => {
                                           const fallback = publicCommunityResourceUrl(
@@ -715,15 +720,15 @@ export default function PublicCommunityPage() {
                                     >
                                       <span aria-hidden="true">{stored ? "▧" : "⌁"}</span>
                                       <span>
-                                        <strong>{resource.display_name || "社区文件"}</strong>
+                                        <strong>{resource.display_name || CONTENT.chat_page.community_page.community_file}</strong>
                                         <small>
                                           {!stored
-                                            ? "受来源保护，仅保留元数据"
+                                            ? CONTENT.chat_page.community_page.meta_only
                                             : working()
-                                              ? "正在下载…"
+                                              ? CONTENT.chat_page.community_page.downloading
                                               : previewable
-                                                ? "点击安全预览"
-                                                : "点击下载"}
+                                                ? CONTENT.chat_page.community_page.click_preview
+                                                : CONTENT.chat_page.community_page.click_download}
                                         </small>
                                       </span>
                                     </button>
@@ -733,7 +738,7 @@ export default function PublicCommunityPage() {
                             </div>
                           </Show>
                           <Show when={item.crawl_status === "partial"}>
-                            <small class="public-community-note">该长文在来源页展示为折叠摘要。</small>
+                            <small class="public-community-note">{CONTENT.chat_page.community_page.collapsed_note}</small>
                           </Show>
                         </article>
                       );
@@ -752,7 +757,7 @@ export default function PublicCommunityPage() {
                       disabled={loadingMore()}
                       onClick={() => void load(true)}
                     >
-                      {loadingMore() ? "正在加载…" : loadMoreError() ? "重试加载更早动态" : "加载更早动态"}
+                      {loadingMore() ? CONTENT.chat_page.community_page.loading_short : loadMoreError() ? CONTENT.chat_page.community_page.retry_older : CONTENT.chat_page.community_page.load_older}
                     </button>
                   </Show>
                 </Show>
@@ -760,7 +765,7 @@ export default function PublicCommunityPage() {
             </Match>
           </Switch>
             </main>
-            <p class="public-workspace-disclaimer">社区内容为研究分享，仅供参考，不构成投资建议。</p>
+            <p class="public-workspace-disclaimer">{CONTENT.chat_page.community_page.disclaimer}</p>
           </div>
         </PublicWorkspaceShell>
       </Show>

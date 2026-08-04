@@ -10,8 +10,8 @@ describe("public community interaction contract", () => {
     expect(page).toContain('addEventListener("pointermove"');
     expect(page).toContain('addEventListener("wheel"');
     expect(page).toContain('addEventListener("dblclick"');
-    expect(page).toContain('aria-label="图片缩放"');
-    expect(page).toContain("适应屏幕");
+    expect(page).toContain("CONTENT.chat_page.community_page.image_zoom");
+    expect(page).toContain("CONTENT.chat_page.community_page.fit_screen");
     expect(css).toContain("touch-action: none");
   });
 
@@ -27,8 +27,8 @@ describe("public community interaction contract", () => {
   it("sandboxes inline files and uses authenticated blob downloads", () => {
     expect(page).toContain('sandbox="allow-downloads allow-same-origin"');
     expect(page).toContain("getPublicCommunityResourceBlob");
-    expect(page).toContain("内嵌预览响应较慢");
-    expect(page).toContain("当前宿主无法显示这份 PDF");
+    expect(page).toContain("CONTENT.chat_page.community_page.pdf_slow");
+    expect(page).toContain("CONTENT.chat_page.community_page.pdf_unsupported");
     expect(page).not.toContain('target="_blank"');
   });
 

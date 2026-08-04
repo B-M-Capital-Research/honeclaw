@@ -72,7 +72,7 @@ describe("public workspace page contract", () => {
     expect(startup).toContain("HONE AGENT");
     expect(startup).not.toContain("HONE CONVERSATION");
     expect(startup).toContain('class="public-chat-startup-tabs"');
-    expect(me).toContain("正在加载个人空间");
+    expect(me).toContain("CONTENT.chat_page.me_page.loading_title");
   });
 
   it("supports complete dark workspace surfaces and compact empty states", () => {
