@@ -12,6 +12,7 @@ use crate::skill_runtime::{SkillRuntime, SkillStageConstraints};
 
 const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
 const SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
+const SUPPORTED_DOCUMENT_ARTIFACT_EXTENSIONS: &[&str] = &["pdf"];
 const SKILL_SCRIPT_STDERR_CHARS: usize = 1000;
 const MAX_SKILL_SCRIPT_ARGUMENTS: usize = 64;
 const MAX_SKILL_SCRIPT_ARGUMENT_BYTES: usize = 256 * 1024;
@@ -122,6 +123,9 @@ impl SkillTool {
                 "HONE_SESSION_ID",
                 std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default(),
             );
+        if let Ok(working_directory) = std::env::var("HONE_MCP_WORKING_DIRECTORY") {
+            command.env("HONE_SKILL_OUTPUT_DIR", working_directory);
+        }
         if let Ok(gen_images_dir) = resolve_gen_images_dir() {
             command.env("HONE_GEN_IMAGES_DIR", gen_images_dir);
         }
@@ -398,11 +402,64 @@ mod tests {
     fn clear_test_env() {
         unsafe {
             std::env::remove_var("HONE_MCP_SESSION_ID");
+            std::env::remove_var("HONE_MCP_WORKING_DIRECTORY");
             std::env::remove_var("HONE_DATA_DIR");
             std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
             std::env::remove_var("HONE_CONFIG_PATH");
             std::env::remove_var("HONE_GEN_IMAGES_DIR");
         }
+    }
+
+    #[tokio::test]
+    async fn execute_accepts_pdf_document_artifact_in_actor_working_directory() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_pdf_artifact");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("earnings-research");
+        let scripts_dir = skill_dir.join("scripts");
+        let working_directory = root.join("actor-workspace");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::create_dir_all(&working_directory).expect("working dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: earnings-research\ndescription: renders earnings PDF\nshell: bash\n---\n\nbody",
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("render.sh"),
+            concat!(
+                "printf '%s' '%PDF-fake' > \"$HONE_SKILL_OUTPUT_DIR/report.pdf\"\n",
+                "printf '{\"success\":true,\"summary\":\"ok\",\"artifacts\":[{\"kind\":\"document\",\"path\":\"%s/report.pdf\",\"mime\":\"application/pdf\"}],\"warnings\":[]}' \"$HONE_SKILL_OUTPUT_DIR\"\n"
+            ),
+        )
+        .expect("script");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        unsafe {
+            std::env::set_var("HONE_MCP_WORKING_DIRECTORY", &working_directory);
+        }
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "earnings-research",
+                "execute_script": true,
+                "script": "scripts/render.sh"
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        assert_eq!(result["artifacts"][0]["kind"], "document");
+        assert_eq!(result["artifacts"][0]["mime"], "application/pdf");
+        assert!(working_directory.join("report.pdf").is_file());
+        clear_test_env();
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]
@@ -1002,8 +1059,8 @@ fn validate_script_artifacts(
             .unwrap_or("")
             .trim()
             .to_ascii_lowercase();
-        if kind != "image" {
-            return Err(format!("仅支持 image artifact，收到 kind={kind}"));
+        if kind != "image" && kind != "document" {
+            return Err(format!("仅支持 image/document artifact，收到 kind={kind}"));
         }
 
         let path = artifact
@@ -1023,10 +1080,14 @@ fn validate_script_artifacts(
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if !SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS.contains(&ext.as_str()) {
+        let extension_supported = if kind == "image" {
+            SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS.contains(&ext.as_str())
+        } else {
+            SUPPORTED_DOCUMENT_ARTIFACT_EXTENSIONS.contains(&ext.as_str())
+        };
+        if !extension_supported {
             return Err(format!(
-                "artifact.path 仅支持图片扩展名 {:?}: {}",
-                SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS,
+                "artifact.path 扩展名与 kind={kind} 不匹配: {}",
                 canonical_path.display()
             ));
         }
@@ -1052,11 +1113,12 @@ fn validate_script_artifacts(
                 "jpg" | "jpeg" => "image/jpeg".to_string(),
                 "webp" => "image/webp".to_string(),
                 "gif" => "image/gif".to_string(),
+                "pdf" => "application/pdf".to_string(),
                 _ => "application/octet-stream".to_string(),
             });
 
         validated.push(serde_json::json!({
-            "kind": "image",
+            "kind": kind,
             "path": canonical_path.to_string_lossy().to_string(),
             "mime": mime,
         }));
@@ -1087,6 +1149,15 @@ fn artifact_allowed_roots(skill_dir: &Path) -> Result<Vec<PathBuf>, String> {
             roots.push(canonical);
         } else if sandbox_root.is_absolute() {
             roots.push(sandbox_root);
+        }
+    }
+
+    if let Ok(working_directory) = std::env::var("HONE_MCP_WORKING_DIRECTORY") {
+        let working_directory = PathBuf::from(working_directory);
+        if let Ok(canonical) = std::fs::canonicalize(&working_directory) {
+            roots.push(canonical);
+        } else if working_directory.is_absolute() {
+            roots.push(working_directory);
         }
     }
 

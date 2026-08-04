@@ -86,6 +86,7 @@ import {
   PUBLIC_CHAT_VIEWPORT_CONTENT,
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
+  appendPublicChatProgressStep,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
   publicChatTerminalEventPatch,
@@ -110,6 +111,7 @@ import {
   stripAttachmentMarkers,
   toPublicChatMessages,
   unreadCountAfterScheduledPush,
+  publicEarningsWorkflowMessage,
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
 import {
@@ -127,6 +129,7 @@ import type {
   PublicChatAttachment,
   PublicChatAuthState as AuthState,
   PublicChatMessage as ChatMessage,
+  PublicEarningsWorkflowKind,
 } from "@/lib/public-chat";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -591,8 +594,6 @@ function FileCard(props: {
     <a
       href={publicAttachmentDownloadUrl(props.file)}
       download={props.file.name}
-      target="_blank"
-      rel="noreferrer"
       style={{
         display: "block",
         color: "inherit",
@@ -1363,6 +1364,186 @@ function ProactiveModeTips(props: { openRequest?: number }) {
   );
 }
 
+type EarningsWorkflowStart = {
+  kind: PublicEarningsWorkflowKind;
+  company: string;
+  files: File[];
+};
+
+function EarningsResearchQuickAction(props: {
+  kind: PublicEarningsWorkflowKind;
+  disabled: boolean;
+  onStart: (input: EarningsWorkflowStart) => Promise<void>;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [company, setCompany] = createSignal("");
+  const [files, setFiles] = createSignal<File[]>([]);
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string>();
+  let fileInputRef: HTMLInputElement | undefined;
+  const isPreview = () => props.kind === "preview";
+  const label = () => (isPreview() ? "财报前瞻" : "财报分析");
+
+  const close = () => {
+    if (busy()) return;
+    setOpen(false);
+    setError(undefined);
+  };
+
+  const submit = async () => {
+    const normalizedCompany = company().trim();
+    if (!normalizedCompany) {
+      setError("请输入公司名称或股票代码");
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      await props.onStart({
+        kind: props.kind,
+        company: normalizedCompany,
+        files: files(),
+      });
+      setCompany("");
+      setFiles([]);
+      setOpen(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "启动失败，请稍后重试");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  createEffect(() => {
+    if (!open()) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  return (
+    <>
+      <button
+        type="button"
+        class="public-chat-proactive-tip public-chat-earnings-action"
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        disabled={props.disabled}
+        onClick={() => setOpen(true)}
+      >
+        <svg
+          class="public-chat-proactive-tip-icon"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.1"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          <path d={isPreview() ? "m4 6 5-3 5 4 6-4" : "m3 8 5 4 5-6 7 3"} />
+        </svg>
+        <span>{label()}</span>
+      </button>
+      <Portal>
+        <Show when={open()}>
+          <div
+            class="public-chat-proactive-modal-backdrop public-chat-earnings-backdrop"
+            role="presentation"
+            onClick={close}
+          >
+            <form
+              class="public-chat-proactive-modal public-chat-earnings-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`public-chat-earnings-${props.kind}-title`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                class="public-chat-proactive-close"
+                aria-label="关闭"
+                disabled={busy()}
+                onClick={close}
+              >
+                ×
+              </button>
+              <span class="public-chat-earnings-kicker">管理员研究工作流</span>
+              <h2 id={`public-chat-earnings-${props.kind}-title`}>{label()}</h2>
+              <p class="public-chat-proactive-intro">
+                {isPreview()
+                  ? "输入公司后，HONE 会核验实体、预期和关键变量，并生成带品牌水印的分享 PDF。"
+                  : "输入公司并可上传财报、公告或电话会材料；HONE 会先读取材料，再完成分析和分享 PDF。"}
+              </p>
+              <label class="public-chat-earnings-field">
+                <span>公司名称或股票代码</span>
+                <input
+                  data-testid={`earnings-${props.kind}-company`}
+                  value={company()}
+                  maxlength={120}
+                  autofocus
+                  disabled={busy()}
+                  placeholder="例如：NVIDIA / NVDA"
+                  onInput={(event) => setCompany(event.currentTarget.value)}
+                />
+              </label>
+              <Show when={!isPreview()}>
+                <label class="public-chat-earnings-field">
+                  <span>财报材料（可选）</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,image/*"
+                    disabled={busy()}
+                    onChange={(event) => {
+                      setFiles(event.currentTarget.files ? Array.from(event.currentTarget.files) : []);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    class="public-chat-earnings-file-picker"
+                    disabled={busy()}
+                    onClick={() => fileInputRef?.click()}
+                  >
+                    <span>{files().length ? `已选择 ${files().length} 个文件` : "选择财报文件"}</span>
+                    <small>{files().length ? files().map((file) => file.name).join("、") : "PDF、Word、Excel、图片或文本"}</small>
+                  </button>
+                </label>
+              </Show>
+              <Show when={error()}>
+                {(message) => <p class="public-chat-earnings-error" role="alert">{message()}</p>}
+              </Show>
+              <div class="public-chat-earnings-actions">
+                <button type="button" onClick={close} disabled={busy()}>取消</button>
+                <button
+                  data-testid={`earnings-${props.kind}-start`}
+                  type="submit"
+                  class="public-chat-proactive-primary"
+                  disabled={busy() || !company().trim()}
+                >
+                  {busy() ? "正在启动…" : `启动${label()}`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </Show>
+      </Portal>
+    </>
+  );
+}
+
 function FinanceCalendarQuickAction(props: {
   onSent: () => void;
   openRequest?: number;
@@ -1950,6 +2131,8 @@ function Composer(props: {
   dailyLimit: number | undefined;
   trackingOpenRequest: number;
   calendarOpenRequest: number;
+  isAdmin: boolean;
+  onStartEarnings: (input: EarningsWorkflowStart) => Promise<void>;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -2021,6 +2204,18 @@ function Composer(props: {
     >
       <div class="public-chat-proactive-tip-wrap">
         <ProactiveModeTips openRequest={props.trackingOpenRequest} />
+        <Show when={props.isAdmin}>
+          <EarningsResearchQuickAction
+            kind="preview"
+            disabled={props.isSending || props.uploading}
+            onStart={props.onStartEarnings}
+          />
+          <EarningsResearchQuickAction
+            kind="analysis"
+            disabled={props.isSending || props.uploading}
+            onStart={props.onStartEarnings}
+          />
+        </Show>
         <FinanceCalendarQuickAction
           onSent={props.onCalendarSent}
           openRequest={props.calendarOpenRequest}
@@ -3090,9 +3285,16 @@ export default function PublicChatPage() {
     document.body.classList.remove("public-chat-scroll-lock");
   });
 
-  const handleSend = async () => {
-    const text = draft().trim();
-    const atts = [...pendingAttachments];
+  const sendChatTurn = async (input?: {
+    text: string;
+    attachments: PublicChatAttachment[];
+    earningsWorkflow?: {
+      kind: PublicEarningsWorkflowKind;
+      company: string;
+    };
+  }) => {
+    const text = input?.text.trim() ?? draft().trim();
+    const atts = input?.attachments ?? [...pendingAttachments];
     if (
       (!text && atts.length === 0) ||
       authState() !== "ready" ||
@@ -3111,7 +3313,7 @@ export default function PublicChatPage() {
     clearRestoreRetry();
 
     const assistantId = messageId();
-    setDraft("");
+    if (!input) setDraft("");
     setIsSending(true);
     // Send action is an explicit user intent to follow the new content.
     stickToBottom = true;
@@ -3128,9 +3330,15 @@ export default function PublicChatPage() {
       phase: "thinking",
       statusText: CONTENT.chat_page.status.thinking,
       startedAt: Date.now(),
-      steps: [],
+      steps: input?.earningsWorkflow
+        ? [
+            input.earningsWorkflow.kind === "analysis"
+              ? "正在加载财报分析技能"
+              : "正在加载财报前瞻技能",
+          ]
+        : undefined,
     });
-    setPendingAttachments(reconcile([], { key: "path" }));
+    if (!input) setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
 
     const controller = new AbortController();
@@ -3144,6 +3352,7 @@ export default function PublicChatPage() {
         text,
         atts.map((a) => ({ path: a.path, name: a.name })),
         controller.signal,
+        input?.earningsWorkflow,
       );
       const reader = stream.getReader();
       const decoder = new TextDecoder();
@@ -3224,6 +3433,17 @@ export default function PublicChatPage() {
                   ev.data,
                   CONTENT.chat_page.status.running,
                 ),
+                ...(messages[index].steps
+                  ? {
+                      steps: appendPublicChatProgressStep(
+                        messages[index].steps,
+                        publicChatToolStatusText(
+                          ev.data,
+                          CONTENT.chat_page.status.running,
+                        ),
+                      ),
+                    }
+                  : {}),
               });
             }
           }
@@ -3344,6 +3564,49 @@ export default function PublicChatPage() {
           : undefined,
       });
     }
+  };
+
+  const handleSend = () => {
+    void sendChatTurn();
+  };
+
+  const startEarningsWorkflow = async (input: EarningsWorkflowStart) => {
+    if (
+      authState() !== "ready" ||
+      !currentUser()?.is_admin ||
+      isSendingOrStreaming() ||
+      uploading()
+    ) {
+      throw new Error("当前无法启动新的分析任务");
+    }
+
+    let attachments: PublicChatAttachment[] = [];
+    if (input.files.length) {
+      setUploading(true);
+      try {
+        const uploaded = await uploadPublicAttachments(input.files);
+        attachments = uploaded.map((item) => ({
+          ...item,
+          kind: item.kind,
+        }));
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    const text = publicEarningsWorkflowMessage(
+      input.kind,
+      input.company,
+      attachments.length > 0,
+    );
+    void sendChatTurn({
+      text,
+      attachments,
+      earningsWorkflow: {
+        kind: input.kind,
+        company: input.company,
+      },
+    });
   };
 
   const handleCalendarSent = () => {
@@ -3546,6 +3809,8 @@ export default function PublicChatPage() {
                           dailyLimit={sessionInfo()?.dailyLimit}
                           trackingOpenRequest={trackingOpenRequest()}
                           calendarOpenRequest={calendarOpenRequest()}
+                          isAdmin={currentUser()?.is_admin === true}
+                          onStartEarnings={startEarningsWorkflow}
                         />
                         <p class="public-chat-disclaimer">HONE 可能出错。内容仅供研究参考，不构成投资建议。</p>
                       </div>

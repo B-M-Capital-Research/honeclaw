@@ -2862,6 +2862,7 @@ const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
 /// an ordinary Agent-owned turn rather than delaying the user.
 const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
 const PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT: usize = 3_000;
+const PRETURN_WEB_QUERY_CHAR_LIMIT: usize = 400;
 
 /// Anchor the pre-turn search on absolute dates. The target market's local date
 /// has to travel with it: a Beijing morning is still the previous New York
@@ -2876,12 +2877,13 @@ fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
         .with_timezone(&chrono_tz::America::New_York)
         .format("%Y-%m-%d")
         .to_string();
-    let bounded_input = truncate_chars(user_input, 1_000);
-    if new_york_date == beijing_date {
-        format!("{beijing_date} {bounded_input}")
+    let prefix = if new_york_date == beijing_date {
+        format!("{beijing_date} ")
     } else {
-        format!("{beijing_date} ({new_york_date} ET) {bounded_input}")
-    }
+        format!("{beijing_date} ({new_york_date} ET) ")
+    };
+    let remaining = PRETURN_WEB_QUERY_CHAR_LIMIT.saturating_sub(prefix.chars().count());
+    format!("{prefix}{}", truncate_chars(user_input, remaining))
 }
 
 /// Evidence the service fetched before the first model call.
@@ -16030,6 +16032,21 @@ mod tests {
         } else {
             assert!(query.contains(&format!("({new_york} ET)")), "{query}");
         }
+    }
+
+    #[test]
+    fn pre_turn_web_query_never_exceeds_provider_limit() {
+        let beijing = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+        let input = format!("SNDK（闪迪）财报前瞻 {}", "近期新闻与一致预期 ".repeat(100));
+
+        let query = super::pre_turn_web_query(&input, &format!("{beijing} 09:31"));
+
+        assert!(query.contains("SNDK（闪迪）财报前瞻"), "{query}");
+        assert!(
+            query.chars().count() <= super::PRETURN_WEB_QUERY_CHAR_LIMIT,
+            "{} chars: {query}",
+            query.chars().count()
+        );
     }
 
     #[test]

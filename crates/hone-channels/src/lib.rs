@@ -32,7 +32,7 @@ pub use self::core_traits::{
     AdminIntercept, AuditRecorder, LlmProviderBundle, PathResolver, RunnerFactory,
     ToolRegistryFactory,
 };
-pub use self::sandbox::{channel_download_dir, sandbox_base_dir};
+pub use self::sandbox::{actor_sandbox_root, channel_download_dir, sandbox_base_dir};
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,
     AgentSessionListener, AgentSessionResult, AgentTurnOrigin, GeminiStreamOptions,

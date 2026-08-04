@@ -437,7 +437,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "内置 Skill",
         intro_prefix: "HONE 的 Skill 由模型根据上下文自动调用。下面是仓库",
-        intro_suffix: "目录下的 16 个公开 Skill。",
+        intro_suffix: "目录下的 17 个公开 Skill。",
       },
       roadmap: {
         eyebrow: "§ 06 · ROADMAP",
@@ -763,7 +763,7 @@ const CONTENT_ZH = {
         "图片与文件：对话中可上传图片 / PDF 等材料，生成的 CSV / XLSX / PDF 可直接下载",
         "macOS 桌面端：内置后端，下载即用",
         "多渠道接入：Web / iMessage / 飞书 / Discord / Telegram / CLI / MCP，共 7 个",
-        "16 个内置投研 Skill：个股分析、持仓、估值筛选、图表、PDF、定时任务、推送偏好等",
+        "17 个内置投研 Skill：个股分析、持仓、财报研究、估值筛选、图表、PDF、定时任务、推送偏好等",
         "投研纪律约束与零幻觉协议：不迎合仓位偏见，先核实数据再下结论",
         "公司画像与跨会话长期记忆：每家公司的研究上下文持续积累、随时调用",
         "定时任务与主动推送：盘前快报、收盘复盘、财报提醒可按需订阅",
@@ -803,7 +803,7 @@ const CONTENT_ZH = {
         "Rust 核心引擎（hone-core / hone-channels / hone-llm / hone-tools）",
         "前端 UI（SolidJS + Tailwind v4）",
         "Tauri 桌面端壳",
-        "全部 16 个公开 Skill",
+        "全部 17 个公开 Skill",
         "全部渠道集成代码（Web / iMessage / Lark / Discord / Telegram / CLI / MCP）",
       ],
       closed: [
@@ -913,7 +913,7 @@ const CONTENT_ZH = {
       },
       {
         q: "开源协议？能商用吗？",
-        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 16 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
+        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 17 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
       },
       {
         q: "数据存在哪里？",
@@ -2510,7 +2510,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Images & files: upload images / PDFs into the conversation; generated CSV / XLSX / PDF files are downloadable",
         "macOS desktop app with a bundled backend — download and run",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "16 built-in research skills: stock analysis, portfolio, valuation screening, charts, PDF, scheduled tasks, notification preferences, and more",
+        "17 built-in research skills: stock analysis, portfolio, earnings research, valuation screening, charts, PDF, scheduled tasks, notification preferences, and more",
         "Research discipline & zero-hallucination protocol: no flattering your positions — verify first, conclude second",
         "Company profiles + cross-session long memory: research context accumulates per company over time",
         "Scheduled tasks & proactive pushes: pre-market briefs, close reviews, and earnings reminders on your schedule",

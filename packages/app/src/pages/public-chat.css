@@ -976,6 +976,48 @@ body.public-chat-scroll-lock #root {
   font-size: 14px;
   line-height: 1.65;
 }
+.public-chat-earnings-action .public-chat-proactive-tip-icon { color: #176f62; }
+.public-chat-earnings-kicker {
+  display: block;
+  margin-bottom: 6px;
+  color: #176f62;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.public-chat-earnings-modal { width: min(500px, calc(100vw - 32px)); }
+.public-chat-earnings-field { display: grid; gap: 7px; margin-top: 16px; }
+.public-chat-earnings-field > span { color: var(--hone-ink-800); font-size: 13px; font-weight: 750; }
+.public-chat-earnings-field > input {
+  width: 100%; min-height: 46px; padding: 10px 12px;
+  border: 1.5px solid var(--hone-line); border-radius: 10px; outline: none;
+  background: #fff; color: var(--hone-ink-950); font: inherit;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.public-chat-earnings-field > input:focus { border-color: #579b8f; box-shadow: 0 0 0 3px rgba(23, 111, 98, 0.1); }
+.public-chat-earnings-file-picker {
+  width: 100%; min-height: 68px; display: grid; gap: 5px; align-content: center;
+  padding: 11px 13px; border: 1.5px dashed #8eb5ae; border-radius: 10px;
+  background: #f4faf8; color: var(--hone-ink-950); cursor: pointer; text-align: left;
+}
+.public-chat-earnings-file-picker span { font-size: 13px; font-weight: 750; }
+.public-chat-earnings-file-picker small {
+  overflow: hidden; color: var(--hone-ink-600); font-size: 11.5px;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.public-chat-earnings-error { margin: 12px 0 0; color: #b0443b; font-size: 12.5px; }
+.public-chat-earnings-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+.public-chat-earnings-actions > button {
+  min-height: 38px; padding: 8px 15px; border: 1px solid var(--hone-line);
+  border-radius: 9px; background: #fff; color: var(--hone-ink-800);
+  cursor: pointer; font: inherit; font-size: 13px; font-weight: 750;
+}
+.public-chat-earnings-actions > .public-chat-proactive-primary {
+  border-color: var(--hone-ink-950); background: var(--hone-ink-950); color: #fff;
+}
+.public-chat-earnings-actions > button:disabled,
+.public-chat-earnings-file-picker:disabled { cursor: progress; opacity: 0.58; }
 .public-chat-proactive-close {
   position: absolute;
   top: 14px;

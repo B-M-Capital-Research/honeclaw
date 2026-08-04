@@ -131,6 +131,29 @@ describe("public API errors", () => {
   });
 });
 
+describe("public earnings workflow API", () => {
+  test("sends a structured workflow envelope instead of relying on prompt text", async () => {
+    let requestedBody = "";
+    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+      requestedBody = String(init?.body ?? "");
+      return Promise.resolve(new Response("event: done\ndata: {}\n\n"));
+    }) as unknown as typeof fetch;
+
+    await sendPublicChat(
+      "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
+      [],
+      undefined,
+      { kind: "preview", company: "NVDA" },
+    );
+
+    expect(JSON.parse(requestedBody)).toEqual({
+      message: "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
+      attachments: [],
+      earnings_workflow: { kind: "preview", company: "NVDA" },
+    });
+  });
+});
+
 describe("public chat bootstrap API", () => {
   test("loads auth and history through one startup request", async () => {
     let requestedUrl = "";

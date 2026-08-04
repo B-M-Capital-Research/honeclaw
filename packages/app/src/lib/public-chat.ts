@@ -49,6 +49,33 @@ export type PublicChatAttachment = {
   previewUrl?: string;
 };
 
+export type PublicEarningsWorkflowKind = "preview" | "analysis";
+
+export function publicEarningsWorkflowMessage(
+  kind: PublicEarningsWorkflowKind,
+  company: string,
+  hasAttachments: boolean,
+): string {
+  const name = company.trim();
+  if (kind === "preview") {
+    return `请为 ${name} 生成财报前瞻，并完成证据核验和可分享 PDF。`;
+  }
+  return hasAttachments
+    ? `请分析 ${name} 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。`
+    : `请分析 ${name} 的最新财报，并完成证据核验和可分享 PDF。`;
+}
+
+export function appendPublicChatProgressStep(
+  current: string[] | undefined,
+  status: string,
+): string[] {
+  const normalized = status.trim();
+  if (!normalized) return current ?? [];
+  const steps = current ?? [];
+  if (steps[steps.length - 1] === normalized) return steps;
+  return [...steps, normalized].slice(-6);
+}
+
 export type PublicChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -155,6 +182,9 @@ export function publicChatRunEventPatch(
       : current.startedAt,
     runId: incomingRunId ?? current.runId,
     statusUpdatedAt: incomingUpdatedAt ?? current.statusUpdatedAt,
+    ...(current.steps
+      ? { steps: appendPublicChatProgressStep(current.steps, statusText) }
+      : {}),
   };
 }
 

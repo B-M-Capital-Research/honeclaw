@@ -37,6 +37,7 @@ use crate::investment_response_guard::{
     DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity,
     build_agent_discovered_investment, prepare_verified_investment_turn,
 };
+use crate::prompt::PromptOptions;
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
     finalize_agent_response, normalize_local_image_references,
@@ -4252,7 +4253,7 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
         );
     }
     assert!(!system_prompt.contains("【SkillTool】"));
-    for loader in ["discover_skills", "load_skill", "skill_tool"] {
+    for loader in ["discover_skills", "load_skill"] {
         assert!(
             !system_prompt.contains(loader),
             "{loader} should not be repeated in the native Codex system prompt"
@@ -4268,12 +4269,145 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             "{loader} should be provided by Codex native skill discovery"
         );
     }
+    assert!(
+        execution
+            .runner_request
+            .allowed_tools
+            .as_ref()
+            .expect("native Codex MCP allowlist")
+            .iter()
+            .any(|tool| tool == "skill_tool"),
+        "trusted skill scripts must execute through the host-side skill_tool boundary"
+    );
     assert!(system_prompt.contains("【领域边界与投研约束】"));
     assert_eq!(
         std::fs::canonicalize(native_skill_link).expect("native Codex skill link"),
         std::fs::canonicalize(&skill_dir).expect("source skill dir")
     );
     let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn database_admin_web_turn_uses_native_codex_prompt_ownership() {
+    let root = make_temp_dir("hone_channels_database_admin_native_turn");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| {
+        Box::new(RecordingContextRunner {
+            recorded_contexts: Arc::new(Mutex::new(Vec::new())),
+            recorded_runtime_inputs: Arc::new(Mutex::new(Vec::new())),
+            queued_results: Arc::new(Mutex::new(VecDeque::new())),
+            conversation_strategy: AgentConversationStrategy::NativePersistent,
+            native_skill_projection: Some(NativeSkillProjection::CodexWorkspace),
+        })
+    }));
+    // This web identity is intentionally absent from the static administrator
+    // list. The web API has already verified it against the database and
+    // carries that trust through PromptOptions.
+    let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+    let session =
+        AgentSession::new(core, actor.clone(), "direct").with_prompt_options(PromptOptions {
+            is_admin: true,
+            ..PromptOptions::default()
+        });
+    let user_task = "请为 SNDK（闪迪）执行财报前瞻";
+    let expanded_skill_turn = format!(
+        "【Skill Instructions】\nWRITE files, RUN commands, then NEXT step.\n\n\
+         【User Task After Invoking This Skill】\n{user_task}"
+    );
+    let options = AgentRunOptions {
+        entity_resolution_input: Some(user_task.to_string()),
+        ..AgentRunOptions::default()
+    };
+
+    let (execution, investment_context) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            user_task,
+            &expanded_skill_turn,
+            &options,
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("database admin native Codex turn: {error}"));
+    let (_, runtime_input) = execution
+        .runner_request
+        .conversation
+        .native_parts()
+        .expect("native Codex conversation input");
+
+    assert!(runtime_input.ends_with(&expanded_skill_turn));
+    assert!(!runtime_input.contains("【本轮证券实体发现：主 Agent 工具循环】"));
+    assert!(!runtime_input.contains("【Session 上下文】"));
+    assert_eq!(
+        investment_context.reexecution_policy,
+        PreparedTurnReexecutionPolicy::Allowed,
+        "skill instructions must not turn a read-only research task into execute-once"
+    );
+    assert_eq!(
+        investment_context
+            .main_agent_entity_discovery_input
+            .as_deref(),
+        Some(user_task)
+    );
+    let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
+    let root = make_temp_dir("hone_channels_slash_skill_task_boundary");
+    let system_skills = root.join("system_skills");
+    let skill_dir = system_skills.join("earnings-research");
+    std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        concat!(
+            "---\n",
+            "name: Earnings Research\n",
+            "description: earnings preview workflow\n",
+            "user-invocable: true\n",
+            "---\n\n",
+            "WRITE files, RUN commands, then NEXT step.\n"
+        ),
+    )
+    .expect("write skill");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core_with_config(&root, llm, |config| {
+        config.extra.insert(
+            "skills_dir".to_string(),
+            serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
+        );
+    });
+    let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+    let task = "请为 SNDK（闪迪）执行财报前瞻";
+    let expansion = crate::turn_builder::PromptTurnBuilder::new(
+        &core,
+        &actor,
+        "slash-skill-boundary",
+        PromptOptions::default(),
+        true,
+        None,
+    )
+    .expand_slash_skill_input(&format!("/earnings-research\n{task}"))
+    .expect("expand slash skill")
+    .expect("resolved slash skill");
+
+    assert_eq!(expansion.user_task_input.as_deref(), Some(task));
+    assert!(
+        expansion
+            .runtime_input
+            .contains("WRITE files, RUN commands")
+    );
+    assert!(expansion.runtime_input.ends_with(task));
+    assert!(!expansion.user_task_input.unwrap().contains("WRITE files"));
     let _ = std::fs::remove_dir_all(root);
 }
 

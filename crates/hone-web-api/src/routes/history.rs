@@ -191,15 +191,17 @@ fn plain_history_message(
     let compact_boundary = message_is_compact_boundary(message.metadata.as_ref());
     let compact_summary = message_is_compact_summary(message.metadata.as_ref());
     let compact_skill_snapshot = message_is_compact_skill_snapshot(message.metadata.as_ref());
+    let stored_content = session_message_text(message);
+    let visible_content = public_visible_history_content(message, &stored_content);
     HistoryMsg {
-        attachments: extract_history_attachments(&session_message_text(message)),
+        attachments: extract_history_attachments(&stored_content),
         role: if compact_boundary {
             "system".to_string()
         } else {
             message.role.clone()
         },
         at: history_message_timestamp(message),
-        content: session_message_text(message),
+        content: visible_content,
         subtype: if compact_boundary {
             Some("compact_boundary".to_string())
         } else if compact_summary {
@@ -214,6 +216,30 @@ fn plain_history_message(
         scheduled_push: None,
         finance_calendar: history_finance_calendar(message, prefer_mobile),
     }
+}
+
+fn public_visible_history_content(
+    message: &hone_memory::session::SessionMessage,
+    content: &str,
+) -> String {
+    let is_earnings_skill = message.role == "user"
+        && message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(hone_memory::SLASH_SKILL_METADATA_KEY))
+            .and_then(serde_json::Value::as_str)
+            == Some("earnings-research");
+    if !is_earnings_skill {
+        return content.to_string();
+    }
+    content
+        .lines()
+        .skip(1)
+        .take_while(|line| line.trim() != "【HONE 财报工作流参数】")
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 fn history_message_timestamp(message: &hone_memory::session::SessionMessage) -> Option<String> {
@@ -366,6 +392,28 @@ mod tests {
         extract_history_attachments, public_client_prefers_mobile, public_history_from_messages,
         public_history_page_for_client, public_history_page_from_messages,
     };
+
+    #[test]
+    fn public_history_hides_forced_earnings_skill_envelope() {
+        let metadata = HashMap::from([(
+            hone_memory::SLASH_SKILL_METADATA_KEY.to_string(),
+            serde_json::Value::String("earnings-research".to_string()),
+        )]);
+        let messages = vec![hone_memory::session_message_from_text(
+            "user",
+            "/earnings-research\n请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: NVDA",
+            "2026-08-04T12:00:00+08:00",
+            Some(metadata),
+        )];
+
+        let history = public_history_from_messages(&messages);
+        assert_eq!(
+            history[0].content,
+            "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。"
+        );
+        assert!(!history[0].content.contains("/earnings-research"));
+        assert!(!history[0].content.contains("mode:"));
+    }
 
     #[test]
     fn history_attachments_include_inline_local_images() {

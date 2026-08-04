@@ -17,7 +17,12 @@ use crate::runners::{
 };
 use crate::sandbox::{ensure_actor_sandbox, sync_native_codex_skill_links};
 
-const NATIVE_CODEX_SKILL_LOADING_TOOLS: [&str; 3] = ["discover_skills", "load_skill", "skill_tool"];
+// Native Codex owns skill discovery/loading through its workspace projection,
+// but `skill_tool` remains available as the trusted host-side execution
+// boundary for repository skill scripts. Some scripts (for example Chromium
+// PDF rendering) need host capabilities that the actor workspace sandbox does
+// not expose directly.
+const NATIVE_CODEX_SKILL_LOADING_TOOLS: [&str; 2] = ["discover_skills", "load_skill"];
 fn absolute_runtime_path(path: &str) -> String {
     let candidate = std::path::PathBuf::from(path);
     if candidate.is_absolute() {
@@ -39,6 +44,7 @@ pub(crate) enum ExecutionMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExecutionRunnerSelection {
     Configured,
+    ConfiguredTrustedAdministrator,
 }
 
 #[derive(Clone)]
@@ -132,10 +138,8 @@ impl ExecutionService {
         );
         let native_codex_tools =
             native_codex_mcp_tools(&tool_registry, request.allowed_tools.as_deref());
-        let use_strict_fallback = matches!(
-            request.runner_selection,
-            ExecutionRunnerSelection::Configured
-        ) && self.core.actor_uses_strict_runner_fallback(&request.actor);
+        let use_strict_fallback = request.runner_selection == ExecutionRunnerSelection::Configured
+            && self.core.actor_uses_strict_runner_fallback(&request.actor);
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
             ExecutionRunnerSelection::Configured if use_strict_fallback => {
                 tracing::warn!(
@@ -147,11 +151,14 @@ impl ExecutionService {
                 self.core
                     .create_strict_actor_runner(&request.system_prompt, tool_registry)?
             }
-            ExecutionRunnerSelection::Configured => self.core.create_runner_with_model_override(
-                &request.system_prompt,
-                tool_registry,
-                request.model_override.as_deref(),
-            )?,
+            ExecutionRunnerSelection::Configured
+            | ExecutionRunnerSelection::ConfiguredTrustedAdministrator => {
+                self.core.create_runner_with_model_override(
+                    &request.system_prompt,
+                    tool_registry,
+                    request.model_override.as_deref(),
+                )?
+            }
         };
         let runner_name = runner.name();
         let conversation_strategy = runner.conversation_strategy();
@@ -597,6 +604,36 @@ mod tests {
             .expect("non-admin should use strict fallback");
 
         assert_eq!(prepared.runner_name, "function_calling");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_allows_server_verified_administrator_to_use_configured_native_runner() {
+        let root = temp_root("execution_verified_admin_native_runner");
+        let core = make_test_core(&root, "codex_cli");
+        let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+
+        let prepared = ExecutionService::new(core)
+            .prepare(make_request(
+                actor,
+                ExecutionMode::PersistentConversation,
+                ExecutionRunnerSelection::ConfiguredTrustedAdministrator,
+            ))
+            .expect("server-verified administrator should use configured native runner");
+
+        assert_eq!(prepared.runner_name, "codex_cli");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn system_skill_directory_is_absolute_before_mcp_tools_change_working_directory() {
+        let root = temp_root("execution_absolute_system_skill_directory");
+        let core = make_test_core(&root, "codex_cli");
+
+        let skills_dir = core.configured_system_skills_dir();
+
+        assert!(skills_dir.is_absolute(), "{}", skills_dir.display());
+        assert!(skills_dir.ends_with("skills"), "{}", skills_dir.display());
         let _ = std::fs::remove_dir_all(root);
     }
 

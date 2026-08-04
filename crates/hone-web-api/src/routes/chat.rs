@@ -27,6 +27,18 @@ const WEB_CHAT_PROGRESS_TICK: Duration = Duration::from_secs(10);
 const WEB_CHAT_PROGRESS_MIN_SILENCE: Duration = Duration::from_secs(15);
 const WEB_CHAT_PROGRESS_STATUS: &str = "仍在处理中，正在完成核验与分析";
 
+fn earnings_workflow_initial_status(message: &str) -> Option<&'static str> {
+    let first = message.lines().next()?.trim();
+    if first != "/earnings-research" && !first.starts_with("/earnings-research ") {
+        return None;
+    }
+    if message.contains("\nmode: analysis\n") {
+        Some("正在加载财报分析技能")
+    } else {
+        Some("正在加载财报前瞻技能")
+    }
+}
+
 pub(crate) struct SseSessionListener {
     tx: tokio::sync::mpsc::Sender<(String, Value)>,
     user_id: String,
@@ -356,6 +368,7 @@ pub(crate) fn build_chat_sse(
     actor_result: Result<ActorIdentity, hone_core::HoneError>,
     message: String,
     attachments_count: usize,
+    prompt_admin_override: Option<bool>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // mpsc channel 连接 spawn task ↔ SSE stream
     let (tx, rx) = tokio::sync::mpsc::channel::<(String, Value)>(64);
@@ -399,6 +412,9 @@ pub(crate) fn build_chat_sse(
         let active_run = active_run_guard
             .run()
             .expect("active chat run must exist while its guard is alive");
+        if let Some(status) = earnings_workflow_initial_status(&msg) {
+            let _ = active_run_guard.handle().update("running", status);
+        }
         let run_id = active_run.run_id.clone();
 
         // 立即发送 ack；时间与任务 id 来自服务端，页面刷新后可稳定恢复。
@@ -436,7 +452,8 @@ pub(crate) fn build_chat_sse(
 
         let recv_extra = format!("attachments={att_count}");
         let prompt_options = PromptOptions {
-            is_admin: arc.core.is_admin_actor(&actor_clone),
+            is_admin: prompt_admin_override
+                .unwrap_or_else(|| arc.core.is_admin_actor(&actor_clone)),
             ..PromptOptions::default()
         };
 
@@ -531,7 +548,7 @@ pub(crate) async fn handle_chat(
         }
     }
 
-    build_chat_sse(state, actor_result, message, attachments_count)
+    build_chat_sse(state, actor_result, message, attachments_count, None)
 }
 
 /// 部署脚本在终止进程前轮询此端点，避免把仍在生成的用户请求直接杀掉。

@@ -521,12 +521,24 @@ impl HoneBotCore {
     }
 
     pub fn configured_system_skills_dir(&self) -> PathBuf {
-        self.config
-            .extra
-            .get("skills_dir")
-            .and_then(|v| v.as_str())
+        let path = std::env::var_os("HONE_SKILLS_DIR")
+            .filter(|value| !value.is_empty())
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./skills"))
+            .or_else(|| {
+                self.config
+                    .extra
+                    .get("skills_dir")
+                    .and_then(|v| v.as_str())
+                    .map(PathBuf::from)
+            })
+            .unwrap_or_else(|| PathBuf::from("./skills"));
+        if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        }
     }
 
     pub fn configured_custom_skills_dir(&self) -> PathBuf {
@@ -742,6 +754,14 @@ impl HoneBotCore {
     pub(crate) fn effective_runner_uses_native_codex_turns(&self, actor: &ActorIdentity) -> bool {
         !self.actor_uses_strict_runner_fallback(actor)
             && self.config.agent.runner_kind() == AgentRunnerKind::CodexAcp
+    }
+
+    /// Whether the configured administrator runner owns a persistent Codex
+    /// conversation. Web authentication can establish administrator trust
+    /// after `ActorIdentity` is created, so turn preparation cannot infer this
+    /// solely from the actor whitelist in the static runtime config.
+    pub(crate) fn configured_runner_uses_native_codex_turns(&self) -> bool {
+        self.config.agent.runner_kind() == AgentRunnerKind::CodexAcp
     }
 
     pub(crate) fn create_strict_actor_runner(

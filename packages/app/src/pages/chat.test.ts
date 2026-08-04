@@ -7,6 +7,7 @@ import {
 } from "@/lib/github-stars";
 import {
   applyPublicAssistantStreamEvent,
+  appendPublicChatProgressStep,
   canSendPublicChatMessage,
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
@@ -26,6 +27,7 @@ import {
   publicChatRunStartedAtLabel,
   publicChatTerminalEventPatch,
   publicChatToolStatusText,
+  publicEarningsWorkflowMessage,
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
   resolvePublicChatStreamInterruption,
@@ -200,6 +202,21 @@ describe("public chat run progress", () => {
     });
   });
 
+  it("keeps progress steps opt-in for a structured earnings turn", () => {
+    expect(
+      publicChatRunEventPatch(
+        { ...current, steps: ["正在加载财报分析技能"] },
+        {
+          run_id: "run-earnings",
+          phase: "running",
+          status_text: "正在核验公司与财报周期",
+          updated_at_ms: 1_300,
+        },
+        "HONE 执行中",
+      )?.steps,
+    ).toEqual(["正在加载财报分析技能", "正在核验公司与财报周期"]);
+  });
+
   it("ignores stale progress and events for a different run", () => {
     const recovered = {
       ...current,
@@ -262,6 +279,32 @@ describe("public chat run progress", () => {
         "HONE 执行中",
       ),
     ).toBe("HONE 执行中");
+  });
+});
+
+describe("earnings research workflow", () => {
+  it("builds the same optimistic message shape as the server contract", () => {
+    expect(publicEarningsWorkflowMessage("preview", " NVDA ", false)).toBe(
+      "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
+    );
+    expect(publicEarningsWorkflowMessage("analysis", "NVIDIA", true)).toBe(
+      "请分析 NVIDIA 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。",
+    );
+  });
+
+  it("keeps distinct progress checkpoints and caps the visible history", () => {
+    let steps: string[] = [];
+    for (const status of ["加载技能", "核验实体", "读取财报", "读取财报", "分析差异", "构建情景", "生成报告", "生成 PDF"]) {
+      steps = appendPublicChatProgressStep(steps, status);
+    }
+    expect(steps).toEqual([
+      "核验实体",
+      "读取财报",
+      "分析差异",
+      "构建情景",
+      "生成报告",
+      "生成 PDF",
+    ]);
   });
 });
 

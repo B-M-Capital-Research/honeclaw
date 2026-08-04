@@ -16,7 +16,7 @@ pub fn sandbox_base_dir() -> PathBuf {
         .unwrap_or(fallback)
 }
 
-pub(crate) fn actor_sandbox_root(actor: &ActorIdentity) -> PathBuf {
+pub fn actor_sandbox_root(actor: &ActorIdentity) -> PathBuf {
     sandbox_base_dir()
         .join(actor.channel_fs_component())
         .join(actor.scoped_user_fs_key())

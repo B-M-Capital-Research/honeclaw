@@ -75,8 +75,8 @@ pub(super) struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
     prompt_time_beijing: DateTime<FixedOffset>,
-    reexecution_policy: PreparedTurnReexecutionPolicy,
-    main_agent_entity_discovery_input: Option<String>,
+    pub(super) reexecution_policy: PreparedTurnReexecutionPolicy,
+    pub(super) main_agent_entity_discovery_input: Option<String>,
     /// Business evidence the service loaded into `runtime_suffix` before the
     /// first model call. Context only; it never becomes a contract.
     preloaded_evidence_calls: u32,
@@ -1197,19 +1197,19 @@ impl AgentSession {
         restore_max_override: Option<usize>,
         prepared_investment: Option<&PreparedInvestmentContext>,
     ) -> bool {
-        if restore_max_override.is_some()
-            || prepared_investment.is_some()
-            || options.turn_origin != AgentTurnOrigin::Interactive
-            || !self.core.actor_uses_strict_runner_fallback(&self.actor)
-            || prepared_turn_reexecution_policy(runtime_user_input)
-                != PreparedTurnReexecutionPolicy::Allowed
-        {
-            return false;
-        }
         let entity_resolution_input = options
             .entity_resolution_input
             .as_deref()
             .unwrap_or(runtime_user_input);
+        if restore_max_override.is_some()
+            || prepared_investment.is_some()
+            || options.turn_origin != AgentTurnOrigin::Interactive
+            || !self.core.actor_uses_strict_runner_fallback(&self.actor)
+            || prepared_turn_reexecution_policy(entity_resolution_input)
+                != PreparedTurnReexecutionPolicy::Allowed
+        {
+            return false;
+        }
         has_main_agent_entity_discovery_seed(entity_resolution_input, options.turn_origin)
     }
 
@@ -1267,9 +1267,11 @@ impl AgentSession {
             hone_core::beijing_now(),
         );
         let use_native_codex_turn_input = options.turn_origin == AgentTurnOrigin::Interactive
-            && self
+            && (self
                 .core
-                .effective_runner_uses_native_codex_turns(&self.actor);
+                .effective_runner_uses_native_codex_turns(&self.actor)
+                || (self.prompt_options.is_admin
+                    && self.core.configured_runner_uses_native_codex_turns()));
         let (system_prompt, mut runtime_input, answer_time_beijing) = self.resolve_prompt_input_at(
             session_id,
             runtime_user_input,
@@ -1289,7 +1291,7 @@ impl AgentSession {
                 contract: None,
                 runtime_suffix: String::new(),
                 prompt_time_beijing,
-                reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
+                reexecution_policy: prepared_turn_reexecution_policy(entity_resolution_input),
                 // Keep server-side read-only trace diagnostics without
                 // injecting their tool-loop instructions into the user turn.
                 main_agent_entity_discovery_input: uses_main_agent_entity_discovery(
@@ -1364,7 +1366,7 @@ impl AgentSession {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
                 prompt_time_beijing,
-                reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
+                reexecution_policy: prepared_turn_reexecution_policy(entity_resolution_input),
                 main_agent_entity_discovery_input: main_agent_entity_discovery
                     .then(|| entity_resolution_input.to_string()),
                 preloaded_evidence_calls,
@@ -1412,7 +1414,11 @@ impl AgentSession {
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
                 session_metadata: restored.session_metadata,
                 model_override: options.model_override.clone(),
-                runner_selection: ExecutionRunnerSelection::Configured,
+                runner_selection: if self.prompt_options.is_admin {
+                    ExecutionRunnerSelection::ConfiguredTrustedAdministrator
+                } else {
+                    ExecutionRunnerSelection::Configured
+                },
                 allowed_tools: None,
                 max_tool_calls: None,
                 tool_call_limits: None,
@@ -1724,9 +1730,13 @@ impl AgentSession {
         };
         let native_session_id = self
             .core
-            .effective_runner_conversation_strategy(&self.actor)
-            .retains_native_history()
-            .then(|| self.session_id.as_str());
+            .effective_runner_uses_native_codex_turns(&self.actor)
+            .then_some(self.session_id.as_str())
+            .or_else(|| {
+                (self.prompt_options.is_admin
+                    && self.core.configured_runner_uses_native_codex_turns())
+                .then_some(self.session_id.as_str())
+            });
         match store.claim_delivered_push_context_with_native_observation(
             &self.actor,
             turn_id,
@@ -2125,7 +2135,7 @@ impl AgentSession {
     /// 9. 成功时:commit 配额、若非流式则按 segmenter 切片发给 listener、
     ///    把 assistant turn 落盘、打 finished 日志;失败时:drop guard 让 release 生效,
     ///    按错误类型翻译 ErrorKind,再 emit Done。
-    pub async fn run(&self, user_input: &str, options: AgentRunOptions) -> AgentSessionResult {
+    pub async fn run(&self, user_input: &str, mut options: AgentRunOptions) -> AgentSessionResult {
         // 在等待同 session 上一轮结束前固定本轮的 ingress cutoff。等待期间才
         // 送达的主动推送属于用户发出这条消息之后发生的事实，只能进入下一轮。
         let interactive_ingress_cutoff_ms = Utc::now().timestamp_millis();
@@ -2231,6 +2241,13 @@ impl AgentSession {
             .as_ref()
             .map(|skill| skill.runtime_input.as_str())
             .unwrap_or(user_input);
+        if options.entity_resolution_input.is_none()
+            && let Some(user_task_input) = slash_skill
+                .as_ref()
+                .and_then(|skill| skill.user_task_input.clone())
+        {
+            options.entity_resolution_input = Some(user_task_input);
+        }
         let user_metadata = if let Some(skill) = &slash_skill {
             let mut extra = HashMap::new();
             extra.insert(

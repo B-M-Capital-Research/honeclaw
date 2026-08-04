@@ -723,17 +723,27 @@ export type PublicChatAttachmentInput = {
   name?: string;
 };
 
+export type PublicEarningsWorkflowInput = {
+  kind: "preview" | "analysis";
+  company: string;
+};
+
 export async function sendPublicChat(
   message: string,
   attachments: PublicChatAttachmentInput[] = [],
   signal?: AbortSignal,
+  earningsWorkflow?: PublicEarningsWorkflowInput,
 ) {
   const response = await apiFetch("/api/public/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, attachments }),
+    body: JSON.stringify({
+      message,
+      attachments,
+      earnings_workflow: earningsWorkflow,
+    }),
     signal,
   });
 

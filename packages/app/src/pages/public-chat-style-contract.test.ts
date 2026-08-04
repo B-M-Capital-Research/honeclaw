@@ -117,6 +117,15 @@ describe("public chat visual contract", () => {
     expect(css).toContain("backdrop-filter: none !important");
   });
 
+  it("gates both earnings actions on the authenticated admin flag", () => {
+    expect(chat).toContain("<Show when={props.isAdmin}>");
+    expect(chat).toContain('kind="preview"');
+    expect(chat).toContain('kind="analysis"');
+    expect(chat).toContain("isAdmin={currentUser()?.is_admin === true}");
+    expect(chat).toContain("onStartEarnings={startEarningsWorkflow}");
+    expect(css).toContain(".public-chat-earnings-modal");
+  });
+
   it("keeps assistant responses flat and user prompts softly filled", () => {
     const finalLayer = css.slice(css.indexOf("Final mobile chat overrides"));
     const darkMobileLayer = finalLayer.slice(

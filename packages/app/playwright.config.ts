@@ -25,7 +25,7 @@ export default defineConfig({
     {
       name: "admin",
       testIgnore:
-        /public-(billing-activation|chat-upload|mobile-overlays|sms-login)\.spec\.ts$/,
+        /public-(billing-activation|chat-upload|chat-pdf-download|mobile-overlays|sms-login)\.spec\.ts$/,
       use: {
         baseURL:
           process.env.HONE_E2E_BASE_URL ?? `http://127.0.0.1:${ADMIN_PORT}`,
@@ -34,7 +34,8 @@ export default defineConfig({
     },
     {
       name: "public",
-      testMatch: /public-(billing-activation|chat-upload|mobile-overlays|sms-login)\.spec\.ts$/,
+      testMatch:
+        /public-(billing-activation|chat-upload|chat-pdf-download|mobile-overlays|sms-login)\.spec\.ts$/,
       use: {
         baseURL: `http://127.0.0.1:${PUBLIC_PORT}`,
         headless: true,

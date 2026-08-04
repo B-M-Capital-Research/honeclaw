@@ -32,6 +32,10 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
         mcp_env_entry("HONE_MCP_CHANNEL_TARGET", request.channel_target.as_str()),
         mcp_env_entry("HONE_MCP_SESSION_ID", request.session_id.as_str()),
         mcp_env_entry(
+            "HONE_MCP_WORKING_DIRECTORY",
+            request.working_directory.as_str(),
+        ),
+        mcp_env_entry(
             "HONE_MCP_ALLOW_CRON",
             if request.allow_cron { "1" } else { "0" },
         ),
@@ -42,7 +46,7 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
     push_data_dir_env_or_derived(&mut env_entries, || {
         absolute_parent_dir(&request.runtime_dir)
     });
-    push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
+    push_skills_dir_env_or_derived(&mut env_entries, &request.config_path);
     push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
     push_runtime_env_vars_from_config(&mut env_entries, &request.config_path);
     if let Some(allowed_tools) = &request.allowed_tools {
@@ -90,6 +94,38 @@ fn push_data_dir_env_or_derived(
     } else if let Some(value) = derived().filter(|value| !value.trim().is_empty()) {
         env_entries.push(mcp_env_entry("HONE_DATA_DIR", value));
     }
+}
+
+fn push_skills_dir_env_or_derived(env_entries: &mut Vec<Value>, config_path: &str) {
+    if let Some(value) = normalized_env_dir("HONE_SKILLS_DIR") {
+        env_entries.push(mcp_env_entry("HONE_SKILLS_DIR", value));
+        return;
+    }
+
+    let config_file = PathBuf::from(config_path);
+    let config_root = config_file
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let configured = HoneConfig::from_file(config_path)
+        .ok()
+        .and_then(|config| {
+            config
+                .extra
+                .get("skills_dir")
+                .and_then(|value| value.as_str())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("skills"));
+    let absolute = if configured.is_absolute() {
+        configured
+    } else {
+        config_root.join(configured)
+    };
+    env_entries.push(mcp_env_entry(
+        "HONE_SKILLS_DIR",
+        absolute.to_string_lossy().to_string(),
+    ));
 }
 
 fn normalized_env_dir(name: &str) -> Option<String> {
@@ -853,6 +889,7 @@ mod tests {
             "HONE_MCP_ACTOR_USER_ID",
             "HONE_MCP_ACTOR_SCOPE",
             "HONE_MCP_SESSION_ID",
+            "HONE_MCP_WORKING_DIRECTORY",
             "HONE_DATA_DIR",
             "HONE_SKILLS_DIR",
             "HONE_AGENT_SANDBOX_DIR",
@@ -953,6 +990,10 @@ mod tests {
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-data")
         }));
         assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_MCP_WORKING_DIRECTORY")
+                && entry.get("value").and_then(|v| v.as_str()) == Some(".")
+        }));
+        assert!(env_entries.iter().any(|entry| {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_SKILLS_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-skills")
         }));
@@ -982,6 +1023,30 @@ mod tests {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp")
         }));
+    }
+
+    #[test]
+    fn hone_mcp_servers_derives_skills_dir_from_config_location() {
+        let _guard = env_lock();
+        clear_test_env();
+        set_test_mcp_binary_override();
+        let root = temp_root("hone_mcp_derived_skills_dir");
+        std::fs::create_dir_all(&root).expect("create config root");
+        let config_path = root.join("config.yaml");
+        std::fs::write(&config_path, "{}\n").expect("write config");
+        let mut request = make_request();
+        request.config_path = config_path.to_string_lossy().to_string();
+
+        let payload = hone_mcp_servers(&request).expect("payload");
+        let env_entries = payload[0]["env"].as_array().expect("env entries");
+        let expected = root.join("skills").to_string_lossy().to_string();
+
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(Value::as_str) == Some("HONE_SKILLS_DIR")
+                && entry.get("value").and_then(Value::as_str) == Some(expected.as_str())
+        }));
+        clear_test_env();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

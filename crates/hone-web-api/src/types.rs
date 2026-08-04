@@ -64,6 +64,20 @@ pub struct PublicEmailLoginRequest {
 pub struct PublicChatRequest {
     pub message: Option<String>,
     pub attachments: Option<Vec<PublicChatAttachmentInput>>,
+    pub earnings_workflow: Option<PublicEarningsWorkflowRequest>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicEarningsWorkflowKind {
+    Preview,
+    Analysis,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PublicEarningsWorkflowRequest {
+    pub kind: PublicEarningsWorkflowKind,
+    pub company: String,
 }
 
 #[derive(Deserialize)]

@@ -10,6 +10,10 @@ pub(crate) struct SlashSkillExpansion {
     pub(crate) raw_input: String,
     pub(crate) invoked_prompt: String,
     pub(crate) runtime_input: String,
+    /// The user's task without the invoked skill's instruction body. Server
+    /// side entity discovery and retry classification must never inspect the
+    /// skill prompt as though the user had written it.
+    pub(crate) user_task_input: Option<String>,
     pub(crate) skill_id: String,
 }
 
@@ -96,11 +100,7 @@ impl<'a> PromptTurnBuilder<'a> {
             prompt_time_beijing,
             include_conversation_context,
         );
-        if self
-            .core
-            .effective_runner_conversation_strategy(self.actor)
-            .retains_native_history()
-        {
+        if use_native_codex_turn_input {
             bundle.conversation_context = None;
         }
         let runtime_user_input = if related_skills.is_empty() {
@@ -173,6 +173,7 @@ impl<'a> PromptTurnBuilder<'a> {
                     raw_input: user_input.to_string(),
                     invoked_prompt,
                     runtime_input,
+                    user_task_input: (!tail.trim().is_empty()).then(|| tail.trim().to_string()),
                     skill_id: skill.id,
                 }));
             }
@@ -194,6 +195,9 @@ impl<'a> PromptTurnBuilder<'a> {
                 raw_input: user_input.to_string(),
                 invoked_prompt: invoked_prompt.clone(),
                 runtime_input: compose_invoked_skill_runtime_input(&invoked_prompt, args),
+                user_task_input: args
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string),
                 skill_id: skill.id,
             }));
         }
