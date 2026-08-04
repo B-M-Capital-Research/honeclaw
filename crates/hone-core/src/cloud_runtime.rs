@@ -5140,6 +5140,13 @@ impl OssObjectStore {
             ))
     }
 
+    pub fn is_actor_uri_for(&self, raw: &str, actor: &ActorIdentity) -> bool {
+        let Some((bucket, key)) = parse_oss_uri(raw) else {
+            return false;
+        };
+        bucket == self.bucket && key.starts_with(&self.actor_prefix(actor))
+    }
+
     pub fn parse_managed_uri<'a>(&self, raw: &'a str) -> Option<&'a str> {
         let (bucket, key) = parse_oss_uri(raw)?;
         (bucket == self.bucket).then_some(key)
@@ -5882,6 +5889,15 @@ mod tests {
                 .actor_prefix(&actor)
                 .starts_with("users/telegram__group__u1/")
         );
+
+        let owned = store.object_uri(&store.actor_upload_key(&actor, "session-1", "report.pdf"));
+        let other_actor = ActorIdentity::new("telegram", "u2", Some("group")).expect("other actor");
+        assert!(store.is_actor_uri_for(&owned, &actor));
+        assert!(!store.is_actor_uri_for(&owned, &other_actor));
+        assert!(!store.is_actor_uri_for(
+            "oss://other-bucket/users/telegram__group__u1/uploads/session-1/report.pdf",
+            &actor,
+        ));
     }
 
     #[test]

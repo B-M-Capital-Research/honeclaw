@@ -1461,14 +1461,19 @@ fn resolve_public_proxy_path(
     };
     let user_upload_root = public_upload_dir(state, user_id);
     let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
+    let actor = ActorIdentity::new("web", user_id, Option::<String>::None)
+        .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+    if let Some(oss) = oss.as_ref()
+        && oss.is_actor_uri_for(raw_path, &actor)
+    {
+        return Ok(raw_path.trim().to_string());
+    }
     if let Ok(path) =
         validate_public_upload_path(&user_upload_root, oss.as_ref(), user_id, raw_path)
     {
         return Ok(path);
     }
 
-    let actor = ActorIdentity::new("web", user_id, Option::<String>::None)
-        .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))?;
     let sandbox_root = hone_channels::actor_sandbox_root(&actor);
     resolve_public_generated_file_path(&sandbox_root, raw_path)
 }
