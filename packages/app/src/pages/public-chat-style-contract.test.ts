@@ -27,8 +27,8 @@ describe("public chat visual contract", () => {
     expect(chat).toContain('onInsights={() => navigate("/community")}');
     // 三项导航：Agent / 洞察 / 我的
     expect(workspace).toContain("<span>Agent</span>");
-    expect(workspace).toContain("<span>洞察</span>");
-    expect(workspace).toContain("<span>我的</span>");
+    expect(workspace).toContain("CONTENT.chat_page.workspace.insights");
+    expect(workspace).toContain("CONTENT.chat_page.workspace.me");
     expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(workspaceCss).toContain("grid-template-columns: repeat(3,1fr)");
     expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");
@@ -90,7 +90,7 @@ describe("public chat visual contract", () => {
     expect(chat).toContain('class="public-chat-shell is-conversation"');
     expect(chat).toContain("<AgentWorkspaceLoadingState");
     expect(chat).toContain("<AgentWorkspaceHistoryDrawer");
-    expect(workspace).toContain('aria-label="工作区菜单与对话记录"');
+    expect(workspace).toContain("CONTENT.chat_page.workspace.drawer_aria");
     expect(workspaceCss).toContain("agent-workspace-history-drawer");
     expect(workspaceCss).toContain("agent-workspace-restore-notice");
     expect(workspaceCss).toContain("agent-workspace-loading");

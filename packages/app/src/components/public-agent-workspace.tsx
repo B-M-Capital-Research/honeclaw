@@ -10,6 +10,7 @@ import {
   type JSX,
 } from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
+import { CONTENT } from "@/lib/public-content";
 import { groupResearchByDate } from "@/lib/public-agent-workspace";
 import type {
   AgentWorkspaceEvent,
@@ -98,7 +99,7 @@ export function AgentWorkspaceSidebar(props: {
   onLogout: () => void;
 }) {
   const avatar = () =>
-    props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
+    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
       ? "H"
       : props.userName.slice(-1);
   const [query, setQuery] = createSignal("");
@@ -111,36 +112,36 @@ export function AgentWorkspaceSidebar(props: {
     if (props.activeMode === "overview") setQuery("");
   });
   return (
-    <aside class="agent-workspace-sidebar" aria-label="HONE 工作台">
+    <aside class="agent-workspace-sidebar" aria-label={CONTENT.chat_page.workspace.brand_aria}>
       <button type="button" class="agent-workspace-brand" onClick={props.onNewResearch} aria-label="HONE Agent">
         <HoneBrand />
       </button>
       <nav class="agent-workspace-nav">
         <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
-        <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
-        <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>我的</span></button>
+        <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+        <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
       </nav>
       <div class="agent-workspace-sidebar-rule" />
-      <div class="agent-workspace-nav-label">对话记录</div>
+      <div class="agent-workspace-nav-label">{CONTENT.chat_page.workspace.history_label}</div>
       <button type="button" class={`agent-workspace-new ${props.activeSection === "agent" && props.activeMode === "overview" ? "is-active" : ""}`} onClick={props.onNewResearch}>
-        <AgentWorkspaceIcon name="new" /><span>新对话</span>
+        <AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span>
       </button>
       <label class="agent-workspace-history-search">
         <AgentWorkspaceIcon name="search" size={16} />
-        <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="搜索对话记录" />
+        <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder={CONTENT.chat_page.workspace.search_history} />
       </label>
       <section class="agent-workspace-history">
         <Show
           when={filteredResearch().length > 0}
           fallback={
             <>
-              <div class="agent-workspace-history-label">最近</div>
+              <div class="agent-workspace-history-label">{CONTENT.chat_page.workspace.recent}</div>
               <p role="status">
                 {props.researchLoading
-                  ? "正在同步对话记录…"
+                  ? CONTENT.chat_page.workspace.syncing_history
                   : query().trim()
-                    ? "没有匹配的对话记录，换一个关键词试试。"
-                    : "还没有对话记录，开始提问后会出现在这里。"}
+                    ? CONTENT.chat_page.workspace.no_match
+                    : CONTENT.chat_page.workspace.history_empty}
               </p>
             </>
           }
@@ -156,16 +157,16 @@ export function AgentWorkspaceSidebar(props: {
         </Show>
         <Show when={props.hasOlder && props.onLoadOlder && !query().trim()}>
           <button type="button" class="agent-workspace-history-older" disabled={props.loadingOlder} onClick={() => props.onLoadOlder?.()}>
-            {props.loadingOlder ? "正在加载…" : "加载更早记录"}
+            {props.loadingOlder ? CONTENT.chat_page.workspace.loading : CONTENT.chat_page.workspace.load_older}
           </button>
         </Show>
       </section>
       <div class="agent-workspace-user">
         <button type="button" class="agent-workspace-user-main" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}>
           <span class="agent-workspace-avatar">{avatar()}</span>
-          <span><strong>{props.userName}</strong><small>个人研究空间</small></span>
+          <span><strong>{props.userName}</strong><small>{CONTENT.chat_page.workspace.personal_space}</small></span>
         </button>
-        <button type="button" class="agent-workspace-logout" onClick={props.onLogout}>退出</button>
+        <button type="button" class="agent-workspace-logout" onClick={props.onLogout}>{CONTENT.chat_page.workspace.logout}</button>
       </div>
     </aside>
   );
@@ -183,11 +184,11 @@ export function AgentWorkspaceTopbar(props: {
 }) {
   return (
     <header class="agent-workspace-topbar">
-      <span>{props.label ?? "你的投资研究智能体"}</span>
+      <span>{props.label ?? CONTENT.chat_page.workspace.agent_tagline}</span>
       <div class="agent-workspace-topbar-actions">
-        <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或社区内容"} /></label></Show>
+        <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? CONTENT.chat_page.workspace.search_all} /></label></Show>
         {props.preferences}
-        <button type="button" onClick={props.onPushes} aria-label="打开通知">
+        <button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.open_pushes}>
           <AgentWorkspaceIcon name="bell" />
           <Show when={props.unreadPushCount > 0}><i /></Show>
         </button>
@@ -207,11 +208,11 @@ export function AgentWorkspaceLoadingState(props: {
           <AgentWorkspaceIcon name="agent" size={24} />
         </span>
         <div>
-          <strong>{props.retrying ? "正在重新连接研究空间" : "正在恢复研究空间"}</strong>
+          <strong>{props.retrying ? CONTENT.chat_page.workspace.reconnecting : CONTENT.chat_page.workspace.restoring}</strong>
           <p>
             {props.retrying
-              ? `后端响应较慢，正在进行第 ${props.attempt ?? 2} 次同步。`
-              : "正在同步研究记录、推送与最近会话。"}
+              ? CONTENT.chat_page.workspace.sync_attempt.replace("{attempt}", String(props.attempt ?? 2))
+              : CONTENT.chat_page.workspace.sync_detail}
           </p>
         </div>
       </div>
@@ -224,18 +225,22 @@ export function AgentWorkspaceLoadingState(props: {
   );
 }
 
-const QUICK_STARTS: Array<{
+type QuickStart = {
   icon: IconName;
   title: string;
   summary: string;
   meta: string;
   prompt: string;
   action?: "tracking";
-}> = [
-  { icon: "invest", title: "解释组合波动", summary: "解释今天组合上涨或下跌的主要原因", meta: "组合 · 今日", prompt: "请结合我的持仓，解释今天组合波动的主要原因，并按影响大小排序。" },
-  { icon: "compare", title: "比较两家公司", summary: "比较两家公司当前的推理侧机会", meta: "公司 · 对比", prompt: "我想比较两家公司，请先问我公司名称，再从业务、竞争力、估值和风险展开。" },
-  { icon: "paper", title: "阅读财报材料", summary: "从财报中识别需要验证的主线", meta: "材料 · 深度", prompt: "我会上传一份财报材料，请提取关键数据、管理层表述、变化和待验证问题。" },
-  { icon: "track", title: "建立跟踪计划", summary: "为持仓或关注标的建立持续跟踪", meta: "任务 · 持续", prompt: "请根据我的持仓和关注标的，帮我建立一套持续跟踪计划。", action: "tracking" },
+};
+
+/// Built per call so the locale proxy is read at render time; a module-level
+/// const would freeze whichever language was active at import.
+const quickStarts = (): QuickStart[] => [
+  { icon: "invest", title: CONTENT.chat_page.workspace.qa_moves_title, summary: CONTENT.chat_page.workspace.qa_moves_summary, meta: CONTENT.chat_page.workspace.qa_moves_meta, prompt: CONTENT.chat_page.workspace.qa_moves_prompt },
+  { icon: "compare", title: CONTENT.chat_page.workspace.qa_compare_title, summary: CONTENT.chat_page.workspace.qa_compare_summary, meta: CONTENT.chat_page.workspace.qa_compare_meta, prompt: CONTENT.chat_page.workspace.qa_compare_prompt },
+  { icon: "paper", title: CONTENT.chat_page.workspace.qa_filing_title, summary: CONTENT.chat_page.workspace.qa_filing_summary, meta: CONTENT.chat_page.workspace.qa_filing_meta, prompt: CONTENT.chat_page.workspace.qa_filing_prompt },
+  { icon: "track", title: CONTENT.chat_page.workspace.qa_track_title, summary: CONTENT.chat_page.workspace.qa_track_summary, meta: CONTENT.chat_page.workspace.qa_track_meta, prompt: CONTENT.chat_page.workspace.qa_track_prompt, action: "tracking" },
 ];
 
 export function AgentWorkspaceOverview(props: {
@@ -249,32 +254,34 @@ export function AgentWorkspaceOverview(props: {
   onInsights: () => void;
   onCalendar: () => void;
 }) {
-  const fallbackInsights: AgentWorkspaceInsight[] = [
-    { id: "portfolio", eyebrow: "持仓研究", title: "梳理今天的组合变化", summary: "从持仓、新闻与事件中找出值得关注的变量" },
-    { id: "event", eyebrow: "即将发生", title: "查看近期重要事件", summary: "把宏观日程与持仓财报放进同一条时间线" },
-    { id: "research", eyebrow: "新研究", title: "建立一条研究主线", summary: "从问题出发，保留来源、结论与后续跟踪" },
+  const fallbackInsights = (): AgentWorkspaceInsight[] => [
+    { id: "portfolio", eyebrow: CONTENT.chat_page.workspace.seed_portfolio_eyebrow, title: CONTENT.chat_page.workspace.seed_portfolio_title, summary: CONTENT.chat_page.workspace.seed_portfolio_summary },
+    { id: "event", eyebrow: CONTENT.chat_page.workspace.seed_event_eyebrow, title: CONTENT.chat_page.workspace.seed_event_title, summary: CONTENT.chat_page.workspace.seed_event_summary },
+    { id: "research", eyebrow: CONTENT.chat_page.workspace.seed_research_eyebrow, title: CONTENT.chat_page.workspace.seed_research_title, summary: CONTENT.chat_page.workspace.seed_research_summary },
   ];
   const visibleInsights = createMemo(() => {
-    const source = props.insights.length ? props.insights : fallbackInsights;
+    const source = props.insights.length ? props.insights : fallbackInsights();
     const query = props.searchQuery.trim().toLowerCase();
     if (!query) return source;
     return source.filter((item) => `${item.title} ${item.summary}`.toLowerCase().includes(query));
   });
   const promptForInsight = (item: AgentWorkspaceInsight) =>
-    `请基于这条研究线索继续分析：${item.title}。${item.summary}`;
+    CONTENT.chat_page.workspace.insight_prompt
+      .replace("{title}", item.title)
+      .replace("{summary}", item.summary);
   return (
     <main class="agent-workspace-overview">
       <div class="agent-workspace-title-row">
-        <div><h1>Agent</h1><div class="agent-workspace-context">正在基于：<span>我的组合</span><span>今日事件</span></div></div>
+        <div><h1>Agent</h1><div class="agent-workspace-context">{CONTENT.chat_page.workspace.context_prefix}<span>{CONTENT.chat_page.workspace.context_portfolio}</span><span>{CONTENT.chat_page.workspace.context_events}</span></div></div>
       </div>
       <section class="agent-workspace-greeting">
         <span class="agent-workspace-agent-mark"><AgentWorkspaceIcon name="agent" size={25} /></span>
-        <div><h2>{props.greeting}</h2><p>今天有 {props.insightCount} 条值得继续研究的线索。</p></div>
+        <div><h2>{props.greeting}</h2><p>{CONTENT.chat_page.workspace.insight_count.replace("{count}", String(props.insightCount))}</p></div>
       </section>
       <section class="agent-workspace-section">
-        <div class="agent-workspace-section-heading"><h2>快速开始</h2><span>会展开来源与推理过程</span></div>
+        <div class="agent-workspace-section-heading"><h2>{CONTENT.chat_page.workspace.quick_start}</h2><span>{CONTENT.chat_page.workspace.quick_start_hint}</span></div>
         <div class="agent-workspace-quick-grid">
-          <For each={QUICK_STARTS}>{(item) => (
+          <For each={quickStarts()}>{(item) => (
             <button type="button" onClick={() => item.action === "tracking" ? props.onTracking() : props.onPrompt(item.prompt)}>
               <AgentWorkspaceIcon name={item.icon} />
               <strong>{item.title}</strong><span>{item.summary}</span><small>{item.meta}</small>
@@ -283,9 +290,9 @@ export function AgentWorkspaceOverview(props: {
         </div>
       </section>
       <section class="agent-workspace-section agent-workspace-insights">
-        <div class="agent-workspace-section-heading"><h2>今日研究线索</h2><button type="button" onClick={props.onInsights}>逛逛社区 <AgentWorkspaceIcon name="arrow" size={16} /></button></div>
+        <div class="agent-workspace-section-heading"><h2>{CONTENT.chat_page.workspace.today_insights}</h2><button type="button" onClick={props.onInsights}>{CONTENT.chat_page.workspace.browse_community} <AgentWorkspaceIcon name="arrow" size={16} /></button></div>
         <div class="agent-workspace-insight-list">
-          <Show when={visibleInsights().length > 0} fallback={<div class="agent-workspace-empty">没有匹配的研究线索，换一个关键词试试。</div>}>
+          <Show when={visibleInsights().length > 0} fallback={<div class="agent-workspace-empty">{CONTENT.chat_page.workspace.no_insight_match}</div>}>
             <For each={visibleInsights()}>{(item) => (
               <button type="button" onClick={() => props.onPrompt(promptForInsight(item))}>
                 <i /><span><small>{item.eyebrow}</small><strong>{item.title}</strong><em>{item.summary}</em></span><AgentWorkspaceIcon name="arrow" />
@@ -296,9 +303,9 @@ export function AgentWorkspaceOverview(props: {
       </section>
       <section class="agent-workspace-section agent-workspace-mobile-events">
         <div class="agent-workspace-section-heading">
-          <h2>重要事件</h2>
+          <h2>{CONTENT.chat_page.workspace.key_events}</h2>
           <button type="button" onClick={props.onCalendar}>
-            财经日历 <AgentWorkspaceIcon name="arrow" size={16} />
+            {CONTENT.chat_page.workspace.finance_calendar} <AgentWorkspaceIcon name="arrow" size={16} />
           </button>
         </div>
         <button type="button" onClick={props.onCalendar}>
@@ -306,11 +313,11 @@ export function AgentWorkspaceOverview(props: {
             <AgentWorkspaceIcon name="calendar" />
           </span>
           <span>
-            <strong>{props.events[0]?.title ?? "查看我的财经日历"}</strong>
+            <strong>{props.events[0]?.title ?? CONTENT.chat_page.workspace.open_my_calendar}</strong>
             <small>
               {props.events[0]
                 ? `${props.events[0].date} ${props.events[0].time}`.trim()
-                : "宏观日程与持仓财报"}
+                : CONTENT.chat_page.workspace.calendar_summary}
             </small>
           </span>
           <AgentWorkspaceIcon name="arrow" />
@@ -328,17 +335,17 @@ export function AgentWorkspaceRightRail(props: {
 }) {
   return (
     <aside class="agent-workspace-rail">
-      <section><div class="agent-workspace-rail-heading"><h2>即将到来的事件</h2><button type="button" onClick={props.onCalendar}>财经日历</button></div>
+      <section><div class="agent-workspace-rail-heading"><h2>{CONTENT.chat_page.workspace.upcoming_events}</h2><button type="button" onClick={props.onCalendar}>{CONTENT.chat_page.workspace.finance_calendar}</button></div>
         <div class="agent-workspace-event-list">
-          <Show when={props.events.length > 0} fallback={<button type="button" onClick={props.onCalendar} class="agent-workspace-rail-empty"><AgentWorkspaceIcon name="calendar" /><span>查看你的财经日历</span></button>}>
+          <Show when={props.events.length > 0} fallback={<button type="button" onClick={props.onCalendar} class="agent-workspace-rail-empty"><AgentWorkspaceIcon name="calendar" /><span>{CONTENT.chat_page.workspace.open_your_calendar}</span></button>}>
             <For each={props.events}>{(event) => <button type="button" onClick={props.onCalendar}><span><strong>{event.title}</strong><small>{event.date}{event.time ? ` ${event.time}` : ""}</small><em>{event.summary}</em></span><AgentWorkspaceIcon name="arrow" size={15} /></button>}</For>
           </Show>
         </div>
       </section>
-      <section><div class="agent-workspace-rail-heading"><h2>最近研究</h2></div>
+      <section><div class="agent-workspace-rail-heading"><h2>{CONTENT.chat_page.workspace.recent_research}</h2></div>
         <div class="agent-workspace-saved-list">
-          <Show when={props.research.length > 0} fallback={<p>发起研究后会自动保存在这里。</p>}>
-            <For each={props.research.slice(0, 3)}>{(item) => <button type="button" onClick={() => props.onSelectResearch(item.id)}><strong>{item.title}</strong><small>继续这项研究</small></button>}</For>
+          <Show when={props.research.length > 0} fallback={<p>{CONTENT.chat_page.workspace.research_empty}</p>}>
+            <For each={props.research.slice(0, 3)}>{(item) => <button type="button" onClick={() => props.onSelectResearch(item.id)}><strong>{item.title}</strong><small>{CONTENT.chat_page.workspace.continue_research}</small></button>}</For>
           </Show>
         </div>
       </section>
@@ -357,10 +364,10 @@ export function AgentWorkspaceMobileHeader(props: {
   onAccount: () => void;
 }) {
   const avatar = () =>
-    props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
+    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
       ? "H"
       : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label="打开菜单" class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="对话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={`打开${props.userName}的账户`}>{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label={CONTENT.chat_page.workspace.open_menu} class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label={CONTENT.chat_page.workspace.history_title} class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.pushes}><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={CONTENT.chat_page.workspace.open_account.replace("{name}", props.userName)}>{avatar()}</button></div></header>;
 }
 
 /**
@@ -386,7 +393,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
 }) {
   const [query, setQuery] = createSignal("");
   const avatar = () =>
-    props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
+    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
       ? "H"
       : props.userName.slice(-1);
   const filteredResearch = createMemo(() => {
@@ -461,31 +468,31 @@ export function AgentWorkspaceHistoryDrawer(props: {
   return (
     <Show when={props.open}>
       <div class="agent-workspace-history-backdrop" onClick={props.onClose} />
-      <aside class="agent-workspace-history-drawer" aria-label="工作区菜单与对话记录" aria-modal="true" role="dialog">
+      <aside class="agent-workspace-history-drawer" aria-label={CONTENT.chat_page.workspace.drawer_aria} aria-modal="true" role="dialog">
         <header>
           <HoneBrand />
-          <button type="button" onClick={props.onClose} aria-label="关闭菜单">×</button>
+          <button type="button" onClick={props.onClose} aria-label={CONTENT.chat_page.workspace.close_menu}>×</button>
         </header>
-        <nav class="agent-workspace-drawer-nav" aria-label="主要菜单">
-          <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>新对话</span></button>
-          <button type="button" onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
-          <button type="button" onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>我的</span></button>
+        <nav class="agent-workspace-drawer-nav" aria-label={CONTENT.chat_page.workspace.main_menu}>
+          <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span></button>
+          <button type="button" onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+          <button type="button" onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
         </nav>
         <label class="agent-workspace-history-search agent-workspace-drawer-search">
           <AgentWorkspaceIcon name="search" size={16} />
-          <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="搜索聊天记录" />
+          <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder={CONTENT.chat_page.workspace.search_chats} />
         </label>
-        <div class="agent-workspace-history-drawer-label">聊天记录</div>
+        <div class="agent-workspace-history-drawer-label">{CONTENT.chat_page.workspace.chat_records}</div>
         <div class="agent-workspace-history-drawer-list">
           <Show
             when={filteredResearch().length > 0}
             fallback={
               <p role="status">
                 {props.researchLoading
-                  ? "正在同步对话记录…"
+                  ? CONTENT.chat_page.workspace.syncing_history
                   : query().trim()
-                    ? "没有匹配的对话记录，换一个关键词试试。"
-                    : "开始提问后，对话记录会出现在这里。"}
+                    ? CONTENT.chat_page.workspace.no_match
+                    : CONTENT.chat_page.workspace.drawer_history_empty}
               </p>
             }
           >
@@ -503,13 +510,13 @@ export function AgentWorkspaceHistoryDrawer(props: {
           </Show>
           <Show when={props.hasOlder && !query().trim()}>
             <button type="button" class="agent-workspace-history-more" disabled={props.loadingOlder} onClick={props.onLoadOlder}>
-              {props.loadingOlder ? "正在加载…" : "加载更早记录"}
+              {props.loadingOlder ? CONTENT.chat_page.workspace.loading : CONTENT.chat_page.workspace.load_older}
             </button>
           </Show>
         </div>
         <button type="button" class="agent-workspace-drawer-user" onClick={props.onAccount}>
           <span class="agent-workspace-avatar">{avatar()}</span>
-          <span><strong>{props.userName}</strong><small>个人研究空间</small></span>
+          <span><strong>{props.userName}</strong><small>{CONTENT.chat_page.workspace.personal_space}</small></span>
         </button>
       </aside>
     </Show>
@@ -525,9 +532,9 @@ export function AgentWorkspaceMobileNav(props: {
   onAgent: () => void;
   onAccount: () => void;
 }) {
-  return <nav class="agent-workspace-mobile-nav" aria-label="主要导航">
+  return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
     <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
-    <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
-    <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>我的</span></button>
+    <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+    <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
   </nav>;
 }
