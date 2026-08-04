@@ -9,6 +9,13 @@
 > archived after Stripe-only production acceptance. Do not use this runbook for
 > a new deployment or customer recovery.
 
+Final Discord retirement completed on 2026-08-04. The public Whop purchase pin
+was replaced by a verified Stripe-only HONE message, `📋｜whop` became the
+restricted `📋｜历史支付日志`, and Discord API readback showed no active Whop
+integration or webhook. Historical event bodies remain only as restricted
+records and must not be treated as current entitlement evidence. Current
+operations are in `docs/runbooks/discord-stripe-community.md`.
+
 ## Purpose
 
 Use Whop's native Discord app to give an active Whop member access to the

@@ -839,6 +839,49 @@ Last updated: 2026-08-04
   atomic cutover. `/api/meta`, cloud authority, ports, auth boundaries, service
   stability and the retained rollback release all passed after cutover.
 
+## D-2026-08-04-04 Make Discord Community Operations Stripe-only
+
+- Status: Accepted and externally verified in guild
+  `1391380994182877205` on 2026-08-04.
+- Created: 2026-08-04
+- Owner: Codex + owner
+- Supersedes: the current-operation portions of `D-2026-07-26-04` and the
+  Discord role-fulfillment portions of `D-2026-07-26-06`; their historical
+  evidence remains valid for the retired Whop stage.
+- Related docs: `docs/runbooks/discord-stripe-community.md`,
+  `docs/archive/plans/discord-stripe-community-migration.md`,
+  `docs/handoffs/2026-08-04-discord-stripe-community-migration.md`
+- Context: Stripe-only Billing was live and Whop purchase/webhook resources were
+  retired, but the public Discord membership pin still linked to Whop Checkout
+  and promised automatic Whop role delivery. The backend log channel still used
+  the provider name. HONE had a protected local bot token, but that bot was not
+  a member of the production community.
+- Decision: Install the dedicated HONE bot in the production guild, present it
+  as `HONE 社区助手`, and make all current membership copy point only to HONE
+  `/activate`, Stripe Checkout, and `/me`. Replace the public stale message only
+  after the new pin is verified. Rename the old provider log channel as a
+  restricted historical archive; retain its contents for now because they are
+  operational records that may contain PII.
+- Permission exception: The owner approved Discord Administrator after the
+  narrower Manage Guild/Channels/Roles/Messages grant was proven unable to
+  cross an existing channel-level send deny, and Discord rejected a managed bot
+  role changing its own overwrite. The token therefore has production-admin
+  impact and must remain in a mode-`0600`, Git-ignored config. The local listener
+  stays disabled until a separate runtime behavior review.
+- Authority boundary: Discord roles remain community presentation only. HONE
+  Billing is the application-access truth source and Stripe is the sole external
+  subscription authority. Until a separately designed reconciliation system
+  exists, operations may grant `VIP 付费用户` only after protected HONE admin
+  confirmation; email, screenshots, redirects, Discord state, and historical
+  provider logs cannot grant HONE access.
+- Verification: Discord API confirmed identity, guild membership, Administrator
+  and management permissions, channels, roles, integrations, and zero guild
+  webhooks. The replacement pin passed content/link readback; the old message
+  deleted and returned `404`; the renamed historical channel and nickname passed
+  exact readback. External Chrome showed the final Stripe-only message and no
+  visible Whop text. No unrelated member, role, message, or historical log was
+  changed.
+
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 
 - Status: Accepted and production-verified on exact commit `84ca1f2114c059a157cd893c84067638c7618e84`.

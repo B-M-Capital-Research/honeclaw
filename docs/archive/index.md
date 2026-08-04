@@ -4,6 +4,18 @@ Last updated: 2026-08-04
 
 ## 2026-08-04
 
+### Discord Stripe-only Community Migration
+
+- Status: done; external Discord state updated and documentation completed; no application release or deployment
+- Date: 2026-08-04
+- Plan: `docs/archive/plans/discord-stripe-community-migration.md`
+- Handoff: `docs/handoffs/2026-08-04-discord-stripe-community-migration.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-04-04-make-discord-community-operations-stripe-only`; refines the production consequences of `D-2026-08-04-01`
+- Related PRs / commits: direct `main` documentation commit; no PR, release, deployment, or tag
+- Related runbooks / regressions: `docs/runbooks/discord-stripe-community.md`; retired `docs/runbooks/whop-discord-fulfillment.md`; Discord REST identity/guild/member/role/channel/integration/webhook probes; external Chrome QA
+- Current conclusion: `HONE 社区助手` is installed in `巴芒投研美股社群` with owner-approved Administrator after narrow permissions were proven insufficient for existing channel denies. The only public membership pin now uses HONE `/activate`, Stripe Checkout, and `/me`; the old Whop pin is deleted. `📋｜whop` became restricted `📋｜历史支付日志`, no active Whop Discord integration/webhook remains, and historical PII-bearing logs were neither exported nor deleted. Discord role state remains outside HONE Billing authority.
+- Next entry point: `docs/handoffs/2026-08-04-discord-stripe-community-migration.md`; use the runbook before any bot permission, copy, role, or historical-log change.
+
 ### Stripe-only Production Billing Cutover
 
 - Status: done; deployed to production from exact GHCR image; no formal release or tag
