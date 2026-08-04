@@ -7,6 +7,7 @@
 - owner: Codex
 - related_files:
   - `crates/hone-web-api/src/routes/public.rs`
+  - `crates/hone-channels/src/agent_session/artifacts.rs`
   - `agents/function_calling/src/lib.rs`
 - related_docs:
   - `docs/current-plan.md`
@@ -21,12 +22,14 @@
 - 只识别 HONE 自己生成的中英文财报标准文案，不把宽泛自然语言误判为管理员工作流。
 - 只有数据库复核后的管理员可以通过标准文案进入受信任 runner；非管理员保持普通问答与既有权限边界。
 - function-calling 流式输出隐藏标准工具标签与带 provider namespace 的工具标签，包括拆分 chunk 和未闭合块。
-- 不修改现有 PDF、Skill 研究逻辑或当前主工作区中的其它未提交改动。
+- 财报 Skill 已写入附件标记时，仍需从本轮 actor sandbox 收集生成物并在 cloud-authoritative 模式上传 OSS；把脱敏占位引用改写为持久引用，不能因看到 `[附件: ...]` 就跳过持久化。
+- 不再修改 PDF 研究逻辑或当前主工作区中的其它未提交改动。
 
 ## Validation
 
 - `hone-web-api` 单元测试覆盖中英文 preview / analysis 标准文案、公司提取、普通文本不误判。
 - `function_calling` 单元测试覆盖 `<minimax:tool_call>` 完整、拆分和未闭合输出，并保持标签前后正常正文。
+- `hone-channels` 单元测试覆盖 Agent 自带 `<absolute-path>` 附件标记时仍收集文件、替换引用且不生成重复卡片。
 - 运行改动文件格式检查、聚焦 Rust 测试、workspace check、Web 测试和 CI-safe 回归。
 - 生产零活跃会话切换后，验证 Codex 认证、Skill 加载、中间进度、最终报告与 PDF 卡片。
 

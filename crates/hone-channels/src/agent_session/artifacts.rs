@@ -14,7 +14,7 @@ pub(super) fn attach_web_generated_files(
     run_started_at: SystemTime,
     oss: Option<&OssPromotion<'_>>,
 ) -> usize {
-    if !response.success || response.content.contains("[附件: ") {
+    if !response.success {
         return 0;
     }
 
@@ -33,11 +33,31 @@ pub(super) fn attach_web_generated_files(
         let reference = oss
             .and_then(|promotion| promotion.promote(path))
             .unwrap_or_else(|| path.to_string_lossy().to_string());
-        response
-            .content
-            .push_str(&format!("\n[附件: {reference}]"));
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if !replace_redacted_attachment_reference(&mut response.content, name, &reference) {
+            response.content.push_str(&format!("\n[附件: {reference}]"));
+        }
     }
     files.len()
+}
+
+fn replace_redacted_attachment_reference(
+    content: &mut String,
+    filename: &str,
+    reference: &str,
+) -> bool {
+    if filename.is_empty() {
+        return false;
+    }
+    let redacted = format!("[附件: <absolute-path>/{filename}]");
+    if !content.contains(&redacted) {
+        return false;
+    }
+    *content = content.replace(&redacted, &format!("[附件: {reference}]"));
+    true
 }
 
 /// 把沙箱里的生成物上传到对象存储，返回 `oss://` 引用。上传失败时返回 `None`，
@@ -52,7 +72,9 @@ impl OssPromotion<'_> {
     fn promote(&self, path: &Path) -> Option<String> {
         let bytes = fs::read(path).ok()?;
         let name = path.file_name()?.to_string_lossy().to_string();
-        let key = self.store.actor_upload_key(self.actor, self.session_id, &name);
+        let key = self
+            .store
+            .actor_upload_key(self.actor, self.session_id, &name);
         let content_type = content_type_for(path);
         let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             tokio::task::block_in_place(|| {
@@ -242,5 +264,32 @@ mod tests {
 
         assert_eq!(attached, 0);
         assert!(!response.content.contains("[附件: "));
+    }
+
+    #[test]
+    fn redacted_agent_attachment_is_rewritten_instead_of_skipping_persistence() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let run_started_at = SystemTime::now();
+        let file_path = root.path().join("CRCL-财报前瞻.pdf");
+        std::fs::write(&file_path, b"%PDF-generated").expect("write generated PDF");
+        let mut response = successful_response(
+            "已生成可分享 PDF：CRCL-财报前瞻.pdf。\n[附件: <absolute-path>/CRCL-财报前瞻.pdf]",
+        );
+
+        let attached = attach_web_generated_files(
+            &mut response,
+            root.path().to_string_lossy().as_ref(),
+            run_started_at,
+            None,
+        );
+
+        assert_eq!(attached, 1);
+        assert!(!response.content.contains("<absolute-path>"));
+        assert_eq!(response.content.matches("[附件: ").count(), 1);
+        assert!(
+            response
+                .content
+                .contains(&format!("[附件: {}]", file_path.display()))
+        );
     }
 }
