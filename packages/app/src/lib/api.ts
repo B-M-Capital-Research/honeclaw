@@ -44,6 +44,7 @@ import {
   createEventSource,
   friendlyBackendErrorMessage,
 } from "./backend";
+import { useLocale } from "./i18n";
 
 export class ApiError extends Error {
   status: number;
@@ -743,6 +744,9 @@ export async function sendPublicChat(
       message,
       attachments,
       earnings_workflow: earningsWorkflow,
+      // Tell the server what the user is actually reading, so the answer is
+      // written in that language instead of guessed from the conversation.
+      language: useLocale(),
     }),
     signal,
   });

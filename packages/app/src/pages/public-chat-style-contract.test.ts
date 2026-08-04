@@ -98,7 +98,8 @@ describe("public chat visual contract", () => {
 
   it("anchors attachments to the centered composer and names the trigger", () => {
     expect(chat).toContain('class="public-chat-composer-frame"');
-    expect(chat).toContain('aria-label="添加图片或文件"');
+    // The label is localized now; the contract is that the trigger is named.
+    expect(chat).toContain("CONTENT.chat_page.recovery.attach_aria");
     expect(chat).toContain('aria-haspopup="menu"');
   });
 

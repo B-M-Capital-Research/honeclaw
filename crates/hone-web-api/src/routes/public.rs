@@ -760,6 +760,12 @@ pub(crate) async fn handle_chat(
     };
     let message = request.message.unwrap_or_default().trim().to_string();
     let attachments = request.attachments.unwrap_or_default();
+    // The browser reports what the user is actually reading. An unknown or
+    // absent tag leaves the Agent free to follow the conversation.
+    let reply_language = request
+        .language
+        .as_deref()
+        .and_then(hone_channels::prompt::ReplyLanguage::from_tag);
     let earnings_request =
         request.earnings_workflow.is_some() || is_earnings_research_skill_command(&message);
     let earnings_admin = if earnings_request {
@@ -824,6 +830,7 @@ pub(crate) async fn handle_chat(
         combined_message,
         attachments_count,
         earnings_request.then_some(true),
+        reply_language,
     )
     .into_response()
 }

@@ -369,6 +369,7 @@ pub(crate) fn build_chat_sse(
     message: String,
     attachments_count: usize,
     prompt_admin_override: Option<bool>,
+    reply_language: Option<hone_channels::prompt::ReplyLanguage>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // mpsc channel 连接 spawn task ↔ SSE stream
     let (tx, rx) = tokio::sync::mpsc::channel::<(String, Value)>(64);
@@ -454,6 +455,7 @@ pub(crate) fn build_chat_sse(
         let prompt_options = PromptOptions {
             is_admin: prompt_admin_override
                 .unwrap_or_else(|| arc.core.is_admin_actor(&actor_clone)),
+            reply_language,
             ..PromptOptions::default()
         };
 
@@ -548,7 +550,7 @@ pub(crate) async fn handle_chat(
         }
     }
 
-    build_chat_sse(state, actor_result, message, attachments_count, None)
+    build_chat_sse(state, actor_result, message, attachments_count, None, None)
 }
 
 /// 部署脚本在终止进程前轮询此端点，避免把仍在生成的用户请求直接杀掉。

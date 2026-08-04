@@ -65,6 +65,10 @@ pub struct PublicChatRequest {
     pub message: Option<String>,
     pub attachments: Option<Vec<PublicChatAttachmentInput>>,
     pub earnings_workflow: Option<PublicEarningsWorkflowRequest>,
+    /// The language the browser is rendering the product in (`zh` / `en`).
+    /// Per request, because two users of the same deployment can be reading
+    /// different languages at the same time.
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

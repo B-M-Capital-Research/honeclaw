@@ -1,3 +1,4 @@
+import { setLocale } from "./i18n";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   ApiError,
@@ -139,6 +140,9 @@ describe("public earnings workflow API", () => {
       return Promise.resolve(new Response("event: done\ndata: {}\n\n"));
     }) as unknown as typeof fetch;
 
+    // The reported language is per-device state, so pin it rather than
+    // inheriting whatever an earlier test file left behind.
+    setLocale("zh");
     await sendPublicChat(
       "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
       [],
@@ -150,6 +154,9 @@ describe("public earnings workflow API", () => {
       message: "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
       attachments: [],
       earnings_workflow: { kind: "preview", company: "NVDA" },
+      // The server must be told which language the user is reading, rather
+      // than inferring it from the conversation.
+      language: "zh",
     });
   });
 });

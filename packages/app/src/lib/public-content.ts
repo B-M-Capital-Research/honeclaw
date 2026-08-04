@@ -994,6 +994,9 @@ const CONTENT_ZH = {
       theme_auto: "自动",
       theme_light: "浅",
       theme_dark: "深",
+      language: "语言",
+      language_zh: "中文",
+      language_en: "English",
     },
     status: {
       error: "HONE 出错了",
@@ -1095,6 +1098,36 @@ const CONTENT_ZH = {
       timeout_reason: "请求超时",
       generic_reason: "网络或服务暂时不可用",
       reason_prefix: "原因：{message}",
+    },
+    earnings: {
+      preview_label: "财报前瞻",
+      analysis_label: "财报分析",
+      preview_hint:
+        "输入公司后，HONE 会核验实体、预期和关键变量，并生成带品牌水印的分享 PDF。",
+      analysis_hint:
+        "输入公司并可上传财报、公告或电话会材料；HONE 会先读取材料，再完成分析和分享 PDF。",
+      company_placeholder: "例如：NVIDIA / NVDA",
+      company_required: "请输入公司名称或股票代码",
+      pick_files: "选择财报文件",
+      file_hint: "PDF、Word、Excel、图片或文本",
+      starting: "正在启动…",
+      close: "关闭",
+      start_failed: "启动失败，请稍后重试",
+      busy: "当前无法启动新的分析任务",
+      loading_preview_skill: "正在加载财报前瞻技能",
+      loading_analysis_skill: "正在加载财报分析技能",
+      selected_files: "已选择 {count} 个文件",
+      start_action: "启动{label}",
+    },
+    recovery: {
+      interrupted: "上次请求已中断，请重新发送",
+      reconnecting: "连接中断，正在恢复任务状态",
+      reconnect_failed: "连接已中断，未能恢复任务状态，请刷新页面后重试",
+      attach_aria: "添加图片或文件",
+    },
+    community: {
+      open_aria: "查看社区动态",
+      open_aria_unread: "查看社区动态，有新动态",
     },
     actions: {
       logout: "退出",
@@ -2741,6 +2774,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       theme_auto: "Auto",
       theme_light: "Light",
       theme_dark: "Dark",
+      language: "Language",
+      language_zh: "中文",
+      language_en: "English",
     },
     status: {
       error: "HONE hit an error",
@@ -2842,6 +2878,37 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       timeout_reason: "Request timed out",
       generic_reason: "Network or service is temporarily unavailable",
       reason_prefix: "Reason: {message}",
+    },
+    earnings: {
+      preview_label: "Earnings preview",
+      analysis_label: "Earnings analysis",
+      preview_hint:
+        "Enter a company and HONE verifies the entity, expectations and key variables, then renders a watermarked shareable PDF.",
+      analysis_hint:
+        "Enter a company and optionally upload filings, releases or call materials; HONE reads them first, then completes the analysis and the shareable PDF.",
+      company_placeholder: "For example: NVIDIA / NVDA",
+      company_required: "Enter a company name or ticker",
+      pick_files: "Choose earnings files",
+      file_hint: "PDF, Word, Excel, image or text",
+      starting: "Starting…",
+      close: "Close",
+      start_failed: "Could not start. Please try again shortly.",
+      busy: "Cannot start another analysis right now",
+      loading_preview_skill: "Loading the earnings preview skill",
+      loading_analysis_skill: "Loading the earnings analysis skill",
+      selected_files: "{count} file(s) selected",
+      start_action: "Start {label}",
+    },
+    recovery: {
+      interrupted: "The previous request was interrupted. Please send it again.",
+      reconnecting: "Connection dropped, restoring task state",
+      reconnect_failed:
+        "Connection dropped and the task state could not be restored. Please refresh and try again.",
+      attach_aria: "Add an image or file",
+    },
+    community: {
+      open_aria: "Open community updates",
+      open_aria_unread: "Open community updates, new activity",
     },
     actions: {
       logout: "Log out",

@@ -78,13 +78,34 @@ pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪
 \
 - 长答去重约束：在生成结构化长答（如公司分析、多空逻辑、动作建议等）时，同一个关键事实、风险点或判断结论只应在最相关的章节展开一次；后续章节可引用但不得重复展开相同论证。禁止在多个板块里对同一客户、风险、持仓关联等锚点重复改写；每个章节必须提供增量信息，不能只是重新包装前面已经说过的内容。";
 
+/// The language the user is reading the product in. It is a user-interface
+/// fact carried per request, not a server-wide setting: two users on the same
+/// deployment can be reading different languages at the same time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyLanguage {
+    Chinese,
+    English,
+}
+
+impl ReplyLanguage {
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        match tag.trim().to_ascii_lowercase().as_str() {
+            "zh" => Some(Self::Chinese),
+            "en" => Some(Self::English),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PromptOptions {
     pub is_admin: bool,
     pub admin_prompt: Option<String>,
     pub privacy_guard: Option<String>,
     pub model_hint: Option<String>,
-    pub force_chinese: bool,
+    /// Language the user is reading the product in. `None` lets the Agent
+    /// follow the conversation instead of being pinned.
+    pub reply_language: Option<ReplyLanguage>,
     pub extra_sections: Vec<String>,
     pub include_format_guidance: bool,
 }
@@ -96,7 +117,7 @@ impl Default for PromptOptions {
             admin_prompt: None,
             privacy_guard: None,
             model_hint: None,
-            force_chinese: false,
+            reply_language: None,
             extra_sections: Vec::new(),
             include_format_guidance: true,
         }
@@ -222,8 +243,13 @@ pub(crate) fn build_prompt_bundle_at(
         static_system.push_str(&format!("\n\n【基础模型】{}。", model_hint.trim()));
     }
 
-    if options.force_chinese {
-        static_system.push_str("\n【语言要求】必须全程以中文回复，禁止中英文混排或应答其他语言。");
+    match options.reply_language {
+        Some(ReplyLanguage::Chinese) => static_system
+            .push_str("\n【语言要求】必须全程以中文回复，禁止中英文混排或应答其他语言。"),
+        Some(ReplyLanguage::English) => static_system.push_str(
+            "\n【语言要求】The user is reading this product in English. Reply entirely in English, including section headings and disclosures. Keep tickers, exchange codes and provider field names in their original form.",
+        ),
+        None => {}
     }
 
     if options.is_admin {
@@ -818,7 +844,7 @@ mod tests {
                 admin_prompt: Some("【管理员覆写】请先确认影响范围。".to_string()),
                 privacy_guard: Some(DEFAULT_GROUP_PRIVACY_GUARD.to_string()),
                 model_hint: Some("gpt-5.4".to_string()),
-                force_chinese: true,
+                reply_language: Some(ReplyLanguage::Chinese),
                 extra_sections: vec![
                     "【附加规则】先给结论再展开。".to_string(),
                     "   ".to_string(),

@@ -686,7 +686,7 @@ async fn process_message_session(
     let mut prompt_options = PromptOptions {
         is_admin,
         model_hint: Some("基础模型由当前运行配置决定".to_string()),
-        force_chinese: true,
+        reply_language: Some(hone_channels::prompt::ReplyLanguage::Chinese),
         ..PromptOptions::default()
     };
     if is_admin {

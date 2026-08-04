@@ -8,6 +8,7 @@ import {
   onMount,
 } from "solid-js";
 import { CONTENT } from "@/lib/public-content";
+import { setLocale, useLocale, type Locale } from "@/lib/i18n";
 import {
   initPublicPrefs,
   publicFontScale,
@@ -24,6 +25,13 @@ export function PublicPrefsButton() {
     { value: "auto", label: CONTENT.chat_page.prefs.theme_auto },
     { value: "light", label: CONTENT.chat_page.prefs.theme_light },
     { value: "dark", label: CONTENT.chat_page.prefs.theme_dark },
+  ]);
+  // The switcher used to live only in a drawer footer and the mobile menu, so
+  // users reported not being able to find it. It belongs next to the other
+  // per-device reading preferences, which are one tap from the chat header.
+  const languageOptions = createMemo<{ value: Locale; label: string }[]>(() => [
+    { value: "zh", label: CONTENT.chat_page.prefs.language_zh },
+    { value: "en", label: CONTENT.chat_page.prefs.language_en },
   ]);
   const close = () => setOpen(false);
   let rootRef: HTMLDivElement | undefined;
@@ -109,6 +117,24 @@ export function PublicPrefsButton() {
                 )}
               </For>
             </div>
+          <div class="hone-prefs-row">
+            <span class="hone-prefs-label">{CONTENT.chat_page.prefs.language}</span>
+            <div class="hone-prefs-segmented">
+              <For each={languageOptions()}>
+                {(option) => (
+                  <button
+                    type="button"
+                    class="hone-prefs-seg hone-prefs-seg--text"
+                    classList={{ "is-active": useLocale() === option.value }}
+                    aria-pressed={useLocale() === option.value}
+                    onClick={() => setLocale(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
           </div>
         </div>
       </Show>

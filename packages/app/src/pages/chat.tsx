@@ -1382,7 +1382,10 @@ function EarningsResearchQuickAction(props: {
   const [error, setError] = createSignal<string>();
   let fileInputRef: HTMLInputElement | undefined;
   const isPreview = () => props.kind === "preview";
-  const label = () => (isPreview() ? "财报前瞻" : "财报分析");
+  const label = () =>
+    isPreview()
+      ? CONTENT.chat_page.earnings.preview_label
+      : CONTENT.chat_page.earnings.analysis_label;
 
   const close = () => {
     if (busy()) return;
@@ -1393,7 +1396,7 @@ function EarningsResearchQuickAction(props: {
   const submit = async () => {
     const normalizedCompany = company().trim();
     if (!normalizedCompany) {
-      setError("请输入公司名称或股票代码");
+      setError(CONTENT.chat_page.earnings.company_required);
       return;
     }
     setBusy(true);
@@ -1408,7 +1411,7 @@ function EarningsResearchQuickAction(props: {
       setFiles([]);
       setOpen(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "启动失败，请稍后重试");
+      setError(cause instanceof Error ? cause.message : CONTENT.chat_page.earnings.start_failed);
     } finally {
       setBusy(false);
     }
@@ -1471,7 +1474,7 @@ function EarningsResearchQuickAction(props: {
               <button
                 type="button"
                 class="public-chat-proactive-close"
-                aria-label="关闭"
+                aria-label={CONTENT.chat_page.actions.dismiss_aria}
                 disabled={busy()}
                 onClick={close}
               >
@@ -1481,8 +1484,8 @@ function EarningsResearchQuickAction(props: {
               <h2 id={`public-chat-earnings-${props.kind}-title`}>{label()}</h2>
               <p class="public-chat-proactive-intro">
                 {isPreview()
-                  ? "输入公司后，HONE 会核验实体、预期和关键变量，并生成带品牌水印的分享 PDF。"
-                  : "输入公司并可上传财报、公告或电话会材料；HONE 会先读取材料，再完成分析和分享 PDF。"}
+                  ? CONTENT.chat_page.earnings.preview_hint
+                  : CONTENT.chat_page.earnings.analysis_hint}
               </p>
               <label class="public-chat-earnings-field">
                 <span>公司名称或股票代码</span>
@@ -1492,7 +1495,7 @@ function EarningsResearchQuickAction(props: {
                   maxlength={120}
                   autofocus
                   disabled={busy()}
-                  placeholder="例如：NVIDIA / NVDA"
+                  placeholder={CONTENT.chat_page.earnings.company_placeholder}
                   onInput={(event) => setCompany(event.currentTarget.value)}
                 />
               </label>
@@ -1517,8 +1520,13 @@ function EarningsResearchQuickAction(props: {
                     disabled={busy()}
                     onClick={() => fileInputRef?.click()}
                   >
-                    <span>{files().length ? `已选择 ${files().length} 个文件` : "选择财报文件"}</span>
-                    <small>{files().length ? files().map((file) => file.name).join("、") : "PDF、Word、Excel、图片或文本"}</small>
+                    <span>{files().length
+                        ? CONTENT.chat_page.earnings.selected_files.replace(
+                            "{count}",
+                            String(files().length),
+                          )
+                        : CONTENT.chat_page.earnings.pick_files}</span>
+                    <small>{files().length ? files().map((file) => file.name).join("、") : CONTENT.chat_page.earnings.file_hint}</small>
                   </button>
                 </label>
               </Show>
@@ -1533,7 +1541,9 @@ function EarningsResearchQuickAction(props: {
                   class="public-chat-proactive-primary"
                   disabled={busy() || !company().trim()}
                 >
-                  {busy() ? "正在启动…" : `启动${label()}`}
+                  {busy()
+                    ? CONTENT.chat_page.earnings.starting
+                    : CONTENT.chat_page.earnings.start_action.replace("{label}", label())}
                 </button>
               </div>
             </form>
@@ -2090,7 +2100,7 @@ function CommunityQuickAction(props: { unread: boolean; onOpen: () => void }) {
       type="button"
       class="public-chat-proactive-tip public-chat-community-action"
       onClick={props.onOpen}
-      aria-label={props.unread ? "查看社区动态，有新动态" : "查看社区动态"}
+      aria-label={props.unread ? CONTENT.chat_page.community.open_aria_unread : CONTENT.chat_page.community.open_aria}
     >
       <svg
         class="public-chat-proactive-tip-icon"
@@ -2294,8 +2304,8 @@ function Composer(props: {
             type="button"
             class="pub-attach-btn"
             data-open={menuOpen() ? "true" : undefined}
-            aria-label="添加图片或文件"
-            title="添加图片或文件"
+            aria-label={CONTENT.chat_page.recovery.attach_aria}
+            title={CONTENT.chat_page.recovery.attach_aria}
             aria-haspopup="menu"
             aria-expanded={menuOpen()}
             style={{ width: "36px", height: "36px", "flex-shrink": "0" }}
@@ -2966,7 +2976,7 @@ export default function PublicChatPage() {
             activeRun: bootstrap.active_run,
             interruptedRun: bootstrap.interrupted_run,
             thinkingText: CONTENT.chat_page.status.thinking,
-            interruptedText: "上次请求已中断，请重新发送",
+            interruptedText: CONTENT.chat_page.recovery.interrupted,
           })
         : {};
       if (recovery.message) {
@@ -3333,8 +3343,8 @@ export default function PublicChatPage() {
       steps: input?.earningsWorkflow
         ? [
             input.earningsWorkflow.kind === "analysis"
-              ? "正在加载财报分析技能"
-              : "正在加载财报前瞻技能",
+              ? CONTENT.chat_page.earnings.loading_analysis_skill
+              : CONTENT.chat_page.earnings.loading_preview_skill,
           ]
         : undefined,
     });
@@ -3521,7 +3531,7 @@ export default function PublicChatPage() {
         if (index >= 0) {
           setMessages(index, {
             phase: "thinking",
-            statusText: "连接中断，正在恢复任务状态",
+            statusText: CONTENT.chat_page.recovery.reconnecting,
           });
         }
       }
@@ -3531,7 +3541,7 @@ export default function PublicChatPage() {
         aborted:
           controller.signal.aborted ||
           (e instanceof Error && e.name === "AbortError"),
-        recoveringText: "连接中断，正在恢复任务状态",
+        recoveringText: CONTENT.chat_page.recovery.reconnecting,
         stoppedText: CONTENT.chat_page.status.stopped,
       });
       recoverAfterDisconnect = interrupted.shouldRecover;
@@ -3557,7 +3567,7 @@ export default function PublicChatPage() {
                 setMessages(index, {
                   phase: "error",
                   statusText:
-                    "连接已中断，未能恢复任务状态，请刷新页面后重试",
+                    CONTENT.chat_page.recovery.reconnect_failed,
                 });
               }
             }
@@ -3577,7 +3587,7 @@ export default function PublicChatPage() {
       isSendingOrStreaming() ||
       uploading()
     ) {
-      throw new Error("当前无法启动新的分析任务");
+      throw new Error(CONTENT.chat_page.earnings.busy);
     }
 
     let attachments: PublicChatAttachment[] = [];
