@@ -1,4 +1,5 @@
 import { createContext, createEffect, createSignal, onCleanup, useContext, type ParentProps } from "solid-js"
+import { CONTENT } from "@/lib/public-content";
 import { createStore } from "solid-js/store"
 import { getChannels } from "@/lib/api"
 import {
@@ -36,7 +37,7 @@ function createConsoleState() {
       return
     }
     if (backend.state.isDesktop && !backend.state.resolvedBaseUrl) {
-      setChannelError("桌面后端 base URL 未就绪")
+      setChannelError(CONTENT.chat_page.console.console_no_base)
       return
     }
     try {
@@ -51,7 +52,7 @@ function createConsoleState() {
   createEffect(() => {
     if (!backend.state.connected) {
       setChannels([])
-      setChannelError(backend.state.initializing ? "" : backend.state.error || "后端未连接")
+      setChannelError(backend.state.initializing ? "" : backend.state.error || CONTENT.chat_page.console.console_offline)
       return
     }
     void refreshChannels()

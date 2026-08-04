@@ -8,6 +8,7 @@ import {
   type ParentProps,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { CONTENT } from "@/lib/public-content";
 import { connectEvents, getHistory, getUsers, sendChat } from "@/lib/api";
 import { actorFromUser, type ActorRef } from "@/lib/actors";
 import { filterUsers } from "@/lib/filters";
@@ -55,7 +56,7 @@ const ME_SYNTHETIC_USER: UserInfo = {
   session_kind: "direct",
   session_label: "ME",
   actor_user_id: "ME",
-  last_message: "点击开始对话",
+  last_message: CONTENT.chat_page.console.start_chat,
   last_role: "",
   last_time: "",
   message_count: 0,
@@ -165,7 +166,7 @@ function createSessionsState() {
         id: pendingId,
         startedAt,
         phase: "queued",
-        statusText: "正在发送…",
+        statusText: CONTENT.chat_page.console.sending,
         partialContent: "",
       });
 
@@ -175,12 +176,15 @@ function createSessionsState() {
         controller.abort();
         updatePending(key, {
           phase: "timeout",
-          statusText: `请求超时（已等待 ${Math.round(REQUEST_TIMEOUT_MS / 1000)} 秒）`,
+          statusText: CONTENT.chat_page.console.timeout.replace(
+            "{seconds}",
+            String(Math.round(REQUEST_TIMEOUT_MS / 1000)),
+          ),
         });
       }, REQUEST_TIMEOUT_MS);
 
       if (!backend.hasCapability("chat")) {
-        throw new Error("当前后端不支持聊天能力");
+        throw new Error(CONTENT.chat_page.console.no_chat);
       }
       const stream = await sendChat(actor, draft, controller.signal);
       const reader = stream.getReader();
@@ -199,14 +203,14 @@ function createSessionsState() {
             const startedStatusText = event.data.text;
             updatePending(key, {
               phase: "thinking",
-              statusText: startedStatusText || "正在思考…",
+              statusText: startedStatusText || CONTENT.chat_page.console.thinking,
             });
           }
 
           if (event.event === "tool_call") {
             updatePending(key, {
               phase: "running",
-              statusText: publicChatToolStatusText(event.data, "处理中…"),
+              statusText: publicChatToolStatusText(event.data, CONTENT.chat_page.console.working),
             });
           }
 
@@ -229,14 +233,14 @@ function createSessionsState() {
             if (currentPending) {
               updatePending(key, {
                 phase: "streaming",
-                statusText: "输出中…",
+                statusText: CONTENT.chat_page.console.streaming,
                 partialContent: (currentPending.partialContent ?? "") + content,
               });
             }
           }
 
           if (event.event === "error") {
-            const eventErrorText = event.data.text?.trim() || "请求失败";
+            const eventErrorText = event.data.text?.trim() || CONTENT.chat_page.console.req_failed;
             updatePending(key, {
               phase: "error",
               statusText: eventErrorText,
@@ -247,7 +251,7 @@ function createSessionsState() {
           if (event.event === "run_error") {
             updatePending(key, {
               phase: "error",
-              statusText: event.data.message ?? "发生未知错误",
+              statusText: event.data.message ?? CONTENT.chat_page.console.unknown_error,
             });
             continue;
           }
@@ -273,7 +277,7 @@ function createSessionsState() {
                 id: currentPending.id,
                 startedAt: currentPending.startedAt,
                 phase: "error",
-                statusText: "处理失败，请重试",
+                statusText: CONTENT.chat_page.console.retry_hint,
                 partialContent: "",
               });
             }
@@ -298,7 +302,7 @@ function createSessionsState() {
               } else {
                 updatePending(key, {
                   phase: "error",
-                  statusText: "连接已断开，请重试",
+                  statusText: CONTENT.chat_page.console.disconnected,
                 });
               }
             }
@@ -343,7 +347,7 @@ function createSessionsState() {
           // 无内容 → 显示连接断开错误（用户可 dismiss）
           updatePending(key, {
             phase: "error",
-            statusText: "连接已断开，请重试",
+            statusText: CONTENT.chat_page.console.disconnected,
           });
         }
       }
@@ -453,7 +457,7 @@ function createSessionsState() {
             id: messageId(),
             startedAt: Date.now(),
             phase: "thinking",
-            statusText: "正在思考…",
+            statusText: CONTENT.chat_page.console.thinking,
             partialContent: "",
           });
         } else if (latestServerMessage?.kind === "assistant") {
@@ -469,7 +473,9 @@ function createSessionsState() {
       pollFailureCount.set(key, failures);
       if (failures >= 3) {
         console.warn(
-          `[sessions] 历史轮询连续失败 ${failures} 次 (key=${key})，后端可能暂时不可达`,
+          `[sessions] ${CONTENT.chat_page.console.poll_failed
+            .replace("{count}", String(failures))
+            .replace("{key}", key)}，${CONTENT.chat_page.console.backend_down}`,
         );
       }
     } finally {
@@ -556,7 +562,7 @@ function createSessionsState() {
             id: messageId(),
             startedAt: Date.now(),
             phase: "thinking",
-            statusText: "正在思考…",
+            statusText: CONTENT.chat_page.console.thinking,
             partialContent: "",
           });
         }
@@ -570,10 +576,13 @@ function createSessionsState() {
           iteration?: number;
         };
         const text = progressPayload.tool
-          ? `调用工具：${progressPayload.tool}`
+          ? `${CONTENT.chat_page.console.calling_tool.replace("{tool}", "")}${progressPayload.tool}`
           : progressPayload.stage === "gemini.spawn"
-            ? `Gemini 正在思考… (轮次 ${progressPayload.iteration ?? 1})`
-            : `处理中 (${progressPayload.stage ?? ""})`;
+            ? `Gemini ${CONTENT.chat_page.console.thinking_round.replace(
+                "{round}",
+                String(progressPayload.iteration ?? 1),
+              )}`
+            : CONTENT.chat_page.console.working_detail.replace("{detail}", progressPayload.stage ?? "");
         // 更新 pending 状态而不是 append 系统消息（减少气泡噪音）
         if (state.pendingByKey[key]) {
           updatePending(key, { phase: "running", statusText: text });
@@ -595,7 +604,7 @@ function createSessionsState() {
             id: messageId(),
             startedAt: Date.now(),
             phase: "thinking",
-            statusText: "正在处理…",
+            statusText: CONTENT.chat_page.console.processing,
             partialContent: "",
           });
         }
@@ -779,7 +788,7 @@ function createSessionsState() {
         append(key, {
           id: messageId(),
           kind: "system",
-          content: "群共享会话当前仅支持浏览历史；请在对应 IM 群里继续发言。",
+          content: CONTENT.chat_page.console.group_readonly,
         });
         return;
       }
@@ -802,7 +811,7 @@ function createSessionsState() {
         append(key, {
           id: messageId(),
           kind: "system",
-          content: "群共享会话当前仅支持浏览历史；请在对应 IM 群里继续发言。",
+          content: CONTENT.chat_page.console.group_readonly,
         });
         return;
       }
@@ -823,7 +832,7 @@ function createSessionsState() {
             pendingState &&
             (pendingState.phase === "error" || pendingState.phase === "timeout")
           ) {
-            updatePending(key, { phase: "error", statusText: "已停止，可重新发送" });
+            updatePending(key, { phase: "error", statusText: CONTENT.chat_page.console.stopped });
           }
         }, 50);
       } else {

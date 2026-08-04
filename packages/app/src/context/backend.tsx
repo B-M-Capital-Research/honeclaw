@@ -1,4 +1,5 @@
 import { Show, createContext, createEffect, onCleanup, onMount, useContext, type ParentProps } from "solid-js"
+import { CONTENT } from "@/lib/public-content";
 import { createStore } from "solid-js/store"
 import {
   connectDesktopBackend,
@@ -79,7 +80,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
       promise,
       new Promise<T>((_, reject) => {
         timer = window.setTimeout(() => {
-          reject(new Error(`${label} 超时（>${timeoutMs}ms）`))
+          reject(new Error(`${label} ${CONTENT.chat_page.console.be_timeout}>${timeoutMs}ms）`))
         }, timeoutMs)
       }),
     ])
@@ -117,7 +118,10 @@ function createBackendState() {
     const error =
       input.error ||
       (input.meta && !compatible
-        ? `不支持的后端 API 版本：${input.meta.apiVersion}（当前仅支持 ${SUPPORTED_VERSION_LABEL}）`
+        ? `${CONTENT.chat_page.console.be_unsupported.replace(
+            "{version}",
+            input.meta.apiVersion,
+          )}（${CONTENT.chat_page.console.be_only.replace("{versions}", SUPPORTED_VERSION_LABEL)}）`
         : "")
 
     setBackendRuntime({
@@ -219,10 +223,10 @@ function createBackendState() {
   }
 
   const loadDesktopBackendStatusSafe = async () =>
-    withTimeout(loadDesktopBackendStatus(), DESKTOP_STATUS_TIMEOUT_MS, "读取桌面后端状态")
+    withTimeout(loadDesktopBackendStatus(), DESKTOP_STATUS_TIMEOUT_MS, CONTENT.chat_page.console.be_read_status)
 
   const connectDesktopBackendSafe = async () =>
-    withTimeout(connectDesktopBackend(), DESKTOP_CONNECT_TIMEOUT_MS, "连接桌面后端")
+    withTimeout(connectDesktopBackend(), DESKTOP_CONNECT_TIMEOUT_MS, CONTENT.chat_page.console.be_connect)
 
   const initDesktop = async () => {
     try {
@@ -257,7 +261,7 @@ function createBackendState() {
         desktop = await withTimeout(
           detectTauriRuntime(),
           DESKTOP_RUNTIME_DETECT_TIMEOUT_MS,
-          "检测 desktop runtime",
+          CONTENT.chat_page.console.be_detect,
         )
       } catch {
         desktop = isTauriRuntime()
@@ -386,7 +390,7 @@ function InitializingScreen() {
           d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
         />
       </svg>
-      正在连接后端…
+      {CONTENT.chat_page.console.be_connecting}
     </div>
   )
 }

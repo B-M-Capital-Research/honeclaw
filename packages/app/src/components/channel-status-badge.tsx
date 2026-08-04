@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
+import { CONTENT } from "@/lib/public-content";
 import { useConsole } from "@/context/console"
 import { useBackend } from "@/context/backend"
 import { cleanupDesktopChannelProcesses } from "@/lib/backend"
@@ -144,7 +145,10 @@ export function ChannelStatusBadge() {
           <Show when={backend.state.isDesktop}>
             <div class="mb-2.5 flex items-center justify-between gap-2">
               <div class="text-[10px] text-[color:var(--text-muted)]">
-                {channelCounts().duplicateProcessCount > 0 ? `${channelCounts().duplicateProcessCount} 个渠道存在重复进程` : "每个渠道当前最多保留 1 个主进程"}
+                {channelCounts().duplicateProcessCount > 0 ? CONTENT.chat_page.console.cs_duplicate.replace(
+                      "{count}",
+                      String(channelCounts().duplicateProcessCount),
+                    ) : CONTENT.chat_page.console.cs_one_main}
               </div>
               <button
                 type="button"
@@ -152,7 +156,7 @@ export function ChannelStatusBadge() {
                 onClick={() => void cleanupDuplicates()}
                 class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[10px] font-semibold text-[color:var(--text-secondary)] transition hover:bg-[color:var(--surface)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {cleanupBusy() ? "清理中…" : "清理多余进程"}
+                {cleanupBusy() ? CONTENT.chat_page.console.cs_cleaning : CONTENT.chat_page.console.cs_clean}
               </button>
             </div>
           </Show>
@@ -171,7 +175,7 @@ export function ChannelStatusBadge() {
 
           <div class="mb-3 flex flex-col gap-2">
             <div class="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
-              系统连接
+              {CONTENT.chat_page.console.cs_system}
             </div>
 
             <For each={connectionStatuses()}>
@@ -201,12 +205,12 @@ export function ChannelStatusBadge() {
           {/* 渠道列表 */}
           <div class="flex flex-col gap-2">
             <div class="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
-              渠道监听
+              {CONTENT.chat_page.console.cs_channels}
             </div>
             <For
               each={channels()}
               fallback={
-                <div class="py-1 text-center text-[11px] text-[color:var(--text-muted)]">暂无渠道数据</div>
+                <div class="py-1 text-center text-[11px] text-[color:var(--text-muted)]">{CONTENT.chat_page.console.cs_no_data}</div>
               }
             >
               {(channel) => (
@@ -234,7 +238,7 @@ export function ChannelStatusBadge() {
                                   ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
                                   : "border-rose-400/30 bg-rose-400/10 text-rose-200",
                               ].join(" ")}
-                              title={process.last_heartbeat_at ? `last_seen=${process.last_heartbeat_at}` : "当前仅检测到进程，未收到该实例心跳"}
+                              title={process.last_heartbeat_at ? `last_seen=${process.last_heartbeat_at}` : CONTENT.chat_page.console.cs_no_heartbeat}
                             >
                               pid {process.pid}
                             </span>

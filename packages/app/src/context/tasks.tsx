@@ -1,4 +1,5 @@
 import { createContext, createEffect, createResource, useContext, type ParentProps } from "solid-js"
+import { CONTENT } from "@/lib/public-content";
 import { createStore } from "solid-js/store"
 import { getCronJobs, getCronJob, createCronJob, updateCronJob, toggleCronJob, deleteCronJob } from "@/lib/api"
 import { actorFromJob } from "@/lib/actors"
@@ -113,7 +114,7 @@ function createTasksState() {
         try {
             if (state.currentTaskId === "new") {
                 if (!input.user_id) {
-                    alert("归属用户 ID 不能为空")
+                    alert(CONTENT.chat_page.console.task_owner)
                     return
                 }
                 const newJob = await createCronJob(input)

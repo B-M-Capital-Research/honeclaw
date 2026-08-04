@@ -1,4 +1,5 @@
 import { Button } from "@hone-financial/ui/button"
+import { CONTENT } from "@/lib/public-content";
 import { useNavigate } from "@solidjs/router"
 import { Portal } from "solid-js/web"
 import { For, Show, createMemo, createSignal } from "solid-js"
@@ -12,10 +13,10 @@ import { actorKey, type ActorRef } from "@/lib/actors"
 type DrawerTab = "profile" | "research" | "sessions" | "actions"
 
 const TABS: { id: DrawerTab; label: string }[] = [
-  { id: "profile", label: "公司画像" },
-  { id: "research", label: "研究记录" },
-  { id: "sessions", label: "相关会话" },
-  { id: "actions", label: "操作" },
+  { id: "profile", label: CONTENT.chat_page.console.d_profile },
+  { id: "research", label: CONTENT.chat_page.console.d_research },
+  { id: "sessions", label: CONTENT.chat_page.console.d_sessions },
+  { id: "actions", label: CONTENT.chat_page.console.d_actions },
 ]
 
 function formatDate(iso?: string) {
@@ -49,7 +50,7 @@ function ProfileTab(props: { symbol: string; actor?: ActorRef }) {
       when={props.actor}
       fallback={
         <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-          先在用户档案页选定一个用户，这里才能列出该用户的相关画像。
+          {CONTENT.chat_page.console.d_pick_user}
         </div>
       }
     >
@@ -58,7 +59,7 @@ function ProfileTab(props: { symbol: string; actor?: ActorRef }) {
           when={matched().length > 0}
           fallback={
             <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-              该用户的画像里没有标题匹配 {props.symbol} 的公司。
+              {CONTENT.chat_page.console.d_no_profile.replace("{symbol}", props.symbol)}
             </div>
           }
         >
@@ -77,7 +78,8 @@ function ProfileTab(props: { symbol: string; actor?: ActorRef }) {
                     {p.title}
                   </div>
                   <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                    {formatDate(p.updated_at)} · {p.event_count} 条事件
+                    {formatDate(p.updated_at)} · {p.event_count}
+                    {CONTENT.chat_page.console.d_events}
                   </div>
                 </button>
               )}
@@ -105,7 +107,7 @@ function ResearchTab(props: { symbol: string }) {
       when={matched().length > 0}
       fallback={
         <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-          没有 company_name 匹配 {props.symbol} 的研究任务。可在“操作”tab 启动一个。
+          {CONTENT.chat_page.console.d_no_research.replace("{symbol}", props.symbol)}
         </div>
       }
     >
@@ -126,7 +128,7 @@ function ResearchTab(props: { symbol: string }) {
                 </div>
               </div>
               <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                创建于 {formatDate(task.created_at)}
+                {CONTENT.chat_page.console.d_created} {formatDate(task.created_at)}
               </div>
             </button>
           )}
@@ -161,7 +163,7 @@ function SessionsTab(props: { actor?: ActorRef }) {
       when={props.actor}
       fallback={
         <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-          先选定用户。
+          {CONTENT.chat_page.console.d_select_first}
         </div>
       }
     >
@@ -170,12 +172,12 @@ function SessionsTab(props: { actor?: ActorRef }) {
           when={userSessions().length > 0}
           fallback={
             <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-              该用户暂无会话。
+              {CONTENT.chat_page.console.d_no_sessions}
             </div>
           }
         >
           <div class="mb-3 text-[11px] text-[color:var(--text-muted)]">
-            后端尚无消息全文搜索 — 这里列出该用户最近 6 个会话，可点入查找上下文。
+            {CONTENT.chat_page.console.d_search_note}
           </div>
           <div class="space-y-2">
             <For each={userSessions()}>
@@ -196,7 +198,7 @@ function SessionsTab(props: { actor?: ActorRef }) {
                     </div>
                   </div>
                   <div class="mt-1 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
-                    {u.last_message || "(空)"}
+                    {u.last_message || `(${CONTENT.chat_page.console.d_empty}`}
                   </div>
                 </button>
               )}
@@ -209,7 +211,7 @@ function SessionsTab(props: { actor?: ActorRef }) {
                 navigate(`/users/${k}/sessions`)
               }}
             >
-              查看该用户的所有会话 →
+              {CONTENT.chat_page.console.d_all_sessions}
             </button>
           </div>
         </Show>
@@ -235,7 +237,7 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
 
   const handleAddWatchlist = async () => {
     if (!props.actor) {
-      setFeedback("先选定用户才能加 watchlist")
+      setFeedback(CONTENT.chat_page.console.d_need_user)
       return
     }
     setAdding(true)
@@ -249,7 +251,7 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
         notes: "",
         tracking_only: true,
       })
-      setFeedback(`已加入 ${props.actor.user_id} 的 watchlist`)
+      setFeedback(CONTENT.chat_page.console.d_added.replace("{user}", props.actor.user_id))
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err))
     } finally {
@@ -265,15 +267,20 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
   return (
     <div class="space-y-4">
       <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-        <div class="text-sm font-semibold mb-2">加到 watchlist</div>
+        <div class="text-sm font-semibold mb-2">{CONTENT.chat_page.console.d_add_watch}</div>
         <div class="text-[11px] text-[color:var(--text-muted)] mb-3">
-          <Show when={props.actor} fallback={<span>当前未选定用户。</span>}>
-            {(a) => <span>目标用户：{a().user_id} · {a().channel}</span>}
+          <Show when={props.actor} fallback={<span>{CONTENT.chat_page.console.d_no_user}</span>}>
+            {(a) => <span>
+                {CONTENT.chat_page.console.d_target_user}
+                {a().user_id} · {a().channel}
+              </span>}
           </Show>
         </div>
         <Show when={!inWatchlist() && !inHolding()} fallback={
           <div class="rounded-md border border-emerald-300/40 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-            {inHolding() ? `${props.symbol} 已在该用户持仓里` : `${props.symbol} 已在该用户 watchlist 里`}
+            {inHolding()
+              ? `${props.symbol} ${CONTENT.chat_page.console.d_in_holdings}`
+              : `${props.symbol} ${CONTENT.chat_page.console.d_in_watchlist}`}
           </div>
         }>
           <Button
@@ -281,22 +288,24 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
             onClick={() => void handleAddWatchlist()}
             disabled={adding() || !props.actor}
           >
-            {adding() ? "添加中…" : `加 ${props.symbol} 到 watchlist`}
+            {adding()
+              ? CONTENT.chat_page.console.d_adding
+              : CONTENT.chat_page.console.d_add_to.replace("{symbol}", props.symbol)}
           </Button>
         </Show>
       </div>
 
       <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-        <div class="text-sm font-semibold mb-2">启动深度研究</div>
+        <div class="text-sm font-semibold mb-2">{CONTENT.chat_page.console.d_deep}</div>
         <div class="text-[11px] text-[color:var(--text-muted)] mb-3">
-          预填 {props.symbol} 跳到个股研究模块，你需要确认才会真正启动。
+          {CONTENT.chat_page.console.d_prefill} {props.symbol} {CONTENT.chat_page.console.d_deep_note}
         </div>
         <Button
           variant="ghost"
           class="h-9 w-full text-sm"
           onClick={handleStartResearch}
         >
-          去启动 {props.symbol} 研究 →
+          {CONTENT.chat_page.console.d_go} {props.symbol} {CONTENT.chat_page.console.d_research_arrow}
         </Button>
       </div>
 
@@ -342,7 +351,7 @@ export function SymbolDrawer() {
               type="button"
               class="rounded-md p-1.5 text-[color:var(--text-muted)] hover:bg-black/5 hover:text-[color:var(--text-primary)]"
               onClick={() => drawer.close()}
-              aria-label="关闭"
+              aria-label={CONTENT.chat_page.console.d_close}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 6L6 18M6 6l12 12" />

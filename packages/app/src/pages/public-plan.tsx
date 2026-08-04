@@ -18,8 +18,8 @@ const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"
 /* 频道近期视频（手工挑选置顶三条；缩略图走 YouTube 官方 CDN）。 */
 const CHANNEL_VIDEOS = [
   { id: "VkPJOPwrDdI", title: CONTENT.chat_page.misc.plan_video_1 },
-  { id: "m2VLkhoPeVw", title: "AI 芯片良率背后的赢家：KLAC 凭什么拿下 60% 检测市场？" },
-  { id: "ii5M8eyta2g", title: "AMAT 凭什么成为半导体设备第一龙头？" },
+  { id: "m2VLkhoPeVw", title: CONTENT.chat_page.misc.plan_video_2 },
+  { id: "ii5M8eyta2g", title: CONTENT.chat_page.misc.plan_video_3 },
 ]
 
 /* 六张海报：1052×1870（9:16）。bm1 是邀请函总览，放在首位。 */
