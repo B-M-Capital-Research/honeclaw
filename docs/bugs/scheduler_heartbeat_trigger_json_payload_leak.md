@@ -7,6 +7,12 @@
 
 ## 最新进展
 
+- `2026-08-04 14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 10:02-14:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 12:30 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 直接以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`condition`、`detail` 等协议字段。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-04 10:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 06:02-10:01 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。

@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 2026-08-04 14:02 CST 运行态复核：问题继续在 live source 出站候选和 Web direct 财报工作流 final 中复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-04 10:02-14:02 CST。
+    - 近窗 `SNDK $1,288.03` 等异常数量级价格命中 32 条候选；10:30 `闪迪关键事件心跳提醒` deliver preview 写 `SNDK $1,288.03`，10:30 `光迅科技关键事件心跳提醒` 也把 `SNDK $1,288.03` 当作 NAND 相关行情口径，12:30 `中际旭创关键事件心跳提醒` 继续写 `SNDK $1,288.03 / NBIS $212.58`。
+  - `data/runtime/logs/acp-events.log`
+    - 同窗 Web direct 财报 workflow session `Actor_web__direct__codex_5fsndk_5fearnings_5fvalidation_5fnative3_5f20260804` 以 `stopReason=end_turn` 收口，用户可见 final 首行行情口径仍使用 `SNDK 1,288.03 美元`。
+  - 判断：
+    - 最新样本仍是同一异常数量级行情锚污染 scheduler / heartbeat / 财报投研输出；不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和投研判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+
 - 2026-08-04 10:01 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-04 06:02-10:01 CST。
