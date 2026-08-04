@@ -67,9 +67,9 @@ function AppErrorFallback(props: { error: unknown }) {
   return (
     <div class="flex min-h-screen items-center justify-center p-8 text-center text-sm text-[color:var(--text-secondary)]">
       {recovering()
-        ? "正在加载最新版本…"
+        ? CONTENT.chat_page.misc.app_loading
         : isRecoverableAssetLoadError(props.error)
-          ? "页面资源已更新，请刷新页面。"
+          ? CONTENT.chat_page.misc.app_stale
           : String(props.error)}
     </div>
   )

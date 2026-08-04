@@ -19,6 +19,6 @@ describe("public plan purchase contract", () => {
 
   it("fails closed for the HONE iOS purchase surface", () => {
     expect(publicPlan).toContain("purchases_allowed_on_this_client");
-    expect(publicPlan).toContain("App 内仅支持登录并恢复");
+    expect(publicPlan).toContain("CONTENT.chat_page.misc.plan_app_note");
   });
 });

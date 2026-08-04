@@ -164,7 +164,7 @@ export function PublicNav(
           "is-open": menuOpen(),
           "is-chat-mode": props.chatMode,
         }}
-        aria-label="HONE 主导航"
+        aria-label={`HONE ${CONTENT.chat_page.misc.nav_main}`}
       >
         <A
           href="/"

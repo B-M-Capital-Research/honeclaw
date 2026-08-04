@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 import { HoneBrand } from "@/components/hone-brand";
 import { AgentWorkspaceIcon } from "@/components/public-agent-workspace";
 
@@ -22,11 +23,11 @@ export function PublicChatStartup(props: PublicChatStartupProps) {
       <main class="public-chat-startup-main">
         <div class="public-chat-startup-copy">
           <span class="public-chat-startup-kicker">HONE AGENT</span>
-          <strong>{props.title ?? "正在准备你的对话"}</strong>
-          <p>{props.description ?? "正在同步最近消息与投研上下文，请稍候。"}</p>
+          <strong>{props.title ?? CONTENT.chat_page.misc.startup_title}</strong>
+          <p>{props.description ?? CONTENT.chat_page.misc.startup_detail}</p>
           <Show when={props.failed}>
             <button type="button" onClick={props.onRetry}>
-              {props.retryLabel ?? "重新尝试"}
+              {props.retryLabel ?? CONTENT.chat_page.misc.startup_retry}
             </button>
           </Show>
         </div>

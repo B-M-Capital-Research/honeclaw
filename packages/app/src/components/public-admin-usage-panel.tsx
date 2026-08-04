@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal, onMount } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 import {
   getPublicAdminUsage,
   type PublicAdminUsageRangeDays,
@@ -136,9 +137,11 @@ function usageQuestionsByUser(rows: PublicAdminUsageRow[]) {
 }
 
 function usageComparisonText(change: number, prefix: string) {
-  if (change < 0) return `${prefix}少 ${Math.abs(change)} 人`;
-  if (change > 0) return `${prefix}多 ${change} 人`;
-  return `${prefix}持平`;
+  if (change < 0)
+    return `${prefix}${CONTENT.chat_page.admin.u_fewer.replace("{n}", String(Math.abs(change)))}`;
+  if (change > 0)
+    return `${prefix}${CONTENT.chat_page.admin.u_more.replace("{n}", String(change))}`;
+  return `${prefix}${CONTENT.chat_page.admin.u_flat}`;
 }
 
 function usageLeadingDeclineText(
@@ -159,8 +162,10 @@ function usageLeadingDeclineText(
     }
   }
   return leading
-    ? `主要是 ${labels.get(leading.userId) ?? leading.userId} 使用频率降低（少 ${leading.drop} 次）`
-    : "暂无明显降频用户";
+    ? CONTENT.chat_page.admin.u_leading_drop
+        .replace("{user}", labels.get(leading.userId) ?? leading.userId)
+        .replace("{drop}", String(leading.drop))
+    : CONTENT.chat_page.admin.u_no_decline;
 }
 
 export function summarizePublicAdminUsage(
@@ -196,12 +201,19 @@ export function summarizePublicAdminUsage(
       ? totals.activeUsers - previousTotals.activeUsers
       : null;
     const comparison = hasComparison
-      ? usageComparisonText(change ?? 0, "比上周同日")
-      : "暂无上周同日可比数据";
+      ? usageComparisonText(change ?? 0, CONTENT.chat_page.admin.u_vs_last_week)
+      : CONTENT.chat_page.admin.u_no_compare;
     const decline = hasComparison
       ? usageLeadingDeclineText(selectedRows, previousRows, labels)
       : "";
-    const text = `${formatUsageDate(selectedDate)} ${channelPrefix} 使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}${decline ? `；${decline}` : ""}。`;
+    const text = CONTENT.chat_page.admin.u_day_summary
+      .replace("{date}", formatUsageDate(selectedDate))
+      .replace("{channel}", channelPrefix)
+      .replace("{users}", String(totals.activeUsers))
+      .replace("{questions}", String(totals.questionCount))
+      .replace("{pushes}", String(totals.deliveredPushCount))
+      .replace("{comparison}", comparison)
+      .replace("{decline}", decline ? `；${decline}` : "");
     return {
       active_users: totals.activeUsers,
       question_count: totals.questionCount,
@@ -221,14 +233,21 @@ export function summarizePublicAdminUsage(
   const currentTotals = usageTotals(currentRows);
   const previousTotals = usageTotals(previousRows);
   const change = currentTotals.activeUsers - previousTotals.activeUsers;
-  const comparison = usageComparisonText(change, "最近 7 天比前 7 天");
+  const comparison = usageComparisonText(change, CONTENT.chat_page.admin.u_vs_prev_7);
   const decline = usageLeadingDeclineText(currentRows, previousRows, labels);
   return {
     active_users: totals.activeUsers,
     question_count: totals.questionCount,
     delivered_push_count: totals.deliveredPushCount,
     comparison_user_change: change,
-    text: `最近 ${report.period_days} 天 ${channelPrefix} 总使用人数 ${totals.activeUsers} 人，提问问题总共 ${totals.questionCount} 个，定时任务成功推送 ${totals.deliveredPushCount} 条，${comparison}；${decline}。`,
+    text: CONTENT.chat_page.admin.u_range_summary
+      .replace("{days}", String(report.period_days))
+      .replace("{channel}", channelPrefix)
+      .replace("{users}", String(totals.activeUsers))
+      .replace("{questions}", String(totals.questionCount))
+      .replace("{pushes}", String(totals.deliveredPushCount))
+      .replace("{comparison}", comparison)
+      .replace("{decline}", decline),
   };
 }
 
@@ -257,9 +276,9 @@ function formatUsageTime(value: string) {
 function formatUsageChannel(channel: string) {
   switch (channel) {
     case "web":
-      return "网页";
+      return CONTENT.chat_page.admin.u_web;
     case "feishu":
-      return "飞书";
+      return CONTENT.chat_page.admin.u_feishu;
     case "telegram":
       return "Telegram";
     case "discord":
@@ -350,14 +369,17 @@ function PublicAdminUsageTrendChart(props: {
           <p>{props.description}</p>
         </div>
         <span>
-          最新 <strong>{latest()}</strong> {props.unit} · 峰值 {peak()} {props.unit}
+          {CONTENT.chat_page.admin.u_latest} <strong>{latest()}</strong> {props.unit} · {CONTENT.chat_page.admin.u_peak} {peak()} {props.unit}
         </span>
       </header>
       <svg
         class="public-admin-trend-chart-svg"
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`${props.title}，横轴为最近 ${props.points.length} 天日期，纵轴单位为${props.unit}；数据点可点击查看精确数值`}
+        aria-label={CONTENT.chat_page.admin.u_chart_aria
+          .replace("{title}", props.title)
+          .replace("{days}", String(props.points.length))
+          .replace("{unit}", props.unit)}
       >
         <For each={[0, 0.5, 1]}>
           {(ratio) => {
@@ -477,7 +499,7 @@ export function PublicAdminUsagePanel() {
       }
     } catch (cause) {
       if (version !== loadVersion) return;
-      setError(cause instanceof Error ? cause.message : "读取使用统计失败");
+      setError(cause instanceof Error ? cause.message : CONTENT.chat_page.admin.u_read_failed);
     } finally {
       if (version === loadVersion) setLoading(false);
     }
@@ -521,13 +543,13 @@ export function PublicAdminUsagePanel() {
     >
       <summary class="public-admin-section-summary">
         <span class="public-admin-section-copy">
-          <span class="public-workspace-eyebrow">实时统计</span>
-          <h2 id="public-admin-usage-title">HONE 使用统计</h2>
-          <p>按北京时间汇总网页、飞书及其它接入渠道；可切换渠道和追溯周期，跨渠道未绑定的账号分别计数。</p>
+          <span class="public-workspace-eyebrow">{CONTENT.chat_page.admin.u_live}</span>
+          <h2 id="public-admin-usage-title">HONE {CONTENT.chat_page.admin.u_title}</h2>
+          <p>{CONTENT.chat_page.admin.u_subtitle}</p>
         </span>
         <span class="public-admin-section-toggle-label" aria-hidden="true">
-          <span class="when-open">收起</span>
-          <span class="when-closed">展开</span>
+          <span class="when-open">{CONTENT.chat_page.admin.u_collapse}</span>
+          <span class="when-closed">{CONTENT.chat_page.admin.u_expand}</span>
           <span class="public-admin-section-chevron" />
         </span>
       </summary>
@@ -539,14 +561,14 @@ export function PublicAdminUsagePanel() {
 
         <Show
           when={!loading() || report()}
-          fallback={<div class="public-admin-loading">正在生成实时使用统计…</div>}
+          fallback={<div class="public-admin-loading">{CONTENT.chat_page.admin.u_generating}</div>}
         >
           <Show when={report()}>
             {(current) => (
               <>
                 <div class="public-admin-usage-toolbar">
                   <label>
-                    <span>追溯范围</span>
+                    <span>{CONTENT.chat_page.admin.u_range}</span>
                     <select
                       value={rangeDays()}
                       onChange={(event) => {
@@ -558,12 +580,16 @@ export function PublicAdminUsagePanel() {
                       }}
                     >
                       <For each={PUBLIC_ADMIN_USAGE_RANGES}>
-                        {(days) => <option value={days}>最近 {days} 天</option>}
+                        {(days) => (
+                          <option value={days}>
+                            {CONTENT.chat_page.admin.u_recent} {days}{CONTENT.chat_page.admin.u_days}
+                          </option>
+                        )}
                       </For>
                     </select>
                   </label>
                   <label>
-                    <span>渠道分类</span>
+                    <span>{CONTENT.chat_page.admin.u_channel_group}</span>
                     <select
                       value={selectedChannel()}
                       onChange={(event) => {
@@ -574,14 +600,14 @@ export function PublicAdminUsagePanel() {
                       <For each={PUBLIC_ADMIN_USAGE_CHANNELS}>
                         {(channel) => (
                           <option value={channel}>
-                            {channel === "all" ? "全部渠道" : formatUsageChannel(channel)}
+                            {channel === "all" ? CONTENT.chat_page.admin.u_all_channels : formatUsageChannel(channel)}
                           </option>
                         )}
                       </For>
                     </select>
                   </label>
                   <label>
-                    <span>统计日期</span>
+                    <span>{CONTENT.chat_page.admin.u_stat_date}</span>
                     <select
                       value={selectedDate()}
                       onChange={(event) => {
@@ -590,21 +616,21 @@ export function PublicAdminUsagePanel() {
                         if (date !== "all") setSelectedTrendDate(date);
                       }}
                     >
-                      <option value="all">所选范围全部日期</option>
+                      <option value="all">{CONTENT.chat_page.admin.u_all_dates}</option>
                       <For each={dates()}>
                         {(date) => <option value={date}>{formatUsageDate(date)}</option>}
                       </For>
                     </select>
                   </label>
                   <div class="public-admin-usage-actions">
-                    <small>更新于 {formatGeneratedAt(current().generated_at)}</small>
+                    <small>{CONTENT.chat_page.admin.u_updated_at} {formatGeneratedAt(current().generated_at)}</small>
                     <button
                       type="button"
                       class="public-admin-refresh"
                       disabled={loading()}
                       onClick={() => void load()}
                     >
-                      {loading() ? "刷新中…" : "刷新数据"}
+                      {loading() ? CONTENT.chat_page.admin.u_refreshing : CONTENT.chat_page.admin.u_refresh}
                     </button>
                   </div>
                 </div>
@@ -619,14 +645,14 @@ export function PublicAdminUsagePanel() {
 
                 <div
                   class="public-admin-trend-grid"
-                  aria-label={`最近 ${current().period_days} 天使用趋势`}
+                  aria-label={`${CONTENT.chat_page.admin.u_recent} ${current().period_days}${CONTENT.chat_page.admin.u_trend_suffix}`}
                 >
                   <PublicAdminUsageTrendChart
                     points={trend()}
                     metric="active_users"
-                    title="每日使用用户数"
-                    description="当天至少提出 1 个真实问题的去重用户"
-                    unit="人"
+                    title={CONTENT.chat_page.admin.u_daily_users}
+                    description={CONTENT.chat_page.admin.u_users_tip}
+                    unit={CONTENT.chat_page.admin.u_people}
                     tone="users"
                     selectedDate={selectedTrendDate()}
                     onSelectDate={setSelectedTrendDate}
@@ -634,9 +660,9 @@ export function PublicAdminUsagePanel() {
                   <PublicAdminUsageTrendChart
                     points={trend()}
                     metric="question_count"
-                    title="每日提问量"
-                    description="当天所有真实用户问题总数"
-                    unit="个"
+                    title={CONTENT.chat_page.admin.u_daily_questions}
+                    description={CONTENT.chat_page.admin.u_questions_tip}
+                    unit={CONTENT.chat_page.admin.u_count}
                     tone="questions"
                     selectedDate={selectedTrendDate()}
                     onSelectDate={setSelectedTrendDate}
@@ -647,7 +673,7 @@ export function PublicAdminUsagePanel() {
                   when={selectedTrendPoint()}
                   fallback={
                     <p class="public-admin-trend-hint">
-                      点击任一折线数据点，可查看该日期的精确横纵数字。
+                      {CONTENT.chat_page.admin.u_point_hint}
                     </p>
                   }
                 >
@@ -655,16 +681,22 @@ export function PublicAdminUsagePanel() {
                     <div class="public-admin-trend-detail" role="status">
                       <dl>
                         <div>
-                          <dt>日期（横轴）</dt>
+                          <dt>{CONTENT.chat_page.admin.u_date_axis}</dt>
                           <dd>{formatUsageDate(point().date)}</dd>
                         </div>
                         <div>
-                          <dt>使用用户数</dt>
-                          <dd>{point().active_users} 人</dd>
+                          <dt>{CONTENT.chat_page.admin.u_active_users}</dt>
+                          <dd>
+                            {point().active_users}
+                            {CONTENT.chat_page.admin.u_people}
+                          </dd>
                         </div>
                         <div>
-                          <dt>提问量</dt>
-                          <dd>{point().question_count} 个</dd>
+                          <dt>{CONTENT.chat_page.admin.u_question_vol}</dt>
+                          <dd>
+                            {point().question_count}
+                            {CONTENT.chat_page.admin.u_count}
+                          </dd>
                         </div>
                       </dl>
                       <button
@@ -672,7 +704,7 @@ export function PublicAdminUsagePanel() {
                         class="public-admin-refresh"
                         onClick={() => setSelectedDate(point().date)}
                       >
-                        查看当天表格
+                        {CONTENT.chat_page.admin.u_view_day}
                       </button>
                     </div>
                   )}
@@ -680,41 +712,44 @@ export function PublicAdminUsagePanel() {
 
                 <Show
                   when={rows().length > 0}
-                  fallback={<div class="public-admin-empty">所选日期暂无提问或定时任务记录。</div>}
+                  fallback={<div class="public-admin-empty">{CONTENT.chat_page.admin.u_no_rows}</div>}
                 >
                   <div class="public-admin-table-wrap public-admin-usage-table-wrap">
                     <table class="public-admin-table public-admin-usage-table">
                       <thead>
                         <tr>
-                          <th>日期</th>
-                          <th>渠道</th>
-                          <th>用户</th>
-                          <th>提问</th>
-                          <th>用户询问的问题</th>
-                          <th>定时执行</th>
-                          <th>成功推送</th>
-                          <th>投递失败</th>
+                          <th>{CONTENT.chat_page.admin.u_date}</th>
+                          <th>{CONTENT.chat_page.admin.u_channel}</th>
+                          <th>{CONTENT.chat_page.admin.u_user}</th>
+                          <th>{CONTENT.chat_page.admin.u_questions}</th>
+                          <th>{CONTENT.chat_page.admin.u_user_question}</th>
+                          <th>{CONTENT.chat_page.admin.u_scheduled}</th>
+                          <th>{CONTENT.chat_page.admin.u_delivered}</th>
+                          <th>{CONTENT.chat_page.admin.u_failed}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <For each={rows()}>
                           {(row) => (
                             <tr>
-                              <td data-label="日期">{formatUsageDate(row.date)}</td>
-                              <td data-label="渠道">
+                              <td data-label={CONTENT.chat_page.admin.u_date}>{formatUsageDate(row.date)}</td>
+                              <td data-label={CONTENT.chat_page.admin.u_channel}>
                                 <span class={`public-admin-channel is-${row.channel}`}>
                                   {formatUsageChannel(row.channel)}
                                 </span>
                               </td>
-                              <td data-label="用户" class="public-admin-usage-user">
+                              <td data-label={CONTENT.chat_page.admin.u_user} class="public-admin-usage-user">
                                 <strong>{row.user_label}</strong>
                                 <small>{row.user_id}</small>
                               </td>
-                              <td data-label="提问"><b>{row.question_count}</b></td>
-                              <td data-label="用户询问的问题" class="public-admin-question-cell">
+                              <td data-label={CONTENT.chat_page.admin.u_questions}><b>{row.question_count}</b></td>
+                              <td data-label={CONTENT.chat_page.admin.u_user_question} class="public-admin-question-cell">
                                 <Show when={row.questions.length > 0} fallback={<span>—</span>}>
                                   <details>
-                                    <summary>查看 {row.questions.length} 个问题</summary>
+                                    <summary>
+                                      {CONTENT.chat_page.admin.u_view} {row.questions.length}
+                                      {CONTENT.chat_page.admin.u_question_unit}
+                                    </summary>
                                     <ol>
                                       <For each={row.questions}>
                                         {(question) => (
@@ -728,9 +763,9 @@ export function PublicAdminUsagePanel() {
                                   </details>
                                 </Show>
                               </td>
-                              <td data-label="定时执行">{row.scheduled_run_count}</td>
-                              <td data-label="成功推送"><b>{row.delivered_push_count}</b></td>
-                              <td data-label="投递失败">
+                              <td data-label={CONTENT.chat_page.admin.u_scheduled}>{row.scheduled_run_count}</td>
+                              <td data-label={CONTENT.chat_page.admin.u_delivered}><b>{row.delivered_push_count}</b></td>
+                              <td data-label={CONTENT.chat_page.admin.u_failed}>
                                 <span classList={{ "is-danger": row.failed_delivery_count > 0 }}>
                                   {row.failed_delivery_count}
                                 </span>

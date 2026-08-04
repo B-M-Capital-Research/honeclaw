@@ -24,10 +24,10 @@ export default function PublicBlogPage() {
       <main class="public-blog-main">
         <section class="public-blog-hero">
           <div class="public-blog-kicker">HONE BLOG</div>
-          <h1>{useLocale() === "zh" ? "工程、产品与投研实践" : "Engineering, product, and research practice"}</h1>
+          <h1>{useLocale() === "zh" ? CONTENT.chat_page.misc.blog_eyebrow : "Engineering, product, and research practice"}</h1>
           <p>
             {useLocale() === "zh"
-              ? "记录 HONE 在开源 AI Agent、投研工作流和 Rust 工程实践中的真实选择。"
+              ? CONTENT.chat_page.misc.blog_subtitle
               : "Notes from building HONE across open-source AI agents, investment research workflows, and Rust engineering."}
           </p>
         </section>

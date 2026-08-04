@@ -5,6 +5,7 @@ import {
   type ParentProps,
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { CONTENT } from "@/lib/public-content";
 import {
   AgentWorkspaceHistoryDrawer,
   AgentWorkspaceMobileHeader,
@@ -206,7 +207,7 @@ export function PublicWorkspaceShell(
   return (
     <div class="public-chat-page public-chat-page--ready public-workspace-page">
       <AgentWorkspaceSidebar
-        userName={props.userName ?? "HONE 用户"}
+        userName={props.userName ?? `HONE ${CONTENT.chat_page.misc.shell_user}`}
         research={research()}
         researchLoading={researchLoading()}
         activeMode="conversation"
@@ -223,7 +224,7 @@ export function PublicWorkspaceShell(
         <AgentWorkspaceTopbar
           query={query()}
           unreadPushCount={pushUnreadCount()}
-          label={props.topbarLabel ?? "长期研究，理性决策，复利为王。"}
+          label={props.topbarLabel ?? CONTENT.chat_page.misc.shell_motto}
           placeholder={props.searchPlaceholder}
           showSearch={props.onSearch !== undefined}
           onQueryChange={updateQuery}
@@ -231,7 +232,7 @@ export function PublicWorkspaceShell(
           onPushes={openPushCenter}
         />
         <AgentWorkspaceMobileHeader
-          userName={props.userName ?? "HONE 用户"}
+          userName={props.userName ?? `HONE ${CONTENT.chat_page.misc.shell_user}`}
           unreadPushCount={pushUnreadCount()}
           historyCount={research().length}
           preferences={<PublicPrefsButton />}
@@ -252,7 +253,7 @@ export function PublicWorkspaceShell(
       />
       <AgentWorkspaceHistoryDrawer
         open={historyDrawerOpen()}
-        userName={props.userName ?? "HONE 用户"}
+        userName={props.userName ?? `HONE ${CONTENT.chat_page.misc.shell_user}`}
         research={research()}
         hasOlder={false}
         loadingOlder={false}

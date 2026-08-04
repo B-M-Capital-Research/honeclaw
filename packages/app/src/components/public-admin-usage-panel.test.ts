@@ -1,4 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
+
+import { setLocale } from "@/lib/i18n";
 import {
   filterPublicAdminUsageRows,
   publicAdminUsageDateIsAvailable,
@@ -52,6 +54,11 @@ function report(rows: PublicAdminUsageRow[]): PublicAdminUsageReport {
     rows,
   };
 }
+
+beforeEach(() => {
+  // The summary text is localized; these cases assert the Chinese wording.
+  setLocale("zh");
+});
 
 describe("public admin usage panel", () => {
   const rows = [

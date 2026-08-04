@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js"
+import { CONTENT } from "@/lib/public-content"
 import { Meta, Title } from "@solidjs/meta"
 import { Navigate, useNavigate, useParams } from "@solidjs/router"
 import { Markdown } from "@hone-financial/ui/markdown"
@@ -53,7 +54,7 @@ function ArticleBody(props: { post: PublicBlogPost }) {
       <PublicNav />
       <main class="public-blog-post-main">
         <button class="public-blog-back" onClick={() => navigate("/blog")}>
-          ← {useLocale() === "zh" ? "返回 Blog" : "Back to Blog"}
+          ← {useLocale() === "zh" ? CONTENT.chat_page.misc.blog_back : "Back to Blog"}
         </button>
 
         <article class="public-blog-post">
@@ -69,7 +70,7 @@ function ArticleBody(props: { post: PublicBlogPost }) {
 
           <button class="public-blog-language-card" onClick={switchLanguage}>
             <span>
-              {useLocale() === "zh" ? "English version" : "中文版"}
+              {useLocale() === "zh" ? "English version" : CONTENT.chat_page.misc.blog_zh}
             </span>
             <strong>{alternatePost().title}</strong>
             <em>{alternatePost().excerpt}</em>
@@ -85,7 +86,7 @@ function ArticleBody(props: { post: PublicBlogPost }) {
         <Show when={related().length > 0}>
           <section class="public-blog-keep-reading">
             <div class="public-blog-kicker">
-              {useLocale() === "zh" ? "继续阅读" : "Keep reading"}
+              {useLocale() === "zh" ? CONTENT.chat_page.misc.blog_continue : "Keep reading"}
             </div>
             <For each={related()}>
               {(post) => (

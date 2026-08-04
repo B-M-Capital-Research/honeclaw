@@ -1,3 +1,4 @@
+import { CONTENT } from "@/lib/public-content";
 // Shared TOC + back-to-top for the long /terms and /privacy pages.
 // Mobile-first: TOC is a <details> the user can collapse, back-to-top
 // is a fixed button that only appears after the user scrolls past the hero.
@@ -28,7 +29,7 @@ export function LegalToc(props: { sections: { title: string }[] }) {
           "list-style-position": "outside",
         }}
       >
-        目录 / Contents
+        {CONTENT.chat_page.misc.toc_title}
       </summary>
       <ol
         style={{
@@ -78,7 +79,7 @@ export function BackToTop() {
         onClick={() =>
           window.scrollTo({ top: 0, left: 0, behavior: "smooth" })
         }
-        aria-label="回到顶部"
+        aria-label={CONTENT.chat_page.misc.toc_top}
         style={{
           position: "fixed",
           right: "20px",

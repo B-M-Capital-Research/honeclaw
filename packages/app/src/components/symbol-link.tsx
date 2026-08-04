@@ -1,3 +1,4 @@
+import { CONTENT } from "@/lib/public-content";
 import { useSymbolDrawer } from "@/context/symbol-drawer"
 
 type SymbolLinkProps = {
@@ -32,7 +33,7 @@ export function SymbolLink(props: SymbolLinkProps) {
           "inline font-mono font-medium text-[color:var(--accent)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
           props.class ?? "",
         ].join(" ")}
-        title={`查看 ${label()} 详情`}
+        title={`${CONTENT.chat_page.misc.symbol_view.replace("{symbol}", label())} ${CONTENT.chat_page.misc.symbol_detail}`}
       >
         {label()}
       </button>
@@ -47,7 +48,7 @@ export function SymbolLink(props: SymbolLinkProps) {
         "inline-flex items-center rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 font-mono text-xs font-medium text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
         props.class ?? "",
       ].join(" ")}
-      title={`查看 ${label()} 详情`}
+      title={`${CONTENT.chat_page.misc.symbol_view.replace("{symbol}", label())} ${CONTENT.chat_page.misc.symbol_detail}`}
     >
       {label()}
     </button>

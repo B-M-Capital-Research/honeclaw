@@ -58,8 +58,8 @@ describe("public workspace page contract", () => {
     expect(adminUsage).toContain("selectedChannel()");
     expect(adminUsage).toContain("PUBLIC_ADMIN_USAGE_RANGES");
     expect(adminUsage).toContain("PUBLIC_ADMIN_USAGE_CHANNELS");
-    expect(adminUsage).toContain('title="每日使用用户数"');
-    expect(adminUsage).toContain('title="每日提问量"');
+    expect(adminUsage).toContain("CONTENT.chat_page.admin.u_daily_users");
+    expect(adminUsage).toContain("CONTENT.chat_page.admin.u_daily_questions");
     expect(adminUsage).toContain("public-admin-trend-detail");
     expect(adminUsage).toContain("formatUsageChannel(row.channel)");
     expect(adminWhitelist).toContain("<details");

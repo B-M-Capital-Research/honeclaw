@@ -34,7 +34,7 @@ export function PublicContactCards() {
         </span>
       </a>
       <div class="pub-contact-card">
-        <span class="pub-contact-card-icon">微</span>
+        <span class="pub-contact-card-icon">{CONTENT.chat_page.misc.contact_wechat}</span>
         <span>
           <strong>{C.contact_wechat_group}</strong>
           <small>

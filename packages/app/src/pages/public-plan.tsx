@@ -17,19 +17,19 @@ const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"
 
 /* 频道近期视频（手工挑选置顶三条；缩略图走 YouTube 官方 CDN）。 */
 const CHANNEL_VIDEOS = [
-  { id: "VkPJOPwrDdI", title: "AI 时代真正卡脖子的，可能不是 GPU：美光 MU 的重估逻辑" },
+  { id: "VkPJOPwrDdI", title: CONTENT.chat_page.misc.plan_video_1 },
   { id: "m2VLkhoPeVw", title: "AI 芯片良率背后的赢家：KLAC 凭什么拿下 60% 检测市场？" },
   { id: "ii5M8eyta2g", title: "AMAT 凭什么成为半导体设备第一龙头？" },
 ]
 
 /* 六张海报：1052×1870（9:16）。bm1 是邀请函总览，放在首位。 */
 const POSTERS = [
-  { src: "/bm1.webp", alt: "巴芒投研会员邀请：研报、财报前瞻、直播与社群总览" },
-  { src: "/bm2.webp", alt: "星球内容：每年 300+ 份美股公司原创万字研报" },
-  { src: "/bm3.webp", alt: "星球内容：KANO / SWOT / DCF 等方式深度估值" },
-  { src: "/bm4.webp", alt: "星球内容：每季 100+ 份财报前瞻精准预测" },
-  { src: "/bm5.webp", alt: "星球内容：每周主理人亲自直播讲解精选公司" },
-  { src: "/bm6.webp", alt: "星球内容：社群内和数百优质会员实时探讨分享" },
+  { src: "/bm1.webp", alt: CONTENT.chat_page.misc.plan_poster_1 },
+  { src: "/bm2.webp", alt: CONTENT.chat_page.misc.plan_poster_2 },
+  { src: "/bm3.webp", alt: CONTENT.chat_page.misc.plan_poster_3 },
+  { src: "/bm4.webp", alt: CONTENT.chat_page.misc.plan_poster_4 },
+  { src: "/bm5.webp", alt: CONTENT.chat_page.misc.plan_poster_5 },
+  { src: "/bm6.webp", alt: CONTENT.chat_page.misc.plan_poster_6 },
 ]
 
 /* 平台图标：内联 SVG 而非 favicon —— 各站 favicon 只有 16/32px，放大发虚，
@@ -138,7 +138,7 @@ export default function PublicPlanPage() {
       <main class="hone-share-main">
         {/* ── 身份区：头像 + 名字 + 数据 ── */}
         <header class="hone-hub-hero">
-          <img class="hone-hub-avatar" src="/hari-avatar.jpg" alt="Hari老王头像" width="96" height="96" />
+          <img class="hone-hub-avatar" src="/hari-avatar.jpg" alt={CONTENT.chat_page.misc.plan_avatar} width="96" height="96" />
           <div class="hone-hub-id">
             <div class="hone-share-eyebrow">{C().eyebrow}</div>
             <h1>{C().host.name}<span>{C().host.role}</span></h1>
@@ -250,7 +250,7 @@ export default function PublicPlanPage() {
               </ul>
               <Show
                 when={purchasesAllowed()}
-                fallback={<p class="hone-hub-trial-hint">App 内仅支持登录并恢复已在网站购买的会员权益。</p>}
+                fallback={<p class="hone-hub-trial-hint">App{CONTENT.chat_page.misc.plan_app_note}</p>}
               >
                 <button
                   type="button"
@@ -322,7 +322,7 @@ export default function PublicPlanPage() {
         </section>
 
         <p class="hone-share-disclaimer">
-          海报为会员服务介绍。过往表现不代表未来收益，所有内容仅供研究参考，不构成投资建议；市场有风险，投资决策需独立判断。
+          {CONTENT.chat_page.misc.plan_disclaimer}
         </p>
       </main>
 
