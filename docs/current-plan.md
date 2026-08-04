@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-04
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **远端 10 提交审查与生产部署**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/production-deployment-dede2d61.md`
+  - 摘要：审查 `ee7024b6..dede2d61` 的国际化、Stripe-only 文档与扩展时段行情修复，完成默认门禁和 Public 构建后，以精确 GHCR revision/digest 经 IAP 对 GCE 做两次零活跃会话、原子切换、systemd 重启及公网/云权威验收
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

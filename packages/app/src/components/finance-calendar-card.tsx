@@ -21,7 +21,15 @@ type FinanceCalendarCardProps = {
   registerRef?: (el: HTMLDivElement) => void;
 };
 
-const WEEKDAYS = [CONTENT.chat_page.calendar.wd_mon, CONTENT.chat_page.calendar.wd_tue, CONTENT.chat_page.calendar.wd_wed, CONTENT.chat_page.calendar.wd_thu, CONTENT.chat_page.calendar.wd_fri, CONTENT.chat_page.calendar.wd_sat, CONTENT.chat_page.calendar.wd_sun];
+const weekdays = () => [
+  CONTENT.chat_page.calendar.wd_mon,
+  CONTENT.chat_page.calendar.wd_tue,
+  CONTENT.chat_page.calendar.wd_wed,
+  CONTENT.chat_page.calendar.wd_thu,
+  CONTENT.chat_page.calendar.wd_fri,
+  CONTENT.chat_page.calendar.wd_sat,
+  CONTENT.chat_page.calendar.wd_sun,
+];
 export const FINANCE_CALENDAR_CARD_WIDTH = 1080;
 export const FINANCE_CALENDAR_CARD_HEIGHT = 1350;
 
@@ -333,7 +341,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
             "margin-bottom": "8px",
           }}
         >
-          <For each={WEEKDAYS}>
+          <For each={weekdays()}>
             {(weekday, index) => (
               <div
                 style={{

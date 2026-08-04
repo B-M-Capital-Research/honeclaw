@@ -1,4 +1,5 @@
 import { canvasToPngBlob } from "@/components/chat-share-export";
+import { CONTENT } from "@/lib/public-content";
 import {
   financeCalendarEventCategory,
   financeCalendarMobileAgenda,
@@ -15,24 +16,45 @@ export const FINANCE_CALENDAR_MOBILE_CANVAS_SCALE = 2;
 
 const FONT = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
 const MONO = '"SFMono-Regular", "JetBrains Mono", monospace';
-const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+const weekdays = () => [
+  CONTENT.chat_page.calendar.wd_mon,
+  CONTENT.chat_page.calendar.wd_tue,
+  CONTENT.chat_page.calendar.wd_wed,
+  CONTENT.chat_page.calendar.wd_thu,
+  CONTENT.chat_page.calendar.wd_fri,
+  CONTENT.chat_page.calendar.wd_sat,
+  CONTENT.chat_page.calendar.wd_sun,
+];
 const MONTHS = [
   "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
 ];
 
-const EVENT_META: Record<
+const EVENT_COLORS: Record<
   FinanceCalendarEventCategory,
-  { color: string; label: string }
+  string
 > = {
-  earnings: { color: "#3267a8", label: "EARNINGS / 财报" },
-  policy: { color: "#7f4aa0", label: "POLICY / 政策" },
-  inflation: { color: "#d6543a", label: "INFLATION / 通胀" },
-  labor: { color: "#16806f", label: "LABOR / 就业" },
-  growth: { color: "#668b35", label: "GROWTH / 增长" },
-  housing: { color: "#ad7d16", label: "HOUSING / 住房" },
-  other: { color: "#647276", label: "MARKET / 事件" },
+  earnings: "#3267a8",
+  policy: "#7f4aa0",
+  inflation: "#d6543a",
+  labor: "#16806f",
+  growth: "#668b35",
+  housing: "#ad7d16",
+  other: "#647276",
 };
+
+function eventMeta(category: FinanceCalendarEventCategory) {
+  const label = {
+    earnings: CONTENT.chat_page.calendar.earnings,
+    policy: CONTENT.chat_page.calendar.cat_policy,
+    inflation: CONTENT.chat_page.calendar.cat_inflation,
+    labor: CONTENT.chat_page.calendar.cat_jobs,
+    growth: CONTENT.chat_page.calendar.cat_growth,
+    housing: CONTENT.chat_page.calendar.cat_housing,
+    other: CONTENT.chat_page.calendar.cat_other,
+  }[category];
+  return { color: EVENT_COLORS[category], label };
+}
 
 function setFont(
   context: CanvasRenderingContext2D,
@@ -88,7 +110,7 @@ function fillRoundedRect(
 
 function eventLabel(event: FinanceCalendarEvent) {
   return event.kind === "earnings" && event.ticker
-    ? `${event.ticker} 财报`
+    ? `${event.ticker} ${CONTENT.chat_page.calendar.earnings}`
     : event.title;
 }
 
@@ -96,7 +118,7 @@ function eventTime(event: FinanceCalendarEvent) {
   return event.subtitle
     ?.replace("北京时间 ", "")
     .split(" · ")[0]
-    ?.trim() || "待公布";
+    ?.trim() || CONTENT.chat_page.calendar.pending;
 }
 
 export function wrapFinanceCalendarCanvasText(
@@ -140,7 +162,7 @@ function drawCover(
   context.fillText("HONE / SIGNAL CALENDAR", 34, 44);
   context.fillStyle = "#ff7a5d";
   context.textAlign = "right";
-  context.fillText(`BEIJING TIME · ${year}`, 716, 44);
+  context.fillText(`${CONTENT.chat_page.calendar.beijing_time} · ${year}`, 716, 44);
   context.textAlign = "left";
 
   context.fillStyle = "#ff7052";
@@ -149,10 +171,10 @@ function drawCover(
 
   context.fillStyle = "#fffaf1";
   setFont(context, 40, 700);
-  context.fillText("我的财经日历", 184, 105);
+  context.fillText(CONTENT.chat_page.calendar.title, 184, 105);
   context.fillStyle = "#abb5b1";
   setFont(context, 16, 600);
-  context.fillText("宏观、政策与持仓财报，共用一条投资时间轴。", 184, 137);
+  context.fillText(CONTENT.chat_page.calendar.subtitle, 184, 137);
 
   context.strokeStyle = "#3a4542";
   context.beginPath();
@@ -161,7 +183,7 @@ function drawCover(
   context.stroke();
   context.fillStyle = "#87938f";
   setFont(context, 11, 700, MONO);
-  context.fillText("MONTHLY ISSUE", 614, 92);
+  context.fillText(CONTENT.chat_page.calendar.monthly_issue, 614, 92);
   context.fillStyle = "#fffaf1";
   setFont(context, 18, 700);
   context.fillText(`${MONTHS[Math.max(0, month - 1)]} / ${year}`, 614, 125);
@@ -173,9 +195,9 @@ function drawCover(
   context.stroke();
   setFont(context, 14, 600);
   context.fillStyle = "#a7b1ad";
-  context.fillText(`${eventDayCount} 事件日`, 34, 216);
-  context.fillText(`${macroCount} 宏观`, 120, 216);
-  context.fillText(`${earningsCount} 财报`, 200, 216);
+  context.fillText(`${eventDayCount} ${CONTENT.chat_page.calendar.event_day}`, 34, 216);
+  context.fillText(`${macroCount} ${CONTENT.chat_page.calendar.macro}`, 120, 216);
+  context.fillText(`${earningsCount} ${CONTENT.chat_page.calendar.earnings}`, 200, 216);
   const next = agenda[0];
   if (next) {
     context.textAlign = "right";
@@ -197,14 +219,14 @@ function drawMonthGrid(
   context.fillRect(0, 243, 750, 391);
   context.fillStyle = "#17201f";
   setFont(context, 27, 700);
-  context.fillText("月度信号图", 30, 288);
+  context.fillText(CONTENT.chat_page.calendar.signal_chart, 30, 288);
   context.fillStyle = "#7f8985";
   setFont(context, 11, 700, MONO);
   context.textAlign = "right";
-  context.fillText("COLOR DOTS MARK EVENT CATEGORIES", 720, 286);
+  context.fillText(CONTENT.chat_page.calendar.legend, 720, 286);
   context.textAlign = "center";
   setFont(context, 15, 700);
-  WEEKDAYS.forEach((weekday, index) => {
+  weekdays().forEach((weekday, index) => {
     context.fillStyle = index >= 5 ? "#b45b4b" : "#78837f";
     context.fillText(weekday, 30 + (index + 0.5) * (690 / 7), 326);
   });
@@ -239,7 +261,7 @@ function drawMonthGrid(
     events.slice(0, 4).forEach((event, eventIndex) => {
       context.fillStyle = today
         ? "#ffffff"
-        : EVENT_META[financeCalendarEventCategory(event)].color;
+        : eventMeta(financeCalendarEventCategory(event)).color;
       context.beginPath();
       context.arc(x + 9 + eventIndex * 9, y + 34, 2.6, 0, Math.PI * 2);
       context.fill();
@@ -259,11 +281,11 @@ function drawAgenda(
   context.fillRect(0, 634, 750, 636);
   context.fillStyle = "#17201f";
   setFont(context, 27, 700);
-  context.fillText("关键投资窗口", 30, 681);
+  context.fillText(CONTENT.chat_page.calendar.key_window, 30, 681);
   context.fillStyle = "#7f8985";
   setFont(context, 11, 700, MONO);
   context.textAlign = "right";
-  context.fillText("KEY DATES · CHRONOLOGICAL", 720, 679);
+  context.fillText(CONTENT.chat_page.calendar.key_dates, 720, 679);
   context.textAlign = "left";
 
   const listX = 30;
@@ -275,7 +297,7 @@ function drawAgenda(
   agenda.forEach((event, index) => {
     const top = listY + index * rowHeight;
     const center = top + rowHeight / 2;
-    const meta = EVENT_META[financeCalendarEventCategory(event)];
+    const meta = eventMeta(financeCalendarEventCategory(event));
     if (index > 0) {
       context.strokeStyle = "#d4dbd5";
       context.beginPath();
@@ -315,7 +337,7 @@ function drawFooter(context: CanvasRenderingContext2D) {
   context.fillRect(0, 1270, 750, 64);
   context.fillStyle = "#9da8a4";
   setFont(context, 10, 600);
-  context.fillText("HONE · 仅作日程参考，不构成投资建议", 32, 1308);
+  context.fillText(`HONE · ${CONTENT.chat_page.calendar.disclaimer}`, 32, 1308);
   context.textAlign = "right";
   context.fillText("BLS · BEA · FED · CENSUS · FMP", 718, 1308);
   context.textAlign = "left";

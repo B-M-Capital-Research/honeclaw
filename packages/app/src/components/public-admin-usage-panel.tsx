@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal, onMount } from "solid-js";
 import { CONTENT } from "@/lib/public-content";
+import { useLocale } from "@/lib/i18n";
 import {
   getPublicAdminUsage,
   type PublicAdminUsageRangeDays,
@@ -254,7 +255,7 @@ export function summarizePublicAdminUsage(
 function formatUsageDate(value: string) {
   const parsed = new Date(`${value}T00:00:00+08:00`);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("zh-CN", {
+  return parsed.toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     month: "short",
     day: "numeric",
     weekday: "short",
@@ -265,7 +266,7 @@ function formatUsageDate(value: string) {
 function formatUsageTime(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString("zh-CN", {
+  return parsed.toLocaleTimeString(useLocale() === "en" ? "en-US" : "zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -294,7 +295,7 @@ function formatGeneratedAt(value?: string) {
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toLocaleString("zh-CN", {
+  return parsed.toLocaleString(useLocale() === "en" ? "en-US" : "zh-CN", {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
@@ -319,7 +320,7 @@ const PUBLIC_ADMIN_USAGE_CHANNELS = [
 function formatTrendDate(value: string) {
   const parsed = new Date(`${value}T00:00:00+08:00`);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("zh-CN", {
+  return parsed.toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     month: "numeric",
     day: "numeric",
     timeZone: "Asia/Shanghai",

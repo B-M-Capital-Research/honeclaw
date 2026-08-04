@@ -1116,6 +1116,10 @@ const CONTENT_ZH = {
       busy: "当前无法启动新的分析任务",
       loading_preview_skill: "正在加载财报前瞻技能",
       loading_analysis_skill: "正在加载财报分析技能",
+      preview_message: "请为 {company} 生成财报前瞻，并完成证据核验和可分享 PDF。",
+      analysis_message: "请分析 {company} 的最新财报，并完成证据核验和可分享 PDF。",
+      analysis_message_with_files:
+        "请分析 {company} 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。",
       selected_files: "已选择 {count} 个文件",
       start_action: "启动{label}",
     },
@@ -1423,6 +1427,10 @@ const CONTENT_ZH = {
       cat_jobs: "就业",
       cat_growth: "增长",
       cat_housing: "住房",
+      cat_other: "事件",
+      monthly_issue: "月度刊",
+      legend: "颜色圆点代表事件类别",
+      key_dates: "关键日期 · 按时间排序",
       holdings_label: "持仓 / 关注：",
       sources: "数据源 BLS · BEA · Federal Reserve · Census · ISM · FMP",
       event: "事件",
@@ -1587,7 +1595,7 @@ const CONTENT_ZH = {
       still_active: "仍在活跃处理中，阻止重复发送",
       group_readonly: "群共享会话当前仅支持浏览历史；请在对应 IM 群里继续发言。",
       stopped: "已停止，可重新发送",
-      be_timeout: "超时（",
+      be_timeout: "超时（>{milliseconds}ms）",
       be_unsupported: "不支持的后端 API 版本：{version}",
       be_only: "当前仅支持 {versions}",
       be_read_status: "读取桌面后端状态",
@@ -2706,7 +2714,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "Built-in Skills",
         intro_prefix:
-          "HONE's skills are invoked by the model from context. Below are the 16 public skills in the",
+          "HONE's skills are invoked by the model from context. Below are the 17 public skills in the",
         intro_suffix: "directory.",
       },
       roadmap: {
@@ -3100,7 +3108,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Rust core engine (hone-core / hone-channels / hone-llm / hone-tools)",
         "Frontend UI (SolidJS + Tailwind v4)",
         "Tauri desktop shell",
-        "All 16 public skills",
+        "All 17 public skills",
         "All channel integrations (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
       ],
       closed: [
@@ -3210,7 +3218,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "What license? Commercial use?",
-        a: "MIT, commercial use allowed. The repo ships a fully working core engine, UI, desktop, all 16 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
+        a: "MIT, commercial use allowed. The repo ships a fully working core engine, UI, desktop, all 17 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
       },
       {
         q: "Where is data stored?",
@@ -3413,6 +3421,12 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       busy: "Cannot start another analysis right now",
       loading_preview_skill: "Loading the earnings preview skill",
       loading_analysis_skill: "Loading the earnings analysis skill",
+      preview_message:
+        "Create an earnings preview for {company}, verify the evidence, and produce a shareable PDF.",
+      analysis_message:
+        "Analyze {company}'s latest earnings, verify the evidence, and produce a shareable PDF.",
+      analysis_message_with_files:
+        "Analyze {company}'s latest earnings, prioritize the uploaded earnings materials, and produce a shareable PDF.",
       selected_files: "{count} file(s) selected",
       start_action: "Start {label}",
     },
@@ -3720,6 +3734,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       cat_jobs: "Jobs",
       cat_growth: "Growth",
       cat_housing: "Housing",
+      cat_other: "Event",
+      monthly_issue: "Monthly issue",
+      legend: "Color dots mark event categories",
+      key_dates: "Key dates · chronological",
       holdings_label: "Holdings / watchlist: ",
       sources: "Sources: BLS · BEA · Federal Reserve · Census · ISM · FMP",
       event: "Event",
@@ -3884,7 +3902,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       still_active: "Still processing; duplicate send blocked",
       group_readonly: "Shared group sessions are history-only here. Continue in the IM group itself.",
       stopped: "Stopped. You can send again.",
-      be_timeout: "Timed out (",
+      be_timeout: "Timed out (>{milliseconds}ms)",
       be_unsupported: "Unsupported backend API version: {version}",
       be_only: "Only {versions} is supported",
       be_read_status: "Reading desktop backend status",

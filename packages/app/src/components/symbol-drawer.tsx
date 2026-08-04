@@ -1,5 +1,6 @@
 import { Button } from "@hone-financial/ui/button"
 import { CONTENT } from "@/lib/public-content";
+import { useLocale } from "@/lib/i18n";
 import { useNavigate } from "@solidjs/router"
 import { Portal } from "solid-js/web"
 import { For, Show, createMemo, createSignal } from "solid-js"
@@ -12,7 +13,7 @@ import { actorKey, type ActorRef } from "@/lib/actors"
 
 type DrawerTab = "profile" | "research" | "sessions" | "actions"
 
-const TABS: { id: DrawerTab; label: string }[] = [
+const drawerTabs = (): { id: DrawerTab; label: string }[] => [
   { id: "profile", label: CONTENT.chat_page.console.d_profile },
   { id: "research", label: CONTENT.chat_page.console.d_research },
   { id: "sessions", label: CONTENT.chat_page.console.d_sessions },
@@ -22,7 +23,7 @@ const TABS: { id: DrawerTab; label: string }[] = [
 function formatDate(iso?: string) {
   if (!iso) return "—"
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
+    return new Date(iso).toLocaleString(useLocale() === "en" ? "en-US" : "zh-CN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -360,7 +361,7 @@ export function SymbolDrawer() {
           </div>
 
           <div class="flex shrink-0 border-b border-[color:var(--border)] px-2">
-            <For each={TABS}>
+            <For each={drawerTabs()}>
               {(t) => (
                 <button
                   type="button"

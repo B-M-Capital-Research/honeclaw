@@ -2873,8 +2873,7 @@ fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
         .split_whitespace()
         .next()
         .unwrap_or(answer_time_beijing);
-    let new_york_date = hone_core::beijing_now()
-        .with_timezone(&chrono_tz::America::New_York)
+    let new_york_date = answer_time_in_new_york(answer_time_beijing)
         .format("%Y-%m-%d")
         .to_string();
     let prefix = if new_york_date == beijing_date {
@@ -2886,24 +2885,42 @@ fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
     format!("{prefix}{}", truncate_chars(user_input, remaining))
 }
 
-/// Whether a New York moment sits outside the regular session but inside pre-
-/// or post-market. Pure so the window itself is testable; a Beijing evening is
-/// a New York pre-market morning, and the regular-session quote still reports
-/// the previous close then.
-pub(crate) fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
+fn answer_time_in_new_york(answer_time_beijing: &str) -> chrono::DateTime<chrono_tz::Tz> {
+    for format in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"] {
+        let Ok(local) = NaiveDateTime::parse_from_str(answer_time_beijing.trim(), format) else {
+            continue;
+        };
+        if let Some(beijing) = chrono_tz::Asia::Shanghai
+            .from_local_datetime(&local)
+            .single()
+        {
+            return beijing.with_timezone(&chrono_tz::America::New_York);
+        }
+    }
+    hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York)
+}
+
+fn us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> Option<&'static str> {
     if matches!(at.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
-        return false;
+        return None;
     }
     let time = at.time();
     let pre_open = chrono::NaiveTime::from_hms_opt(4, 0, 0).expect("premarket open");
     let regular_open = chrono::NaiveTime::from_hms_opt(9, 30, 0).expect("regular open");
     let regular_close = chrono::NaiveTime::from_hms_opt(16, 0, 0).expect("regular close");
     let post_close = chrono::NaiveTime::from_hms_opt(20, 0, 0).expect("postmarket close");
-    (time >= pre_open && time < regular_open) || (time > regular_close && time <= post_close)
+    if time >= pre_open && time < regular_open {
+        Some("pre")
+    } else if time > regular_close && time <= post_close {
+        Some("post")
+    } else {
+        None
+    }
 }
 
-fn us_extended_session_now() -> bool {
-    is_us_extended_session(hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York))
+#[cfg(test)]
+fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
+    us_extended_session(at).is_some()
 }
 
 /// Evidence the service fetched before the first model call.
@@ -2953,7 +2970,8 @@ async fn run_pre_turn_enrichment(
             json!({"data_type": "snapshot", "ticker": symbol}),
         )
     });
-    let extended_session = us_extended_session_now();
+    let answer_time_new_york = answer_time_in_new_york(answer_time_beijing);
+    let extended_session = us_extended_session(answer_time_new_york);
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
         let (web, identities, mut speculative) = futures::future::join3(
             registry.execute_tool(
@@ -3009,7 +3027,7 @@ async fn run_pre_turn_enrichment(
         // A regular-session quote reports the previous close while pre/post
         // market is running, so the extended bar has to come with it or the
         // turn reads a moving stock as an unopened one.
-        let extended = if extended_session {
+        let extended = if extended_session.is_some() {
             futures::future::join_all(resolved.iter().map(|(_, symbol)| {
                 registry.execute_tool(
                     "data_fetch",
@@ -3075,9 +3093,24 @@ async fn run_pre_turn_enrichment(
             ));
         }
     }
+    let mut verified_extended_count = 0usize;
     for ((_, symbol), bar) in resolved.iter().zip(extended.iter()) {
-        if let Some(value) = bar.as_ref().ok().filter(|v| !value_has_error(v)) {
+        if let Some(value) = bar
+            .as_ref()
+            .ok()
+            .filter(|value| !value_has_error(value))
+            .filter(|value| {
+                matching_requested_extended_quote_fact_at(
+                    value,
+                    symbol,
+                    extended_session,
+                    answer_time_new_york.timestamp(),
+                )
+                .is_some()
+            })
+        {
             calls += 1;
+            verified_extended_count += 1;
             sections.push(format!(
                 "- `data_fetch(extended_hours, ticker={symbol:?})` →\n{}",
                 bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
@@ -3094,7 +3127,7 @@ async fn run_pre_turn_enrichment(
     let block = format!(
         "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}",
         sections.join("\n"),
-        if extended_session {
+        if verified_extended_count > 0 {
             "\n本轮美股正处于盘前或盘后时段：常规 quote 仍报上一交易日收盘价，因此上面附带了同代码 `extended_hours` 规范化 bar（含 session 与该 bar 的时间）。用户问“现在/刚刚/为什么大涨大跌”时，必须以扩展时段 bar 为当前价与涨跌依据，并写明是盘前还是盘后；不得因为常规时段未开盘就回答“没开盘”“暂无数据”。若某个标的没有取到扩展时段 bar，只说明该标的扩展时段未取到，不要推广成整个市场没开盘。"
         } else {
             ""
@@ -16102,32 +16135,65 @@ mod tests {
     }
 
     #[test]
-    fn pre_turn_web_query_carries_both_market_dates() {
-        let beijing = hone_core::beijing_now().format("%Y-%m-%d").to_string();
-        let new_york = hone_core::beijing_now()
-            .with_timezone(&chrono_tz::America::New_York)
-            .format("%Y-%m-%d")
-            .to_string();
-        let query = super::pre_turn_web_query("nbis最近怎么看", &format!("{beijing} 09:31"));
+    fn pre_turn_extended_bar_must_match_the_current_session_and_freshness_window() {
+        use chrono::TimeZone;
 
-        assert!(query.starts_with(&beijing), "{query}");
+        let ny = chrono_tz::America::New_York;
+        let now = ny
+            .with_ymd_and_hms(2026, 8, 4, 7, 33, 0)
+            .single()
+            .expect("pre-market time");
+        let fresh = json!({"data": {
+            "symbol": "COHR",
+            "price": 118.5,
+            "date": "2026-08-04 07:31:00",
+            "session": "pre"
+        }});
+        let stale = json!({"data": {
+            "symbol": "COHR",
+            "price": 117.2,
+            "date": "2026-08-04 06:30:00",
+            "session": "pre"
+        }});
+
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &fresh,
+                "COHR",
+                super::us_extended_session(now),
+                now.timestamp(),
+            )
+            .is_some()
+        );
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &stale,
+                "COHR",
+                super::us_extended_session(now),
+                now.timestamp(),
+            )
+            .is_none(),
+            "an old minute bar must not be preloaded as the current pre-market price"
+        );
+    }
+
+    #[test]
+    fn pre_turn_web_query_carries_both_market_dates() {
+        let query = super::pre_turn_web_query("nbis最近怎么看", "2026-08-04 09:31");
+
+        assert!(query.starts_with("2026-08-04"), "{query}");
+        assert!(query.contains("(2026-08-03 ET)"), "{query}");
         assert!(query.contains("nbis最近怎么看"), "{query}");
         // The time of day never enters the query: it only gives the search
         // engine a literal `09:31` to match on.
         assert!(!query.contains("09:31"), "{query}");
-        if new_york == beijing {
-            assert!(!query.contains(" ET)"), "{query}");
-        } else {
-            assert!(query.contains(&format!("({new_york} ET)")), "{query}");
-        }
     }
 
     #[test]
     fn pre_turn_web_query_never_exceeds_provider_limit() {
-        let beijing = hone_core::beijing_now().format("%Y-%m-%d").to_string();
         let input = format!("SNDK（闪迪）财报前瞻 {}", "近期新闻与一致预期 ".repeat(100));
 
-        let query = super::pre_turn_web_query(&input, &format!("{beijing} 09:31"));
+        let query = super::pre_turn_web_query(&input, "2026-08-04 09:31");
 
         assert!(query.contains("SNDK（闪迪）财报前瞻"), "{query}");
         assert!(

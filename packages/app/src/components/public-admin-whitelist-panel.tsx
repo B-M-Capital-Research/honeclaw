@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onMount } from "solid-js";
 import { CONTENT } from "@/lib/public-content";
+import { useLocale } from "@/lib/i18n";
 import {
   createPublicAdminInvite,
   disablePublicAdminInvite,
@@ -12,7 +13,7 @@ import type {
 
 function formatAdminDate(value?: string) {
   if (!value) return CONTENT.chat_page.admin.w_not_signed_in;
-  return new Date(value).toLocaleDateString("zh-CN", {
+  return new Date(value).toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     year: "numeric",
     month: "short",
     day: "numeric",

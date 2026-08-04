@@ -7588,27 +7588,20 @@ async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
     .await
     .expect("interactive enrichment must never fail the turn");
 
-    // Only assert the extended leg while the clock is actually inside a US
-    // extended session; outside it the turn correctly skips the call.
-    let extended_now = crate::investment_response_guard::is_us_extended_session(
-        hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York),
+    // The supplied answer time is 07:33 ET, so this assertion is deterministic
+    // regardless of the wall clock when the test suite runs.
+    assert!(
+        runtime_input.contains("data_fetch(extended_hours, ticker=\"COHR\")"),
+        "{runtime_input}"
     );
-    if extended_now {
-        assert!(
-            runtime_input.contains("data_fetch(extended_hours, ticker=\"COHR\")"),
-            "{runtime_input}"
-        );
-        // The latest bar, not the older one, and labelled as pre-market.
-        assert!(runtime_input.contains("118.5"), "{runtime_input}");
-        assert!(runtime_input.contains("\"pre\""), "{runtime_input}");
-        // And the Agent is told not to answer "not open" from the regular quote.
-        assert!(
-            runtime_input.contains("不得因为常规时段未开盘就回答"),
-            "{runtime_input}"
-        );
-    } else {
-        assert!(!runtime_input.contains("extended_hours"), "{runtime_input}");
-    }
+    // The latest fresh bar, not the older one, and labelled as pre-market.
+    assert!(runtime_input.contains("118.5"), "{runtime_input}");
+    assert!(runtime_input.contains("\"pre\""), "{runtime_input}");
+    // And the Agent is told not to answer "not open" from the regular quote.
+    assert!(
+        runtime_input.contains("不得因为常规时段未开盘就回答"),
+        "{runtime_input}"
+    );
     fmp_stub.join().expect("join FMP stub");
     let _ = std::fs::remove_dir_all(root);
 }

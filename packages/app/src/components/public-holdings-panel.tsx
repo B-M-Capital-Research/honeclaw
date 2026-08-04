@@ -28,7 +28,7 @@ type EditorState =
   | { mode: "edit"; row: HoldingRow }
   | null;
 
-const ASK_ACTIONS: Array<{ kind: HoldingAskKind; label: string }> = [
+const askActions = (): Array<{ kind: HoldingAskKind; label: string }> => [
   { kind: "news", label: CONTENT.chat_page.holdings.ask_news },
   { kind: "valuation", label: CONTENT.chat_page.holdings.ask_valuation },
   { kind: "earnings", label: CONTENT.chat_page.holdings.ask_earnings },
@@ -303,7 +303,7 @@ export function PublicHoldingsPanel() {
                         >
                           {CONTENT.chat_page.holdings.edit}
                         </button>
-                        <For each={ASK_ACTIONS}>
+                        <For each={askActions()}>
                           {(action) => (
                             <button
                               type="button"

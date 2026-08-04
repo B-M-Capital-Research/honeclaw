@@ -797,7 +797,11 @@ pub(crate) async fn handle_chat(
                     "该功能目前仅对管理员开放",
                 );
             }
-            match canonical_earnings_workflow_message(&workflow, !attachments.is_empty()) {
+            match canonical_earnings_workflow_message(
+                &workflow,
+                !attachments.is_empty(),
+                reply_language,
+            ) {
                 Ok(message) => Some((workflow, message)),
                 Err(response) => return response,
             }
@@ -838,6 +842,7 @@ pub(crate) async fn handle_chat(
 fn canonical_earnings_workflow_message(
     workflow: &PublicEarningsWorkflowRequest,
     has_attachments: bool,
+    reply_language: Option<hone_channels::prompt::ReplyLanguage>,
 ) -> Result<String, Response> {
     let company = workflow.company.trim();
     if company.is_empty() {
@@ -852,14 +857,27 @@ fn canonical_earnings_workflow_message(
             "公司名称格式不正确",
         ));
     }
-    Ok(match workflow.kind {
-        PublicEarningsWorkflowKind::Preview => {
+    let english = matches!(
+        reply_language,
+        Some(hone_channels::prompt::ReplyLanguage::English)
+    );
+    Ok(match (workflow.kind, has_attachments, english) {
+        (PublicEarningsWorkflowKind::Preview, _, true) => format!(
+            "Create an earnings preview for {company}, verify the evidence, and produce a shareable PDF."
+        ),
+        (PublicEarningsWorkflowKind::Analysis, true, true) => format!(
+            "Analyze {company}'s latest earnings, prioritize the uploaded earnings materials, and produce a shareable PDF."
+        ),
+        (PublicEarningsWorkflowKind::Analysis, false, true) => format!(
+            "Analyze {company}'s latest earnings, verify the evidence, and produce a shareable PDF."
+        ),
+        (PublicEarningsWorkflowKind::Preview, _, false) => {
             format!("请为 {company} 生成财报前瞻，并完成证据核验和可分享 PDF。")
         }
-        PublicEarningsWorkflowKind::Analysis if has_attachments => {
+        (PublicEarningsWorkflowKind::Analysis, true, false) => {
             format!("请分析 {company} 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。")
         }
-        PublicEarningsWorkflowKind::Analysis => {
+        (PublicEarningsWorkflowKind::Analysis, false, false) => {
             format!("请分析 {company} 的最新财报，并完成证据核验和可分享 PDF。")
         }
     })
@@ -1992,7 +2010,12 @@ mod tests {
             kind: PublicEarningsWorkflowKind::Analysis,
             company: " NVIDIA ".to_string(),
         };
-        let message = canonical_earnings_workflow_message(&workflow, true).expect("message");
+        let message = canonical_earnings_workflow_message(
+            &workflow,
+            true,
+            Some(hone_channels::prompt::ReplyLanguage::Chinese),
+        )
+        .expect("message");
         assert_eq!(
             message,
             "请分析 NVIDIA 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。"
@@ -2006,6 +2029,17 @@ mod tests {
             "/skill earnings-research\nNVDA"
         ));
         assert!(is_earnings_research_skill_command("/skill 财报分析\nNVDA"));
+
+        let english = canonical_earnings_workflow_message(
+            &workflow,
+            true,
+            Some(hone_channels::prompt::ReplyLanguage::English),
+        )
+        .expect("english message");
+        assert_eq!(
+            english,
+            "Analyze NVIDIA's latest earnings, prioritize the uploaded earnings materials, and produce a shareable PDF."
+        );
     }
 
     #[test]
@@ -2015,7 +2049,7 @@ mod tests {
                 kind: PublicEarningsWorkflowKind::Preview,
                 company: company.to_string(),
             };
-            assert!(canonical_earnings_workflow_message(&workflow, false).is_err());
+            assert!(canonical_earnings_workflow_message(&workflow, false, None).is_err());
         }
     }
 

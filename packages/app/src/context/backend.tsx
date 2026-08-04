@@ -80,7 +80,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
       promise,
       new Promise<T>((_, reject) => {
         timer = window.setTimeout(() => {
-          reject(new Error(`${label} ${CONTENT.chat_page.console.be_timeout}>${timeoutMs}ms）`))
+          reject(new Error(`${label} ${CONTENT.chat_page.console.be_timeout.replace("{milliseconds}", String(timeoutMs))}`))
         }, timeoutMs)
       }),
     ])

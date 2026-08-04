@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { setLocale } from "@/lib/i18n";
 import {
   displayGithubStars,
   formatGithubStars,
@@ -284,12 +285,22 @@ describe("public chat run progress", () => {
 
 describe("earnings research workflow", () => {
   it("builds the same optimistic message shape as the server contract", () => {
+    setLocale("zh");
     expect(publicEarningsWorkflowMessage("preview", " NVDA ", false)).toBe(
       "请为 NVDA 生成财报前瞻，并完成证据核验和可分享 PDF。",
     );
     expect(publicEarningsWorkflowMessage("analysis", "NVIDIA", true)).toBe(
       "请分析 NVIDIA 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。",
     );
+
+    setLocale("en");
+    expect(publicEarningsWorkflowMessage("preview", " NVDA ", false)).toBe(
+      "Create an earnings preview for NVDA, verify the evidence, and produce a shareable PDF.",
+    );
+    expect(publicEarningsWorkflowMessage("analysis", "NVIDIA", true)).toBe(
+      "Analyze NVIDIA's latest earnings, prioritize the uploaded earnings materials, and produce a shareable PDF.",
+    );
+    setLocale("zh");
   });
 
   it("keeps distinct progress checkpoints and caps the visible history", () => {

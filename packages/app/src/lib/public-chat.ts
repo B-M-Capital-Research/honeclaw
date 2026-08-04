@@ -1,4 +1,5 @@
 import { historyToTimeline } from "./messages";
+import { CONTENT } from "./public-content";
 import { formatShanghaiDateTime } from "./time";
 import type {
   HistoryAttachment,
@@ -58,11 +59,12 @@ export function publicEarningsWorkflowMessage(
 ): string {
   const name = company.trim();
   if (kind === "preview") {
-    return `请为 ${name} 生成财报前瞻，并完成证据核验和可分享 PDF。`;
+    return CONTENT.chat_page.earnings.preview_message.replace("{company}", name);
   }
-  return hasAttachments
-    ? `请分析 ${name} 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。`
-    : `请分析 ${name} 的最新财报，并完成证据核验和可分享 PDF。`;
+  const template = hasAttachments
+    ? CONTENT.chat_page.earnings.analysis_message_with_files
+    : CONTENT.chat_page.earnings.analysis_message;
+  return template.replace("{company}", name);
 }
 
 export function appendPublicChatProgressStep(

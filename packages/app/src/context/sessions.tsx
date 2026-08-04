@@ -48,7 +48,7 @@ function isPendingPhaseActive(phase: PendingPhase | undefined): boolean {
   );
 }
 
-const ME_SYNTHETIC_USER: UserInfo = {
+const meSyntheticUser = (): UserInfo => ({
   channel: "web",
   user_id: "ME",
   channel_scope: undefined,
@@ -60,7 +60,7 @@ const ME_SYNTHETIC_USER: UserInfo = {
   last_role: "",
   last_time: "",
   message_count: 0,
-};
+});
 
 type SessionsContextValue = ReturnType<typeof createSessionsState>;
 
@@ -647,7 +647,7 @@ function createSessionsState() {
       // 确保用户无需先有历史记录也能随时发起对话。
       // 一旦 ME 发送过消息并有了真实 session 文件，后端会返回真实数据将其覆盖。
       const hasME = users.some((u) => u.session_id === ME_SESSION_ID);
-      const usersWithMe = hasME ? users : [ME_SYNTHETIC_USER, ...users];
+      const usersWithMe = hasME ? users : [meSyntheticUser(), ...users];
       setState("users", reconcile(usersWithMe, { key: "session_id" }));
       setState("error", "");
     } catch (error) {

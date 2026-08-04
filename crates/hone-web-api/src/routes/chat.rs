@@ -15,7 +15,7 @@ use hone_channels::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
     run_with_progress_ticks,
 };
-use hone_channels::prompt::PromptOptions;
+use hone_channels::prompt::{PromptOptions, ReplyLanguage};
 use hone_channels::run_event::RunEvent;
 use hone_channels::runtime::{clean_msg_markers, should_skip_buffer};
 use hone_core::ActorIdentity;
@@ -25,17 +25,38 @@ use crate::types::ChatRequest;
 
 const WEB_CHAT_PROGRESS_TICK: Duration = Duration::from_secs(10);
 const WEB_CHAT_PROGRESS_MIN_SILENCE: Duration = Duration::from_secs(15);
-const WEB_CHAT_PROGRESS_STATUS: &str = "仍在处理中，正在完成核验与分析";
+fn localized(
+    reply_language: Option<ReplyLanguage>,
+    chinese: &'static str,
+    english: &'static str,
+) -> &'static str {
+    if matches!(reply_language, Some(ReplyLanguage::English)) {
+        english
+    } else {
+        chinese
+    }
+}
 
-fn earnings_workflow_initial_status(message: &str) -> Option<&'static str> {
+fn earnings_workflow_initial_status(
+    message: &str,
+    reply_language: Option<ReplyLanguage>,
+) -> Option<&'static str> {
     let first = message.lines().next()?.trim();
     if first != "/earnings-research" && !first.starts_with("/earnings-research ") {
         return None;
     }
     if message.contains("\nmode: analysis\n") {
-        Some("正在加载财报分析技能")
+        Some(localized(
+            reply_language,
+            "正在加载财报分析技能",
+            "Loading the earnings analysis skill",
+        ))
     } else {
-        Some("正在加载财报前瞻技能")
+        Some(localized(
+            reply_language,
+            "正在加载财报前瞻技能",
+            "Loading the earnings preview skill",
+        ))
     }
 }
 
@@ -45,6 +66,7 @@ pub(crate) struct SseSessionListener {
     sent_segments: Arc<tokio::sync::Mutex<usize>>,
     active_run: Option<ActiveChatRunHandle>,
     terminal_sent: Arc<AtomicBool>,
+    reply_language: Option<ReplyLanguage>,
 }
 
 impl SseSessionListener {
@@ -97,19 +119,40 @@ impl AgentSessionListener for SseSessionListener {
                 if self.emit_assistant_delta(text).await
                     && let Some(active_run) = &self.active_run
                 {
-                    let _ = active_run.update("running", "正在输出最终回答");
+                    let _ = active_run.update(
+                        "running",
+                        localized(
+                            self.reply_language,
+                            "正在输出最终回答",
+                            "Writing the final answer",
+                        ),
+                    );
                 }
             }
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 if self.emit_assistant_delta(content).await
                     && let Some(active_run) = &self.active_run
                 {
-                    let _ = active_run.update("running", "正在输出最终回答");
+                    let _ = active_run.update(
+                        "running",
+                        localized(
+                            self.reply_language,
+                            "正在输出最终回答",
+                            "Writing the final answer",
+                        ),
+                    );
                 }
             }
             AgentSessionEvent::Run(RunEvent::StreamReset) => {
                 if let Some(active_run) = &self.active_run {
-                    let _ = active_run.update("running", "正在复核结果，确保信息准确");
+                    let _ = active_run.update(
+                        "running",
+                        localized(
+                            self.reply_language,
+                            "正在复核结果，确保信息准确",
+                            "Reviewing the result for accuracy",
+                        ),
+                    );
                 }
                 let _ = self.tx.send(("assistant_reset".into(), json!({}))).await;
                 let mut guard = self.sent_segments.lock().await;
@@ -127,7 +170,7 @@ impl AgentSessionListener for SseSessionListener {
                 reasoning,
                 message,
             }) => {
-                let status_text = public_tool_status_text(&status, &tool);
+                let status_text = public_tool_status_text(&status, &tool, self.reply_language);
                 if let Some(active_run) = &self.active_run {
                     let _ = active_run.update("running", status_text);
                 }
@@ -142,7 +185,7 @@ impl AgentSessionListener for SseSessionListener {
                 let _ = self.tx.send(("tool_call".into(), payload)).await;
             }
             AgentSessionEvent::Run(RunEvent::Progress { stage, detail: _ }) => {
-                let (phase, status_text) = public_progress_status(stage);
+                let (phase, status_text) = public_progress_status(stage, self.reply_language);
                 let run = self
                     .active_run
                     .as_ref()
@@ -173,7 +216,12 @@ impl AgentSessionListener for SseSessionListener {
                     .tx
                     .send((
                         "run_error".into(),
-                        json!({ "message": format!("抱歉，处理出错: {snippet}") }),
+                        json!({
+                            "message": format!(
+                                "{}: {snippet}",
+                                localized(self.reply_language, "抱歉，处理出错", "Sorry, processing failed")
+                            )
+                        }),
                     ))
                     .await;
             }
@@ -252,7 +300,14 @@ impl AgentSessionListener for SseSessionListener {
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 let accepted = self.emit_assistant_delta(content).await;
                 if accepted && let Some(active_run) = &self.active_run {
-                    let _ = active_run.update("running", "正在输出最终回答");
+                    let _ = active_run.update(
+                        "running",
+                        localized(
+                            self.reply_language,
+                            "正在输出最终回答",
+                            "Writing the final answer",
+                        ),
+                    );
                 }
                 accepted
             }
@@ -269,11 +324,20 @@ fn emit_web_progress_heartbeat(
     active_run: &ActiveChatRunHandle,
     terminal_sent: &AtomicBool,
     min_silence: Duration,
+    reply_language: Option<ReplyLanguage>,
 ) {
     if terminal_sent.load(Ordering::Acquire) {
         return;
     }
-    let Some(run) = active_run.heartbeat("running", WEB_CHAT_PROGRESS_STATUS, min_silence) else {
+    let Some(run) = active_run.heartbeat(
+        "running",
+        localized(
+            reply_language,
+            "仍在处理中，正在完成核验与分析",
+            "Still working through verification and analysis",
+        ),
+        min_silence,
+    ) else {
         return;
     };
     // A slow or disconnected browser must never stall the detached Agent run.
@@ -289,78 +353,176 @@ fn emit_web_progress_heartbeat(
     ));
 }
 
-fn public_progress_status(stage: &str) -> (&'static str, &'static str) {
-    match stage {
-        "session.compress" => ("thinking", "正在整理会话上下文"),
-        "preturn.enrichment" => ("running", "正在进行搜索引擎查询并读取行情数据"),
-        "preturn.enrichment.done" => ("running", "资料已就绪，正在分析"),
-        "entity_resolution.preflight" => ("running", "正在识别当前问题中的公司或证券实体"),
-        "entity_resolution.preflight.done" => ("running", "实体范围已确认，正在整理回答"),
-        "entity_resolution.preflight.failed" => {
-            ("running", "实体或数据核验未完成，正在安全结束本轮")
-        }
-        "market_data.preflight.done" => ("running", "实体与行情已核验，正在生成完整分析"),
-        "agent.run.retry" => ("running", "正在复核结果，确保信息准确"),
-        "agent.run.progress" => ("running", "仍在处理中，正在完成核验与分析"),
-        "agent.run" => ("running", "正在检索、核验并生成回答"),
-        _ => ("thinking", "正在准备并核验所需信息"),
-    }
+fn public_progress_status(
+    stage: &str,
+    reply_language: Option<ReplyLanguage>,
+) -> (&'static str, &'static str) {
+    let (phase, chinese, english) = match stage {
+        "session.compress" => (
+            "thinking",
+            "正在整理会话上下文",
+            "Organizing conversation context",
+        ),
+        "preturn.enrichment" => (
+            "running",
+            "正在进行搜索引擎查询并读取行情数据",
+            "Searching the web and retrieving market data",
+        ),
+        "preturn.enrichment.done" => (
+            "running",
+            "资料已就绪，正在分析",
+            "Sources are ready; analyzing them",
+        ),
+        "entity_resolution.preflight" => (
+            "running",
+            "正在识别当前问题中的公司或证券实体",
+            "Identifying the companies or securities in this question",
+        ),
+        "entity_resolution.preflight.done" => (
+            "running",
+            "实体范围已确认，正在整理回答",
+            "Entities confirmed; organizing the answer",
+        ),
+        "entity_resolution.preflight.failed" => (
+            "running",
+            "实体或数据核验未完成，正在安全结束本轮",
+            "Entity or data verification did not complete; safely ending this turn",
+        ),
+        "market_data.preflight.done" => (
+            "running",
+            "实体与行情已核验，正在生成完整分析",
+            "Entities and market data verified; generating the full analysis",
+        ),
+        "agent.run.retry" => (
+            "running",
+            "正在复核结果，确保信息准确",
+            "Reviewing the result for accuracy",
+        ),
+        "agent.run.progress" => (
+            "running",
+            "仍在处理中，正在完成核验与分析",
+            "Still working through verification and analysis",
+        ),
+        "agent.run" => (
+            "running",
+            "正在检索、核验并生成回答",
+            "Retrieving sources, verifying them, and generating the answer",
+        ),
+        _ => (
+            "thinking",
+            "正在准备并核验所需信息",
+            "Preparing and verifying the required information",
+        ),
+    };
+    (phase, localized(reply_language, chinese, english))
 }
 
 /// User-facing wording for the tool the turn is currently running. The runner
 /// label carries internal names and raw arguments, so it is only read here to
 /// pick a product phrase — nothing from it reaches the browser. Public chat
 /// shows this beside the pending turn, never inside the answer body.
-fn public_tool_status_text(status: &str, tool: &str) -> &'static str {
+fn public_tool_status_text(
+    status: &str,
+    tool: &str,
+    reply_language: Option<ReplyLanguage>,
+) -> &'static str {
     if matches!(
         status.trim().to_ascii_lowercase().as_str(),
         "completed" | "complete" | "success" | "succeeded" | "finished" | "done"
     ) {
-        return "数据核验完成，正在组织回答";
+        return localized(
+            reply_language,
+            "数据核验完成，正在组织回答",
+            "Data verified; organizing the answer",
+        );
     }
     let label = tool.trim().to_ascii_lowercase();
     if label.starts_with("web_search") || label.starts_with("deep_research") {
-        return "正在进行搜索引擎查询";
+        return localized(reply_language, "正在进行搜索引擎查询", "Searching the web");
     }
     if label.starts_with("data_fetch") {
         // The label is `data_fetch <data_type> <symbol>`; the data type decides
         // what the user is actually waiting for.
         if label.contains("search") {
-            return "正在确认标的实体";
+            return localized(
+                reply_language,
+                "正在确认标的实体",
+                "Confirming the security or company",
+            );
         }
         if label.contains("news") {
-            return "正在读取相关新闻";
+            return localized(
+                reply_language,
+                "正在读取相关新闻",
+                "Retrieving relevant news",
+            );
         }
         if label.contains("financials") || label.contains("earnings") {
-            return "正在读取财务与财报数据";
+            return localized(
+                reply_language,
+                "正在读取财务与财报数据",
+                "Retrieving financial and earnings data",
+            );
         }
         if label.contains("etf_holdings") {
-            return "正在读取基金持仓";
+            return localized(
+                reply_language,
+                "正在读取基金持仓",
+                "Retrieving fund holdings",
+            );
         }
         if label.contains("sector_performance") || label.contains("gainers_losers") {
-            return "正在读取板块与涨跌数据";
+            return localized(
+                reply_language,
+                "正在读取板块与涨跌数据",
+                "Retrieving sector and market-move data",
+            );
         }
-        return "正在读取行情数据";
+        return localized(reply_language, "正在读取行情数据", "Retrieving market data");
     }
     if label.starts_with("portfolio") {
-        return "正在读取你的持仓与关注";
+        return localized(
+            reply_language,
+            "正在读取你的持仓与关注",
+            "Retrieving your holdings and watchlist",
+        );
     }
     if label.starts_with("cron_job") || label.starts_with("notification_prefs") {
-        return "正在处理你的提醒设置";
+        return localized(
+            reply_language,
+            "正在处理你的提醒设置",
+            "Processing your alert settings",
+        );
     }
     if label.starts_with("missed_events") {
-        return "正在整理你错过的推送";
+        return localized(
+            reply_language,
+            "正在整理你错过的推送",
+            "Organizing missed notifications",
+        );
     }
     if label.starts_with("skill_tool")
         || label.starts_with("load_skill")
         || label.starts_with("discover_skills")
     {
-        return "正在加载分析方法";
+        return localized(
+            reply_language,
+            "正在加载分析方法",
+            "Loading the analysis method",
+        );
     }
     if label.starts_with("local_") {
-        return "正在读取你的历史研究记录";
+        return localized(
+            reply_language,
+            "正在读取你的历史研究记录",
+            "Retrieving your prior research",
+        );
     }
-    "正在查询并核验所需数据"
+    localized(
+        reply_language,
+        "正在查询并核验所需数据",
+        "Retrieving and verifying the required data",
+    )
 }
 
 pub(crate) fn build_chat_sse(
@@ -400,7 +562,13 @@ pub(crate) fn build_chat_sse(
                 let _ = tx
                     .send((
                         "run_error".into(),
-                        json!({ "message": "当前会话已有任务正在处理，请稍后查看" }),
+                        json!({
+                            "message": localized(
+                                reply_language,
+                                "当前会话已有任务正在处理，请稍后查看",
+                                "This conversation already has a task in progress. Check back shortly."
+                            )
+                        }),
                     ))
                     .await;
                 let _ = tx
@@ -413,7 +581,7 @@ pub(crate) fn build_chat_sse(
         let active_run = active_run_guard
             .run()
             .expect("active chat run must exist while its guard is alive");
-        if let Some(status) = earnings_workflow_initial_status(&msg) {
+        if let Some(status) = earnings_workflow_initial_status(&msg, reply_language) {
             let _ = active_run_guard.handle().update("running", status);
         }
         let run_id = active_run.run_id.clone();
@@ -477,6 +645,7 @@ pub(crate) fn build_chat_sse(
             sent_segments: sent_segments.clone(),
             active_run: Some(active_run_handle.clone()),
             terminal_sent: terminal_sent.clone(),
+            reply_language,
         }));
 
         info!(
@@ -505,6 +674,7 @@ pub(crate) fn build_chat_sse(
                     &active_run_handle,
                     &heartbeat_terminal,
                     WEB_CHAT_PROGRESS_MIN_SILENCE,
+                    reply_language,
                 );
                 std::future::ready(())
             },
@@ -593,7 +763,7 @@ mod tests {
             ("skill_tool stock_research", "正在加载分析方法"),
             ("some_unknown_tool", "正在查询并核验所需数据"),
         ] {
-            let text = public_tool_status_text("start", label);
+            let text = public_tool_status_text("start", label, None);
             assert_eq!(text, expected, "{label}");
             // No internal tool name, argument or symbol may survive into the
             // user-visible string.
@@ -604,8 +774,16 @@ mod tests {
 
         // Completion wording does not depend on which tool ran.
         assert_eq!(
-            public_tool_status_text("done", "web_search query=\"x\""),
+            public_tool_status_text("done", "web_search query=\"x\"", None),
             "数据核验完成，正在组织回答"
+        );
+        assert_eq!(
+            public_tool_status_text(
+                "start",
+                "data_fetch financials NVDA",
+                Some(hone_channels::prompt::ReplyLanguage::English),
+            ),
+            "Retrieving financial and earnings data"
         );
     }
 
@@ -616,11 +794,11 @@ mod tests {
     fn pre_turn_enrichment_window_is_not_silent() {
         use super::public_progress_status;
 
-        let (phase, text) = public_progress_status("preturn.enrichment");
+        let (phase, text) = public_progress_status("preturn.enrichment", None);
         assert_eq!(phase, "running");
         assert!(text.contains("搜索引擎查询"), "{text}");
         assert!(text.contains("行情"), "{text}");
-        let (done_phase, done_text) = public_progress_status("preturn.enrichment.done");
+        let (done_phase, done_text) = public_progress_status("preturn.enrichment.done", None);
         assert_eq!(done_phase, "running");
         assert!(done_text.contains("正在分析"), "{done_text}");
     }
@@ -635,6 +813,7 @@ mod tests {
             sent_segments: sent_segments.clone(),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener
@@ -655,6 +834,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener
@@ -683,6 +863,7 @@ mod tests {
             sent_segments: sent_segments.clone(),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener
@@ -731,6 +912,7 @@ mod tests {
             sent_segments: sent_segments.clone(),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         assert!(listener.supports_committed_delivery());
@@ -753,6 +935,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener
@@ -787,6 +970,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(1)),
             active_run: None,
             terminal_sent: terminal_sent.clone(),
+            reply_language: None,
         };
 
         listener
@@ -831,6 +1015,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(1)),
             active_run: Some(guard.handle()),
             terminal_sent: terminal_sent.clone(),
+            reply_language: None,
         };
 
         listener
@@ -890,7 +1075,7 @@ mod tests {
         let terminal_sent = AtomicBool::new(false);
         let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
-        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO);
+        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO, None);
         let (event, payload) = rx.recv().await.expect("heartbeat event");
         assert_eq!(event, "run_progress");
         assert_eq!(payload["run_id"], initial.run_id);
@@ -899,7 +1084,7 @@ mod tests {
         assert!(payload["updated_at_ms"].as_i64().unwrap() >= specific.updated_at_ms);
 
         terminal_sent.store(true, Ordering::Release);
-        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO);
+        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO, None);
         assert!(rx.try_recv().is_err(), "terminal run must not heartbeat");
     }
 
@@ -917,6 +1102,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: Some(guard.handle()),
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener
@@ -975,6 +1161,7 @@ mod tests {
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: None,
             terminal_sent: Arc::new(AtomicBool::new(false)),
+            reply_language: None,
         };
 
         listener

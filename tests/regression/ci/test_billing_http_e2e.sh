@@ -160,6 +160,10 @@ email = "billing-ci@hone-claw.invalid"
 stripe_product = "prod_ci_stripe"
 stripe_price = "price_ci_stripe"
 stripe_secret = b"whsec_ci_only_not_a_secret"
+# This is an isolated loopback server. Ignore workstation/system proxy
+# discovery so macOS HTTP proxy settings cannot turn a CI-safe local request
+# into an external five-second timeout.
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def request(method, path, *, headers=None, body=None):
@@ -173,7 +177,7 @@ def request(method, path, *, headers=None, body=None):
         method=method,
     )
     try:
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with opener.open(req, timeout=5) as response:
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as error:

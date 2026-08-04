@@ -14,6 +14,15 @@ const workspace = readFileSync(
   new URL("./public-agent-workspace.tsx", import.meta.url),
   "utf8",
 );
+const localeSensitiveSources = [
+  "./finance-calendar-card.tsx",
+  "./finance-calendar-mobile-card.tsx",
+  "./public-holdings-panel.tsx",
+  "./symbol-drawer.tsx",
+  "../context/sessions.tsx",
+  "../lib/finance-calendar-mobile-renderer.ts",
+  "../pages/public-plan.tsx",
+].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 /** Chinese characters outside comments are what makes a surface half-translated. */
 function chineseLiterals(source: string): string[] {
@@ -68,6 +77,14 @@ describe("language is reachable and reported", () => {
     expect(workspace).toContain(
       "const fallbackInsights = (): AgentWorkspaceInsight[] =>",
     );
+    for (const source of localeSensitiveSources) {
+      expect(source).not.toMatch(
+        /const (?:WEEKDAYS|ASK_ACTIONS|TABS|CHANNEL_VIDEOS|POSTERS|ME_SYNTHETIC_USER).*CONTENT/s,
+      );
+    }
+    expect(localeSensitiveSources.join("\n")).toContain("const weekdays = () =>");
+    expect(localeSensitiveSources.join("\n")).toContain("const posters = () =>");
+    expect(localeSensitiveSources.join("\n")).toContain("const meSyntheticUser = ():");
   });
 
   it("translates the earnings entries in both locales", () => {

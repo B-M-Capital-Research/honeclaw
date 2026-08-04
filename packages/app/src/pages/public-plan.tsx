@@ -16,14 +16,14 @@ const BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/"
 const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"
 
 /* 频道近期视频（手工挑选置顶三条；缩略图走 YouTube 官方 CDN）。 */
-const CHANNEL_VIDEOS = [
+const channelVideos = () => [
   { id: "VkPJOPwrDdI", title: CONTENT.chat_page.misc.plan_video_1 },
   { id: "m2VLkhoPeVw", title: CONTENT.chat_page.misc.plan_video_2 },
   { id: "ii5M8eyta2g", title: CONTENT.chat_page.misc.plan_video_3 },
 ]
 
 /* 六张海报：1052×1870（9:16）。bm1 是邀请函总览，放在首位。 */
-const POSTERS = [
+const posters = () => [
   { src: "/bm1.webp", alt: CONTENT.chat_page.misc.plan_poster_1 },
   { src: "/bm2.webp", alt: CONTENT.chat_page.misc.plan_poster_2 },
   { src: "/bm3.webp", alt: CONTENT.chat_page.misc.plan_poster_3 },
@@ -129,7 +129,7 @@ export default function PublicPlanPage() {
 
   const activePoster = () => {
     const state = lightbox()
-    return state?.kind === "poster" ? POSTERS[state.index] : null
+    return state?.kind === "poster" ? posters()[state.index] : null
   }
 
   return (
@@ -181,7 +181,7 @@ export default function PublicPlanPage() {
             <section class="hone-hub-card" aria-label={C().posters_label}>
               <div class="hone-hub-label">{C().posters_label}</div>
               <div class="hone-share-wall">
-                <For each={POSTERS}>
+                <For each={posters()}>
                   {(poster, i) => (
                     <button
                       type="button"
@@ -292,7 +292,7 @@ export default function PublicPlanPage() {
           </div>
           <div class="hone-hub-videos-label">{C().channel.videos_label}</div>
           <div class="hone-hub-videos">
-            <For each={CHANNEL_VIDEOS}>
+            <For each={channelVideos()}>
               {(video) => (
                 <a
                   class="hone-hub-video"

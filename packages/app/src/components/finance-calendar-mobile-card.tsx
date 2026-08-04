@@ -15,28 +15,49 @@ import "./finance-calendar-mobile-card.css";
 export const FINANCE_CALENDAR_MOBILE_WIDTH = 750;
 export const FINANCE_CALENDAR_MOBILE_HEIGHT = 1334;
 
-const WEEKDAYS = [CONTENT.chat_page.calendar.wd_mon, CONTENT.chat_page.calendar.wd_tue, CONTENT.chat_page.calendar.wd_wed, CONTENT.chat_page.calendar.wd_thu, CONTENT.chat_page.calendar.wd_fri, CONTENT.chat_page.calendar.wd_sat, CONTENT.chat_page.calendar.wd_sun];
+const weekdays = () => [
+  CONTENT.chat_page.calendar.wd_mon,
+  CONTENT.chat_page.calendar.wd_tue,
+  CONTENT.chat_page.calendar.wd_wed,
+  CONTENT.chat_page.calendar.wd_thu,
+  CONTENT.chat_page.calendar.wd_fri,
+  CONTENT.chat_page.calendar.wd_sat,
+  CONTENT.chat_page.calendar.wd_sun,
+];
 const MONTHS = [
   "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
 ];
 
-const EVENT_META: Record<
+const EVENT_COLORS: Record<
   FinanceCalendarEventCategory,
-  { color: string; label: string }
+  string
 > = {
-  earnings: { color: "#3267a8", label: "EARNINGS / 财报" },
-  policy: { color: "#7f4aa0", label: "POLICY / 政策" },
-  inflation: { color: "#d6543a", label: "INFLATION / 通胀" },
-  labor: { color: "#16806f", label: "LABOR / 就业" },
-  growth: { color: "#668b35", label: "GROWTH / 增长" },
-  housing: { color: "#ad7d16", label: "HOUSING / 住房" },
-  other: { color: "#647276", label: "MARKET / 事件" },
+  earnings: "#3267a8",
+  policy: "#7f4aa0",
+  inflation: "#d6543a",
+  labor: "#16806f",
+  growth: "#668b35",
+  housing: "#ad7d16",
+  other: "#647276",
 };
+
+function eventMeta(category: FinanceCalendarEventCategory) {
+  const label = {
+    earnings: CONTENT.chat_page.calendar.earnings,
+    policy: CONTENT.chat_page.calendar.cat_policy,
+    inflation: CONTENT.chat_page.calendar.cat_inflation,
+    labor: CONTENT.chat_page.calendar.cat_jobs,
+    growth: CONTENT.chat_page.calendar.cat_growth,
+    housing: CONTENT.chat_page.calendar.cat_housing,
+    other: CONTENT.chat_page.calendar.cat_other,
+  }[category];
+  return { color: EVENT_COLORS[category], label };
+}
 
 function eventLabel(event: FinanceCalendarEvent) {
   return event.kind === "earnings" && event.ticker
-    ? `${event.ticker} 财报`
+    ? `${event.ticker} ${CONTENT.chat_page.calendar.earnings}`
     : event.title;
 }
 
@@ -89,7 +110,7 @@ export function FinanceCalendarMobileCard(props: {
       <header class="fcm-cover">
         <div class="fcm-cover__eyebrow">
           <span>HONE / SIGNAL CALENDAR</span>
-          <strong>BEIJING TIME · {parsedMonth()?.year ?? ""}</strong>
+          <strong>{CONTENT.chat_page.calendar.beijing_time} · {parsedMonth()?.year ?? ""}</strong>
         </div>
         <div class="fcm-cover__body">
           <strong class="fcm-cover__month">
@@ -100,14 +121,14 @@ export function FinanceCalendarMobileCard(props: {
             <p>{CONTENT.chat_page.calendar.subtitle}</p>
           </div>
           <div class="fcm-cover__issue">
-            <span>MONTHLY ISSUE</span>
+            <span>{CONTENT.chat_page.calendar.monthly_issue}</span>
             <strong>{monthLabel()} / {parsedMonth()?.year ?? ""}</strong>
           </div>
         </div>
         <div class="fcm-cover__signal">
-          <span><strong>{eventDayCount()}</strong> 事件日</span>
-          <span><strong>{macroCount()}</strong> 宏观</span>
-          <span><strong>{earningsCount()}</strong> 财报</span>
+          <span><strong>{eventDayCount()}</strong> {CONTENT.chat_page.calendar.event_day}</span>
+          <span><strong>{macroCount()}</strong> {CONTENT.chat_page.calendar.macro}</span>
+          <span><strong>{earningsCount()}</strong> {CONTENT.chat_page.calendar.earnings}</span>
           <Show when={nextEvent()}>
             {(event) => (
               <span class="fcm-cover__next">
@@ -122,10 +143,10 @@ export function FinanceCalendarMobileCard(props: {
       <section class="fcm-scan">
         <div class="fcm-section-heading">
           <h2>{CONTENT.chat_page.calendar.signal_chart}</h2>
-          <span>COLOR DOTS MARK EVENT CATEGORIES</span>
+          <span>{CONTENT.chat_page.calendar.legend}</span>
         </div>
         <div class="fcm-weekdays">
-          <For each={WEEKDAYS}>{(weekday) => <span>{weekday}</span>}</For>
+          <For each={weekdays()}>{(weekday) => <span>{weekday}</span>}</For>
         </div>
         <div class="fcm-month-grid">
           <For each={cells()}>
@@ -147,7 +168,7 @@ export function FinanceCalendarMobileCard(props: {
                       <For each={events().slice(0, 4)}>
                         {(event) => (
                           <i
-                            style={`--event-color: ${EVENT_META[financeCalendarEventCategory(event)].color}`}
+                            style={`--event-color: ${eventMeta(financeCalendarEventCategory(event)).color}`}
                           />
                         )}
                       </For>
@@ -163,7 +184,7 @@ export function FinanceCalendarMobileCard(props: {
       <main class="fcm-agenda">
         <div class="fcm-section-heading">
           <h2>{CONTENT.chat_page.calendar.key_window}</h2>
-          <span>KEY DATES · CHRONOLOGICAL</span>
+          <span>{CONTENT.chat_page.calendar.key_dates}</span>
         </div>
         <div
           class="fcm-agenda-list"
@@ -171,7 +192,7 @@ export function FinanceCalendarMobileCard(props: {
         >
           <For each={agenda()}>
             {(event) => {
-              const meta = () => EVENT_META[financeCalendarEventCategory(event)];
+              const meta = () => eventMeta(financeCalendarEventCategory(event));
               return (
                 <div class="fcm-agenda-row" style={`--event-color: ${meta().color}`}>
                   <div class="fcm-agenda-row__date">
