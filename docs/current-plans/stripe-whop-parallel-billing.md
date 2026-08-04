@@ -12,6 +12,9 @@
   - `packages/app/src/pages/{public-activate,public-me,public-plan}.tsx`
   - `packages/app/{playwright.config.ts,e2e/public-billing-activation.spec.ts}`
   - `tests/regression/{ci,manual}/test_*billing*.sh`
+  - `.github/workflows/runtime-image.yml`
+  - `deploy/runtime/Dockerfile`
+  - `scripts/{package,verify,stage}_runtime_bundle.sh`
 - related_docs:
   - `docs/current-plan.md`
 
@@ -60,6 +63,7 @@
 - SQLite 启动时通用重建旧 provider 约束并只复制 Stripe/国内邀请 entitlement 与 Stripe webhook；PostgreSQL 通过 `20260804_stripe_only_billing` forward migration 在 advisory lock 下删除非目标 provider 行并替换约束。
 - 受限 key 前缀 `rk_test_`/`rk_live_` 与标准 key `sk_test_`/`sk_live_` 均按 mode 严格匹配；生产使用受限 key，不再依赖 90 天过期的 CLI key。
 - 2026-08-04 最新部署前只读检查：`hone-web.service` active，当前仍运行 `5028870dcb341476e17b57fdfa84d72624b04200`；PostgreSQL/R2 健康、cloud authority 为真、local durable dependency 为 0、active chats 为 0；`/etc/hone/runtime.env` 为 `root:root 0600`。待本次精确提交、完整门禁与第二次 idle 检查后执行原子切换。
+- owner 在部署阶段要求停止 GCE 本机编译，改由 GitHub Actions 在固定 Debian Bookworm `linux/amd64` 镜像内编译，并通过 GHCR 交付。新链路把 Git SHA 写入二进制、OCI label 与 `RELEASE_METADATA`，用 GHA BuildKit cache 加速后续构建；GCE 仅用无守护进程 `crane` 拉取、逐文件 SHA-256 校验并暂存，现有 systemd、runtime env、双 idle drain、原子 symlink 与回滚边界保持不变。
 
 ## Completion Audit
 
@@ -70,7 +74,7 @@
 | 重复、乱序、租约恢复与旧 worker fencing | Billing inbox/Stripe adapter/隔离签名 HTTP 生命周期 | `automated_complete` |
 | Checkout 由服务端锁定目录，成功跳转不授予权益 | Checkout/normalization 单测、`pending/402`、iOS fail-closed | `automated_complete` |
 | Stripe live 收款能力、目录、Portal、Webhook、最小权限 key | live Dashboard 与 API 状态，key 权限截图复核 | `external_complete` |
-| 生产 Stripe-only 部署与 forward migration | 待精确 build、idle drain、受保护 secret 安装、服务切换 | `in_progress` |
+| 生产 Stripe-only 部署与 forward migration | Stripe-only 提交已推送；正在建立 Linux Actions → GHCR 精确产物，随后执行 idle drain、受保护 secret 安装与服务切换 | `in_progress` |
 | 公网 Checkout/Portal/webhook/页面与截图验收 | 待部署后执行；技术 smoke 不提交真实收费 | `pending` |
 | 旧外部产品、计划与 webhook 归档 | 仅在 Stripe 公网 smoke 通过后执行 | `pending` |
 
@@ -87,8 +91,8 @@
 
 ## Resume Entry Point
 
-1. 完成全量本地门禁并提交/push 精确 revision。
-2. 备份并原子更新 GCE runtime env，连续两次确认 active chats 为 0 后切换不可变 release。
+1. 完成并验证固定 `linux/amd64` 的 GHCR runtime image workflow，记录不可变 digest。
+2. GCE 通过 `crane` 拉取并严格校验精确 revision；备份并原子更新 runtime env，连续两次确认 active chats 为 0 后切换不可变 release。
 3. 完成公网页面、Checkout 创建、Portal、webhook 与数据库约束验收并保存去敏截图。
 4. 归档旧外部资源，更新 handoff/archive，关闭本计划。
 

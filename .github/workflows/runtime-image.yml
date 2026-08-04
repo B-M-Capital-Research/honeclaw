@@ -1,0 +1,112 @@
+name: Runtime Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/runtime-image.yml"
+      - ".dockerignore"
+      - "deploy/runtime/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "agents/**"
+      - "bins/**"
+      - "crates/**"
+      - "memory/**"
+      - "skills/stock_research/**"
+      - "soul.md"
+      - "scripts/package_runtime_bundle.sh"
+      - "scripts/verify_runtime_bundle.sh"
+      - "scripts/stage_ghcr_runtime.sh"
+  workflow_dispatch:
+
+concurrency:
+  group: runtime-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/b-m-capital-research/honeclaw-runtime
+
+jobs:
+  build-and-publish:
+    name: build-and-publish (linux/amd64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect an existing immutable revision
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "${IMAGE_NAME}:${GITHUB_SHA}" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set reproducible build metadata
+        if: steps.existing.outputs.published != 'true'
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Build in Debian and publish immutable runtime image
+        if: steps.existing.outputs.published != 'true'
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/runtime/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:main
+          build-args: |
+            HONE_BUILD_GIT_SHA=${{ github.sha }}
+            HONE_BUILD_TIMESTAMP=${{ steps.metadata.outputs.timestamp }}
+            HONE_BUILD_SOURCE=ghcr_linux_oci
+          cache-from: type=gha,scope=hone-runtime-linux-amd64
+          cache-to: type=gha,mode=max,scope=hone-runtime-linux-amd64
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify published manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_ref="${IMAGE_NAME}:${GITHUB_SHA}"
+          docker buildx imagetools inspect "$image_ref" | tee /tmp/runtime-image-inspect.txt
+          digest="$(awk '$1 == "Digest:" { print $2; exit }' /tmp/runtime-image-inspect.txt)"
+          test "$digest" != ""
+          test "${digest#sha256:}" != "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### HONE runtime image"
+            echo
+            echo "- Image: \`$image_ref\`"
+            echo "- Digest: \`$digest\`"
+            echo "- Platform: \`linux/amd64\`"
+          } >> "$GITHUB_STEP_SUMMARY"

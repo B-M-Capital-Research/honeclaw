@@ -178,7 +178,10 @@ disposable object after acceptance.
 
 ## Production Deployment
 
-1. Confirm the intended Git revision and build an immutable runtime package.
+1. Confirm the intended Git revision, wait for its fixed Debian `linux/amd64`
+   Runtime Image workflow, and record the immutable GHCR manifest digest. Stage
+   that exact digest with `scripts/stage_ghcr_runtime.sh`; do not compile on GCE
+   or deploy from the mutable `main` image tag.
 2. Check active chat runs twice with a quiet interval; restart only after both
    checks report zero.
 3. Back up the owner-only runtime environment file without printing it.

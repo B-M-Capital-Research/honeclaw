@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 ## When to Use
 
@@ -8,6 +8,7 @@ Last updated: 2026-08-02
 - Updating the backend origin service used by the public API
 - Verifying the Cloudflare Worker route between the public site and backend origin
 - Moving the backend origin to a different managed host
+- Building or staging the managed Linux runtime through GitHub Actions and GHCR
 
 ## Public Topology
 
@@ -89,6 +90,62 @@ The backend origin runs the public API surface used by the Pages frontend:
 - `/api/public/digest-context`
 - `/api/public/company-profile`
 - `/api/public/community*`
+
+### Linux runtime image through GHCR
+
+Do not compile a production runtime on the managed backend host and do not copy
+macOS binaries to Linux. `.github/workflows/runtime-image.yml` builds the six
+managed binaries inside digest-pinned Debian Bookworm `linux/amd64`, writes the exact
+Git SHA into the binaries and bundle metadata, and publishes a `scratch`
+artifact image to:
+
+```text
+ghcr.io/b-m-capital-research/honeclaw-runtime:<40-character-git-sha>
+```
+
+The workflow uses `packages: write` only for its job-scoped `GITHUB_TOKEN`,
+links the image to the public source repository before first publication, and
+reuses the scoped BuildKit GHA cache. Treat the manifest digest reported by the
+workflow as the deployment identity; the mutable `main` tag is only a discovery
+alias and must never be a production input.
+
+The managed host does not need Docker or another container daemon. Install the
+pinned `crane` release once after verifying the upstream checksum:
+
+```bash
+crane_version=0.20.6
+crane_archive=go-containerregistry_Linux_x86_64.tar.gz
+crane_sha256=c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
+crane_tmp_dir="$(mktemp -d)"
+curl -fsSL \
+  "https://github.com/google/go-containerregistry/releases/download/v${crane_version}/${crane_archive}" \
+  -o "${crane_tmp_dir}/${crane_archive}"
+printf '%s  %s\n' "$crane_sha256" "${crane_tmp_dir}/${crane_archive}" | sha256sum -c -
+tar -xzf "${crane_tmp_dir}/${crane_archive}" -C "$crane_tmp_dir" crane
+sudo install -o root -g root -m 0755 "$crane_tmp_dir/crane" /usr/local/bin/crane
+rm -rf -- "$crane_tmp_dir"
+```
+
+Stage by immutable digest and expected source revision. The staging script
+exports `/release`, rejects symlinks, requires the exact six binaries and
+metadata fields, checks every payload against `SHA256SUMS`, and refuses an
+embedded revision mismatch. It does **not** switch traffic or restart anything:
+
+```bash
+revision=<40-character-git-sha>
+image_digest=sha256:<workflow-reported-digest>
+sudo bash scripts/stage_ghcr_runtime.sh \
+  --image "ghcr.io/b-m-capital-research/honeclaw-runtime@${image_digest}" \
+  --revision "$revision"
+```
+
+The expected result is
+`/opt/hone/releases/<revision>-ghcr-runtime`. Keep the current release intact,
+then continue with environment validation, two idle reads, atomic symlink
+replacement, systemd restart, exact `/api/meta` verification, and rollback
+retention below. If anonymous GHCR export fails, stop: do not install a broad
+personal token on production. First confirm that the repository-linked runtime
+package has public visibility.
 
 Before updating the backend origin:
 

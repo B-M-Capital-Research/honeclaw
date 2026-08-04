@@ -779,6 +779,57 @@ Last updated: 2026-08-04
   and post-deploy PostgreSQL constraints/data counts are required before this
   decision is marked production-complete.
 
+## D-2026-08-04-03 Build Managed Linux Runtimes In Actions And Deliver Them Through GHCR
+
+- Status: Accepted; implementation and local bundle-contract verification are
+  complete, while the first GHCR publication and production pull remain in
+  progress.
+- Created: 2026-08-04
+- Owner: Codex
+- Related files: `.github/workflows/runtime-image.yml`,
+  `deploy/runtime/Dockerfile`, `scripts/package_runtime_bundle.sh`,
+  `scripts/verify_runtime_bundle.sh`, `scripts/stage_ghcr_runtime.sh`,
+  `tests/regression/ci/test_runtime_image_contract.sh`
+- Related docs: `docs/runbooks/backend-deployment.md`,
+  `docs/current-plans/stripe-whop-parallel-billing.md`
+- Context: The workstation is macOS while production is Debian Linux, and
+  compiling the large workspace on the production VM is slow, consumes several
+  GiB of transient disk, and couples deployment safety to mutable build-host
+  state. The owner requested a Linux-image build and GHCR delivery instead.
+- Decision: GitHub Actions builds the six managed server binaries only inside
+  digest-pinned Debian Bookworm `linux/amd64`. A pinned `cargo-chef` recipe separates
+  dependency compilation from changing workspace source, and BuildKit exports
+  that dependency layer into a named GHA cache scope. A final `scratch` image contains only the
+  release bundle; Git SHA, UTC build time, source kind, Cargo profile, and target
+  appear in strict metadata, while the same SHA is compiled into build info and
+  attached as an OCI label. The image is linked to the source repository before
+  first publication and is addressed in production by manifest digest, never by
+  mutable `main`.
+- Host boundary: Production retains systemd, its protected environment file,
+  `/opt/hone/releases`, and atomic `/opt/hone/current`. It installs no Docker
+  daemon. A checksum-pinned static `crane` exports the image; the staging script
+  rejects symlinks, missing/extra files, malformed metadata, hash mismatches,
+  or a revision mismatch, then stops without changing current or restarting a
+  service. Existing two-read active-chat drain and rollback rules remain the
+  only cutover authority.
+- Secrets and visibility: Runtime images contain compiled public-repository
+  source outputs, `soul.md`, the stock-research Skill, verification tooling, and
+  metadata only. They contain no `.env`, config, credentials, data, logs, or
+  local worktrees. Prefer a public repository-linked GHCR package so production
+  can pull anonymously; do not persist a broad personal GitHub token merely to
+  download a runtime.
+- Rollback: Keep the previous release directory and environment backup. A bad
+  image is rejected before cutover; a post-cutover failure restores the prior
+  symlink and restarts through the same systemd boundary after a fresh drain.
+  GHCR adoption does not change application/database rollback semantics.
+- Verification: The CI-safe contract proves fixed Linux architecture, pinned
+  Debian builder, scoped GHA cache, repository label, scratch final image,
+  complete bundle verification, and tamper rejection without network or Docker.
+  Production acceptance additionally requires a successful Actions build,
+  recorded digest, anonymous daemonless export, exact metadata/SHA verification,
+  embedded `/api/meta` revision, cloud authority, ports, auth boundaries, and
+  retained rollback release.
+
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 
 - Status: Accepted and production-verified on exact commit `84ca1f2114c059a157cd893c84067638c7618e84`.

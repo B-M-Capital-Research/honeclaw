@@ -85,6 +85,7 @@ Last updated: 2026-08-04
   - `Swatinem/rust-cache` is the dependency and `target/` cache layer
   - `sccache` is the compiler object cache layer
   - `main` branch prewarms release-target caches, and tag releases should primarily restore from that warmed cache rather than create fresh tag-scoped caches
+- Managed Linux production binaries are built inside the digest-pinned Debian Bookworm `linux/amd64` runtime-image builder, never copied from a macOS workstation and no longer compiled on the production host. GHCR delivery is revision- and digest-addressed; the extracted bundle must match its embedded Git SHA and complete `SHA256SUMS` before it may become a release candidate. Pulling/staging an image never authorizes a symlink change or restart: two zero-active-chat reads, protected environment validation, atomic `/opt/hone/current` replacement, exact `/api/meta` revision, cloud-authority checks, and the retained prior release remain mandatory.
 
 ## Security and Environment Constraints
 

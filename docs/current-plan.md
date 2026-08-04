@@ -19,7 +19,7 @@
 - **Stripe-only 计费切换**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/stripe-whop-parallel-billing.md`
-  - 摘要：2026-08-04 owner 明确废止 Stripe + Whop 并行方案，改为 Stripe-only 且不保留 Whop 兼容。Stripe live 账户已解除限制并可收款/出款；Product `prod_V0FIIUS22IGljn`、年度 Price `price_1U0Eo6EK7h1dD4JHDrhlnPw8`、Customer Portal、精确八事件 live Webhook `we_1U0c0XEK7h1dD4JHrvQ9CRaH` 与仅含 Checkout Sessions (v1)/Customer Portal 写权限的永久受限 key 均已完成。运行时代码、数据约束、前端与测试已收口为 Stripe-only，当前正在跑完整门禁并准备 GCE 精确 revision 部署、公网验收和旧外部资源归档；任务完成前不归档
+  - 摘要：2026-08-04 owner 明确废止 Stripe + Whop 并行方案，改为 Stripe-only 且不保留 Whop 兼容。Stripe live 账户、目录、Portal、精确八事件 Webhook 与永久最小权限受限 key 均已完成；运行时代码、数据约束、前端与本地全量门禁已收口，提交 `9961652f` 已推送。部署按 owner 新要求改为固定 Debian `linux/amd64` 的 GitHub Actions 云端构建、GHCR 精确产物和 GCE 无守护进程拉取，不再在生产机编译；GHCR 链路验证后继续受保护密钥安装、原子切换、公网验收和旧外部资源归档，任务完成前不归档
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
