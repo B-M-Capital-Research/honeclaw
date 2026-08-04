@@ -14,8 +14,12 @@ describe("provider-neutral billing activation contract", () => {
     expect(app).toContain('<Route path="/activate"');
     expect(app).not.toContain('<Route path="/activate/whop"');
     expect(login).toContain('href="/activate"');
-    expect(activation).toContain('provider === "stripe"');
-    expect(activation).toContain('provider === "whop"');
+    expect(activation).toContain("useSearchParams");
+    expect(activation).toContain("const provider = createMemo");
+    expect(activation).toContain('searchParams.provider === "whop"');
+    expect(activation).toContain('provider() === "stripe"');
+    expect(activation).toContain('provider() === "whop"');
+    expect(activation).not.toContain("new URLSearchParams(window.location.search)");
   });
 
   it("creates Checkout only after HONE email verification", () => {
@@ -30,8 +34,8 @@ describe("provider-neutral billing activation contract", () => {
 
   it("removes purchase language from the restore-only client flow", () => {
     expect(activation).toContain('if (restoreOnly()) return ["验证邮箱", "登录账户", "恢复权益"]');
-    expect(activation).toContain('restoreOnly() || provider === "whop"');
-    expect(activation).toContain('provider === "stripe" && !restoreOnly()');
+    expect(activation).toContain('restoreOnly() || provider() === "whop"');
+    expect(activation).toContain('provider() === "stripe" && !restoreOnly()');
   });
 
   it("never equates a success redirect with paid access", () => {

@@ -33,7 +33,7 @@ export default defineConfig({
     },
     {
       name: "public",
-      testMatch: /public-(chat-upload|mobile-overlays|sms-login)\.spec\.ts$/,
+      testMatch: /public-(billing-activation|chat-upload|mobile-overlays|sms-login)\.spec\.ts$/,
       use: {
         baseURL: `http://127.0.0.1:${PUBLIC_PORT}`,
         headless: true,
