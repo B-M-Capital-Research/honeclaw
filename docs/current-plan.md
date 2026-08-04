@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-03
+最后更新：2026-08-04
 状态：有 11 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Stripe + Whop 并行计费接入**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/stripe-whop-parallel-billing.md`
-  - 摘要：按用户最新要求采用无兼容层重构：旧 Whop 投影一次性迁到 provider-neutral Billing 唯一权益账本，后端/前端/法律文案、故障恢复、本地自动化和桌面/iOS 浏览器验收已完成。Stripe CLI OAuth、真实测试目录、Checkout 公共测试卡付款、签名 listener、Customer Portal 与 HONE `active` 页面均已验收；真实事件暴露了 Checkout completion 晚于 invoice/subscription 的排序边界，已改为仅用 Session creation 排序 provisional pending，并以单元测试、隔离签名 HTTP 和同一笔真实事件重放证明 1 条 active 权益及付费 API `402→200`。本地 CLI、线上 test endpoint、线上 live endpoint 的 URL/签名 secret 已明确分离；当前尚未创建或验证线上注册 endpoint，也未执行真实失败/恢复/取消矩阵。真实非 owner Whop buyer 验收仍待本人邮箱挑战，现有 live catalog/config 保持不动
+  - 摘要：最终业务方向是新用户默认 Stripe、Whop 保留给老用户及次级渠道；当前仍是安全验收阶段，不代表最终渠道排序。无兼容层的 provider-neutral Billing 已随精确 `5028870d` 部署，生产保持 Whop 主通道、Stripe Checkout 关闭。Stripe test endpoint `we_1U0N6iEK7h1dD4JHy3zsfiN2` 的旧 signing secret 因意外暴露已立即轮换，新值已受保护写入 `root:root 0600` 的 runtime env；线上安全事件 `evt_1U0ZKeEK7h1dD4JHB59OFEjY` 返回 `200 catalog_mismatch`，PostgreSQL inbox/权益计数前后均为 0。生产 `/plan`、`/activate`、`/me` 与 Workbench delivery 已留去敏截图；`e31c29ac` 进一步修复同一 `/activate` 路由切换到 `?provider=whop` 时仍显示 Stripe 的响应式 bug，并新增浏览器回归。live mode/catalog/webhook 未动；剩余真实失败/恢复/取消/重购矩阵、非 owner Whop buyer、GitHub CI 两处门禁和 live promotion 决策，因此不归档
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

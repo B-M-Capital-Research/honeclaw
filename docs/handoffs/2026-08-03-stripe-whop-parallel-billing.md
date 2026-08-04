@@ -3,8 +3,8 @@
 - title: Stripe + Whop provider-neutral Billing handoff
 - status: `in_progress`
 - created_at: `2026-08-03`
-- updated_at: `2026-08-03`
-- owner: `Codex`
+- updated_at: `2026-08-04`
+- owner: `Codex + owner`
 - related_files:
   - `memory/src/billing.rs`
   - `memory/src/web_auth.rs`
@@ -16,9 +16,9 @@
   - `docs/current-plans/stripe-whop-parallel-billing.md`
   - `docs/runbooks/stripe-billing.md`
   - `docs/runbooks/whop-hone-activation.md`
-- related_prs: none; no commit, push, deployment, release, or tag was requested
-- verification: local automated/browser acceptance complete; real Stripe test Checkout, CLI webhook delivery, active entitlement, paid API, and Customer Portal passed; deployed HTTPS endpoint and destructive lifecycle cases remain pending
-- risks: registered online test/live endpoints each still need their own secret and acceptance; non-owner Whop buyer and real failure/cancel/recovery cases remain pending; live catalog/configuration remains untouched
+- related_prs: no PR; Billing landed on `main` through `92e87a94`, `5028870d`, and Whop route fix `e31c29ac`; no release or tag was created
+- verification: local automated/browser acceptance, real Stripe test Checkout, CLI delivery, active entitlement, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, and reactive Whop route regression passed
+- risks: non-owner Whop buyer and real failure/cancel/recovery/repurchase cases remain pending; GitHub CI still has the known missing-`rg` and two legacy reference-asset findings; live catalog/configuration remains untouched
 
 ## Summary
 
@@ -36,7 +36,20 @@ three resulting signed events and the Customer Portal displayed the paid
 subscription. That run exposed a real provider-ordering edge; the fix and
 replay now produce one active entitlement and paid API `200`. The remaining
 Whop production acceptance still needs a real non-owner buyer to complete their
-own email challenge.
+own email challenge. Production now runs exact backend `5028870d`; the
+registered Stripe test endpoint is online with its rotated secret, while
+Checkout remains disabled and Whop remains the temporary primary channel.
+Commit `e31c29ac` also fixes the Whop recovery link so changing only the query
+on `/activate` updates the page immediately instead of requiring a reload.
+
+## 2026-08-04 Deployment And Online Acceptance
+
+- Production `/api/meta` reports exact `5028870dcb341476e17b57fdfa84d72624b04200`, cloud Web role, authoritative PostgreSQL/S3 storage, and no local durable dependency.
+- The old test endpoint signing secret was rotated immediately after accidental exposure. Only the replacement value was installed; it is absent from source, chat, screenshots, and this handoff.
+- `/etc/hone/runtime.env` remains `root:root 0600`; the pre-change backup is `/etc/hone/runtime.env.pre-webhook-rotation-20260804T034309Z`. Two consecutive active-chat checks were zero before restarting only `hone-web.service`.
+- Runtime policy is intentionally `primary_provider=whop`, `stripe_checkout_enabled=false`, `whop_new_purchases_enabled=true`. The final business direction remains new users on Stripe with Whop as the legacy/secondary channel; current values are a safe verification stage.
+- Public invalid signatures return `401`. Stripe test event `evt_1U0ZKeEK7h1dD4JHB59OFEjY` returned `200` with `catalog_mismatch`; production `billing_entitlements` and `billing_webhook_events` were both zero before and after delivery.
+- Evidence `13`–`17` covers Workbench `200`, safe-stage `/plan`, `/activate`, unauthenticated `/me`, and the production Whop same-route query transition. Directory: `/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`.
 
 ## What Changed
 
@@ -70,6 +83,9 @@ own email challenge.
 - Installed the official Stripe CLI `1.45.0` from Stripe's Homebrew tap and
   completed owner device authorization. Secrets remain only in ignored local
   state; no secret is committed or recorded in acceptance evidence.
+- Replaced the activation page's one-time `window.location.search` snapshot
+  with a reactive Solid Router search-param source. Contract and Playwright
+  regressions prove `/activate` can switch to `?provider=whop` without reload.
 
 ## Verification
 
@@ -107,13 +123,17 @@ own email challenge.
   the paid Portal, and `12-hone-account-stripe-active.png` proves HONE access.
   Evidence directory:
   `/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`.
+- Production registered-endpoint acceptance: the Workbench delivery returned
+  `200 catalog_mismatch` for a safe wrong-catalog event, and PostgreSQL inbox
+  and entitlement counts remained `0 | 0`. The Whop route fix passed full Web
+  tests, typecheck, public production build, and a real Playwright same-route
+  transition test before push.
 
 ## Risks / Follow-ups
 
 - Local CLI, registered online test, and registered live webhook destinations
-  require distinct signing secrets. Local success does not prove online
-  delivery; the registered HTTPS test endpoint and its deployment secret still
-  need owner-authorized setup and one delivery acceptance.
+  require distinct signing secrets. The registered test endpoint is now
+  accepted online; no live endpoint or live secret exists for this rollout.
 - Finish the real failure/recovery, cancel/end, and repurchase cases from the
   sandbox matrix. Obtain action-time confirmation before canceling even the
   test subscription.
@@ -123,9 +143,10 @@ own email challenge.
 
 ## Next Entry Point
 
-After owner confirmation, register the deployed HTTPS endpoint in Stripe test
-mode, install that endpoint's own secret in the deployment secret manager, and
-verify one online delivery. Then finish the real failure/recovery,
-cancel/end/repurchase, and non-owner Whop matrices. When all items pass, mark
-the plan done, archive it, update `docs/archive/index.md`, and finalize this
-handoff.
+After explicit owner approval, make only the focused GitHub CI fixes already
+identified: a `grep` fallback for the Billing contract and the narrowest safe
+allowlist for two legacy Alipay reference assets. Then finish the real
+failure/recovery/cancel/end/repurchase and non-owner Whop matrices. Obtain
+action-time approval before canceling any test subscription and a separate
+business approval before live promotion. Keep this task active until those
+items pass; only then archive the plan and update `docs/archive/index.md`.

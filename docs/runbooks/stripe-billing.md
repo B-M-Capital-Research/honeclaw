@@ -1,7 +1,7 @@
 # Runbook: Unified Stripe + Whop Billing
 
-- status: `real_test_payment_complete_deployed_endpoint_pending`
-- last_updated: `2026-08-03`
+- status: `test_endpoint_online_verified_checkout_disabled`
+- last_updated: `2026-08-04`
 - owner: `Codex`
 
 ## Purpose
@@ -25,6 +25,12 @@ email login, or provider-specific field.
 The Stripe and Whop webhook endpoints remain enabled when new Checkout is
 disabled. This keeps already-paid customers synchronized during a rollout
 pause or rollback.
+
+The target business state is new users defaulting to Stripe while Whop remains
+available for existing buyers and as a secondary channel. A deployment may
+temporarily keep Whop primary with Stripe Checkout disabled while test webhook
+delivery is verified; do not mistake that safe stage for the final channel
+strategy.
 
 ## Configuration
 
@@ -119,6 +125,24 @@ retains the actual webhook-envelope time for audit. Authoritative paid,
 failure, status, and inactive transitions continue to use their own provider
 event times.
 
+### Deployed test endpoint acceptance
+
+The deployed test endpoint is considered online only after all of the
+following hold without printing or persisting its signing secret:
+
+1. The secret belongs to the registered test endpoint, not `stripe listen`.
+2. The runtime environment remains owner-only (`root:root 0600` in the current
+   GCE deployment) and mode/key/catalog prefixes agree.
+3. An invalid signature returns `401` from the public HTTPS route.
+4. A signed wrong-catalog test event returns `2xx` with an ignored reason and
+   creates neither an inbox row nor an entitlement.
+5. The Workbench delivery response and redacted database counts are retained
+   as evidence.
+
+If any signing secret is exposed, rotate it immediately, expire the old value,
+install only the replacement, and repeat this acceptance. Never copy the value
+into a runbook, handoff, screenshot, shell history, or ticket.
+
 ## Inbox Processing And Recovery
 
 Both providers acknowledge only after the verified normalized event is durably
@@ -187,14 +211,22 @@ secrets in Git. The current acceptance set is under
 and covers desktop `/plan`, Stripe `/activate`, duplicate Stripe+Whop rows on
 `/me`, the HONE-iOS no-purchase/restore-only policy, the paid test Customer
 Portal (`11-stripe-test-portal-paid-subscription.png`), and the active HONE
-account (`12-hone-account-stripe-active.png`).
+account (`12-hone-account-stripe-active.png`). Production evidence `13`–`17`
+covers the registered endpoint `200`, safe-stage public pages, and the Whop
+same-route query transition without reload.
 
 The real test payment produced `checkout.session.completed`, `invoice.paid`,
 and `customer.subscription.created` through the CLI listener. It exposed the
 provisional-ordering edge above; after the fix, the same provider events passed
 through a fresh signed endpoint exactly once, produced one active entitlement,
-and changed the paid API from `402` to `200`. This proves the local/test flow,
-not delivery from a registered deployed HTTPS endpoint.
+and changed the paid API from `402` to `200`. The registered deployed test
+endpoint was subsequently accepted with a signed wrong-catalog event returning
+`200 catalog_mismatch` and zero inbox/entitlement mutation.
+
+The unified activation page must read `provider` reactively from the router.
+Test both direct load and same-route navigation from `/activate` to
+`/activate?provider=whop`; the Whop badge, heading, email label, steps, and
+submit action must change without a browser reload.
 
 ## Sandbox Acceptance Matrix
 
