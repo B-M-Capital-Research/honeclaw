@@ -9,8 +9,8 @@ use serde_json::json;
 use tracing::warn;
 
 use hone_memory::{
-    BILLING_PROVIDER_STRIPE, BILLING_PROVIDER_WHOP, WEB_IDENTITY_DOMESTIC_INVITE,
-    WEB_IDENTITY_INTERNATIONAL_EMAIL, WebInviteUser,
+    BILLING_PROVIDER_STRIPE, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,
+    WebInviteUser,
 };
 
 use crate::state::AppState;
@@ -18,29 +18,16 @@ use crate::types::{PublicBillingEntitlement, PublicBillingSummary};
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PublicBillingConfig {
-    pub primary_provider: String,
     pub stripe_checkout_enabled: bool,
-    pub whop_new_purchases_enabled: bool,
     pub purchases_allowed_on_this_client: bool,
     pub management_allowed_on_this_client: bool,
 }
 
 impl PublicBillingConfig {
     fn from_env(headers: &HeaderMap) -> Self {
-        let primary_provider = match std::env::var("HONE_BILLING_PRIMARY_PROVIDER")
-            .unwrap_or_else(|_| "whop".to_string())
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "stripe" => "stripe".to_string(),
-            _ => "whop".to_string(),
-        };
         let external_billing_allowed = !is_hone_ios(headers);
         Self {
-            primary_provider,
             stripe_checkout_enabled: crate::routes::stripe::checkout_available(),
-            whop_new_purchases_enabled: env_flag("HONE_WHOP_NEW_PURCHASES_ENABLED", true),
             purchases_allowed_on_this_client: external_billing_allowed,
             management_allowed_on_this_client: external_billing_allowed,
         }
@@ -150,25 +137,18 @@ pub(crate) fn spawn_billing_recovery_worker(state: Arc<AppState>) -> tokio::task
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            for provider in [BILLING_PROVIDER_STRIPE, BILLING_PROVIDER_WHOP] {
-                let event_ids = match state.billing.claimable_webhook_event_ids(provider, 100) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        warn!(%provider, %error, "Billing webhook recovery scan failed");
-                        continue;
-                    }
-                };
-                for event_id in event_ids {
-                    match provider {
-                        BILLING_PROVIDER_STRIPE => {
-                            crate::routes::stripe::spawn_stripe_processing(state.clone(), event_id);
-                        }
-                        BILLING_PROVIDER_WHOP => {
-                            crate::routes::whop::spawn_whop_processing(state.clone(), event_id);
-                        }
-                        _ => unreachable!("provider list is static"),
-                    }
+            let event_ids = match state
+                .billing
+                .claimable_webhook_event_ids(BILLING_PROVIDER_STRIPE, 100)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    warn!(provider = BILLING_PROVIDER_STRIPE, %error, "Billing webhook recovery scan failed");
+                    continue;
                 }
+            };
+            for event_id in event_ids {
+                crate::routes::stripe::spawn_stripe_processing(state.clone(), event_id);
             }
         }
     })
@@ -179,17 +159,6 @@ pub(crate) fn is_hone_ios(headers: &HeaderMap) -> bool {
         .get(axum::http::header::USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.contains("HONE-iOS"))
-}
-
-fn env_flag(key: &str, fallback: bool) -> bool {
-    match std::env::var(key) {
-        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" | "on" => true,
-            "0" | "false" | "no" | "off" | "" => false,
-            _ => fallback,
-        },
-        Err(_) => fallback,
-    }
 }
 
 #[cfg(test)]

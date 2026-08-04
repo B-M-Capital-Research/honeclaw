@@ -71,11 +71,6 @@ function EntitlementRow(props: {
           {props.managing ? "正在打开…" : "在 Stripe 管理订阅"}
         </button>
       </Show>
-      <Show when={props.managementAllowed && props.entitlement.provider === "whop" && props.entitlement.manage_url}>
-        {(manageUrl) => (
-          <a href={manageUrl()} target="_blank" rel="noopener noreferrer">在 Whop 管理订阅 →</a>
-        )}
-      </Show>
       <Show when={!active()}>
         <small>这条订阅当前不授予 HONE 访问权限。</small>
       </Show>
@@ -120,14 +115,14 @@ function MembershipCard(props: {
         </Show>
         <Show when={props.user.billing.has_duplicate_active_subscriptions}>
           <p class="public-billing-warning" role="alert">
-            检测到多条有效订阅。HONE 访问不会中断，但你可能被重复扣费，请分别检查 Stripe 与 Whop 并取消不需要的一条。
+            检测到多条有效 Stripe 订阅。HONE 访问不会中断，但你可能被重复扣费，请在 Stripe 中取消不需要的一条。
           </p>
         </Show>
         <Show
           when={active()}
           fallback={<p>账号资料仍会保留，付费功能已暂停。你可以恢复付款或重新订阅，服务端确认后会自动恢复访问。</p>}
         >
-          <p>{international() ? "任意一条有效 Stripe 或 Whop 权益都可授予访问：" : "该账号由国内邀请渠道授予访问："}</p>
+          <p>{international() ? "任意一条有效 Stripe 权益都可授予访问：" : "该账号由国内邀请渠道授予访问："}</p>
           <ul class="public-vip-list">
             {VIP_BENEFITS.map((benefit) => (
               <li>
@@ -241,7 +236,7 @@ function AccountView(props: {
               </Show>
               <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
             </div>
-            <p class="public-account-note">Stripe 与 Whop 只负责账单处理；HONE 以服务端统一权益记录决定访问权限。</p>
+            <p class="public-account-note">Stripe 负责海外账单处理；HONE 以服务端权益记录决定访问权限。</p>
           </section>
         </div>
         <section class="public-workspace-panel public-account-card public-account-links">

@@ -710,10 +710,6 @@ pub async fn start_server(
         None => hone_memory::BillingStorage::new(&core.config.storage.session_sqlite_db_path)
             .map_err(|e| format!("Billing 存储初始化失败: {e}"))?,
     });
-    web_auth
-        .migrate_legacy_whop_billing(&billing)
-        .map_err(|e| format!("旧 Whop 权益迁移失败: {e}"))?;
-
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────
     // 必须使用 global_log_buffer()：tracing 全局订阅者只能 set 一次，
     // 若每次 start_server 创建新 buffer，重连后 AppState 持有新 buffer

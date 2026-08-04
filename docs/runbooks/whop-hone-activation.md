@@ -1,6 +1,12 @@
 # Runbook: Whop Adapter To Unified HONE Billing
 
-Last updated: 2026-08-03
+- status: `retired`
+- last_updated: `2026-08-04`
+- superseded_by: `docs/decisions.md#d-2026-08-04-01-make-stripe-the-only-external-billing-provider`
+
+> Historical evidence only. The adapter, public route, runtime configuration,
+> and recovery UI described below were removed by the Stripe-only migration.
+> Do not re-enable them or use this runbook for a new deployment.
 
 Use this runbook to configure and verify the Whop adapter feeding HONE's
 provider-neutral Billing ledger and purchase-email verification path. Discord role

@@ -1,7 +1,7 @@
 // public-plan.tsx — 品牌聚合落地页（link-in-bio 式）：
 // 头像身份区（Hari老王 × HONE）→ 左栏免费内容（YouTube 频道卡 + 近期视频
 // 缩略图 + Bilibili + HONE 工具）｜右栏会员转化（价格 + 权益 + 免费体验群）
-// → 六张海报横滑条。中文「立即购买」弹知识星球二维码，英文跳 Whop。
+// → 六张海报横滑条。中文「立即购买」弹知识星球二维码，英文进入 Stripe Checkout。
 
 import { createSignal, For, Match, Show, Switch, onCleanup, createEffect, onMount } from "solid-js"
 import { CONTENT } from "@/lib/public-content"
@@ -11,7 +11,6 @@ import type { PublicBillingConfig } from "@/lib/types"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
-const WHOP_URL = "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/bm-research-membership/"
 const YOUTUBE_URL = "https://www.youtube.com/@Hari%E8%80%81%E7%8E%8B/videos"
 const BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/"
 const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"
@@ -108,9 +107,7 @@ export default function PublicPlanPage() {
   >(null)
   const isZh = () => useLocale() === "zh"
   const purchasesAllowed = () => billingConfig()?.purchases_allowed_on_this_client === true
-  const stripePrimary = () =>
-    billingConfig()?.primary_provider === "stripe" &&
-    billingConfig()?.stripe_checkout_enabled === true
+  const stripeAvailable = () => billingConfig()?.stripe_checkout_enabled === true
 
   onMount(async () => {
     try {
@@ -125,10 +122,8 @@ export default function PublicPlanPage() {
     if (!purchasesAllowed()) return
     if (isZh()) {
       setLightbox({ kind: "join" })
-    } else if (stripePrimary()) {
+    } else if (stripeAvailable()) {
       window.location.assign("/activate")
-    } else {
-      window.open(WHOP_URL, "_blank", "noopener,noreferrer")
     }
   }
 
@@ -257,23 +252,24 @@ export default function PublicPlanPage() {
                 when={purchasesAllowed()}
                 fallback={<p class="hone-hub-trial-hint">App 内仅支持登录并恢复已在网站购买的会员权益。</p>}
               >
-                <button type="button" class="hone-share-buy hone-hub-buy" onClick={buy}>
-                  {!isZh() && stripePrimary() ? "Subscribe securely with Stripe" : C().full.cta}
+                <button
+                  type="button"
+                  class="hone-share-buy hone-hub-buy"
+                  disabled={!isZh() && !stripeAvailable()}
+                  onClick={buy}
+                >
+                  {!isZh()
+                    ? stripeAvailable()
+                      ? "Subscribe securely with Stripe"
+                      : "Stripe checkout temporarily unavailable"
+                    : C().full.cta}
                 </button>
-                <Show when={!isZh() && stripePrimary() && billingConfig()?.whop_new_purchases_enabled}>
-                  <a class="hone-hub-trial-btn" href={WHOP_URL} target="_blank" rel="noopener noreferrer">
-                    Prefer Whop? Buy there instead
-                  </a>
-                </Show>
-                <Show when={!isZh() && !stripePrimary() && billingConfig()?.stripe_checkout_enabled}>
-                  <a class="hone-hub-trial-btn" href="/activate?provider=stripe">Subscribe with Stripe</a>
-                </Show>
               </Show>
               <button type="button" class="hone-hub-trial-btn" onClick={() => setLightbox({ kind: "support" })}>
                 {C().member.trial_cta}
               </button>
               <p class="hone-hub-trial-hint">{C().member.trial_hint}</p>
-              <a class="hone-hub-trial-btn" href="/activate?provider=whop">
+              <a class="hone-hub-trial-btn" href="/activate">
                 {C().member.activation_cta}
               </a>
               <p class="hone-hub-foot">{C().foot}</p>
@@ -333,8 +329,13 @@ export default function PublicPlanPage() {
       {/* 移动端吸附购买栏 */}
       <Show when={purchasesAllowed()}>
         <div class="hone-share-dock">
-          <button type="button" class="hone-share-buy" onClick={buy}>
-            <span>{!isZh() && stripePrimary() ? "Stripe checkout" : C().full.cta}</span>
+          <button
+            type="button"
+            class="hone-share-buy"
+            disabled={!isZh() && !stripeAvailable()}
+            onClick={buy}
+          >
+            <span>{!isZh() ? "Stripe checkout" : C().full.cta}</span>
             <b>{C().full.price}{C().full.period}</b>
           </button>
           <button type="button" class="hone-share-service" onClick={() => setLightbox({ kind: "support" })}>

@@ -17,8 +17,8 @@ pub use billing::{
     BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE, BILLING_ACCESS_PENDING,
     BILLING_EVENT_FAILED, BILLING_EVENT_PROCESSED, BILLING_EVENT_PROCESSING,
     BILLING_EVENT_RECEIVED, BILLING_PROVIDER_DOMESTIC_INVITE, BILLING_PROVIDER_STRIPE,
-    BILLING_PROVIDER_WHOP, BillingEntitlement, BillingEntitlementUpsertOutcome, BillingStorage,
-    BillingWebhookEvent, BillingWebhookRecordOutcome,
+    BillingEntitlement, BillingEntitlementUpsertOutcome, BillingStorage, BillingWebhookEvent,
+    BillingWebhookRecordOutcome,
 };
 pub use company_profile::{
     AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,

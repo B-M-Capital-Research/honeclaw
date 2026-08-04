@@ -9,25 +9,24 @@ const account = read("./public-me.tsx");
 const api = read("../lib/api.ts");
 const css = read("./public-site.css");
 
-describe("provider-neutral billing activation contract", () => {
-  it("uses one activation route and removes the old provider-specific route", () => {
+describe("Stripe-only billing activation contract", () => {
+  it("uses one Stripe-only activation route", () => {
     expect(app).toContain('<Route path="/activate"');
     expect(app).not.toContain('<Route path="/activate/whop"');
     expect(login).toContain('href="/activate"');
-    expect(activation).toContain("useSearchParams");
-    expect(activation).toContain("const provider = createMemo");
-    expect(activation).toContain("billingActivationProvider(searchParams.provider, config())");
-    expect(activation).toContain('provider() === "stripe"');
-    expect(activation).toContain('provider() === "whop"');
+    expect(activation).not.toContain("useSearchParams");
+    expect(activation).not.toContain("billingActivationProvider");
+    expect(activation).not.toContain("whop");
     expect(activation).not.toContain("new URLSearchParams(window.location.search)");
   });
 
-  it("follows the server billing provider and fails closed when Stripe Checkout is disabled", () => {
-    expect(activation).toContain("billingActivationProvider");
+  it("follows the server Stripe availability and fails closed when Checkout is disabled", () => {
     expect(activation).toContain("getPublicBillingConfig");
-    expect(activation).toContain("config()");
+    expect(activation).toContain("purchaseAvailable()");
+    expect(activation).toContain("stripe_checkout_enabled");
     expect(activation).toContain("configReady()");
     expect(activation).toContain("正在确认会员渠道");
+    expect(activation).toContain("Stripe 结账暂不可用");
   });
 
   it("creates Checkout only after HONE email verification", () => {
@@ -41,9 +40,9 @@ describe("provider-neutral billing activation contract", () => {
   });
 
   it("removes purchase language from the restore-only client flow", () => {
-    expect(activation).toContain('if (restoreOnly()) return ["验证邮箱", "登录账户", "恢复权益"]');
-    expect(activation).toContain('restoreOnly() || provider() === "whop"');
-    expect(activation).toContain('provider() === "stripe" && !restoreOnly()');
+    expect(activation).toContain('if (!purchaseAvailable()) return ["验证邮箱", "登录账户", "恢复权益"]');
+    expect(activation).toContain("restoreOnly() || user.billing.access_granted");
+    expect(activation).toContain('purchaseAvailable() ? "stripe_checkout" : undefined');
   });
 
   it("never equates a success redirect with paid access", () => {
@@ -53,7 +52,7 @@ describe("provider-neutral billing activation contract", () => {
     expect(account).not.toContain("checkout=success");
   });
 
-  it("owns responsive provider-neutral styles", () => {
+  it("owns responsive Stripe activation styles", () => {
     expect(activation).toContain('class="public-login-screen public-activate"');
     expect(activation).toContain('import "./public-site.css"');
     expect(css).toContain(".public-activate-card");
@@ -61,14 +60,15 @@ describe("provider-neutral billing activation contract", () => {
     expect(css).not.toContain(".public-whop-activate");
   });
 
-  it("uses provider-neutral account state and gates external management by server client policy", () => {
+  it("uses server-owned account state and gates Stripe management by server client policy", () => {
     expect(account).toContain("billingEntitlementStatusLabel");
     expect(account).toContain("createStripePortal");
     expect(account).toContain("getPublicBillingConfig");
     expect(account).toContain("config.management_allowed_on_this_client");
     expect(account).toContain("managementAllowed={managementAllowed()}");
     expect(account).toContain('props.managementAllowed && props.entitlement.provider === "stripe"');
-    expect(account).toContain('props.managementAllowed && props.entitlement.provider === "whop"');
+    expect(account).not.toContain('props.entitlement.provider === "whop"');
+    expect(account).not.toContain("Whop");
     expect(account).toContain("has_duplicate_active_subscriptions");
     expect(account).not.toContain("whop_membership");
     expect(account).not.toContain("registration_policy");

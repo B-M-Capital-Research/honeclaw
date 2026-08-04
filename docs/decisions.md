@@ -554,7 +554,7 @@ Last updated: 2026-08-04
 
 ## D-2026-07-26-04 Let Whop Own Discord Membership Fulfillment
 
-- Status: Accepted
+- Status: Superseded by `D-2026-08-04-01`; retained as historical evidence only.
 - Refined by: `D-2026-07-26-06` adds a separate Whop-to-HONE
   application-entitlement webhook and email activation flow. It does not make
   the HONE Discord bot a role owner or change Whop's native Discord lifecycle.
@@ -592,8 +592,9 @@ Last updated: 2026-08-04
   required before production release.
 - Superseded by: `D-2026-08-03-01` for application-entitlement persistence,
   access-state policy, public API shape, and the international activation route.
-  The identity/authentication separation and Whop-owned Discord role boundary
-  remain in force.
+  `D-2026-08-04-01` additionally supersedes every remaining Whop runtime,
+  purchase, webhook, and Discord-fulfillment boundary. The separation between
+  payment identity and HONE authentication remains in force.
 - Context: International Whop checkout does not need to force a customer
   through Whop OAuth in order to use HONE, while mainland-China acquisition
   still needs a traceable phone identity. Payment, login, Discord linking, and
@@ -637,8 +638,9 @@ Last updated: 2026-08-04
 
 ## D-2026-08-03-01 Make Billing A Provider-Neutral Domain Without A Compatibility Layer
 
-- Status: Accepted; implementation, local automated verification, and Stripe
-  external test-mode lifecycle complete; controlled live acceptance pending.
+- Status: Superseded in its multi-provider and Whop-runtime scope by
+  `D-2026-08-04-01`. Its Stripe event-ordering, durable-inbox, identity
+  separation, server-authoritative access, and no-compatibility decisions remain.
 - Created: 2026-08-03
 - Owner: Codex
 - Supersedes: `D-2026-07-26-06` only for application-entitlement persistence,
@@ -710,6 +712,72 @@ Last updated: 2026-08-04
   clock-owned objects and archiving the catalog. External non-owner Whop and
   owner-approved live promotion remain tracked in
   `docs/current-plans/stripe-whop-parallel-billing.md`.
+
+## D-2026-08-04-01 Make Stripe The Only External Billing Provider
+
+- Status: Accepted; implementation and live Stripe control-plane setup are
+  complete, while exact-revision production deployment and final public
+  acceptance remain in progress.
+- Created: 2026-08-04
+- Owner: Codex
+- Supersedes: `D-2026-07-26-04`, all Whop-specific portions of
+  `D-2026-07-26-06`, and the multi-provider/runtime compatibility portions of
+  `D-2026-08-03-01`.
+- Related files: `memory/src/{billing,web_auth}.rs`,
+  `crates/hone-core/src/cloud_runtime.rs`,
+  `crates/hone-web-api/src/routes/{billing,stripe}.rs`,
+  `packages/app/src/pages/{public-activate,public-me,public-plan}.tsx`
+- Related docs: `docs/current-plans/stripe-whop-parallel-billing.md`,
+  `docs/runbooks/stripe-billing.md`
+- Context: The owner explicitly directed HONE to stop validating or preserving
+  the retired payment channel, archive its external resources, move all future
+  subscriptions to Stripe, and remove compatibility code. Production inventory
+  found zero retired-provider entitlement rows, zero retired-provider webhook
+  rows, and zero cloud user records containing its legacy projection, so there
+  is no paid-member dataset to migrate.
+- Decision: Stripe is HONE's only external subscription authority. The HONE
+  Billing ledger remains the application-authorization truth source and keeps
+  domestic invite authority separate, but external entitlement/webhook rows are
+  constrained to Stripe. The public application exposes one `/activate` route,
+  one Stripe Checkout adapter, one Stripe Portal adapter, and one verified
+  Stripe webhook endpoint. It contains no provider selector, fallback purchase
+  channel, legacy recovery route, runtime environment variables, adapter, or
+  management link for the retired provider.
+- Migration: SQLite performs a one-time table rebuild when old provider
+  constraints are detected and copies only Stripe/domestic-invite entitlements
+  plus Stripe webhook rows. PostgreSQL migration
+  `20260804_stripe_only_billing` holds an advisory transaction lock, deletes
+  non-target rows, replaces both provider constraints, and records completion.
+  This is deliberately destructive and forward-only; there is no dual read,
+  tombstone adapter, or compatibility window.
+- Stripe authority: Live account `acct_1U0D6UEK7h1dD4JH` must remain fully
+  enabled with no requirements. Production uses Product
+  `prod_V0FIIUS22IGljn`, annual Price
+  `price_1U0Eo6EK7h1dD4JHDrhlnPw8`, registered webhook destination
+  `we_1U0c0XEK7h1dD4JHrvQ9CRaH`, and a permanent restricted live key with only
+  Checkout Sessions (v1) and Customer Portal write permissions. Runtime key
+  validation accepts same-mode standard (`sk_*`) and restricted (`rk_*`) keys
+  while rejecting every test/live mismatch.
+- Access and event boundary: Checkout redirects, email verification, frontend
+  state, and query parameters do not grant paid access. Only signature-verified
+  events for the exact mode/Product/Price mutate the durable inbox and ledger.
+  Existing provisional ordering, idempotency, bounded retry, attempt fencing,
+  grace-period, stale-event, and old-subscription protections remain unchanged.
+- Rollout: Build and push one exact revision, install live credentials only via
+  owner-only deployment storage, verify two idle active-chat readings, switch
+  the immutable release, and accept database migration, public auth boundaries,
+  Checkout creation, Portal creation, webhook rejection/acceptance, and
+  production pages. Archive retired external products/plans/webhooks only after
+  the Stripe public smoke passes.
+- Rollback: Disable new Stripe Checkout or restore the previous immutable code
+  release. Keep the live Stripe webhook and existing customer/subscription/
+  invoice/ledger data active; never re-enable the retired provider as an
+  application fallback.
+- Verification: Stripe-only storage and HTTP lifecycle tests, negative runtime
+  source scans, frontend contracts, Web tests, restricted-key mode tests, full
+  repository gates, exact revision checks, redacted production screenshots,
+  and post-deploy PostgreSQL constraints/data counts are required before this
+  decision is marked production-complete.
 
 ## D-2026-07-26-05 Let Representative Broad-Market Quotes Satisfy A Narrow Evidence Floor
 

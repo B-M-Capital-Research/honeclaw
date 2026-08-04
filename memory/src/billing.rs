@@ -10,7 +10,6 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const BILLING_PROVIDER_WHOP: &str = "whop";
 pub const BILLING_PROVIDER_STRIPE: &str = "stripe";
 pub const BILLING_PROVIDER_DOMESTIC_INVITE: &str = "domestic_invite";
 
@@ -149,7 +148,7 @@ impl BillingStorage {
             CREATE TABLE IF NOT EXISTS billing_entitlements (
                 entitlement_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe', 'domestic_invite')),
+                provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
                 provider_customer_id TEXT,
                 provider_subscription_id TEXT NOT NULL,
                 provider_product_id TEXT,
@@ -180,7 +179,7 @@ impl BillingStorage {
                 WHERE provider_customer_id IS NOT NULL;
 
             CREATE TABLE IF NOT EXISTS billing_webhook_events (
-                provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe')),
+                provider TEXT NOT NULL CHECK (provider = 'stripe'),
                 event_id TEXT NOT NULL,
                 event_type TEXT NOT NULL,
                 object_id TEXT,
@@ -215,6 +214,7 @@ impl BillingStorage {
             "processing_started_at",
             "TEXT",
         )?;
+        migrate_sqlite_billing_to_stripe_only(&conn)?;
         conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
@@ -635,7 +635,7 @@ impl BillingStorage {
         provider: &str,
         limit: usize,
     ) -> HoneResult<Vec<String>> {
-        if !matches!(provider, BILLING_PROVIDER_WHOP | BILLING_PROVIDER_STRIPE) {
+        if provider != BILLING_PROVIDER_STRIPE {
             return Err(HoneError::Config(
                 "billing webhook provider 不合法".to_string(),
             ));
@@ -789,7 +789,7 @@ fn validate_entitlement(value: &BillingEntitlement) -> HoneResult<()> {
     }
     if !matches!(
         value.provider.as_str(),
-        BILLING_PROVIDER_WHOP | BILLING_PROVIDER_STRIPE | BILLING_PROVIDER_DOMESTIC_INVITE
+        BILLING_PROVIDER_STRIPE | BILLING_PROVIDER_DOMESTIC_INVITE
     ) {
         return Err(HoneError::Config("billing provider 不合法".to_string()));
     }
@@ -843,10 +843,7 @@ fn normalize_timestamp(value: &mut String, name: &str) -> HoneResult<()> {
 }
 
 fn validate_webhook_event(value: &BillingWebhookEvent) -> HoneResult<()> {
-    if !matches!(
-        value.provider.as_str(),
-        BILLING_PROVIDER_WHOP | BILLING_PROVIDER_STRIPE
-    ) {
+    if value.provider != BILLING_PROVIDER_STRIPE {
         return Err(HoneError::Config(
             "billing webhook provider 不合法".to_string(),
         ));
@@ -1034,6 +1031,124 @@ fn ensure_billing_column(
     Ok(())
 }
 
+fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
+    let entitlement_sql = sqlite_table_sql(conn, "billing_entitlements")?;
+    let webhook_sql = sqlite_table_sql(conn, "billing_webhook_events")?;
+    if entitlement_sql.contains("provider IN ('stripe', 'domestic_invite')")
+        && webhook_sql.contains("provider = 'stripe'")
+    {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "
+        BEGIN IMMEDIATE;
+
+        ALTER TABLE billing_entitlements RENAME TO billing_entitlements_before_stripe_only;
+        CREATE TABLE billing_entitlements (
+            entitlement_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
+            provider_customer_id TEXT,
+            provider_subscription_id TEXT NOT NULL,
+            provider_product_id TEXT,
+            provider_price_id TEXT,
+            purchase_email_normalized TEXT,
+            raw_status TEXT NOT NULL,
+            access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
+            current_period_start TEXT,
+            current_period_end TEXT,
+            cancel_at_period_end INTEGER NOT NULL DEFAULT 0 CHECK (cancel_at_period_end IN (0, 1)),
+            manage_url TEXT,
+            grace_expires_at TEXT,
+            last_event_id TEXT NOT NULL,
+            last_event_created_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(provider, provider_subscription_id),
+            FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
+        );
+        INSERT INTO billing_entitlements (
+            entitlement_id, user_id, provider, provider_customer_id,
+            provider_subscription_id, provider_product_id, provider_price_id,
+            purchase_email_normalized, raw_status, access_state,
+            current_period_start, current_period_end, cancel_at_period_end,
+            manage_url, grace_expires_at, last_event_id, last_event_created_at,
+            created_at, updated_at
+        )
+        SELECT
+            entitlement_id, user_id, provider, provider_customer_id,
+            provider_subscription_id, provider_product_id, provider_price_id,
+            purchase_email_normalized, raw_status, access_state,
+            current_period_start, current_period_end, cancel_at_period_end,
+            manage_url, grace_expires_at, last_event_id, last_event_created_at,
+            created_at, updated_at
+        FROM billing_entitlements_before_stripe_only
+        WHERE provider IN ('stripe', 'domestic_invite');
+        DROP TABLE billing_entitlements_before_stripe_only;
+
+        ALTER TABLE billing_webhook_events RENAME TO billing_webhook_events_before_stripe_only;
+        CREATE TABLE billing_webhook_events (
+            provider TEXT NOT NULL CHECK (provider = 'stripe'),
+            event_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            object_id TEXT,
+            payload_sha256 TEXT NOT NULL,
+            provider_created_at TEXT NOT NULL,
+            processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            received_at TEXT NOT NULL,
+            processing_started_at TEXT,
+            processed_at TEXT,
+            normalized_payload TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY(provider, event_id)
+        );
+        INSERT INTO billing_webhook_events (
+            provider, event_id, event_type, object_id, payload_sha256,
+            provider_created_at, processing_state, attempt_count, last_error,
+            received_at, processing_started_at, processed_at, normalized_payload
+        )
+        SELECT
+            provider, event_id, event_type, object_id, payload_sha256,
+            provider_created_at, processing_state, attempt_count, last_error,
+            received_at, processing_started_at, processed_at, normalized_payload
+        FROM billing_webhook_events_before_stripe_only
+        WHERE provider = 'stripe';
+        DROP TABLE billing_webhook_events_before_stripe_only;
+
+        CREATE INDEX idx_billing_entitlements_user_access
+            ON billing_entitlements(user_id, access_state);
+        CREATE INDEX idx_billing_entitlements_purchase_email
+            ON billing_entitlements(purchase_email_normalized)
+            WHERE purchase_email_normalized IS NOT NULL;
+        CREATE INDEX idx_billing_entitlements_customer
+            ON billing_entitlements(provider, provider_customer_id)
+            WHERE provider_customer_id IS NOT NULL;
+        CREATE INDEX idx_billing_webhook_events_processing
+            ON billing_webhook_events(processing_state, received_at);
+        CREATE INDEX idx_billing_webhook_events_retry
+            ON billing_webhook_events(
+                provider, processing_state, processing_started_at, received_at
+            );
+
+        COMMIT;
+        ",
+    )
+    .map_err(sql_err)
+}
+
+fn sqlite_table_sql(conn: &Connection, table: &str) -> HoneResult<String> {
+    conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(sql_err)?
+    .ok_or_else(|| HoneError::Storage(format!("billing sqlite table {table} 不存在")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1088,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    fn any_active_provider_grants_access_and_stale_events_cannot_revoke() {
+    fn active_stripe_entitlement_grants_access_and_stale_events_cannot_revoke() {
         let storage = test_storage();
         assert_eq!(
             storage
@@ -1123,35 +1238,109 @@ mod tests {
     }
 
     #[test]
-    fn canceling_one_provider_does_not_revoke_another_active_provider() {
-        let storage = test_storage();
-        storage
-            .upsert_entitlement(entitlement_for(
-                BILLING_PROVIDER_STRIPE,
-                "sub_stripe",
-                "evt_stripe_cancelled",
-                "2026-08-03T02:00:00+00:00",
-                BILLING_ACCESS_INACTIVE,
-            ))
-            .expect("stripe entitlement");
-        storage
-            .upsert_entitlement(entitlement_for(
-                BILLING_PROVIDER_WHOP,
-                "mem_whop",
-                "evt_whop_active",
-                "2026-08-03T01:00:00+00:00",
-                BILLING_ACCESS_ACTIVE,
-            ))
-            .expect("whop entitlement");
+    fn legacy_provider_tables_are_rebuilt_as_stripe_only() {
+        let root =
+            std::env::temp_dir().join(format!("hone-billing-stripe-only-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("sessions.sqlite3");
+        {
+            let conn = Connection::open(&database_path).expect("legacy db");
+            conn.execute_batch(
+                "
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE web_invite_users(user_id TEXT PRIMARY KEY);
+                INSERT INTO web_invite_users(user_id) VALUES ('user_1');
+                CREATE TABLE billing_entitlements (
+                    entitlement_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    provider TEXT NOT NULL CHECK (provider IN ('legacy', 'stripe', 'domestic_invite')),
+                    provider_customer_id TEXT,
+                    provider_subscription_id TEXT NOT NULL,
+                    provider_product_id TEXT,
+                    provider_price_id TEXT,
+                    purchase_email_normalized TEXT,
+                    raw_status TEXT NOT NULL,
+                    access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
+                    current_period_start TEXT,
+                    current_period_end TEXT,
+                    cancel_at_period_end INTEGER NOT NULL DEFAULT 0 CHECK (cancel_at_period_end IN (0, 1)),
+                    manage_url TEXT,
+                    grace_expires_at TEXT,
+                    last_event_id TEXT NOT NULL,
+                    last_event_created_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(provider, provider_subscription_id),
+                    FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
+                );
+                INSERT INTO billing_entitlements (
+                    entitlement_id, user_id, provider, provider_subscription_id,
+                    raw_status, access_state, last_event_id, last_event_created_at,
+                    created_at, updated_at
+                ) VALUES
+                    ('ent_stripe', 'user_1', 'stripe', 'sub_1', 'active', 'active',
+                     'evt_stripe', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z'),
+                    ('ent_legacy', 'user_1', 'legacy', 'mem_1', 'active', 'active',
+                     'evt_legacy', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z');
+                CREATE TABLE billing_webhook_events (
+                    provider TEXT NOT NULL CHECK (provider IN ('legacy', 'stripe')),
+                    event_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    object_id TEXT,
+                    payload_sha256 TEXT NOT NULL,
+                    provider_created_at TEXT NOT NULL,
+                    processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    received_at TEXT NOT NULL,
+                    processing_started_at TEXT,
+                    processed_at TEXT,
+                    normalized_payload TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY(provider, event_id)
+                );
+                INSERT INTO billing_webhook_events (
+                    provider, event_id, event_type, payload_sha256,
+                    provider_created_at, processing_state, received_at
+                ) VALUES
+                    ('stripe', 'evt_stripe', 'invoice.paid',
+                     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                     '2026-08-04T00:00:00Z', 'processed', '2026-08-04T00:00:00Z'),
+                    ('legacy', 'evt_legacy', 'membership.activated',
+                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                     '2026-08-04T00:00:00Z', 'processed', '2026-08-04T00:00:00Z');
+                ",
+            )
+            .expect("legacy schema");
+        }
 
-        assert!(storage.user_has_paid_access("user_1").expect("access"));
-        let entitlements = storage
-            .list_user_entitlements("user_1")
-            .expect("entitlements");
-        assert_eq!(entitlements.len(), 2);
-        assert!(entitlements.iter().any(|value| {
-            value.provider == BILLING_PROVIDER_WHOP && value.grants_paid_access()
-        }));
+        let storage = BillingStorage::new(&database_path).expect("migrate");
+        let conn = storage.sqlite_conn().expect("connection");
+        let entitlement_providers: Vec<String> = conn
+            .prepare("SELECT provider FROM billing_entitlements ORDER BY provider")
+            .expect("prepare entitlements")
+            .query_map([], |row| row.get(0))
+            .expect("query entitlements")
+            .collect::<Result<_, _>>()
+            .expect("entitlement providers");
+        let event_providers: Vec<String> = conn
+            .prepare("SELECT provider FROM billing_webhook_events ORDER BY provider")
+            .expect("prepare events")
+            .query_map([], |row| row.get(0))
+            .expect("query events")
+            .collect::<Result<_, _>>()
+            .expect("event providers");
+        assert_eq!(entitlement_providers, vec!["stripe"]);
+        assert_eq!(event_providers, vec!["stripe"]);
+        assert!(
+            sqlite_table_sql(&conn, "billing_entitlements")
+                .expect("entitlement schema")
+                .contains("provider IN ('stripe', 'domestic_invite')")
+        );
+        assert!(
+            sqlite_table_sql(&conn, "billing_webhook_events")
+                .expect("event schema")
+                .contains("provider = 'stripe'")
+        );
     }
 
     #[test]

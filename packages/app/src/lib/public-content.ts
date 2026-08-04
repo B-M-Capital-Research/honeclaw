@@ -520,7 +520,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/activate`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；国内 `/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，海外用户则在 `/activate` 使用邮箱验证码完成 Stripe 购买或恢复 Whop 权益，`/me` 展示服务端统一记录的会员与续费状态；桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/activate`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；国内 `/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，海外用户则在 `/activate` 使用邮箱验证码完成 Stripe 购买或恢复会员权益，`/me` 展示服务端统一记录的会员与续费状态；桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载、历史回看，以及图片 / 文件附件进入共享 ingest 后再交给 runner 读取；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/digest-context` 与 `/api/public/company-profile` 暴露当前用户的投资主线和单票画像，`/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "存储与云运行时",
@@ -1218,7 +1218,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "中国大陆渠道用户使用经我们登记的中国大陆手机号作为账号，并通过短信验证码完成身份验证；海外 Stripe 或 Whop 用户可使用购买邮箱和邮箱验证码完成身份验证。账号必须对应有效的邀请资格或会员权益。",
+                "中国大陆渠道用户使用经我们登记的中国大陆手机号作为账号，并通过短信验证码完成身份验证；海外 Stripe 用户可使用购买邮箱和邮箱验证码完成身份验证。账号必须对应有效的邀请资格或会员权益。",
               ],
             },
             {
@@ -1298,7 +1298,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Stripe 或 Whop 处理海外付款与订阅状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
+                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Stripe 处理海外付款与订阅状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
               ],
             },
             {
@@ -1315,7 +1315,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "海外年度会员通过 Stripe 或 Whop 结算。结账页会显示币种、价格、计费周期和适用税费；除非您在当前周期结束前取消，订阅将按结账时披露的周期自动续费并由原付款方式扣款。",
+                "海外年度会员通过 Stripe 结算。结账页会显示币种、价格、计费周期和适用税费；除非您在当前周期结束前取消，订阅将按结账时披露的周期自动续费并由原付款方式扣款。",
               ],
             },
             {
@@ -1467,11 +1467,11 @@ const CONTENT_ZH = {
               items: [
                 [
                   { strong: "账号信息：" },
-                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Stripe 或 Whop 的 Customer、Subscription、Invoice、会员、产品、价格、状态、续费周期和 webhook 事件标识；",
+                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Stripe 的 Customer、Subscription、Invoice、产品、价格、状态、续费周期和 webhook 事件标识；",
                 ],
                 [
                   { strong: "付款信息：" },
-                  "海外付款由 Stripe 或 Whop 处理。我们接收用于确认权益的客户、订阅、账单或会员状态标识，但不接收或存储完整银行卡号、安全码或磁条数据；",
+                  "海外付款由 Stripe 处理。我们接收用于确认权益的客户、订阅和账单状态标识，但不接收或存储完整银行卡号、安全码或磁条数据；",
                 ],
                 [
                   { strong: "使用数据：" },
@@ -1535,7 +1535,7 @@ const CONTENT_ZH = {
               kind: "ul",
               items: [
                 ["短信与邮件服务商（用于发送登录验证码）；"],
-                ["Stripe 与 Whop（用于处理海外付款、创建订阅管理会话并同步产品、账单和续费状态）；"],
+                ["Stripe（用于处理海外付款、创建订阅管理会话并同步产品、账单和续费状态）；"],
                 ["大型语言模型提供方（用于生成回复）；"],
                 ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
               ],
@@ -1870,7 +1870,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       badge: "Recommended",
       price: "$199.99",
       period: "/ year",
-      promos: ["USD · Stripe or Whop"],
+      promos: ["USD · Stripe"],
       desc: "Live deep dives, the VIP community, research notes, and unlimited HONE — one subscription.",
       features: [
         "Thursday live deep dives — the host walks through companies in depth, ask anything live",
@@ -2229,7 +2229,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/activate`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; mainland-China `/chat` admission uses Aliyun behavior captcha plus phone/SMS verification from the admin invite list, while overseas users verify email through `/activate` to purchase with Stripe or restore Whop access, and `/me` renders the server-owned unified billing state; the client uses a collapsible desktop left rail plus full-height conversation workspace and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/activate`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; mainland-China `/chat` admission uses Aliyun behavior captcha plus phone/SMS verification from the admin invite list, while overseas users verify email through `/activate` to purchase with Stripe or restore membership access, and `/me` renders the server-owned unified billing state; the client uses a collapsible desktop left rail plus full-height conversation workspace and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, history review, and image / file attachments that pass through shared ingest before the runner reads them; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/digest-context` and `/api/public/company-profile` for the signed-in user's investment mainline and single-name profiles, `/api/public/file` for downloadable generated artifacts, and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Storage and cloud runtime",
@@ -2970,7 +2970,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Users entering through mainland China channels sign in with a registered mainland China phone number and an SMS code. Overseas Stripe or Whop users may verify with their purchase email and an email code. Every account must correspond to a valid invitation or membership entitlement.",
+                "Users entering through mainland China channels sign in with a registered mainland China phone number and an SMS code. Overseas Stripe users may verify with their purchase email and an email code. Every account must correspond to a valid invitation or membership entitlement.",
               ],
             },
             {
@@ -3056,7 +3056,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Stripe or Whop for overseas payment processing and subscription synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
+                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Stripe for overseas payment processing and subscription synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
               ],
             },
             {
@@ -3073,7 +3073,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Overseas annual memberships are billed through Stripe or Whop. Checkout displays the currency, price, billing interval, and applicable taxes. Unless you cancel before the end of the current period, the subscription automatically renews on the disclosed interval and charges the original payment method.",
+                "Overseas annual memberships are billed through Stripe. Checkout displays the currency, price, billing interval, and applicable taxes. Unless you cancel before the end of the current period, the subscription automatically renews on the disclosed interval and charges the original payment method.",
               ],
             },
             {
@@ -3232,11 +3232,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 [
                   { strong: "Account info:" },
-                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Stripe or Whop Customer, Subscription, Invoice, membership, product, price, status, renewal-period, and webhook event identifiers;",
+                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Stripe Customer, Subscription, Invoice, product, price, status, renewal-period, and webhook event identifiers;",
                 ],
                 [
                   { strong: "Payment info:" },
-                  " overseas payments are processed by Stripe or Whop. We receive customer, subscription, invoice, or membership identifiers needed to confirm entitlements, but we do not receive or store full card numbers, security codes, or magnetic-stripe data;",
+                  " overseas payments are processed by Stripe. We receive customer, subscription, and invoice identifiers needed to confirm entitlements, but we do not receive or store full card numbers, security codes, or magnetic-stripe data;",
                 ],
                 [
                   { strong: "Usage data:" },
@@ -3316,7 +3316,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 ["SMS and email providers (to deliver login codes);"],
                 [
-                  "Stripe and Whop (to process overseas payments, create subscription-management sessions, and synchronize product, invoice, and renewal status);",
+                  "Stripe (to process overseas payments, create subscription-management sessions, and synchronize product, invoice, and renewal status);",
                 ],
                 ["large language model providers (to generate responses);"],
                 [

@@ -216,7 +216,7 @@ export type PublicAuthUserInfo = {
 
 export type PublicBillingEntitlement = {
   entitlement_id: string;
-  provider: "stripe" | "whop" | "domestic_invite" | string;
+  provider: "stripe" | "domestic_invite" | string;
   raw_status: string;
   access_state: "pending" | "active" | "grace" | "inactive" | string;
   current_period_start?: string;
@@ -233,9 +233,7 @@ export type PublicBillingSummary = {
 };
 
 export type PublicBillingConfig = {
-  primary_provider: "stripe" | "whop";
   stripe_checkout_enabled: boolean;
-  whop_new_purchases_enabled: boolean;
   purchases_allowed_on_this_client: boolean;
   management_allowed_on_this_client: boolean;
 };

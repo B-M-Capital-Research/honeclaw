@@ -1,24 +1,7 @@
 import type {
   PublicAuthUserInfo,
-  PublicBillingConfig,
   PublicBillingEntitlement,
 } from "@/lib/types";
-
-export type BillingActivationProvider = "stripe" | "whop";
-
-export function billingActivationProvider(
-  requestedProvider: string | undefined,
-  config: PublicBillingConfig | undefined,
-): BillingActivationProvider {
-  if (requestedProvider === "whop") return "whop";
-  if (config === undefined) return "stripe";
-  if (requestedProvider === "stripe") {
-    return config.stripe_checkout_enabled ? "stripe" : "whop";
-  }
-  return config.primary_provider === "stripe" && config.stripe_checkout_enabled
-    ? "stripe"
-    : "whop";
-}
 
 export function billingEntitlementGrantsAccess(
   entitlement: PublicBillingEntitlement,
@@ -59,8 +42,6 @@ export function billingProviderLabel(provider: string): string {
   switch (provider) {
     case "stripe":
       return "Stripe";
-    case "whop":
-      return "Whop";
     case "domestic_invite":
       return "国内邀请";
     default:

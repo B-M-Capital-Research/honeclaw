@@ -53,11 +53,17 @@ impl StripeMode {
         matches!(self, Self::Live)
     }
 
-    fn secret_key_prefix(self) -> &'static str {
+    fn secret_key_prefixes(self) -> [&'static str; 2] {
         match self {
-            Self::Test => "sk_test_",
-            Self::Live => "sk_live_",
+            Self::Test => ["sk_test_", "rk_test_"],
+            Self::Live => ["sk_live_", "rk_live_"],
         }
+    }
+
+    fn accepts_secret_key(self, value: &str) -> bool {
+        self.secret_key_prefixes()
+            .iter()
+            .any(|prefix| value.starts_with(prefix) && value.len() > prefix.len())
     }
 }
 
@@ -114,10 +120,10 @@ impl StripeApiConfig {
     fn from_env() -> Result<Self, String> {
         let catalog = StripeCatalogConfig::from_env()?;
         let secret_key = required_env("HONE_STRIPE_SECRET_KEY")?;
-        let expected_prefix = catalog.mode.secret_key_prefix();
-        if !secret_key.starts_with(expected_prefix) || secret_key.len() <= expected_prefix.len() {
+        if !catalog.mode.accepts_secret_key(&secret_key) {
+            let [standard_prefix, restricted_prefix] = catalog.mode.secret_key_prefixes();
             return Err(format!(
-                "HONE_STRIPE_SECRET_KEY 与 HONE_STRIPE_MODE 不匹配，必须使用 {expected_prefix} 开头的密钥"
+                "HONE_STRIPE_SECRET_KEY 与 HONE_STRIPE_MODE 不匹配，必须使用 {standard_prefix} 或 {restricted_prefix} 开头的密钥"
             ));
         }
         let public_base_url = Url::parse(&env_or(
@@ -1289,6 +1295,19 @@ mod tests {
             product_id: "prod_test123".to_string(),
             price_id: "price_test123".to_string(),
         }
+    }
+
+    #[test]
+    fn stripe_mode_accepts_standard_and_restricted_keys_only_in_its_own_mode() {
+        assert!(StripeMode::Test.accepts_secret_key("sk_test_example"));
+        assert!(StripeMode::Test.accepts_secret_key("rk_test_example"));
+        assert!(!StripeMode::Test.accepts_secret_key("sk_live_example"));
+        assert!(!StripeMode::Test.accepts_secret_key("rk_live_example"));
+        assert!(StripeMode::Live.accepts_secret_key("sk_live_example"));
+        assert!(StripeMode::Live.accepts_secret_key("rk_live_example"));
+        assert!(!StripeMode::Live.accepts_secret_key("sk_test_example"));
+        assert!(!StripeMode::Live.accepts_secret_key("rk_test_example"));
+        assert!(!StripeMode::Live.accepts_secret_key("rk_live_"));
     }
 
     fn signed_headers(body: &[u8], secret: &str) -> HeaderMap {

@@ -60,12 +60,6 @@ cargo build -p hone-console-page --quiet
     HONE_PUBLIC_WEB_DIST_DIR="$TMP_ROOT/web-public" \
     HONE_PUBLIC_ALLOWED_ORIGINS="http://127.0.0.1:$PUBLIC_PORT" \
     HONE_PUBLIC_SECURE_COOKIE=false \
-    HONE_BILLING_PRIMARY_PROVIDER=stripe \
-    HONE_WHOP_NEW_PURCHASES_ENABLED=true \
-    HONE_WHOP_WEBHOOK_SECRET=ws_ci_only_not_a_secret \
-    HONE_WHOP_COMPANY_ID=biz_ci_billing \
-    HONE_WHOP_PRODUCT_ID=prod_ci_whop \
-    HONE_WHOP_PLAN_ID=plan_ci_whop \
     HONE_STRIPE_CHECKOUT_ENABLED=true \
     HONE_STRIPE_MODE=test \
     HONE_STRIPE_SECRET_KEY=sk_test_ci_only_not_a_secret \
@@ -148,7 +142,6 @@ with database:
 PY
 
 python3 - "$PUBLIC_PORT" "$TMP_ROOT/data/sessions.sqlite3" <<'PY'
-import base64
 import hashlib
 import hmac
 import json
@@ -157,7 +150,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 
 public_port = int(sys.argv[1])
 database_path = sys.argv[2]
@@ -168,7 +160,6 @@ email = "billing-ci@hone-claw.invalid"
 stripe_product = "prod_ci_stripe"
 stripe_price = "price_ci_stripe"
 stripe_secret = b"whsec_ci_only_not_a_secret"
-whop_secret = b"ws_ci_only_not_a_secret"
 
 
 def request(method, path, *, headers=None, body=None):
@@ -231,28 +222,6 @@ def stripe_post(payload):
         "POST",
         "/api/public/integrations/stripe/webhook",
         headers={"stripe-signature": f"t={timestamp},v1={signature}"},
-        body=body,
-    )
-
-
-def whop_post(payload):
-    body = json.dumps(payload, separators=(",", ":")).encode()
-    timestamp = str(int(time.time()))
-    signature = base64.b64encode(
-        hmac.new(
-            whop_secret,
-            payload["id"].encode() + b"." + timestamp.encode() + b"." + body,
-            hashlib.sha256,
-        ).digest()
-    ).decode()
-    return request(
-        "POST",
-        "/api/public/integrations/whop/webhook",
-        headers={
-            "webhook-id": payload["id"],
-            "webhook-timestamp": timestamp,
-            "webhook-signature": f"v1,{signature}",
-        },
         body=body,
     )
 
@@ -322,34 +291,10 @@ def subscription(event_id, event_type, subscription_id, status, created, cancel=
     }
 
 
-def whop_event(event_id, event_type, membership_id, status, created, cancel=False, product="prod_ci_whop"):
-    event_time = datetime.fromtimestamp(created, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-    period_end = datetime.fromtimestamp(created + 31536000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-    return {
-        "id": event_id,
-        "api_version": "v1",
-        "timestamp": event_time,
-        "type": event_type,
-        "company_id": "biz_ci_billing",
-        "data": {
-            "id": membership_id,
-            "status": status,
-            "user": {"id": "user_ci_whop", "email": email},
-            "product": {"id": product},
-            "plan": {"id": "plan_ci_whop"},
-            "manage_url": f"https://whop.com/billing/manage/{membership_id}",
-            "renewal_period_end": period_end,
-            "cancel_at_period_end": cancel,
-        },
-    }
-
-
 config_code, config = request("GET", "/api/public/billing/config")
 assert config_code == 200
 assert config == {
-    "primary_provider": "stripe",
     "stripe_checkout_enabled": True,
-    "whop_new_purchases_enabled": True,
     "purchases_allowed_on_this_client": True,
     "management_allowed_on_this_client": True,
 }
@@ -549,40 +494,12 @@ wait_status(
     and sum(item["access_state"] == "active" for item in value["entitlements"]) == 1,
 )
 
-assert whop_post(
-    whop_event(
-        "msg_ci_whop_active",
-        "membership.activated",
-        "mem_ci_old",
-        "active",
-        base + 90,
-    )
-)[0] == 202
-both_active = wait_status(
-    "two providers must produce duplicate warning",
+assert stripe_post(invoice("evt_ci_second_active", "invoice.paid", "sub_ci_second", base + 90))[0] == 202
+two_active = wait_status(
+    "two Stripe subscriptions must produce duplicate warning",
     lambda value: value["has_duplicate_active_subscriptions"],
 )
-assert both_active["access_granted"] is True
-
-assert whop_post(
-    whop_event(
-        "msg_ci_whop_cancel_at_end",
-        "membership.cancel_at_period_end_changed",
-        "mem_ci_old",
-        "canceling",
-        base + 91,
-        True,
-    )
-)[0] == 202
-wait_status(
-    "Whop period-end cancellation must retain access",
-    lambda value: any(
-        item["provider"] == "whop"
-        and item["access_state"] == "active"
-        and item["cancel_at_period_end"]
-        for item in value["entitlements"]
-    ),
-)
+assert two_active["access_granted"] is True
 
 assert stripe_post(
     subscription(
@@ -590,24 +507,24 @@ assert stripe_post(
         "customer.subscription.deleted",
         "sub_ci_new",
         "canceled",
-        base + 92,
+        base + 91,
     )
 )[0] == 202
-stripe_inactive = wait_status(
-    "Whop must retain access after Stripe cancellation",
+one_active = wait_status(
+    "one active Stripe subscription must retain access after the other is canceled",
     lambda value: value["access_granted"]
     and not value["has_duplicate_active_subscriptions"]
-    and any(item["provider"] == "whop" and item["access_state"] == "active" for item in value["entitlements"]),
+    and sum(item["provider"] == "stripe" and item["access_state"] == "active" for item in value["entitlements"]) == 1,
 )
-assert stripe_inactive["access_granted"] is True
+assert one_active["access_granted"] is True
 
-assert whop_post(
-    whop_event(
-        "msg_ci_whop_deactivated",
-        "membership.deactivated",
-        "mem_ci_old",
+assert stripe_post(
+    subscription(
+        "evt_ci_delete_second",
+        "customer.subscription.deleted",
+        "sub_ci_second",
         "canceled",
-        base + 93,
+        base + 92,
     )
 )[0] == 202
 wait_status(
@@ -616,44 +533,6 @@ wait_status(
     and all(item["access_state"] == "inactive" for item in value["entitlements"]),
 )
 assert paid_api_code() == 402
-
-wrong_whop_code, _ = whop_post(
-    whop_event(
-        "msg_ci_whop_wrong_catalog",
-        "membership.activated",
-        "mem_ci_wrong",
-        "active",
-        base + 94,
-        product="prod_wrong",
-    )
-)
-assert wrong_whop_code == 422
-assert billing_status()["access_granted"] is False
-
-assert whop_post(
-    whop_event(
-        "msg_ci_whop_repurchase",
-        "membership.activated",
-        "mem_ci_new",
-        "active",
-        base + 95,
-    )
-)[0] == 202
-assert whop_post(
-    whop_event(
-        "msg_ci_whop_old_late",
-        "membership.deactivated",
-        "mem_ci_old",
-        "canceled",
-        base + 96,
-    )
-)[0] == 202
-wait_status(
-    "old Whop membership event must not revoke repurchase",
-    lambda value: value["access_granted"]
-    and sum(item["provider"] == "whop" and item["access_state"] == "active" for item in value["entitlements"]) == 1,
-)
-assert paid_api_code() == 200
 
 database = sqlite3.connect(database_path)
 paid_replay_rows = database.execute(
@@ -666,8 +545,7 @@ wrong_catalog_rows = database.execute(
     WHERE event_id IN (
         'evt_ci_missing_mode',
         'evt_ci_wrong_mode',
-        'evt_ci_wrong_catalog',
-        'msg_ci_whop_wrong_catalog'
+        'evt_ci_wrong_catalog'
     )
     """
 ).fetchone()[0]
@@ -683,4 +561,4 @@ assert unfinished_rows == 0
 assert duplicate_attempts == 1
 PY
 
-printf '[PASS] isolated signed Stripe + Whop HTTP billing lifecycle\n'
+printf '[PASS] isolated signed Stripe-only HTTP billing lifecycle\n'

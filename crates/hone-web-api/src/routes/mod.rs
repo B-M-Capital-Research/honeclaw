@@ -30,7 +30,6 @@ pub(crate) mod stripe;
 pub(crate) mod task_runs;
 pub(crate) mod users;
 pub(crate) mod web_users;
-pub(crate) mod whop;
 
 mod common;
 
@@ -310,10 +309,6 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             post(public_admin::handle_disable_invite),
         )
         .route("/admin/usage", get(public_admin::handle_usage_report))
-        .route(
-            "/integrations/whop/webhook",
-            post(whop::handle_whop_webhook),
-        )
         .route(
             "/integrations/stripe/webhook",
             post(stripe::handle_stripe_webhook),

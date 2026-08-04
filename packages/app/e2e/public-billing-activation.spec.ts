@@ -1,17 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function routeBillingConfig(
-  page: Page,
-  config: { primary_provider: "stripe" | "whop"; stripe_checkout_enabled: boolean },
-) {
+async function routeBillingConfig(page: Page, stripeCheckoutEnabled: boolean) {
   await page.route("**/api/public/billing/config", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        primary_provider: config.primary_provider,
-        stripe_checkout_enabled: config.stripe_checkout_enabled,
-        whop_new_purchases_enabled: true,
+        stripe_checkout_enabled: stripeCheckoutEnabled,
         purchases_allowed_on_this_client: true,
         management_allowed_on_this_client: true,
       }),
@@ -19,32 +14,24 @@ async function routeBillingConfig(
   });
 }
 
-test("switches from Stripe to Whop on the same activation route", async ({ page }) => {
-  await routeBillingConfig(page, {
-    primary_provider: "stripe",
-    stripe_checkout_enabled: true,
-  });
+test("offers Stripe Checkout on the single activation route", async ({ page }) => {
+  await routeBillingConfig(page, true);
 
   await page.goto("/activate");
+
   await expect(page.getByRole("heading", { name: "验证邮箱并安全结账" })).toBeVisible();
-
-  await page.getByRole("link", { name: "连接 Whop" }).click();
-
-  await expect(page).toHaveURL(/\/activate\?provider=whop$/);
-  await expect(page.getByRole("heading", { name: "连接已有 Whop 会员" })).toBeVisible();
-  await expect(page.getByText("WHOP 会员连接", { exact: true })).toBeVisible();
+  await expect(page.getByText("STRIPE 安全结账", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "验证并前往 Stripe" })).toBeVisible();
 });
 
-test("defaults to Whop while Stripe Checkout is disabled", async ({ page }) => {
-  await routeBillingConfig(page, {
-    primary_provider: "whop",
-    stripe_checkout_enabled: false,
-  });
+test("fails closed to entitlement recovery while Stripe Checkout is disabled", async ({ page }) => {
+  await routeBillingConfig(page, false);
 
-  await page.goto("/activate?provider=stripe");
+  await page.goto("/activate?provider=legacy");
 
-  await expect(page.getByRole("heading", { name: "连接已有 Whop 会员" })).toBeVisible();
-  await expect(page.getByText("WHOP 会员连接", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "恢复你的 HONE 会员权益" })).toBeVisible();
+  await expect(page.getByText("会员恢复", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "验证并恢复权益" })).toBeVisible();
   await expect(page.getByRole("button", { name: "验证并前往 Stripe" })).toHaveCount(0);
 });
 
@@ -64,16 +51,14 @@ test("waits for server billing policy before collecting account data", async ({ 
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        primary_provider: "whop",
         stripe_checkout_enabled: false,
-        whop_new_purchases_enabled: true,
         purchases_allowed_on_this_client: true,
         management_allowed_on_this_client: true,
       }),
     });
   });
 
-  const navigation = page.goto("/activate?provider=stripe");
+  const navigation = page.goto("/activate");
   await configRequested;
   try {
     await expect(page.getByRole("heading", { name: "正在确认会员渠道" })).toBeVisible();
@@ -82,5 +67,5 @@ test("waits for server billing policy before collecting account data", async ({ 
     releaseConfig();
   }
   await navigation;
-  await expect(page.getByRole("heading", { name: "连接已有 Whop 会员" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "恢复你的 HONE 会员权益" })).toBeVisible();
 });

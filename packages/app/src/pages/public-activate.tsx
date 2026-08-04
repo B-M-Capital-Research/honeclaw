@@ -1,5 +1,5 @@
 import { Show, createMemo, createSignal, onCleanup, onMount, type ParentProps } from "solid-js";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { useNavigate } from "@solidjs/router";
 import { HoneBrand } from "@/components/hone-brand";
 import { PublicCheckbox } from "@/components/public-checkbox";
 import { PublicPrefsButton } from "@/components/public-prefs-button";
@@ -10,7 +10,6 @@ import {
   publicEmailLogin,
   publicSendEmailCode,
 } from "@/lib/api";
-import { billingActivationProvider } from "@/lib/public-membership";
 import { TOS_VERSION } from "@/lib/tos";
 import type { PublicBillingConfig } from "@/lib/types";
 
@@ -21,9 +20,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function PublicActivatePage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams<{ provider?: string }>();
   const [config, setConfig] = createSignal<PublicBillingConfig>();
-  const provider = createMemo(() => billingActivationProvider(searchParams.provider, config()));
   const [emailAddress, setEmailAddress] = createSignal("");
   const [verifyCode, setVerifyCode] = createSignal("");
   const [remember, setRemember] = createSignal(true);
@@ -47,11 +44,12 @@ export default function PublicActivatePage() {
   const restoreOnly = createMemo(
     () => config()?.purchases_allowed_on_this_client === false,
   );
+  const purchaseAvailable = createMemo(
+    () => !restoreOnly() && config()?.stripe_checkout_enabled === true,
+  );
   const activationSteps = createMemo(() => {
-    if (restoreOnly()) return ["验证邮箱", "登录账户", "恢复权益"];
-    return provider() === "stripe"
-      ? ["验证邮箱", "Stripe 付款", "确认权益"]
-      : ["Whop 付款", "验证邮箱", "恢复权益"];
+    if (!purchaseAvailable()) return ["验证邮箱", "登录账户", "恢复权益"];
+    return ["验证邮箱", "Stripe 付款", "确认权益"];
   });
 
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
@@ -89,7 +87,7 @@ export default function PublicActivatePage() {
     try {
       const response = await publicSendEmailCode(
         normalizedEmail(),
-        provider() === "stripe" && !restoreOnly() ? "stripe_checkout" : undefined,
+        purchaseAvailable() ? "stripe_checkout" : undefined,
       );
       setNotice(response.message);
       startCooldown();
@@ -112,8 +110,12 @@ export default function PublicActivatePage() {
         remember: remember(),
         tos_version: TOS_VERSION,
       });
-      if (provider() === "whop" || restoreOnly() || user.billing.access_granted) {
+      if (restoreOnly() || user.billing.access_granted) {
         navigate("/me?billing=syncing");
+        return;
+      }
+      if (!purchaseAvailable()) {
+        setError("Stripe 结账暂不可用，请稍后再试。已有会员仍可正常登录和恢复权益。");
         return;
       }
       const { checkout_url } = await createStripeCheckout();
@@ -131,8 +133,8 @@ export default function PublicActivatePage() {
 
   const title = () => {
     if (!configReady()) return "正在确认会员渠道";
-    if (restoreOnly()) return "恢复你的 HONE 会员权益";
-    return provider() === "stripe" ? "验证邮箱并安全结账" : "连接已有 Whop 会员";
+    if (!purchaseAvailable()) return "恢复你的 HONE 会员权益";
+    return "验证邮箱并安全结账";
   };
 
   return (
@@ -146,9 +148,9 @@ export default function PublicActivatePage() {
               ? "会员渠道确认中"
               : restoreOnly()
                 ? "会员恢复"
-                : provider() === "stripe"
+                : purchaseAvailable()
                   ? "STRIPE 安全结账"
-                  : "WHOP 会员连接"}
+                  : "会员恢复"}
           </span>
           <h1>{title()}</h1>
           <p>
@@ -156,9 +158,9 @@ export default function PublicActivatePage() {
               ? "正在读取当前可用的安全支付与会员恢复方式。"
               : restoreOnly()
                 ? "在这里登录并恢复已在网站购买的权益；App 内不展示价格，也不会跳转外部购买。"
-                : provider() === "stripe"
+                : purchaseAvailable()
                   ? "邮箱验证后由 HONE 创建 Stripe Checkout。付款完成需等待服务端确认，成功跳转本身不会开通权益。"
-                  : "请输入 Whop 付款时使用的邮箱。HONE 会根据已签名的付款事件恢复对应权益。"}
+                  : "Stripe 结账正在维护。已有会员可以验证邮箱并恢复权益。"}
           </p>
         </header>
 
@@ -188,7 +190,7 @@ export default function PublicActivatePage() {
             </div>
 
             <label class="public-activate-field">
-              <FieldLabel>{provider() === "whop" ? "Whop 购买邮箱" : "账户邮箱"}</FieldLabel>
+              <FieldLabel>账户邮箱</FieldLabel>
               <TextInput
                 type="email"
                 value={emailAddress()}
@@ -241,7 +243,7 @@ export default function PublicActivatePage() {
             >
               {submitting()
                 ? "正在处理…"
-                : restoreOnly() || provider() === "whop"
+                : !purchaseAvailable()
                   ? "验证并恢复权益"
                   : "验证并前往 Stripe"}
             </button>
@@ -249,9 +251,6 @@ export default function PublicActivatePage() {
 
           <p class="public-activate-footer">
             国内手机号用户？ <a href="/chat">使用短信验证码登录</a>
-            {provider() === "stripe" && config()?.whop_new_purchases_enabled ? (
-              <> · 已在 Whop 购买？ <a href="/activate?provider=whop">连接 Whop</a></>
-            ) : null}
           </p>
         </Show>
       </div>

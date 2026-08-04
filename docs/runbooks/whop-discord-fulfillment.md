@@ -1,6 +1,13 @@
 # Runbook: Whop To Discord VIP Fulfillment
 
-Last updated: 2026-07-26
+- status: `retired`
+- last_updated: `2026-08-04`
+- superseded_by: `docs/decisions.md#d-2026-08-04-01-make-stripe-the-only-external-billing-provider`
+
+> Historical evidence only. HONE no longer operates this fulfillment path;
+> its external product, plan, webhook, and Discord integration are to be
+> archived after Stripe-only production acceptance. Do not use this runbook for
+> a new deployment or customer recovery.
 
 ## Purpose
 

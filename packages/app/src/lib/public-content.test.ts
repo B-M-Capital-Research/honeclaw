@@ -88,7 +88,7 @@ describe("public content key parity", () => {
     setLocale("en");
     expect(CONTENT.plan.full.price).toBe("$199.99");
     expect(CONTENT.plan.full.period).toBe("/ year");
-    expect(CONTENT.plan.full.promos).toEqual(["USD · Stripe or Whop"]);
+    expect(CONTENT.plan.full.promos).toEqual(["USD · Stripe"]);
     expect(CONTENT.plan.full.features).toHaveLength(4);
   });
 });

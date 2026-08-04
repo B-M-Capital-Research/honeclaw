@@ -1371,7 +1371,7 @@ CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
 CREATE TABLE IF NOT EXISTS billing_entitlements (
   entitlement_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id) ON DELETE CASCADE,
-  provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe', 'domestic_invite')),
+  provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
   provider_customer_id TEXT,
   provider_subscription_id TEXT NOT NULL,
   provider_product_id TEXT,
@@ -1404,7 +1404,7 @@ CREATE INDEX IF NOT EXISTS idx_billing_entitlements_customer
   ON billing_entitlements(provider, provider_customer_id)
   WHERE provider_customer_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS billing_webhook_events (
-  provider TEXT NOT NULL CHECK (provider IN ('whop', 'stripe')),
+  provider TEXT NOT NULL CHECK (provider = 'stripe'),
   event_id TEXT NOT NULL,
   event_type TEXT NOT NULL,
   object_id TEXT,
@@ -1537,6 +1537,36 @@ ON CONFLICT (version) DO NOTHING;
 INSERT INTO cloud_schema_migrations(version)
 VALUES ('20260727_remove_web_invite_plaintext_api_keys')
 ON CONFLICT (version) DO NOTHING;
+BEGIN;
+SELECT pg_advisory_xact_lock(hashtextextended('hone:stripe-only-billing-migration', 0));
+DO $stripe_only_billing$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM cloud_schema_migrations
+    WHERE version = '20260804_stripe_only_billing'
+  ) THEN
+    DELETE FROM billing_webhook_events WHERE provider <> 'stripe';
+    DELETE FROM billing_entitlements WHERE provider NOT IN ('stripe', 'domestic_invite');
+
+    ALTER TABLE billing_webhook_events
+      DROP CONSTRAINT IF EXISTS billing_webhook_events_provider_check;
+    ALTER TABLE billing_webhook_events
+      ADD CONSTRAINT billing_webhook_events_provider_check
+      CHECK (provider = 'stripe');
+
+    ALTER TABLE billing_entitlements
+      DROP CONSTRAINT IF EXISTS billing_entitlements_provider_check;
+    ALTER TABLE billing_entitlements
+      ADD CONSTRAINT billing_entitlements_provider_check
+      CHECK (provider IN ('stripe', 'domestic_invite'));
+
+    INSERT INTO cloud_schema_migrations(version)
+    VALUES ('20260804_stripe_only_billing');
+  END IF;
+END
+$stripe_only_billing$;
+COMMIT;
 "#,
             )
             .await
