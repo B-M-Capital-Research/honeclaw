@@ -5593,6 +5593,9 @@ mod hone_channels_compat {
                     ("<tool_call>", "</tool_call>"),
                     ("<tool_result>", "</tool_result>"),
                     ("<tool_use>", "</tool_use>"),
+                    ("<minimax:tool_call>", "</minimax:tool_call>"),
+                    ("<minimax:tool_result>", "</minimax:tool_result>"),
+                    ("<minimax:tool_use>", "</minimax:tool_use>"),
                 ];
                 if let Some((start, open, close)) = markers
                     .iter()
@@ -7452,6 +7455,23 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+
+    #[test]
+    fn hidden_stream_formatter_suppresses_minimax_tool_protocol() {
+        let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
+        let first = formatter.push("前文<minimax:tool_");
+        let second = formatter
+            .push("call><invoke name=\"skill_tool\">payload</invoke></minimax:tool_call>后文");
+        let rendered = format!("{first}{second}{}", formatter.finish());
+        assert_eq!(rendered, "前文后文");
+
+        let mut unfinished = hone_channels_compat::HiddenStreamFormatter::default();
+        assert_eq!(
+            unfinished.push("<minimax:tool_call><invoke name=\"skill_tool\">"),
+            ""
+        );
+        assert_eq!(unfinished.finish(), "");
+    }
 
     #[derive(Clone)]
     struct StreamingMockLlmProvider {

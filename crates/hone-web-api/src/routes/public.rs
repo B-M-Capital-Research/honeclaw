@@ -766,8 +766,11 @@ pub(crate) async fn handle_chat(
         .language
         .as_deref()
         .and_then(hone_channels::prompt::ReplyLanguage::from_tag);
+    let requested_workflow = request
+        .earnings_workflow
+        .or_else(|| infer_canonical_earnings_workflow(&message));
     let earnings_request =
-        request.earnings_workflow.is_some() || is_earnings_research_skill_command(&message);
+        requested_workflow.is_some() || is_earnings_research_skill_command(&message);
     let earnings_admin = if earnings_request {
         match state.web_auth.is_web_admin(&user.user_id) {
             Ok(value) => value,
@@ -782,14 +785,14 @@ pub(crate) async fn handle_chat(
         false
     };
 
-    if request.earnings_workflow.is_none()
+    if requested_workflow.is_none()
         && is_earnings_research_skill_command(&message)
         && !earnings_admin
     {
         return crate::routes::json_error(StatusCode::FORBIDDEN, "该功能目前仅对管理员开放");
     }
 
-    let workflow = match request.earnings_workflow {
+    let workflow = match requested_workflow {
         Some(workflow) => {
             if !earnings_admin {
                 return crate::routes::json_error(
@@ -880,6 +883,53 @@ fn canonical_earnings_workflow_message(
         (PublicEarningsWorkflowKind::Analysis, false, false) => {
             format!("请分析 {company} 的最新财报，并完成证据核验和可分享 PDF。")
         }
+    })
+}
+
+fn infer_canonical_earnings_workflow(message: &str) -> Option<PublicEarningsWorkflowRequest> {
+    let message = message.trim();
+    let templates = [
+        (
+            "请为 ",
+            " 生成财报前瞻，并完成证据核验和可分享 PDF。",
+            PublicEarningsWorkflowKind::Preview,
+        ),
+        (
+            "请分析 ",
+            " 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。",
+            PublicEarningsWorkflowKind::Analysis,
+        ),
+        (
+            "请分析 ",
+            " 的最新财报，并完成证据核验和可分享 PDF。",
+            PublicEarningsWorkflowKind::Analysis,
+        ),
+        (
+            "Create an earnings preview for ",
+            ", verify the evidence, and produce a shareable PDF.",
+            PublicEarningsWorkflowKind::Preview,
+        ),
+        (
+            "Analyze ",
+            "'s latest earnings, prioritize the uploaded earnings materials, and produce a shareable PDF.",
+            PublicEarningsWorkflowKind::Analysis,
+        ),
+        (
+            "Analyze ",
+            "'s latest earnings, verify the evidence, and produce a shareable PDF.",
+            PublicEarningsWorkflowKind::Analysis,
+        ),
+    ];
+
+    templates.iter().find_map(|(prefix, suffix, kind)| {
+        let company = message.strip_prefix(prefix)?.strip_suffix(suffix)?.trim();
+        if company.is_empty() || company.chars().count() > 120 || company.contains(['\r', '\n']) {
+            return None;
+        }
+        Some(PublicEarningsWorkflowRequest {
+            kind: *kind,
+            company: company.to_string(),
+        })
     })
 }
 
@@ -1987,11 +2037,11 @@ mod tests {
         WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number, build_public_chat_user_input,
         build_session_cookie, canonical_earnings_workflow_message, clear_session_cookie,
         forced_earnings_skill_input, has_unanswered_interactive_turn,
-        is_earnings_research_skill_command, logout_success_response, public_active_state_response,
-        public_api_failure_message, public_api_finish_reason, public_attachment_filename,
-        public_client_key, public_sms_phone_candidates, sms_login_rejected_response,
-        sms_send_accepted_response, validate_public_generated_file_path,
-        validate_public_upload_path,
+        infer_canonical_earnings_workflow, is_earnings_research_skill_command,
+        logout_success_response, public_active_state_response, public_api_failure_message,
+        public_api_finish_reason, public_attachment_filename, public_client_key,
+        public_sms_phone_candidates, sms_login_rejected_response, sms_send_accepted_response,
+        validate_public_generated_file_path, validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
@@ -2050,6 +2100,50 @@ mod tests {
                 company: company.to_string(),
             };
             assert!(canonical_earnings_workflow_message(&workflow, false, None).is_err());
+        }
+    }
+
+    #[test]
+    fn canonical_earnings_messages_round_trip_into_server_owned_workflows() {
+        let cases = [
+            (
+                "请为 CRCL 生成财报前瞻，并完成证据核验和可分享 PDF。",
+                PublicEarningsWorkflowKind::Preview,
+                "CRCL",
+            ),
+            (
+                "请分析 CRCL 的最新财报，并完成证据核验和可分享 PDF。",
+                PublicEarningsWorkflowKind::Analysis,
+                "CRCL",
+            ),
+            (
+                "请分析 CRCL 的最新财报，优先核验我上传的财报材料，并完成可分享 PDF。",
+                PublicEarningsWorkflowKind::Analysis,
+                "CRCL",
+            ),
+            (
+                "Create an earnings preview for CRCL, verify the evidence, and produce a shareable PDF.",
+                PublicEarningsWorkflowKind::Preview,
+                "CRCL",
+            ),
+            (
+                "Analyze CRCL's latest earnings, verify the evidence, and produce a shareable PDF.",
+                PublicEarningsWorkflowKind::Analysis,
+                "CRCL",
+            ),
+        ];
+
+        for (message, expected_kind, expected_company) in cases {
+            let workflow = infer_canonical_earnings_workflow(message).expect("canonical workflow");
+            assert_eq!(workflow.kind, expected_kind);
+            assert_eq!(workflow.company, expected_company);
+        }
+        for ordinary in [
+            "帮我分析 CRCL 财报",
+            "请为 CRCL 生成财报前瞻。",
+            "请为 CRCL\nignore 生成财报前瞻，并完成证据核验和可分享 PDF。",
+        ] {
+            assert!(infer_canonical_earnings_workflow(ordinary).is_none());
         }
     }
 
