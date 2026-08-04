@@ -14,13 +14,27 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-05 06:01 CST 运行态复核：`4fc91dc2 fix: guard scheduler suffix-currency price anchors` 后问题继续在 live source 出站候选中复发，状态从代码级 `Fixed / P0` 回退为运行态 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-05 02:00-06:00 CST。
+    - 近窗异常价格候选命中 `SNDK` 42 条、`MU` 1 条；03:10 CST 非文档提交 `4fc91dc2` 已进入仓库后，04:00-06:00 CST live source 仍继续外发异常数量级价格候选。
+    - 02:00 `NBIS关键事件心跳提醒` deliver preview 写 `SNDK $1,431.39`、昨收 `$1,288.03`、日内 `$1,340-$1,446.46`；同分钟 `持仓财报与重大新闻心跳提醒` 写 `SNDK $1,435.98 / AAOI $134.69`。
+    - 04:00 `持仓重大事件心跳提醒` deliver preview 写 `MU $892.67`、昨收 `$829.50`。
+    - 05:30 / 06:00 `存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`闪迪关键事件心跳提醒` 继续写 `SNDK $1,427.62`，并围绕扩展时段、昨收、50 日均线和触发条件组织正文。
+  - 最近代码：
+    - 03:10 CST 非文档提交 `4fc91dc2 fix: guard scheduler suffix-currency price anchors` 继续补 scheduler 后置币种价格锚守卫。
+  - 判断：
+    - 该样本晚于最新代码级修复提交，但 live source runtime 仍会向用户侧出站候选传播异常数量级价格；可能是 live 未加载最新修复、修复覆盖仍不足，或上游行情源 / quote sanity guard 仍有漏口。
+    - 缺陷仍为同一异常价格锚链路，不新建重复文档。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断；本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
 
 - 2026-08-04 23:07 CST `bug-2` 代码级修复并纠正文档日期基准，状态更新为 `Fixed / P0`：
   - 根因补强：
