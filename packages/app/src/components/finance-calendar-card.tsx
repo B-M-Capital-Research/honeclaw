@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 import type { FinanceCalendarEvent, FinanceCalendarPayload } from "@/lib/types";
 import {
   financeCalendarEventCategory,
@@ -20,7 +21,7 @@ type FinanceCalendarCardProps = {
   registerRef?: (el: HTMLDivElement) => void;
 };
 
-const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+const WEEKDAYS = [CONTENT.chat_page.calendar.wd_mon, CONTENT.chat_page.calendar.wd_tue, CONTENT.chat_page.calendar.wd_wed, CONTENT.chat_page.calendar.wd_thu, CONTENT.chat_page.calendar.wd_fri, CONTENT.chat_page.calendar.wd_sat, CONTENT.chat_page.calendar.wd_sun];
 export const FINANCE_CALENDAR_CARD_WIDTH = 1080;
 export const FINANCE_CALENDAR_CARD_HEIGHT = 1350;
 
@@ -38,12 +39,15 @@ const EVENT_STYLE: Record<
 };
 
 function eventLabel(event: FinanceCalendarEvent) {
-  if (event.kind === "earnings" && event.ticker) return `${event.ticker} 财报`;
+  if (event.kind === "earnings" && event.ticker)
+    return `${event.ticker} ${CONTENT.chat_page.calendar.earnings}`;
   return event.title;
 }
 
 function compactEventTime(event: FinanceCalendarEvent) {
-  return event.subtitle?.replace("北京时间 ", "").split(" · ")[0] ?? "待公布";
+  // Not UI copy: the server builds subtitles as `北京时间 HH:MM · <period>`,
+  // so this strips a fixed data prefix and must match the backend format.
+  return event.subtitle?.replace("北京时间 ", "").split(" · ")[0] ?? CONTENT.chat_page.calendar.pending;
 }
 
 function monthParts(monthValue: string) {
@@ -73,7 +77,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
   );
   const holdingsLabel = createMemo(() => {
     const holdings = props.payload.holdings;
-    if (holdings.length === 0) return "尚未录入持仓或关注标的";
+    if (holdings.length === 0) return CONTENT.chat_page.calendar.no_holdings;
     if (holdings.length <= 7) return holdings.join("  ·  ");
     return `${holdings.slice(0, 7).join("  ·  ")}  ·  +${holdings.length - 7}`;
   });
@@ -167,7 +171,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                   "line-height": "1.15",
                 }}
               >
-                我的财经日历
+                {CONTENT.chat_page.calendar.title}
               </div>
               <div
                 style={{
@@ -177,7 +181,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                   "font-weight": "650",
                 }}
               >
-                {month().year} 年 · 北京时间
+                {month().year}{CONTENT.chat_page.calendar.year_tz}
               </div>
             </div>
           </div>
@@ -194,9 +198,9 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         >
           <For
             each={[
-              { value: macroCount(), label: "宏观事件" },
-              { value: earningsCount(), label: "持仓财报" },
-              { value: props.payload.holdings.length, label: "关注标的" },
+              { value: macroCount(), label: CONTENT.chat_page.calendar.macro_event },
+              { value: earningsCount(), label: CONTENT.chat_page.calendar.holding_er },
+              { value: props.payload.holdings.length, label: CONTENT.chat_page.calendar.watchlist },
             ]}
           >
             {(stat, index) => (
@@ -266,7 +270,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                     <span
                       style={{ color: "var(--hone-ink-400)", "font-size": "12px", "font-weight": "750" }}
                     >
-                      本月重点
+                      {CONTENT.chat_page.calendar.month_focus}
                     </span>
                     <strong
                       style={{
@@ -276,7 +280,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                         "font-weight": "700",
                       }}
                     >
-                      暂无更多日程
+                      {CONTENT.chat_page.calendar.no_more}
                     </strong>
                   </Show>
                 }
@@ -340,7 +344,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                   "line-height": "30px",
                 }}
               >
-                周{weekday}
+                {CONTENT.chat_page.calendar.week}{weekday}
               </div>
             )}
           </For>
@@ -479,7 +483,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                           "font-weight": "750",
                         }}
                       >
-                        另有 {overflow()} 项
+                        {CONTENT.chat_page.calendar.more_prefix} {overflow()} {CONTENT.chat_page.calendar.more_suffix}
                       </div>
                     </Show>
                   </Show>
@@ -516,12 +520,12 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
           >
             <For
               each={[
-                ["#9560bd", "政策"],
-                ["#ee6a4b", "通胀"],
-                ["#2f9b87", "就业"],
-                ["#7da242", "增长"],
-                ["#d6a92d", "住房"],
-                ["#3976d3", "财报"],
+                ["#9560bd", CONTENT.chat_page.calendar.cat_policy],
+                ["#ee6a4b", CONTENT.chat_page.calendar.cat_inflation],
+                ["#2f9b87", CONTENT.chat_page.calendar.cat_jobs],
+                ["#7da242", CONTENT.chat_page.calendar.cat_growth],
+                ["#d6a92d", CONTENT.chat_page.calendar.cat_housing],
+                ["#3976d3", CONTENT.chat_page.calendar.earnings],
               ]}
             >
               {(item) => (
@@ -549,7 +553,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               "text-overflow": "ellipsis",
             }}
           >
-            持仓 / 关注：{holdingsLabel()}
+            {CONTENT.chat_page.calendar.holdings_label}{holdingsLabel()}
           </div>
         </div>
         <div style={{ width: "340px", "text-align": "right" }}>
@@ -572,7 +576,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               "line-height": "1.45",
             }}
           >
-            数据源 BLS · BEA · Federal Reserve · Census · ISM · FMP
+            {CONTENT.chat_page.calendar.sources}
           </span>
         </div>
       </footer>

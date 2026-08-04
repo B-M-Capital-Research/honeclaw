@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js";
+import { CONTENT } from "@/lib/public-content";
 
 import {
   financeCalendarEventCategory,
@@ -14,7 +15,7 @@ import "./finance-calendar-mobile-card.css";
 export const FINANCE_CALENDAR_MOBILE_WIDTH = 750;
 export const FINANCE_CALENDAR_MOBILE_HEIGHT = 1334;
 
-const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+const WEEKDAYS = [CONTENT.chat_page.calendar.wd_mon, CONTENT.chat_page.calendar.wd_tue, CONTENT.chat_page.calendar.wd_wed, CONTENT.chat_page.calendar.wd_thu, CONTENT.chat_page.calendar.wd_fri, CONTENT.chat_page.calendar.wd_sat, CONTENT.chat_page.calendar.wd_sun];
 const MONTHS = [
   "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
@@ -44,7 +45,7 @@ function eventTime(event: FinanceCalendarEvent) {
     ?.replace("北京时间 ", "")
     .split(" · ")[0]
     ?.trim()
-    .replace(" / ", "\n") || "待公布";
+    .replace(" / ", "\n") || CONTENT.chat_page.calendar.pending;
 }
 
 export function FinanceCalendarMobileCard(props: {
@@ -95,8 +96,8 @@ export function FinanceCalendarMobileCard(props: {
             {String(parsedMonth()?.month ?? "--").padStart(2, "0")}
           </strong>
           <div class="fcm-cover__title">
-            <h1>我的财经日历</h1>
-            <p>把宏观、政策与持仓财报，放进同一条投资时间轴。</p>
+            <h1>{CONTENT.chat_page.calendar.title}</h1>
+            <p>{CONTENT.chat_page.calendar.subtitle}</p>
           </div>
           <div class="fcm-cover__issue">
             <span>MONTHLY ISSUE</span>
@@ -120,7 +121,7 @@ export function FinanceCalendarMobileCard(props: {
 
       <section class="fcm-scan">
         <div class="fcm-section-heading">
-          <h2>月度信号图</h2>
+          <h2>{CONTENT.chat_page.calendar.signal_chart}</h2>
           <span>COLOR DOTS MARK EVENT CATEGORIES</span>
         </div>
         <div class="fcm-weekdays">
@@ -161,7 +162,7 @@ export function FinanceCalendarMobileCard(props: {
 
       <main class="fcm-agenda">
         <div class="fcm-section-heading">
-          <h2>关键投资窗口</h2>
+          <h2>{CONTENT.chat_page.calendar.key_window}</h2>
           <span>KEY DATES · CHRONOLOGICAL</span>
         </div>
         <div
