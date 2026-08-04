@@ -3387,11 +3387,11 @@ fn detect_unstable_watchlist_price_anchor(
         return None;
     }
     let anchored_price_re = regex::Regex::new(
-        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|₩))",
     )
     .expect("valid watchlist price anchor regex");
     let price_re = regex::Regex::new(
-        r"(?is)(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+        r"(?is)(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|港元|港币|美元|人民币|¥|￥|₩))",
     )
     .expect("valid watchlist price token regex");
     let ticker_re = regex::Regex::new(r"\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b")
@@ -3434,7 +3434,8 @@ fn detect_unstable_watchlist_price_anchor(
             continue;
         };
         let Some(price) = captures
-            .name("price")
+            .name("prefix_price")
+            .or_else(|| captures.name("suffix_price"))
             .map(|matched| matched.as_str().replace(',', ""))
             .and_then(|value| value.parse::<f64>().ok())
         else {
@@ -3487,7 +3488,8 @@ fn detect_unstable_watchlist_price_anchor(
                     return None;
                 }
                 captures
-                    .name("price")
+                    .name("prefix_price")
+                    .or_else(|| captures.name("suffix_price"))
                     .map(|matched| matched.as_str().replace(',', ""))
                     .and_then(|value| value.parse::<f64>().ok())
                     .filter(|value| value.is_finite() && *value > 0.0)
@@ -3605,9 +3607,20 @@ fn detect_verified_quote_price_mismatch(
     }
 
     let current_ticker_price_re = regex::Regex::new(
-        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|报价|交投于|报于|current\s+price|latest\s+price|last\s+price|current\s+status[^\n。；;]{0,16}?price)[^\d]{0,20}(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)?\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。；;]{0,96}?(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|报价|交投于|报于|current\s+price|latest\s+price|last\s+price|current\s+status[^\n。；;]{0,16}?price)[^\d]{0,20}(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)?\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|₩))",
     )
     .expect("valid verified quote mismatch regex");
+    let quote_basis_ticker_price_re = regex::Regex::new(
+        r"(?is)\b(?P<ticker>[A-Z]{2,6}(?:\.[A-Z]{1,3})?)\b[^\n。]{0,180}?价格[^\d]{0,20}(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)?\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|₩))",
+    )
+    .expect("valid verified quote basis mismatch regex");
+    let parse_captured_price = |captures: &regex::Captures<'_>| {
+        captures
+            .name("prefix_price")
+            .or_else(|| captures.name("suffix_price"))
+            .map(|matched| matched.as_str().replace(',', ""))
+            .and_then(|value| value.parse::<f64>().ok())
+    };
     for captures in current_ticker_price_re.captures_iter(text) {
         let Some(ticker) = captures.name("ticker").map(|matched| matched.as_str()) else {
             continue;
@@ -3615,11 +3628,7 @@ fn detect_verified_quote_price_mismatch(
         let Some(expected_price) = verified.get(ticker) else {
             continue;
         };
-        let Some(observed_price) = captures
-            .name("price")
-            .map(|matched| matched.as_str().replace(',', ""))
-            .and_then(|value| value.parse::<f64>().ok())
-        else {
+        let Some(observed_price) = parse_captured_price(&captures) else {
             continue;
         };
         if (observed_price - expected_price).abs()
@@ -3628,9 +3637,45 @@ fn detect_verified_quote_price_mismatch(
             return Some((ticker.to_string(), observed_price, *expected_price));
         }
     }
+    for captures in quote_basis_ticker_price_re.captures_iter(text) {
+        let Some(ticker) = captures.name("ticker").map(|matched| matched.as_str()) else {
+            continue;
+        };
+        let Some(expected_price) = verified.get(ticker) else {
+            continue;
+        };
+        let Some(observed_price) = parse_captured_price(&captures) else {
+            continue;
+        };
+        if (observed_price - expected_price).abs()
+            > scheduler_current_price_display_tolerance(*expected_price)
+        {
+            return Some((ticker.to_string(), observed_price, *expected_price));
+        }
+    }
+    for (ticker, expected_price) in &verified {
+        let pattern = format!(
+            r"(?is)\b{}\b[^\n。]{{0,180}}?价格[^\d]{{0,20}}(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)?\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|₩))",
+            regex::escape(ticker)
+        );
+        let Ok(exact_ticker_quote_basis_re) = regex::Regex::new(&pattern) else {
+            continue;
+        };
+        let Some(captures) = exact_ticker_quote_basis_re.captures(text) else {
+            continue;
+        };
+        let Some(observed_price) = parse_captured_price(&captures) else {
+            continue;
+        };
+        if (observed_price - expected_price).abs()
+            > scheduler_current_price_display_tolerance(*expected_price)
+        {
+            return Some((ticker.clone(), observed_price, *expected_price));
+        }
+    }
 
     let price_re = regex::Regex::new(
-        r"(?is)(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<price>\d[\d,]*(?:\.\d+)?)",
+        r"(?is)(?:(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*(?P<prefix_price>\d[\d,]*(?:\.\d+)?)|(?P<suffix_price>\d[\d,]*(?:\.\d+)?)\s*(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|₩))",
     )
     .expect("valid verified quote price token regex");
     let ticker_re = regex::Regex::new(r"\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b")
@@ -3727,12 +3772,27 @@ fn detect_verified_quote_price_mismatch(
                     return None;
                 }
                 captures
-                    .name("price")
+                    .name("prefix_price")
+                    .or_else(|| captures.name("suffix_price"))
                     .map(|matched| matched.as_str().replace(',', ""))
                     .and_then(|value| value.parse::<f64>().ok())
                     .filter(|price| price.is_finite() && *price > 0.0)
             })
             .collect::<Vec<_>>();
+        if ordered_tickers.len() == 1 && prices.len() == 1 {
+            let ticker = &ordered_tickers[0];
+            let observed_price = prices[0];
+            let Some(expected_price) = verified.get(ticker) else {
+                continue;
+            };
+            if (observed_price - expected_price).abs()
+                > scheduler_current_price_display_tolerance(*expected_price)
+            {
+                return Some((ticker.clone(), observed_price, *expected_price));
+            }
+            continue;
+        }
+
         if ordered_tickers.len() != prices.len() {
             continue;
         }
@@ -5796,6 +5856,19 @@ mod tests {
     }
 
     #[test]
+    fn watchlist_price_anchor_guard_detects_suffix_currency_format() {
+        let zones = watchlist_guard_zones_from_source("观察池击球区：SNDK $42-$55。");
+        let detected = detect_unstable_watchlist_price_anchor(
+            "行情口径：SNDK 1,288.03 美元（NASDAQ，最新可得、非逐笔）。",
+            &zones,
+        )
+        .expect("suffix currency price should be detected");
+        assert_eq!(detected.0, "SNDK");
+        assert_eq!(detected.1, 1288.03);
+        assert_eq!(detected.2, "$42-$55");
+    }
+
+    #[test]
     fn watchlist_price_anchor_guard_pairs_multi_ticker_price_series() {
         let zones = watchlist_guard_zones_from_source(
             "观察池击球区：LITE $620-$680；COHR $55-$75；MU $90-$115。",
@@ -5846,6 +5919,24 @@ mod tests {
 
         assert_eq!(mismatch.0, "SNDK");
         assert_eq!(mismatch.1, 1214.83);
+        assert_eq!(mismatch.2, 51.23);
+    }
+
+    #[test]
+    fn scheduler_verified_quote_price_mismatch_detects_suffix_currency_current_status() {
+        let mismatch = detect_verified_quote_price_mismatch(
+            "数据时间：北京时间 2026-08-04 11:04；行情口径：NASDAQ 的 SNDK 报价源最新可得、非逐笔；报价时间为北京时间 2026-08-04 04:00:00 +08:00，价格 1,288.03 美元、当日变动 +6.03%。",
+            &[ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"SNDK"}),
+                result: serde_json::json!({"data":[{"symbol":"SNDK","price":51.23}]}),
+                tool_call_id: None,
+            }],
+        )
+        .expect("suffix currency mismatch should be detected");
+
+        assert_eq!(mismatch.0, "SNDK");
+        assert_eq!(mismatch.1, 1288.03);
         assert_eq!(mismatch.2, 51.23);
     }
 

@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,14 +22,26 @@
 
 ## 最新进展
 
-- 2026-08-05 02:01 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
-  - `data/logs/hone-console-page-source.log`
-    - 巡检窗口：2026-08-04 22:01-2026-08-05 02:01 CST。
-    - 近窗 `SNDK $1,381.49 / $1,393.34 / $1,422.67 / $1,440.93 / $1,431.39` 与 `MU $883.88 / $896.40` 等异常数量级价格命中 30 条候选。
-    - 22:31 `光模块板块关键事件心跳提醒` 和 `存储板块关键事件心跳提醒` 继续写 `SNDK $1,393.34 / $1,381.49`；00:30-02:00 多条存储 / NBIS / 光模块 heartbeat 继续写 `SNDK $1,422.67`、`SNDK $1,440.93`、`SNDK $1,431.39`；22:30 / 01:30 `持仓重大事件心跳提醒` 写 `MU $883.88 / $896.40`。
-  - 判断：
-    - 最新样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选；不新建重复缺陷。
-    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+- 2026-08-04 23:07 CST `bug-2` 代码级修复并纠正文档日期基准，状态更新为 `Fixed / P0`：
+  - 根因补强：
+    - `crates/hone-channels/src/scheduler.rs` 的价格锚守卫此前主要覆盖 `SNDK $1,288.03`、`Current Status: Price: $...` 这类“币种前置”的精确价格写法，未稳定拦截 `SNDK 1,288.03 美元` 这种“数字在前、币种在后”的真实 scheduler / 财报口径。
+    - 同轮已核验 quote 的一致性守卫还会被 `NASDAQ` 这类交易所缩写先吞掉，导致同一行里真正的 `SNDK ... 价格 1,288.03 美元` 没有机会再按精确 ticker 比对。
+  - 本轮修改：
+    - `detect_unstable_watchlist_price_anchor(...)` 现在同时识别前置币种与后置币种价格锚，像 `行情口径：SNDK 1,288.03 美元` 这类后置币种异常价格会直接命中本地击球区数量级守卫。
+    - `detect_verified_quote_price_mismatch(...)` 现在同时覆盖后置币种现价文案，并新增“按已核验 ticker 精确回扫”的 fallback，避免 `NASDAQ` 等交易所缩写抢占通用 ticker 匹配后漏掉真正标的。
+  - 新增回归：
+    - `watchlist_price_anchor_guard_detects_suffix_currency_format`
+    - `scheduler_verified_quote_price_mismatch_detects_suffix_currency_current_status`
+    - 复跑既有 `watchlist_price_anchor_guard_*`
+    - 复跑既有 `scheduler_verified_quote_price_mismatch_*`
+  - 验证：
+    - `cargo test -p hone-channels watchlist_price_anchor_guard --lib -- --nocapture`
+    - `cargo test -p hone-channels scheduler_verified_quote_price_mismatch_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 日期纠偏：
+    - 本文原先的 `2026-08-05 02:01 CST` 记录相对当前运行日期 `2026-08-04` 属于未来时间戳，本轮已移除；当前最后一条有效运行态复核仍是 `2026-08-04 22:02 CST`。
+  - 结论：
+    - 当前已完成安全可提交的代码级闭环，但按任务约束未重启 live runtime，因此先记 `Fixed`；后续仍需在自然运行窗口确认 `SNDK 1,288.03 美元`、`SNDK $1,288.03`、`MU $829.50 / $863` 等异常价格是否停止出现在 source runtime 出站候选中，再决定是否推进 `Closed`。
 
 - 2026-08-04 22:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
