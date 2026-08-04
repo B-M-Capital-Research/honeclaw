@@ -1036,8 +1036,9 @@ body {{ margin: 0; color: #202b3a; font-family: -apple-system, BlinkMacSystemFon
 h1 {{ margin: 0 0 5mm; padding-bottom: 2.5mm; border-bottom: .7mm solid #f1cdb6; color: #202b3a; font-size: 24pt; line-height: 1.25; font-weight: 800; break-after: avoid; }}
 h2 {{ margin: 7mm 0 4mm; padding: 2.2mm 2.5mm; border-radius: 2mm; background: #f9dfcc; color: #202b3a; font-size: 17.5pt; line-height: 1.3; font-weight: 800; break-after: avoid; }}
 .news-section {{ break-before: page; margin-top: 0; }}
-.news-list {{ margin-top: 5mm; padding-left: 1.35em; }}
-.news-list li {{ margin: 0 0 5.5mm; padding-left: 1mm; break-inside: avoid; }}
+.news-list {{ margin-top: 3mm; padding-left: 1.3em; font-size: 9.6pt; line-height: 1.48; text-align: left; }}
+.news-list li {{ margin: 0 0 2.2mm; padding-left: .8mm; break-inside: avoid; }}
+.news-list li:last-child {{ margin-bottom: 0; }}
 h3 {{ margin: 2mm 0 4mm; padding: 1.7mm 2mm; border-radius: 1.8mm; background: #fff3e9; color: #344052; font-size: 14.5pt; line-height: 1.32; font-weight: 750; break-after: avoid; }}
 h4 {{ margin: 5mm 0 2mm; font-size: 13pt; break-after: avoid; }}
 p {{ margin: 0 0 4.6mm; orphans: 3; widows: 3; }}

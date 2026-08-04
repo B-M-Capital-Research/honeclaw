@@ -42,6 +42,9 @@ assert "@top-left" in workflow_html
 assert 'content: "HONE   2026/8/4"' in workflow_html
 assert "background: #fff6ee" in workflow_html
 assert "background: #f9dfcc" in workflow_html
+assert ".news-list { margin-top: 3mm" in workflow_html
+assert "font-size: 9.6pt; line-height: 1.48" in workflow_html
+assert ".news-list li:last-child { margin-bottom: 0; }" in workflow_html
 assert "WORKFLOW FORMAT" not in workflow_html
 assert '<div class="report-title">NVIDIA公司财报前瞻分析</div>' in workflow_html
 
