@@ -3,7 +3,7 @@
 - title: 远端十提交审查与生产部署
 - status: done
 - created_at: 2026-08-04
-- updated_at: 2026-08-04
+- updated_at: 2026-08-05
 - owner: Codex
 - related_files:
   - packages/app/src/lib/public-content.ts
@@ -49,3 +49,13 @@
 ## Next Entry Point
 
 生产回滚时将 `/opt/hone/current` 原子指回保留的 `edddfc5b890d124d76d8c6eddc9aa85f2e94b807-ghcr-runtime` 并重启 `hone-web.service`，随后重复云权威、active-chat、loopback/public `401` 与 Pages asset 检查。财报链路后续从 `docs/handoffs/2026-08-04-earnings-research-chat-entry.md` 和本 runbook 的 runtime skill/PDF 依赖段继续。
+
+## 2026-08-05 财报链路生产复验与补丁
+
+用户后续提交 `078b0883`、`cfb75481` 与 `50aa8b23` 分别补齐了标准财报文案到 Codex ACP 的强制路由、认证下载与安全路径恢复，以及近期新闻页密度。真实生产验收又发现两个通用缺口：当模型正文已经包含 `[附件: ...]` 时，附件收集会提前返回，导致临时文件没有上传 OSS；上传后，公开下载代理又只接受 public-upload 前缀，拒绝当前 actor 自己的 Agent 生成物前缀。`ee250d72` 和 `9d64c596` 分别修复这两处，并加入回归测试。
+
+精确生产运行 revision 为 `9d64c5967bf74a5126948c7b49f6b918128f951a`，GHCR digest 为 `sha256:c05de8786317522a523f9754745b4ca509696074cae22a3815ad9e9d1bc2ee1d`。`/api/meta`、PostgreSQL、OSS、cloud-authoritative 与零本地持久依赖均健康，服务 `NRestarts=0`。外置 `earnings-research` Skill 使用 `50aa8b23` 内容；旧 Skill 备份已移出发现根目录到 `/opt/hone/skill-rollbacks/earnings-research-cfb75481`，避免被当成第二个同名候选加载。
+
+管理员浏览器用标准原话“请为 CRCL 生成财报前瞻，并完成证据核验和可分享 PDF。”完成真实验收：请求被服务端提升为 `/earnings-research`，日志确认由 `codex-acp 1.1.7` 执行，生成 `CRCL_FY2026_Q2_20260805.pdf-451d7f44.pdf`，上传为当前 actor 的 OSS 对象并写入聊天历史。完整服务重启后卡片仍存在，点击状态变为“已开始下载”。修复前生成的旧 `CRCL_FY2026_Q2_-.pdf-b316b020.pdf` 仅存在于已消失的临时目录，无法恢复；修复后的新附件才具备持久性。
+
+本阶段通过 `hone-core` 136 tests、`hone-web-api` 185 tests（2 ignored）、此前完整 `hone-channels` 752 tests（1 ignored）、workspace check、Web 与 CI-safe 回归；GitHub CI `30934748021`、Runtime Image `30934748252` 与 Secret Scan `30934750399` 成功。此次为普通 push 与生产部署，没有创建 tag 或正式 release。保留旧 runtime release 作为回滚点。

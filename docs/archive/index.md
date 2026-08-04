@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
+
+## 2026-08-05
+
+### Earnings Routing, Durable Attachments And Production Acceptance
+
+- Status: done
+- Date: 2026-08-05
+- Plan: `docs/archive/plans/earnings-routing-minimax-hotfix.md`
+- Handoff: `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`
+- Decision / ADR: no new ADR; this restores the existing trusted-runner and authenticated actor-owned attachment boundaries
+- Related PRs / commits: `078b0883`, `cfb75481`, `ee250d72`, `50aa8b23`, deployed `9d64c5967bf74a5126948c7b49f6b918128f951a`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; focused routing/protocol/attachment/actor-OSS tests; complete CI-safe regression; real authenticated CRCL browser acceptance before and after service restart
+- Current conclusion: canonical administrator earnings requests are promoted to the native `earnings-research` Skill and Codex ACP, provider-private tool tags are suppressed, generated attachments are promoted to actor-owned OSS even when the model already emitted an attachment marker, and the authenticated download proxy accepts only the current actor's upload/generated prefixes. A real CRCL preview survived a full service restart and downloaded from its historical chat card. The pre-fix local-only CRCL artifact is unrecoverable.
+- Next entry point: use the retained old runtime release for rollback; keep Skill backups outside the configured discovery root, and use a fresh real earnings run—not a synthetic marker-only prompt—for future attachment acceptance.
 
 ## 2026-08-04
 

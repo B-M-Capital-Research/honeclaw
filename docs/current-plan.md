@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-04
-状态：有 10 个活跃任务
+最后更新：2026-08-05
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **Earnings Routing 与 MiniMax 协议泄漏生产热修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/earnings-routing-minimax-hotfix.md`
-  - 摘要：管理员标准财报文案必须由服务端提升为 `earnings-research` 并强制走 Codex ACP，同时阻止 MiniMax 等 provider 私有工具协议标签泄漏到用户正文
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
