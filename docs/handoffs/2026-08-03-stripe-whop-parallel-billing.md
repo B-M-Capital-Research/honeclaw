@@ -17,8 +17,8 @@
   - `docs/current-plans/stripe-whop-parallel-billing.md`
   - `docs/runbooks/stripe-billing.md`
   - `docs/runbooks/whop-hone-activation.md`
-- related_prs: no PR; Billing landed on `main` through `92e87a94`, `5028870d`, and Whop route fix `e31c29ac`; no release or tag was created
-- verification: local automated/browser acceptance, real Stripe test Checkout and 13-event Test Clock lifecycle, CLI delivery, active/grace/inactive/repurchase transitions, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, no-`rg` Billing contract, focused gitleaks history allowlist, and provider-policy activation regressions passed
+- related_prs: no PR; Billing landed on `main` through `92e87a94`, `5028870d`, Whop route fix `e31c29ac`, lifecycle/provider-policy completion `c32eae92`, and CI portability fix `cc185abd`; no release or tag was created
+- verification: local automated/browser acceptance, real Stripe test Checkout and 13-event Test Clock lifecycle, CLI delivery, active/grace/inactive/repurchase transitions, Portal, exact production backend revision, rotated test endpoint secret installation, online `200 catalog_mismatch` delivery with zero database mutation, external-Chrome SSH read-only production recheck, no-`rg`/no-Bun Billing contract, focused gitleaks history allowlist, provider-policy activation regressions, and GitHub CI/Secret Scan/CodeQL passed
 - risks: non-owner Whop buyer and owner live-promotion policy remain pending; live catalog/configuration remains untouched
 
 ## Summary
@@ -56,7 +56,8 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
 - `/etc/hone/runtime.env` remains `root:root 0600`; the pre-change backup is `/etc/hone/runtime.env.pre-webhook-rotation-20260804T034309Z`. Two consecutive active-chat checks were zero before restarting only `hone-web.service`.
 - Runtime policy is intentionally `primary_provider=whop`, `stripe_checkout_enabled=false`, `whop_new_purchases_enabled=true`. The final business direction remains new users on Stripe with Whop as the legacy/secondary channel; current values are a safe verification stage.
 - Public invalid signatures return `401`. Stripe test event `evt_1U0ZKeEK7h1dD4JHB59OFEjY` returned `200` with `catalog_mismatch`; production `billing_entitlements` and `billing_webhook_events` were both zero before and after delivery.
-- Evidence `13`–`17` covers Workbench `200`, safe-stage `/plan`, `/activate`, unauthenticated `/me`, and the production Whop same-route query transition. Directory: `/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`.
+- After the owner completed Google MFA, Codex used the owner's external Chrome GCE SSH Web Console for a fresh read-only audit. `hone-web.service` was `active/running`; loopback `/api/meta` still reported exact `5028870dcb341476e17b57fdfa84d72624b04200`, healthy PostgreSQL/S3, authoritative cloud storage, and zero local durable dependencies. Runtime remained Stripe `test`, Checkout disabled, and Whop primary. An unsigned Stripe POST returned `401`; the subsequent PostgreSQL counts remained `0 | 0`. Secret values were never read or displayed, and `/etc/hone/runtime.env` was reconfirmed as `root:root 0600`.
+- Evidence `13`–`19` covers Workbench `200`, safe-stage `/plan`, `/activate`, unauthenticated `/me`, the production Whop same-route/final-safe-stage views, and the SSH read-only audit. Directory: `/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`.
 
 ## What Changed
 
@@ -119,10 +120,11 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
   denied only once every entitlement is inactive.
 - Web: typecheck, public production build, and `352/352` tests passed.
 - Public Community Edge Worker: typecheck and `45/45` tests passed.
-- Billing CI contract passed. The final aggregate CI-safe rerun included both
-  Billing regressions, reached `43/44`, and failed only the unrelated existing finance automation
-  `current-data-capability` prompt contract; this change does not touch that
-  subsystem.
+- Billing CI contract passed in both local branches: a deliberately restricted
+  environment without `rg` or Bun, and the normal environment with Bun. GitHub
+  CI run `30880856636` then passed both `rust-checks` (including the complete
+  CI-safe regression runner) and `frontend-checks`; Secret Scan run
+  `30880856639` and CodeQL run `30880856538` also passed for `cc185abd`.
 - The isolated signed HTTP lifecycle passed. It proves pending checkout stays
   behind `402`, paid activation, exact-catalog rejection, replay idempotency,
   out-of-order safety, bounded grace and recovery, period-end cancellation,
@@ -157,6 +159,10 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
   and entitlement counts remained `0 | 0`. The Whop route fix passed full Web
   tests, typecheck, public production build, and a real Playwright same-route
   transition test before push.
+- Production SSH acceptance: a fresh loopback check proved the exact deployed
+  revision and cloud health, the fail-closed unsigned webhook returned `401`,
+  and both Billing tables stayed empty. Screenshot
+  `19-production-ssh-readonly-acceptance.png` records only non-secret evidence.
 - The activation provider matrix passed focused unit/contract tests and a real
   Playwright check that `/activate?provider=stripe` renders Whop and no Stripe
   submit action when the server reports Whop primary with Checkout disabled.
@@ -185,8 +191,7 @@ stale Stripe URL cannot present an unusable form while Checkout is disabled.
 
 ## Next Entry Point
 
-Push and follow the current change through GitHub CI, fixing any related failure
-without owner intervention. Then use a real non-owner Whop buyer for the one
-remaining production email challenge. Obtain separate business approval before
-live promotion. Keep this task active until Whop acceptance and the live-policy
-decision pass; only then archive the plan and update `docs/archive/index.md`.
+Use a real non-owner Whop buyer for the one remaining production email
+challenge. Obtain separate business approval before live promotion. Keep this
+task active until Whop acceptance and the live-policy decision pass; only then
+archive the plan and update `docs/archive/index.md`.

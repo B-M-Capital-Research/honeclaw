@@ -39,7 +39,7 @@
 - Web/Worker 验证：Web `352/352`、`bun run typecheck:web`、`bun run build:web:public` 通过；Public Community Edge Worker typecheck 与 `45/45` 测试通过。
 - 回归门禁：`tests/regression/ci/test_billing_contract.sh` 与新增的 `test_billing_http_e2e.sh` 全部通过。后者启动隔离真实后端，以临时 SQLite 和假测试密钥执行 Stripe/Whop 原始签名 HTTP webhook，覆盖 `pending/402`、付款激活、重放、乱序、错误目录、失败宽限、恢复、周期结束取消、删除、双 provider、全部失效与重购；不读取仓库 `.env`、不访问外部账号。Billing 合同现有 `rg`/`grep` 等价分支，并适配 Rust CI job 不安装 Bun 的既有矩阵：静态前端合同始终执行，有 Bun 时追加定向 Web 测试，无 Bun 时由独立 `frontend-checks` 的完整 `352/352` 接管；“无 `rg` + 无 Bun”和本机完整两条分支均通过。Secret Scan 只对两条精确的既有支付宝参考资产历史指纹放行；完整历史扫描为 0，完整假 RSA 私钥负向控制仍被 `private-key` 规则检出，没有泛化关闭规则。
 - 视觉验收：已用实际 Vite 页面与隔离后端 fixture 在浏览器打开 `/plan`、`/activate`、`/me`，并检查 390×844 的 HONE-iOS 购买隔离状态。发现并修复 iOS 恢复页错误显示“Stripe 付款”步骤；后续审计又发现 `/me` 仍暴露外部账单管理入口，已拆分服务端购买/管理策略并 fail-closed 隐藏。最终 `/me` 截图证明 Stripe/Whop 状态和重复订阅警告可见、外部管理动作为空且横向溢出为 `0`。
-- 去敏截图目录：`/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`；本地/沙箱证据为 `01`–`12`，生产在线验收为 `13-production-webhook-delivery-200.png`、`14-production-plan-safe-stage.png`、`15-production-activate-safe-stage.png`、`16-production-me-unauthenticated.png`、`17-production-whop-reactive-route.png`。
+- 去敏截图目录：`/Users/bytedance/.codex/visualizations/2026/08/03/019fc5c7-d3a5-7df1-83fc-5f0826ad4519/stripe-billing-acceptance/`；本地/沙箱证据为 `01`–`12`，生产在线验收为 `13-production-webhook-delivery-200.png`、`14-production-plan-safe-stage.png`、`15-production-activate-safe-stage.png`、`16-production-me-unauthenticated.png`、`17-production-whop-reactive-route.png`、`18-production-whop-safe-stage-final.png` 与 `19-production-ssh-readonly-acceptance.png`。
 - Stripe 沙箱进度：owner 已在操作发生前确认；测试模式已创建独立 Product `prod_V0J9fIdOhCrS4z` 与年度 Price `price_1U0IXPEK7h1dD4JHHavBWqmr`，页面证明名称、US$199.99、USD、每年、无试用且 live catalog 未改。测试 Customer Portal 已保存为配置 `bpc_1U0IZEEK7h1dD4JHxYx1GhDy`：允许更新支付方式、周期结束取消，禁止切换方案/改数量，返回 `https://hone-claw.com/me`。
 - Stripe CLI 与真实付款：已通过官方 Homebrew tap 安装 `stripe 1.45.0`，owner 已亲自完成验证器挑战与配对授权，`stripe login list` 显示活动 profile `HoneClaw`。本机忽略的 `.env` 已保存 test secret；`tests/regression/manual/test_stripe_billing_sandbox.sh` 通过真实账户目录核验。Codex 经 owner 明确授权填写 Stripe 公共测试卡并提交 US$199.99/年测试订阅，CLI listener 将 `checkout.session.completed`、`invoice.paid`、`customer.subscription.created` 各投递一次且后端均返回 `202`。真实事件暴露 provisional ordering 缺陷；修复后，同一批真实事件经新签名 endpoint 重放后全部 `processed/attempt_count=1`，只生成 1 条 `active` 权益，付费 API 从 `402` 变为 `200`。测试 Customer Portal 实际显示支付方式更新、周期结束取消和已付账单；未执行取消。
 - 真实 Stripe 全生命周期：新增 opt-in `tests/regression/manual/test_stripe_billing_lifecycle.sh`，使用隔离 HONE 后端、临时 SQLite、一次性错误目录 Product/Price 和 Stripe Test Clock，真实创建 Checkout/Portal、付费订阅、续费失败、有限宽限、账单恢复、周期结束取消、立即终止与新订阅重购。最终 13 条真实 Stripe webhook 均 `processed`、`attempt_count=1`、无错误，权益为 1 条 active + 1 条 inactive，付费 API 完成 `402 → 200 → 402 → 200`；Test Clock 删除全部 customer/subscription，对应 Price/Product 已归档，未留下活跃测试对象。
@@ -51,6 +51,7 @@
 - 轮换后的 test endpoint secret 仅写入受保护的 `/etc/hone/runtime.env`；备份为 `/etc/hone/runtime.env.pre-webhook-rotation-20260804T034309Z`，原文件继续保持 `root:root 0600`。切换前两次 active-chat 均为 `{"count":0}`，只重启 `hone-web.service`，未触碰 Feishu 或其它服务。
 - 生产安全阶段配置保持 `primary_provider=whop`、`stripe_checkout_enabled=false`、`whop_new_purchases_enabled=true`。这不是最终渠道策略；原始方案的最终方向仍是新用户默认 Stripe、Whop 作为老用户/次级渠道。
 - 公网无效签名返回 `401`。Stripe 测试事件 `evt_1U0ZKeEK7h1dD4JHB59OFEjY` 经注册 endpoint 返回 `200 catalog_mismatch`；`billing_entitlements` 与 `billing_webhook_events` 在投递前后均为 0，证明线上验签可用且错误目录无授权副作用。
+- owner 完成 Google MFA 后，Codex 通过其外部 Chrome 的 GCE SSH Web Console 再次执行只读验收：`hone-web.service` 为 `active/running`，loopback `/api/meta` 仍是精确 `5028870dcb341476e17b57fdfa84d72624b04200`，PostgreSQL/S3 均健康且本地 durable dependency 为 0；运行时仍为 Stripe `test`、Checkout 关闭、Whop 主通道。伪造/无签名 Stripe POST 返回 `401` 后，PostgreSQL `billing_entitlements | billing_webhook_events` 仍为 `0 | 0`；两个 Stripe secret 只确认 `<set>`，未读取或记录值，runtime env 权限再次确认为 `root:root 0600`。证据为 `19-production-ssh-readonly-acceptance.png`。
 - 生产验收发现 `/activate` 组件只在首次加载读取 `window.location.search`，导致从 Stripe 页面同路由点击 `?provider=whop` 后仍显示 Stripe，刷新才恢复。`e31c29ac` 改用 Solid Router 的响应式 search params，所有 provider 分支由同一 memo 派生，并加入 Playwright 回归覆盖“无需刷新即切换”。Web 全量测试、typecheck、生产构建和定向 E2E 均通过。
 - 后续直接打开生产 `/activate` 又发现服务端已关闭 Stripe Checkout、主渠道为 Whop 时，缺少 query 的页面仍默认展示 Stripe 表单。激活 provider 现统一由纯策略函数按 router query + 服务端 Billing config 解析：显式 Whop 始终用于恢复，显式 Stripe 仅在 Checkout 开启时生效，缺省或 stale Stripe URL 在关闭状态下 fail closed 到 Whop。配置返回前仅显示中性“正在确认会员渠道”，不渲染邮箱/验证码输入；加载失败给出单一“重新加载”动作。单元、合同和 scoped Playwright `3/3` 均覆盖该矩阵。
 - 额外运行仓库全套 Playwright 时，Billing `3/3` 持续通过；全套仍有 7 条非 Billing 的 admin/company-profile/chat-upload/mobile-overlay/SMS 用例失败，单 worker 串行可复现。本次未改对应业务页面或 fixtures，且 E2E 不在默认 CI 契约内；该结果不冒充全仓 E2E 全绿，留给对应活跃任务处理。
@@ -73,7 +74,7 @@
 ## Documentation Sync
 
 - 已更新 `docs/current-plan.md`、`docs/repo-map.md`、`docs/invariants.md`、`docs/decisions.md`、Stripe/Whop runbook 与进行中 handoff。
-- 当前状态保持 `in_progress`：精确后端部署、test endpoint secret 轮换/安装、线上无副作用 delivery、Stripe 真实测试生命周期、Whop 同路由恢复和服务端 provider policy 均已完成；非 owner Whop buyer、当前提交 GitHub CI 与 live promotion 决策仍待完成，因此不归档。
+- 当前状态保持 `in_progress`：精确后端部署、test endpoint secret 轮换/安装、线上无副作用 delivery、生产 SSH 只读复核、Stripe 真实测试生命周期、Whop 同路由恢复、服务端 provider policy 以及实现提交的 GitHub CI/Secret Scan/CodeQL 均已完成；仅非 owner Whop buyer 与 live promotion 决策仍待完成，因此不归档。
 
 ## Risks / Open Questions
 
@@ -83,9 +84,8 @@
 
 ## Resume Entry Point
 
-1. 推送当前 CI/生命周期/provider-policy 修复并跟踪 GitHub workflow 至绿色；若出现本改动相关失败，继续修复，不把排障步骤交给 owner。
-2. 由真实非 owner Whop buyer 本人完成购买邮箱验证码，以闭合现有 Whop 生产激活与重购验收；Codex 负责其余导航、观察和证据留存。
-3. owner 在 live promotion 前确认税务、退款、账单描述、客服和争议口径；随后按受控顺序切换新用户默认 Stripe。沙箱完成不自动授权 live 上线。
+1. 由真实非 owner Whop buyer 本人完成购买邮箱验证码，以闭合现有 Whop 生产激活与重购验收；Codex 负责其余导航、观察和证据留存。
+2. owner 在 live promotion 前确认税务、退款、账单描述、客服和争议口径；随后按受控顺序切换新用户默认 Stripe。沙箱完成不自动授权 live 上线。
 
 ## 持久化会话原始方案
 
