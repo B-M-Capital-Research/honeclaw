@@ -14,13 +14,26 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无；由仓库内 P0 核心能力计划统一治理
 
 ## 最新进展
+
+- 2026-08-06 06:01 CST 运行态复核：`5adf2773 fix: suppress stale fallback market price anchors` 后问题继续在 live source 出站候选中复发，状态从代码级 `Fixed / P0` 回退为运行态 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-06 02:00-06:01 CST（UTC 2026-08-05 18:00-22:01）。
+    - 04:30 CST `存储板块关键事件心跳提醒` deliver preview 继续写 `SNDK $1,350.50`，并把昨收 `$1,427.62`、日低 `$1,348.42` 等千美元级价格作为行情口径。
+    - 05:30 CST `闪迪关键事件心跳提醒` deliver preview 继续写 `SNDK $1,350.50` 与 `MU $893.19`，正文围绕 PE、市值、财报后股价下挫等强数值锚组织。
+    - 06:00 CST `闪迪关键事件心跳提醒` raw preview 写扩展时段价格 `$1,265` 和 16:00 close `$1,350.50`，说明异常数量级价格仍进入触发判断上下文。
+  - 最近代码：
+    - 03:08 CST 非文档提交 `5adf2773 fix: suppress stale fallback market price anchors` 已在本轮窗口内，但 04:30-06:00 CST 后续 live source 仍出现同类异常价格出站候选。
+  - 判断：
+    - 该样本晚于最新代码级止血提交，说明自然运行窗口未能确认修复闭环；可能是 live runtime 未加载、守卫覆盖仍不足，或上游行情源 sanity check 仍有漏口。
+    - 缺陷仍为同一异常价格锚链路，不新建重复文档。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控、持仓风险判断和交易决策。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
 
 - 2026-08-05 `bug-2` 代码级止血并纠正日期基准，状态更新为 `Fixed / P0`：
   - 根因补强：

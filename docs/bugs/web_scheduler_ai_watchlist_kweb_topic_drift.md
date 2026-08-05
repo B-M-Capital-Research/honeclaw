@@ -1,4 +1,4 @@
-# Bug: Web heartbeat AI watchlist drifts to KWEB ETF analysis
+# Bug: Web heartbeat target list drifts to unrelated ticker analysis
 
 ## 发现时间
 
@@ -22,6 +22,13 @@ New
 
 ## 证据来源
 
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-06 02:00-06:01 CST（UTC 2026-08-05 18:00-22:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 06:00 CST 触发 prompt 明确是检测 `AAPL + NVDA + BE` 关键事件并即时推送；同窗 job 名和 run_start 均只指向这三个标的。
+  - 06:01 CST raw preview 写 `I cannot fetch new data in this round`，随后从历史 reminders 中提取 `COHR: $335.02` 等信息继续组织回答。
+  - 06:01 CST deliver preview 开头写 `行情口径：本轮最新可得、非逐笔（COHR 报价取自本轮已确认 NYSE 实体，前序会话最新核验价）`，主体转为 `COHR 当前处于深度超跌状态`、估值和是否重仓介入判断；COHR 不在该 job 目标列表中。
+  - 调度和投递主链路正常收口，该样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
 - `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-05 18:03-22:02 CST。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
@@ -64,7 +71,7 @@ New
 
 - 初步判断是 heartbeat answer 阶段没有强制当前 job target whitelist，工具结果或历史上下文中的 KWEB 被模型提升为主任务。
 - `data_fetch` cache hit 显示 KWEB quote 在同轮工具链中出现，但当前触发 prompt 不包含 KWEB，说明工具调用规划或上下文隔离存在漂移。
-- 该问题不同于 `feishu_scheduler_company_news_task_drifts_to_portfolio_trade_advice.md`：本样本来自 Web heartbeat，且是未请求 ETF 抢占当前目标标的，而不是普通 Feishu scheduler 公司资讯被持仓复盘模板覆盖。
+- 该问题不同于 `feishu_scheduler_company_news_task_drifts_to_portfolio_trade_advice.md`：本样本来自 Web heartbeat，且是未请求 ticker / ETF 抢占当前目标标的，而不是普通 Feishu scheduler 公司资讯被持仓复盘模板覆盖。
 - 该问题也不同于 heartbeat JSON / noop 解析缺陷：本样本已成功 deliver，核心问题是内容主题错误。
 
 ## 下一步建议
