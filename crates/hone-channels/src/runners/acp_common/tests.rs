@@ -885,6 +885,53 @@ async fn acp_error_response_redacts_payload_error_message() {
     let _ = child.kill().await;
 }
 
+#[tokio::test]
+async fn acp_error_response_preserves_bounded_redacted_structured_details() {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn cat");
+    let mut stdin = child.stdin.take().expect("child stdin");
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "error": {
+            "message": "Internal error",
+            "data": {
+                "details": "no rollout found for thread id native-1 token=plain-secret"
+            }
+        }
+    })
+    .to_string();
+
+    let err = process_acp_payload(
+        "codex",
+        &mut stdin,
+        4,
+        &line,
+        None,
+        None,
+        None,
+        None,
+        None,
+        AcpPermissionDecision::RejectOnce,
+        None,
+    )
+    .await
+    .expect_err("error response should fail");
+
+    assert!(
+        err.message
+            .contains("details=no rollout found for thread id native-1")
+    );
+    assert!(err.message.contains("token=<redacted>"));
+    assert!(!err.message.contains("plain-secret"));
+    assert!(err.message.chars().count() < 540);
+    drop(stdin);
+    let _ = child.kill().await;
+}
+
 #[test]
 fn acp_prompt_success_requires_explicit_non_cancelled_stop_reason() {
     assert!(acp_prompt_succeeded(Some("end_turn")));

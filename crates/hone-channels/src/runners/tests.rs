@@ -24,9 +24,9 @@ use super::acp_common::{
 };
 use super::codex_acp::{
     codex_acp_effective_args, codex_acp_process_config, codex_instruction_fingerprint,
-    configured_codex_model_id, configured_codex_reasoning_effort,
-    patch_codex_session_update_params, persisted_codex_acp_session_id, render_codex_tool_status,
-    validate_codex_version_matrix,
+    codex_resume_error_proves_missing_rollout, configured_codex_model_id,
+    configured_codex_reasoning_effort, patch_codex_session_update_params,
+    persisted_codex_acp_session_id, render_codex_tool_status, validate_codex_version_matrix,
 };
 use super::gemini_acp::{gemini_acp_effective_args, validate_gemini_version};
 use super::gemini_cli::{
@@ -394,6 +394,7 @@ struct CodexAcp117BoundaryFixture {
     checkpoint_marker: PathBuf,
     crash_on_prompt_marker: PathBuf,
     fail_resume_marker: PathBuf,
+    missing_rollout_resume_marker: PathBuf,
 }
 
 #[cfg(unix)]
@@ -410,6 +411,7 @@ impl CodexAcp117BoundaryFixture {
         let checkpoint_marker = root.join("metadata-checkpoint");
         let crash_on_prompt_marker = root.join("crash-on-prompt");
         let fail_resume_marker = root.join("fail-resume");
+        let missing_rollout_resume_marker = root.join("missing-rollout-resume");
         let script = r#"#!/bin/sh
 if [ "${1:-}" = "--version" ]; then
   echo "codex-cli 0.146.0"
@@ -427,18 +429,24 @@ while IFS= read -r line; do
       if [ -f "__SESSION_COUNTER__" ]; then count=$(sed -n '1p' "__SESSION_COUNTER__"); fi
       count=$((count + 1))
       printf '%s\n' "$count" > "__SESSION_COUNTER__"
-      printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"fake-native-%s"}}\n' "$count"
+      response_id=2
+      if [ -f "__MISSING_ROLLOUT_RESUME__" ]; then response_id=3; fi
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"fake-native-%s"}}\n' "$response_id" "$count"
       ;;
     *'"method":"session/resume"'*)
-      if [ -f "__FAIL_RESUME__" ]; then
+      if [ -f "__MISSING_ROLLOUT_RESUME__" ]; then
+        echo '{"jsonrpc":"2.0","id":2,"error":{"code":-32603,"message":"Internal error","data":{"details":"no rollout found for thread id existing-native-session"}}}'
+      elif [ -f "__FAIL_RESUME__" ]; then
         echo '{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"forced resume failure"}}'
       else
         echo '{"jsonrpc":"2.0","id":2,"result":{}}'
       fi
       ;;
     *'"method":"session/prompt"'*)
+      response_id=3
+      if [ -f "__MISSING_ROLLOUT_RESUME__" ]; then response_id=4; fi
       if [ ! -f "__CHECKPOINT__" ]; then
-        echo '{"jsonrpc":"2.0","id":3,"error":{"code":-32001,"message":"prompt preceded metadata checkpoint"}}'
+        printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32001,"message":"prompt preceded metadata checkpoint"}}\n' "$response_id"
       elif [ -f "__CRASH_ON_PROMPT__" ]; then
         rm -f "__CRASH_ON_PROMPT__"
         exit 23
@@ -448,7 +456,7 @@ while IFS= read -r line; do
             echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","_meta":{"contextCompaction":true}}}}'
             ;;
         esac
-        echo '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+        printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$response_id"
       fi
       ;;
   esac
@@ -462,7 +470,11 @@ done
             "__CRASH_ON_PROMPT__",
             &crash_on_prompt_marker.display().to_string(),
         )
-        .replace("__FAIL_RESUME__", &fail_resume_marker.display().to_string());
+        .replace("__FAIL_RESUME__", &fail_resume_marker.display().to_string())
+        .replace(
+            "__MISSING_ROLLOUT_RESUME__",
+            &missing_rollout_resume_marker.display().to_string(),
+        );
         fs::write(&adapter, script).expect("write fake ACP adapter");
         let mut permissions = fs::metadata(&adapter)
             .expect("adapter metadata")
@@ -479,6 +491,7 @@ done
             checkpoint_marker,
             crash_on_prompt_marker,
             fail_resume_marker,
+            missing_rollout_resume_marker,
         }
     }
 
@@ -850,6 +863,110 @@ async fn codex_acp_1_1_7_resume_failure_never_forks_a_new_session() {
                 && payload["method"] != "session/prompt")
     );
     assert!(!fixture.session_counter.exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_acp_1_1_7_missing_rollout_rebinds_before_prompt() {
+    let fixture = CodexAcp117BoundaryFixture::new();
+    fs::write(&fixture.missing_rollout_resume_marker, "missing")
+        .expect("arm missing rollout response");
+    let runner = fixture.runner();
+    let checkpoint = Arc::new(FileMetadataCheckpoint::succeeds(
+        fixture.checkpoint_marker.clone(),
+    ));
+    let stale_metadata = HashMap::from([
+        (
+            "codex_acp_session_id".to_string(),
+            Value::String("existing-native-session".to_string()),
+        ),
+        (
+            "codex_acp_session_mode".to_string(),
+            Value::String("native_turn_v2".to_string()),
+        ),
+        (
+            "codex_acp_instruction_fingerprint".to_string(),
+            Value::String("stale".to_string()),
+        ),
+    ]);
+
+    let result = runner
+        .run(
+            native_codex_boundary_request(
+                &fixture.root,
+                "HONE_DEVELOPER_INSTRUCTIONS",
+                "RECOVER_MISSING_ROLLOUT",
+                stale_metadata,
+                Some(checkpoint.clone()),
+            ),
+            Arc::new(NoopEmitter),
+        )
+        .await;
+
+    assert!(
+        result.response.success,
+        "result: {:?}",
+        result.response.error
+    );
+    assert_eq!(checkpoint.count(), 1);
+    assert_eq!(checkpoint.latest()["codex_acp_session_id"], "fake-native-1");
+    assert_eq!(
+        result.session_metadata_updates["codex_acp_session_id"],
+        "fake-native-1"
+    );
+    assert_eq!(
+        fixture.session_actions(),
+        vec!["session/resume", "session/new"]
+    );
+    let requests = fixture.requests();
+    let checkpointed_prompt = requests
+        .iter()
+        .position(|payload| payload["method"] == "session/prompt")
+        .expect("recovered prompt");
+    let replacement = requests
+        .iter()
+        .position(|payload| payload["method"] == "session/new")
+        .expect("replacement session/new");
+    assert!(replacement < checkpointed_prompt);
+    assert_eq!(
+        requests[checkpointed_prompt]["params"]["sessionId"],
+        "fake-native-1"
+    );
+}
+
+#[test]
+fn missing_rollout_proof_requires_exact_persisted_id_and_protocol_detail() {
+    let exact = AgentSessionError {
+        kind: AgentSessionErrorKind::AgentFailed,
+        message: "codex acp request failed: Internal error details=no rollout found for thread id native-1 stderr=diagnostic"
+            .to_string(),
+    };
+    assert!(codex_resume_error_proves_missing_rollout(
+        &exact, "native-1"
+    ));
+    assert!(!codex_resume_error_proves_missing_rollout(
+        &exact, "native-2"
+    ));
+
+    let stderr_only = AgentSessionError {
+        kind: AgentSessionErrorKind::AgentFailed,
+        message:
+            "codex acp request failed: Internal error stderr=no rollout found for thread id native-1"
+                .to_string(),
+    };
+    assert!(!codex_resume_error_proves_missing_rollout(
+        &stderr_only,
+        "native-1"
+    ));
+
+    let wrong_kind = AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: exact.message,
+    };
+    assert!(!codex_resume_error_proves_missing_rollout(
+        &wrong_kind,
+        "native-1"
+    ));
 }
 
 #[test]

@@ -826,6 +826,20 @@ curl -fsS http://127.0.0.1:8077/api/runtime/active-chat-runs
 
 An unexpected process death cannot finish the old turn. Public bootstrap must report that persisted unanswered turn as interrupted; it must not recreate a local “thinking” timer.
 
+## Audit Codex ACP Bindings After Rollout-State Changes
+
+HONE stores each logical session's `codex_acp_session_id` in authoritative session metadata, while Codex stores the corresponding rollout in its configured persistent `CODEX_HOME`. Replacing, clearing, restoring, or changing ownership of that Codex home without reconciling the bindings can leave a valid HONE history pointing to a rollout the adapter can no longer resume.
+
+After any deliberate Codex state cleanup or restore:
+
+1. Drain active chats to zero before inspecting or repairing bindings.
+2. Inventory native thread IDs from the live service user's Codex state and compare them with nonempty `codex_acp_session_id` values in authoritative session storage. Compare IDs only; never export prompts, titles, credentials, or message bodies.
+3. Before an operator repair, save an owner-only backup of the affected session ID plus the three bounded fields `codex_acp_session_id`, `codex_acp_session_mode`, and `codex_acp_instruction_fingerprint`, with a checksum. Do not copy complete session content when these fields are sufficient.
+4. Remove only those three fields for IDs proven absent; do not delete the HONE session, user/assistant history, uploads, or actor identity. The next turn checkpoints a new native ID before its first prompt.
+5. Verify a real authenticated native turn, then recount bindings and require service health, cloud-authoritative storage and active-chat count to remain healthy.
+
+The runtime also recognizes the validated Codex ACP `1.1.7` structured response `error.data.details = "no rollout found for thread id <same persisted id>"` before any prompt and replaces that unusable binding in place. This is not a generic retry: `Internal error` without that exact structured proof, a different ID, timeout, auth/permission failure, process exit, or matching stderr text must still fail closed. Never bulk-clear bindings merely because the number of HONE sessions differs from the current Codex task count; retained, archived and deliberately external state may require separate operator judgment.
+
 ## Security Notes
 
 - Do not expose the admin web surface through the public domain.

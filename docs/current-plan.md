@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-05
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Codex ACP 缺失 Rollout 安全恢复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/codex-acp-missing-rollout-recovery.md`
+  - 摘要：修复云端持久会话仍绑定已不存在的 Codex rollout 时所有原生财报请求秒失败的问题；只接受适配器对同一 thread ID 的明确不存在证明，其他 resume 错误继续 fail-closed，并完成生产陈旧绑定修复与真实 Caris 验收
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

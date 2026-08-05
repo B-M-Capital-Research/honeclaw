@@ -311,6 +311,28 @@ pub(crate) fn codex_version_probe_error_is_transient_resource_unavailable(
     from_version_probe && resource_unavailable
 }
 
+pub(crate) fn codex_resume_error_proves_missing_rollout(
+    error: &AgentSessionError,
+    persisted_session_id: &str,
+) -> bool {
+    if error.kind != AgentSessionErrorKind::AgentFailed || persisted_session_id.trim().is_empty() {
+        return false;
+    }
+
+    let protocol_message = error
+        .message
+        .split_once(" stderr=")
+        .map(|(message, _)| message)
+        .unwrap_or(error.message.as_str());
+    let expected_detail = format!(
+        "details=no rollout found for thread id {}",
+        persisted_session_id.trim()
+    );
+
+    protocol_message.starts_with("codex acp request failed:")
+        && protocol_message.ends_with(&expected_detail)
+}
+
 pub(crate) fn codex_spawn_error_is_transient_resource_unavailable(err: &AgentSessionError) -> bool {
     if err.kind != AgentSessionErrorKind::SpawnFailed {
         return false;
@@ -656,7 +678,7 @@ async fn run_codex_acp(
                 "[AgentRunner/codex] session={} resuming persistent acp session={session_id}",
                 request.session_id,
             );
-            resume_acp_session(
+            let resume_result = resume_acp_session(
                 "codex",
                 &mut stdin,
                 &mut reader,
@@ -668,8 +690,33 @@ async fn run_codex_acp(
                 stderr_buffer.clone(),
                 Some(&acp_log),
             )
-            .await?;
-            (session_id, false)
+            .await;
+            match resume_result {
+                Ok(()) => (session_id, false),
+                Err(error) if codex_resume_error_proves_missing_rollout(&error, &session_id) => {
+                    tracing::warn!(
+                        "[AgentRunner/codex] session={} native acp rollout is explicitly absent; replacing binding={session_id}",
+                        request.session_id,
+                    );
+                    next_id += 1;
+                    (
+                        create_acp_session(
+                            "codex",
+                            &mut stdin,
+                            &mut reader,
+                            next_id,
+                            &request.working_directory,
+                            mcp_servers.clone(),
+                            startup_timeout,
+                            stderr_buffer.clone(),
+                            Some(&acp_log),
+                        )
+                        .await?,
+                        true,
+                    )
+                }
+                Err(error) => return Err(error),
+            }
         } else {
             tracing::info!(
                 "[AgentRunner/codex] session={} creating native-turn-v2 acp session",

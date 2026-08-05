@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -1211,3 +1211,13 @@ Last updated: 2026-08-04
 - Download decision: Non-image assistant attachments remain same-origin links to the existing actor-authorized public file proxy. The PDF card carries the download filename and no longer opens a second browser tab. The browser contract separately verifies the authenticated URL returns `application/pdf` with a `%PDF-` header and that clicking the card emits the expected Chinese filename.
 - Execution boundary: Native Codex may discover and apply the projected skill itself, but repository script execution stays on the trusted Hone MCP host through `skill_tool`. The MCP child receives an absolute `HONE_SKILLS_DIR` derived from the canonical config location, because its working directory is the actor sandbox. Earnings instructions forbid direct sandbox Chrome, dependency installation, and alternate ReportLab/Swift/browser renderers; a renderer failure remains truthful instead of silently changing the artifact implementation.
 - Verification boundary: A current-source isolated backend completed a real administrator SNDK preview from the public dialog on Codex CLI `0.146.0` / codex-acp `1.1.7`. The host skill script produced a 620338-byte, five-page A4 PDF; all pages were rendered and inspected, all expose searchable text and the exact `知识星球：巴芒科技` watermark, the news occupies pages 3–4, and the original sharing image occupies page 5. The same assistant reply showed a direct PDF card and the browser click path was exercised. The focused PDF regressions, Web tests, Rust tests, and production build pass. The isolated service was stopped and no deployment was performed.
+
+## D-2026-08-05-01 Replace A Codex Binding Only When The Adapter Proves Its Rollout Is Absent
+
+- Status: Accepted and locally verified; production data repair in progress.
+- Extends: `D-2026-08-03-11` and ADR 0002. The normal one-SessionIdentity/one-native-ID rule, current-turn-only prompt ownership, pre-prompt metadata checkpoint and no automatic prompt resend remain unchanged.
+- Incident: production HONE retained 154 distinct Codex native bindings after the service user's Codex rollout state had been cleared during authentication recovery; only one bound ID still existed locally. A Caris Life Sciences earnings-analysis turn correctly reached Codex ACP `1.1.7`, but `session/resume` failed before Skill execution with structured details `no rollout found for thread id <persisted id>`. Generic user output hid that diagnosis behind the normal failure message.
+- Decision: preserve bounded, redacted ACP `error.data.details` in the internal protocol error. If and only if the validated adapter rejects `session/resume` before prompt with exactly `no rollout found for thread id <the same persisted id>`, create one replacement native session in that same adapter process and checkpoint the replacement ID, mode, fingerprint and observed profile before sending the current prompt. The old binding is unusable, so replacing it restores the one-usable-ID invariant rather than treating configuration drift or an ambiguous transport failure as authority to fork.
+- Negative boundary: generic `Internal error`, a detail naming another ID, matching stderr text, timeout, authentication/permission failure, process exit, empty result and any post-prompt failure remain fail-closed. Hone never resends a native prompt automatically. A checkpoint failure still stops before prompt.
+- Operational repair: an operator may clear only the three bounded ACP binding fields after an owner-only backup and an explicit absent-rollout comparison; HONE chat history and messages remain authoritative and are never deleted. The Caris binding was backed up and cleared independently so the affected user can recover before the new runtime is deployed.
+- Verification: the executable Codex ACP `1.1.7` fixture proves missing-rollout `resume -> new -> checkpoint -> prompt`, exact-ID matching, structured-detail redaction and ordinary resume failure without `session/new`. Focused tests pass; full repository and production acceptance remain tracked in `docs/current-plans/codex-acp-missing-rollout-recovery.md`.

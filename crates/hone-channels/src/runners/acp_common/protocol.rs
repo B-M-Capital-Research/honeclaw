@@ -433,10 +433,20 @@ pub(super) async fn process_acp_payload(
                 .and_then(|value| value.as_str())
                 .unwrap_or("unknown acp error")
                 .to_string();
-            let base = format!(
+            let mut base = format!(
                 "{runner_label} acp request failed: {}",
                 acp_error_detail_for_message(&error_message)
             );
+            if let Some(details) = error
+                .get("data")
+                .and_then(|value| value.get("details"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                base.push_str(" details=");
+                base.push_str(&acp_error_detail_for_message(details));
+            }
             let message = if let Some(captured_stderr) = stderr_buffer {
                 message_with_bounded_stderr(&base, captured_stderr).await
             } else {
