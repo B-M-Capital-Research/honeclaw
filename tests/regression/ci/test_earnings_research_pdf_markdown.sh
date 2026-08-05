@@ -141,6 +141,15 @@ preview_audit = {
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
+revenue_synonym_preview = (
+    preview.replace("锚点为收入", "锚点为营收")
+    .replace("；机构预期收入", "；机构预期营收")
+    .replace("；独立预测收入", "；独立预测营收")
+    .replace("收入中性带", "营收中性带")
+    .replace("收入桥", "营收桥")
+)
+module.validate_workflow_report("NVIDIA", "preview", revenue_synonym_preview, preview_audit)
+
 try:
     module.validate_workflow_report(
         "NVIDIA",

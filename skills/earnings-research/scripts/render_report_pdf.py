@@ -616,11 +616,16 @@ def validate_workflow_report(
             flags=re.MULTILINE | re.DOTALL,
         )
         assumptions_text = assumptions.group(1) if assumptions else ""
-        required_assumption_terms = ("机构预期", "独立预测", "收入", "%")
-        if not all(term in assumptions_text for term in required_assumption_terms):
+        required_assumption_groups = (
+            ("机构预期",),
+            ("独立预测",),
+            ("收入", "营收"),
+            ("%",),
+        )
+        if not all(any(term in assumptions_text for term in group) for group in required_assumption_groups):
             raise ValueError(
-                "preview 1.2.2 must state current consensus, independent revenue/profit forecast, "
-                "and percentage gaps"
+                "preview 1.2.2 must contain these literal fields: 机构预期, 独立预测, "
+                "收入 or 营收, and a percentage gap containing %"
             )
         if not any(term in assumptions_text for term in ("EPS", "每股收益", "营业利润", "净利润", "EBITDA")):
             raise ValueError("preview 1.2.2 must include at least one profit forecast")
