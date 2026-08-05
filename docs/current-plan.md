@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-05
-状态：有 10 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **Gemini 3.1 Pro 财报工作流路由与 AAOI 样片**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/gemini-earnings-workflows.md`
-  - 摘要：原 Gemini 路由和 AAOI PDF 已上线；本轮按原 Dify `V2-财报前瞻` prompt 恢复真实机构观点对比，收紧新闻为公司强相关证据，并把新闻页改为无超链接的独立自然段展示，完成 renderer 回归、生产技能更新和 AAOI 复验
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

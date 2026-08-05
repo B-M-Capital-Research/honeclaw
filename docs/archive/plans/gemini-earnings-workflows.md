@@ -1,7 +1,7 @@
 # Gemini 3.1 Pro 财报工作流路由与 AAOI 样片
 
 - title: Gemini 3.1 Pro 财报工作流路由与 AAOI 样片
-- status: in_progress
+- status: archived
 - created_at: 2026-08-05
 - updated_at: 2026-08-05
 - owner: Codex
@@ -51,10 +51,13 @@
 ## Outcome
 
 - 管理员专属“财报前瞻”和“财报分析”已在生产环境固定路由到 OpenCode ACP + OpenRouter `google/gemini-3.1-pro-preview`；普通聊天继续使用全局 runner/model。
-- 精确运行时 revision `5d26b07a32a1c2cb664f1441bbe03a3cd5e9bc23` 已部署，生产技能脚本同步到 `910d0c95`；服务、PostgreSQL、OSS 和公开入口健康。
-- AAOI 财报前瞻真实运行使用 `providerID=openrouter`、`modelID=google/gemini-3.1-pro-preview`，生成 4 页 PDF。收入审计统一为 `USD millions`：锚点 157、共识 190、独立预测 196，展示为 1.57、1.90、1.96 亿美元；报告结论为超出分析师预期。
-- PDF 包含 10 条近期新闻、精确水印“知识星球：巴芒科技”和知识星球分享图；聊天下载卡片点击成功，刷新恢复后仍可下载。
-- renderer 的新闻经营影响错误会精确指出第几条和允许词，避免模型在严格修复循环中反复修改错误对象。
+- 运行时二进制已更新到 revision `2c2cd1db`，生产技能和 renderer 同步到 `105ca177`；服务、PostgreSQL、OSS 和公开入口健康。Gemini 长推理所需 `step_timeout_seconds` 已从 180 秒调整为 600 秒，`overall_timeout_seconds` 保持 1200 秒。
+- 原 Dify `V2-财报前瞻` prompt 成为内容判断的第一优先级：先给出超出/低于/持平，再用量化预测桥、历史指引完成度、当前指引、最新管理层信息和订单/产能证据串起因果链。
+- `1.2.3` 不再用聚合器或共识数冒充机构观点；必须记录真实券商、银行或研究机构的日期、评级、目标价和单季收入/EPS 预测，未披露时明确写出未披露，并与管理层指引和独立预测比较。
+- `1.3` 采用八至十个无链接自然段，至少六条且至少 60% 为公司直接新闻，必须覆盖上次财报/电话会和一条具名机构观点；客户、同行或供应链事件最多三条且必须证明到本公司本季收入、利润、产能或交付的传导链。
+- `skill_tool` 接受结构化 `script_payload` 并由宿主一次序列化，避免模型手工转义长 JSON 导致 renderer 入参损坏；renderer 将修稿问题限制为最多八个最高优先级问题，拒绝会议出席、纯股价、泛行业和无公司传导的新闻终稿。
+- 最终 AAOI 真实运行使用 `providerID=openrouter`、`modelID=google/gemini-3.1-pro-preview`，生成 4 页 PDF。收入审计统一为 `USD millions`：管理层指引中点 189、共识 190、独立预测 203，展示为 1.89、1.90、2.03 亿美元；报告结论为超出分析师预期。
+- 成品在 `1.2.3` 对比 Rosenblatt 与 Needham 两家 2026-07-29 机构观点，新闻页包含八条强相关自然段，PDF 有精确水印“知识星球：巴芒科技”和知识星球分享图；聊天下载卡片点击成功，刷新恢复后仍可下载。
 
 ## Follow-up Scope — 2026-08-05
 
@@ -65,12 +68,13 @@
 
 ## Final Verification
 
-- `cargo test -p hone-tools skill_tool --lib`：11 passed。
+- `cargo test -p hone-tools`：175 passed、1 ignored。
 - `cargo test -p hone-channels side_effect_status --lib`：1 passed；`cargo test -p hone-channels tool_trace --lib`：9 passed。
 - `cargo test -p hone-core tool_effect --lib`：2 passed。
 - `bash tests/regression/ci/test_earnings_research_pdf_markdown.sh` 与技能校验通过。
-- AAOI 成品 596803 bytes、4 页；逐页 PNG 和文本抽取检查通过，错误的 10 倍收入展示不存在。
-- 生产附件在页面刷新后恢复，下载按钮保持可用。
+- 完整 `bash tests/regression/run_ci.sh` 通过。
+- AAOI 最终成品 627276 bytes、4 页；逐页 PNG、文本抽取、机构页、新闻页、水印和分享页检查通过。
+- 生产附件在页面刷新后恢复，精确下载按钮仍有且保持可用。
 
 ## Risks / Open Questions
 
