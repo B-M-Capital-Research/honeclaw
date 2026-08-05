@@ -719,7 +719,7 @@ def validate_workflow_report(
         report_date = parse_iso_date(preview_audit.get("report_date"), "preview_audit.report_date")
         news_dates: list[date] = []
         news_categories: set[str] = set()
-        for item in news_items:
+        for index, item in enumerate(news_items, start=1):
             match = news_pattern.fullmatch(item.strip())
             if not match:
                 raise ValueError(
@@ -727,7 +727,10 @@ def validate_workflow_report(
                     "guidance inclusion, and one source link"
                 )
             if not any(term in item for term in operating_terms):
-                raise ValueError("each preview news item must explain an operating or period impact")
+                raise ValueError(
+                    f"preview news item {index} must explicitly use at least one operating or period "
+                    f"impact term: {', '.join(operating_terms)}"
+                )
             item_date = parse_iso_date(match.group(1), "preview news date")
             if item_date > report_date:
                 raise ValueError("preview news items cannot be dated after the scheduled report date")

@@ -141,6 +141,21 @@ preview_audit = {
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
+try:
+    module.validate_workflow_report(
+        "NVIDIA",
+        "preview",
+        preview.replace("本季收入没有贡献", "没有直接财务贡献"),
+        preview_audit,
+    )
+except ValueError as exc:
+    message = str(exc)
+    assert "preview news item 8" in message
+    assert "收入" in message
+    assert "本季" in message
+else:
+    raise AssertionError("news impact feedback must identify the exact invalid bullet")
+
 wrong_revenue_unit = deepcopy(preview_audit)
 revenue = wrong_revenue_unit["metrics"]["revenue"]
 for field in ("anchor", "consensus", "forecast", "tolerance"):
