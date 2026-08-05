@@ -2947,6 +2947,9 @@ fn is_stale_market_data_success_fallback(text: &str) -> bool {
         "行情链路暂时阻断",
         "数据链路暂时阻断",
         "报价接口触及限额",
+        "quote工具调用异常",
+        "工具调用受限",
+        "行情工具调用受限",
         "行情数据获取失败",
         "实时行情获取失败",
         "拉取持仓实时行情时",
@@ -2971,7 +2974,17 @@ fn is_stale_market_data_success_fallback(text: &str) -> bool {
     .iter()
     .any(|term| normalized.contains(&term.to_ascii_lowercase()));
 
-    market_data_failed && stale_price_reused
+    let public_fallback_with_precise_price = if market_data_failed {
+        let precise_price_re = regex::Regex::new(
+            r"(?is)(?:[A-Z0-9]{2,8}(?:\.[A-Z]{1,3})?[^\n。；;]{0,48})?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*\d[\d,]*(?:\.\d+)?",
+        )
+        .expect("valid stale market data price anchor regex");
+        precise_price_re.is_match(text)
+    } else {
+        false
+    };
+
+    market_data_failed && (stale_price_reused || public_fallback_with_precise_price)
 }
 
 fn is_scheduler_protocol_residue(line: &str) -> bool {
@@ -4483,6 +4496,26 @@ pub async fn execute_scheduler_event_with_storage(
                         Value::String(truncate_for_log(execution.content.trim(), 200)),
                     );
                 }
+            }
+            if execution.should_deliver && is_stale_market_data_success_fallback(&execution.content)
+            {
+                tracing::warn!(
+                    "[HeartbeatDiag] stale_market_data_fallback job_id={} job={} target={} preview=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    truncate_for_log(execution.content.trim(), 200).replace('\n', "\\n"),
+                );
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "failure_kind": "stale_market_data_fallback",
+                        "suppressed_preview": truncate_for_log(execution.content.trim(), 200),
+                    }),
+                    session_id: None,
+                };
             }
             if execution.should_deliver
                 && let Some((ticker, observed_price, verified_price)) =
@@ -6044,11 +6077,20 @@ mod tests {
         assert!(is_stale_market_data_success_fallback(
             "本轮报价接口触及限额，以下持仓价格采用同一会话04:30已校验的美股4月29日收盘口径。"
         ));
+        assert!(is_stale_market_data_success_fallback(
+            "数据时间：北京时间 2026-07-26 14:00；行情口径：300308.SZ 报价未能于本轮核验（quote 工具调用异常），引用最近一次已知报价 ¥1046.51（深交所，hone_quote_time 2026-07-24 15:06 北京）；今日为周六，A 股休市，无新报价。"
+        ));
+        assert!(is_stale_market_data_success_fallback(
+            "数据时间：北京时间 2026-07-22 16:00；行情口径：最新可得、非逐笔（参考锚点：AAOI $119.26 / SNDK $1,589.40，本轮工具调用受限未能重新核验）。"
+        ));
         assert!(!is_stale_market_data_success_fallback(
             "本轮新闻检索正常，以下价格使用同窗 data_fetch 返回的最新行情。"
         ));
         assert!(!is_stale_market_data_success_fallback(
             "行情数据获取失败，已跳过报价表，不复用旧价格。"
+        ));
+        assert!(!is_stale_market_data_success_fallback(
+            "主行情源本轮未返回可用结果，已改用公开页面补充校验。\n**本轮无法提供 WTI 和布伦特原油价格及原因归因。**"
         ));
     }
 

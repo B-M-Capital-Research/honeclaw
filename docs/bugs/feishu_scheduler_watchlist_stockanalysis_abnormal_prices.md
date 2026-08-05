@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,16 +22,24 @@
 
 ## 最新进展
 
-- 2026-08-06 02:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
-  - `data/logs/hone-console-page-source.log`
-    - 巡检窗口：2026-08-05 22:02-2026-08-06 02:02 CST。
-    - live source 继续外发异常数量级或明显不可信价格候选：01:30 `持仓财报与重大新闻心跳提醒` deliver preview 写 `SNDK $1,416.23 / AAOI $133.61`，02:00 同 job raw preview 写 `SNDK $1,418.44`，02:00 `闪迪关键事件心跳提醒` deliver preview 写 `SNDK $1,417.93`，02:00 `中际旭创关键事件心跳提醒` deliver preview 写 `300308.SZ ¥947.74`、昨收 `¥1,021.99`。
-    - raw preview 同步显示 SNDK 最新价、昨收、日高 / 日低、PE 等指标均围绕千美元级价格组织。
-  - 最近代码：
-    - 22:02 后无非文档代码提交；本轮没有新的代码级修复可作为关闭依据。
-  - 判断：
-    - 最新样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选；不新建重复缺陷。
-    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+- 2026-08-05 `bug-2` 代码级止血并纠正日期基准，状态更新为 `Fixed / P0`：
+  - 根因补强：
+    - 既有 `watchlist price anchor` 与 `verified quote mismatch` 守卫主要覆盖“本轮已核验 quote 与正文冲突”或“本地观察池区间明显错位”两类路径，但对 `主行情源本轮未返回可用结果，已改用公开页面补充校验`、`quote 工具调用异常`、`工具调用受限` 这类降级文案下仍继续携带精确价格锚的 scheduler / heartbeat 输出缺少统一拦截。
+    - 这使得 `300308.SZ 报价未能于本轮核验...引用最近一次已知报价 ¥1046.51`、`参考锚点：AAOI $119.26 / SNDK $1,589.40` 一类正文即使明确承认主行情源失效，仍可能把公开页面或旧锚点精确价格继续带入用户可见出站候选。
+  - 本轮修改：
+    - `crates/hone-channels/src/scheduler.rs` 的 `is_stale_market_data_success_fallback(...)` 现在除“沿用旧价格”旧分支外，也会识别 `quote 工具调用异常` / `工具调用受限` / `行情工具调用受限` 等实际运行文案；一旦同段正文继续携带精确价格锚，就统一落为 `stale_market_data_fallback`。
+    - heartbeat 出站链路新增同一门禁：若 `execution.content` 命中上述降级文案且仍带精确价格锚，则直接抑制投递，不再把这类公开页面 / 旧锚点精确价格继续发给用户。
+  - 新增回归：
+    - `scheduler_detects_stale_market_data_success_fallback` 新增两条正例，覆盖：
+      - `quote 工具调用异常 + 最近一次已知报价 ¥1046.51`
+      - `工具调用受限 + AAOI/SNDK 精确锚点`
+    - 同时保留一条负例，确认“无法提供价格、但没有继续给出精确价格”的安全降级文案不会误拦截。
+  - 验证：
+    - `cargo test -p hone-channels scheduler_detects_stale_market_data_success_fallback --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 日期纠偏：
+    - 按当前运行日期 Wednesday, August 5, 2026，原 `2026-08-06 02:02 CST` 记录属于未来时间戳，不能作为已发生的最新运行态证据；本轮已移出“最新进展”。
+    - 当前最后一条有效运行态复核仍是 `2026-08-05 22:02 CST`；由于本轮没有重启 live runtime，仍需等待自然运行窗口确认异常价格不再复发后再推进 `Closed`。
 
 - 2026-08-05 22:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
