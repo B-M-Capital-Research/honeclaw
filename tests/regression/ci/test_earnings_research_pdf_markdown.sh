@@ -378,6 +378,23 @@ except ValueError as exc:
 else:
     raise AssertionError("published forecast values must match the structured audit")
 
+missing_audited_display = deepcopy(preview_audit)
+missing_audited_display["metrics"]["revenue"]["forecast"] = 47.0
+missing_audited_display["metrics"]["revenue"]["report_forecast_value"] = 470
+missing_audited_display["metrics"]["revenue"]["report_forecast"] = "470 亿美元"
+missing_audited_display["forecast_bridge"][1]["delta"] = 1.60
+missing_audited_display["forecast_bridge"][1]["report_delta_value"] = 16.0
+missing_audited_display["forecast_bridge"][1]["report_delta"] = "+16.0 亿美元"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, missing_audited_display)
+except ValueError as exc:
+    message = str(exc)
+    assert "exact audited display strings" in message
+    assert "revenue" in message
+    assert "report_forecast=470 亿美元" in message
+else:
+    raise AssertionError("renderer feedback must name the exact audited display value to publish")
+
 unit_mismatch = deepcopy(preview_audit)
 unit_mismatch["forecast_bridge"][0]["report_delta_value"] = 0.40
 unit_mismatch["forecast_bridge"][0]["report_delta"] = "+0.40 亿美元"

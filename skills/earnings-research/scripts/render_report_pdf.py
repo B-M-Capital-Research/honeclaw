@@ -639,19 +639,23 @@ def validate_workflow_report(
             raise ValueError("preview 1.2.2 must use the audited fiscal period")
         for metric_name in preview_audit["decision_metrics"]:
             metric = parsed_metrics[metric_name]
-            report_anchor = str(metric["report_anchor"])
-            report_consensus = str(metric["report_consensus"])
-            report_forecast = str(metric["report_forecast"])
-            report_tolerance = str(metric["report_tolerance"])
-            if (
-                report_anchor not in assumptions_text
-                or report_consensus not in assumptions_text
-                or report_forecast not in assumptions_text
-                or report_tolerance not in assumptions_text
-            ):
+            audited_display_values = {
+                "report_anchor": str(metric["report_anchor"]),
+                "report_consensus": str(metric["report_consensus"]),
+                "report_forecast": str(metric["report_forecast"]),
+                "report_tolerance": str(metric["report_tolerance"]),
+            }
+            missing_display_values = [
+                f"{field}={value}"
+                for field, value in audited_display_values.items()
+                if value not in assumptions_text
+            ]
+            if missing_display_values:
                 raise ValueError(
-                    "preview 1.2.2 published anchor, forecast, and tolerance values must match preview_audit for "
+                    "preview 1.2.2 must contain these exact audited display strings for "
                     + metric_name
+                    + ": "
+                    + ", ".join(missing_display_values)
                 )
         for item in preview_audit["forecast_bridge"]:
             if item.get("delta") != 0 and item.get("_validated_report_delta") not in assumptions_text:
