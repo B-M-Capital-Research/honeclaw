@@ -36,6 +36,14 @@ AI_STYLE_MARKERS = (
     "以下内容仅供分析参考",
     "不要未经自己思考",
 )
+WEAK_NEWS_PATTERNS = (
+    r"conference|summit|fireside|present(?:s|ing)? at",
+    r"峰会|炉边谈话|出席.{0,8}(?:会议|大会)",
+    r"(?:stock|shares?) (?:rose|fell|jumped|gained|dropped|surged|slid|rallied|sank)",
+    r"股价.{0,20}(?:大涨|上涨|下跌|大跌|跳涨|飙升|暴涨|暴跌|回调|抛售)",
+    r"板块.{0,20}(?:普涨|上涨|下跌|回调|抛售|风险偏好|资金流入)",
+    r"risk[- ]on|generic sector sentiment|市场情绪波动|风险偏好",
+)
 
 
 def emit(payload: dict) -> int:
@@ -441,15 +449,7 @@ def validate_preview_audit(
                     "company-specific transmission path"
                 )
         evidence_text = " ".join(evidence_text_parts).lower()
-        weak_news_patterns = (
-            r"conference|summit|fireside|present(?:s|ing)? at",
-            r"峰会|炉边谈话|出席.{0,8}(?:会议|大会)",
-            r"(?:stock|shares?) (?:rose|fell|jumped|gained|dropped|surged|slid|rallied|sank)",
-            r"股价.{0,12}(?:大涨|上涨|下跌|大跌|跳涨|暴跌)",
-            r"板块.{0,12}(?:普涨|上涨|下跌|回调|抛售)",
-            r"risk[- ]on|generic sector sentiment|市场情绪波动|风险偏好",
-        )
-        if any(re.search(pattern, evidence_text) for pattern in weak_news_patterns):
+        if any(re.search(pattern, evidence_text) for pattern in WEAK_NEWS_PATTERNS):
             raise ValueError(
                 f"preview_audit.news_evidence[{index}] is conference, price-move, or generic "
                 "sector chatter; replace it with company operating evidence"
@@ -1045,6 +1045,11 @@ def collect_preview_preflight_errors(
     ]
     operating_terms = ("收入", "利润", "毛利", "销量", "价格", "成本", "产能", "供给", "需求", "出货", "EPS", "本季")
     for index, item in enumerate(news_items, start=1):
+        if any(re.search(pattern, item.lower()) for pattern in WEAK_NEWS_PATTERNS):
+            errors.append(
+                f"preview news item {index} is conference, price-move, or generic sector "
+                "chatter; replace the whole paragraph with company operating news"
+            )
         if not any(term in item for term in operating_terms):
             errors.append(
                 f"preview news item {index} must explicitly use at least one operating or period impact term: "
@@ -1406,6 +1411,14 @@ def validate_workflow_report(
                 raise ValueError(
                     f"preview news item {index} must explicitly use at least one operating or period "
                     f"impact term: {', '.join(operating_terms)}"
+                )
+            if any(
+                re.search(pattern, normalized_item.lower())
+                for pattern in WEAK_NEWS_PATTERNS
+            ):
+                raise ValueError(
+                    f"preview news item {index} is conference, price-move, or generic sector "
+                    "chatter; replace the whole paragraph with company operating news"
                 )
             item_date = parse_iso_date(match.group(1), "preview news date")
             if match.group(1) != evidence["date"]:

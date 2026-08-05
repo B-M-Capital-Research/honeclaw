@@ -525,6 +525,17 @@ except ValueError as exc:
 else:
     raise AssertionError("preview news must not display hyperlinks")
 
+price_move_news = preview.replace(
+    "NVIDIA 披露客户订单扩大，新增需求支持本季收入与出货",
+    "NVIDIA 股价大涨 17%，客户订单扩大并支持本季收入与出货",
+)
+try:
+    module.validate_workflow_report("NVIDIA", "preview", price_move_news, preview_audit)
+except ValueError as exc:
+    assert "price-move" in str(exc)
+else:
+    raise AssertionError("final preview prose must reject share-price news padding")
+
 stale_news = (
     preview.replace("2026-07-30", "2026-07-21")
     .replace("2026-07-28", "2026-07-19")
