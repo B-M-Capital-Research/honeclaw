@@ -99,7 +99,7 @@ preview = (
     "### 1.2.2 财报假设\n"
     "FY2026 Q1 管理层指引锚点为收入 450 亿美元、调整后 EPS 0.90 美元；机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%。收入中性带为 4.5 亿美元，EPS 中性区间为 0.018 美元。收入桥把历史指引偏差计入 +4.0 亿美元，数据中心出货再增加 +6.0 亿美元；产品组合和成本分别为 EPS 带来 +0.04 美元和 +0.01 美元。\n"
     "### 1.2.3 和机构分析对比\n"
-    "历史上过去三季实际收入均高于管理层指引上限。截至 2026-08-04，当前股价 123.45 美元已经反映较强增长预期。Morgan Stanley 维持增持评级，认为本季收入接近 455 亿美元、EPS 约 0.92 美元，主要担心供给爬坡；Goldman Sachs 给出买入建议，收入判断约 458 亿美元、EPS 约 0.94 美元，更看重产品组合。两家机构的收入和利润预期都低于 460 亿美元与 0.95 美元的独立预测。最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
+    "历史上过去三季实际收入均高于管理层指引上限。截至 2026-08-04，当前股价 123.45 美元已经反映较强增长预期。Morgan Stanley 维持增持评级，目标价 150 美元，认为本季收入约 455 亿美元、本季 EPS 约 0.92 美元，主要担心供给爬坡；Goldman Sachs 给出买入建议，目标价 160 美元，本季收入约 458 亿美元、本季 EPS 约 0.94 美元，更看重产品组合。两家机构的收入和利润预期都低于 460 亿美元与 0.95 美元的独立预测。最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
     "## 1.3 近期新闻\n"
     "**2026-08-03** Morgan Stanley 更新 NVIDIA 观点，认为供给爬坡限制本季收入，但维持增持评级；这项机构预期的计入状态未知。来源：Morgan Stanley。\n\n"
     "**2026-08-01** NVIDIA 披露客户订单扩大，新增需求支持本季收入与出货，其中只有部分计入指引。来源：NVIDIA Investor Relations。\n\n"
@@ -119,8 +119,8 @@ preview_audit = {
         {"name": "Provider B", "as_of": "2026-08-03"},
     ],
     "institution_views": [
-        {"institution": "Morgan Stanley", "as_of": "2026-08-03", "rating_or_recommendation": "增持", "revenue_view": "本季收入约455亿美元", "profit_view": "EPS约0.92美元", "rationale": "供给爬坡仍是限制", "source_name": "Morgan Stanley", "source_url": "https://example.com/ms"},
-        {"institution": "Goldman Sachs", "as_of": "2026-07-25", "rating_or_recommendation": "买入", "revenue_view": "本季收入约458亿美元", "profit_view": "EPS约0.94美元", "rationale": "产品组合改善", "source_name": "Goldman Sachs", "source_url": "https://example.com/gs"},
+        {"institution": "Morgan Stanley", "as_of": "2026-08-03", "rating_or_recommendation": "增持", "target_price": "目标价 150 美元", "revenue_view": "本季收入约 455 亿美元", "profit_view": "本季 EPS 约 0.92 美元", "rationale": "供给爬坡仍是限制", "source_name": "Morgan Stanley", "source_url": "https://example.com/ms"},
+        {"institution": "Goldman Sachs", "as_of": "2026-07-25", "rating_or_recommendation": "买入", "target_price": "目标价 160 美元", "revenue_view": "本季收入约 458 亿美元", "profit_view": "本季 EPS 约 0.94 美元", "rationale": "产品组合改善", "source_name": "Goldman Sachs", "source_url": "https://example.com/gs"},
     ],
     "market_context": {"quote_value": 123.45, "report_quote": "123.45 美元", "quote_as_of": "2026-08-04", "quote_source_name": "Provider A"},
     "metrics": {
@@ -531,6 +531,24 @@ except ValueError as exc:
     assert "issuing broker, bank, or research house" in str(exc)
 else:
     raise AssertionError("publishers and aggregators must not masquerade as institutions")
+
+vague_rating_audit = deepcopy(preview_audit)
+vague_rating_audit["institution_views"][0]["rating_or_recommendation"] = "Maintains"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, vague_rating_audit)
+except ValueError as exc:
+    assert "actual Buy/Hold/Sell/Outperform-style stance" in str(exc)
+else:
+    raise AssertionError("institution comparison must include the actual rating stance")
+
+homepage_source_audit = deepcopy(preview_audit)
+homepage_source_audit["institution_views"][0]["source_url"] = "https://example.com/"
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, homepage_source_audit)
+except ValueError as exc:
+    assert "specific rating or research page" in str(exc)
+else:
+    raise AssertionError("institution evidence must not use a site homepage")
 
 conference_news_audit = deepcopy(preview_audit)
 conference_news_audit["news_evidence"][1]["event_summary"] = (

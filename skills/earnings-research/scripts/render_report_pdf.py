@@ -15,6 +15,7 @@ import sys
 import tempfile
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 MAX_REPORT_CHARS = 240_000
@@ -229,6 +230,7 @@ def validate_preview_audit(
         for field in (
             "institution",
             "rating_or_recommendation",
+            "target_price",
             "revenue_view",
             "profit_view",
             "rationale",
@@ -247,6 +249,11 @@ def validate_preview_audit(
             raise ValueError(
                 f"preview_audit.institution_views[{index}].source_url must be HTTP(S)"
             )
+        if urlparse(source_url).path in ("", "/"):
+            raise ValueError(
+                f"preview_audit.institution_views[{index}].source_url must be the specific "
+                "rating or research page, not a site homepage"
+            )
         institution_name = nonempty_string(
             view.get("institution"),
             f"preview_audit.institution_views[{index}].institution",
@@ -256,6 +263,44 @@ def validate_preview_audit(
                 f"preview_audit.institution_views[{index}].institution must name the issuing "
                 "broker, bank, or research house, not a publisher or aggregator"
             )
+        rating = str(view["rating_or_recommendation"])
+        recognized_rating_terms = (
+            "buy",
+            "hold",
+            "sell",
+            "outperform",
+            "underperform",
+            "overweight",
+            "underweight",
+            "market perform",
+            "sector perform",
+            "equal weight",
+            "neutral",
+            "accumulate",
+            "add",
+            "reduce",
+            "买入",
+            "增持",
+            "持有",
+            "中性",
+            "卖出",
+            "跑赢",
+            "跑输",
+            "优于大盘",
+            "与大盘持平",
+        )
+        if not any(term in rating.lower() for term in recognized_rating_terms):
+            raise ValueError(
+                f"preview_audit.institution_views[{index}].rating_or_recommendation must "
+                "contain the actual Buy/Hold/Sell/Outperform-style stance, not only an action"
+            )
+        generic_views = {"in line", "above", "below", "consensus", "n/a", "not provided"}
+        for field in ("revenue_view", "profit_view"):
+            if str(view[field]).strip().lower() in generic_views:
+                raise ValueError(
+                    f"preview_audit.institution_views[{index}].{field} must contain a specific "
+                    "view or an explicit Chinese non-disclosure phrase"
+                )
         institution_names.append(institution_name)
     if len(set(institution_names)) != len(institution_names):
         raise ValueError("preview_audit.institution_views must use distinct institutions")
@@ -352,6 +397,11 @@ def validate_preview_audit(
             raise ValueError(
                 f"preview_audit.news_evidence[{index}].source_url must be HTTP(S)"
             )
+        if urlparse(source_url).path in ("", "/"):
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].source_url must be a specific article, "
+                "filing, release, transcript, or rating page"
+            )
         if re.search(r"https?://", source_name):
             raise ValueError(
                 f"preview_audit.news_evidence[{index}].source_name must be a plain source name"
@@ -359,6 +409,13 @@ def validate_preview_audit(
         event_summary = nonempty_string(
             event.get("event_summary"), f"preview_audit.news_evidence[{index}].event_summary"
         )
+        if event_kind == "institution_view":
+            institution_haystack = f"{source_name} {event_summary}".lower()
+            if not any(name.lower() in institution_haystack for name in institution_names):
+                raise ValueError(
+                    f"preview_audit.news_evidence[{index}] institution_view must name one of "
+                    "the audited issuing institutions, not only a publisher or columnist"
+                )
         evidence_text_parts = [event_summary]
         for field in ("affected_period", "operating_link", "company_link"):
             value = nonempty_string(
@@ -918,6 +975,23 @@ def validate_workflow_report(
             raise ValueError(
                 "preview 1.2.3 must compare these named institution views: "
                 + ", ".join(missing_institutions)
+            )
+        missing_institution_details: list[str] = []
+        for view in preview_audit["institution_views"]:
+            institution = str(view["institution"])
+            for field in (
+                "rating_or_recommendation",
+                "target_price",
+                "revenue_view",
+                "profit_view",
+            ):
+                value = str(view[field])
+                if value not in comparison_text:
+                    missing_institution_details.append(f"{institution} {field}={value}")
+        if missing_institution_details:
+            raise ValueError(
+                "preview 1.2.3 must publish each institution's audited rating, target price, "
+                "revenue view, and profit view exactly: " + "; ".join(missing_institution_details)
             )
         if not any(term in comparison_text for term in ("评级", "建议", "目标价")):
             raise ValueError(
