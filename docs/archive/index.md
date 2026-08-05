@@ -4,6 +4,18 @@ Last updated: 2026-08-05
 
 ## 2026-08-05
 
+### Gemini 3.1 Pro Earnings Workflows And AAOI Production Sample
+
+- Status: done
+- Date: 2026-08-05
+- Plan: `docs/archive/plans/gemini-earnings-workflows.md`
+- Handoff: `docs/handoffs/2026-08-05-gemini-earnings-workflows.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-05-02-route-earnings-workflows-to-gemini-31-pro-through-opencode`
+- Related PRs / commits: `115db5fb`, `d99c4c3e`, `5caea165`, `303a972d`, `a0a760da`, `55a8e79f`, `c469ad6b`, `a8c39033`, deployed runtime `5d26b07a`, skill revisions `5c1ce974` and `910d0c95`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; `docs/runbooks/backend-deployment.md`; focused runner/session/side-effect tests; `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; real authenticated AAOI browser/PDF acceptance
+- Current conclusion: both administrator earnings workflows use OpenCode ACP through OpenRouter's exact `google/gemini-3.1-pro-preview` while ordinary chat remains unchanged. A real AAOI preview normalized revenue to 157/190/196 USD millions, rendered the correct 1.57/1.90/1.96 亿美元 values, produced ten recent-news bullets plus the exact watermark and Knowledge Planet share page, and remained downloadable after chat refresh. Strict renderer feedback now names the exact invalid news bullet, and pre-execution skill-call rejection no longer poisons a later successful artifact while uncertain executions remain fail-closed.
+- Next entry point: `docs/handoffs/2026-08-05-gemini-earnings-workflows.md`; rotate the OpenRouter key that was pasted into chat, then use the same administrator buttons for future preview or attachment-backed analysis acceptance.
+
 ### Earnings Routing, Durable Attachments And Production Acceptance
 
 - Status: done

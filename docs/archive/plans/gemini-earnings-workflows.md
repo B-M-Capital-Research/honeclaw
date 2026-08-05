@@ -1,7 +1,7 @@
 # Gemini 3.1 Pro 财报工作流路由与 AAOI 样片
 
 - title: Gemini 3.1 Pro 财报工作流路由与 AAOI 样片
-- status: in_progress
+- status: archived
 - created_at: 2026-08-05
 - updated_at: 2026-08-05
 - owner: Codex
@@ -19,7 +19,7 @@
   - `docs/repo-map.md`
   - `docs/invariants.md`
   - `docs/decisions.md`
-  - `docs/runbooks/production-deployment.md`
+  - `docs/runbooks/backend-deployment.md`
 
 ## Goal
 
@@ -47,6 +47,23 @@
 
 - 更新 `docs/repo-map.md`、`docs/invariants.md`、`docs/decisions.md` 和生产部署 runbook，明确工作流专用模型路由及密钥配置边界。
 - 完成后新增或更新 handoff，把计划移入 `docs/archive/plans/`，更新 `docs/archive/index.md` 并从 `docs/current-plan.md` 移除。
+
+## Outcome
+
+- 管理员专属“财报前瞻”和“财报分析”已在生产环境固定路由到 OpenCode ACP + OpenRouter `google/gemini-3.1-pro-preview`；普通聊天继续使用全局 runner/model。
+- 精确运行时 revision `5d26b07a32a1c2cb664f1441bbe03a3cd5e9bc23` 已部署，生产技能脚本同步到 `910d0c95`；服务、PostgreSQL、OSS 和公开入口健康。
+- AAOI 财报前瞻真实运行使用 `providerID=openrouter`、`modelID=google/gemini-3.1-pro-preview`，生成 4 页 PDF。收入审计统一为 `USD millions`：锚点 157、共识 190、独立预测 196，展示为 1.57、1.90、1.96 亿美元；报告结论为超出分析师预期。
+- PDF 包含 10 条近期新闻、精确水印“知识星球：巴芒科技”和知识星球分享图；聊天下载卡片点击成功，刷新恢复后仍可下载。
+- renderer 的新闻经营影响错误会精确指出第几条和允许词，避免模型在严格修复循环中反复修改错误对象。
+
+## Final Verification
+
+- `cargo test -p hone-tools skill_tool --lib`：11 passed。
+- `cargo test -p hone-channels side_effect_status --lib`：1 passed；`cargo test -p hone-channels tool_trace --lib`：9 passed。
+- `cargo test -p hone-core tool_effect --lib`：2 passed。
+- `bash tests/regression/ci/test_earnings_research_pdf_markdown.sh` 与技能校验通过。
+- AAOI 成品 596803 bytes、4 页；逐页 PNG 和文本抽取检查通过，错误的 10 倍收入展示不存在。
+- 生产附件在页面刷新后恢复，下载按钮保持可用。
 
 ## Risks / Open Questions
 
