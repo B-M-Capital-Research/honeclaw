@@ -156,6 +156,24 @@ preview_audit = {
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
+normalized_tolerance_audit = deepcopy(preview_audit)
+normalized_tolerance_audit["metrics"]["revenue"]["tolerance"] = 1
+module.validate_workflow_report("NVIDIA", "preview", preview, normalized_tolerance_audit)
+assert normalized_tolerance_audit["metrics"]["revenue"]["tolerance"] == 450
+
+missing_guidance_chain_report = preview.replace(
+    "历史上过去三季实际收入均高于管理层指引上限。",
+    "前次收入表现提供了当前比较起点。",
+).replace(
+    "其中已有订单已计入指引，额外供给改善部分计入",
+    "订单与额外供给共同支持增长",
+)
+missing_guidance_chain_errors = module.collect_preview_preflight_errors(
+    "NVIDIA", missing_guidance_chain_report, deepcopy(preview_audit)
+)
+assert "preview 1.2.3 must compare historical guidance outcomes with current guidance" in missing_guidance_chain_errors
+assert "preview 1.2.3 must state whether major catalysts are included in guidance" in missing_guidance_chain_errors
+
 canonical_non_disclosure_report = (
     preview.replace("目标价 150 美元", "未披露目标价", 1)
     .replace("本季收入约 455 亿美元", "未披露单季营收预测", 1)
@@ -364,12 +382,8 @@ else:
 
 arbitrary_tolerance = deepcopy(preview_audit)
 arbitrary_tolerance["metrics"]["revenue"]["tolerance"] = 900
-try:
-    module.validate_workflow_report("NVIDIA", "preview", preview, arbitrary_tolerance)
-except ValueError as exc:
-    assert "largest evidenced" in str(exc)
-else:
-    raise AssertionError("preview must reject an arbitrary neutral band")
+module.validate_workflow_report("NVIDIA", "preview", preview, arbitrary_tolerance)
+assert arbitrary_tolerance["metrics"]["revenue"]["tolerance"] == 450
 
 broken_bridge = deepcopy(preview_audit)
 broken_bridge["metrics"]["revenue"]["forecast"] = 46200

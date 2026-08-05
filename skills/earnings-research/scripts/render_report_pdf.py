@@ -888,6 +888,12 @@ def collect_preview_preflight_errors(
     comparison_text = comparison.group(1) if comparison else ""
     if not any(term in comparison_text for term in ("电话会", "业绩会", "演示材料", "投资者材料")):
         errors.append("preview 1.2.3 must incorporate the latest call or investor materials")
+    if "指引" not in comparison_text or not any(
+        term in comparison_text for term in ("历史", "此前", "上一季", "过去", "前两季", "前三季")
+    ):
+        errors.append("preview 1.2.3 must compare historical guidance outcomes with current guidance")
+    if not any(term in comparison_text for term in ("已计入", "未计入", "部分计入", "是否计入")):
+        errors.append("preview 1.2.3 must state whether major catalysts are included in guidance")
 
     if not isinstance(preview_audit, dict):
         errors.append("preview_audit is required for preview reports")
@@ -1098,11 +1104,34 @@ def normalize_preview_non_disclosures(report: str, preview_audit: object | None)
                 view[field] = phrase
 
 
+def normalize_preview_tolerances(preview_audit: object | None) -> None:
+    """Make the private tolerance follow its evidenced max-component rule."""
+    if not isinstance(preview_audit, dict):
+        return
+    metrics = preview_audit.get("metrics")
+    if not isinstance(metrics, dict):
+        return
+    for metric in metrics.values():
+        if not isinstance(metric, dict):
+            continue
+        components = metric.get("tolerance_components")
+        if not isinstance(components, dict):
+            continue
+        values = [
+            float(value)
+            for value in components.values()
+            if isinstance(value, (int, float)) and math.isfinite(float(value))
+        ]
+        if values:
+            metric["tolerance"] = max(values)
+
+
 def validate_workflow_report(
     company: str, mode: str, report: str, preview_audit: object | None = None
 ) -> None:
     if mode == "preview":
         normalize_preview_non_disclosures(report, preview_audit)
+        normalize_preview_tolerances(preview_audit)
         preflight_errors = collect_preview_preflight_errors(company, report, preview_audit)
         if preflight_errors:
             visible_errors = preflight_errors[:MAX_PREFLIGHT_ERRORS_PER_PASS]
