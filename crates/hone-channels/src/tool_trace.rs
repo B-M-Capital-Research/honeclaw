@@ -19,7 +19,13 @@ pub(crate) const UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE: &str = "本轮分析调�
 /// A prose claim, a generic document, or a renderer result without the exact
 /// success/side-effect fields is not enough to complete the administrator
 /// earnings workflow.
-pub(crate) fn completed_earnings_pdf_artifact(tool_calls: &[ToolCallMade]) -> Option<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompletedEarningsPdf {
+    pub(crate) path: String,
+    pub(crate) report_markdown: String,
+}
+
+pub(crate) fn completed_earnings_pdf(tool_calls: &[ToolCallMade]) -> Option<CompletedEarningsPdf> {
     tool_calls.iter().rev().find_map(|call| {
         if canonical_hone_tool_name(&call.name) != Some("skill_tool")
             || call
@@ -46,7 +52,8 @@ pub(crate) fn completed_earnings_pdf_artifact(tool_calls: &[ToolCallMade]) -> Op
             return None;
         }
 
-        call.result
+        let path = call
+            .result
             .get("artifacts")
             .and_then(serde_json::Value::as_array)?
             .iter()
@@ -58,8 +65,24 @@ pub(crate) fn completed_earnings_pdf_artifact(tool_calls: &[ToolCallMade]) -> Op
                     && mime == Some("application/pdf")
                     && path.to_ascii_lowercase().ends_with(".pdf"))
                 .then(|| path.to_string())
-            })
+            })?;
+        let report_markdown = call
+            .arguments
+            .get("script_payload")
+            .and_then(|payload| payload.get("report_markdown"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?
+            .to_string();
+        Some(CompletedEarningsPdf {
+            path,
+            report_markdown,
+        })
     })
+}
+
+pub(crate) fn completed_earnings_pdf_artifact(tool_calls: &[ToolCallMade]) -> Option<String> {
+    completed_earnings_pdf(tool_calls).map(|completed| completed.path)
 }
 
 pub(crate) fn latest_earnings_render_error(tool_calls: &[ToolCallMade]) -> Option<String> {
@@ -170,7 +193,12 @@ mod tests {
 
         let completed = ToolCallMade {
             name: "mcp__hone__skill_tool".to_string(),
-            arguments: json!({"skill_name":"earnings-research"}),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "script_payload": {
+                    "report_markdown": "# AAOI公司财报前瞻分析\n\n完整报告"
+                }
+            }),
             result: json!({
                 "success": true,
                 "render_success": true,

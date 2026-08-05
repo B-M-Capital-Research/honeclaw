@@ -16,8 +16,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
-    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf_artifact,
-    latest_earnings_render_error, persistent_side_effect_state_is_uncertain,
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf,
+    completed_earnings_pdf_artifact, latest_earnings_render_error,
+    persistent_side_effect_state_is_uncertain,
 };
 
 use super::acp_common::{
@@ -76,6 +77,16 @@ fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
          render_success=true、一个 application/pdf artifact，并在最终完整报告中引用该 PDF\
          文件名后才能结束。"
     ))
+}
+
+fn normalize_completed_earnings_pdf_reply(state: &mut AcpPromptState) {
+    let Some(completed) = completed_earnings_pdf(&state.finished_tool_calls) else {
+        return;
+    };
+    state.full_reply = format!(
+        "{}\n\n[附件: {}]",
+        completed.report_markdown, completed.path
+    );
 }
 
 pub(crate) struct OpencodeAcpRunner {
@@ -721,6 +732,9 @@ async fn run_opencode_acp(
             let stopped_successfully = acp_prompt_succeeded(
                 prompt_result.get("stopReason").and_then(Value::as_str),
             );
+            if stopped_successfully && require_earnings_pdf {
+                normalize_completed_earnings_pdf_reply(&mut opencode_state);
+            }
             let recovery_prompt = require_earnings_pdf
                 .then(|| earnings_pdf_recovery_prompt(&opencode_state))
                 .flatten();
@@ -1686,10 +1700,10 @@ mod earnings_pdf_completion_tests {
     #[test]
     fn successful_renderer_still_requires_the_final_reply_to_reference_the_pdf() {
         let mut state = AcpPromptState {
-            full_reply: "# AAOI公司财报前瞻分析\n完整报告正文".to_string(),
+            full_reply: "模型漏掉了附件名".to_string(),
             ..AcpPromptState::default()
         };
-        state.finished_tool_calls.push(renderer_call(json!({
+        let mut call = renderer_call(json!({
             "success": true,
             "render_success": true,
             "side_effect_status": "completed",
@@ -1698,15 +1712,23 @@ mod earnings_pdf_completion_tests {
                 "path": "/sandbox/AAOI_Earnings_Preview.pdf",
                 "mime": "application/pdf"
             }]
-        })));
+        }));
+        call.arguments["script_payload"] = json!({
+            "report_markdown": "# AAOI公司财报前瞻分析\n\n完整且已通过 renderer 的报告正文"
+        });
+        state.finished_tool_calls.push(call);
 
         let prompt = earnings_pdf_recovery_prompt(&state).expect("attachment recovery");
         assert!(prompt.contains("不要再次渲染"));
         assert!(prompt.contains("AAOI_Earnings_Preview.pdf"));
 
-        state
-            .full_reply
-            .push_str("\n[附件: /sandbox/AAOI_Earnings_Preview.pdf]");
+        normalize_completed_earnings_pdf_reply(&mut state);
+        assert!(state.full_reply.starts_with("# AAOI公司财报前瞻分析"));
+        assert!(
+            state
+                .full_reply
+                .ends_with("[附件: /sandbox/AAOI_Earnings_Preview.pdf]")
+        );
         assert!(earnings_pdf_recovery_prompt(&state).is_none());
     }
 }

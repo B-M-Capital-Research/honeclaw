@@ -10,6 +10,8 @@
   - `skills/earnings-research/scripts/render_report_pdf.py`
   - `crates/hone-tools/src/skill_tool.rs`
   - `crates/hone-channels/src/agent_session/`
+  - `crates/hone-channels/src/runners/opencode_acp.rs`
+  - `crates/hone-channels/src/tool_trace.rs`
   - `crates/hone-web-api/src/routes/`
   - `tests/regression/ci/test_earnings_research_pdf_markdown.sh`
 - related_docs:
@@ -27,6 +29,7 @@
 - 从生产日志和会话记录确认失败发生在哪个 renderer 校验、工具调用或终态分类边界。
 - 复现文字降级路径，确定 Skill 指令、工具副作用状态、runner 终态或 Web 投影中的实际缺口。
 - 用最小通用修复强制 PDF 成功终态，保留超时、不可恢复基础设施错误和不确定副作用的 fail-closed 边界。
+- renderer 成功后由宿主直接发布同次成功调用中已校验的 Markdown 与附件路径，避免模型为补附件名再次生成整篇报告并耗尽时限。
 - 增加至少一条自动化回归覆盖本次真实失败语句和等价无附件终稿。
 - 部署精确 revision/技能，真实重跑 AAOI，检查 PDF 下载、页面刷新持久化和生产健康。
 
