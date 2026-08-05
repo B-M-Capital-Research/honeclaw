@@ -275,7 +275,9 @@ def validate_preview_audit(
                 f"preview_audit.metrics.{metric_name}.tolerance must equal the largest evidenced "
                 "tolerance component"
             )
-        nonempty_string(metric.get("unit"), f"preview_audit.metrics.{metric_name}.unit")
+        metric_unit = nonempty_string(
+            metric.get("unit"), f"preview_audit.metrics.{metric_name}.unit"
+        )
         report_scale = finite_number(
             metric.get("report_scale"), f"preview_audit.metrics.{metric_name}.report_scale"
         )
@@ -284,6 +286,17 @@ def validate_preview_audit(
         report_unit = nonempty_string(
             metric.get("report_unit"), f"preview_audit.metrics.{metric_name}.report_unit"
         )
+        if metric_name == "revenue":
+            if metric_unit != "USD millions":
+                raise ValueError(
+                    "preview_audit.metrics.revenue.unit must be exactly USD millions; "
+                    "normalize source revenue before building the forecast bridge"
+                )
+            if report_unit != "亿美元" or abs(report_scale - 0.01) > 1e-12:
+                raise ValueError(
+                    "preview_audit.metrics.revenue must use report_unit=亿美元 and "
+                    "report_scale=0.01 because 1 USD million equals 0.01 亿美元"
+                )
         report_anchor = nonempty_string(
             metric.get("report_anchor"),
             f"preview_audit.metrics.{metric_name}.report_anchor",

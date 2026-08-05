@@ -119,7 +119,7 @@ preview_audit = {
         {"name": "Provider B", "as_of": "2026-08-03"},
     ],
     "metrics": {
-        "revenue": {"anchor": 45.0, "anchor_kind": "management_guidance_midpoint", "consensus": 45.0, "forecast": 46.0, "unit": "USD billions", "tolerance": 0.45, "tolerance_components": {"estimate_dispersion": 0.30, "revision_magnitude": 0.45, "measurement_precision": 0.10}, "report_scale": 10, "report_unit": "亿美元", "report_anchor_value": 450, "report_consensus_value": 450, "report_forecast_value": 460, "report_tolerance_value": 4.5, "report_anchor": "450 亿美元", "report_consensus": "450 亿美元", "report_forecast": "460 亿美元", "report_tolerance": "4.5 亿美元"},
+        "revenue": {"anchor": 45000, "anchor_kind": "management_guidance_midpoint", "consensus": 45000, "forecast": 46000, "unit": "USD millions", "tolerance": 450, "tolerance_components": {"estimate_dispersion": 300, "revision_magnitude": 450, "measurement_precision": 100}, "report_scale": 0.01, "report_unit": "亿美元", "report_anchor_value": 450, "report_consensus_value": 450, "report_forecast_value": 460, "report_tolerance_value": 4.5, "report_anchor": "450 亿美元", "report_consensus": "450 亿美元", "report_forecast": "460 亿美元", "report_tolerance": "4.5 亿美元"},
         "adjusted_eps": {"anchor": 0.90, "anchor_kind": "management_guidance_point", "consensus": 0.90, "forecast": 0.95, "unit": "USD/share", "tolerance": 0.018, "tolerance_components": {"estimate_dispersion": 0.010, "revision_magnitude": 0.018, "measurement_precision": 0.005}, "report_scale": 1, "report_unit": "美元", "report_anchor_value": 0.90, "report_consensus_value": 0.90, "report_forecast_value": 0.95, "report_tolerance_value": 0.018, "report_anchor": "0.90 美元", "report_consensus": "0.90 美元", "report_forecast": "0.95 美元", "report_tolerance": "0.018 美元"},
     },
     "decision_metrics": ["revenue", "adjusted_eps"],
@@ -133,13 +133,33 @@ preview_audit = {
         {"catalyst": "new product", "affected_period": "FY2026 Q1", "status": "partial", "evidence": "earnings call 2026-07-01"}
     ],
     "forecast_bridge": [
-        {"driver": "repeatable guidance bias", "category": "historical_bias", "metric": "revenue", "delta": 0.40, "report_delta_value": 4.0, "report_delta": "+4.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "three comparable company releases"},
-        {"driver": "volume", "category": "volume", "metric": "revenue", "delta": 0.60, "report_delta_value": 6.0, "report_delta": "+6.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings deck"},
+        {"driver": "repeatable guidance bias", "category": "historical_bias", "metric": "revenue", "delta": 400, "report_delta_value": 4.0, "report_delta": "+4.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "three comparable company releases"},
+        {"driver": "volume", "category": "volume", "metric": "revenue", "delta": 600, "report_delta_value": 6.0, "report_delta": "+6.0 亿美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings deck"},
         {"driver": "mix", "category": "mix", "metric": "adjusted_eps", "delta": 0.04, "report_delta_value": 0.04, "report_delta": "+0.04 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings call"},
         {"driver": "cost", "category": "cost", "metric": "adjusted_eps", "delta": 0.01, "report_delta_value": 0.01, "report_delta": "+0.01 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "company filing"},
     ],
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
+
+wrong_revenue_unit = deepcopy(preview_audit)
+revenue = wrong_revenue_unit["metrics"]["revenue"]
+for field in ("anchor", "consensus", "forecast", "tolerance"):
+    revenue[field] = revenue[field] / 1000
+for field in revenue["tolerance_components"]:
+    revenue["tolerance_components"][field] /= 1000
+revenue["unit"] = "USD billions"
+revenue["report_scale"] = 10
+for item in wrong_revenue_unit["forecast_bridge"]:
+    if item["metric"] == "revenue":
+        item["delta"] /= 1000
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, wrong_revenue_unit)
+except ValueError as exc:
+    message = str(exc)
+    assert "exactly USD millions" in message
+    assert "normalize source revenue" in message
+else:
+    raise AssertionError("preview must reject ambiguous billion-based revenue normalization")
 
 revenue_synonym_preview = (
     preview.replace("锚点为收入", "锚点为营收")
@@ -166,16 +186,16 @@ else:
 
 inline_audit = deepcopy(preview_audit)
 inline_audit["call"] = "与分析师持平"
-inline_audit["metrics"]["revenue"]["forecast"] = 45.2
+inline_audit["metrics"]["revenue"]["forecast"] = 45200
 inline_audit["metrics"]["revenue"]["report_forecast_value"] = 452
 inline_audit["metrics"]["revenue"]["report_forecast"] = "452 亿美元"
 inline_audit["metrics"]["adjusted_eps"]["forecast"] = 0.91
 inline_audit["metrics"]["adjusted_eps"]["report_forecast_value"] = 0.91
 inline_audit["metrics"]["adjusted_eps"]["report_forecast"] = "0.91 美元"
-inline_audit["forecast_bridge"][0]["delta"] = 0.10
+inline_audit["forecast_bridge"][0]["delta"] = 100
 inline_audit["forecast_bridge"][0]["report_delta_value"] = 1.0
 inline_audit["forecast_bridge"][0]["report_delta"] = "+1.0 亿美元"
-inline_audit["forecast_bridge"][1]["delta"] = 0.10
+inline_audit["forecast_bridge"][1]["delta"] = 100
 inline_audit["forecast_bridge"][1]["report_delta_value"] = 1.0
 inline_audit["forecast_bridge"][1]["report_delta"] = "+1.0 亿美元"
 inline_audit["forecast_bridge"][2]["delta"] = 0.005
@@ -188,7 +208,7 @@ assert module.validate_preview_audit(inline_audit)[0] == "与分析师持平"
 
 miss_audit = deepcopy(preview_audit)
 miss_audit["call"] = "低于分析师预期"
-miss_audit["metrics"]["revenue"]["forecast"] = 44.0
+miss_audit["metrics"]["revenue"]["forecast"] = 44000
 miss_audit["metrics"]["revenue"]["report_forecast_value"] = 440
 miss_audit["metrics"]["revenue"]["report_forecast"] = "440 亿美元"
 miss_audit["metrics"]["adjusted_eps"]["forecast"] = 0.85
@@ -265,7 +285,7 @@ else:
     raise AssertionError("preview must require a structured audit")
 
 contradictory = deepcopy(preview_audit)
-contradictory["metrics"]["revenue"]["forecast"] = 44.0
+contradictory["metrics"]["revenue"]["forecast"] = 44000
 contradictory["metrics"]["revenue"]["report_forecast_value"] = 440
 contradictory["metrics"]["revenue"]["report_forecast"] = "440 亿美元"
 contradictory["metrics"]["adjusted_eps"]["forecast"] = 0.85
@@ -285,7 +305,7 @@ else:
     raise AssertionError("preview must reject a call that conflicts with the independent forecast")
 
 arbitrary_tolerance = deepcopy(preview_audit)
-arbitrary_tolerance["metrics"]["revenue"]["tolerance"] = 0.90
+arbitrary_tolerance["metrics"]["revenue"]["tolerance"] = 900
 try:
     module.validate_workflow_report("NVIDIA", "preview", preview, arbitrary_tolerance)
 except ValueError as exc:
@@ -294,7 +314,7 @@ else:
     raise AssertionError("preview must reject an arbitrary neutral band")
 
 broken_bridge = deepcopy(preview_audit)
-broken_bridge["metrics"]["revenue"]["forecast"] = 46.2
+broken_bridge["metrics"]["revenue"]["forecast"] = 46200
 broken_bridge["metrics"]["revenue"]["report_forecast_value"] = 462
 broken_bridge["metrics"]["revenue"]["report_forecast"] = "462 亿美元"
 try:
@@ -379,10 +399,10 @@ else:
     raise AssertionError("published forecast values must match the structured audit")
 
 missing_audited_display = deepcopy(preview_audit)
-missing_audited_display["metrics"]["revenue"]["forecast"] = 47.0
+missing_audited_display["metrics"]["revenue"]["forecast"] = 47000
 missing_audited_display["metrics"]["revenue"]["report_forecast_value"] = 470
 missing_audited_display["metrics"]["revenue"]["report_forecast"] = "470 亿美元"
-missing_audited_display["forecast_bridge"][1]["delta"] = 1.60
+missing_audited_display["forecast_bridge"][1]["delta"] = 1600
 missing_audited_display["forecast_bridge"][1]["report_delta_value"] = 16.0
 missing_audited_display["forecast_bridge"][1]["report_delta"] = "+16.0 亿美元"
 try:

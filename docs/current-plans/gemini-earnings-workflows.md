@@ -61,4 +61,5 @@
 - 同一真机校验继续暴露出审计展示值不一致时的抽象报错无法指导模型修稿。校验器仍严格拒绝不一致数据，但错误会列出缺失的 `report_anchor`、`report_consensus`、`report_forecast`、`report_tolerance` 精确展示字符串，供模型按审计对象逐项修复。
 - 第四次真机运行已由 Gemini 生成合格 PDF，但 Gemini 曾有一次漏传 `skill_name` 的调用在后续成功调用之后仍被全局副作用保护器判作“状态不确定”，导致终稿和附件未持久化。副作用分类现在把缺少非空技能目标的 `execute_script` 视为前置校验阶段、不可产生副作用；有明确技能目标的脚本执行仍保持持久副作用保护。
 - 第五次真机运行进一步证明“有技能目标”仍不足以区分前置拒绝和执行后失败：对象参数缺少声明顺序也会在脚本启动前失败。`skill_tool` 现在显式返回 `side_effect_status=not_started/uncertain`，ACP 保留该字段，副作用门禁只放行明确的 `not_started`；进程启动、超时、非零退出、输出或 artifact 校验失败继续按不确定副作用处理。
+- 第六次真机运行首次完整持久化了终稿与 PDF，却在逐页验收中发现模型把 `$157 million` 错写为 `1.57 USD billions`，继而展示成 `15.7 亿美元`。财报前瞻审计现在统一把收入规范化为 `USD millions`，并固定以 `report_scale=0.01` 输出 `亿美元`；renderer 会拒绝 billion-based 原始审计，即使其内部算术自洽，避免数量级错误穿过结构校验。
 - 部署重启必须等待连续两次 active chat 为 0，避免中断用户任务。
