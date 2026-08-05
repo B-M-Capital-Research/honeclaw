@@ -28,7 +28,7 @@ use hone_core::{ActorIdentity, HoneError};
 use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
-use crate::routes::chat::build_chat_sse;
+use crate::routes::chat::{build_chat_sse, earnings_workflow_execution_override};
 use crate::state::{AppState, PushEvent};
 use crate::types::{
     PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicEarningsWorkflowKind,
@@ -821,6 +821,21 @@ pub(crate) async fn handle_chat(
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "消息不能为空");
     }
 
+    let execution_override = if earnings_request {
+        match earnings_workflow_execution_override(&state.core.config.agent.earnings_workflow) {
+            Ok(route) => Some(route),
+            Err(error) => {
+                tracing::error!(error = %error, "invalid earnings workflow execution route");
+                return crate::routes::json_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "财报工作流执行配置不可用",
+                );
+            }
+        }
+    } else {
+        None
+    };
+
     let (mut combined_message, attachments_count) =
         match build_public_chat_input(&state, &actor, &user.user_id, &message, attachments).await {
             Ok(value) => value,
@@ -837,6 +852,7 @@ pub(crate) async fn handle_chat(
         combined_message,
         attachments_count,
         earnings_request.then_some(true),
+        execution_override,
         reply_language,
     )
     .into_response()

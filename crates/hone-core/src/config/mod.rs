@@ -23,8 +23,8 @@ pub mod yaml;
 
 pub use agent::{
     AdminConfig, AgentConfig, AgentConversationStrategy, AgentRunnerKind, AgentRunnerProbe,
-    AuxiliaryLlmConfig, CodexAcpConfig, GeminiAcpConfig, HoneCloudConfig, KimiConfig, LlmConfig,
-    LlmProfileEntryConfig, LlmProfileParamsConfig, LlmProviderEntryConfig,
+    AuxiliaryLlmConfig, CodexAcpConfig, EarningsWorkflowConfig, GeminiAcpConfig, HoneCloudConfig,
+    KimiConfig, LlmConfig, LlmProfileEntryConfig, LlmProfileParamsConfig, LlmProviderEntryConfig,
     LlmProviderOptionsConfig, LlmReasoningConfig, OpenRouterConfig, OpencodeAcpConfig,
 };
 pub use channels::{

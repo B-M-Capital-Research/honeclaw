@@ -45,6 +45,7 @@ pub(crate) enum ExecutionMode {
 pub(crate) enum ExecutionRunnerSelection {
     Configured,
     ConfiguredTrustedAdministrator,
+    OpencodeAcpTrustedAdministrator,
 }
 
 #[derive(Clone)]
@@ -159,6 +160,12 @@ impl ExecutionService {
                     request.model_override.as_deref(),
                 )?
             }
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator => self
+                .core
+                .create_openrouter_opencode_runner_with_model_override(
+                    tool_registry,
+                    request.model_override.as_deref(),
+                )?,
         };
         let runner_name = runner.name();
         let conversation_strategy = runner.conversation_strategy();
@@ -622,6 +629,55 @@ mod tests {
             .expect("server-verified administrator should use configured native runner");
 
         assert_eq!(prepared.runner_name, "codex_cli");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_routes_verified_earnings_turn_to_opencode_when_global_runner_is_codex() {
+        let root = temp_root("execution_verified_earnings_opencode_override");
+        let core = make_test_core(&root, "codex_acp");
+        let mut core = match Arc::try_unwrap(core) {
+            Ok(core) => core,
+            Err(_) => panic!("test core should have a unique owner"),
+        };
+        core.config.llm.openrouter.api_key = "sk-or-test-placeholder".to_string();
+        let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+        let mut request = make_request(
+            actor,
+            ExecutionMode::PersistentConversation,
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator,
+        );
+        request.model_override = Some("google/gemini-3.1-pro-preview".to_string());
+
+        let prepared = ExecutionService::new(Arc::new(core))
+            .prepare(request)
+            .expect("verified earnings workflow should use OpenCode");
+
+        assert_eq!(prepared.runner_name, "opencode_acp");
+        assert!(matches!(
+            prepared.runner_request.conversation,
+            crate::runners::RunnerConversationInput::EphemeralCompiledPrompt { .. }
+        ));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_fails_closed_when_earnings_openrouter_credential_is_missing() {
+        let root = temp_root("execution_earnings_openrouter_key_missing");
+        let core = make_test_core(&root, "codex_acp");
+        let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+        let mut request = make_request(
+            actor,
+            ExecutionMode::PersistentConversation,
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator,
+        );
+        request.model_override = Some("google/gemini-3.1-pro-preview".to_string());
+
+        let error = match ExecutionService::new(core).prepare(request) {
+            Ok(_) => panic!("earnings route must require a configured OpenRouter credential"),
+            Err(error) => error,
+        };
+        assert!(error.contains("OpenRouter credential"));
         let _ = std::fs::remove_dir_all(root);
     }
 

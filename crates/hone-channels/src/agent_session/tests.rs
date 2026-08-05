@@ -64,8 +64,8 @@ use super::helpers::{
 };
 use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
-    AgentRunOptions, AgentRunQuotaMode, AgentSessionErrorKind, AgentSessionEvent,
-    AgentSessionListener, AgentTurnOrigin, GeminiStreamOptions,
+    AgentRunOptions, AgentRunQuotaMode, AgentRunRunnerOverride, AgentSessionErrorKind,
+    AgentSessionEvent, AgentSessionListener, AgentTurnOrigin, GeminiStreamOptions,
 };
 
 fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -4358,6 +4358,118 @@ async fn database_admin_web_turn_uses_native_codex_prompt_ownership() {
         Some(user_task)
     );
     let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
+    let root = make_temp_dir("hone_channels_database_admin_earnings_opencode_turn");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| {
+        Box::new(RecordingContextRunner {
+            recorded_contexts: Arc::new(Mutex::new(Vec::new())),
+            recorded_runtime_inputs: Arc::new(Mutex::new(Vec::new())),
+            queued_results: Arc::new(Mutex::new(VecDeque::new())),
+            conversation_strategy: AgentConversationStrategy::EphemeralCompiledPrompt,
+            native_skill_projection: None,
+        })
+    }));
+    let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+    let session =
+        AgentSession::new(core, actor.clone(), "direct").with_prompt_options(PromptOptions {
+            is_admin: true,
+            ..PromptOptions::default()
+        });
+    let user_task = "请为 AAOI 执行财报前瞻";
+    let expanded_skill_turn = format!(
+        "【Skill Instructions】\nSTRICT EARNINGS WORKFLOW\n\n\
+         【User Task After Invoking This Skill】\n{user_task}"
+    );
+    let options = AgentRunOptions {
+        runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+        model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+        entity_resolution_input: Some(user_task.to_string()),
+        ..AgentRunOptions::default()
+    };
+
+    let (execution, _) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            user_task,
+            &expanded_skill_turn,
+            &options,
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("database admin OpenCode turn: {error}"));
+
+    assert_eq!(execution.runner_name, "recording_context_runner");
+    assert!(matches!(
+        &execution.runner_request.conversation,
+        crate::runners::RunnerConversationInput::EphemeralCompiledPrompt { .. }
+    ));
+    let (_, runtime_input, _) = execution
+        .runner_request
+        .conversation
+        .replay_parts()
+        .expect("OpenCode replay input");
+    assert!(runtime_input.contains("STRICT EARNINGS WORKFLOW"));
+    assert!(runtime_input.contains(user_task));
+    assert!(runtime_input.contains("【Session 上下文】"));
+
+    let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
+    let root = make_temp_dir("hone_channels_unverified_earnings_runner_override");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| {
+        Box::new(RecordingContextRunner {
+            recorded_contexts: Arc::new(Mutex::new(Vec::new())),
+            recorded_runtime_inputs: Arc::new(Mutex::new(Vec::new())),
+            queued_results: Arc::new(Mutex::new(VecDeque::new())),
+            conversation_strategy: AgentConversationStrategy::EphemeralCompiledPrompt,
+            native_skill_projection: None,
+        })
+    }));
+    let actor = ActorIdentity::new("web", "ordinary-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor.clone(), "direct");
+    let options = AgentRunOptions {
+        runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+        model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+        ..AgentRunOptions::default()
+    };
+
+    let error = match session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            "hello",
+            "hello",
+            &options,
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(_) => panic!("unverified actor must not use trusted runner override"),
+        Err((_, error)) => error,
+    };
+    assert!(error.contains("server-verified administrator"));
     let _ = std::fs::remove_dir_all(root);
 }
 

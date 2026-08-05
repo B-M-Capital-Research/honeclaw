@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## When to Use
 
@@ -195,6 +195,46 @@ because the new binary image is active. Before cutover:
    asset separately. The earnings renderer accepts an explicit
    `HONE_ZSXQ_SHARE_IMAGE`; otherwise it expects
    `packages/app/public/membership_zsxq.jpg` relative to its installed skill.
+
+### Earnings workflow OpenRouter route
+
+The administrator-only earnings preview and earnings analysis turns have a
+dedicated runner/model route. They do not inherit the global chat model:
+
+```yaml
+agent:
+  earnings_workflow:
+    runner: "opencode_acp"
+    model: "google/gemini-3.1-pro-preview"
+```
+
+The OpenRouter credential remains in canonical config under
+`llm.providers.openrouter.api_key/api_keys`; it is injected into the OpenCode
+child and must not be copied into `agent.opencode`, an environment file, the
+release directory, or a command argument. On a managed host, keep the canonical
+config owner-only, use the interactive provider configurator or an approved
+stdin-only secret update path, write through a mode-`0600` staging file, and
+atomically replace the exact file the service loads. Never print the old/new
+key or the whole config while checking the change.
+
+Before restart, validate only non-secret fields and credential presence:
+
+```text
+agent.earnings_workflow.runner = opencode_acp
+agent.earnings_workflow.model = google/gemini-3.1-pro-preview
+llm.providers.openrouter.kind = openrouter
+llm.providers.openrouter.base_url = https://openrouter.ai/api/v1
+llm.providers.openrouter.api_key/api_keys has at least one non-placeholder value
+```
+
+Also require a real authenticated probe to the exact model and a complete
+OpenCode ACP `initialize -> session/new -> session/prompt` probe. HTTP `200`
+from the models endpoint or ACP `initialize` alone is insufficient. Runtime
+acceptance must show `runner=opencode_acp` and transport model
+`openrouter/google/gemini-3.1-pro-preview` without logging the credential, then
+complete the forced `earnings-research` skill and persist/download its PDF.
+Missing credentials, an unsupported workflow runner, a different response
+model, or fallback to the global model is a stop condition.
 
 The earnings PDF renderer also needs a Linux Chromium executable and a CJK font
 available to the service account. On a Debian managed host, install and verify

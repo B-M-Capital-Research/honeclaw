@@ -676,27 +676,7 @@ impl HoneBotCore {
                 Ok(Box::new(CodexAcpRunner::new(codex_config, runner_timeouts)))
             }
             AgentRunnerKind::OpencodeAcp => {
-                let mut opencode_config = self.config.agent.opencode.clone();
-                if let Some(model_override) =
-                    model_override.filter(|value| !value.trim().is_empty())
-                {
-                    opencode_config.model = model_override.trim().to_string();
-                    opencode_config.variant = String::new();
-                }
-                let hone_manages_opencode_route = !opencode_config.model.trim().is_empty()
-                    || !opencode_config.variant.trim().is_empty()
-                    || !opencode_config.api_base_url.trim().is_empty()
-                    || !opencode_config.api_key.trim().is_empty();
-                if hone_manages_opencode_route && opencode_config.api_key.trim().is_empty() {
-                    let pool = self.config.llm.openrouter_key_pool();
-                    if let Some(key) = pool.first() {
-                        opencode_config.openrouter_api_key = Some(key.to_string());
-                    }
-                }
-                Ok(Box::new(OpencodeAcpRunner::new(
-                    opencode_config,
-                    runner_timeouts,
-                )))
+                self.create_opencode_runner_with_model_override(tool_registry, model_override)
             }
             AgentRunnerKind::HoneCloud => Ok(Box::new(HoneCloudRunner::new(
                 self.config.agent.hone_cloud.clone(),
@@ -715,6 +695,73 @@ impl HoneBotCore {
                 }
             }
         }
+    }
+
+    pub(crate) fn create_opencode_runner_with_model_override(
+        &self,
+        _tool_registry: ToolRegistry,
+        model_override: Option<&str>,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        #[cfg(test)]
+        if let Some(factory) = &self.test_runner_factory {
+            return Ok(factory());
+        }
+
+        let mut opencode_config = self.config.agent.opencode.clone();
+        if let Some(model_override) = model_override.filter(|value| !value.trim().is_empty()) {
+            opencode_config.model = model_override.trim().to_string();
+            opencode_config.variant = String::new();
+        }
+        let hone_manages_opencode_route = !opencode_config.model.trim().is_empty()
+            || !opencode_config.variant.trim().is_empty()
+            || !opencode_config.api_base_url.trim().is_empty()
+            || !opencode_config.api_key.trim().is_empty();
+        if hone_manages_opencode_route && opencode_config.api_key.trim().is_empty() {
+            let pool = self.config.llm.openrouter_key_pool();
+            if let Some(key) = pool.first() {
+                opencode_config.openrouter_api_key = Some(key.to_string());
+            }
+        }
+        Ok(Box::new(OpencodeAcpRunner::new(
+            opencode_config,
+            RunnerTimeouts {
+                step: self.config.agent.step_timeout(),
+                overall: self.config.agent.overall_timeout(),
+            },
+        )))
+    }
+
+    pub(crate) fn create_openrouter_opencode_runner_with_model_override(
+        &self,
+        _tool_registry: ToolRegistry,
+        model_override: Option<&str>,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        #[cfg(test)]
+        if let Some(factory) = &self.test_runner_factory {
+            return Ok(factory());
+        }
+
+        let model = model_override
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "earnings workflow OpenRouter model is missing".to_string())?;
+        let pool = self.config.llm.openrouter_key_pool();
+        let key = pool.first().ok_or_else(|| {
+            "earnings workflow OpenRouter credential is missing from config".to_string()
+        })?;
+        let mut opencode_config = self.config.agent.opencode.clone();
+        opencode_config.model = model.to_string();
+        opencode_config.variant = String::new();
+        opencode_config.api_base_url = "https://openrouter.ai/api/v1".to_string();
+        opencode_config.api_key.clear();
+        opencode_config.openrouter_api_key = Some(key.to_string());
+        Ok(Box::new(OpencodeAcpRunner::new(
+            opencode_config,
+            RunnerTimeouts {
+                step: self.config.agent.step_timeout(),
+                overall: self.config.agent.overall_timeout(),
+            },
+        )))
     }
 
     /// Native CLI/ACP runners execute outside Hone's actor-bound tool registry and may

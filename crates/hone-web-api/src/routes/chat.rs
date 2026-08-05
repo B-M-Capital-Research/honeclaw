@@ -12,19 +12,51 @@ use tokio_stream::StreamExt;
 use tracing::{error, info};
 
 use hone_channels::agent_session::{
-    AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
-    run_with_progress_ticks,
+    AgentRunOptions, AgentRunQuotaMode, AgentRunRunnerOverride, AgentSession, AgentSessionEvent,
+    AgentSessionListener, run_with_progress_ticks,
 };
 use hone_channels::prompt::{PromptOptions, ReplyLanguage};
 use hone_channels::run_event::RunEvent;
 use hone_channels::runtime::{clean_msg_markers, should_skip_buffer};
 use hone_core::ActorIdentity;
+use hone_core::config::{AgentRunnerKind, EarningsWorkflowConfig};
 
 use crate::state::{ActiveChatRunHandle, AppState};
 use crate::types::ChatRequest;
 
 const WEB_CHAT_PROGRESS_TICK: Duration = Duration::from_secs(10);
 const WEB_CHAT_PROGRESS_MIN_SILENCE: Duration = Duration::from_secs(15);
+
+#[derive(Clone)]
+pub(crate) struct TrustedChatExecutionOverride {
+    runner: AgentRunRunnerOverride,
+    runner_name: &'static str,
+    model: String,
+}
+
+pub(crate) fn earnings_workflow_execution_override(
+    config: &EarningsWorkflowConfig,
+) -> Result<TrustedChatExecutionOverride, String> {
+    let runner = match AgentRunnerKind::from_config_value(config.runner.trim()) {
+        AgentRunnerKind::OpencodeAcp => AgentRunRunnerOverride::OpencodeAcp,
+        _ => {
+            return Err(format!(
+                "agent.earnings_workflow.runner must be opencode_acp, got `{}`",
+                config.runner.trim()
+            ));
+        }
+    };
+    let model = config.model.trim();
+    if model.is_empty() {
+        return Err("agent.earnings_workflow.model must not be empty".to_string());
+    }
+    Ok(TrustedChatExecutionOverride {
+        runner,
+        runner_name: "opencode_acp",
+        model: model.to_string(),
+    })
+}
+
 fn localized(
     reply_language: Option<ReplyLanguage>,
     chinese: &'static str,
@@ -531,6 +563,7 @@ pub(crate) fn build_chat_sse(
     message: String,
     attachments_count: usize,
     prompt_admin_override: Option<bool>,
+    execution_override: Option<TrustedChatExecutionOverride>,
     reply_language: Option<hone_channels::prompt::ReplyLanguage>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // mpsc channel 连接 spawn task ↔ SSE stream
@@ -591,7 +624,10 @@ pub(crate) fn build_chat_sse(
             .send((
                 "run_started".into(),
                 json!({
-                    "runner": arc.core.config.agent.runner,
+                    "runner": execution_override
+                        .as_ref()
+                        .map(|route| route.runner_name)
+                        .unwrap_or(arc.core.config.agent.runner.as_str()),
                     "text": "",
                     "run_id": active_run.run_id,
                     "started_at_ms": active_run.started_at_ms,
@@ -660,7 +696,8 @@ pub(crate) fn build_chat_sse(
             timeout: Some(state.core.config.agent.overall_timeout()),
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
-            model_override: None,
+            runner_override: execution_override.as_ref().map(|route| route.runner),
+            model_override: execution_override.as_ref().map(|route| route.model.clone()),
             ..AgentRunOptions::default()
         };
         let heartbeat_tx = tx.clone();
@@ -720,7 +757,15 @@ pub(crate) async fn handle_chat(
         }
     }
 
-    build_chat_sse(state, actor_result, message, attachments_count, None, None)
+    build_chat_sse(
+        state,
+        actor_result,
+        message,
+        attachments_count,
+        None,
+        None,
+        None,
+    )
 }
 
 /// 部署脚本在终止进程前轮询此端点，避免把仍在生成的用户请求直接杀掉。
@@ -737,11 +782,30 @@ mod tests {
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
     use hone_channels::run_event::RunEvent;
     use hone_core::agent::AgentResponse;
+    use hone_core::config::EarningsWorkflowConfig;
     use serde_json::json;
 
     use crate::state::ActiveChatRunRegistry;
 
-    use super::{SseSessionListener, emit_web_progress_heartbeat};
+    use super::{
+        SseSessionListener, earnings_workflow_execution_override, emit_web_progress_heartbeat,
+    };
+
+    #[test]
+    fn earnings_workflow_route_is_exact_and_fails_closed_when_misconfigured() {
+        let route = earnings_workflow_execution_override(&EarningsWorkflowConfig::default())
+            .expect("default earnings route");
+        assert_eq!(route.runner_name, "opencode_acp");
+        assert_eq!(route.model, "google/gemini-3.1-pro-preview");
+
+        let mut invalid_runner = EarningsWorkflowConfig::default();
+        invalid_runner.runner = "codex_acp".to_string();
+        assert!(earnings_workflow_execution_override(&invalid_runner).is_err());
+
+        let mut missing_model = EarningsWorkflowConfig::default();
+        missing_model.model.clear();
+        assert!(earnings_workflow_execution_override(&missing_model).is_err());
+    }
 
     /// Public chat must tell the user what the turn is waiting on, in product
     /// language, beside the pending turn rather than inside the answer. The

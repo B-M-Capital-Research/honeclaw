@@ -97,6 +97,7 @@ pub struct AgentRunOptions {
     pub timeout: Option<Duration>,
     pub segmenter: Option<Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>>,
     pub quota_mode: AgentRunQuotaMode,
+    pub runner_override: Option<AgentRunRunnerOverride>,
     pub model_override: Option<String>,
     pub turn_origin: AgentTurnOrigin,
     pub entity_resolution_input: Option<String>,
@@ -108,11 +109,20 @@ impl Default for AgentRunOptions {
             timeout: None,
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
+            runner_override: None,
             model_override: None,
             turn_origin: AgentTurnOrigin::Interactive,
             entity_resolution_input: None,
         }
     }
+}
+
+/// A server-owned runner route for a single Agent turn. This is intentionally
+/// not deserialized from channel input; callers must establish the trust
+/// boundary before setting it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentRunRunnerOverride {
+    OpencodeAcp,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

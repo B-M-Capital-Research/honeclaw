@@ -1,6 +1,6 @@
 # Runbook: OpenCode Setup
 
-Last updated: 2026-08-02
+Last updated: 2026-08-05
 
 ## When to Use
 
@@ -212,6 +212,31 @@ Notes:
 - When `agent.opencode.model` / `api_base_url` / `api_key` are empty, Hone inherits the local OpenCode config instead of overriding it
 - When `agent.opencode.model` is non-empty, Hone explicitly calls `session/set_model` in the ACP session
 - `agent.opencode.variant` is appended to `modelId`, for example `openrouter/openai/gpt-5.4/medium`
+
+For the administrator-only earnings preview/analysis workflows, keep the
+global runner unchanged and configure the dedicated per-turn route instead:
+
+```yaml
+agent:
+  earnings_workflow:
+    runner: "opencode_acp"
+    model: "google/gemini-3.1-pro-preview"
+
+llm:
+  providers:
+    openrouter:
+      kind: "openrouter"
+      base_url: "https://openrouter.ai/api/v1"
+      api_key: ""
+```
+
+Put the real key only in the ignored canonical `config.yaml` through the
+interactive provider configurator or another stdin-only secret path; never
+commit it or pass it on a command line. Hone uses the existing OpenRouter key
+pool to inject `OPENROUTER_API_KEY` only into the OpenCode child and converts
+the workflow model to `openrouter/google/gemini-3.1-pro-preview` at the
+transport boundary. Ordinary conversations still use `agent.runner` and its
+normal model.
 
 If you explicitly want Hone to override your local OpenCode default, then add:
 

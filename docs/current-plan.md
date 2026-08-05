@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-05
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Gemini 3.1 Pro 财报工作流路由与 AAOI 样片**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/gemini-earnings-workflows.md`
+  - 摘要：把管理员专属财报前瞻/分析限定路由到 OpenCode ACP + OpenRouter `google/gemini-3.1-pro-preview`，保持普通聊天与强制 earnings skill 不变；补齐配置、信任边界、上下文策略、回归测试和生产密钥运维后，部署精确 revision 并产出 AAOI 可下载 PDF 样片
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

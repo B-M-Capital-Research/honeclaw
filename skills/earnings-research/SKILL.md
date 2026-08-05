@@ -128,9 +128,9 @@ For both modes, cite source names and dates next to material claims and include 
 
 After the final report text is complete, render it before answering.
 
-On native Codex:
+On every trusted runner:
 
-1. Write a UTF-8 JSON spec in the actor working directory with `company`, `mode`, `report_markdown`, and a safe `output_name`.
+1. Assemble one UTF-8 JSON spec with `company`, `mode`, `report_markdown`, and a safe `output_name`. Keep it in memory unless the runner already has a safe actor-local file-writing capability; the host-side renderer receives the JSON object directly and never requires a spec-file path.
 2. For `preview`, also include `preview_audit`. This private render-time contract is not shown in the report:
 
 ```json

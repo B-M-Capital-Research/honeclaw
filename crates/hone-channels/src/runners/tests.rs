@@ -187,6 +187,19 @@ fn configured_opencode_model_id_does_not_duplicate_variant_suffix() {
 }
 
 #[test]
+fn openrouter_key_routes_gemini_31_pro_through_openrouter_provider() {
+    let config = OpencodeAcpConfig {
+        model: "google/gemini-3.1-pro-preview".to_string(),
+        openrouter_api_key: Some("sk-or-test-placeholder".to_string()),
+        ..OpencodeAcpConfig::default()
+    };
+    assert_eq!(
+        configured_opencode_model_id(&config).as_deref(),
+        Some("openrouter/google/gemini-3.1-pro-preview")
+    );
+}
+
+#[test]
 fn opencode_api_key_log_status_does_not_preview_secret() {
     let status = opencode_api_key_log_status(Some("sk-or-v1-secret-value"));
 

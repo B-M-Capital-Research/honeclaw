@@ -687,6 +687,11 @@ agent:
     api_base_url: ""
     # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
     api_key: ""
+  earnings_workflow:
+    # Administrator-only earnings preview/analysis route. This does not change
+    # the runner or model used by ordinary conversations.
+    runner: "opencode_acp"
+    model: "google/gemini-3.1-pro-preview"
   hone_cloud:
     # Hosted service route seeded by this sample; runtime appends /api/public/v1/chat/completions when needed.
     base_url: "https://hone-claw.com"

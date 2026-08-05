@@ -321,6 +321,11 @@ fn assert_config_example_agent_defaults(config: &HoneConfig) {
     assert!(config.agent.opencode.model.is_empty());
     assert!(config.agent.opencode.api_base_url.is_empty());
     assert!(config.agent.opencode.api_key.is_empty());
+    assert_eq!(config.agent.earnings_workflow.runner, "opencode_acp");
+    assert_eq!(
+        config.agent.earnings_workflow.model,
+        "google/gemini-3.1-pro-preview"
+    );
 }
 
 fn assert_config_example_storage_defaults(config: &HoneConfig) {

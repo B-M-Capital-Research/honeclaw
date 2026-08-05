@@ -301,6 +301,8 @@ pub struct AgentConfig {
     #[serde(default)]
     pub opencode: OpencodeAcpConfig,
     #[serde(default)]
+    pub earnings_workflow: EarningsWorkflowConfig,
+    #[serde(default)]
     pub hone_cloud: HoneCloudConfig,
 }
 
@@ -458,7 +460,28 @@ impl Default for AgentConfig {
             gemini_acp: GeminiAcpConfig::default(),
             codex_acp: CodexAcpConfig::default(),
             opencode: OpencodeAcpConfig::default(),
+            earnings_workflow: EarningsWorkflowConfig::default(),
             hone_cloud: HoneCloudConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsWorkflowConfig {
+    /// Dedicated trusted runner for the administrator-only earnings workflows.
+    #[serde(default = "default_earnings_workflow_runner")]
+    pub runner: String,
+    /// Exact provider model id. OpenCode adds its provider prefix at the
+    /// transport boundary after the OpenRouter credential route is resolved.
+    #[serde(default = "default_earnings_workflow_model")]
+    pub model: String,
+}
+
+impl Default for EarningsWorkflowConfig {
+    fn default() -> Self {
+        Self {
+            runner: default_earnings_workflow_runner(),
+            model: default_earnings_workflow_model(),
         }
     }
 }
@@ -672,6 +695,14 @@ fn default_hone_cloud_model() -> String {
 
 fn default_opencode_command() -> String {
     "opencode".to_string()
+}
+
+fn default_earnings_workflow_runner() -> String {
+    "opencode_acp".to_string()
+}
+
+fn default_earnings_workflow_model() -> String {
+    "google/gemini-3.1-pro-preview".to_string()
 }
 fn default_opencode_api_base_url() -> String {
     String::new()

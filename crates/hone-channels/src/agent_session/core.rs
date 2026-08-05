@@ -65,9 +65,10 @@ use super::helpers::{
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
 use super::types::{
-    AgentRunOptions, AgentRunQuotaMode, AgentSessionError, AgentSessionErrorKind,
-    AgentSessionEvent, AgentSessionListener, AgentSessionResult, AgentTurnOrigin,
-    GeminiStreamOptions, MessageMetadata, session_error_event, session_progress_event,
+    AgentRunOptions, AgentRunQuotaMode, AgentRunRunnerOverride, AgentSessionError,
+    AgentSessionErrorKind, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
+    AgentTurnOrigin, GeminiStreamOptions, MessageMetadata, session_error_event,
+    session_progress_event,
 };
 
 #[derive(Clone)]
@@ -1266,7 +1267,8 @@ impl AgentSession {
             prepared_investment.map(|prepared| prepared.prompt_time_beijing),
             hone_core::beijing_now(),
         );
-        let use_native_codex_turn_input = options.turn_origin == AgentTurnOrigin::Interactive
+        let use_native_codex_turn_input = options.runner_override.is_none()
+            && options.turn_origin == AgentTurnOrigin::Interactive
             && (self
                 .core
                 .effective_runner_uses_native_codex_turns(&self.actor)
@@ -1414,10 +1416,21 @@ impl AgentSession {
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
                 session_metadata: restored.session_metadata,
                 model_override: options.model_override.clone(),
-                runner_selection: if self.prompt_options.is_admin {
-                    ExecutionRunnerSelection::ConfiguredTrustedAdministrator
-                } else {
-                    ExecutionRunnerSelection::Configured
+                runner_selection: match options.runner_override {
+                    Some(AgentRunRunnerOverride::OpencodeAcp) if self.prompt_options.is_admin => {
+                        ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator
+                    }
+                    Some(AgentRunRunnerOverride::OpencodeAcp) => {
+                        return Err((
+                            AgentSessionErrorKind::AgentFailed,
+                            "trusted runner override requires a server-verified administrator"
+                                .to_string(),
+                        ));
+                    }
+                    None if self.prompt_options.is_admin => {
+                        ExecutionRunnerSelection::ConfiguredTrustedAdministrator
+                    }
+                    None => ExecutionRunnerSelection::Configured,
                 },
                 allowed_tools: None,
                 max_tool_calls: None,
@@ -1724,19 +1737,23 @@ impl AgentSession {
         &self,
         turn_id: &str,
         delivered_before_ms: i64,
+        options: &AgentRunOptions,
     ) -> DeliveredPushContextBatch {
         let Some(store) = self.core.delivered_push_context_store.as_ref() else {
             return DeliveredPushContextBatch::default();
         };
-        let native_session_id = self
-            .core
-            .effective_runner_uses_native_codex_turns(&self.actor)
-            .then_some(self.session_id.as_str())
-            .or_else(|| {
-                (self.prompt_options.is_admin
-                    && self.core.configured_runner_uses_native_codex_turns())
+        let native_session_id = if options.runner_override.is_some() {
+            None
+        } else {
+            self.core
+                .effective_runner_uses_native_codex_turns(&self.actor)
                 .then_some(self.session_id.as_str())
-            });
+                .or_else(|| {
+                    (self.prompt_options.is_admin
+                        && self.core.configured_runner_uses_native_codex_turns())
+                    .then_some(self.session_id.as_str())
+                })
+        };
         match store.claim_delivered_push_context_with_native_observation(
             &self.actor,
             turn_id,
@@ -2263,6 +2280,7 @@ impl AgentSession {
             self.claim_delivered_push_context(
                 &delivered_push_turn_id,
                 interactive_ingress_cutoff_ms,
+                &options,
             )
         } else {
             DeliveredPushContextBatch::default()
