@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 2026-08-06 02:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-05 22:02-2026-08-06 02:02 CST。
+    - live source 继续外发异常数量级或明显不可信价格候选：01:30 `持仓财报与重大新闻心跳提醒` deliver preview 写 `SNDK $1,416.23 / AAOI $133.61`，02:00 同 job raw preview 写 `SNDK $1,418.44`，02:00 `闪迪关键事件心跳提醒` deliver preview 写 `SNDK $1,417.93`，02:00 `中际旭创关键事件心跳提醒` deliver preview 写 `300308.SZ ¥947.74`、昨收 `¥1,021.99`。
+    - raw preview 同步显示 SNDK 最新价、昨收、日高 / 日低、PE 等指标均围绕千美元级价格组织。
+  - 最近代码：
+    - 22:02 后无非文档代码提交；本轮没有新的代码级修复可作为关闭依据。
+  - 判断：
+    - 最新样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选；不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+
 - 2026-08-05 22:02 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-05 18:03-22:02 CST。
