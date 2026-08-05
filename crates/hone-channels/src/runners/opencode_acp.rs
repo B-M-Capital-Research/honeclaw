@@ -1120,11 +1120,23 @@ fn opencode_extract_text_from_content(update: &Value) -> Option<String> {
     None
 }
 
+fn opencode_parse_embedded_tool_value(value: &Value) -> Value {
+    let Some(text) = value.as_str() else {
+        return value.clone();
+    };
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_str(trimmed).unwrap_or_else(|_| Value::String(trimmed.to_string()))
+    }
+}
+
 fn opencode_extract_tool_result(update: &Value) -> Option<Value> {
     if let Some(structured) = update
         .get("rawOutput")
         .and_then(|value| value.get("structuredContent"))
-        .cloned()
+        .map(opencode_parse_embedded_tool_value)
         .filter(is_meaningful_tool_value)
     {
         return Some(structured);
@@ -1132,14 +1144,14 @@ fn opencode_extract_tool_result(update: &Value) -> Option<Value> {
     if let Some(output) = update
         .get("rawOutput")
         .and_then(|value| value.get("output"))
-        .cloned()
+        .map(opencode_parse_embedded_tool_value)
         .filter(is_meaningful_tool_value)
     {
         return Some(output);
     }
     if let Some(raw_output) = update
         .get("rawOutput")
-        .cloned()
+        .map(opencode_parse_embedded_tool_value)
         .filter(is_meaningful_tool_value)
     {
         return Some(raw_output);
@@ -1661,6 +1673,78 @@ mod side_effect_status_tests {
         assert_eq!(result["status"], "failed");
         assert_eq!(result["isError"], true);
         assert_eq!(result["side_effect_status"], "not_started");
+    }
+
+    #[test]
+    fn completed_tool_update_decodes_opencode_1_18_13_json_string_output() {
+        let result = opencode_extract_tool_result(&json!({
+            "status": "completed",
+            "rawOutput": {
+                "metadata": {},
+                "output": serde_json::to_string(&json!({
+                    "success": false,
+                    "render_success": false,
+                    "side_effect_status": "not_started",
+                    "render_error": "preview preflight found 9 issues",
+                    "artifacts": []
+                })).expect("serialize production-shaped output")
+            }
+        }))
+        .expect("completed result");
+
+        assert_eq!(result["success"], false);
+        assert_eq!(result["render_success"], false);
+        assert_eq!(result["side_effect_status"], "not_started");
+        assert_eq!(result["artifacts"], json!([]));
+
+        let failed_call = hone_core::agent::ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name": "earnings-research",
+                "execute_script": true
+            }),
+            result,
+            tool_call_id: Some("render-failed".to_string()),
+        };
+        assert!(
+            crate::tool_trace::earnings_pdf_validation_failed_without_side_effects(&[failed_call])
+        );
+    }
+
+    #[test]
+    fn completed_json_string_renderer_result_retains_the_pdf_artifact() {
+        let result = opencode_extract_tool_result(&json!({
+            "status": "completed",
+            "rawOutput": {
+                "metadata": {},
+                "output": serde_json::to_string(&json!({
+                    "success": true,
+                    "render_success": true,
+                    "side_effect_status": "completed",
+                    "validated_report_markdown": "# AAOI公司财报前瞻分析\n\n完整报告",
+                    "artifacts": [{
+                        "kind": "document",
+                        "path": "/sandbox/AAOI_Earnings_Preview.pdf",
+                        "mime": "application/pdf"
+                    }]
+                })).expect("serialize production-shaped output")
+            }
+        }))
+        .expect("completed result");
+        let completed_call = hone_core::agent::ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name": "earnings-research",
+                "execute_script": true
+            }),
+            result,
+            tool_call_id: Some("render-completed".to_string()),
+        };
+
+        assert_eq!(
+            crate::tool_trace::completed_earnings_pdf_artifact(&[completed_call]).as_deref(),
+            Some("/sandbox/AAOI_Earnings_Preview.pdf")
+        );
     }
 }
 

@@ -43,6 +43,7 @@
 - 生产 AAOI：正文完成、一个 PDF 卡片、点击下载成功、刷新后仍存在；日志无文字降级成功终态。
 - 生产故障复现确认：`ses_02df86fc1ffeMrWksTwhlo0D5e` 在首次只读 DataFetch 后由 Gemini 返回精确 `400 invalid_request: Corrupted thought signature`；回归必须证明仅该结构化错误触发一次全新隔离会话，且不压缩/带回旧聊天。
 - 第二层生产复现确认：`ses_02de7db74ffe5VdG8XHEnt8AsO` 已跨过签名错误并完成数据/Web 取证，但 renderer 因每次只显示 8 条而连续六轮从 20→12→6→单项→单项→新闻数量返工；同会话三个 continuation 均为 0-token 空响应。回归必须证明普通错误一次完整返回、超大集合仍按 32 条截断，并且只有明确写入前拒绝的 renderer trace 可以触发一次新会话。
+- 第三层生产复现确认：OpenCode ACP `1.18.13` 把成功传输的 MCP `rawOutput.output` 作为 JSON 字符串返回；若 runner 不解码，宿主只能看到 `Value::String`，会同时丢失 renderer 的成功 artifact 和安全失败字段。回归必须用该真实 envelope 证明字符串被解析成结构化结果后才进入 PDF 成功/重试判定。
 
 ## Documentation Sync
 
