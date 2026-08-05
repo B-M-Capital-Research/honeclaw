@@ -4,6 +4,18 @@ Last updated: 2026-08-05
 
 ## 2026-08-05
 
+### Earnings PDF Terminal Enforcement And AAOI Production Repair
+
+- Status: done; deployed to production from an exact GHCR image; no formal release or tag
+- Date: 2026-08-05
+- Plan: `docs/archive/plans/earnings-pdf-terminal-enforcement.md`
+- Handoff: `docs/handoffs/2026-08-05-earnings-pdf-terminal-enforcement.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-05-02-route-earnings-workflows-to-gemini-31-pro-through-opencode` terminal-enforcement and OpenCode result-envelope consequences
+- Related PRs / commits: direct `main` commits `c70be6c0`, `f24d0f76`, `bb002a43`, `82c835b7`, `9935d383`, and deployed `f5a384b2932b6602840968bc8c0a910f154008ee`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; full workspace check/test; complete CI-safe regressions; OpenCode 1.18.13 JSON-string result fixtures; real authenticated AAOI browser/download/refresh/PDF visual acceptance
+- Current conclusion: a dedicated earnings turn cannot publish renderer-failure prose or a text-only report as success. The exact renderer trace and a persisted PDF are required, validated Markdown is projected deterministically, safe pre-write validation failures can recover once, and OpenCode's JSON-string MCP output is decoded before artifact/side-effect decisions. Production runs exact `f5a384b2` from digest `sha256:d7a11aef6b4b968bd172692ddfd5a29e4cfcd2a0d0f262f10afce499fcfab4ff`; real AAOI message `12fb473d-c2c3-4db7-ba40-e6b3a756e2f1` generated the four-page A4 `AAOI-preview-fdb23cd7.pdf`, downloaded successfully, survived chat refresh, and passed all-page watermark/news/share-image visual inspection.
+- Next entry point: `docs/handoffs/2026-08-05-earnings-pdf-terminal-enforcement.md`; preserve strict renderer gates and use decoded tool traces, not user-facing fallback copy, for future diagnosis.
+
 ### Gemini 3.1 Pro Earnings Workflows And AAOI Production Sample
 
 - Status: done

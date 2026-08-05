@@ -1,7 +1,7 @@
 # Earnings PDF 终态强制与生产修复
 
 - title: Earnings PDF 终态强制与生产修复
-- status: in_progress
+- status: archived
 - created_at: 2026-08-05
 - updated_at: 2026-08-05
 - owner: Codex
@@ -44,6 +44,10 @@
 - 生产故障复现确认：`ses_02df86fc1ffeMrWksTwhlo0D5e` 在首次只读 DataFetch 后由 Gemini 返回精确 `400 invalid_request: Corrupted thought signature`；回归必须证明仅该结构化错误触发一次全新隔离会话，且不压缩/带回旧聊天。
 - 第二层生产复现确认：`ses_02de7db74ffe5VdG8XHEnt8AsO` 已跨过签名错误并完成数据/Web 取证，但 renderer 因每次只显示 8 条而连续六轮从 20→12→6→单项→单项→新闻数量返工；同会话三个 continuation 均为 0-token 空响应。回归必须证明普通错误一次完整返回、超大集合仍按 32 条截断，并且只有明确写入前拒绝的 renderer trace 可以触发一次新会话。
 - 第三层生产复现确认：OpenCode ACP `1.18.13` 把成功传输的 MCP `rawOutput.output` 作为 JSON 字符串返回；若 runner 不解码，宿主只能看到 `Value::String`，会同时丢失 renderer 的成功 artifact 和安全失败字段。回归必须用该真实 envelope 证明字符串被解析成结构化结果后才进入 PDF 成功/重试判定。
+- 最终代码门禁通过：changed-file rustfmt、`cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`、`cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`（`hone-channels` 776 passed / 1 ignored）和 `bash tests/regression/run_ci.sh`。
+- 精确生产运行时 `f5a384b2932b6602840968bc8c0a910f154008ee` 从 GHCR digest `sha256:d7a11aef6b4b968bd172692ddfd5a29e4cfcd2a0d0f262f10afce499fcfab4ff` 原子切换完成；`/api/meta` 回读 exact Git SHA、`source=ghcr_linux_oci`、cloud authority、PostgreSQL 与 OSS 健康，服务 `NRestarts=0`。
+- 真实 AAOI 消息 `12fb473d-c2c3-4db7-ba40-e6b3a756e2f1` 使用 `openrouter/google/gemini-3.1-pro-preview`，在同一 Agent 轮内执行 13 次只读/renderer 工具并完成多轮严格修稿，最终 `success=true`、`generated_files=1`、助手消息持久化成功；聊天产生 `AAOI-preview-fdb23cd7.pdf`，点击下载到本机，刷新后仍有同一附件卡片。
+- 下载 PDF 为 595,130 bytes、SHA-256 `2abfee7d1ee62b238cefa02b3287aec712d59f076d57d9c6ca4d9b11ae6935be`、4 页 A4。逐页 PNG 检查确认无裁切/重叠/方块字，正文包含 `知识星球：巴芒科技` 水印、独立近期新闻页和最终知识星球分享图。
 
 ## Documentation Sync
 
@@ -56,3 +60,4 @@
 - 已启动 renderer 的失败仍可能有不确定副作用；不得自动重放可能产生重复文件的调用。
 - fresh-session 校验重试会重新取证并增加耗时，但不能携带模型上一会话的草稿或把未知工具当成只读；任何 artifact、未知状态或未知工具都必须阻断重试。
 - 生产重启必须在活跃会话为零时进行，避免中断其他用户任务。
+- 严格报告可能进行多轮 renderer 自修复；本次 AAOI 用时约 380 秒、OpenCode 记录 82,147 usage units / 约 USD 0.87。该成本是保持证据/格式门禁的已接受代价，后续应从真实失败分布优化提示和一次通过率，而不是放宽 renderer。
