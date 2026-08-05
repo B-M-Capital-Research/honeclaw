@@ -625,7 +625,10 @@ def validate_workflow_report(
         if not any(term in assumptions_text for term in ("EPS", "每股收益", "营业利润", "净利润", "EBITDA")):
             raise ValueError("preview 1.2.2 must include at least one profit forecast")
         if not any(term in assumptions_text for term in ("中性区间", "中性带", "持平区间", "容差")):
-            raise ValueError("preview 1.2.2 must disclose the neutral tolerance used for the call")
+            raise ValueError(
+                "preview 1.2.2 must contain one literal neutral-tolerance label: "
+                "中性带, 中性区间, 持平区间, or 容差"
+            )
         fiscal_period = nonempty_string(preview_audit.get("fiscal_period"), "preview_audit.fiscal_period")
         if fiscal_period not in assumptions_text:
             raise ValueError("preview 1.2.2 must use the audited fiscal period")

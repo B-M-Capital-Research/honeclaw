@@ -56,4 +56,5 @@
 - 生产验收发现 OpenCode 1.18.13 将 `initialize.agentInfo.name` 从旧夹具中的 `opencode` 改为 `OpenCode`；适配器只接受这两个已观测身份并继续拒绝其它大小写变体，避免无界放宽身份检查。
 - 首次 AAOI 真机运行证明 Gemini/OpenRouter 工具续写可用，同时暴露出旧附件验收指令被 fresh replay 重新激活；专用工作流必须隔离 prior history，不能依赖模型自行判断历史任务已结束。
 - 第二次 AAOI 真机运行证明历史隔离生效，但普通投研系统契约仍强制了首行时间，并允许模型在首次 renderer 校验失败后以文字降级；专用 profile 必须同时移除通用投研契约并把可修正的 renderer 错误设为强制重试。
+- 第三次 AAOI 真机运行已进入强制 renderer 修复循环；模型对抽象的 `neutral tolerance` 错误连续使用未被允许的同义词。renderer 错误必须给出可复制的字面量，skill 也必须指定统一的 `中性带`，否则严格校验会退化为无效重试。
 - 部署重启必须等待连续两次 active chat 为 0，避免中断用户任务。

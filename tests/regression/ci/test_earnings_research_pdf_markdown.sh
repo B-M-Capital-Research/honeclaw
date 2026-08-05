@@ -141,6 +141,20 @@ preview_audit = {
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
+try:
+    module.validate_workflow_report(
+        "NVIDIA",
+        "preview",
+        preview.replace("收入中性带", "收入中性宽容带").replace("EPS 中性区间", "EPS 宽容范围"),
+        preview_audit,
+    )
+except ValueError as exc:
+    message = str(exc)
+    assert "literal neutral-tolerance label" in message
+    assert "中性带" in message
+else:
+    raise AssertionError("renderer must return an actionable literal for a missing neutral-band label")
+
 inline_audit = deepcopy(preview_audit)
 inline_audit["call"] = "与分析师持平"
 inline_audit["metrics"]["revenue"]["forecast"] = 45.2
