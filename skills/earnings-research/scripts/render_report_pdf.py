@@ -802,9 +802,248 @@ def validate_preview_audit(
     return audit_call, parsed_metrics
 
 
+def collect_preview_preflight_errors(
+    company: str, report: str, preview_audit: object
+) -> list[str]:
+    """Return common preview-contract errors together so the model can fix them once."""
+    errors: list[str] = []
+    for marker in AI_STYLE_MARKERS:
+        if marker in report:
+            errors.append(f"report contains normal AI-answer meta language: {marker}")
+
+    expected_headings = [
+        f"# {company}公司财报前瞻分析",
+        "# 1. 整体分析",
+        "## 1.1 核心股价因素",
+        "## 1.2 业绩指引 vs 机构观点",
+        "### 1.2.1 核心结论",
+        "### 1.2.2 财报假设",
+        "### 1.2.3 和机构分析对比",
+        "## 1.3 近期新闻",
+    ]
+    if workflow_headings(report) != expected_headings:
+        errors.append("preview report must use the exact old Workflow headings and order")
+
+    overall = re.search(
+        r"^# 1\. 整体分析\s*$\n+(.+?)(?=^## 1\.1 核心股价因素\s*$)",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    overall_text = overall.group(1).strip() if overall else ""
+    if expectation_call(overall_text) is None:
+        errors.append(
+            "preview overall analysis must begin with 超出分析师预期、低于分析师预期、or 与分析师持平"
+        )
+    compact_overall = re.sub(r"\s+", "", overall_text)
+    if len(compact_overall) < 55 or len(re.findall(r"[。！？]", overall_text)) < 2:
+        errors.append(
+            "preview overall analysis must explain the call in at least two substantive sentences"
+        )
+    first_sentence = re.split(r"[。！？]", overall_text, maxsplit=1)[0].strip()
+    if not re.search(r"\d", first_sentence):
+        errors.append("preview overall analysis must attach a numerical reason to the call in its first sentence")
+
+    core = re.search(
+        r"^### 1\.2\.1 核心结论\s*$\n+(.+?)(?=^### 1\.2\.2 财报假设\s*$)",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if not core or not expectation_calls_in(core.group(1)):
+        errors.append("preview 1.2.1 must make the expectation call unambiguous in its first paragraph")
+
+    assumptions = re.search(
+        r"^### 1\.2\.2 财报假设\s*$\n+(.+?)(?=^### 1\.2\.3 和机构分析对比\s*$)",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assumptions_text = assumptions.group(1) if assumptions else ""
+    if not (
+        "机构预期" in assumptions_text
+        and "独立预测" in assumptions_text
+        and any(term in assumptions_text for term in ("收入", "营收"))
+        and "%" in assumptions_text
+    ):
+        errors.append(
+            "preview 1.2.2 must contain these literal fields: 机构预期, 独立预测, 收入 or 营收, and a percentage gap containing %"
+        )
+
+    comparison = re.search(
+        r"^### 1\.2\.3 和机构分析对比\s*$\n+(.+?)(?=^## 1\.3 近期新闻\s*$)",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    comparison_text = comparison.group(1) if comparison else ""
+    if not any(term in comparison_text for term in ("电话会", "业绩会", "演示材料", "投资者材料")):
+        errors.append("preview 1.2.3 must incorporate the latest call or investor materials")
+
+    if not isinstance(preview_audit, dict):
+        errors.append("preview_audit is required for preview reports")
+        return errors
+
+    market_context = preview_audit.get("market_context")
+    if isinstance(market_context, dict):
+        report_quote = str(market_context.get("report_quote", ""))
+        quote_as_of = str(market_context.get("quote_as_of", ""))
+        if report_quote not in comparison_text or quote_as_of not in comparison_text:
+            errors.append(
+                "preview 1.2.3 must publish the audited current quote and quote date before comparing analyst ratings"
+            )
+
+    institution_views = preview_audit.get("institution_views")
+    institution_names: list[str] = []
+    publisher_or_aggregator_names = {
+        "seeking alpha",
+        "zacks",
+        "marketbeat",
+        "tipranks",
+        "yahoo finance",
+        "financial modeling prep",
+        "fmp",
+    }
+    recognized_rating_terms = (
+        "buy", "hold", "sell", "outperform", "underperform", "overweight",
+        "underweight", "market perform", "sector perform", "equal weight",
+        "neutral", "accumulate", "add", "reduce", "买入", "增持", "持有",
+        "中性", "卖出", "跑赢", "跑输", "优于大盘", "与大盘持平",
+    )
+    if isinstance(institution_views, list):
+        for index, view in enumerate(institution_views):
+            if not isinstance(view, dict):
+                continue
+            institution = str(view.get("institution", ""))
+            if institution:
+                institution_names.append(institution)
+            if institution.strip().lower() in publisher_or_aggregator_names:
+                errors.append(
+                    f"preview_audit.institution_views[{index}].institution must name the issuing broker, bank, or research house, not a publisher or aggregator"
+                )
+            rating = str(view.get("rating_or_recommendation", ""))
+            if rating and not any(term in rating.lower() for term in recognized_rating_terms):
+                errors.append(
+                    f"preview_audit.institution_views[{index}].rating_or_recommendation must contain the actual Buy/Hold/Sell/Outperform-style stance, not only an action"
+                )
+            source_url = str(view.get("source_url", ""))
+            if source_url and urlparse(source_url).path in ("", "/"):
+                errors.append(
+                    f"preview_audit.institution_views[{index}].source_url must be the specific rating or research page, not a site homepage"
+                )
+            for field in (
+                "rating_or_recommendation",
+                "target_price",
+                "revenue_view",
+                "profit_view",
+            ):
+                value = str(view.get(field, ""))
+                if not value or value not in comparison_text:
+                    errors.append(
+                        f"preview 1.2.3 must publish audited institution detail: {institution} {field}={value or '<missing>'}"
+                    )
+
+    allowed_event_kinds = {
+        "previous_earnings",
+        "company_operating_update",
+        "institution_view",
+        "named_customer",
+        "peer_supply_chain",
+    }
+    allowed_relevance = {"company_direct", "named_customer", "peer_supply_chain"}
+    expected_relevance = {
+        "previous_earnings": "company_direct",
+        "company_operating_update": "company_direct",
+        "institution_view": "company_direct",
+        "named_customer": "named_customer",
+        "peer_supply_chain": "peer_supply_chain",
+    }
+    news_evidence = preview_audit.get("news_evidence")
+    if isinstance(news_evidence, list):
+        for index, event in enumerate(news_evidence):
+            if not isinstance(event, dict):
+                continue
+            event_kind = str(event.get("event_kind", ""))
+            relevance = str(event.get("relevance", ""))
+            if event_kind not in allowed_event_kinds:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}].event_kind must be one of "
+                    + ", ".join(sorted(allowed_event_kinds))
+                )
+            if relevance not in allowed_relevance:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}].relevance must be one of "
+                    + ", ".join(sorted(allowed_relevance))
+                )
+            elif event_kind in expected_relevance and relevance != expected_relevance[event_kind]:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}] must mark {event_kind} as {expected_relevance[event_kind]}"
+                )
+            source_url = str(event.get("source_url", ""))
+            if source_url and urlparse(source_url).path in ("", "/"):
+                errors.append(
+                    f"preview_audit.news_evidence[{index}].source_url must be a specific article, filing, release, transcript, or rating page"
+                )
+            company_link = str(event.get("company_link", ""))
+            if relevance in {"named_customer", "peer_supply_chain"} and len(company_link) < 18:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}].company_link must explain the company-specific transmission path"
+                )
+
+    metrics = preview_audit.get("metrics")
+    if isinstance(metrics, dict):
+        allowed_anchor_kinds = {
+            "management_guidance_midpoint",
+            "management_guidance_point",
+            "segment_model",
+            "margin_model",
+        }
+        for metric_name, metric in metrics.items():
+            if not isinstance(metric, dict):
+                continue
+            if metric.get("anchor_kind") not in allowed_anchor_kinds:
+                errors.append(
+                    f"preview_audit.metrics.{metric_name}.anchor_kind must identify guidance or a model"
+                )
+            raw_consensus = metric.get("consensus")
+            report_scale = metric.get("report_scale")
+            report_consensus_value = metric.get("report_consensus_value")
+            if all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in (raw_consensus, report_scale, report_consensus_value)
+            ):
+                expected_value = float(raw_consensus) * float(report_scale)
+                epsilon = max(1e-9, abs(expected_value) * 1e-6)
+                if abs(float(report_consensus_value) - expected_value) > epsilon:
+                    errors.append(
+                        f"preview_audit.metrics.{metric_name}.report_consensus_value must equal the audited value times report_scale"
+                    )
+
+    news = re.search(
+        r"^## 1\.3 近期新闻\s*$\n+(.+)$",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    news_text = news.group(1) if news else ""
+    news_items = [
+        item.strip() for item in re.split(r"\n\s*\n", news_text.strip()) if item.strip()
+    ]
+    operating_terms = ("收入", "利润", "毛利", "销量", "价格", "成本", "产能", "供给", "需求", "出货", "EPS", "本季")
+    for index, item in enumerate(news_items, start=1):
+        if not any(term in item for term in operating_terms):
+            errors.append(
+                f"preview news item {index} must explicitly use at least one operating or period impact term: "
+                + ", ".join(operating_terms)
+            )
+    return errors
+
+
 def validate_workflow_report(
     company: str, mode: str, report: str, preview_audit: object | None = None
 ) -> None:
+    if mode == "preview":
+        preflight_errors = collect_preview_preflight_errors(company, report, preview_audit)
+        if preflight_errors:
+            raise ValueError(
+                f"preview preflight found {len(preflight_errors)} issues; fix all before retrying:\n- "
+                + "\n- ".join(preflight_errors)
+            )
     reject_ai_style_markers(report)
     headings = workflow_headings(report)
     if mode == "preview":
