@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-05 10:05 CST 运行态复核：问题继续在 live source 出站候选中复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-05 06:00-10:05 CST。
+    - 近窗异常价格候选继续进入 heartbeat deliver / duplicate preview：06:00 `持仓财报与重大新闻心跳提醒` 与 `存储板块关键事件心跳提醒` 均写 `SNDK $1,427.62 / AAOI $131.63`；06:30 `NBIS关键事件心跳提醒` 写 `SNDK $1,427.62`；07:00 `闪迪关键事件心跳提醒` 继续写 `SNDK $1,427.62`；06:30 duplicate preview 仍匹配历史 `SNDK $1,288.03`。
+    - 同窗 source runtime 继续有 `run_start=108`、`run_finish=108`、`deliver=107`，说明异常价格仍能进入用户侧出站候选，而不是单纯静态历史文档残留。
+  - 判断：
+    - 该样本仍是同一异常数量级行情锚污染 heartbeat / scheduler 生成上下文与出站候选，不新建重复缺陷。
+    - 严重等级维持 `P0`：错误价格数量级会污染投资监控和交易判断。本轮未见错投、敏感泄露或全渠道不可用，且不是 P1，不创建 GitHub Issue。
+
 - 2026-08-05 06:01 CST 运行态复核：`4fc91dc2 fix: guard scheduler suffix-currency price anchors` 后问题继续在 live source 出站候选中复发，状态从代码级 `Fixed / P0` 回退为运行态 `New / P0`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-05 02:00-06:00 CST。

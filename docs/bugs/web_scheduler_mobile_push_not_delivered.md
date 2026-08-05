@@ -9,6 +9,16 @@
 
 ## 最新进展
 
+- `2026-08-05 10:05 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-05 06:00-10:05 CST`。
+    - 近窗统计到 22 条 `web push broadcast failed: channel closed`，以及 45 条 `[dryrun sink]` fallback。
+    - 代表样本：08:30 CST 后多个 Web actor 先记录 `channel digest sink failed, falling back to log: web push broadcast failed: channel closed`，随后 `[dryrun sink]` 写出 body preview；`data/sessions.sqlite3` 同窗 `web_push_messages` 增量为 0。
+  - 判断：
+    - 这不是 2026-05 原始问题中的“assistant 承诺手机系统通知”复发；旧能力边界提示仍可视为已修。
+    - 但同一 Web 投递链路仍把实际 channel closed / dryrun fallback 留在无法审计送达的状态，会误导用户、调度审计和后续补发判断，因此维持功能性 `P2/New`。
+    - 同窗 event-engine 和 scheduler 仍有运行 / 送达样本，未见全渠道不可用、错对象投递、敏感泄露或数据破坏，非 P1，不创建 GitHub Issue。
+
 - `2026-08-05 02:01 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：`2026-08-04 22:01-2026-08-05 02:01 CST`。
