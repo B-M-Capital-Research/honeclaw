@@ -42,9 +42,9 @@ assert "@top-left" in workflow_html
 assert 'content: "HONE   2026/8/4"' in workflow_html
 assert "background: #fff6ee" in workflow_html
 assert "background: #f9dfcc" in workflow_html
-assert ".news-list { margin-top: 3mm" in workflow_html
-assert "font-size: 9.6pt; line-height: 1.48" in workflow_html
-assert ".news-list li:last-child { margin-bottom: 0; }" in workflow_html
+assert ".news-item { margin: 0 0 4mm" in workflow_html
+assert "font-size: 10.2pt; line-height: 1.58" in workflow_html
+assert ".news-item:last-of-type { margin-bottom: 0; }" in workflow_html
 assert "WORKFLOW FORMAT" not in workflow_html
 assert '<div class="report-title">NVIDIA公司财报前瞻分析</div>' in workflow_html
 
@@ -99,16 +99,16 @@ preview = (
     "### 1.2.2 财报假设\n"
     "FY2026 Q1 管理层指引锚点为收入 450 亿美元、调整后 EPS 0.90 美元；机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%。收入中性带为 4.5 亿美元，EPS 中性区间为 0.018 美元。收入桥把历史指引偏差计入 +4.0 亿美元，数据中心出货再增加 +6.0 亿美元；产品组合和成本分别为 EPS 带来 +0.04 美元和 +0.01 美元。\n"
     "### 1.2.3 和机构分析对比\n"
-    "历史上过去三季实际收入均高于管理层指引上限。当前指引低于机构当前预期，但最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
+    "历史上过去三季实际收入均高于管理层指引上限。截至 2026-08-04，当前股价 123.45 美元已经反映较强增长预期。Morgan Stanley 维持增持评级，认为本季收入接近 455 亿美元、EPS 约 0.92 美元，主要担心供给爬坡；Goldman Sachs 给出买入建议，收入判断约 458 亿美元、EPS 约 0.94 美元，更看重产品组合。两家机构的收入和利润预期都低于 460 亿美元与 0.95 美元的独立预测。最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
     "## 1.3 近期新闻\n"
-    "- 2026-08-03｜类型：公司｜事件：客户扩大订单｜当季影响：收入与需求上升｜指引计入：部分计入指引｜[公司](https://example.com/1)\n"
-    "- 2026-08-01｜类型：机构预期｜事件：机构上修预期｜当季影响：收入门槛上升｜指引计入：计入状态未知｜[机构](https://example.com/2)\n"
-    "- 2026-07-30｜类型：需求端｜事件：云厂商提高资本开支｜当季影响：数据中心需求增加｜指引计入：计入状态未知｜[客户](https://example.com/3)\n"
-    "- 2026-07-28｜类型：同业｜事件：同业业绩超预期｜当季影响：验证行业收入与毛利改善｜指引计入：计入状态未知｜[同业](https://example.com/4)\n"
-    "- 2026-07-25｜类型：供应链｜事件：供应持续偏紧｜当季影响：产品价格获得支撑｜指引计入：部分计入指引｜[行业](https://example.com/5)\n"
-    "- 2026-07-20｜类型：公司｜事件：新产品开始出货｜当季影响：产品组合改善并推高毛利｜指引计入：已计入指引｜[公司](https://example.com/6)\n"
-    "- 2026-07-10｜类型：供应链｜事件：供应恢复｜当季影响：出货约束减轻｜指引计入：未计入指引｜[公司](https://example.com/7)\n"
-    "- 2026-07-02｜类型：公司｜事件：远期技术送样｜当季影响：本季收入没有贡献｜指引计入：计入状态未知｜[公司](https://example.com/8)"
+    "**2026-08-03** Morgan Stanley 更新 NVIDIA 观点，认为供给爬坡限制本季收入，但维持增持评级；这项机构预期的计入状态未知。来源：Morgan Stanley。\n\n"
+    "**2026-08-01** NVIDIA 披露客户订单扩大，新增需求支持本季收入与出货，其中只有部分计入指引。来源：NVIDIA Investor Relations。\n\n"
+    "**2026-07-30** 主要云客户确认采购计划，已核实的合作关系使其资本开支直接支持 NVIDIA 本季需求，但计入状态未知。来源：Customer Filing。\n\n"
+    "**2026-07-28** NVIDIA 更新新产品交付节奏，产品组合改善并推高本季毛利，这部分已计入指引。来源：NVIDIA Product Release。\n\n"
+    "**2026-07-25** Goldman Sachs 给出买入建议，认为本季收入和 EPS 高于管理层指引，但其机构预期计入状态未知。来源：Goldman Sachs。\n\n"
+    "**2026-07-23** NVIDIA 管理层说明新增产能开始释放，预计增加本季出货，这部分已计入指引。来源：NVIDIA Operations Update。\n\n"
+    "**2026-07-20** 上次 NVIDIA 财报和电话会确认订单、收入及 EPS 基线，并说明当前产品爬坡已计入指引。来源：NVIDIA Earnings Release。\n\n"
+    "**2026-07-10** 关键供应商恢复供给，经过 NVIDIA 采购关系核实后可判断本季出货约束减轻，但该变化未计入指引。来源：Supplier Release。"
 )
 preview_audit = {
     "fiscal_period": "FY2026 Q1",
@@ -118,6 +118,11 @@ preview_audit = {
         {"name": "Provider A", "as_of": "2026-08-04"},
         {"name": "Provider B", "as_of": "2026-08-03"},
     ],
+    "institution_views": [
+        {"institution": "Morgan Stanley", "as_of": "2026-08-03", "rating_or_recommendation": "增持", "revenue_view": "本季收入约455亿美元", "profit_view": "EPS约0.92美元", "rationale": "供给爬坡仍是限制", "source_name": "Morgan Stanley", "source_url": "https://example.com/ms"},
+        {"institution": "Goldman Sachs", "as_of": "2026-07-25", "rating_or_recommendation": "买入", "revenue_view": "本季收入约458亿美元", "profit_view": "EPS约0.94美元", "rationale": "产品组合改善", "source_name": "Goldman Sachs", "source_url": "https://example.com/gs"},
+    ],
+    "market_context": {"quote_value": 123.45, "report_quote": "123.45 美元", "quote_as_of": "2026-08-04", "quote_source_name": "Provider A"},
     "metrics": {
         "revenue": {"anchor": 45000, "anchor_kind": "management_guidance_midpoint", "consensus": 45000, "forecast": 46000, "unit": "USD millions", "tolerance": 450, "tolerance_components": {"estimate_dispersion": 300, "revision_magnitude": 450, "measurement_precision": 100}, "report_scale": 0.01, "report_unit": "亿美元", "report_anchor_value": 450, "report_consensus_value": 450, "report_forecast_value": 460, "report_tolerance_value": 4.5, "report_anchor": "450 亿美元", "report_consensus": "450 亿美元", "report_forecast": "460 亿美元", "report_tolerance": "4.5 亿美元"},
         "adjusted_eps": {"anchor": 0.90, "anchor_kind": "management_guidance_point", "consensus": 0.90, "forecast": 0.95, "unit": "USD/share", "tolerance": 0.018, "tolerance_components": {"estimate_dispersion": 0.010, "revision_magnitude": 0.018, "measurement_precision": 0.005}, "report_scale": 1, "report_unit": "美元", "report_anchor_value": 0.90, "report_consensus_value": 0.90, "report_forecast_value": 0.95, "report_tolerance_value": 0.018, "report_anchor": "0.90 美元", "report_consensus": "0.90 美元", "report_forecast": "0.95 美元", "report_tolerance": "0.018 美元"},
@@ -138,6 +143,16 @@ preview_audit = {
         {"driver": "mix", "category": "mix", "metric": "adjusted_eps", "delta": 0.04, "report_delta_value": 0.04, "report_delta": "+0.04 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "earnings call"},
         {"driver": "cost", "category": "cost", "metric": "adjusted_eps", "delta": 0.01, "report_delta_value": 0.01, "report_delta": "+0.01 美元", "direction": "up", "affected_period": "FY2026 Q1", "evidence": "company filing"},
     ],
+    "news_evidence": [
+        {"date": "2026-08-03", "event_kind": "institution_view", "relevance": "company_direct", "event_summary": "Morgan Stanley updates NVIDIA view", "affected_period": "FY2026 Q1", "operating_link": "sets the revenue and EPS bar", "company_link": "direct analyst view about NVIDIA", "guidance_status": "unknown", "source_name": "Morgan Stanley", "source_url": "https://example.com/1"},
+        {"date": "2026-08-01", "event_kind": "company_operating_update", "relevance": "company_direct", "event_summary": "customer orders expand", "affected_period": "FY2026 Q1", "operating_link": "supports revenue and shipments", "company_link": "NVIDIA disclosed the order update", "guidance_status": "partial", "source_name": "NVIDIA Investor Relations", "source_url": "https://example.com/2"},
+        {"date": "2026-07-30", "event_kind": "named_customer", "relevance": "named_customer", "event_summary": "customer confirms procurement", "affected_period": "FY2026 Q1", "operating_link": "supports current demand", "company_link": "the disclosed procurement relationship directly covers NVIDIA accelerators", "guidance_status": "unknown", "source_name": "Customer Filing", "source_url": "https://example.com/3"},
+        {"date": "2026-07-28", "event_kind": "company_operating_update", "relevance": "company_direct", "event_summary": "product delivery update", "affected_period": "FY2026 Q1", "operating_link": "improves mix and gross margin", "company_link": "NVIDIA issued the product release", "guidance_status": "included", "source_name": "NVIDIA Product Release", "source_url": "https://example.com/4"},
+        {"date": "2026-07-25", "event_kind": "institution_view", "relevance": "company_direct", "event_summary": "Goldman Sachs gives Buy view", "affected_period": "FY2026 Q1", "operating_link": "sets revenue and EPS expectations", "company_link": "direct analyst view about NVIDIA", "guidance_status": "unknown", "source_name": "Goldman Sachs", "source_url": "https://example.com/5"},
+        {"date": "2026-07-23", "event_kind": "company_operating_update", "relevance": "company_direct", "event_summary": "capacity starts releasing", "affected_period": "FY2026 Q1", "operating_link": "increases current shipments", "company_link": "NVIDIA management disclosed the capacity update", "guidance_status": "included", "source_name": "NVIDIA Operations Update", "source_url": "https://example.com/6"},
+        {"date": "2026-07-20", "event_kind": "previous_earnings", "relevance": "company_direct", "event_summary": "previous earnings and call", "affected_period": "FY2026 Q1", "operating_link": "sets orders revenue and EPS baseline", "company_link": "NVIDIA earnings release and call", "guidance_status": "included", "source_name": "NVIDIA Earnings Release", "source_url": "https://example.com/7"},
+        {"date": "2026-07-10", "event_kind": "peer_supply_chain", "relevance": "peer_supply_chain", "event_summary": "supplier restores supply", "affected_period": "FY2026 Q1", "operating_link": "reduces shipment constraints", "company_link": "the supplier names NVIDIA procurement and the affected accelerator component", "guidance_status": "not_included", "source_name": "Supplier Release", "source_url": "https://example.com/8"},
+    ],
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
@@ -145,7 +160,7 @@ try:
     module.validate_workflow_report(
         "NVIDIA",
         "preview",
-        preview.replace("本季收入没有贡献", "没有直接财务贡献"),
+        preview.replace("关键供应商恢复供给", "关键供应商发布公告").replace("本季出货约束减轻", "没有直接财务贡献"),
         preview_audit,
     )
 except ValueError as exc:
@@ -449,46 +464,85 @@ except ValueError:
 else:
     raise AssertionError("preview must require the exact recent-news section")
 
-too_few_news = preview.rsplit("\n- ", 1)[0]
+too_few_news = preview.rsplit("\n\n**", 1)[0]
 try:
     module.validate_workflow_report("NVIDIA", "preview", too_few_news, preview_audit)
 except ValueError as exc:
-    assert "eight to ten" in str(exc)
+    assert "one natural paragraph" in str(exc)
 else:
     raise AssertionError("preview news page must contain at least eight items")
 
-missing_news_impact = preview.replace("当季影响：收入与需求上升", "收入与需求上升")
-try:
-    module.validate_workflow_report("NVIDIA", "preview", missing_news_impact, preview_audit)
-except ValueError as exc:
-    assert "date, type, event" in str(exc)
-else:
-    raise AssertionError("each news item must include its current-quarter impact")
-
-stale_news = (
-    preview.replace("2026-07-20", "2026-07-17")
-    .replace("2026-07-30", "2026-07-21")
-    .replace("2026-07-28", "2026-07-19")
-    .replace("2026-07-25", "2026-07-18")
+linked_news = preview.replace(
+    "来源：Morgan Stanley。",
+    "来源：[Morgan Stanley](https://example.com/news)。",
 )
 try:
-    module.validate_workflow_report("NVIDIA", "preview", stale_news, preview_audit)
+    module.validate_workflow_report("NVIDIA", "preview", linked_news, preview_audit)
+except ValueError as exc:
+    assert "plain source names" in str(exc)
+else:
+    raise AssertionError("preview news must not display hyperlinks")
+
+stale_news = (
+    preview.replace("2026-07-30", "2026-07-21")
+    .replace("2026-07-28", "2026-07-19")
+    .replace("2026-07-25", "2026-07-18")
+    .replace("2026-07-23", "2026-07-17")
+    .replace("2026-07-20", "2026-07-16")
+)
+stale_audit = deepcopy(preview_audit)
+for item in stale_audit["news_evidence"]:
+    item["date"] = {
+        "2026-07-30": "2026-07-21",
+        "2026-07-28": "2026-07-19",
+        "2026-07-25": "2026-07-18",
+        "2026-07-23": "2026-07-17",
+        "2026-07-20": "2026-07-16",
+    }.get(item["date"], item["date"])
+try:
+    module.validate_workflow_report("NVIDIA", "preview", stale_news, stale_audit)
 except ValueError as exc:
     assert "within 14 days" in str(exc)
 else:
     raise AssertionError("at least half of preview news must be fresh")
 
-missing_demand = preview.replace("类型：需求端", "类型：公司")
+weak_news_audit = deepcopy(preview_audit)
+weak_news_audit["news_evidence"][5].update(
+    {
+        "event_kind": "named_customer",
+        "relevance": "named_customer",
+        "company_link": "the named customer relationship directly affects NVIDIA current-quarter demand",
+    }
+)
 try:
-    module.validate_workflow_report("NVIDIA", "preview", missing_demand, preview_audit)
+    module.validate_workflow_report("NVIDIA", "preview", preview, weak_news_audit)
 except ValueError as exc:
-    assert "demand-side" in str(exc)
+    assert "company_direct" in str(exc)
 else:
-    raise AssertionError("preview news must include downstream-demand evidence")
+    raise AssertionError("preview news must remain primarily company-direct")
 
-news_html = module.markdown_to_html("## 1.3 近期新闻\n\n- 2026-08-03｜类型：公司｜事件：订单｜当季影响：收入｜指引计入：已计入指引｜[来源](https://example.com)")
+missing_institution_comparison = preview.replace(
+    "Goldman Sachs 给出买入建议",
+    "另一家机构给出买入建议",
+    1,
+)
+try:
+    module.validate_workflow_report(
+        "NVIDIA", "preview", missing_institution_comparison, preview_audit
+    )
+except ValueError as exc:
+    assert "Goldman Sachs" in str(exc)
+else:
+    raise AssertionError("1.2.3 must compare each audited named institution")
+
+news_html = module.markdown_to_html(
+    "## 1.3 近期新闻\n\n"
+    "**2026-08-03** 公司订单支持本季收入，其中部分计入指引。来源：公司公告。"
+)
 assert '<h2 class="news-section">1.3 近期新闻</h2>' in news_html
-assert '<ul class="news-list">' in news_html
+assert '<p class="news-item">' in news_html
+assert '<ul class="news-list">' not in news_html
+assert '<a href=' not in news_html
 PY
 
 echo "earnings PDF markdown table regression passed"

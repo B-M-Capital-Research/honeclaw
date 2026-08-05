@@ -203,6 +203,186 @@ def validate_preview_audit(
             "preview_audit.consensus_limitations",
         )
 
+    institution_views = preview_audit.get("institution_views")
+    if not isinstance(institution_views, list) or not institution_views:
+        raise ValueError(
+            "preview_audit.institution_views must contain named analyst or institution views"
+        )
+    if len(institution_views) < 2:
+        nonempty_string(
+            preview_audit.get("institution_view_limitations"),
+            "preview_audit.institution_view_limitations",
+        )
+    institution_names: list[str] = []
+    for index, view in enumerate(institution_views):
+        if not isinstance(view, dict):
+            raise ValueError(f"preview_audit.institution_views[{index}] must be an object")
+        for field in (
+            "institution",
+            "rating_or_recommendation",
+            "revenue_view",
+            "profit_view",
+            "rationale",
+            "source_name",
+        ):
+            nonempty_string(
+                view.get(field), f"preview_audit.institution_views[{index}].{field}"
+            )
+        validate_iso_date(
+            view.get("as_of"), f"preview_audit.institution_views[{index}].as_of"
+        )
+        source_url = nonempty_string(
+            view.get("source_url"), f"preview_audit.institution_views[{index}].source_url"
+        )
+        if not re.match(r"^https?://", source_url):
+            raise ValueError(
+                f"preview_audit.institution_views[{index}].source_url must be HTTP(S)"
+            )
+        institution_names.append(
+            nonempty_string(
+                view.get("institution"),
+                f"preview_audit.institution_views[{index}].institution",
+            )
+        )
+    if len(set(institution_names)) != len(institution_names):
+        raise ValueError("preview_audit.institution_views must use distinct institutions")
+
+    market_context = preview_audit.get("market_context")
+    if not isinstance(market_context, dict):
+        raise ValueError("preview_audit.market_context must contain the current quote context")
+    quote_value = finite_number(
+        market_context.get("quote_value"), "preview_audit.market_context.quote_value"
+    )
+    report_quote = nonempty_string(
+        market_context.get("report_quote"), "preview_audit.market_context.report_quote"
+    )
+    quote_epsilon = max(1e-9, abs(quote_value) * 1e-6)
+    parsed_quote = first_report_number(
+        report_quote, "preview_audit.market_context.report_quote"
+    )
+    if abs(parsed_quote - quote_value) > quote_epsilon:
+        raise ValueError(
+            "preview_audit.market_context.report_quote must display quote_value exactly"
+        )
+    validate_iso_date(
+        market_context.get("quote_as_of"), "preview_audit.market_context.quote_as_of"
+    )
+    nonempty_string(
+        market_context.get("quote_source_name"),
+        "preview_audit.market_context.quote_source_name",
+    )
+
+    news_evidence = preview_audit.get("news_evidence")
+    if not isinstance(news_evidence, list) or not 8 <= len(news_evidence) <= 10:
+        raise ValueError("preview_audit.news_evidence must contain eight to ten events")
+    allowed_relevance = {"company_direct", "named_customer", "peer_supply_chain"}
+    allowed_event_kinds = {
+        "previous_earnings",
+        "company_operating_update",
+        "institution_view",
+        "named_customer",
+        "peer_supply_chain",
+    }
+    allowed_guidance_statuses = {"included", "not_included", "partial", "unknown"}
+    direct_count = 0
+    event_kinds: set[str] = set()
+    news_keys: set[tuple[str, str, str]] = set()
+    for index, event in enumerate(news_evidence):
+        if not isinstance(event, dict):
+            raise ValueError(f"preview_audit.news_evidence[{index}] must be an object")
+        event_date = validate_iso_date(
+            event.get("date"), f"preview_audit.news_evidence[{index}].date"
+        )
+        event_kind = nonempty_string(
+            event.get("event_kind"), f"preview_audit.news_evidence[{index}].event_kind"
+        )
+        if event_kind not in allowed_event_kinds:
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].event_kind must be one of "
+                + ", ".join(sorted(allowed_event_kinds))
+            )
+        relevance = nonempty_string(
+            event.get("relevance"), f"preview_audit.news_evidence[{index}].relevance"
+        )
+        if relevance not in allowed_relevance:
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].relevance must be one of "
+                + ", ".join(sorted(allowed_relevance))
+            )
+        if event_kind in {
+            "previous_earnings",
+            "company_operating_update",
+            "institution_view",
+        }:
+            if relevance != "company_direct":
+                raise ValueError(
+                    f"preview_audit.news_evidence[{index}] must mark {event_kind} as company_direct"
+                )
+        elif event_kind == "named_customer" and relevance != "named_customer":
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}] must mark named_customer relevance"
+            )
+        elif event_kind == "peer_supply_chain" and relevance != "peer_supply_chain":
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}] must mark peer_supply_chain relevance"
+            )
+        if relevance == "company_direct":
+            direct_count += 1
+        event_kinds.add(event_kind)
+        source_name = nonempty_string(
+            event.get("source_name"), f"preview_audit.news_evidence[{index}].source_name"
+        )
+        source_url = nonempty_string(
+            event.get("source_url"), f"preview_audit.news_evidence[{index}].source_url"
+        )
+        if not re.match(r"^https?://", source_url):
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].source_url must be HTTP(S)"
+            )
+        if re.search(r"https?://", source_name):
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].source_name must be a plain source name"
+            )
+        event_summary = nonempty_string(
+            event.get("event_summary"), f"preview_audit.news_evidence[{index}].event_summary"
+        )
+        for field in ("affected_period", "operating_link", "company_link"):
+            value = nonempty_string(
+                event.get(field), f"preview_audit.news_evidence[{index}].{field}"
+            )
+            if field == "company_link" and relevance != "company_direct" and len(value) < 18:
+                raise ValueError(
+                    f"preview_audit.news_evidence[{index}].company_link must explain the "
+                    "company-specific transmission path"
+                )
+        guidance_status = nonempty_string(
+            event.get("guidance_status"),
+            f"preview_audit.news_evidence[{index}].guidance_status",
+        )
+        if guidance_status not in allowed_guidance_statuses:
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].guidance_status must be one of "
+                + ", ".join(sorted(allowed_guidance_statuses))
+            )
+        key = (event_date, source_name, event_summary)
+        if key in news_keys:
+            raise ValueError("preview_audit.news_evidence must not repeat the same event")
+        news_keys.add(key)
+    minimum_direct = max(6, math.ceil(len(news_evidence) * 0.6))
+    if direct_count < minimum_direct:
+        raise ValueError(
+            f"preview_audit.news_evidence needs at least {minimum_direct} company_direct events; "
+            "do not pad the report with generic sector or price-move news"
+        )
+    if len(news_evidence) - direct_count > 3:
+        raise ValueError(
+            "preview_audit.news_evidence allows at most three customer, peer, or supply-chain events"
+        )
+    if "previous_earnings" not in event_kinds:
+        raise ValueError("preview_audit.news_evidence must include the previous earnings or call")
+    if "institution_view" not in event_kinds:
+        raise ValueError("preview_audit.news_evidence must include a named institution view")
+
     metrics = preview_audit.get("metrics")
     if not isinstance(metrics, dict) or "revenue" not in metrics:
         raise ValueError("preview_audit.metrics must contain revenue")
@@ -700,42 +880,105 @@ def validate_workflow_report(
             raise ValueError("preview 1.2.3 must incorporate the latest call or investor materials")
         if not any(term in comparison_text for term in ("已计入", "未计入", "部分计入", "是否计入")):
             raise ValueError("preview 1.2.3 must state whether major catalysts are included in guidance")
+        missing_institutions = [
+            str(view["institution"])
+            for view in preview_audit["institution_views"]
+            if str(view["institution"]) not in comparison_text
+        ]
+        if missing_institutions:
+            raise ValueError(
+                "preview 1.2.3 must compare these named institution views: "
+                + ", ".join(missing_institutions)
+            )
+        if not any(term in comparison_text for term in ("评级", "建议", "目标价")):
+            raise ValueError(
+                "preview 1.2.3 must state the institutions' rating, recommendation, or target price"
+            )
+        if not any(term in comparison_text for term in ("收入", "营收")) or not any(
+            term in comparison_text for term in ("利润", "EPS", "每股收益")
+        ):
+            raise ValueError(
+                "preview 1.2.3 must compare institution revenue and profit expectations with the independent forecast"
+            )
+        market_context = preview_audit["market_context"]
+        if str(market_context["report_quote"]) not in comparison_text or str(
+            market_context["quote_as_of"]
+        ) not in comparison_text:
+            raise ValueError(
+                "preview 1.2.3 must publish the audited current quote and quote date before comparing analyst ratings"
+            )
+        if not any(term in comparison_text for term in ("股价", "交易价格", "现价")):
+            raise ValueError("preview 1.2.3 must explain what the current stock price already prices in")
         news = re.search(
             r"^## 1\.3 近期新闻\s*$\n+(.+)$",
             report,
             flags=re.MULTILINE | re.DOTALL,
         )
         news_text = news.group(1) if news else ""
-        news_items = re.findall(r"(?m)^[-*]\s+(.+)$", news_text)
-        if not 8 <= len(news_items) <= 10:
-            raise ValueError("preview 1.3 must contain eight to ten news bullets")
-        news_pattern = re.compile(
-            r"^(\d{4}-\d{2}-\d{2})｜类型：(公司|机构预期|同业|供应链|需求端)｜"
-            r"事件：.+｜当季影响：.+｜指引计入："
-            r"(?:已计入指引|未计入指引|部分计入指引|计入状态未知)｜"
-            r"\[[^\]]+\]\(https?://[^)]+\)$"
-        )
+        if re.search(r"(?m)^\s*[-*]\s+", news_text):
+            raise ValueError("preview 1.3 must use one natural paragraph per event, not bullets")
+        if any(marker in news_text for marker in ("｜类型：", "｜事件：", "｜当季影响：", "｜指引计入：")):
+            raise ValueError(
+                "preview 1.3 must use natural paragraphs instead of pipe-delimited fields"
+            )
+        if re.search(r"\[[^\]]+\]\(https?://[^)]+\)", news_text) or re.search(
+            r"https?://", news_text
+        ):
+            raise ValueError(
+                "preview 1.3 must show plain source names only; do not display hyperlinks or URLs"
+            )
+        news_items = [
+            item.strip()
+            for item in re.split(r"\n\s*\n", news_text.strip())
+            if item.strip()
+        ]
+        if len(news_items) != len(preview_audit["news_evidence"]):
+            raise ValueError(
+                "preview 1.3 must contain one natural paragraph for each audited news event"
+            )
+        news_pattern = re.compile(r"^\*\*(\d{4}-\d{2}-\d{2})\*\*\s+.+来源：([^。\n]+)。?$")
         operating_terms = ("收入", "利润", "毛利", "销量", "价格", "成本", "产能", "供给", "需求", "出货", "EPS", "本季")
         report_date = parse_iso_date(preview_audit.get("report_date"), "preview_audit.report_date")
         news_dates: list[date] = []
-        news_categories: set[str] = set()
-        for index, item in enumerate(news_items, start=1):
-            match = news_pattern.fullmatch(item.strip())
+        guidance_phrases = {
+            "included": "已计入指引",
+            "not_included": "未计入指引",
+            "partial": "部分计入指引",
+            "unknown": "计入状态未知",
+        }
+        for index, (item, evidence) in enumerate(
+            zip(news_items, preview_audit["news_evidence"]), start=1
+        ):
+            normalized_item = re.sub(r"\s*\n\s*", " ", item.strip())
+            match = news_pattern.fullmatch(normalized_item)
             if not match:
                 raise ValueError(
-                    "each preview news item must include date, type, event, current-quarter impact, "
-                    "guidance inclusion, and one source link"
+                    f"preview news paragraph {index} must begin with **YYYY-MM-DD**, explain the "
+                    "event and company impact in prose, and end with 来源：plain source name。"
                 )
-            if not any(term in item for term in operating_terms):
+            if not any(term in normalized_item for term in operating_terms):
                 raise ValueError(
                     f"preview news item {index} must explicitly use at least one operating or period "
                     f"impact term: {', '.join(operating_terms)}"
                 )
             item_date = parse_iso_date(match.group(1), "preview news date")
+            if match.group(1) != evidence["date"]:
+                raise ValueError(
+                    f"preview news paragraph {index} date must match preview_audit.news_evidence"
+                )
+            if evidence["source_name"] not in match.group(2):
+                raise ValueError(
+                    f"preview news paragraph {index} must end with source name "
+                    f"{evidence['source_name']}"
+                )
+            expected_guidance = guidance_phrases[str(evidence["guidance_status"])]
+            if expected_guidance not in normalized_item:
+                raise ValueError(
+                    f"preview news paragraph {index} must naturally state {expected_guidance}"
+                )
             if item_date > report_date:
                 raise ValueError("preview news items cannot be dated after the scheduled report date")
             news_dates.append(item_date)
-            news_categories.add(match.group(2))
         if news_dates != sorted(news_dates, reverse=True):
             raise ValueError("preview news items must be in reverse chronological order")
         fresh_cutoff = report_date - timedelta(days=14)
@@ -743,15 +986,6 @@ def validate_workflow_report(
         if fresh_count * 2 < len(news_dates):
             raise ValueError(
                 "at least half of preview news items must fall within 14 days before report_date"
-            )
-        required_families = (
-            bool(news_categories.intersection({"公司", "机构预期"})),
-            bool(news_categories.intersection({"同业", "供应链"})),
-            "需求端" in news_categories,
-        )
-        if not all(required_families):
-            raise ValueError(
-                "preview news must cover company/expectations, peer/supply, and demand-side evidence"
             )
         return
 
@@ -806,7 +1040,8 @@ def markdown_to_html(markdown: str) -> str:
 
     def flush_paragraph() -> None:
         if paragraph:
-            chunks.append(f"<p>{inline_markup(' '.join(paragraph))}</p>")
+            paragraph_class = ' class="news-item"' if in_news_section else ""
+            chunks.append(f"<p{paragraph_class}>{inline_markup(' '.join(paragraph))}</p>")
             paragraph.clear()
 
     def close_list() -> None:
@@ -1064,9 +1299,8 @@ body {{ margin: 0; color: #202b3a; font-family: -apple-system, BlinkMacSystemFon
 h1 {{ margin: 0 0 5mm; padding-bottom: 2.5mm; border-bottom: .7mm solid #f1cdb6; color: #202b3a; font-size: 24pt; line-height: 1.25; font-weight: 800; break-after: avoid; }}
 h2 {{ margin: 7mm 0 4mm; padding: 2.2mm 2.5mm; border-radius: 2mm; background: #f9dfcc; color: #202b3a; font-size: 17.5pt; line-height: 1.3; font-weight: 800; break-after: avoid; }}
 .news-section {{ break-before: page; margin-top: 0; }}
-.news-list {{ margin-top: 3mm; padding-left: 1.3em; font-size: 9.6pt; line-height: 1.48; text-align: left; }}
-.news-list li {{ margin: 0 0 2.2mm; padding-left: .8mm; break-inside: avoid; }}
-.news-list li:last-child {{ margin-bottom: 0; }}
+.news-item {{ margin: 0 0 4mm; font-size: 10.2pt; line-height: 1.58; text-align: left; break-inside: avoid; }}
+.news-item:last-of-type {{ margin-bottom: 0; }}
 h3 {{ margin: 2mm 0 4mm; padding: 1.7mm 2mm; border-radius: 1.8mm; background: #fff3e9; color: #344052; font-size: 14.5pt; line-height: 1.32; font-weight: 750; break-after: avoid; }}
 h4 {{ margin: 5mm 0 2mm; font-size: 13pt; break-after: avoid; }}
 p {{ margin: 0 0 4.6mm; orphans: 3; widows: 3; }}
