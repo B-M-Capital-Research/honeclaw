@@ -44,6 +44,42 @@ WEAK_NEWS_PATTERNS = (
     r"板块.{0,20}(?:普涨|上涨|下跌|回调|抛售|风险偏好|资金流入)",
     r"risk[- ]on|generic sector sentiment|市场情绪波动|风险偏好",
 )
+NEWS_SOURCE_CLASSES = {
+    "company_primary",
+    "regulatory_primary",
+    "issuing_institution",
+    "reputable_media",
+    "commentary",
+}
+PRIMARY_NEWS_SOURCE_CLASSES = {
+    "company_primary",
+    "regulatory_primary",
+    "issuing_institution",
+}
+BRIDGE_SOURCE_CLASSES = {
+    "company_primary",
+    "regulatory_primary",
+    "model_calculation",
+}
+PUBLISHER_COMMENTARY_NAMES = (
+    "seeking alpha",
+    "zacks",
+    "marketbeat",
+    "tipranks",
+    "yahoo finance",
+)
+RATING_ACTION_TERMS = (
+    "upgrade",
+    "downgrade",
+    "reiterate",
+    "initiate",
+    "maintain",
+    "上调评级",
+    "下调评级",
+    "重申评级",
+    "首次覆盖",
+    "维持评级",
+)
 
 
 def emit(payload: dict) -> int:
@@ -122,6 +158,22 @@ def expectation_call(value: str) -> str | None:
 
 def expectation_calls_in(value: str) -> set[str]:
     return {item for item in EXPECTATION_CALLS if item in value}
+
+
+def metric_expectation_state(consensus: float, forecast: float, tolerance: float) -> str:
+    """Classify an expectation distance without leaking float noise at the band edge."""
+    delta = forecast - consensus
+    epsilon = max(
+        1e-9,
+        abs(consensus) * 1e-12,
+        abs(forecast) * 1e-12,
+        abs(tolerance) * 1e-9,
+    )
+    if delta > tolerance + epsilon:
+        return "above"
+    if delta < -tolerance - epsilon:
+        return "below"
+    return "inline"
 
 
 def reject_ai_style_markers(report: str) -> None:
@@ -364,6 +416,8 @@ def validate_preview_audit(
     }
     allowed_guidance_statuses = {"included", "not_included", "partial", "unknown"}
     direct_count = 0
+    primary_source_count = 0
+    commentary_count = 0
     event_kinds: set[str] = set()
     news_keys: set[tuple[str, str, str]] = set()
     for index, event in enumerate(news_evidence):
@@ -430,7 +484,25 @@ def validate_preview_audit(
         event_summary = nonempty_string(
             event.get("event_summary"), f"preview_audit.news_evidence[{index}].event_summary"
         )
+        source_class = nonempty_string(
+            event.get("source_class"),
+            f"preview_audit.news_evidence[{index}].source_class",
+        )
+        if source_class not in NEWS_SOURCE_CLASSES:
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}].source_class must be one of "
+                + ", ".join(sorted(NEWS_SOURCE_CLASSES))
+            )
+        if source_class in PRIMARY_NEWS_SOURCE_CLASSES:
+            primary_source_count += 1
+        if source_class == "commentary":
+            commentary_count += 1
         if event_kind == "institution_view":
+            if source_class not in {"issuing_institution", "reputable_media"}:
+                raise ValueError(
+                    f"preview_audit.news_evidence[{index}] institution_view must use "
+                    "source_class=issuing_institution or reputable_media reporting the named firm"
+                )
             institution_haystack = f"{source_name} {event_summary}".lower()
             if not any(name.lower() in institution_haystack for name in institution_names):
                 raise ValueError(
@@ -438,7 +510,16 @@ def validate_preview_audit(
                     "the audited issuing institutions, not only a publisher or columnist"
                 )
         evidence_text_parts = [event_summary]
-        for field in ("affected_period", "operating_link", "company_link"):
+        for field in (
+            "affected_period",
+            "operating_link",
+            "company_link",
+            "short_term_impact",
+            "long_term_impact",
+            "product_competition_link",
+            "verification_signal",
+            "primary_confirmation",
+        ):
             value = nonempty_string(
                 event.get(field), f"preview_audit.news_evidence[{index}].{field}"
             )
@@ -453,6 +534,13 @@ def validate_preview_audit(
             raise ValueError(
                 f"preview_audit.news_evidence[{index}] is conference, price-move, or generic "
                 "sector chatter; replace it with company operating evidence"
+            )
+        if any(name in source_name.lower() for name in PUBLISHER_COMMENTARY_NAMES) and any(
+            term in evidence_text for term in RATING_ACTION_TERMS
+        ):
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}] must not present a publisher author's "
+                "commentary as an institutional rating action"
             )
         guidance_status = nonempty_string(
             event.get("guidance_status"),
@@ -477,6 +565,13 @@ def validate_preview_audit(
         raise ValueError(
             "preview_audit.news_evidence allows at most three customer, peer, or supply-chain events"
         )
+    if primary_source_count < 5:
+        raise ValueError(
+            "preview_audit.news_evidence needs at least five company/regulatory primary or "
+            "issuing-institution events"
+        )
+    if commentary_count > 2:
+        raise ValueError("preview_audit.news_evidence allows at most two commentary events")
     if "previous_earnings" not in event_kinds:
         raise ValueError("preview_audit.news_evidence must include the previous earnings or call")
     if "institution_view" not in event_kinds:
@@ -654,13 +749,7 @@ def validate_preview_audit(
         consensus = float(metric["consensus"])
         forecast = float(metric["forecast"])
         tolerance = float(metric["tolerance"])
-        delta = forecast - consensus
-        if delta > tolerance:
-            states.append("above")
-        elif delta < -tolerance:
-            states.append("below")
-        else:
-            states.append("inline")
+        states.append(metric_expectation_state(consensus, forecast, tolerance))
     if "above" in states and "below" not in states:
         expected_call = "超出分析师预期"
     elif "below" in states and "above" not in states:
@@ -738,8 +827,29 @@ def validate_preview_audit(
     for index, item in enumerate(bridge):
         if not isinstance(item, dict):
             raise ValueError(f"preview_audit.forecast_bridge[{index}] must be an object")
-        for field in ("driver", "metric", "affected_period", "evidence"):
+        for field in (
+            "driver",
+            "metric",
+            "affected_period",
+            "evidence",
+            "recognition_basis",
+        ):
             nonempty_string(item.get(field), f"preview_audit.forecast_bridge[{index}].{field}")
+        bridge_source_class = nonempty_string(
+            item.get("source_class"),
+            f"preview_audit.forecast_bridge[{index}].source_class",
+        )
+        if bridge_source_class not in BRIDGE_SOURCE_CLASSES:
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}].source_class must be one of "
+                + ", ".join(sorted(BRIDGE_SOURCE_CLASSES))
+            )
+        evidence_text = f"{item.get('driver', '')} {item.get('evidence', '')}".lower()
+        if any(name in evidence_text for name in PUBLISHER_COMMENTARY_NAMES):
+            raise ValueError(
+                f"preview_audit.forecast_bridge[{index}] must use company/regulatory primary "
+                "evidence or an explicit model calculation, not a publisher or aggregator"
+            )
         direction = nonempty_string(
             item.get("direction"), f"preview_audit.forecast_bridge[{index}].direction"
         )
@@ -863,6 +973,10 @@ def collect_preview_preflight_errors(
     )
     if not core or not expectation_calls_in(core.group(1)):
         errors.append("preview 1.2.1 must make the expectation call unambiguous in its first paragraph")
+    elif expectation_call(core.group(1)) is None:
+        errors.append(
+            "preview 1.2.1 first sentence must begin with the same expectation call used in 1. 整体分析"
+        )
 
     assumptions = re.search(
         r"^### 1\.2\.2 财报假设\s*$\n+(.+?)(?=^### 1\.2\.3 和机构分析对比\s*$)",
@@ -879,6 +993,10 @@ def collect_preview_preflight_errors(
         errors.append(
             "preview 1.2.2 must contain these literal fields: 机构预期, 独立预测, 收入 or 营收, and a percentage gap containing %"
         )
+    if not any(term in assumptions_text for term in ("同比", "环比")):
+        errors.append("preview 1.2.2 must publish a decision-useful revenue growth assumption (同比 or 环比)")
+    if not any(term in assumptions_text for term in ("毛利", "利润", "EPS", "每股收益")):
+        errors.append("preview 1.2.2 must publish a profit/EPS or margin assumption")
 
     comparison = re.search(
         r"^### 1\.2\.3 和机构分析对比\s*$\n+(.+?)(?=^## 1\.3 近期新闻\s*$)",
@@ -909,7 +1027,15 @@ def collect_preview_preflight_errors(
             )
 
     institution_views = preview_audit.get("institution_views")
-    institution_names: list[str] = []
+    institution_names = (
+        [
+            str(view.get("institution", ""))
+            for view in institution_views
+            if isinstance(view, dict) and str(view.get("institution", ""))
+        ]
+        if isinstance(institution_views, list)
+        else []
+    )
     publisher_or_aggregator_names = {
         "seeking alpha",
         "zacks",
@@ -930,8 +1056,6 @@ def collect_preview_preflight_errors(
             if not isinstance(view, dict):
                 continue
             institution = str(view.get("institution", ""))
-            if institution:
-                institution_names.append(institution)
             if institution.strip().lower() in publisher_or_aggregator_names:
                 errors.append(
                     f"preview_audit.institution_views[{index}].institution must name the issuing broker, bank, or research house, not a publisher or aggregator"
@@ -957,6 +1081,23 @@ def collect_preview_preflight_errors(
                     errors.append(
                         f"preview 1.2.3 must publish audited institution detail: {institution} {field}={value or '<missing>'}"
                     )
+            institution_position = comparison_text.find(institution)
+            next_positions = [
+                comparison_text.find(other, institution_position + len(institution))
+                for other in institution_names
+                if other != institution
+                and comparison_text.find(other, institution_position + len(institution)) >= 0
+            ]
+            segment_end = min(next_positions) if next_positions else len(comparison_text)
+            segment = comparison_text[institution_position:segment_end] if institution_position >= 0 else ""
+            if str(view.get("as_of", "")) not in segment:
+                errors.append(
+                    f"preview 1.2.3 must give {institution} its own absolute as-of date"
+                )
+            if not any(term in segment for term in ("更保守", "更激进", "低于", "高于", "接近", "相比")):
+                errors.append(
+                    f"preview 1.2.3 must explain why {institution} is conservative or aggressive versus guidance or the independent forecast"
+                )
 
     allowed_event_kinds = {
         "previous_earnings",
@@ -975,6 +1116,8 @@ def collect_preview_preflight_errors(
     }
     news_evidence = preview_audit.get("news_evidence")
     if isinstance(news_evidence, list):
+        primary_source_count = 0
+        commentary_count = 0
         for index, event in enumerate(news_evidence):
             if not isinstance(event, dict):
                 continue
@@ -1004,6 +1147,38 @@ def collect_preview_preflight_errors(
                 errors.append(
                     f"preview_audit.news_evidence[{index}].company_link must explain the company-specific transmission path"
                 )
+            source_class = str(event.get("source_class", ""))
+            if source_class not in NEWS_SOURCE_CLASSES:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}].source_class must be one of "
+                    + ", ".join(sorted(NEWS_SOURCE_CLASSES))
+                )
+            if source_class in PRIMARY_NEWS_SOURCE_CLASSES:
+                primary_source_count += 1
+            if source_class == "commentary":
+                commentary_count += 1
+            if event_kind == "institution_view" and source_class not in {
+                "issuing_institution",
+                "reputable_media",
+            }:
+                errors.append(
+                    f"preview_audit.news_evidence[{index}] institution_view must use source_class=issuing_institution or reputable_media reporting the named firm"
+                )
+            for field in (
+                "short_term_impact",
+                "long_term_impact",
+                "product_competition_link",
+                "verification_signal",
+                "primary_confirmation",
+            ):
+                if not str(event.get(field, "")).strip():
+                    errors.append(f"preview_audit.news_evidence[{index}].{field} is required")
+        if primary_source_count < 5:
+            errors.append(
+                "preview_audit.news_evidence needs at least five company/regulatory primary or issuing-institution events"
+            )
+        if commentary_count > 2:
+            errors.append("preview_audit.news_evidence allows at most two commentary events")
 
     metrics = preview_audit.get("metrics")
     if isinstance(metrics, dict):
@@ -1034,6 +1209,27 @@ def collect_preview_preflight_errors(
                         f"preview_audit.metrics.{metric_name}.report_consensus_value must equal the audited value times report_scale"
                     )
 
+    bridge = preview_audit.get("forecast_bridge")
+    if isinstance(bridge, list):
+        for index, item in enumerate(bridge):
+            if not isinstance(item, dict):
+                continue
+            source_class = str(item.get("source_class", ""))
+            if source_class not in BRIDGE_SOURCE_CLASSES:
+                errors.append(
+                    f"preview_audit.forecast_bridge[{index}].source_class must be one of "
+                    + ", ".join(sorted(BRIDGE_SOURCE_CLASSES))
+                )
+            if not str(item.get("recognition_basis", "")).strip():
+                errors.append(
+                    f"preview_audit.forecast_bridge[{index}].recognition_basis is required"
+                )
+            evidence_text = f"{item.get('driver', '')} {item.get('evidence', '')}".lower()
+            if any(name in evidence_text for name in PUBLISHER_COMMENTARY_NAMES):
+                errors.append(
+                    f"preview_audit.forecast_bridge[{index}] must use company/regulatory primary evidence or an explicit model calculation, not a publisher or aggregator"
+                )
+
     news = re.search(
         r"^## 1\.3 近期新闻\s*$\n+(.+)$",
         report,
@@ -1055,6 +1251,19 @@ def collect_preview_preflight_errors(
                 f"preview news item {index} must explicitly use at least one operating or period impact term: "
                 + ", ".join(operating_terms)
             )
+        body = item.split("来源：", 1)[0]
+        if len(re.findall(r"[。！？]", body)) < 3:
+            errors.append(
+                f"preview news item {index} must contain at least three substantive sentences before 来源"
+            )
+        if not any(term in body for term in ("本季", "当季", "短期", "当前季度")):
+            errors.append(f"preview news item {index} must distinguish the current-quarter or short-term effect")
+        if not any(term in body for term in ("长期", "中长期", "未来", "后续")):
+            errors.append(f"preview news item {index} must explain the longer-term effect")
+        if not any(term in body for term in ("产品", "竞争", "份额", "客户", "产能", "毛利", "供应链")):
+            errors.append(f"preview news item {index} must explain the product or competitive-position effect")
+        if not any(term in body for term in ("验证", "观察", "跟踪", "取决于", "关注")):
+            errors.append(f"preview news item {index} must name the next observable verification signal")
     return errors
 
 
@@ -1231,6 +1440,10 @@ def validate_workflow_report(
             )
         if conclusion_calls != {overall_call}:
             raise ValueError("preview overall analysis and 1.2.1 must use the same expectation call")
+        if expectation_call(conclusion_text) != overall_call:
+            raise ValueError(
+                "preview 1.2.1 first sentence must begin with the same expectation call used in 1. 整体分析"
+            )
         if overall_call != audit_call:
             raise ValueError("preview report call must match preview_audit.call")
         if re.search(r"(?m)^\s*\|", report):
@@ -1256,6 +1469,10 @@ def validate_workflow_report(
             )
         if not any(term in assumptions_text for term in ("EPS", "每股收益", "营业利润", "净利润", "EBITDA")):
             raise ValueError("preview 1.2.2 must include at least one profit forecast")
+        if not any(term in assumptions_text for term in ("同比", "环比")):
+            raise ValueError("preview 1.2.2 must publish a decision-useful revenue growth assumption (同比 or 环比)")
+        if not any(term in assumptions_text for term in ("毛利", "利润", "EPS", "每股收益")):
+            raise ValueError("preview 1.2.2 must publish a profit/EPS or margin assumption")
         if not any(term in assumptions_text for term in ("中性区间", "中性带", "持平区间", "容差")):
             raise ValueError(
                 "preview 1.2.2 must contain one literal neutral-tolerance label: "
@@ -1336,6 +1553,25 @@ def validate_workflow_report(
                 value = str(view[field])
                 if value not in comparison_text:
                     missing_institution_details.append(f"{institution} {field}={value}")
+            institution_position = comparison_text.find(institution)
+            next_positions = [
+                comparison_text.find(str(other["institution"]), institution_position + len(institution))
+                for other in preview_audit["institution_views"]
+                if str(other["institution"]) != institution
+                and comparison_text.find(
+                    str(other["institution"]), institution_position + len(institution)
+                ) >= 0
+            ]
+            segment_end = min(next_positions) if next_positions else len(comparison_text)
+            segment = comparison_text[institution_position:segment_end] if institution_position >= 0 else ""
+            if str(view["as_of"]) not in segment:
+                raise ValueError(
+                    f"preview 1.2.3 must give {institution} its own absolute as-of date"
+                )
+            if not any(term in segment for term in ("更保守", "更激进", "低于", "高于", "接近", "相比")):
+                raise ValueError(
+                    f"preview 1.2.3 must explain why {institution} is conservative or aggressive versus guidance or the independent forecast"
+                )
         if missing_institution_details:
             raise ValueError(
                 "preview 1.2.3 must publish each institution's audited rating, target price, "
@@ -1411,6 +1647,25 @@ def validate_workflow_report(
                 raise ValueError(
                     f"preview news item {index} must explicitly use at least one operating or period "
                     f"impact term: {', '.join(operating_terms)}"
+                )
+            body = normalized_item.split("来源：", 1)[0]
+            if len(re.findall(r"[。！？]", body)) < 3:
+                raise ValueError(
+                    f"preview news item {index} must contain at least three substantive sentences before 来源"
+                )
+            if not any(term in body for term in ("本季", "当季", "短期", "当前季度")):
+                raise ValueError(
+                    f"preview news item {index} must distinguish the current-quarter or short-term effect"
+                )
+            if not any(term in body for term in ("长期", "中长期", "未来", "后续")):
+                raise ValueError(f"preview news item {index} must explain the longer-term effect")
+            if not any(term in body for term in ("产品", "竞争", "份额", "客户", "产能", "毛利", "供应链")):
+                raise ValueError(
+                    f"preview news item {index} must explain the product or competitive-position effect"
+                )
+            if not any(term in body for term in ("验证", "观察", "跟踪", "取决于", "关注")):
+                raise ValueError(
+                    f"preview news item {index} must name the next observable verification signal"
                 )
             if any(
                 re.search(pattern, normalized_item.lower())

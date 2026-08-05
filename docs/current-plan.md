@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-05
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Earnings Workflow 内容一致性与新闻深度修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
+  - 摘要：以线上 Dify `V2-财报前瞻` 主 prompt 与“公司近期新闻时间线分析模块”为直接基线，修复中性带浮点边界、恢复核心结论开头、加强机构逐家比较和每条新闻的短期/长期/产品竞争力传导，并重新完成 AAOI 生产内容/PDF 验收
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

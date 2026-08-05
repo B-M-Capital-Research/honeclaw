@@ -95,20 +95,20 @@ preview = (
     "数据中心GPU供需与毛利率\n"
     "## 1.2 业绩指引 vs 机构观点\n"
     "### 1.2.1 核心结论\n"
-    "过去三季的指引偏差没有因基数抬高而消失，订单与供给改善仍支撑收入和利润同时越过市场门槛，因此维持超出分析师预期的判断。\n"
+    "超出分析师预期，过去三季的指引偏差没有因基数抬高而消失，订单与供给改善仍支撑收入和利润同时越过市场门槛。\n"
     "### 1.2.2 财报假设\n"
-    "FY2026 Q1 管理层指引锚点为收入 450 亿美元、调整后 EPS 0.90 美元；机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%。收入中性带为 4.5 亿美元，EPS 中性区间为 0.018 美元。收入桥把历史指引偏差计入 +4.0 亿美元，数据中心出货再增加 +6.0 亿美元；产品组合和成本分别为 EPS 带来 +0.04 美元和 +0.01 美元。\n"
+    "FY2026 Q1 管理层指引锚点为收入 450 亿美元、调整后 EPS 0.90 美元；机构预期收入 450 亿美元、调整后 EPS 0.90 美元；独立预测收入 460 亿美元、调整后 EPS 0.95 美元，对应高出 2.2% 和 5.6%，收入同比增长 28%，毛利率随高毛利产品组合改善。收入中性带为 4.5 亿美元，EPS 中性区间为 0.018 美元。收入桥把历史指引偏差计入 +4.0 亿美元，数据中心出货再增加 +6.0 亿美元；产品组合和成本分别为 EPS 带来 +0.04 美元和 +0.01 美元。\n"
     "### 1.2.3 和机构分析对比\n"
-    "历史上过去三季实际收入均高于管理层指引上限。截至 2026-08-04，当前股价 123.45 美元已经反映较强增长预期。Morgan Stanley 维持增持评级，目标价 150 美元，认为本季收入约 455 亿美元、本季 EPS 约 0.92 美元，主要担心供给爬坡；Goldman Sachs 给出买入建议，目标价 160 美元，本季收入约 458 亿美元、本季 EPS 约 0.94 美元，更看重产品组合。两家机构的收入和利润预期都低于 460 亿美元与 0.95 美元的独立预测。最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
+    "历史上过去三季实际收入均高于管理层指引上限。截至 2026-08-04，当前股价 123.45 美元已经反映较强增长预期。Morgan Stanley 在 2026-08-03 维持增持评级，目标价 150 美元，认为本季收入约 455 亿美元、本季 EPS 约 0.92 美元；相比 460 亿美元与 0.95 美元的独立预测更保守，主要担心供给爬坡。Goldman Sachs 在 2026-07-25 给出买入建议，目标价 160 美元，本季收入约 458 亿美元、本季 EPS 约 0.94 美元；相比独立预测仍略低，但更看重产品组合。最新业绩会和演示材料显示，近期新产品发布与客户订单扩大了收入上行空间；其中已有订单已计入指引，额外供给改善部分计入，因此维持开头判断。\n"
     "## 1.3 近期新闻\n"
-    "**2026-08-03** Morgan Stanley 更新 NVIDIA 观点，认为供给爬坡限制本季收入，但维持增持评级；这项机构预期的计入状态未知。来源：Morgan Stanley。\n\n"
-    "**2026-08-01** NVIDIA 披露客户订单扩大，新增需求支持本季收入与出货，其中只有部分计入指引。来源：NVIDIA Investor Relations。\n\n"
-    "**2026-07-30** 主要云客户确认采购计划，已核实的合作关系使其资本开支直接支持 NVIDIA 本季需求，但计入状态未知。来源：Customer Filing。\n\n"
-    "**2026-07-28** NVIDIA 更新新产品交付节奏，产品组合改善并推高本季毛利，这部分已计入指引。来源：NVIDIA Product Release。\n\n"
-    "**2026-07-25** Goldman Sachs 给出买入建议，认为本季收入和 EPS 高于管理层指引，但其机构预期计入状态未知。来源：Goldman Sachs。\n\n"
-    "**2026-07-23** NVIDIA 管理层说明新增产能开始释放，预计增加本季出货，这部分已计入指引。来源：NVIDIA Operations Update。\n\n"
-    "**2026-07-20** 上次 NVIDIA 财报和电话会确认订单、收入及 EPS 基线，并说明当前产品爬坡已计入指引。来源：NVIDIA Earnings Release。\n\n"
-    "**2026-07-10** 关键供应商恢复供给，经过 NVIDIA 采购关系核实后可判断本季出货约束减轻，但该变化未计入指引。来源：Supplier Release。"
+    "**2026-08-03** Morgan Stanley 更新 NVIDIA 观点，认为供给爬坡限制本季收入，但维持增持评级。本季影响是机构门槛抬高，而长期影响取决于产能释放能否持续巩固产品竞争力。后续关注实际出货和毛利率验证，这项机构预期的计入状态未知。来源：Morgan Stanley。\n\n"
+    "**2026-08-01** NVIDIA 披露客户订单扩大，新增需求支持本季收入与出货，其中只有部分计入指引。长期看，客户黏性有助于扩大产品份额，但并不等于订单当季全部确认。后续关注交付量和收入确认节奏验证。来源：NVIDIA Investor Relations。\n\n"
+    "**2026-07-30** 主要云客户确认采购计划，已核实的合作关系使其资本开支直接支持 NVIDIA 本季需求，但计入状态未知。长期看，客户部署扩大有助于产品生态和竞争壁垒。后续关注采购转为实际出货的节奏验证。来源：Customer Filing。\n\n"
+    "**2026-07-28** NVIDIA 更新新产品交付节奏，产品组合改善并推高本季毛利，这部分已计入指引。长期看，新产品放量决定竞争份额能否延续。后续关注产品良率、出货和毛利率验证。来源：NVIDIA Product Release。\n\n"
+    "**2026-07-25** Goldman Sachs 给出买入建议，认为本季收入和 EPS 高于管理层指引，但其机构预期计入状态未知。长期判断建立在产品组合改善和竞争优势延续之上。后续关注收入、EPS 与毛利率验证。来源：Goldman Sachs。\n\n"
+    "**2026-07-23** NVIDIA 管理层说明新增产能开始释放，预计增加本季出货，这部分已计入指引。长期看，稳定产能会改善交付能力与客户竞争位置。后续关注产能利用率和实际出货验证。来源：NVIDIA Operations Update。\n\n"
+    "**2026-07-20** 上次 NVIDIA 财报和电话会确认订单、收入及 EPS 基线，并说明当前产品爬坡已计入指引。本季关键是既有产品订单按计划转为收入，长期则看下一代产品维持竞争力。后续关注出货、毛利率和客户需求验证。来源：NVIDIA Earnings Release。\n\n"
+    "**2026-07-10** 关键供应商恢复供给，经过 NVIDIA 采购关系核实后可判断本季出货约束减轻，但该变化未计入指引。长期看，供应链韧性有助于稳定产品交付与客户份额。后续关注元件到货和实际出货验证。来源：Supplier Release。"
 )
 preview_audit = {
     "fiscal_period": "FY2026 Q1",
@@ -154,6 +154,32 @@ preview_audit = {
         {"date": "2026-07-10", "event_kind": "peer_supply_chain", "relevance": "peer_supply_chain", "event_summary": "supplier restores supply", "affected_period": "FY2026 Q1", "operating_link": "reduces shipment constraints", "company_link": "the supplier names NVIDIA procurement and the affected accelerator component", "guidance_status": "not_included", "source_name": "Supplier Release", "source_url": "https://example.com/8"},
     ],
 }
+for index, evidence in enumerate(preview_audit["news_evidence"]):
+    evidence.update(
+        {
+            "short_term_impact": "affects current-quarter revenue, shipments, or the comparison bar",
+            "long_term_impact": "tests the durability of product growth and customer position",
+            "product_competition_link": "connects to product mix, capacity, customer position, or supply-chain strength",
+            "verification_signal": "verify with the next shipment, revenue, and gross-margin disclosure",
+            "source_class": (
+                "issuing_institution"
+                if evidence["event_kind"] == "institution_view"
+                else "company_primary"
+                if evidence["relevance"] == "company_direct"
+                else "regulatory_primary"
+            ),
+            "primary_confirmation": "specific primary release, filing, call, or issuing-institution page",
+        }
+    )
+for item in preview_audit["forecast_bridge"]:
+    item.update(
+        {
+            "source_class": (
+                "model_calculation" if item["metric"] == "adjusted_eps" else "company_primary"
+            ),
+            "recognition_basis": "same-period company guidance, shipment timing, and explicit model arithmetic",
+        }
+    )
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
 normalized_tolerance_audit = deepcopy(preview_audit)
@@ -196,8 +222,8 @@ try:
     module.validate_workflow_report("NVIDIA", "preview", "", deepcopy(preview_audit))
 except ValueError as exc:
     message = str(exc)
-    assert "showing the first 18 in priority order" in message
-    assert message.count("\n- ") == 18
+    assert "showing the first 24 in priority order" in message
+    assert message.count("\n- ") == 24
     assert "lower-priority issue(s) remain" not in message
 else:
     raise AssertionError("all ordinary preflight failures must be returned in one bounded batch")
@@ -235,8 +261,7 @@ try:
 except ValueError as exc:
     message = str(exc)
     assert "preview news item 8" in message
-    assert "收入" in message
-    assert "本季" in message
+    assert "current-quarter or short-term effect" in message
 else:
     raise AssertionError("news impact feedback must identify the exact invalid bullet")
 
@@ -305,6 +330,38 @@ inline_audit["forecast_bridge"][3]["report_delta_value"] = 0.005
 inline_audit["forecast_bridge"][3]["report_delta"] = "+0.005 美元"
 assert module.validate_preview_audit(inline_audit)[0] == "与分析师持平"
 
+# AAOI exposed a binary-float edge: 0.05 - 0.02 is slightly greater than
+# 0.03 in IEEE-754, but an exact neutral-band boundary is still in-line.
+boundary_audit = deepcopy(inline_audit)
+boundary_eps = boundary_audit["metrics"]["adjusted_eps"]
+boundary_eps.update(
+    {
+        "anchor": 0.0,
+        "consensus": 0.02,
+        "forecast": 0.05,
+        "tolerance": 0.03,
+        "tolerance_components": {
+            "estimate_dispersion": 0.03,
+            "revision_magnitude": 0.02,
+            "measurement_precision": 0.01,
+        },
+        "report_anchor_value": 0.0,
+        "report_consensus_value": 0.02,
+        "report_forecast_value": 0.05,
+        "report_tolerance_value": 0.03,
+        "report_anchor": "0.00 美元",
+        "report_consensus": "0.02 美元",
+        "report_forecast": "0.05 美元",
+        "report_tolerance": "0.03 美元",
+    }
+)
+for item in boundary_audit["forecast_bridge"]:
+    if item["metric"] == "adjusted_eps":
+        item["delta"] = 0.025
+        item["report_delta_value"] = 0.025
+        item["report_delta"] = "+0.025 美元"
+assert module.validate_preview_audit(boundary_audit)[0] == "与分析师持平"
+
 miss_audit = deepcopy(preview_audit)
 miss_audit["call"] = "低于分析师预期"
 miss_audit["metrics"]["revenue"]["forecast"] = 44000
@@ -333,8 +390,8 @@ try:
         "NVIDIA",
         "preview",
         preview.replace(
-            "因此维持超出分析师预期的判断",
-            "因此改为低于分析师预期的判断",
+            "超出分析师预期，过去三季",
+            "低于分析师预期，过去三季",
         ),
         preview_audit,
     )
@@ -560,11 +617,11 @@ else:
     raise AssertionError("final preview prose must reject share-price news padding")
 
 stale_news = (
-    preview.replace("2026-07-30", "2026-07-21")
-    .replace("2026-07-28", "2026-07-19")
-    .replace("2026-07-25", "2026-07-18")
-    .replace("2026-07-23", "2026-07-17")
-    .replace("2026-07-20", "2026-07-16")
+    preview.replace("**2026-07-30**", "**2026-07-21**")
+    .replace("**2026-07-28**", "**2026-07-19**")
+    .replace("**2026-07-25**", "**2026-07-18**")
+    .replace("**2026-07-23**", "**2026-07-17**")
+    .replace("**2026-07-20**", "**2026-07-16**")
 )
 stale_audit = deepcopy(preview_audit)
 for item in stale_audit["news_evidence"]:
@@ -637,9 +694,35 @@ except ValueError as exc:
 else:
     raise AssertionError("conference attendance must not pad preview news")
 
+publisher_rating_audit = deepcopy(preview_audit)
+publisher_rating_audit["news_evidence"][1].update(
+    {
+        "source_name": "Seeking Alpha",
+        "source_class": "commentary",
+        "event_summary": "Seeking Alpha analyst upgraded NVIDIA to Buy",
+    }
+)
+try:
+    module.validate_preview_audit(publisher_rating_audit)
+except ValueError as exc:
+    assert "publisher author's commentary" in str(exc)
+else:
+    raise AssertionError("publisher commentary must not masquerade as an institutional rating action")
+
+weak_bridge_source_audit = deepcopy(preview_audit)
+weak_bridge_source_audit["forecast_bridge"][1]["evidence"] = (
+    "Seeking Alpha article cites cumulative orders without a shipment schedule"
+)
+try:
+    module.validate_preview_audit(weak_bridge_source_audit)
+except ValueError as exc:
+    assert "not a publisher or aggregator" in str(exc)
+else:
+    raise AssertionError("forecast bridge must reject publisher-only cumulative order evidence")
+
 missing_institution_comparison = preview.replace(
-    "Goldman Sachs 给出买入建议",
-    "另一家机构给出买入建议",
+    "Goldman Sachs 在 2026-07-25 给出买入建议",
+    "另一家机构在 2026-07-25 给出买入建议",
     1,
 )
 try:
