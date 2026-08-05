@@ -698,6 +698,10 @@ pub(crate) fn build_chat_sse(
             quota_mode: AgentRunQuotaMode::UserConversation,
             runner_override: execution_override.as_ref().map(|route| route.runner),
             model_override: execution_override.as_ref().map(|route| route.model.clone()),
+            // The administrator earnings workflow is a complete, current-turn
+            // research job. Prior chat remains visible in the UI but must not
+            // become executable instructions for this dedicated runner.
+            isolate_prior_history: execution_override.is_some(),
             ..AgentRunOptions::default()
         };
         let heartbeat_tx = tx.clone();

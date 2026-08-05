@@ -4380,6 +4380,20 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
         })
     }));
     let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    core.session_storage
+        .add_message(
+            &actor.session_id(),
+            "user",
+            "旧任务：创建 attachment-persistence-check.txt",
+            None,
+        )
+        .expect("seed unrelated prior instruction");
+    core.session_storage
+        .add_message(&actor.session_id(), "assistant", "旧任务已经结束", None)
+        .expect("seed unrelated prior answer");
     let session =
         AgentSession::new(core, actor.clone(), "direct").with_prompt_options(PromptOptions {
             is_admin: true,
@@ -4394,6 +4408,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
         runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
         model_override: Some("google/gemini-3.1-pro-preview".to_string()),
         entity_resolution_input: Some(user_task.to_string()),
+        isolate_prior_history: true,
         ..AgentRunOptions::default()
     };
 
@@ -4423,6 +4438,8 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(runtime_input.contains("STRICT EARNINGS WORKFLOW"));
     assert!(runtime_input.contains(user_task));
     assert!(runtime_input.contains("【Session 上下文】"));
+    assert!(!runtime_input.contains("attachment-persistence-check.txt"));
+    assert!(!runtime_input.contains("旧任务已经结束"));
 
     let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
     let _ = std::fs::remove_dir_all(root);

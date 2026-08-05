@@ -30,6 +30,7 @@
 - 增加配置拥有的财报工作流 runner/model 路由；密钥只保存在运行时配置，不进入仓库。
 - 从已完成服务端管理员复核的结构化财报入口传递受信任执行覆盖，防止普通聊天或伪造消息越权切换宿主 runner。
 - 对齐 OpenCode 的 fresh-session replay 上下文所有权，继续强制加载 `earnings-research` skill，并保留证据核验、PDF 水印与 OSS 持久化链路。
+- 财报入口只把当前结构化工作流、当前附件和本轮证据交给专用 runner；同一聊天中的旧任务仍留在 UI/持久化历史，但不进入本轮可执行上下文。
 - 增加配置、路由、执行器和上下文策略回归测试；更新长期架构与运维文档。
 - 构建、推送并部署精确 revision；在零活跃会话窗口切换，完成健康检查、AAOI 真机样片和可下载验证。
 
@@ -52,4 +53,5 @@
 - OpenRouter 密钥不能出现在 Git、命令参数、日志或样片中；生产变更必须原子写入并保留权限受限的可回滚备份。
 - Gemini 3.1 Pro preview 可能消耗较多推理 token；生产 overall timeout 需保持覆盖完整研究与 PDF 生成。
 - 生产验收发现 OpenCode 1.18.13 将 `initialize.agentInfo.name` 从旧夹具中的 `opencode` 改为 `OpenCode`；适配器只接受这两个已观测身份并继续拒绝其它大小写变体，避免无界放宽身份检查。
+- 首次 AAOI 真机运行证明 Gemini/OpenRouter 工具续写可用，同时暴露出旧附件验收指令被 fresh replay 重新激活；专用工作流必须隔离 prior history，不能依赖模型自行判断历史任务已结束。
 - 部署重启必须等待连续两次 active chat 为 0，避免中断用户任务。

@@ -1233,6 +1233,7 @@ impl AgentSession {
         );
         let use_current_turn_only_context =
             restore_max_override == Some(CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT);
+        let use_isolated_prior_history = options.isolate_prior_history;
         let restored = self.restore_runtime_context(
             session_id,
             persisted_user_input,
@@ -1241,12 +1242,10 @@ impl AgentSession {
             use_fast_interactive_context,
         );
         let mut context = restored.context;
-        if use_current_turn_only_context {
-            // The compact-summary retry can still overflow when the static
-            // prompt plus restored skill snapshots/history are too large.
-            // Keep the user's current request and the already prepared
-            // investment suffix, but remove every durable conversation record
-            // from this final automatic recovery attempt.
+        if use_current_turn_only_context || use_isolated_prior_history {
+            // A self-contained trusted workflow and the final overflow recovery
+            // both keep the current request and its prepared suffix while
+            // removing every durable prior conversation record.
             context.messages.clear();
         }
         if options.turn_origin == AgentTurnOrigin::Interactive
@@ -1278,7 +1277,9 @@ impl AgentSession {
             session_id,
             runtime_user_input,
             prompt_time_beijing,
-            !use_fast_interactive_context && !use_current_turn_only_context,
+            !use_fast_interactive_context
+                && !use_current_turn_only_context
+                && !use_isolated_prior_history,
             use_native_codex_turn_input,
         );
         let investment_context = if let Some(prepared) = prepared_investment {

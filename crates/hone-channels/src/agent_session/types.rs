@@ -101,6 +101,10 @@ pub struct AgentRunOptions {
     pub model_override: Option<String>,
     pub turn_origin: AgentTurnOrigin,
     pub entity_resolution_input: Option<String>,
+    /// Run the current turn without replaying persisted conversation messages or
+    /// compact summaries. Trusted, self-contained workflows use this to prevent
+    /// completed instructions from an unrelated prior turn becoming active work.
+    pub isolate_prior_history: bool,
 }
 
 impl Default for AgentRunOptions {
@@ -113,6 +117,7 @@ impl Default for AgentRunOptions {
             model_override: None,
             turn_origin: AgentTurnOrigin::Interactive,
             entity_resolution_input: None,
+            isolate_prior_history: false,
         }
     }
 }

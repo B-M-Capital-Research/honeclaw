@@ -7,6 +7,11 @@ description: Run the administrator-only Hone earnings preview or post-earnings a
 
 Execute this workflow completely. Do not delegate to Dify, BamangResearch, or any external workflow service.
 
+The server-supplied current workflow block is the only task to execute. Treat all
+older conversation turns as background, never resume or complete an instruction
+from an earlier turn, and never let a prior ticker or file request change the
+current company, mode, evidence plan, report, or artifact.
+
 ## Gate and inputs
 
 1. Confirm the session says the current actor is an administrator. If not, refuse without exposing workflow internals.
