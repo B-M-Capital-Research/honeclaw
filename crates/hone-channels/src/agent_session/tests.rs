@@ -4409,6 +4409,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
         model_override: Some("google/gemini-3.1-pro-preview".to_string()),
         entity_resolution_input: Some(user_task.to_string()),
         isolate_prior_history: true,
+        dedicated_earnings_workflow: true,
         ..AgentRunOptions::default()
     };
 
@@ -4430,7 +4431,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
         &execution.runner_request.conversation,
         crate::runners::RunnerConversationInput::EphemeralCompiledPrompt { .. }
     ));
-    let (_, runtime_input, _) = execution
+    let (system_prompt, runtime_input, _) = execution
         .runner_request
         .conversation
         .replay_parts()
@@ -4438,6 +4439,15 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(runtime_input.contains("STRICT EARNINGS WORKFLOW"));
     assert!(runtime_input.contains(user_task));
     assert!(runtime_input.contains("【Session 上下文】"));
+    assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
+    assert!(system_prompt.contains("不得输出数据时间或行情口径"));
+    assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
+    assert!(
+        execution
+            .runner_request
+            .service_owned_initial_prefix
+            .is_none()
+    );
     assert!(!runtime_input.contains("attachment-persistence-check.txt"));
     assert!(!runtime_input.contains("旧任务已经结束"));
 
@@ -4487,6 +4497,39 @@ async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
         Err((_, error)) => error,
     };
     assert!(error.contains("server-verified administrator"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn unverified_actor_cannot_enable_dedicated_earnings_profile() {
+    let root = make_temp_dir("hone_channels_unverified_dedicated_earnings_profile");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    let actor = ActorIdentity::new("web", "ordinary-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor.clone(), "direct");
+    let options = AgentRunOptions {
+        dedicated_earnings_workflow: true,
+        ..AgentRunOptions::default()
+    };
+
+    let error = match session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            "hello",
+            "hello",
+            &options,
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(_) => panic!("unverified actor must not enable the dedicated earnings profile"),
+        Err((_, error)) => error,
+    };
+    assert!(error.contains("server-verified administrator route"));
     let _ = std::fs::remove_dir_all(root);
 }
 

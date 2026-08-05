@@ -105,6 +105,10 @@ pub struct AgentRunOptions {
     /// compact summaries. Trusted, self-contained workflows use this to prevent
     /// completed instructions from an unrelated prior turn becoming active work.
     pub isolate_prior_history: bool,
+    /// Apply the server-owned earnings workflow contract instead of the generic
+    /// interactive investment preflight, first-line timestamp, and answer shape.
+    /// Only trusted administrator routes may enable this profile.
+    pub dedicated_earnings_workflow: bool,
 }
 
 impl Default for AgentRunOptions {
@@ -118,6 +122,7 @@ impl Default for AgentRunOptions {
             turn_origin: AgentTurnOrigin::Interactive,
             entity_resolution_input: None,
             isolate_prior_history: false,
+            dedicated_earnings_workflow: false,
         }
     }
 }

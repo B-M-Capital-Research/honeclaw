@@ -1273,16 +1273,44 @@ impl AgentSession {
                 .effective_runner_uses_native_codex_turns(&self.actor)
                 || (self.prompt_options.is_admin
                     && self.core.configured_runner_uses_native_codex_turns()));
-        let (system_prompt, mut runtime_input, answer_time_beijing) = self.resolve_prompt_input_at(
-            session_id,
-            runtime_user_input,
-            prompt_time_beijing,
-            !use_fast_interactive_context
-                && !use_current_turn_only_context
-                && !use_isolated_prior_history,
-            use_native_codex_turn_input,
-        );
-        let investment_context = if let Some(prepared) = prepared_investment {
+        let (mut system_prompt, mut runtime_input, answer_time_beijing) = self
+            .resolve_prompt_input_at(
+                session_id,
+                runtime_user_input,
+                prompt_time_beijing,
+                !use_fast_interactive_context
+                    && !use_current_turn_only_context
+                    && !use_isolated_prior_history,
+                use_native_codex_turn_input,
+            );
+        if options.dedicated_earnings_workflow {
+            if !self.prompt_options.is_admin || options.runner_override.is_none() {
+                return Err((
+                    AgentSessionErrorKind::AgentFailed,
+                    "dedicated earnings workflow requires a server-verified administrator route"
+                        .to_string(),
+                ));
+            }
+            system_prompt.push_str(
+                "\n\n【管理员财报工作流系统覆盖】\n\
+                 当前轮是独立的财报前瞻或财报分析工作流。earnings-research 技能拥有最终报告格式；\
+                 它取代普通交互式投研的首行时间、行情口径、九段式分析和其它通用回答模板。\
+                 不得输出数据时间或行情口径，不得套用普通问答格式。必须自行完成技能规定的\
+                 实体核验、证据收集、八至十条近期新闻（财报前瞻）和官方 PDF 渲染。\
+                 只有 skill_tool 返回 success=true 且 PDF artifact 已生成后才能结束；若渲染器\
+                 返回校验错误，必须按错误修正报告或 audit 并再次调用，禁止用文字失败说明收尾。",
+            );
+        }
+        let investment_context = if options.dedicated_earnings_workflow {
+            PreparedInvestmentContext {
+                contract: None,
+                runtime_suffix: String::new(),
+                prompt_time_beijing,
+                reexecution_policy: PreparedTurnReexecutionPolicy::Allowed,
+                main_agent_entity_discovery_input: None,
+                preloaded_evidence_calls: 0,
+            }
+        } else if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);
             prepared.clone()
         } else if use_native_codex_turn_input {

@@ -702,6 +702,10 @@ pub(crate) fn build_chat_sse(
             // research job. Prior chat remains visible in the UI but must not
             // become executable instructions for this dedicated runner.
             isolate_prior_history: execution_override.is_some(),
+            // The earnings skill owns the old Workflow report shape. Generic
+            // investment preflight and its timestamp-first answer contract must
+            // not compete with that dedicated system contract.
+            dedicated_earnings_workflow: execution_override.is_some(),
             ..AgentRunOptions::default()
         };
         let heartbeat_tx = tx.clone();

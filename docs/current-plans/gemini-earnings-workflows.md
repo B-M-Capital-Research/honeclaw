@@ -31,13 +31,14 @@
 - 从已完成服务端管理员复核的结构化财报入口传递受信任执行覆盖，防止普通聊天或伪造消息越权切换宿主 runner。
 - 对齐 OpenCode 的 fresh-session replay 上下文所有权，继续强制加载 `earnings-research` skill，并保留证据核验、PDF 水印与 OSS 持久化链路。
 - 财报入口只把当前结构化工作流、当前附件和本轮证据交给专用 runner；同一聊天中的旧任务仍留在 UI/持久化历史，但不进入本轮可执行上下文。
+- 财报入口使用受信任的独立系统 profile，跳过普通 Interactive 投研预加载、首行时间和通用答案模板；skill 的 Workflow 格式与 PDF 成功门禁是唯一终稿契约。
 - 增加配置、路由、执行器和上下文策略回归测试；更新长期架构与运维文档。
 - 构建、推送并部署精确 revision；在零活跃会话窗口切换，完成健康检查、AAOI 真机样片和可下载验证。
 
 ## Validation
 
 - OpenRouter 直连探针精确命中 `google/gemini-3.1-pro-preview` 并获得非空正文。
-- 定向 Rust 测试覆盖：默认配置、普通聊天无覆盖、管理员两个财报入口精确覆盖、非管理员拒绝、全局 Codex 下受信任 OpenCode 路由及上下文策略。
+- 定向 Rust 测试覆盖：默认配置、普通聊天无覆盖、管理员两个财报入口精确覆盖、非管理员拒绝、全局 Codex 下受信任 OpenCode 路由、历史隔离及独立系统 profile。
 - `skill-creator` 的 `quick_validate.py` 校验 `skills/earnings-research`。
 - 仓库门禁：changed rustfmt、workspace check/test、Web test、Worker typecheck/test、CI regression。
 - 生产验证：精确 revision/digest、服务健康、云/PG/OSS 健康、日志确认 OpenCode + Gemini 3.1 Pro、AAOI 报告/PDF 下载与水印检查。
@@ -54,4 +55,5 @@
 - Gemini 3.1 Pro preview 可能消耗较多推理 token；生产 overall timeout 需保持覆盖完整研究与 PDF 生成。
 - 生产验收发现 OpenCode 1.18.13 将 `initialize.agentInfo.name` 从旧夹具中的 `opencode` 改为 `OpenCode`；适配器只接受这两个已观测身份并继续拒绝其它大小写变体，避免无界放宽身份检查。
 - 首次 AAOI 真机运行证明 Gemini/OpenRouter 工具续写可用，同时暴露出旧附件验收指令被 fresh replay 重新激活；专用工作流必须隔离 prior history，不能依赖模型自行判断历史任务已结束。
+- 第二次 AAOI 真机运行证明历史隔离生效，但普通投研系统契约仍强制了首行时间，并允许模型在首次 renderer 校验失败后以文字降级；专用 profile 必须同时移除通用投研契约并把可修正的 renderer 错误设为强制重试。
 - 部署重启必须等待连续两次 active chat 为 0，避免中断用户任务。

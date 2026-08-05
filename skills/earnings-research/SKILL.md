@@ -35,6 +35,13 @@ Follow these stages in order. Use current-turn tool results only for volatile fa
 
 - Fetch `data_fetch(data_type="earnings_outlook", ticker="...")` for the resolved symbol.
 - Fetch additional `quote`, `profile`, `financials`, `news`, or web sources only where the requested mode needs them.
+- For `preview`, do not draft after one broad search. Before Stage 3, make enough
+  current-turn calls to hold all of the following in context: the entity search,
+  `earnings_outlook`, company or structured `news`, the latest earnings release
+  and call/deck, one current consensus source beyond `earnings_outlook` when
+  available, one peer or supply-chain source, and one downstream-demand source.
+  Use separate targeted searches when one query does not cover these evidence
+  families. The report cannot infer eight news bullets from two search results.
 - Prefer company investor-relations releases, filed reports, earnings decks, and transcripts. Use absolute dates in searches.
 - For `preview`, establish one expectation snapshot before interpreting any catalyst:
   - identify the exact fiscal quarter, scheduled report date, and consensus cutoff date;
@@ -168,6 +175,10 @@ On every trusted runner:
 }
 ```
 
+`report_date`, `consensus_as_of`, every `source_date`, and every news date must be
+literal ISO `YYYY-MM-DD` strings, for example `2026-08-07`; never use Chinese
+date text, an ISO timestamp, a slash-separated date, or a month name.
+
 `metrics` must contain revenue and at least one profit metric. `anchor` is the guidance or model starting point named by `anchor_kind`; `tolerance` is an absolute amount in the stated unit, not a percentage, and must equal the largest of the three `tolerance_components`. `report_scale` converts the audited unit into the report unit (`USD billions` to `亿美元` uses `10`; `USD/share` to `美元` uses `1`). The four `report_*_value` numbers must equal their audited values times that scale, while `report_anchor`, `report_consensus`, `report_forecast`, and `report_tolerance` are the exact human-readable strings used in `1.2.2`. Every forecast-bridge item must carry a numeric `delta`, a scaled `report_delta_value`, and the exact `report_delta` string published in `1.2.2`; for each decision metric, `anchor + sum(delta)` must equal `forecast`. The revenue bridge must explicitly quantify the historical guidance bias, even when the justified delta is zero. The renderer recomputes both private and displayed arithmetic and rejects a call that does not match the forecast, consensus, and tolerance. It also rejects missing consensus provenance, insufficient guidance history without an explanation, missing guidance-inclusion work, arbitrary neutral bands, or a forecast bridge that does not reconcile.
 3. Run the renderer through the host-side `skill_tool` boundary on every runner. Do not launch Chrome/Chromium directly from the actor sandbox, do not install PDF packages, and do not write a ReportLab, Swift, browser, or other fallback renderer. The official script rejects reports that do not match the old Workflow heading contract and, for `preview`, rejects a missing or inconsistent `preview_audit`.
 
@@ -187,6 +198,12 @@ The script returns one `document` artifact. Require `success=true`, confirm the 
 - return the complete report in the chat;
 - mention the exact generated PDF filename in the final answer;
 - include `[附件: <absolute-pdf-path>]` only when the runner does not attach the returned artifact automatically;
-- never claim PDF success when rendering failed. If it fails, return the report and a concise truthful PDF failure note.
+- never claim PDF success when rendering failed. A renderer validation error is
+  not a terminal outcome: correct exactly the rejected field or report section,
+  preserve every already-verified fact, and call `skill_tool` again. Retry up to
+  four renderer attempts. Do not answer with a PDF failure note, partial report,
+  or text-only fallback while a correctable validation error remains. If the
+  error says the news count, freshness, or category coverage is insufficient,
+  perform additional targeted evidence calls before revising the report.
 
 The PDF renderer adds the HONE watermark, page metadata, risk disclaimer, and the repository's knowledge-planet sharing image. Do not create any second or substitute PDF, even if the official render fails.
