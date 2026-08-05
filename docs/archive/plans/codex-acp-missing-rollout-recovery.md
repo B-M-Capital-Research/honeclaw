@@ -1,7 +1,7 @@
 # Codex ACP 缺失 Rollout 安全恢复
 
 - title: Codex ACP 缺失 Rollout 安全恢复
-- status: in_progress
+- status: done
 - created_at: 2026-08-05
 - updated_at: 2026-08-05
 - owner: Codex
@@ -47,3 +47,11 @@
 - 不能把 `Internal error`、超时、权限或任意 stderr 文本当作 rollout 不存在证明。
 - 旧 native page 可能仍在外部任务列表，但本机适配器已无法恢复；替代只恢复可执行连续性，不能重建丢失的 native history。
 - 生产批量修复必须精确排除当前本地仍存在的 native ID，并保留可回滚快照。
+
+## Results
+
+- 实现提交 `f819584cff2f5b386c89f0791f1488c149ad3dfe` 已进入 `main`；CI、Secret Scan 与不可变 GHCR runtime image 均通过。
+- 生产 Caris 旧绑定只备份并移除了三个 ACP metadata 字段，聊天历史、用户消息与附件未改；其余 153 个陈旧绑定没有批量清除，将只在未来同 ID missing-rollout 的结构化证明下按需恢复。
+- 精确 release `/opt/hone/releases/f819584cff2f5b386c89f0791f1488c149ad3dfe-ghcr-runtime` 已上线，`/api/meta` 回报同一 SHA、`ghcr_linux_oci`、健康 PostgreSQL/OSS、cloud authority 为真、本地持久依赖为 0，服务 `NRestarts=0`。
+- 真实管理员 Caris Life Sciences 财报分析完成 Skill、数据与 Web 证据核验，并生成 `Caris_Life_Sciences_Q1_2026_Financial_Analysis.pdf-2ccf2ec2.pdf`；服务重启后历史报告与下载卡仍存在，两次点击均显示“已开始下载”。
+- 首次 cutover 暴露系统盘在 staging 后达到 100%，effective config 无法落临时文件；切回旧 symlink 后仍受同一容量问题影响。清理五个已被替代、可从 GHCR 重建的旧 immutable release 后，系统盘恢复为 83%（约 5GB 可用），旧版恢复健康，再完成最终切换。当前直接回滚点保留为 `9d64c5967bf74a5126948c7b49f6b918128f951a-ghcr-runtime`。

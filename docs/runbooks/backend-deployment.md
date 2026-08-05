@@ -131,6 +131,18 @@ exports `/release`, rejects symlinks, requires the exact six binaries and
 metadata fields, checks every payload against `SHA256SUMS`, and refuses an
 embedded revision mismatch. It does **not** switch traffic or restart anything:
 
+Before staging, check the filesystem that owns `/opt/hone/releases`. Require at
+least 2 GiB available for the current bundle shape, in addition to the current
+and rollback releases; stop before export when that floor is not met. A full
+filesystem can let staging finish and then make the restarted process fail while
+atomically writing its effective config, so an idle-chat check alone is not a
+sufficient preflight.
+
+```bash
+available_kib="$(df --output=avail /opt/hone/releases | tail -n 1 | tr -d ' ')"
+test "$available_kib" -ge 2097152
+```
+
 ```bash
 revision=<40-character-git-sha>
 image_digest=sha256:<workflow-reported-digest>
@@ -144,6 +156,15 @@ The expected result is
 then continue with environment validation, two idle reads, atomic symlink
 replacement, systemd restart, exact `/api/meta` verification, and rollback
 retention below.
+
+After the new release and one same-revision restart pass acceptance, retain the
+current release, the immediate previous release, and one known-good secondary
+rollback. Superseded GHCR releases may be removed only after resolving each
+explicit target under `/opt/hone/releases`, rejecting symlinks, proving it is
+neither `/opt/hone/current` nor a retained rollback, and recording that its
+immutable artifact can be rebuilt. Never use a wildcard or prune user data,
+Codex state, skill rollbacks, database backups, or session-binding backups to
+make room for a runtime.
 
 Prefer anonymous export when package visibility and organization policy allow
 it. If the repository-linked package is private, use only a short-lived or

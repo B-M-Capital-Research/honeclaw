@@ -2228,3 +2228,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; complete Rust/Web/Worker/Public/CI-safe gates; GHCR bundle verifier; production cloud-authority, skill registry and official PDF renderer smoke
 - Current conclusion: the reviewed internationalization and extended-hours changes are live from the exact immutable GHCR digest with healthy authoritative PostgreSQL/S3, zero active chats, a healthy public API and the current Pages bundle. Production now has the exact `earnings-research` skill, Chromium and Noto CJK; a service-user renderer smoke passed full-page PDF inspection with readable Chinese, the exact `知识星球：巴芒科技` watermark and the Knowledge Planet share page. The stale Sunny-Ngrok `origin.hone-claw.com` alias remains a separately recorded legacy-fallback risk and was not changed during this deployment.
 - Next entry point: `docs/handoffs/2026-08-04-production-deployment-dede2d61.md`; use the retained previous GHCR release for rollback, and do not enable community-edge legacy fallback until the origin alias contract is reconciled.
+
+### Codex ACP Missing-rollout Recovery And Caris Production Acceptance
+
+- Status: done
+- Date: 2026-08-05
+- Plan: `docs/archive/plans/codex-acp-missing-rollout-recovery.md`
+- Handoff: `docs/handoffs/2026-08-05-codex-acp-missing-rollout-recovery.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-05-01-replace-a-codex-binding-only-when-the-adapter-proves-its-rollout-is-absent`; `docs/adr/0002-agent-runtime-acp-refactor.md`
+- Related PRs / commits: `f819584cff2f5b386c89f0791f1488c149ad3dfe`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; Codex ACP `1.1.7` missing-rollout executable fixture; complete local and GitHub CI gates; real Caris report/PDF restart-persistence acceptance
+- Current conclusion: HONE now replaces a Codex native binding only when the validated adapter proves that the exact persisted rollout is absent before prompt, checkpointing the replacement before execution while all ambiguous resume failures remain fail-closed. The affected Caris binding received a bounded backup/repair; exact production revision `f819584c` is healthy and a real Caris financial analysis persisted one PDF that remained downloadable after service restart. Five superseded reproducible GHCR releases were removed after a staging-time disk-capacity incident, leaving about 5GB free and preserving current, immediate rollback and secondary rollback releases.
+- Next entry point: `docs/handoffs/2026-08-05-codex-acp-missing-rollout-recovery.md`; do not bulk-clear the remaining stale bindings, and check system-disk headroom before staging another runtime.
