@@ -64,6 +64,16 @@ fn tool_action(arguments: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn skill_target(arguments: &Value) -> Option<&str> {
+    ["skill_name", "skill"].into_iter().find_map(|field| {
+        arguments
+            .get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
+}
+
 /// Whether a concrete tool invocation can mutate persistent user/system state.
 pub fn tool_call_has_persistent_side_effect(name: &str, arguments: &Value) -> bool {
     match canonical_hone_tool_name(name) {
@@ -81,10 +91,13 @@ pub fn tool_call_has_persistent_side_effect(name: &str, arguments: &Value) -> bo
         // mutation. Executable skill scripts remain conservatively
         // persistent because repository-declared code may have arbitrary
         // effects.
-        Some("skill_tool") => arguments
-            .get("execute_script")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
+        Some("skill_tool") => {
+            arguments
+                .get("execute_script")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                && skill_target(arguments).is_some()
+        }
         _ => false,
     }
 }
@@ -106,10 +119,13 @@ pub fn tool_call_is_known_read_only(name: &str, arguments: &Value) -> bool {
         // and idempotently refreshes invoked-skill metadata. It is safe at a
         // read-only continuation/retry boundary. `execute_script=true` stays
         // unknown and persistent.
-        Some("skill_tool") => !arguments
-            .get("execute_script")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
+        Some("skill_tool") => {
+            !arguments
+                .get("execute_script")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                || skill_target(arguments).is_none()
+        }
         _ => {
             let normalized = normalized_runner_tool_name(name);
             KNOWN_READ_ONLY_TOOL_NAMES
@@ -195,6 +211,14 @@ mod tests {
         assert!(!tool_call_is_known_read_only(
             "hone/skill_tool",
             &json!({"skill_name":"image_understanding","execute_script":true})
+        ));
+        assert!(!tool_call_has_persistent_side_effect(
+            "hone/skill_tool",
+            &json!({"execute_script":true,"script":"scripts/render.py"})
+        ));
+        assert!(tool_call_is_known_read_only(
+            "hone/skill_tool",
+            &json!({"execute_script":true,"script":"scripts/render.py"})
         ));
     }
 

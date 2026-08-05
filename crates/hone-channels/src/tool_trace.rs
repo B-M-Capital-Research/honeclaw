@@ -138,6 +138,39 @@ mod tests {
     }
 
     #[test]
+    fn rejected_untargeted_skill_execution_is_not_an_uncertain_side_effect() {
+        let rejected = ToolCallMade {
+            name: "skill_tool".to_string(),
+            arguments: json!({
+                "execute_script": true,
+                "script": "scripts/render_report_pdf.py"
+            }),
+            result: json!({
+                "status": "failed",
+                "isError": true,
+                "error": "skill_name 不能为空"
+            }),
+            tool_call_id: Some("call_missing_skill".to_string()),
+        };
+        let completed = ToolCallMade {
+            name: "skill_tool".to_string(),
+            arguments: json!({
+                "skill_name": "earnings-research",
+                "execute_script": true,
+                "script": "scripts/render_report_pdf.py"
+            }),
+            result: json!({"success": true, "artifacts": ["AAOI.pdf"]}),
+            tool_call_id: Some("call_pdf".to_string()),
+        };
+
+        assert!(!is_persistent_side_effect_call(&rejected));
+        assert!(is_persistent_side_effect_call(&completed));
+        assert!(!persistent_side_effect_state_is_uncertain(&[
+            rejected, completed
+        ]));
+    }
+
+    #[test]
     fn investment_repair_read_only_allowlist_fails_closed_for_unknown_tools() {
         for read_only in [
             call("data_fetch", None, json!({})),
