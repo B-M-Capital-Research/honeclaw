@@ -521,6 +521,28 @@ except ValueError as exc:
 else:
     raise AssertionError("preview news must remain primarily company-direct")
 
+aggregator_institution_audit = deepcopy(preview_audit)
+aggregator_institution_audit["institution_views"][0]["institution"] = "Seeking Alpha"
+try:
+    module.validate_workflow_report(
+        "NVIDIA", "preview", preview, aggregator_institution_audit
+    )
+except ValueError as exc:
+    assert "issuing broker, bank, or research house" in str(exc)
+else:
+    raise AssertionError("publishers and aggregators must not masquerade as institutions")
+
+conference_news_audit = deepcopy(preview_audit)
+conference_news_audit["news_evidence"][1]["event_summary"] = (
+    "management will present at a technology summit"
+)
+try:
+    module.validate_workflow_report("NVIDIA", "preview", preview, conference_news_audit)
+except ValueError as exc:
+    assert "conference, price-move, or generic sector chatter" in str(exc)
+else:
+    raise AssertionError("conference attendance must not pad preview news")
+
 missing_institution_comparison = preview.replace(
     "Goldman Sachs 给出买入建议",
     "另一家机构给出买入建议",

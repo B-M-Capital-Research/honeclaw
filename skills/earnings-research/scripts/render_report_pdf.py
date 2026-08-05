@@ -214,6 +214,15 @@ def validate_preview_audit(
             "preview_audit.institution_view_limitations",
         )
     institution_names: list[str] = []
+    publisher_or_aggregator_names = {
+        "seeking alpha",
+        "zacks",
+        "marketbeat",
+        "tipranks",
+        "yahoo finance",
+        "financial modeling prep",
+        "fmp",
+    }
     for index, view in enumerate(institution_views):
         if not isinstance(view, dict):
             raise ValueError(f"preview_audit.institution_views[{index}] must be an object")
@@ -238,12 +247,16 @@ def validate_preview_audit(
             raise ValueError(
                 f"preview_audit.institution_views[{index}].source_url must be HTTP(S)"
             )
-        institution_names.append(
-            nonempty_string(
-                view.get("institution"),
-                f"preview_audit.institution_views[{index}].institution",
-            )
+        institution_name = nonempty_string(
+            view.get("institution"),
+            f"preview_audit.institution_views[{index}].institution",
         )
+        if institution_name.strip().lower() in publisher_or_aggregator_names:
+            raise ValueError(
+                f"preview_audit.institution_views[{index}].institution must name the issuing "
+                "broker, bank, or research house, not a publisher or aggregator"
+            )
+        institution_names.append(institution_name)
     if len(set(institution_names)) != len(institution_names):
         raise ValueError("preview_audit.institution_views must use distinct institutions")
 
@@ -346,15 +359,31 @@ def validate_preview_audit(
         event_summary = nonempty_string(
             event.get("event_summary"), f"preview_audit.news_evidence[{index}].event_summary"
         )
+        evidence_text_parts = [event_summary]
         for field in ("affected_period", "operating_link", "company_link"):
             value = nonempty_string(
                 event.get(field), f"preview_audit.news_evidence[{index}].{field}"
             )
+            evidence_text_parts.append(value)
             if field == "company_link" and relevance != "company_direct" and len(value) < 18:
                 raise ValueError(
                     f"preview_audit.news_evidence[{index}].company_link must explain the "
                     "company-specific transmission path"
                 )
+        evidence_text = " ".join(evidence_text_parts).lower()
+        weak_news_patterns = (
+            r"conference attendance|technology summit|fireside chat|present(?:s|ing)? at",
+            r"峰会|炉边谈话|出席.{0,8}(?:会议|大会)",
+            r"stock (?:rose|fell|jumped|gained|dropped|surged|slid)",
+            r"股价.{0,12}(?:大涨|上涨|下跌|大跌|跳涨|暴跌)",
+            r"板块.{0,12}(?:普涨|上涨|下跌|回调|抛售)",
+            r"risk[- ]on|generic sector sentiment|市场情绪波动|风险偏好",
+        )
+        if any(re.search(pattern, evidence_text) for pattern in weak_news_patterns):
+            raise ValueError(
+                f"preview_audit.news_evidence[{index}] is conference, price-move, or generic "
+                "sector chatter; replace it with company operating evidence"
+            )
         guidance_status = nonempty_string(
             event.get("guidance_status"),
             f"preview_audit.news_evidence[{index}].guidance_status",

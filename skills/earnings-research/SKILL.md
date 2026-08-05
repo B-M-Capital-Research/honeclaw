@@ -53,6 +53,7 @@ Follow these stages in order. Use current-turn tool results only for volatile fa
   - older or pre-guidance consensus may explain estimate revisions, but it is never the surprise bar for the coming report.
 - For `preview`, read the latest company earnings release, earnings deck, and full earnings-call transcript when available. A press release or filing search alone is insufficient when the call or deck contains order values, product ramps, pricing, mix, capacity, or guidance-inclusion commentary.
 - For `preview`, search named analyst and institution views separately from the consensus snapshot. Record each institution, date, rating/recommendation or target-price stance, revenue view, profit/EPS view, rationale, source name, and source URL. A generic consensus number is not an institution comparison. If fewer than two usable named views exist, state the limitation privately instead of inventing one.
+- `institution` means the actual broker, bank, or research house issuing the view. Seeking Alpha, Zacks, MarketBeat, TipRanks, Yahoo Finance, FMP, and similar publishers or aggregators may be evidence sources, but they are not the institution unless the underlying issuing firm is named. Put the issuing firm in `institution` and the page that reported it in `source_name`; never relabel a columnist or aggregator as a sell-side institution.
 - For `preview`, reconstruct at least the last three comparable management-guidance outcomes when the company has them. Compare each reported result with the corresponding guidance range or midpoint using the same metric definition. Treat the resulting bias as a prior, not as a mechanical forecast. If fewer than three comparable quarters exist, record why.
 - For every contract, backlog, order, product ramp, buyback, price change, or capacity event used in `preview`, determine the affected fiscal period and whether management said it was already included in guidance. Contract-life value is not current-quarter revenue; an authorization is not an executed repurchase; a product announcement is not a shipment unless evidence supports the conversion.
 - For `analysis`, reconcile uploaded figures against structured current-turn evidence. When they conflict, disclose the mismatch and prefer the more authoritative primary source.
@@ -192,6 +193,13 @@ On every trusted runner:
 
 The example shows representative `news_evidence` objects; the real preview audit must contain the same eight to ten events published as paragraphs. Source URLs remain private audit evidence and never appear in `1.3`.
 
+Before rendering a preview, perform this compact preflight once:
+
+- `institution_views[].institution` contains issuing firms, not publishers or aggregators; `1.2.3` names each firm and its exact rating/recommendation or target-price stance, then contrasts its revenue and profit/EPS view with the independent forecast.
+- Revenue audit values are already normalized to `USD millions` (`$190 million` is `190`, never `190000000`; `$1.9 billion` is `1900`). The displayed `亿美元` values equal the audited values times `0.01`.
+- `news_evidence` has eight to ten events, at least six `company_direct`, a previous earnings/call, and a named issuing-firm view. Remove conference attendance, fireside chats, stock-price moves, generic sector sentiment, and speculative macro news without a disclosed company order, contract, customer, capacity, shipment, price, cost, or margin transmission.
+- Every news paragraph is one connected paragraph beginning with `**YYYY-MM-DD**`, contains the matching guidance phrase, and ends with the matching plain `来源：来源名称。`; no bullet, pipe schema, link, or URL remains.
+
 `report_date`, `consensus_as_of`, every `source_date`, and every news date must be
 literal ISO `YYYY-MM-DD` strings, for example `2026-08-07`; never use Chinese
 date text, an ISO timestamp, a slash-separated date, or a month name.
@@ -199,7 +207,7 @@ date text, an ISO timestamp, a slash-separated date, or a month name.
 `metrics` must contain revenue and at least one profit metric. Revenue has one canonical audited unit: `USD millions`; its report unit is `亿美元` and its `report_scale` is exactly `0.01`. Normalize the source value first (`$8.0 billion` becomes `8000 USD millions`; `$157 million` stays `157 USD millions`). `anchor` is the guidance or model starting point named by `anchor_kind`; `tolerance` is an absolute amount in the stated unit, not a percentage, and must equal the largest of the three `tolerance_components`. Profit metrics such as `USD/share` use `report_scale=1` to `美元`. The four `report_*_value` numbers must equal their audited values times that scale, while `report_anchor`, `report_consensus`, `report_forecast`, and `report_tolerance` are the exact human-readable strings used in `1.2.2`. Every forecast-bridge item must carry a numeric `delta`, a scaled `report_delta_value`, and the exact `report_delta` string published in `1.2.2`; for each decision metric, `anchor + sum(delta)` must equal `forecast`. The revenue bridge must explicitly quantify the historical guidance bias, even when the justified delta is zero. The renderer recomputes both private and displayed arithmetic and rejects a call that does not match the forecast, consensus, and tolerance. It also rejects missing consensus provenance, insufficient guidance history without an explanation, missing guidance-inclusion work, arbitrary neutral bands, or a forecast bridge that does not reconcile.
 3. Run the renderer through the host-side `skill_tool` boundary on every runner. Do not launch Chrome/Chromium directly from the actor sandbox, do not install PDF packages, and do not write a ReportLab, Swift, browser, or other fallback renderer. The official script rejects reports that do not match the old Workflow heading contract and, for `preview`, rejects a missing or inconsistent `preview_audit`.
 
-Call `skill_tool` (the MCP name may be `hone/skill_tool`) with:
+Call `skill_tool` (the MCP name may be `hone/skill_tool`) with exactly:
 
 ```text
 skill_name="earnings-research"
@@ -208,7 +216,7 @@ script="scripts/render_report_pdf.py"
 script_arguments=["<one JSON object string including preview_audit for preview>"]
 ```
 
-Pass the complete JSON spec as the single `script_arguments` item; do not pass the actor-local spec path because the host tool intentionally cannot read arbitrary actor files. The host tool executes the repository-owned renderer outside the actor sandbox and writes the returned artifact into the actor working directory.
+Do not use an object for `script_arguments`, and do not omit `skill_name` or `script`. Pass the complete JSON spec as the array's single string item; do not pass the actor-local spec path because the host tool intentionally cannot read arbitrary actor files. The host tool executes the repository-owned renderer outside the actor sandbox and writes the returned artifact into the actor working directory.
 
 The script returns one `document` artifact. Require `success=true`, confirm the PDF exists, and then:
 
