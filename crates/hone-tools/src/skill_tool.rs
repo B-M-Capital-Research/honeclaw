@@ -489,6 +489,9 @@ mod tests {
             .expect("execute");
 
         assert_eq!(result["success"], Value::Bool(true));
+        assert!(result.get("prompt").is_none());
+        assert!(result["script_execution"].get("arguments").is_none());
+        assert!(result["script_execution"].get("stdout").is_none());
         assert_eq!(result["artifacts"][0]["kind"], "document");
         assert_eq!(result["artifacts"][0]["mime"], "application/pdf");
         assert!(working_directory.join("report.pdf").is_file());
@@ -634,6 +637,55 @@ mod tests {
                 Value::String("5".to_string()),
             ])
         );
+        clear_test_env();
+    }
+
+    #[tokio::test]
+    async fn execute_returns_compact_actionable_validation_failure() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_render_rejection");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            format!(
+                "---\nname: Alpha\ndescription: validates report\nscript: scripts/run.sh\nshell: bash\n---\n\n{}",
+                "long prompt body ".repeat(4_000)
+            ),
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("run.sh"),
+            "printf '%s' '{\"success\":false,\"error\":\"fix field A and field B\",\"fallback_message\":\"retry\",\"artifacts\":[],\"warnings\":[]}'\n",
+        )
+        .expect("script");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true
+            }))
+            .await
+            .expect("validation failure is a determinate tool result");
+
+        assert_eq!(result["success"], Value::Bool(false));
+        assert_eq!(result["side_effect_status"], "not_started");
+        assert_eq!(result["render_success"], Value::Bool(false));
+        assert_eq!(result["render_error"], "fix field A and field B");
+        assert!(result.get("prompt").is_none());
+        assert!(result["script_execution"].get("arguments").is_none());
+        assert!(result["script_execution"].get("stdout").is_none());
+        assert!(serde_json::to_vec(&result).expect("serialize").len() < 4_000);
         clear_test_env();
     }
 
@@ -1386,6 +1438,25 @@ impl Tool for SkillTool {
                     .and_then(|value| value.get("fallback_message"))
                     .cloned()
                     .unwrap_or(Value::Null);
+                let script_requested = args
+                    .get("execute_script")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let compact_script_execution = script_execution.as_ref().map(|execution| {
+                    let mut compact = execution.clone();
+                    if let Some(object) = compact.as_object_mut() {
+                        object.remove("arguments");
+                        object.remove("stdout");
+                        if object
+                            .get("stderr")
+                            .and_then(Value::as_str)
+                            .is_some_and(str::is_empty)
+                        {
+                            object.remove("stderr");
+                        }
+                    }
+                    compact
+                });
                 let payload = serde_json::json!({
                     "skill_name": skill.id,
                     "display_name": skill.display_name,
@@ -1402,6 +1473,29 @@ impl Tool for SkillTool {
                     "updated_at": hone_core::beijing_now_rfc3339(),
                 });
                 let _ = self.persist_invoked_skill(&payload);
+                if script_requested {
+                    let execution_succeeded = render_success.as_bool().unwrap_or(false);
+                    return Ok(serde_json::json!({
+                        "success": execution_succeeded,
+                        "side_effect_status": if execution_succeeded { "completed" } else { "not_started" },
+                        "skill_name": skill.id,
+                        "skill_display_name": skill.display_name,
+                        "script": payload["script"],
+                        "skill_context_persisted": true,
+                        "script_execution": compact_script_execution,
+                        "artifacts": artifacts,
+                        "render_success": render_success,
+                        "render_summary": render_summary,
+                        "render_warnings": render_warnings,
+                        "render_error": render_error,
+                        "render_fallback_message": render_fallback_message,
+                        "reminder": if execution_succeeded {
+                            "技能脚本执行成功；请确认 artifact 并完成用户原始任务。"
+                        } else {
+                            "技能脚本未通过校验；请一次修正 render_error 中列出的全部问题后重试。"
+                        }
+                    }));
+                }
                 Ok(serde_json::json!({
                     "success": true,
                     "skill_name": skill.id,
@@ -1419,7 +1513,7 @@ impl Tool for SkillTool {
                     "user_invocable": skill.user_invocable,
                     "hooks": skill.hooks,
                     "prompt": payload["prompt"],
-                    "script_execution": script_execution,
+                    "script_execution": compact_script_execution,
                     "artifacts": artifacts,
                     "render_success": render_success,
                     "render_summary": render_summary,
