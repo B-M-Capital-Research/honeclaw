@@ -343,6 +343,34 @@ struct MockStreamingSequencedRunner {
 }
 
 #[derive(Clone)]
+struct EarningsFallbackStreamingRunner;
+
+#[async_trait]
+impl AgentRunner for EarningsFallbackStreamingRunner {
+    fn name(&self) -> &'static str {
+        "earnings_fallback_streaming"
+    }
+
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    }
+
+    async fn run(
+        &self,
+        _request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        let fallback = "PDF 渲染暂时遇到格式和证据链完整性限制，无法成功生成。";
+        emitter
+            .emit(AgentRunnerEvent::StreamDelta {
+                content: fallback.to_string(),
+            })
+            .await;
+        recorded_runner_result(fallback, true)
+    }
+}
+
+#[derive(Clone)]
 struct ServicePrefixRunner {
     fail_after_commit: bool,
     final_tail: String,
@@ -4442,6 +4470,14 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
     assert!(system_prompt.contains("不得输出数据时间或行情口径"));
     assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
+    assert_eq!(
+        execution
+            .runner_request
+            .session_metadata
+            .get(crate::runners::REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY)
+            .and_then(Value::as_bool),
+        Some(true)
+    );
     assert!(
         execution
             .runner_request
@@ -4452,6 +4488,68 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(!runtime_input.contains("旧任务已经结束"));
 
     let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn dedicated_earnings_text_fallback_without_pdf_fails_closed() {
+    let root = make_temp_dir("hone_channels_earnings_text_fallback_without_pdf");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| Box::new(EarningsFallbackStreamingRunner)));
+    let actor =
+        ActorIdentity::new("web", "database-admin-pdf-guard", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct").with_prompt_options(
+        PromptOptions {
+            is_admin: true,
+            ..PromptOptions::default()
+        },
+    );
+    session.add_listener(listener.clone());
+    let result = session
+        .run(
+            "请为 AAOI 生成财报前瞻",
+            AgentRunOptions {
+                runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+                model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+                isolate_prior_history: true,
+                dedicated_earnings_workflow: true,
+                ..AgentRunOptions::default()
+            },
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert!(result.response.content.is_empty());
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some("dedicated earnings workflow ended without a persisted PDF artifact")
+    );
+    let events = listener.events.lock().await.clone();
+    assert!(!events.iter().any(|event| {
+        matches!(
+            event,
+            AgentSessionEvent::Segment { text }
+                if text.contains("PDF 渲染暂时遇到格式和证据链完整性限制")
+        )
+    }));
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert!(!messages.iter().any(|message| {
+        message
+            .content
+            .iter()
+            .filter_map(|part| part.text.as_deref())
+            .any(|text| text.contains("PDF 渲染暂时遇到格式和证据链完整性限制"))
+    }));
+
     let _ = std::fs::remove_dir_all(root);
 }
 

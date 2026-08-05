@@ -15,6 +15,12 @@ const DELIVERED_PUSH_CONTEXT_SUBTYPE: &str = "delivered_push_context";
 const CURRENT_USER_INPUT_MARKER: &str = "【本轮用户输入】";
 const MAX_DELIVERED_PUSH_BODY_CHARS: usize = 4_000;
 
+/// Runtime-only request metadata. AgentSession sets this only after the Web API
+/// has verified the administrator earnings route; it is never read from user
+/// input or persisted as an instruction for a later turn.
+pub(crate) const REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY: &str =
+    "runtime.require_earnings_pdf_completion";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeliveredPushContext {
     pub delivery_log_id: i64,

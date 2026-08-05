@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-05
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Earnings PDF 终态强制与生产修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/earnings-pdf-terminal-enforcement.md`
+  - 摘要：定位并修复生产 AAOI 财报前瞻在 renderer 格式/证据校验失败后发布无 PDF 文字降级终稿的问题；强制官方 PDF 成功、附件持久化和刷新后下载成为财报入口唯一成功终态
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

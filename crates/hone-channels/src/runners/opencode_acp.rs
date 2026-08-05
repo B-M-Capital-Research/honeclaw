@@ -10,12 +10,14 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
-    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, persistent_side_effect_state_is_uncertain,
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf_artifact,
+    latest_earnings_render_error, persistent_side_effect_state_is_uncertain,
 };
 
 use super::acp_common::{
@@ -30,11 +32,51 @@ use super::acp_common::{
 };
 use super::types::{
     AcpAdapterKind, AcpCompatibilityStatus, AcpStreamDialect, AgentRunner, AgentRunnerEmitter,
-    AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult, RunnerTimeouts,
+    AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY, RunnerTimeouts,
 };
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
+const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 3;
+
+fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
+    request
+        .session_metadata
+        .get(REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
+    if let Some(path) = completed_earnings_pdf_artifact(&state.finished_tool_calls) {
+        let filename = Path::new(&path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or(path.as_str());
+        if state.full_reply.contains(filename) {
+            return None;
+        }
+        return Some(format!(
+            "【HONE 财报工作流仍未完成】\n官方 renderer 已成功生成 PDF：{path}\n\
+             不要再次渲染。现在继续本轮，在最终完整报告后明确写出这个 PDF 文件名或\
+             `[附件: {path}]`。不得解释失败、不得输出降级答案；只有包含该附件引用的\
+             完整报告才能结束。"
+        ));
+    }
+
+    let latest_error = latest_earnings_render_error(&state.finished_tool_calls)
+        .unwrap_or_else(|| "尚未观察到 earnings-research 官方 renderer 的成功调用".to_string());
+    Some(format!(
+        "【HONE 财报工作流仍未完成，必须继续】\n上一段输出不能作为终稿，因为没有成功的\
+         earnings-research PDF artifact。最近一次 renderer 校验为：\n{latest_error}\n\n\
+         继续使用本会话已经取得的证据；缺证据时先继续调用数据或网页搜索工具。按原\
+         Workflow 一次修正列出的全部问题，再调用 skill_tool。不得向用户解释格式限制，\
+         不得发布文字降级答案，也不得停止；只有 skill_tool 返回 success=true、\
+         render_success=true、一个 application/pdf artifact，并在最终完整报告中引用该 PDF\
+         文件名后才能结束。"
+    ))
+}
 
 pub(crate) struct OpencodeAcpRunner {
     config: OpencodeAcpConfig,
@@ -618,49 +660,94 @@ async fn run_opencode_acp(
             next_id += 1;
         }
 
-        tracing::info!(
-            "[AgentRunner/opencode] session={} sending session/prompt (idle_timeout={}s overall_timeout={}s)",
-            request.session_id,
-            prompt_idle_timeout.as_secs(),
-            prompt_overall_timeout.as_secs(),
-        );
+        let require_earnings_pdf = requires_earnings_pdf_completion(&request);
+        let prompt_deadline = Instant::now() + prompt_overall_timeout;
         let (system_prompt, current_user_turn, context) = request
             .conversation
             .replay_parts()
             .expect("opencode_acp requires Hone replay conversation input");
-        let prompt_text =
+        let initial_prompt_text =
             build_opencode_acp_prompt_text(system_prompt, current_user_turn, Some(context));
-        write_jsonrpc_request(
-            &mut stdin,
-            next_id,
-            "session/prompt",
-            serde_json::json!({
-                "sessionId": opencode_session_id,
-                "prompt": [
-                    {
-                        "type": "text",
-                        "text": prompt_text,
-                    }
-                ]
-            }),
-            Some(&acp_log),
-        )
-        .await?;
-        let prompt_result = wait_for_opencode_response_with_timeouts(
-            &mut reader,
-            &mut stdin,
-            next_id,
-            emitter.clone(),
-            &mut opencode_state,
-            stderr_buffer.clone(),
-            AcpResponseTimeouts {
-                idle: prompt_idle_timeout,
-                overall: prompt_overall_timeout,
-            },
-            &acp_log,
-        )
-        .await?;
-        Ok(prompt_result)
+        let mut prompt_text = initial_prompt_text;
+        let mut prompt_count = 0u32;
+        loop {
+            let remaining_overall = prompt_deadline.saturating_duration_since(Instant::now());
+            if remaining_overall.is_zero() {
+                return Err(AgentSessionError {
+                    kind: AgentSessionErrorKind::TimeoutOverall,
+                    message: "opencode acp prompt overall timeout".to_string(),
+                });
+            }
+            prompt_count += 1;
+            tracing::info!(
+                "[AgentRunner/opencode] session={} sending session/prompt attempt={} (idle_timeout={}s remaining_overall={}s earnings_pdf_required={})",
+                request.session_id,
+                prompt_count,
+                prompt_idle_timeout.as_secs(),
+                remaining_overall.as_secs(),
+                require_earnings_pdf,
+            );
+            write_jsonrpc_request(
+                &mut stdin,
+                next_id,
+                "session/prompt",
+                serde_json::json!({
+                    "sessionId": opencode_session_id,
+                    "prompt": [
+                        {
+                            "type": "text",
+                            "text": prompt_text,
+                        }
+                    ]
+                }),
+                Some(&acp_log),
+            )
+            .await?;
+            let prompt_result = wait_for_opencode_response_with_timeouts(
+                &mut reader,
+                &mut stdin,
+                next_id,
+                emitter.clone(),
+                &mut opencode_state,
+                stderr_buffer.clone(),
+                AcpResponseTimeouts {
+                    idle: prompt_idle_timeout.min(remaining_overall),
+                    overall: remaining_overall,
+                },
+                &acp_log,
+            )
+            .await?;
+
+            let stopped_successfully = acp_prompt_succeeded(
+                prompt_result.get("stopReason").and_then(Value::as_str),
+            );
+            let recovery_prompt = require_earnings_pdf
+                .then(|| earnings_pdf_recovery_prompt(&opencode_state))
+                .flatten();
+            let recovery_count = prompt_count.saturating_sub(1);
+            if !stopped_successfully
+                || recovery_prompt.is_none()
+                || recovery_count >= MAX_EARNINGS_PDF_RECOVERY_PROMPTS
+                || persistent_side_effect_state_is_uncertain(&opencode_state.finished_tool_calls)
+            {
+                metadata_updates.insert(
+                    "opencode_prompt_attempts".to_string(),
+                    Value::from(prompt_count),
+                );
+                break Ok(prompt_result);
+            }
+
+            tracing::warn!(
+                session = %request.session_id,
+                prompt_count,
+                max_recovery_prompts = MAX_EARNINGS_PDF_RECOVERY_PROMPTS,
+                "OpenCode ended a required earnings workflow without a downloadable PDF; continuing the same ACP session"
+            );
+            flush_pending_assistant_message(&mut opencode_state);
+            opencode_state.full_reply.clear();
+            prompt_text = recovery_prompt.expect("checked recovery prompt");
+            next_id += 1;
+        }
     }
     .await;
 
@@ -684,7 +771,10 @@ async fn run_opencode_acp(
     let stop_reason_value = prompt_result
         .get("stopReason")
         .and_then(|value| value.as_str());
-    let success = acp_prompt_succeeded(stop_reason_value);
+    let require_earnings_pdf = requires_earnings_pdf_completion(&request);
+    let earnings_pdf_complete =
+        !require_earnings_pdf || earnings_pdf_recovery_prompt(&opencode_state).is_none();
+    let success = acp_prompt_succeeded(stop_reason_value) && earnings_pdf_complete;
     let stop_reason = stop_reason_value.unwrap_or("unknown");
     if !success {
         log_acp_prompt_stop_diagnostics(
@@ -742,6 +832,10 @@ async fn run_opencode_acp(
 
     let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
     let success = success && !state_uncertain;
+    let prompt_attempts = metadata_updates
+        .get("opencode_prompt_attempts")
+        .and_then(Value::as_u64)
+        .unwrap_or(1) as u32;
     Ok((
         AgentResponse {
             content: if state_uncertain {
@@ -750,10 +844,15 @@ async fn run_opencode_acp(
                 content
             },
             tool_calls_made,
-            iterations: 1,
+            iterations: prompt_attempts,
             success,
             error: if state_uncertain {
                 Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if !earnings_pdf_complete {
+                Some(
+                    "earnings workflow ended without a successful referenced PDF artifact"
+                        .to_string(),
+                )
             } else if success {
                 None
             } else {
@@ -1545,5 +1644,69 @@ mod side_effect_status_tests {
         assert_eq!(result["status"], "failed");
         assert_eq!(result["isError"], true);
         assert_eq!(result["side_effect_status"], "not_started");
+    }
+}
+
+#[cfg(test)]
+mod earnings_pdf_completion_tests {
+    use super::*;
+    use hone_core::agent::ToolCallMade;
+
+    fn renderer_call(result: Value) -> ToolCallMade {
+        ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name": "earnings-research",
+                "script": "scripts/render_report_pdf.py"
+            }),
+            result,
+            tool_call_id: Some("render".to_string()),
+        }
+    }
+
+    #[test]
+    fn failed_renderer_and_text_fallback_require_a_continuation_prompt() {
+        let mut state = AcpPromptState {
+            full_reply: "PDF 渲染暂时遇到格式和证据链完整性限制，无法成功生成。".to_string(),
+            ..AcpPromptState::default()
+        };
+        state.finished_tool_calls.push(renderer_call(json!({
+            "success": false,
+            "render_success": false,
+            "side_effect_status": "not_started",
+            "render_error": "preview news item 1 is conference chatter",
+            "artifacts": []
+        })));
+
+        let prompt = earnings_pdf_recovery_prompt(&state).expect("recovery prompt");
+        assert!(prompt.contains("preview news item 1 is conference chatter"));
+        assert!(prompt.contains("不得发布文字降级答案"));
+    }
+
+    #[test]
+    fn successful_renderer_still_requires_the_final_reply_to_reference_the_pdf() {
+        let mut state = AcpPromptState {
+            full_reply: "# AAOI公司财报前瞻分析\n完整报告正文".to_string(),
+            ..AcpPromptState::default()
+        };
+        state.finished_tool_calls.push(renderer_call(json!({
+            "success": true,
+            "render_success": true,
+            "side_effect_status": "completed",
+            "artifacts": [{
+                "kind": "document",
+                "path": "/sandbox/AAOI_Earnings_Preview.pdf",
+                "mime": "application/pdf"
+            }]
+        })));
+
+        let prompt = earnings_pdf_recovery_prompt(&state).expect("attachment recovery");
+        assert!(prompt.contains("不要再次渲染"));
+        assert!(prompt.contains("AAOI_Earnings_Preview.pdf"));
+
+        state
+            .full_reply
+            .push_str("\n[附件: /sandbox/AAOI_Earnings_Preview.pdf]");
+        assert!(earnings_pdf_recovery_prompt(&state).is_none());
     }
 }

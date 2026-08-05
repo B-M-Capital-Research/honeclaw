@@ -22,6 +22,12 @@ returned priority list to correct the report and structured audit, then render
 again. Never answer with a partial report, a renderer-failure explanation, or a
 text-only fallback while the turn is still active.
 
+Do not probe the renderer with a heading skeleton, `[1]`, placeholder objects,
+empty ledgers, one-news-item drafts, or other knowingly incomplete payloads.
+Finish the evidence ledgers, report prose, arithmetic and complete structured
+audit before the first render call. A renderer call is a real completion attempt,
+not a schema-discovery mechanism.
+
 The server-supplied current workflow block is the only task to execute. Treat all
 older conversation turns as background, never resume or complete an instruction
 from an earlier turn, and never let a prior ticker or file request change the
@@ -241,7 +247,8 @@ The script returns one `document` artifact. Require `success=true`, confirm the 
 - never claim PDF success when rendering failed. A renderer validation error is
   not a terminal outcome: correct exactly the rejected field or report section,
   preserve every already-verified fact, and call `skill_tool` again. Continue
-  correcting one rejected field at a time within the turn timeout. Do not answer with a PDF failure note, partial report,
+  by correcting every issue listed in the current priority batch before each
+  retry, within the turn timeout. Do not answer with a PDF failure note, partial report,
   or text-only fallback while a correctable validation error remains. If the
   error says the news count, freshness, or category coverage is insufficient,
   perform additional targeted evidence calls before revising the report.

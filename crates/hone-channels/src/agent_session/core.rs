@@ -40,14 +40,16 @@ use crate::response_finalizer::{
 };
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    DeliveredPushContext, DeliveredPushContextBatch, ServiceOwnedInitialPrefix,
+    DeliveredPushContext, DeliveredPushContextBatch, REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY,
+    ServiceOwnedInitialPrefix,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
-    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, persistent_side_effect_state_is_uncertain,
-    response_has_only_known_read_only_calls, response_has_persistent_side_effect,
+    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf_artifact,
+    persistent_side_effect_state_is_uncertain, response_has_only_known_read_only_calls,
+    response_has_persistent_side_effect,
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -784,7 +786,12 @@ impl AgentSession {
     ) -> AgentRunnerResult {
         let deferred_emitter: Arc<dyn AgentRunnerEmitter> =
             Arc::new(DeferredUserOutputEmitter::new(emitter.clone()));
-        let defer_output = contract.is_some()
+        let defer_output = request
+            .session_metadata
+            .get(REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || contract.is_some()
             || agent_discovery_input.is_some()
             || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce;
         let attempt_emitter = if defer_output {
@@ -1490,6 +1497,12 @@ impl AgentSession {
         // means the turn did not start evidence-free.
         execution.runner_request.preloaded_evidence_calls =
             investment_context.preloaded_evidence_calls;
+        if options.dedicated_earnings_workflow {
+            execution.runner_request.session_metadata.insert(
+                REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY.to_string(),
+                Value::Bool(true),
+            );
+        }
         execution.runner_request.agent_owned_finance_loop = options.turn_origin
             == AgentTurnOrigin::Interactive
             && execution.runner_name == "function_calling"
@@ -2654,6 +2667,7 @@ impl AgentSession {
                 None,
             );
         }
+        let mut generated_files_attached = 0usize;
         if self.actor.channel == "web"
             && response.success
             && !self
@@ -2678,23 +2692,43 @@ impl AgentSession {
                 actor: &self.actor,
                 session_id: &session_id,
             });
-            let attached = attach_web_generated_files(
+            generated_files_attached = attach_web_generated_files(
                 &mut response,
                 &execution.runner_request.working_directory,
                 run_started_at,
                 promotion.as_ref(),
             );
-            if attached > 0 {
+            if generated_files_attached > 0 {
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
                     &session_id,
                     "agent.run.attachments",
-                    &format!("generated_files={attached}"),
+                    &format!("generated_files={generated_files_attached}"),
                     self.message_id.as_deref(),
                     None,
                 );
             }
+        }
+        if options.dedicated_earnings_workflow
+            && response.success
+            && (completed_earnings_pdf_artifact(&response.tool_calls_made).is_none()
+                || generated_files_attached == 0)
+        {
+            tracing::error!(
+                session_id,
+                runner = execution.runner_name,
+                completed_renderer =
+                    completed_earnings_pdf_artifact(&response.tool_calls_made).is_some(),
+                generated_files_attached,
+                "dedicated earnings workflow reached terminal output without a persisted PDF"
+            );
+            response.success = false;
+            response.content.clear();
+            response.error = Some(
+                "dedicated earnings workflow ended without a persisted PDF artifact".to_string(),
+            );
+            terminal_error_emitted = false;
         }
         if response.success
             && let Some(prefix) = committed_visible_prefix.as_deref()

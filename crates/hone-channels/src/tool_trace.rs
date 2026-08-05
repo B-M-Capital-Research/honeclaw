@@ -14,6 +14,75 @@ pub(crate) const PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE: &str = "这次操作�
 
 pub(crate) const UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE: &str = "本轮分析调用了无法确认只读属性的工具，但最终回复不完整。为避免掩盖或重复外部操作，我没有自动修复或重试；请先核对相关状态。";
 
+/// Return the PDF path from a completed, repository-owned earnings renderer.
+///
+/// A prose claim, a generic document, or a renderer result without the exact
+/// success/side-effect fields is not enough to complete the administrator
+/// earnings workflow.
+pub(crate) fn completed_earnings_pdf_artifact(tool_calls: &[ToolCallMade]) -> Option<String> {
+    tool_calls.iter().rev().find_map(|call| {
+        if canonical_hone_tool_name(&call.name) != Some("skill_tool")
+            || call
+                .arguments
+                .get("skill_name")
+                .and_then(serde_json::Value::as_str)
+                != Some("earnings-research")
+            || call
+                .result
+                .get("success")
+                .and_then(serde_json::Value::as_bool)
+                != Some(true)
+            || call
+                .result
+                .get("render_success")
+                .and_then(serde_json::Value::as_bool)
+                != Some(true)
+            || call
+                .result
+                .get("side_effect_status")
+                .and_then(serde_json::Value::as_str)
+                != Some("completed")
+        {
+            return None;
+        }
+
+        call.result
+            .get("artifacts")
+            .and_then(serde_json::Value::as_array)?
+            .iter()
+            .find_map(|artifact| {
+                let path = artifact.get("path")?.as_str()?.trim();
+                let kind = artifact.get("kind").and_then(serde_json::Value::as_str);
+                let mime = artifact.get("mime").and_then(serde_json::Value::as_str);
+                (kind == Some("document")
+                    && mime == Some("application/pdf")
+                    && path.to_ascii_lowercase().ends_with(".pdf"))
+                .then(|| path.to_string())
+            })
+    })
+}
+
+pub(crate) fn latest_earnings_render_error(tool_calls: &[ToolCallMade]) -> Option<String> {
+    tool_calls.iter().rev().find_map(|call| {
+        if canonical_hone_tool_name(&call.name) != Some("skill_tool")
+            || call
+                .arguments
+                .get("skill_name")
+                .and_then(serde_json::Value::as_str)
+                != Some("earnings-research")
+        {
+            return None;
+        }
+        call.result
+            .get("render_error")
+            .or_else(|| call.result.get("error"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.chars().take(4_000).collect())
+    })
+}
+
 /// Whether a call can mutate persistent user/system state.
 pub(crate) fn is_persistent_side_effect_call(call: &ToolCallMade) -> bool {
     tool_call_has_persistent_side_effect(&call.name, &call.arguments)
@@ -77,6 +146,47 @@ mod tests {
             result,
             tool_call_id: Some("call_1".to_string()),
         }
+    }
+
+    #[test]
+    fn earnings_completion_requires_exact_successful_pdf_artifact() {
+        let failed = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({"skill_name":"earnings-research"}),
+            result: json!({
+                "success": false,
+                "render_success": false,
+                "side_effect_status": "not_started",
+                "render_error": "preview preflight found 6 issues",
+                "artifacts": []
+            }),
+            tool_call_id: Some("failed".to_string()),
+        };
+        assert_eq!(completed_earnings_pdf_artifact(&[failed.clone()]), None);
+        assert_eq!(
+            latest_earnings_render_error(&[failed]),
+            Some("preview preflight found 6 issues".to_string())
+        );
+
+        let completed = ToolCallMade {
+            name: "mcp__hone__skill_tool".to_string(),
+            arguments: json!({"skill_name":"earnings-research"}),
+            result: json!({
+                "success": true,
+                "render_success": true,
+                "side_effect_status": "completed",
+                "artifacts": [{
+                    "kind": "document",
+                    "path": "/sandbox/AAOI_Earnings_Preview.pdf",
+                    "mime": "application/pdf"
+                }]
+            }),
+            tool_call_id: Some("completed".to_string()),
+        };
+        assert_eq!(
+            completed_earnings_pdf_artifact(&[completed]).as_deref(),
+            Some("/sandbox/AAOI_Earnings_Preview.pdf")
+        );
     }
 
     #[test]

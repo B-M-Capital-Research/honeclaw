@@ -20,8 +20,8 @@ pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasonin
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     AgentSessionMetadataCheckpoint, DeliveredPushContext, DeliveredPushContextBatch,
-    NativeSkillProjection, RunnerConversationInput, RunnerTimeouts, ServiceOwnedInitialPrefix,
-    TerminalStreamPolicy,
+    NativeSkillProjection, REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY, RunnerConversationInput,
+    RunnerTimeouts, ServiceOwnedInitialPrefix, TerminalStreamPolicy,
 };
 
 #[cfg(test)]
