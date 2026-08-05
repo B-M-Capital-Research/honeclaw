@@ -105,6 +105,67 @@ pub(crate) fn latest_earnings_render_error(tool_calls: &[ToolCallMade]) -> Optio
     })
 }
 
+fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
+    canonical_hone_tool_name(&call.name) == Some("skill_tool")
+        && call
+            .arguments
+            .get("skill_name")
+            .and_then(serde_json::Value::as_str)
+            == Some("earnings-research")
+        && call
+            .arguments
+            .get("execute_script")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        && call
+            .result
+            .get("success")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        && call
+            .result
+            .get("render_success")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        && call
+            .result
+            .get("side_effect_status")
+            .and_then(serde_json::Value::as_str)
+            == Some("not_started")
+        && call
+            .result
+            .get("artifacts")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(Vec::is_empty)
+        && call
+            .result
+            .get("render_error")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
+/// Whether an incomplete earnings attempt is safe to run again in a fresh
+/// isolated model session.
+///
+/// The allowlist is intentionally narrower than generic retry safety: every
+/// observed call must be read-only or an earnings renderer rejection that
+/// explicitly happened before any file write. At least one such renderer
+/// rejection must be present, so unrelated read-only failures do not acquire
+/// a new automatic retry path.
+pub(crate) fn earnings_pdf_validation_failed_without_side_effects(
+    tool_calls: &[ToolCallMade],
+) -> bool {
+    let mut saw_safe_renderer_failure = false;
+    for call in tool_calls {
+        if is_safe_failed_earnings_renderer(call) {
+            saw_safe_renderer_failure = true;
+        } else if !is_known_read_only_call(call) {
+            return false;
+        }
+    }
+    saw_safe_renderer_failure && completed_earnings_pdf_artifact(tool_calls).is_none()
+}
+
 /// Whether a call can mutate persistent user/system state.
 pub(crate) fn is_persistent_side_effect_call(call: &ToolCallMade) -> bool {
     tool_call_has_persistent_side_effect(&call.name, &call.arguments)
@@ -215,6 +276,59 @@ mod tests {
             completed_earnings_pdf_artifact(&[completed]).as_deref(),
             Some("/sandbox/AAOI_Earnings_Preview.pdf")
         );
+    }
+
+    #[test]
+    fn earnings_validation_retry_requires_an_explicit_pre_write_rejection() {
+        let read_only = ToolCallMade {
+            name: "hone_data_fetch".to_string(),
+            arguments: json!({"data_type":"earnings","symbol":"AAOI"}),
+            result: json!({"success":true,"data":[]}),
+            tool_call_id: Some("read".to_string()),
+        };
+        let safe_rejection = ToolCallMade {
+            name: "mcp__hone__skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 20 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+        assert!(earnings_pdf_validation_failed_without_side_effects(&[
+            read_only.clone(),
+            safe_rejection.clone()
+        ]));
+
+        let mut wrote_artifact = safe_rejection.clone();
+        wrote_artifact.result["artifacts"] = json!([{
+            "kind":"document",
+            "path":"/sandbox/partial.pdf",
+            "mime":"application/pdf"
+        }]);
+        assert!(!earnings_pdf_validation_failed_without_side_effects(&[
+            read_only.clone(),
+            wrote_artifact
+        ]));
+
+        let mut unknown_status = safe_rejection.clone();
+        unknown_status.result["side_effect_status"] = json!("unknown_after_acp_failure");
+        assert!(!earnings_pdf_validation_failed_without_side_effects(&[
+            read_only.clone(),
+            unknown_status
+        ]));
+
+        assert!(!earnings_pdf_validation_failed_without_side_effects(&[
+            read_only,
+            safe_rejection,
+            call("external/create_order", None, json!({"success":true}))
+        ]));
     }
 
     #[test]

@@ -48,8 +48,8 @@ use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
     UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf_artifact,
-    persistent_side_effect_state_is_uncertain, response_has_only_known_read_only_calls,
-    response_has_persistent_side_effect,
+    earnings_pdf_validation_failed_without_side_effects, persistent_side_effect_state_is_uncertain,
+    response_has_only_known_read_only_calls, response_has_persistent_side_effect,
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -59,12 +59,12 @@ use super::guard::QuotaReservationGuard;
 use super::helpers::{
     CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand,
-    EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT, EMPTY_SUCCESS_RETRY_LIMIT,
-    TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
-    is_opencode_corrupted_thought_signature_error_text, is_retryable_transient_runner_failure,
-    merge_message_metadata, persistable_turn_from_response, prune_historical_tool_protocol,
-    prune_interactive_runtime_history, restore_limit_before_compaction,
-    should_return_runner_result,
+    EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT, EARNINGS_PDF_VALIDATION_RETRY_LIMIT,
+    EMPTY_SUCCESS_RETRY_LIMIT, TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT,
+    is_context_overflow_error_text, is_opencode_corrupted_thought_signature_error_text,
+    is_retryable_transient_runner_failure, merge_message_metadata, persistable_turn_from_response,
+    prune_historical_tool_protocol, prune_interactive_runtime_history,
+    restore_limit_before_compaction, should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
@@ -2522,13 +2522,24 @@ impl AgentSession {
                     .error
                     .as_deref()
                     .is_some_and(is_opencode_corrupted_thought_signature_error_text);
+            let safe_earnings_pdf_validation_failure = options.dedicated_earnings_workflow
+                && matches!(
+                    options.runner_override,
+                    Some(AgentRunRunnerOverride::OpencodeAcp)
+                )
+                && completed_earnings_pdf_artifact(&response.tool_calls_made).is_none()
+                && earnings_pdf_validation_failed_without_side_effects(&response.tool_calls_made);
             let recovery_limit = if corrupted_thought_signature {
                 EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT
+            } else if safe_earnings_pdf_validation_failure {
+                EARNINGS_PDF_VALIDATION_RETRY_LIMIT
             } else {
                 CONTEXT_OVERFLOW_RECOVERY_LIMIT
             };
             let should_try_recovery = !response.success
-                && (context_overflow || corrupted_thought_signature)
+                && (context_overflow
+                    || corrupted_thought_signature
+                    || safe_earnings_pdf_validation_failure)
                 // Native ACP runners retain and compact their own thread history.
                 // Rewriting Hone's local context cannot shrink that active
                 // thread, and retrying the same turn could duplicate it.
@@ -2537,17 +2548,22 @@ impl AgentSession {
                     .conversation_strategy()
                     .retains_native_history()
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
-                && response_has_only_known_read_only_calls(&response.tool_calls_made)
-                && !response_has_persistent_side_effect(&response.tool_calls_made)
+                && (safe_earnings_pdf_validation_failure
+                    || (response_has_only_known_read_only_calls(&response.tool_calls_made)
+                        && !response_has_persistent_side_effect(&response.tool_calls_made)))
                 && committed_visible_prefix.is_none()
                 && recovery_idx < recovery_limit;
             if !should_try_recovery {
                 break;
             }
 
-            let use_current_turn_only_recovery = corrupted_thought_signature || recovery_idx > 0;
+            let use_current_turn_only_recovery = corrupted_thought_signature
+                || safe_earnings_pdf_validation_failure
+                || recovery_idx > 0;
             let recovery_mode = if corrupted_thought_signature {
                 "fresh_session_after_corrupted_thought_signature"
+            } else if safe_earnings_pdf_validation_failure {
+                "fresh_session_after_safe_pdf_validation_failure"
             } else if use_current_turn_only_recovery {
                 "current_turn_only"
             } else {

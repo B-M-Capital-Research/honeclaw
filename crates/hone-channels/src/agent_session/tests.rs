@@ -4691,6 +4691,142 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
 }
 
 #[tokio::test]
+async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_failure() {
+    let root = make_temp_dir("hone_channels_earnings_pdf_validation_retry");
+    let llm = MockLlmProvider::with_chat_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![
+                    ToolCallMade {
+                        name: "hone_data_fetch".to_string(),
+                        arguments: serde_json::json!({
+                            "data_type":"earnings",
+                            "symbol":"AAOI"
+                        }),
+                        result: serde_json::json!({"success":true,"data":[]}),
+                        tool_call_id: Some("call_read_only".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "mcp__hone__skill_tool".to_string(),
+                        arguments: serde_json::json!({
+                            "skill_name":"earnings-research",
+                            "execute_script":true,
+                            "script":"scripts/render_report_pdf.py"
+                        }),
+                        result: serde_json::json!({
+                            "success":false,
+                            "render_success":false,
+                            "side_effect_status":"not_started",
+                            "render_error":"preview preflight found 20 issues",
+                            "artifacts":[]
+                        }),
+                        tool_call_id: Some("call_renderer".to_string()),
+                    },
+                ],
+                iterations: 1,
+                success: false,
+                error: Some(
+                    "earnings workflow ended without a successful referenced PDF artifact"
+                        .to_string(),
+                ),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("second non-retryable failure".to_string()),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("exclusive test core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+                conversation_strategy: AgentConversationStrategy::EphemeralCompiledPrompt,
+                native_skill_projection: None,
+            })
+        }));
+    }
+    let actor =
+        ActorIdentity::new("web", "database-admin-pdf-validation", None::<String>).expect("actor");
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    core.session_storage
+        .add_message(&actor.session_id(), "user", "旧的普通聊天任务", None)
+        .expect("seed old user message");
+    let session = AgentSession::new(core, actor, "direct").with_prompt_options(PromptOptions {
+        is_admin: true,
+        ..PromptOptions::default()
+    });
+
+    let result = session
+        .run(
+            "请为 AAOI 生成财报前瞻",
+            AgentRunOptions {
+                runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+                model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+                isolate_prior_history: true,
+                dedicated_earnings_workflow: true,
+                ..AgentRunOptions::default()
+            },
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .len(),
+        2,
+        "a renderer rejection before any write should get one fresh-session retry"
+    );
+    assert!(
+        recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .iter()
+            .all(Vec::is_empty),
+        "the recovery must remain isolated from prior chat history"
+    );
+    assert!(
+        queued_results
+            .lock()
+            .expect("queued results lock")
+            .is_empty()
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
     let root = make_temp_dir("hone_channels_unverified_earnings_runner_override");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());

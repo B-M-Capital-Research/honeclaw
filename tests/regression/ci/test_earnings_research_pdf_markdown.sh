@@ -196,11 +196,34 @@ try:
     module.validate_workflow_report("NVIDIA", "preview", "", deepcopy(preview_audit))
 except ValueError as exc:
     message = str(exc)
-    assert "showing the first 8 in priority order" in message
-    assert message.count("\n- ") == 8
+    assert "showing the first 18 in priority order" in message
+    assert message.count("\n- ") == 18
+    assert "lower-priority issue(s) remain" not in message
+else:
+    raise AssertionError("all ordinary preflight failures must be returned in one bounded batch")
+
+oversized_audit = deepcopy(preview_audit)
+for index in range(10):
+    oversized_audit["institution_views"].append({
+        "institution": f"Institution {index}",
+        "as_of": "2026-08-03",
+        "rating_or_recommendation": "Buy",
+        "target_price": f"目标价 {170 + index} 美元",
+        "revenue_view": f"本季收入约 {470 + index} 亿美元",
+        "profit_view": f"本季 EPS 约 {1.00 + index / 100:.2f} 美元",
+        "rationale": "供给和产品组合改善",
+        "source_name": f"Institution {index}",
+        "source_url": f"https://example.com/institution-{index}",
+    })
+try:
+    module.validate_workflow_report("NVIDIA", "preview", "", oversized_audit)
+except ValueError as exc:
+    message = str(exc)
+    assert "showing the first 32 in priority order" in message
+    assert message.count("\n- ") == module.MAX_PREFLIGHT_ERRORS_PER_PASS == 32
     assert "lower-priority issue(s) remain" in message
 else:
-    raise AssertionError("large preflight failures must be returned in bounded priority batches")
+    raise AssertionError("oversized preflight feedback must remain bounded")
 
 try:
     module.validate_workflow_report(

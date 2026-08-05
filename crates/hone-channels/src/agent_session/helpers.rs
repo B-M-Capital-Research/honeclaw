@@ -30,6 +30,7 @@ pub(super) const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 pub(super) const TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT: usize = 1;
 pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 2;
 pub(super) const EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT: usize = 1;
+pub(super) const EARNINGS_PDF_VALIDATION_RETRY_LIMIT: usize = 1;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 pub(super) const CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT: usize = 0;

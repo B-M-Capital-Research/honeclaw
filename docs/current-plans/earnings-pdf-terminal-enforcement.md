@@ -31,6 +31,7 @@
 - 用最小通用修复强制 PDF 成功终态，保留超时、不可恢复基础设施错误和不确定副作用的 fail-closed 边界。
 - renderer 成功后由宿主直接发布同次成功调用中已校验的 Markdown 与附件路径，避免模型为补附件名再次生成整篇报告并耗尽时限。
 - 对 OpenRouter/Gemini 在工具轮次间偶发的精确 `Corrupted thought signature` 做一次受限的新 OpenCode 会话恢复；当前轮仍保持历史隔离，且仅允许已知只读、无持久副作用、无可见前缀的任务重放。
+- renderer 每轮一次返回普通报告的全部预检问题（仍有 32 条硬上限），避免 8 条分批反馈制造不必要的六轮返工和上下文压缩；若 OpenCode 在已确认 `side_effect_status=not_started`、无 artifact、其余调用全为已知只读的校验失败后结束，则放弃已耗尽会话并只做一次全新隔离当前轮重试。
 - 增加至少一条自动化回归覆盖本次真实失败语句和等价无附件终稿。
 - 部署精确 revision/技能，真实重跑 AAOI，检查 PDF 下载、页面刷新持久化和生产健康。
 
@@ -41,6 +42,7 @@
 - `bash tests/regression/run_ci.sh`；如修改 Rust，再运行仓库约定的 changed rustfmt、workspace check/test。
 - 生产 AAOI：正文完成、一个 PDF 卡片、点击下载成功、刷新后仍存在；日志无文字降级成功终态。
 - 生产故障复现确认：`ses_02df86fc1ffeMrWksTwhlo0D5e` 在首次只读 DataFetch 后由 Gemini 返回精确 `400 invalid_request: Corrupted thought signature`；回归必须证明仅该结构化错误触发一次全新隔离会话，且不压缩/带回旧聊天。
+- 第二层生产复现确认：`ses_02de7db74ffe5VdG8XHEnt8AsO` 已跨过签名错误并完成数据/Web 取证，但 renderer 因每次只显示 8 条而连续六轮从 20→12→6→单项→单项→新闻数量返工；同会话三个 continuation 均为 0-token 空响应。回归必须证明普通错误一次完整返回、超大集合仍按 32 条截断，并且只有明确写入前拒绝的 renderer trace 可以触发一次新会话。
 
 ## Documentation Sync
 
@@ -51,4 +53,5 @@
 
 - Gemini 严格修稿可能需要多轮和较长推理；不能通过放宽证据门禁换取表面成功。
 - 已启动 renderer 的失败仍可能有不确定副作用；不得自动重放可能产生重复文件的调用。
+- fresh-session 校验重试会重新取证并增加耗时，但不能携带模型上一会话的草稿或把未知工具当成只读；任何 artifact、未知状态或未知工具都必须阻断重试。
 - 生产重启必须在活跃会话为零时进行，避免中断其他用户任务。

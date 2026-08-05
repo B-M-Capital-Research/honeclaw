@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 
 MAX_REPORT_CHARS = 240_000
-MAX_PREFLIGHT_ERRORS_PER_PASS = 8
+MAX_PREFLIGHT_ERRORS_PER_PASS = 32
 EXPECTATION_CALLS = ("超出分析师预期", "低于分析师预期", "与分析师持平")
 AI_STYLE_MARKERS = (
     "数据时间",

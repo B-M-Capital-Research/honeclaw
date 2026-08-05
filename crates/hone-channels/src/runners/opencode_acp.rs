@@ -39,7 +39,10 @@ use super::types::{
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
-const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 3;
+// OpenCode can turn a post-compaction continuation into a zero-token no-op.
+// A safely rejected renderer is retried by AgentSession in a fresh isolated
+// ACP process instead of repeatedly prompting this exhausted native session.
+const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 0;
 
 fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
     request
