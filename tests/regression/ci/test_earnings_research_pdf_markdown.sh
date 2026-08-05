@@ -156,6 +156,24 @@ preview_audit = {
 }
 module.validate_workflow_report("NVIDIA", "preview", preview, preview_audit)
 
+canonical_non_disclosure_report = (
+    preview.replace("目标价 150 美元", "未披露目标价", 1)
+    .replace("本季收入约 455 亿美元", "未披露单季营收预测", 1)
+    .replace("本季 EPS 约 0.92 美元", "未披露单季EPS预测", 1)
+)
+canonical_non_disclosure_audit = deepcopy(preview_audit)
+for field in ("target_price", "revenue_view", "profit_view"):
+    canonical_non_disclosure_audit["institution_views"][0].pop(field)
+module.validate_workflow_report(
+    "NVIDIA",
+    "preview",
+    canonical_non_disclosure_report,
+    canonical_non_disclosure_audit,
+)
+assert canonical_non_disclosure_audit["institution_views"][0]["target_price"] == "未披露目标价"
+assert canonical_non_disclosure_audit["institution_views"][0]["revenue_view"] == "未披露单季营收预测"
+assert canonical_non_disclosure_audit["institution_views"][0]["profit_view"] == "未披露单季EPS预测"
+
 try:
     module.validate_workflow_report(
         "NVIDIA",

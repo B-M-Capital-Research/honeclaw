@@ -1034,10 +1034,62 @@ def collect_preview_preflight_errors(
     return errors
 
 
+def normalize_preview_non_disclosures(report: str, preview_audit: object | None) -> None:
+    """Recover canonical non-disclosure fields already stated in the report.
+
+    Models sometimes write the required disclosure in section 1.2.3 but omit the
+    matching optional-looking JSON key.  Only copy the three exact, conservative
+    phrases below; never infer a rating, target, or estimate that the report did
+    not explicitly publish.
+    """
+    if not isinstance(preview_audit, dict):
+        return
+    institution_views = preview_audit.get("institution_views")
+    if not isinstance(institution_views, list):
+        return
+    comparison = re.search(
+        r"^### 1\.2\.3 和机构分析对比\s*$\n+(.+?)(?=^## 1\.3 近期新闻\s*$)",
+        report,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    comparison_text = comparison.group(1) if comparison else ""
+    canonical_defaults = {
+        "target_price": "未披露目标价",
+        "revenue_view": "未披露单季营收预测",
+        "profit_view": "未披露单季EPS预测",
+    }
+    institution_names = [
+        str(view.get("institution", "")).strip()
+        for view in institution_views
+        if isinstance(view, dict) and str(view.get("institution", "")).strip()
+    ]
+    for view in institution_views:
+        if not isinstance(view, dict):
+            continue
+        institution = str(view.get("institution", "")).strip()
+        if not institution or institution not in comparison_text:
+            continue
+        start = comparison_text.find(institution)
+        next_positions = [
+            comparison_text.find(other, start + len(institution))
+            for other in institution_names
+            if other != institution
+        ]
+        next_positions = [position for position in next_positions if position >= 0]
+        paragraph_end = comparison_text.find("\n\n", start)
+        boundaries = next_positions + ([paragraph_end] if paragraph_end >= 0 else [])
+        end = min(boundaries) if boundaries else min(len(comparison_text), start + 600)
+        institution_text = comparison_text[start:end]
+        for field, phrase in canonical_defaults.items():
+            if not str(view.get(field, "")).strip() and phrase in institution_text:
+                view[field] = phrase
+
+
 def validate_workflow_report(
     company: str, mode: str, report: str, preview_audit: object | None = None
 ) -> None:
     if mode == "preview":
+        normalize_preview_non_disclosures(report, preview_audit)
         preflight_errors = collect_preview_preflight_errors(company, report, preview_audit)
         if preflight_errors:
             raise ValueError(
