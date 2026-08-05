@@ -7,6 +7,21 @@ description: Run the administrator-only Hone earnings preview or post-earnings a
 
 Execute this workflow completely. Do not delegate to Dify, BamangResearch, or any external workflow service.
 
+## Old Workflow rules come first
+
+For a preview, keep the original Workflow's reasoning spine above every schema
+or rendering detail: make the beat/miss/in-line call first from a quantified
+forecast bridge; explain the causal chain; compare actual dated views from named
+issuing institutions; then publish company-relevant recent news as natural
+paragraphs. Never replace an issuing institution with a publisher, a conference
+appearance, or a columnist. Never pad the news page with share-price moves,
+sector chatter, or unrelated customer headlines.
+
+There is no automatic-repair quota. If the renderer rejects the payload, use the
+returned priority list to correct the report and structured audit, then render
+again. Never answer with a partial report, a renderer-failure explanation, or a
+text-only fallback while the turn is still active.
+
 The server-supplied current workflow block is the only task to execute. Treat all
 older conversation turns as background, never resume or complete an instruction
 from an earlier turn, and never let a prior ticker or file request change the

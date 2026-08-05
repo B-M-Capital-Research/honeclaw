@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 
 MAX_REPORT_CHARS = 240_000
+MAX_PREFLIGHT_ERRORS_PER_PASS = 8
 EXPECTATION_CALLS = ("超出分析师预期", "低于分析师预期", "与分析师持平")
 AI_STYLE_MARKERS = (
     "数据时间",
@@ -294,6 +295,18 @@ def validate_preview_audit(
                 f"preview_audit.institution_views[{index}].rating_or_recommendation must "
                 "contain the actual Buy/Hold/Sell/Outperform-style stance, not only an action"
             )
+        institution_evidence = " ".join(
+            str(view.get(field, ""))
+            for field in ("rationale", "source_name", "source_url")
+        ).lower()
+        if re.search(
+            r"conference|summit|fireside|present(?:s|ing)? at|峰会|炉边谈话|出席.{0,8}(?:会议|大会)",
+            institution_evidence,
+        ):
+            raise ValueError(
+                f"preview_audit.institution_views[{index}] must cite an actual rating or "
+                "research view, not conference attendance"
+            )
         generic_views = {"in line", "above", "below", "consensus", "n/a", "not provided"}
         for field in ("revenue_view", "profit_view"):
             if str(view[field]).strip().lower() in generic_views:
@@ -429,9 +442,9 @@ def validate_preview_audit(
                 )
         evidence_text = " ".join(evidence_text_parts).lower()
         weak_news_patterns = (
-            r"conference attendance|technology summit|fireside chat|present(?:s|ing)? at",
+            r"conference|summit|fireside|present(?:s|ing)? at",
             r"峰会|炉边谈话|出席.{0,8}(?:会议|大会)",
-            r"stock (?:rose|fell|jumped|gained|dropped|surged|slid)",
+            r"(?:stock|shares?) (?:rose|fell|jumped|gained|dropped|surged|slid|rallied|sank)",
             r"股价.{0,12}(?:大涨|上涨|下跌|大跌|跳涨|暴跌)",
             r"板块.{0,12}(?:普涨|上涨|下跌|回调|抛售)",
             r"risk[- ]on|generic sector sentiment|市场情绪波动|风险偏好",
@@ -1092,9 +1105,19 @@ def validate_workflow_report(
         normalize_preview_non_disclosures(report, preview_audit)
         preflight_errors = collect_preview_preflight_errors(company, report, preview_audit)
         if preflight_errors:
+            visible_errors = preflight_errors[:MAX_PREFLIGHT_ERRORS_PER_PASS]
+            remaining = len(preflight_errors) - len(visible_errors)
+            suffix = (
+                f"\n{remaining} lower-priority issue(s) remain; fix the listed issues "
+                "and render again"
+                if remaining
+                else ""
+            )
             raise ValueError(
-                f"preview preflight found {len(preflight_errors)} issues; fix all before retrying:\n- "
-                + "\n- ".join(preflight_errors)
+                f"preview preflight found {len(preflight_errors)} issues; showing the first "
+                f"{len(visible_errors)} in priority order:\n- "
+                + "\n- ".join(visible_errors)
+                + suffix
             )
     reject_ai_style_markers(report)
     headings = workflow_headings(report)

@@ -175,6 +175,16 @@ assert canonical_non_disclosure_audit["institution_views"][0]["revenue_view"] ==
 assert canonical_non_disclosure_audit["institution_views"][0]["profit_view"] == "未披露单季EPS预测"
 
 try:
+    module.validate_workflow_report("NVIDIA", "preview", "", deepcopy(preview_audit))
+except ValueError as exc:
+    message = str(exc)
+    assert "showing the first 8 in priority order" in message
+    assert message.count("\n- ") == 8
+    assert "lower-priority issue(s) remain" in message
+else:
+    raise AssertionError("large preflight failures must be returned in bounded priority batches")
+
+try:
     module.validate_workflow_report(
         "NVIDIA",
         "preview",
