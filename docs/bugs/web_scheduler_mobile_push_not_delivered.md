@@ -9,6 +9,14 @@
 
 ## 最新进展
 
+- `2026-08-05 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-05 18:03-22:02 CST`。
+    - 近窗有 3 条 `web push broadcast failed: channel closed`，随后出现 5 条 `[dryrun sink]` fallback；代表样本为 20:31 CST event-engine digest sink 对 `web-user-879a3b18fce2` channel closed 后退到 dryrun sink。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，18:03 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮规模小于 08:30 后批量复发，但仍证明 Web push channel closed 后退到 dryrun sink 且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
 - `2026-08-05 10:05 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：`2026-08-05 06:00-10:05 CST`。

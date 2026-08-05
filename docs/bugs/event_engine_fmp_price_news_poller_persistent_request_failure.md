@@ -14,9 +14,16 @@
 
 ## 状态
 
-- Closed
+- New
 
 ## 证据来源
+
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-05 18:03-22:02 CST 运行态复发，状态从 `Closed` 回退为 `New/P2`。
+  - 同窗 `poller.fmp.news` 持续出现 `poll failed: FMP 请求失败: error sending request ... stock_news`，约每 30 分钟复发；近窗合计 `poll failed=11`。
+  - 13:32-14:02 UTC / 21:32-22:02 CST 后 `poller.fmp.price` 也开始整批退化，近窗合计 36 条 `FMP quote batch failed`，覆盖多个 25 标的 batch，并有 `poller.fmp.price` 的 `poll failed` 记录。
+  - 同窗仍有 `poller.fmp.extended_hours` ok 样本，说明 event-engine runtime 未整体停摆；失败集中在 FMP news 与后半窗 price 请求发送链路。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在行情 / 新闻增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
 
 - `data/runtime/task_runs.2026-06-06.jsonl`
   - 2026-06-06 23:01-2026-06-07 03:01 CST 最近四小时内，`poller.fmp.price` 出现 48 次 `failed + items=0`，`poller.fmp.news` 出现 16 次 `failed + items=0`。
