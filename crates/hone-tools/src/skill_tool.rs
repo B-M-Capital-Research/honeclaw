@@ -113,13 +113,32 @@ impl SkillTool {
         let script_path = runtime
             .resolve_script_path(skill, args.get("script").and_then(|value| value.as_str()))
             .map_err(SkillScriptExecutionError::NotStarted)?;
-        let script_arguments = runtime
-            .map_script_arguments(
-                skill,
-                args.get("script_arguments"),
-                args.get("args").and_then(|value| value.as_str()),
-            )
-            .map_err(SkillScriptExecutionError::NotStarted)?;
+        let script_arguments = match args.get("script_payload") {
+            Some(payload) => {
+                if args.get("script_arguments").is_some() || args.get("args").is_some() {
+                    return Err(SkillScriptExecutionError::NotStarted(
+                        "script_payload 不能与 script_arguments 或 args 同时使用".to_string(),
+                    ));
+                }
+                if !payload.is_object() {
+                    return Err(SkillScriptExecutionError::NotStarted(
+                        "script_payload 必须是结构化 JSON 对象".to_string(),
+                    ));
+                }
+                vec![serde_json::to_string(payload).map_err(|error| {
+                    SkillScriptExecutionError::NotStarted(format!(
+                        "序列化 skill 脚本 payload 失败: {error}"
+                    ))
+                })?]
+            }
+            None => runtime
+                .map_script_arguments(
+                    skill,
+                    args.get("script_arguments"),
+                    args.get("args").and_then(|value| value.as_str()),
+                )
+                .map_err(SkillScriptExecutionError::NotStarted)?,
+        };
         validate_script_argument_budget(&script_arguments)
             .map_err(SkillScriptExecutionError::NotStarted)?;
 
@@ -747,6 +766,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_serializes_structured_script_payload_without_model_escaping() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_structured_payload");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: Alpha\ndescription: structured payload\nscript: scripts/run.sh\nshell: bash\n---\n\nbody",
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("run.sh"),
+            concat!(
+                "printf '%s' \"$1\" > \"$HONE_SKILL_DIR/payload.json\"\n",
+                "printf '{\"success\":true,\"summary\":\"ok\",\"artifacts\":[{\"kind\":\"image\",\"path\":\"%s/test.png\",\"mime\":\"image/png\"}],\"warnings\":[]}' \"$HONE_SKILL_DIR\"\n"
+            ),
+        )
+        .expect("script");
+        fs::write(skill_dir.join("test.png"), b"png").expect("test png");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        let report_spec = serde_json::json!({
+            "company": "AAOI",
+            "report_markdown": "机构称\"买入\"，目标价 220 美元。",
+            "preview_audit": {
+                "institution_views": [{"institution": "Rosenblatt Securities"}]
+            }
+        });
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true,
+                "script_payload": report_spec.clone()
+            }))
+            .await
+            .expect("execute structured payload");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        let persisted_payload: Value = serde_json::from_str(
+            &fs::read_to_string(skill_dir.join("payload.json")).expect("payload file"),
+        )
+        .expect("runtime-generated JSON payload");
+        assert_eq!(persisted_payload, report_spec);
+        clear_test_env();
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[tokio::test]
     async fn execute_failed_skill_script_redacts_stderr() {
         let _guard = env_lock();
         clear_test_env();
@@ -1344,6 +1421,14 @@ impl Tool for SkillTool {
                 name: "script_arguments".to_string(),
                 param_type: "object".to_string(),
                 description: "可选。脚本参数。可传对象（按 SKILL.md arguments 顺序映射）、数组或标量。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "script_payload".to_string(),
+                param_type: "object".to_string(),
+                description: "可选。由运行时序列化为单个 JSON 脚本参数的结构化对象；不能与 script_arguments 或 args 同时使用。".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,

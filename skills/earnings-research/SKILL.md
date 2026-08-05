@@ -213,10 +213,10 @@ Call `skill_tool` (the MCP name may be `hone/skill_tool`) with exactly:
 skill_name="earnings-research"
 execute_script=true
 script="scripts/render_report_pdf.py"
-script_arguments=["<one JSON object string including preview_audit for preview>"]
+script_payload=<one structured JSON object including preview_audit for preview>
 ```
 
-Do not use an object for `script_arguments`, and do not omit `skill_name` or `script`. Pass the complete JSON spec as the array's single string item; do not pass the actor-local spec path because the host tool intentionally cannot read arbitrary actor files. The host tool executes the repository-owned renderer outside the actor sandbox and writes the returned artifact into the actor working directory.
+Do not use `script_arguments`, do not stringify or manually escape the payload, and do not omit `skill_name` or `script`. Pass the complete report spec as `script_payload`; the host runtime serializes it into one valid JSON argument for the repository-owned renderer. Do not pass the actor-local spec path because the host tool intentionally cannot read arbitrary actor files. The host tool executes the renderer outside the actor sandbox and writes the returned artifact into the actor working directory.
 
 The script returns one `document` artifact. Require `success=true`, confirm the PDF exists, and then:
 
