@@ -2923,6 +2923,30 @@ fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
     us_extended_session(at).is_some()
 }
 
+/// Full session label including the overnight and weekend gaps. The regular
+/// quote reports a completed prior session in every non-`regular` window, so
+/// the enrichment must carry extended data in all of them — a Beijing
+/// afternoon is the New York overnight right after the post session where
+/// "昨晚盘后为什么跌" happened.
+pub(crate) fn us_session_at(at: chrono::DateTime<chrono_tz::Tz>) -> &'static str {
+    if matches!(at.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+        return "closed";
+    }
+    match us_extended_session(at) {
+        Some(session) => session,
+        None => {
+            let time = at.time();
+            let regular_open = chrono::NaiveTime::from_hms_opt(9, 30, 0).expect("regular open");
+            let regular_close = chrono::NaiveTime::from_hms_opt(16, 0, 0).expect("regular close");
+            if time >= regular_open && time <= regular_close {
+                "regular"
+            } else {
+                "closed"
+            }
+        }
+    }
+}
+
 /// Evidence the service fetched before the first model call.
 struct PreTurnEnrichment {
     calls: u32,
@@ -2972,6 +2996,7 @@ async fn run_pre_turn_enrichment(
     });
     let answer_time_new_york = answer_time_in_new_york(answer_time_beijing);
     let extended_session = us_extended_session(answer_time_new_york);
+    let now_session = us_session_at(answer_time_new_york);
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
         let (web, identities, mut speculative) = futures::future::join3(
             registry.execute_tool(
@@ -3027,7 +3052,7 @@ async fn run_pre_turn_enrichment(
         // A regular-session quote reports the previous close while pre/post
         // market is running, so the extended bar has to come with it or the
         // turn reads a moving stock as an unopened one.
-        let extended = if extended_session.is_some() {
+        let extended = if now_session != "regular" {
             futures::future::join_all(resolved.iter().map(|(_, symbol)| {
                 registry.execute_tool(
                     "data_fetch",
@@ -3093,29 +3118,47 @@ async fn run_pre_turn_enrichment(
             ));
         }
     }
-    let mut verified_extended_count = 0usize;
+    let mut live_extended_count = 0usize;
+    let mut summary_extended_count = 0usize;
     for ((_, symbol), bar) in resolved.iter().zip(extended.iter()) {
-        if let Some(value) = bar
-            .as_ref()
-            .ok()
-            .filter(|value| !value_has_error(value))
-            .filter(|value| {
-                matching_requested_extended_quote_fact_at(
-                    value,
-                    symbol,
-                    extended_session,
-                    answer_time_new_york.timestamp(),
-                )
-                .is_some()
-            })
-        {
-            calls += 1;
-            verified_extended_count += 1;
-            sections.push(format!(
-                "- `data_fetch(extended_hours, ticker={symbol:?})` →\n{}",
-                bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
-            ));
+        let Some(value) = bar.as_ref().ok().filter(|value| !value_has_error(value)) else {
+            continue;
+        };
+        // The live-freshness gate only decides whether the latest bar may act
+        // as a current price. Session summaries are completed historical
+        // windows — yesterday's post drop stays a fact overnight — so a stale
+        // latest bar must not drop the payload from the turn.
+        let live = matching_requested_extended_quote_fact_at(
+            value,
+            symbol,
+            extended_session,
+            answer_time_new_york.timestamp(),
+        )
+        .is_some();
+        // The tool wraps the normalized payload under `data`, so look both at
+        // the top level and one level down.
+        let has_summaries = [Some(value), value.get("data").map(|nested| &*nested)]
+            .into_iter()
+            .flatten()
+            .any(|candidate| {
+                candidate
+                    .get("hone_session_summaries")
+                    .and_then(Value::as_array)
+                    .is_some_and(|summaries| !summaries.is_empty())
+            });
+        if !live && !has_summaries {
+            continue;
         }
+        calls += 1;
+        if live {
+            live_extended_count += 1;
+        } else {
+            summary_extended_count += 1;
+        }
+        sections.push(format!(
+            "- `data_fetch(extended_hours, ticker={symbol:?})` →\n{}",
+            bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+        ));
     }
     if sections.is_empty() {
         return PreTurnEnrichment {
@@ -3127,10 +3170,20 @@ async fn run_pre_turn_enrichment(
     let block = format!(
         "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}",
         sections.join("\n"),
-        if verified_extended_count > 0 {
-            "\n本轮美股正处于盘前或盘后时段：常规 quote 仍报上一交易日收盘价，因此上面附带了同代码 `extended_hours` 规范化 bar（含 session 与该 bar 的时间）。用户问“现在/刚刚/为什么大涨大跌”时，必须以扩展时段 bar 为当前价与涨跌依据，并写明是盘前还是盘后；不得因为常规时段未开盘就回答“没开盘”“暂无数据”。若某个标的没有取到扩展时段 bar，只说明该标的扩展时段未取到，不要推广成整个市场没开盘。"
-        } else {
+        if live_extended_count + summary_extended_count == 0 {
             ""
+        } else {
+            match now_session {
+                "pre" => {
+                    "\n本轮美股正处于盘前时段：常规 quote 仍报上一交易日收盘价，因此上面附带了同代码 `extended_hours`。其 `hone_session_summaries` 按 纽约日期+时段 汇总（开盘/收盘/高低/相对上一时段收盘的涨跌幅），其中昨日 post 时段就是\u{201c}盘后\u{201d}走势，最新分钟 bar 是当前盘前价。回答\u{201c}现在/刚刚/盘后为什么大涨大跌\u{201d}必须以对应日期与时段的汇总为依据，并写明是哪一天哪个时段；不得因常规时段未开盘就回答\u{201c}没开盘\u{201d}\u{201c}暂无数据\u{201d}。某个标的没取到扩展数据时只披露该标的缺口，不要推广成整个市场没开盘。"
+                }
+                "post" => {
+                    "\n本轮美股正处于盘后时段：常规 quote 的涨跌幅只反映刚结束的常规时段，盘后变动见附带 `extended_hours` 的 `hone_session_summaries`（post 时段相对常规收盘的涨跌幅）。回答盘后走势以 post 汇总为准并写明日期与时段；不得用常规时段数据冒充盘后。"
+                }
+                _ => {
+                    "\n本轮美股处于闭市时段（隔夜或周末）：常规 quote 报最近一个常规时段的收盘价，最近的盘后走势见附带 `extended_hours` 的 `hone_session_summaries`（post 时段相对常规收盘的涨跌幅；最新分钟 bar 可能已过时，只作时间参考不作现价）。回答\u{201c}昨晚/盘后为什么涨跌\u{201d}以对应纽约日期的 post 汇总为准；不得回答\u{201c}没开盘\u{201d}\u{201c}暂无数据\u{201d}。"
+                }
+            }
         }
     );
     PreTurnEnrichment { calls, block }
@@ -7800,6 +7853,23 @@ fn append_agent_entity_discovery_context(
         runtime_input.push_str(
             "\n【本轮候选种子均为低置信】上述候选全部来自弱语法信号，没有一个带有 $ 代码、`股票代码/ticker` 标注或明确的行情、财报、持仓绑定。它们同样可能是宏观、资金流、仓位、策略、指标、行业或产品缩写（例如 CTA、RSI、QT、TTM），不得默认当成证券代码。请先判断用户原问题的真实主题：若主题并非这些代码本身，就直接围绕真实主题使用 web_search 等开放检索工具取证并作答，不要为这些候选建立实体路线；若确需确认某个候选是不是证券，最多用一次 search 核验，核验不成立即放弃该候选并继续回答用户原问题，绝不能把整轮预算耗在实体解析上。",
         );
+    }
+    // Session alignment is server clock arithmetic, injected every turn: the
+    // reported failure quoted a completed regular session for an after-hours
+    // question because nothing told the Agent which US session Beijing time
+    // mapped to. This states the mapping; it interprets no user wording.
+    {
+        let new_york = answer_time_in_new_york(answer_time);
+        let session_label = match us_session_at(new_york) {
+            "pre" => "盘前（04:00-09:30 ET）",
+            "regular" => "常规交易时段（09:30-16:00 ET）",
+            "post" => "盘后（16:00-20:00 ET）",
+            _ => "闭市（隔夜或周末）",
+        };
+        runtime_input.push_str(&format!(
+            "\n\n【美股时段对齐：服务端时钟事实】当前北京时间 {answer_time}，对应纽约时间 {}，美股此刻处于{session_label}。换算：盘前=纽约 04:00-09:30（北京 16:00-21:30），常规=09:30-16:00（北京 21:30-04:00），盘后=16:00-20:00（北京 04:00-08:00），其余闭市。普通 quote 的 price/changesPercentage 只反映最近一个已完成或进行中的常规时段（纽约日历日见 market_date_new_york）；闭市、盘前或盘后期间它不包含当前变动，这些时段的价格与涨跌必须用 `data_fetch(extended_hours)`，其 `hone_session_summaries` 按 纽约日期+时段 给出开盘/收盘/高低与相对上一时段收盘的涨跌幅。用户说的\u{201c}盘后/盘前\u{201d}指上述纽约时段；\u{201c}夜盘/昨晚/今晚\u{201d}通常指北京夜间对应的美股时段——先按上面的当前时刻换算出目标纽约日期与时段再取数，不要凭直觉猜日期。若用户点名的对象经本轮工具核验并非上市证券（例如私营公司），直接说明这一点并列出最接近的上市候选（附公司全名）请用户确认；不得把近似 ticker 的行情直接当作该对象的答案发布。",
+            new_york.format("%Y-%m-%d %H:%M %Z"),
+        ));
     }
     if let Some(context) = market_move_temporal_context(user_input, answer_time) {
         runtime_input.push_str(&context);

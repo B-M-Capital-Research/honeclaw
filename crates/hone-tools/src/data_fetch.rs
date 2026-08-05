@@ -715,39 +715,124 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         .as_array()
         .ok_or_else(|| "FMP 盘前盘后行情响应格式无效：预期为分钟 K 线数组".to_string())?;
 
-    let latest = bars
+    let mut parsed = bars
         .iter()
         .filter_map(|bar| {
             let date = bar.get("date")?.as_str()?.trim();
-            let (sort_key, local_time) = parse_extended_hours_timestamp(date)?;
-            let price = bar.get("close")?;
-            price.as_f64().filter(|value| *value > 0.0)?;
-            let high = bar.get("high")?;
-            high.as_f64().filter(|value| *value > 0.0)?;
-            let low = bar.get("low")?;
-            low.as_f64().filter(|value| *value > 0.0)?;
-            let volume = bar.get("volume")?;
-            volume.as_f64().filter(|value| *value >= 0.0)?;
-
-            Some((sort_key, local_time, date, price, high, low, volume))
+            let timestamp = parse_extended_hours_timestamp(date)?;
+            let price = bar.get("close")?.as_f64().filter(|value| *value > 0.0)?;
+            let high = bar.get("high")?.as_f64().filter(|value| *value > 0.0)?;
+            let low = bar.get("low")?.as_f64().filter(|value| *value > 0.0)?;
+            let open = bar
+                .get("open")
+                .and_then(Value::as_f64)
+                .filter(|value| *value > 0.0)
+                .unwrap_or(price);
+            let volume = bar.get("volume")?.as_f64().filter(|value| *value >= 0.0)?;
+            Some((timestamp, date.to_string(), open, price, high, low, volume))
         })
-        .max_by_key(|(sort_key, ..)| *sort_key)
+        .collect::<Vec<_>>();
+    parsed.sort_by_key(|(timestamp, ..)| *timestamp);
+
+    let latest = parsed
+        .last()
+        .cloned()
         .ok_or_else(|| "FMP 盘前盘后行情没有可用的最新分钟 bar".to_string())?;
 
+    // A single latest bar cannot answer "盘后跌了多少": at a New York
+    // pre-market morning the latest bar is a pre bar, and the post session
+    // where the move happened would be discarded. Summarize every session
+    // window in the data instead, each with the change from the previous
+    // window's close, so post-market and pre-market moves are first-class.
+    let mut windows: Vec<(
+        chrono::NaiveDate,
+        u8,
+        &'static str,
+        f64,
+        f64,
+        f64,
+        f64,
+        f64,
+        i64,
+    )> = Vec::new();
+    for (timestamp, _, open, close, high, low, volume) in &parsed {
+        let session = extended_hours_session(timestamp.time());
+        if session == "closed" {
+            continue;
+        }
+        let order = match session {
+            "pre" => 0u8,
+            "regular" => 1,
+            _ => 2,
+        };
+        let date = timestamp.date();
+        match windows
+            .iter_mut()
+            .find(|(d, o, ..)| *d == date && *o == order)
+        {
+            Some(window) => {
+                window.4 = *close;
+                window.5 = window.5.max(*high);
+                window.6 = window.6.min(*low);
+                window.7 += *volume;
+                window.8 = timestamp.and_utc().timestamp();
+            }
+            None => windows.push((
+                date,
+                order,
+                session,
+                *open,
+                *close,
+                *high,
+                *low,
+                *volume,
+                timestamp.and_utc().timestamp(),
+            )),
+        }
+    }
+    windows.sort_by_key(|(date, order, ..)| (*date, *order));
+    let start = windows.len().saturating_sub(8);
+    let windows = &windows[start..];
+
+    let mut summaries = Vec::with_capacity(windows.len());
+    let mut previous_close: Option<f64> = None;
+    for (date, _, session, open, close, high, low, volume, _) in windows {
+        let mut summary = serde_json::json!({
+            "date_new_york": date.format("%Y-%m-%d").to_string(),
+            "session": session,
+            "open": open,
+            "close": close,
+            "high": high,
+            "low": low,
+            "volume": volume,
+        });
+        if let Some(reference) = previous_close.filter(|reference| *reference > 0.0) {
+            let pct = (close - reference) / reference * 100.0;
+            summary["pct_change_vs_prev_session_close"] =
+                serde_json::json!((pct * 100.0).round() / 100.0);
+        }
+        previous_close = Some(*close);
+        summaries.push(summary);
+    }
+
+    let now_new_york = hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York);
     Ok(serde_json::json!({
         "symbol": ticker.trim().to_ascii_uppercase(),
         "price": latest.3,
-        "date": latest.2,
-        "session": extended_hours_session(latest.1),
+        "date": latest.1,
+        "session": extended_hours_session(latest.0.time()),
         "high": latest.4,
         "low": latest.5,
         "volume": latest.6,
+        "hone_session_summaries": summaries,
+        "hone_now_new_york": now_new_york.format("%Y-%m-%d %H:%M %Z").to_string(),
+        "hone_now_session": extended_hours_session(now_new_york.time()),
     }))
 }
 
-fn parse_extended_hours_timestamp(value: &str) -> Option<(i64, NaiveTime)> {
+fn parse_extended_hours_timestamp(value: &str) -> Option<NaiveDateTime> {
     if let Ok(timestamp) = DateTime::parse_from_rfc3339(value) {
-        return Some((timestamp.timestamp(), timestamp.time()));
+        return Some(timestamp.naive_local());
     }
 
     for format in [
@@ -757,7 +842,7 @@ fn parse_extended_hours_timestamp(value: &str) -> Option<(i64, NaiveTime)> {
         "%Y-%m-%dT%H:%M:%S",
     ] {
         if let Ok(timestamp) = NaiveDateTime::parse_from_str(value, format) {
-            return Some((timestamp.and_utc().timestamp(), timestamp.time()));
+            return Some(timestamp);
         }
     }
 
@@ -1245,7 +1330,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2084,23 +2169,88 @@ mod tests {
     }
 
     #[test]
-    fn extended_hours_normalization_returns_only_the_latest_bounded_bar() {
+    fn extended_hours_normalization_keeps_latest_bar_and_session_summaries() {
         let payload = normalize_extended_hours_bar(
             "isrg",
             &json!([
-                {"date":"2026-07-16 16:01:00","close":395.0,"high":396.0,"low":394.5,"volume":1000},
-                {"date":"2026-07-16 18:49:00","close":363.25,"high":364.0,"low":362.5,"volume":2500},
-                {"date":"2026-07-16 18:48:00","close":364.5,"high":365.0,"low":364.0,"volume":2200},
+                {"date":"2026-07-16 16:01:00","open":395.5,"close":395.0,"high":396.0,"low":394.5,"volume":1000},
+                {"date":"2026-07-16 18:49:00","open":364.4,"close":363.25,"high":364.0,"low":362.5,"volume":2500},
+                {"date":"2026-07-16 18:48:00","open":364.6,"close":364.5,"high":365.0,"low":364.0,"volume":2200},
                 {"date":"invalid","close":999.0,"high":999.0,"low":999.0,"volume":1}
             ]),
         )
-        .expect("normalized extended-hours bar");
+        .expect("normalized extended-hours payload");
 
         assert_eq!(payload["symbol"], "ISRG");
         assert_eq!(payload["price"], 363.25);
         assert_eq!(payload["date"], "2026-07-16 18:49:00");
         assert_eq!(payload["session"], "post");
-        assert_eq!(payload.as_object().expect("bar object").len(), 7);
+        let summaries = payload["hone_session_summaries"]
+            .as_array()
+            .expect("session summaries");
+        assert_eq!(summaries.len(), 1, "{summaries:?}");
+        assert_eq!(summaries[0]["session"], "post");
+        assert_eq!(summaries[0]["date_new_york"], "2026-07-16");
+        assert_eq!(summaries[0]["open"], 395.5);
+        assert_eq!(summaries[0]["close"], 363.25);
+        assert_eq!(summaries[0]["high"], 396.0);
+        assert_eq!(summaries[0]["low"], 362.5);
+        assert_eq!(summaries[0]["volume"], 5700.0);
+    }
+
+    /// The reported failure: at a New York pre-market morning the user asks
+    /// why a stock fell after hours. The latest bar is a pre bar, so keeping
+    /// only it discards the post session where the move happened. Summaries
+    /// must carry yesterday's post window with its change from the regular
+    /// close, and today's pre window with its change from the post close.
+    #[test]
+    fn extended_hours_summaries_expose_the_post_market_move_across_days() {
+        let payload = normalize_extended_hours_bar(
+            "cohr",
+            &json!([
+                {"date":"2026-08-04 15:59:00","open":100.2,"close":100.0,"high":100.5,"low":99.8,"volume":5000},
+                {"date":"2026-08-04 16:05:00","open":99.0,"close":96.0,"high":99.2,"low":95.8,"volume":800},
+                {"date":"2026-08-04 19:55:00","open":90.4,"close":90.0,"high":90.6,"low":89.9,"volume":1200},
+                {"date":"2026-08-05 04:20:00","open":90.5,"close":92.0,"high":92.1,"low":90.3,"volume":400}
+            ]),
+        )
+        .expect("normalized extended-hours payload");
+
+        // Latest bar is this morning's pre bar…
+        assert_eq!(payload["session"], "pre");
+        assert_eq!(payload["price"], 92.0);
+        // …but the post session survives, with the drop quantified against the
+        // regular close: (90 - 100) / 100 = -10%.
+        let summaries = payload["hone_session_summaries"]
+            .as_array()
+            .expect("session summaries");
+        let sessions: Vec<(&str, &str)> = summaries
+            .iter()
+            .map(|s| {
+                (
+                    s["date_new_york"].as_str().unwrap(),
+                    s["session"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            sessions,
+            [
+                ("2026-08-04", "regular"),
+                ("2026-08-04", "post"),
+                ("2026-08-05", "pre"),
+            ]
+        );
+        assert_eq!(summaries[1]["close"], 90.0);
+        assert_eq!(summaries[1]["pct_change_vs_prev_session_close"], -10.0);
+        // Pre continues from the post close: (92 - 90) / 90 = +2.22%.
+        assert_eq!(summaries[2]["pct_change_vs_prev_session_close"], 2.22);
+        // The first window has no in-data reference and must not invent one.
+        assert!(
+            summaries[0]
+                .get("pct_change_vs_prev_session_close")
+                .is_none()
+        );
     }
 
     #[test]

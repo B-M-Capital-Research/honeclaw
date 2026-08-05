@@ -7771,7 +7771,95 @@ async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
     assert!(runtime_input.contains("\"pre\""), "{runtime_input}");
     // And the Agent is told not to answer "not open" from the regular quote.
     assert!(
-        runtime_input.contains("不得因为常规时段未开盘就回答"),
+        runtime_input.contains("不得因常规时段未开盘就回答"),
+        "{runtime_input}"
+    );
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The reported SpaceX-report shape: at a Beijing afternoon (New York
+/// overnight, all sessions closed) the user asks why a stock fell after
+/// hours. The regular quote reports the completed close from before the drop,
+/// and the latest extended bar is hours old — but yesterday's post window is
+/// a finished historical fact and must reach the turn with its change from
+/// the regular close, not be dropped by a live-price freshness gate.
+#[tokio::test]
+async fn overnight_enrichment_keeps_yesterdays_post_session_summary() {
+    let root = make_temp_dir("hone_channels_preturn_overnight");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=COHR".to_string(),
+            serde_json::json!([{
+                "symbol": "COHR",
+                "name": "Coherent Corp.",
+                "exchangeShortName": "NYSE"
+            }]),
+        ),
+        (
+            "/quote/COHR".to_string(),
+            serde_json::json!([{"symbol": "COHR", "price": 100.0, "exchange": "NYSE"}]),
+        ),
+        (
+            "/profile/COHR".to_string(),
+            serde_json::json!([{
+                "symbol": "COHR",
+                "companyName": "Coherent Corp.",
+                "exchangeShortName": "NYSE",
+                "isActivelyTrading": true
+            }]),
+        ),
+        (
+            "historical-chart/1min/COHR".to_string(),
+            serde_json::json!([
+                {"date": "2026-08-04 15:59:00", "open": 100.2, "close": 100.0, "high": 100.5, "low": 99.8, "volume": 5000},
+                {"date": "2026-08-04 16:05:00", "open": 99.0, "close": 96.0, "high": 99.2, "low": 95.8, "volume": 800},
+                {"date": "2026-08-04 19:55:00", "open": 90.4, "close": 90.0, "high": 90.6, "low": 89.9, "volume": 1200}
+            ]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-overnight", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-overnight",
+        false,
+        "COHR 昨晚盘后为什么大跌",
+        AgentTurnOrigin::Interactive,
+        // Beijing 14:30 = New York 02:30 — every US session closed.
+        "2026-08-05 14:30",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // The extended payload survives on the strength of its summaries.
+    assert!(
+        runtime_input.contains("data_fetch(extended_hours, ticker=\"COHR\")"),
+        "{runtime_input}"
+    );
+    // Yesterday's post window with the -10% drop vs the regular close.
+    assert!(runtime_input.contains("\"post\""), "{runtime_input}");
+    assert!(runtime_input.contains("-10"), "{runtime_input}");
+    // The note names the overnight state and forbids a "not open" answer.
+    assert!(
+        runtime_input.contains("闭市时段（隔夜或周末）"),
+        "{runtime_input}"
+    );
+    assert!(runtime_input.contains("不得回答"), "{runtime_input}");
+    // And the always-injected session alignment states the mapping.
+    assert!(
+        runtime_input.contains("【美股时段对齐：服务端时钟事实】"),
         "{runtime_input}"
     );
     fmp_stub.join().expect("join FMP stub");
