@@ -819,6 +819,10 @@ mod tests {
         )
         .expect("runtime-generated JSON payload");
         assert_eq!(persisted_payload, report_spec);
+        assert_eq!(
+            result["validated_report_markdown"],
+            report_spec["report_markdown"]
+        );
         clear_test_env();
         std::fs::remove_dir_all(root).ok();
     }
@@ -1560,6 +1564,16 @@ impl Tool for SkillTool {
                 let _ = self.persist_invoked_skill(&payload);
                 if script_requested {
                     let execution_succeeded = render_success.as_bool().unwrap_or(false);
+                    let validated_report_markdown = execution_succeeded
+                        .then(|| {
+                            args.get("script_payload")
+                                .and_then(|value| value.get("report_markdown"))
+                                .and_then(Value::as_str)
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string)
+                        })
+                        .flatten();
                     return Ok(serde_json::json!({
                         "success": execution_succeeded,
                         "side_effect_status": if execution_succeeded { "completed" } else { "not_started" },
@@ -1574,6 +1588,7 @@ impl Tool for SkillTool {
                         "render_warnings": render_warnings,
                         "render_error": render_error,
                         "render_fallback_message": render_fallback_message,
+                        "validated_report_markdown": validated_report_markdown,
                         "reminder": if execution_succeeded {
                             "技能脚本执行成功；请确认 artifact 并完成用户原始任务。"
                         } else {

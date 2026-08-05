@@ -1703,19 +1703,17 @@ mod earnings_pdf_completion_tests {
             full_reply: "模型漏掉了附件名".to_string(),
             ..AcpPromptState::default()
         };
-        let mut call = renderer_call(json!({
+        let call = renderer_call(json!({
             "success": true,
             "render_success": true,
             "side_effect_status": "completed",
+            "validated_report_markdown": "# AAOI公司财报前瞻分析\n\n完整且已通过 renderer 的报告正文",
             "artifacts": [{
                 "kind": "document",
                 "path": "/sandbox/AAOI_Earnings_Preview.pdf",
                 "mime": "application/pdf"
             }]
         }));
-        call.arguments["script_payload"] = json!({
-            "report_markdown": "# AAOI公司财报前瞻分析\n\n完整且已通过 renderer 的报告正文"
-        });
         state.finished_tool_calls.push(call);
 
         let prompt = earnings_pdf_recovery_prompt(&state).expect("attachment recovery");

@@ -67,9 +67,8 @@ pub(crate) fn completed_earnings_pdf(tool_calls: &[ToolCallMade]) -> Option<Comp
                 .then(|| path.to_string())
             })?;
         let report_markdown = call
-            .arguments
-            .get("script_payload")
-            .and_then(|payload| payload.get("report_markdown"))
+            .result
+            .get("validated_report_markdown")
             .and_then(serde_json::Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())?
@@ -203,6 +202,7 @@ mod tests {
                 "success": true,
                 "render_success": true,
                 "side_effect_status": "completed",
+                "validated_report_markdown": "# AAOI公司财报前瞻分析\n\n完整报告",
                 "artifacts": [{
                     "kind": "document",
                     "path": "/sandbox/AAOI_Earnings_Preview.pdf",
