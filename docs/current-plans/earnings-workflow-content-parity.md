@@ -26,6 +26,7 @@
 - 把 `1.2.1` 恢复为原 prompt 要求的明确结论开头，并加强 `1.2.2` 的增长/毛利率/盈利假设和 `1.2.3` 的逐机构对比。
 - 每条新闻保持一个自然段，但至少覆盖事件事实、当季传导、短期/长期判断、产品或竞争力影响、指引计入状态与后续验证点；优先 IR/监管/电话会/真实机构来源。
 - 增加结构/语义回归，部署精确 revision/skill 后重新生成 AAOI，检查正文、PDF、下载与刷新持久化。
+- 生产 AAOI 验收暴露 OpenRouter/Gemini 精确 `504 Upstream idle timeout exceeded`；仅在专用 OpenCode 财报路由、零可见输出且全部调用已证明只读时，允许一次 fresh isolated-session 重试。
 
 ## Verification
 

@@ -59,9 +59,9 @@ use super::core::{
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT, is_opencode_corrupted_thought_signature_error_text,
-    is_retryable_transient_runner_error_text, persistable_turn_from_response,
-    prune_interactive_runtime_history, sanitize_assistant_context_content,
-    should_persist_tool_result, should_return_runner_result,
+    is_opencode_upstream_idle_timeout_error_text, is_retryable_transient_runner_error_text,
+    persistable_turn_from_response, prune_interactive_runtime_history,
+    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
@@ -1400,6 +1400,22 @@ fn corrupted_thought_signature_match_is_exact_to_opencode_invalid_request() {
     ));
     assert!(!is_opencode_corrupted_thought_signature_error_text(
         r#"opencode acp request failed: {"code":500,"message":"Corrupted thought signature.","metadata":{"error_type":"server_error"}}"#
+    ));
+}
+
+#[test]
+fn upstream_idle_timeout_match_is_exact_to_opencode_504_timeout() {
+    assert!(is_opencode_upstream_idle_timeout_error_text(
+        r#"opencode acp request failed: Internal error: {"code":504,"message":"Upstream idle timeout exceeded","metadata":{"error_type":"timeout"}}"#
+    ));
+    assert!(!is_opencode_upstream_idle_timeout_error_text(
+        r#"codex acp request failed: {"code":504,"message":"Upstream idle timeout exceeded","metadata":{"error_type":"timeout"}}"#
+    ));
+    assert!(!is_opencode_upstream_idle_timeout_error_text(
+        r#"opencode acp request failed: {"code":504,"message":"Gateway timeout","metadata":{"error_type":"timeout"}}"#
+    ));
+    assert!(!is_opencode_upstream_idle_timeout_error_text(
+        r#"opencode acp request failed: {"code":500,"message":"Upstream idle timeout exceeded","metadata":{"error_type":"server_error"}}"#
     ));
 }
 

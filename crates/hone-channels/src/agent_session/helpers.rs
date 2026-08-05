@@ -30,6 +30,7 @@ pub(super) const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 pub(super) const TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT: usize = 1;
 pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 2;
 pub(super) const EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT: usize = 1;
+pub(super) const EARNINGS_UPSTREAM_IDLE_TIMEOUT_RETRY_LIMIT: usize = 1;
 pub(super) const EARNINGS_PDF_VALIDATION_RETRY_LIMIT: usize = 1;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
@@ -215,6 +216,18 @@ pub(super) fn is_opencode_corrupted_thought_signature_error_text(text: &str) -> 
         && compact.contains("corruptedthoughtsignature")
         && compact.contains("\"code\":400")
         && compact.contains("\"error_type\":\"invalid_request\"")
+}
+
+pub(super) fn is_opencode_upstream_idle_timeout_error_text(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    compact.contains("opencode")
+        && compact.contains("\"code\":504")
+        && compact.contains("\"message\":\"upstreamidletimeoutexceeded\"")
+        && compact.contains("\"error_type\":\"timeout\"")
 }
 
 pub(super) fn should_persist_tool_result(call: &ToolCallMade) -> bool {

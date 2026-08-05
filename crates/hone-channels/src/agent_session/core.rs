@@ -60,11 +60,13 @@ use super::helpers::{
     CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand,
     EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT, EARNINGS_PDF_VALIDATION_RETRY_LIMIT,
-    EMPTY_SUCCESS_RETRY_LIMIT, TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT,
-    is_context_overflow_error_text, is_opencode_corrupted_thought_signature_error_text,
-    is_retryable_transient_runner_failure, merge_message_metadata, persistable_turn_from_response,
-    prune_historical_tool_protocol, prune_interactive_runtime_history,
-    restore_limit_before_compaction, should_return_runner_result,
+    EARNINGS_UPSTREAM_IDLE_TIMEOUT_RETRY_LIMIT, EMPTY_SUCCESS_RETRY_LIMIT,
+    TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
+    is_opencode_corrupted_thought_signature_error_text,
+    is_opencode_upstream_idle_timeout_error_text, is_retryable_transient_runner_failure,
+    merge_message_metadata, persistable_turn_from_response, prune_historical_tool_protocol,
+    prune_interactive_runtime_history, restore_limit_before_compaction,
+    should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
@@ -2522,6 +2524,15 @@ impl AgentSession {
                     .error
                     .as_deref()
                     .is_some_and(is_opencode_corrupted_thought_signature_error_text);
+            let upstream_idle_timeout = options.dedicated_earnings_workflow
+                && matches!(
+                    options.runner_override,
+                    Some(AgentRunRunnerOverride::OpencodeAcp)
+                )
+                && response
+                    .error
+                    .as_deref()
+                    .is_some_and(is_opencode_upstream_idle_timeout_error_text);
             let safe_earnings_pdf_validation_failure = options.dedicated_earnings_workflow
                 && matches!(
                     options.runner_override,
@@ -2531,6 +2542,8 @@ impl AgentSession {
                 && earnings_pdf_validation_failed_without_side_effects(&response.tool_calls_made);
             let recovery_limit = if corrupted_thought_signature {
                 EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT
+            } else if upstream_idle_timeout {
+                EARNINGS_UPSTREAM_IDLE_TIMEOUT_RETRY_LIMIT
             } else if safe_earnings_pdf_validation_failure {
                 EARNINGS_PDF_VALIDATION_RETRY_LIMIT
             } else {
@@ -2539,6 +2552,7 @@ impl AgentSession {
             let should_try_recovery = !response.success
                 && (context_overflow
                     || corrupted_thought_signature
+                    || upstream_idle_timeout
                     || safe_earnings_pdf_validation_failure)
                 // Native ACP runners retain and compact their own thread history.
                 // Rewriting Hone's local context cannot shrink that active
@@ -2558,10 +2572,13 @@ impl AgentSession {
             }
 
             let use_current_turn_only_recovery = corrupted_thought_signature
+                || upstream_idle_timeout
                 || safe_earnings_pdf_validation_failure
                 || recovery_idx > 0;
             let recovery_mode = if corrupted_thought_signature {
                 "fresh_session_after_corrupted_thought_signature"
+            } else if upstream_idle_timeout {
+                "fresh_session_after_upstream_idle_timeout"
             } else if safe_earnings_pdf_validation_failure {
                 "fresh_session_after_safe_pdf_validation_failure"
             } else if use_current_turn_only_recovery {
