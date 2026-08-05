@@ -38,6 +38,13 @@ pub(crate) fn response_has_only_known_read_only_calls(tool_calls: &[ToolCallMade
 }
 
 fn result_is_uncertain(result: &serde_json::Value) -> bool {
+    if result
+        .get("side_effect_status")
+        .and_then(|value| value.as_str())
+        == Some("not_started")
+    {
+        return false;
+    }
     result
         .get("status")
         .and_then(|value| value.as_str())
@@ -148,7 +155,8 @@ mod tests {
             result: json!({
                 "status": "failed",
                 "isError": true,
-                "error": "skill_name 不能为空"
+                "error": "skill_name 不能为空",
+                "side_effect_status": "not_started"
             }),
             tool_call_id: Some("call_missing_skill".to_string()),
         };
@@ -162,11 +170,29 @@ mod tests {
             result: json!({"success": true, "artifacts": ["AAOI.pdf"]}),
             tool_call_id: Some("call_pdf".to_string()),
         };
+        let targeted_rejected = ToolCallMade {
+            name: "skill_tool".to_string(),
+            arguments: json!({
+                "skill_name": "earnings-research",
+                "execute_script": true,
+                "script_arguments": {"report": "draft"}
+            }),
+            result: json!({
+                "status": "failed",
+                "isError": true,
+                "error": "argument validation failed",
+                "side_effect_status": "not_started"
+            }),
+            tool_call_id: Some("call_bad_arguments".to_string()),
+        };
 
         assert!(!is_persistent_side_effect_call(&rejected));
+        assert!(is_persistent_side_effect_call(&targeted_rejected));
         assert!(is_persistent_side_effect_call(&completed));
         assert!(!persistent_side_effect_state_is_uncertain(&[
-            rejected, completed
+            rejected,
+            targeted_rejected,
+            completed
         ]));
     }
 

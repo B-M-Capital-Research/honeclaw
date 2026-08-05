@@ -18,6 +18,26 @@ const MAX_SKILL_SCRIPT_ARGUMENTS: usize = 64;
 const MAX_SKILL_SCRIPT_ARGUMENT_BYTES: usize = 256 * 1024;
 const SKILL_SCRIPT_TIMEOUT: Duration = Duration::from_secs(120);
 
+enum SkillScriptExecutionError {
+    NotStarted(String),
+    StateUncertain(String),
+}
+
+impl SkillScriptExecutionError {
+    fn message(&self) -> &str {
+        match self {
+            Self::NotStarted(message) | Self::StateUncertain(message) => message,
+        }
+    }
+
+    fn side_effect_status(&self) -> &'static str {
+        match self {
+            Self::NotStarted(_) => "not_started",
+            Self::StateUncertain(_) => "uncertain",
+        }
+    }
+}
+
 pub struct SkillTool {
     system_dir: PathBuf,
     custom_dir: PathBuf,
@@ -81,7 +101,7 @@ impl SkillTool {
         runtime: &SkillRuntime,
         skill: &crate::skill_runtime::SkillDefinition,
         args: &Value,
-    ) -> Result<Option<Value>, String> {
+    ) -> Result<Option<Value>, SkillScriptExecutionError> {
         let should_execute = args
             .get("execute_script")
             .and_then(|value| value.as_bool())
@@ -91,13 +111,17 @@ impl SkillTool {
         }
 
         let script_path = runtime
-            .resolve_script_path(skill, args.get("script").and_then(|value| value.as_str()))?;
-        let script_arguments = runtime.map_script_arguments(
-            skill,
-            args.get("script_arguments"),
-            args.get("args").and_then(|value| value.as_str()),
-        )?;
-        validate_script_argument_budget(&script_arguments)?;
+            .resolve_script_path(skill, args.get("script").and_then(|value| value.as_str()))
+            .map_err(SkillScriptExecutionError::NotStarted)?;
+        let script_arguments = runtime
+            .map_script_arguments(
+                skill,
+                args.get("script_arguments"),
+                args.get("args").and_then(|value| value.as_str()),
+            )
+            .map_err(SkillScriptExecutionError::NotStarted)?;
+        validate_script_argument_budget(&script_arguments)
+            .map_err(SkillScriptExecutionError::NotStarted)?;
 
         let mut command = if let Some(shell) = skill.shell.as_deref() {
             let mut command = Command::new(shell);
@@ -134,31 +158,41 @@ impl SkillTool {
         let output = tokio::time::timeout(SKILL_SCRIPT_TIMEOUT, command.output())
             .await
             .map_err(|_| {
-                format!(
+                SkillScriptExecutionError::StateUncertain(format!(
                     "skill script 执行超时（>{} 秒），子进程已终止",
                     SKILL_SCRIPT_TIMEOUT.as_secs()
-                )
+                ))
             })?
-            .map_err(|err| format!("执行 skill script 失败: {err}"))?;
+            .map_err(|err| {
+                SkillScriptExecutionError::StateUncertain(format!("执行 skill script 失败: {err}"))
+            })?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stderr_preview = sanitize_skill_script_stderr(&stderr);
         if !output.status.success() {
-            return Err(format!(
+            return Err(SkillScriptExecutionError::StateUncertain(format!(
                 "skill script 退出失败: exit_code={:?}, stderr={}",
                 output.status.code(),
                 stderr_preview
-            ));
+            )));
         }
 
-        let structured_output = parse_structured_script_stdout(&stdout)?;
+        let structured_output = parse_structured_script_stdout(&stdout)
+            .map_err(SkillScriptExecutionError::StateUncertain)?;
         let render_success = structured_output
             .get("success")
             .and_then(|value| value.as_bool())
-            .ok_or_else(|| "skill script stdout JSON 必须包含布尔字段 success".to_string())?;
-        let artifacts = validate_script_artifacts(&structured_output, skill)?;
+            .ok_or_else(|| {
+                SkillScriptExecutionError::StateUncertain(
+                    "skill script stdout JSON 必须包含布尔字段 success".to_string(),
+                )
+            })?;
+        let artifacts = validate_script_artifacts(&structured_output, skill)
+            .map_err(SkillScriptExecutionError::StateUncertain)?;
         if render_success && artifacts.is_empty() {
-            return Err("skill script success=true 时必须返回至少一个有效 artifact".to_string());
+            return Err(SkillScriptExecutionError::StateUncertain(
+                "skill script success=true 时必须返回至少一个有效 artifact".to_string(),
+            ));
         }
 
         Ok(Some(serde_json::json!({
@@ -705,6 +739,7 @@ mod tests {
             .expect("script failure should return structured tool error");
 
         assert_eq!(result["success"], Value::Bool(false));
+        assert_eq!(result["side_effect_status"], "uncertain");
         let error = result["error"].as_str().expect("error message");
         assert_text_contains_all(
             error,
@@ -717,6 +752,49 @@ mod tests {
         );
         assert_text_contains_none(error, &["token=tok", "api_key=abc", "xyz"]);
         clear_test_env();
+    }
+
+    #[tokio::test]
+    async fn execute_marks_argument_validation_failure_as_not_started() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_preflight_failure");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: Alpha\ndescription: validates arguments\nscript: scripts/run.sh\nshell: bash\n---\n\nbody",
+        )
+        .expect("skill");
+        fs::write(scripts_dir.join("run.sh"), "exit 99\n").expect("script");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true,
+                "script_arguments": {"report": "draft"}
+            }))
+            .await
+            .expect("preflight failure should be structured");
+
+        assert_eq!(result["success"], Value::Bool(false));
+        assert_eq!(result["side_effect_status"], "not_started");
+        assert!(
+            result["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("arguments 顺序"))
+        );
+        clear_test_env();
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[tokio::test]
@@ -1238,7 +1316,8 @@ impl Tool for SkillTool {
         if skill_name.is_empty() {
             return Ok(serde_json::json!({
                 "success": false,
-                "error": "skill_name 不能为空"
+                "error": "skill_name 不能为空",
+                "side_effect_status": "not_started"
             }));
         }
 
@@ -1270,7 +1349,8 @@ impl Tool for SkillTool {
                         Err(error) => {
                             return Ok(serde_json::json!({
                                 "success": false,
-                                "error": error,
+                                "error": error.message(),
+                                "side_effect_status": error.side_effect_status(),
                                 "skill_name": skill.id,
                                 "script": skill.script,
                             }));
@@ -1352,6 +1432,7 @@ impl Tool for SkillTool {
             Err(error) => Ok(serde_json::json!({
                 "success": false,
                 "error": error,
+                "side_effect_status": "not_started",
                 "available_skills": runtime
                     .list_summaries_for_stage(&stage_constraints)
                     .into_iter()

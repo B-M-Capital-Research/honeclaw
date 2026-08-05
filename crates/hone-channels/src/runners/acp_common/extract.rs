@@ -124,11 +124,19 @@ pub(super) fn extract_tool_failure(update: &Value) -> Option<Value> {
         .or_else(|| extract_string_field(update, &["message", "detail", "description", "subtitle"]))
         .or_else(|| extract_text_from_content(update.get("content")))
         .unwrap_or_else(|| "tool failed without a result".to_string());
-    Some(json!({
+    let mut failure = json!({
         "status": "failed",
         "isError": true,
         "error": message
-    }))
+    });
+    if let Some(status) = update
+        .get("rawOutput")
+        .and_then(|value| value.get("side_effect_status"))
+        .and_then(Value::as_str)
+    {
+        failure["side_effect_status"] = Value::String(status.to_string());
+    }
+    Some(failure)
 }
 
 fn extract_text_from_content(content: Option<&Value>) -> Option<String> {

@@ -1041,11 +1041,19 @@ fn opencode_extract_tool_failure(update: &Value) -> Option<Value> {
         .map(str::to_string)
         .or_else(|| opencode_extract_text_from_content(update))
         .unwrap_or_else(|| "tool failed without a result".to_string());
-    Some(json!({
+    let mut failure = json!({
         "status": "failed",
         "isError": true,
         "error": message
-    }))
+    });
+    if let Some(status) = update
+        .get("rawOutput")
+        .and_then(|value| value.get("side_effect_status"))
+        .and_then(Value::as_str)
+    {
+        failure["side_effect_status"] = Value::String(status.to_string());
+    }
+    Some(failure)
 }
 
 fn upsert_pending_tool_arguments(state: &mut AcpPromptState, update: &Value, tool_name: &str) {
@@ -1516,4 +1524,26 @@ async fn handle_opencode_permission_request(
         message: format!("failed to flush opencode permission response: {e}"),
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod side_effect_status_tests {
+    use super::*;
+
+    #[test]
+    fn failed_tool_update_preserves_explicit_not_started_status() {
+        let result = opencode_extract_tool_failure(&json!({
+            "status": "failed",
+            "rawOutput": {
+                "success": false,
+                "error": "argument validation failed",
+                "side_effect_status": "not_started"
+            }
+        }))
+        .expect("failure result");
+
+        assert_eq!(result["status"], "failed");
+        assert_eq!(result["isError"], true);
+        assert_eq!(result["side_effect_status"], "not_started");
+    }
 }
