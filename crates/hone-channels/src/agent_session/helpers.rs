@@ -29,6 +29,7 @@ use crate::runtime::sanitize_user_visible_output;
 pub(super) const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 pub(super) const TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT: usize = 1;
 pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 2;
+pub(super) const EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT: usize = 1;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 pub(super) const CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT: usize = 0;
@@ -201,6 +202,18 @@ pub(super) fn is_retryable_transient_runner_error_text(text: &str) -> bool {
 
 pub(super) fn is_context_overflow_error_text(text: &str) -> bool {
     crate::runtime::is_context_overflow_error(text)
+}
+
+pub(super) fn is_opencode_corrupted_thought_signature_error_text(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    compact.contains("opencode")
+        && compact.contains("corruptedthoughtsignature")
+        && compact.contains("\"code\":400")
+        && compact.contains("\"error_type\":\"invalid_request\"")
 }
 
 pub(super) fn should_persist_tool_result(call: &ToolCallMade) -> bool {

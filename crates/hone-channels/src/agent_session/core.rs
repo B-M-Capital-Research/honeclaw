@@ -58,11 +58,13 @@ use super::emitter::{DeferredUserOutputEmitter, SessionEventEmitter};
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
     CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
-    CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand, EMPTY_SUCCESS_RETRY_LIMIT,
+    CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand,
+    EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT, EMPTY_SUCCESS_RETRY_LIMIT,
     TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
-    is_retryable_transient_runner_failure, merge_message_metadata, persistable_turn_from_response,
-    prune_historical_tool_protocol, prune_interactive_runtime_history,
-    restore_limit_before_compaction, should_return_runner_result,
+    is_opencode_corrupted_thought_signature_error_text, is_retryable_transient_runner_failure,
+    merge_message_metadata, persistable_turn_from_response, prune_historical_tool_protocol,
+    prune_interactive_runtime_history, restore_limit_before_compaction,
+    should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
@@ -2507,11 +2509,26 @@ impl AgentSession {
             context_messages = runner_result.context_messages;
             response = runner_result.response;
 
-            let should_try_recovery = !response.success
+            let context_overflow = response
+                .error
+                .as_deref()
+                .is_some_and(is_context_overflow_error_text);
+            let corrupted_thought_signature = options.dedicated_earnings_workflow
+                && matches!(
+                    options.runner_override,
+                    Some(AgentRunRunnerOverride::OpencodeAcp)
+                )
                 && response
                     .error
                     .as_deref()
-                    .is_some_and(is_context_overflow_error_text)
+                    .is_some_and(is_opencode_corrupted_thought_signature_error_text);
+            let recovery_limit = if corrupted_thought_signature {
+                EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT
+            } else {
+                CONTEXT_OVERFLOW_RECOVERY_LIMIT
+            };
+            let should_try_recovery = !response.success
+                && (context_overflow || corrupted_thought_signature)
                 // Native ACP runners retain and compact their own thread history.
                 // Rewriting Hone's local context cannot shrink that active
                 // thread, and retrying the same turn could duplicate it.
@@ -2523,13 +2540,15 @@ impl AgentSession {
                 && response_has_only_known_read_only_calls(&response.tool_calls_made)
                 && !response_has_persistent_side_effect(&response.tool_calls_made)
                 && committed_visible_prefix.is_none()
-                && recovery_idx < CONTEXT_OVERFLOW_RECOVERY_LIMIT;
+                && recovery_idx < recovery_limit;
             if !should_try_recovery {
                 break;
             }
 
-            let use_current_turn_only_recovery = recovery_idx > 0;
-            let recovery_mode = if use_current_turn_only_recovery {
+            let use_current_turn_only_recovery = corrupted_thought_signature || recovery_idx > 0;
+            let recovery_mode = if corrupted_thought_signature {
+                "fresh_session_after_corrupted_thought_signature"
+            } else if use_current_turn_only_recovery {
                 "current_turn_only"
             } else {
                 "compact_history"
@@ -2541,9 +2560,9 @@ impl AgentSession {
                 channel_target = %self.channel_target,
                 runner = %execution.runner_name,
                 attempt = recovery_idx + 1,
-                max_attempts = CONTEXT_OVERFLOW_RECOVERY_LIMIT,
+                max_attempts = recovery_limit,
                 recovery_mode,
-                "[AgentSession] context overflow detected, recovering automatically"
+                "[AgentSession] retryable isolated-runner context failure detected, recovering automatically"
             );
             self.core.log_message_step(
                 &self.actor.channel,
@@ -2551,9 +2570,9 @@ impl AgentSession {
                 &session_id,
                 "agent.run.retry",
                 &format!(
-                    "context_overflow attempt={}/{} mode={recovery_mode}",
+                    "isolated_runner_recovery attempt={}/{} mode={recovery_mode}",
                     recovery_idx + 1,
-                    CONTEXT_OVERFLOW_RECOVERY_LIMIT
+                    recovery_limit
                 ),
                 self.message_id.as_deref(),
                 None,
@@ -2561,15 +2580,15 @@ impl AgentSession {
             self.emit(session_progress_event(
                 "agent.run.retry",
                 Some(format!(
-                    "{} context_overflow attempt={}/{} mode={recovery_mode}",
+                    "{} isolated_runner_recovery attempt={}/{} mode={recovery_mode}",
                     execution.runner_name,
                     recovery_idx + 1,
-                    CONTEXT_OVERFLOW_RECOVERY_LIMIT
+                    recovery_limit
                 )),
             ))
             .await;
 
-            if !use_current_turn_only_recovery {
+            if context_overflow && !use_current_turn_only_recovery {
                 match self.force_compact_for_context_overflow(&session_id).await {
                     Ok(compacted) => {
                         tracing::info!(

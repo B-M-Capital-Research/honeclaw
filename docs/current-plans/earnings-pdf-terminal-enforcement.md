@@ -30,6 +30,7 @@
 - 复现文字降级路径，确定 Skill 指令、工具副作用状态、runner 终态或 Web 投影中的实际缺口。
 - 用最小通用修复强制 PDF 成功终态，保留超时、不可恢复基础设施错误和不确定副作用的 fail-closed 边界。
 - renderer 成功后由宿主直接发布同次成功调用中已校验的 Markdown 与附件路径，避免模型为补附件名再次生成整篇报告并耗尽时限。
+- 对 OpenRouter/Gemini 在工具轮次间偶发的精确 `Corrupted thought signature` 做一次受限的新 OpenCode 会话恢复；当前轮仍保持历史隔离，且仅允许已知只读、无持久副作用、无可见前缀的任务重放。
 - 增加至少一条自动化回归覆盖本次真实失败语句和等价无附件终稿。
 - 部署精确 revision/技能，真实重跑 AAOI，检查 PDF 下载、页面刷新持久化和生产健康。
 
@@ -39,6 +40,7 @@
 - 相关 Rust 单元/集成测试和 `tests/regression/ci/test_earnings_research_pdf_markdown.sh`。
 - `bash tests/regression/run_ci.sh`；如修改 Rust，再运行仓库约定的 changed rustfmt、workspace check/test。
 - 生产 AAOI：正文完成、一个 PDF 卡片、点击下载成功、刷新后仍存在；日志无文字降级成功终态。
+- 生产故障复现确认：`ses_02df86fc1ffeMrWksTwhlo0D5e` 在首次只读 DataFetch 后由 Gemini 返回精确 `400 invalid_request: Corrupted thought signature`；回归必须证明仅该结构化错误触发一次全新隔离会话，且不压缩/带回旧聊天。
 
 ## Documentation Sync
 

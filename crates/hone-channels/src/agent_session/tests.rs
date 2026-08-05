@@ -58,9 +58,10 @@ use super::core::{
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
-    DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT, is_retryable_transient_runner_error_text,
-    persistable_turn_from_response, prune_interactive_runtime_history,
-    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
+    DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT, is_opencode_corrupted_thought_signature_error_text,
+    is_retryable_transient_runner_error_text, persistable_turn_from_response,
+    prune_interactive_runtime_history, sanitize_assistant_context_content,
+    should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
@@ -1386,6 +1387,19 @@ fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout
     ));
     assert!(!is_retryable_transient_runner_error_text(
         "request timed out while waiting for upstream response"
+    ));
+}
+
+#[test]
+fn corrupted_thought_signature_match_is_exact_to_opencode_invalid_request() {
+    assert!(is_opencode_corrupted_thought_signature_error_text(
+        r#"opencode acp request failed: Internal error: {"code":400,"message":"Corrupted thought signature.","metadata":{"error_type":"invalid_request"}}"#
+    ));
+    assert!(!is_opencode_corrupted_thought_signature_error_text(
+        r#"codex acp request failed: {"code":400,"message":"Corrupted thought signature.","metadata":{"error_type":"invalid_request"}}"#
+    ));
+    assert!(!is_opencode_corrupted_thought_signature_error_text(
+        r#"opencode acp request failed: {"code":500,"message":"Corrupted thought signature.","metadata":{"error_type":"server_error"}}"#
     ));
 }
 
@@ -4549,6 +4563,129 @@ async fn dedicated_earnings_text_fallback_without_pdf_fails_closed() {
             .filter_map(|part| part.text.as_deref())
             .any(|text| text.contains("PDF 渲染暂时遇到格式和证据链完整性限制"))
     }));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thought_signature() {
+    let root = make_temp_dir("hone_channels_earnings_corrupted_thought_signature_retry");
+    let llm = MockLlmProvider::with_chat_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.agent.runner = "codex_acp".to_string();
+    });
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "hone_data_fetch".to_string(),
+                    arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
+                    result: serde_json::json!({"success":true,"data":[]}),
+                    tool_call_id: Some("call_read_only".to_string()),
+                }],
+                iterations: 1,
+                success: false,
+                error: Some(
+                    r#"opencode acp request failed: Internal error: {"code":400,"message":"Corrupted thought signature.","metadata":{"error_type":"invalid_request"}}"#
+                        .to_string(),
+                ),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("second non-retryable failure".to_string()),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("exclusive test core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+                conversation_strategy: AgentConversationStrategy::EphemeralCompiledPrompt,
+                native_skill_projection: None,
+            })
+        }));
+    }
+    let actor = ActorIdentity::new("web", "database-admin-thought-signature", None::<String>)
+        .expect("actor");
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    core.session_storage
+        .add_message(&actor.session_id(), "user", "旧的普通聊天任务", None)
+        .expect("seed old user message");
+    core.session_storage
+        .add_message(&actor.session_id(), "assistant", "旧任务回答", None)
+        .expect("seed old assistant message");
+    let session = AgentSession::new(core, actor, "direct").with_prompt_options(PromptOptions {
+        is_admin: true,
+        ..PromptOptions::default()
+    });
+
+    let result = session
+        .run(
+            "请为 AAOI 生成财报前瞻",
+            AgentRunOptions {
+                runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+                model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+                isolate_prior_history: true,
+                dedicated_earnings_workflow: true,
+                ..AgentRunOptions::default()
+            },
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .len(),
+        2,
+        "the exact provider signature failure should get one fresh-session retry"
+    );
+    assert!(
+        recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .iter()
+            .all(Vec::is_empty),
+        "neither attempt may replay prior chat history"
+    );
+    assert_eq!(
+        llm.chat_calls(),
+        0,
+        "retry must not compact ordinary history"
+    );
+    assert!(
+        queued_results
+            .lock()
+            .expect("queued results lock")
+            .is_empty()
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
