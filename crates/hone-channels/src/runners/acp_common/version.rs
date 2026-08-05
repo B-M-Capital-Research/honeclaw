@@ -36,7 +36,7 @@ pub(crate) const OPENCODE_BASELINE_VERSION: CliVersion = CliVersion {
 };
 
 const CODEX_ACP_INITIALIZE_AGENT_NAME: &str = "@agentclientprotocol/codex-acp";
-const OPENCODE_INITIALIZE_AGENT_NAME: &str = "opencode";
+const OPENCODE_INITIALIZE_AGENT_NAMES: [&str; 2] = ["opencode", "OpenCode"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct AcpRuntimeProfileRecord {
@@ -116,10 +116,10 @@ pub(crate) fn select_acp_adapter_profile_from_initialize(
         .map(str::trim)
         .unwrap_or_default();
     let expected_agent_name = match adapter {
-        AcpAdapterKind::CodexAcp => CODEX_ACP_INITIALIZE_AGENT_NAME,
-        AcpAdapterKind::OpenCode => OPENCODE_INITIALIZE_AGENT_NAME,
+        AcpAdapterKind::CodexAcp => adapter_name == CODEX_ACP_INITIALIZE_AGENT_NAME,
+        AcpAdapterKind::OpenCode => OPENCODE_INITIALIZE_AGENT_NAMES.contains(&adapter_name),
     };
-    if adapter_name != expected_agent_name {
+    if !expected_agent_name {
         return Err(format!(
             "{} initialize returned a missing or unexpected agentInfo.name",
             adapter.as_str()
@@ -266,6 +266,39 @@ mod tests {
             .expect_err("missing version must fail closed");
         assert!(error.contains("opencode"));
         assert!(error.contains("agentInfo.version"));
+
+        let observed_opencode_1_18_13 = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {"name": "OpenCode", "version": "1.18.13"}
+        });
+        let (version, profile) = select_acp_adapter_profile_from_initialize(
+            AcpAdapterKind::OpenCode,
+            &observed_opencode_1_18_13,
+        )
+        .expect("OpenCode 1.18.13 title-case identity observed in production");
+        assert_eq!(
+            version,
+            CliVersion {
+                major: 1,
+                minor: 18,
+                patch: 13
+            }
+        );
+        assert_eq!(
+            profile.compatibility,
+            AcpCompatibilityStatus::CompatibleNewer
+        );
+
+        let unobserved_opencode_alias = serde_json::json!({
+            "protocolVersion": 1,
+            "agentInfo": {"name": "OPENCODE", "version": "1.18.13"}
+        });
+        let error = select_acp_adapter_profile_from_initialize(
+            AcpAdapterKind::OpenCode,
+            &unobserved_opencode_alias,
+        )
+        .expect_err("identity matching remains bounded to observed OpenCode names");
+        assert!(error.contains("agentInfo.name"));
 
         let wrong_identity = serde_json::json!({
             "protocolVersion": 1,

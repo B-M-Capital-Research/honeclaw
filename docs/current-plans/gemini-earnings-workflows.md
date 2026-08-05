@@ -51,4 +51,5 @@
 - OpenCode ACP 与 Codex ACP 的上下文所有权不同；若仍按全局 Codex 判断，会丢失本轮编译后的技能和历史上下文。
 - OpenRouter 密钥不能出现在 Git、命令参数、日志或样片中；生产变更必须原子写入并保留权限受限的可回滚备份。
 - Gemini 3.1 Pro preview 可能消耗较多推理 token；生产 overall timeout 需保持覆盖完整研究与 PDF 生成。
+- 生产验收发现 OpenCode 1.18.13 将 `initialize.agentInfo.name` 从旧夹具中的 `opencode` 改为 `OpenCode`；适配器只接受这两个已观测身份并继续拒绝其它大小写变体，避免无界放宽身份检查。
 - 部署重启必须等待连续两次 active chat 为 0，避免中断用户任务。
