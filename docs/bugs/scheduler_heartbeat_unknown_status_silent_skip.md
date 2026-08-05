@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-05 18:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-05 14:01-18:03 CST 近窗统计 `HeartbeatDiag=364`、`run_start=96`、`run_finish=100`、`deliver=58`、`duplicate_suppressed=10`、event-engine `poller ok=26`。
+    - 近窗仍有 6 条 `failure_kind=execution_failed`，错误包括 `heartbeat 输出不是结构化 JSON` 与执行失败；另有 3 条 fenced JSON / `status=triggered` 协议载荷进入候选。
+    - parse 分布继续分裂为 `PlainTextTriggered=116`、`JsonNoop=25`、`PlainTextNoop=7`、`PlainTextSuppressed=6`、`JsonTriggered=3`、`JsonEmptyStatus=1`；同窗 raw preview 以 `<think>` 开头的信号有 100 条。
+    - 代表样本：14:30 / 15:30 / 18:01 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 fenced JSON 协议载荷 deliver；多条 SNDK / 光模块 / 存储 heartbeat 以 `PlainTextTriggered` 送出 `noop / 无全新独立事件触发` 正文并进入 deliver；另有多个 Web heartbeat 在 `JsonNoop`、`PlainTextNoop`、`PlainTextSuppressed` 与 `PlainTextTriggered` 之间漂移。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-05 14:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-05 10:05-14:01 CST 近窗统计 `HeartbeatDiag=358`、`run_start=96`、`run_finish=96`、`deliver=54`、`duplicate_suppressed=15`、event-engine `poller ok=24`。
