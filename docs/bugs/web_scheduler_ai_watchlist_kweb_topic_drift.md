@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-06 22:01-2026-08-07 02:01 CST（UTC 2026-08-06 14:01-18:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 23:00 / 23:30 CST deliver preview 主体转为解释 `analyst_grade` / `grade 是什么`，18:00 UTC / 02:00 CST 同一 job 又输出“你的当前推送配置如下”与定时推送配置表；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是通知配置问答。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` 在 23:30 CST 转向 `CoreWeave（CRWV）与 Navitas（NVTS）关系`，02:00 CST 又以 `NBIS $196.87` 行情口径收口；`job_id=j_aa99140a` / `job=光迅科技关键事件心跳提醒` 在 01:30 / 02:00 CST 也以 NBIS 行情和估值分析为主体。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-06 18:01-22:01 CST（UTC 2026-08-06 10:01-14:01）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 22:00 CST raw preview 写工具预算受限后改用已有 web search 信息，并转向“小米与英伟达”的客户 / 供应关系分析。

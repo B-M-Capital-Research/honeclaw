@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-07 02:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-06 22:01-2026-08-07 02:01 CST 近窗统计 `run_start=109`、`run_finish=109`、`deliver=66`、`duplicate_suppressed=9`。
+    - 近窗仍有 8 条 `failure_kind=execution_failed`，错误继续集中在 heartbeat 非结构化输出和执行失败。
+    - parse / raw 信号继续分裂：`PlainTextTriggered=130`、`JsonNoop=21`、`PlainTextNoop=8`、`PlainTextSuppressed=7`、`JsonTriggered=7`、`Empty=1`；同窗 raw preview 以 `<think>` 开头的信号有 108 条。
+    - 代表样本：23:30 `闪迪关键事件心跳提醒` 以 NBIS 行情和分析收口；23:30 / 02:00 `中际旭创`、01:30 / 02:00 `光迅科技` 等 Web heartbeat 在目标标的外输出 NBIS / CRWV / NVTS 关系分析；22:00、23:00、23:30、00:30、01:02、02:01 `TEM AAOI KRMN RKLB MRVL` 继续以 fenced JSON / `status=triggered` 协议载荷送入候选。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-06 22:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-06 18:01-22:01 CST 近窗统计 `run_start=110`、`run_finish=109`、`deliver=58`、`duplicate_suppressed=13`。
