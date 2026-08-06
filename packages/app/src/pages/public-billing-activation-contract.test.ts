@@ -23,7 +23,8 @@ describe("Stripe-only billing activation contract", () => {
   it("follows the server Stripe availability and fails closed when Checkout is disabled", () => {
     expect(activation).toContain("getPublicBillingConfig");
     expect(activation).toContain("purchaseAvailable()");
-    expect(activation).toContain("stripe_checkout_enabled");
+    expect(activation).toContain("config()?.stripe.subscription.enabled");
+    expect(activation).toContain("config()?.stripe.fixed_term.enabled");
     expect(activation).toContain("configReady()");
     expect(activation).toContain("CONTENT.chat_page.activate_page.confirming");
     expect(activation).toContain("CONTENT.chat_page.activate_page.checkout_down");
@@ -36,6 +37,8 @@ describe("Stripe-only billing activation contract", () => {
     expect(activation).toContain("tos_version: TOS_VERSION");
     expect(activation).toContain("await publicEmailLogin");
     expect(activation).toContain("await createStripeCheckout");
+    expect(activation).toContain("createStripeCheckout(selectedOffer())");
+    expect(api).toContain('JSON.stringify({ offer })');
     expect(activation).toContain("window.location.assign(checkout_url)");
   });
 
@@ -61,6 +64,7 @@ describe("Stripe-only billing activation contract", () => {
     expect(activation).toContain('import "./public-site.css"');
     expect(css).toContain(".public-activate-card");
     expect(css).toContain(".public-activate-code-row");
+    expect(css).toContain(".public-activate-offers");
     expect(css).not.toContain(".public-whop-activate");
   });
 
@@ -70,7 +74,7 @@ describe("Stripe-only billing activation contract", () => {
     expect(account).toContain("getPublicBillingConfig");
     expect(account).toContain("config.management_allowed_on_this_client");
     expect(account).toContain("managementAllowed={managementAllowed()}");
-    expect(account).toContain('props.managementAllowed && props.entitlement.provider === "stripe"');
+    expect(account).toContain('props.managementAllowed && props.entitlement.provider === "stripe" && recurring()');
     expect(account).not.toContain('props.entitlement.provider === "whop"');
     expect(account).not.toContain("Whop");
     expect(account).toContain("has_duplicate_active_subscriptions");

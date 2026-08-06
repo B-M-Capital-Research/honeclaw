@@ -9,8 +9,8 @@ use serde_json::json;
 use tracing::warn;
 
 use hone_memory::{
-    BILLING_PROVIDER_STRIPE, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,
-    WebInviteUser,
+    BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION, BILLING_PROVIDER_STRIPE,
+    WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebInviteUser,
 };
 
 use crate::state::AppState;
@@ -18,16 +18,47 @@ use crate::types::{PublicBillingEntitlement, PublicBillingSummary};
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PublicBillingConfig {
-    pub stripe_checkout_enabled: bool,
+    pub stripe: PublicStripeBillingConfig,
     pub purchases_allowed_on_this_client: bool,
     pub management_allowed_on_this_client: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PublicStripeBillingConfig {
+    pub subscription: PublicBillingOfferConfig,
+    pub fixed_term: PublicBillingOfferConfig,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PublicBillingOfferConfig {
+    pub enabled: bool,
+    pub amount_minor: u32,
+    pub currency: &'static str,
+    pub term_months: u8,
+    pub auto_renews: bool,
 }
 
 impl PublicBillingConfig {
     fn from_env(headers: &HeaderMap) -> Self {
         let external_billing_allowed = !is_hone_ios(headers);
+        let checkout_enabled = crate::routes::stripe::checkout_available();
         Self {
-            stripe_checkout_enabled: crate::routes::stripe::checkout_available(),
+            stripe: PublicStripeBillingConfig {
+                subscription: PublicBillingOfferConfig {
+                    enabled: checkout_enabled,
+                    amount_minor: 19_999,
+                    currency: "usd",
+                    term_months: 12,
+                    auto_renews: true,
+                },
+                fixed_term: PublicBillingOfferConfig {
+                    enabled: checkout_enabled,
+                    amount_minor: 22_999,
+                    currency: "usd",
+                    term_months: 12,
+                    auto_renews: false,
+                },
+            },
             purchases_allowed_on_this_client: external_billing_allowed,
             management_allowed_on_this_client: external_billing_allowed,
         }
@@ -102,26 +133,34 @@ pub(crate) fn public_billing_summary(
         .billing
         .list_user_entitlements(&user.user_id)
         .map_err(|error| error.to_string())?;
-    let active_count = entitlements
+    let active_recurring_count = entitlements
         .iter()
-        .filter(|value| value.grants_paid_access())
+        .filter(|value| {
+            value.entitlement_kind == BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION
+                && value.grants_paid_access()
+        })
         .count();
     let access_granted = user_has_product_access(state, user)?;
     Ok(PublicBillingSummary {
         access_granted,
-        has_duplicate_active_subscriptions: active_count > 1,
+        has_duplicate_active_subscriptions: active_recurring_count > 1,
         entitlements: entitlements
             .into_iter()
-            .map(|value| PublicBillingEntitlement {
-                entitlement_id: value.entitlement_id,
-                provider: value.provider,
-                raw_status: value.raw_status,
-                access_state: value.access_state,
-                current_period_start: value.current_period_start,
-                current_period_end: value.current_period_end,
-                cancel_at_period_end: value.cancel_at_period_end,
-                manage_url: value.manage_url,
-                grace_expires_at: value.grace_expires_at,
+            .map(|value| {
+                let grants_access = value.grants_paid_access();
+                PublicBillingEntitlement {
+                    entitlement_id: value.entitlement_id,
+                    provider: value.provider,
+                    entitlement_kind: value.entitlement_kind,
+                    raw_status: value.raw_status,
+                    access_state: value.access_state,
+                    grants_access,
+                    current_period_start: value.current_period_start,
+                    current_period_end: value.current_period_end,
+                    cancel_at_period_end: value.cancel_at_period_end,
+                    manage_url: value.manage_url,
+                    grace_expires_at: value.grace_expires_at,
+                }
             })
             .collect(),
     })

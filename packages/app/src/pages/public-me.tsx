@@ -56,23 +56,32 @@ function EntitlementRow(props: {
   managementAllowed: boolean;
 }) {
   const active = () => billingEntitlementGrantsAccess(props.entitlement);
+  const recurring = () => props.entitlement.entitlement_kind === "recurring_subscription";
+  const kindLabel = () =>
+    props.entitlement.entitlement_kind === "fixed_term_purchase"
+      ? CONTENT.chat_page.me_page.fixed_term_label
+      : recurring()
+        ? CONTENT.chat_page.me_page.recurring_label
+        : billingProviderLabel(props.entitlement.provider);
   return (
     <article class="public-account-card public-billing-entitlement">
       <div class="public-account-row">
-        <span>{billingProviderLabel(props.entitlement.provider)}</span>
+        <span>{billingProviderLabel(props.entitlement.provider)} · {kindLabel()}</span>
         <strong>{billingEntitlementStatusLabel(props.entitlement)}</strong>
       </div>
       <Show when={props.entitlement.current_period_end}>
         {(periodEnd) => (
           <p>
-            {CONTENT.chat_page.me_page.cycle_until} {formatDate(periodEnd())}
+            {recurring()
+              ? CONTENT.chat_page.me_page.cycle_until
+              : CONTENT.chat_page.me_page.expires_on} {formatDate(periodEnd())}
             {props.entitlement.cancel_at_period_end
               ? CONTENT.chat_page.me_page.no_renew
               : ""}
           </p>
         )}
       </Show>
-      <Show when={props.managementAllowed && props.entitlement.provider === "stripe"}>
+      <Show when={props.managementAllowed && props.entitlement.provider === "stripe" && recurring()}>
         <button type="button" disabled={props.managing} onClick={props.onStripeManage}>
           {props.managing ? CONTENT.chat_page.me_page.opening : CONTENT.chat_page.me_page.manage_stripe}
         </button>

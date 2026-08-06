@@ -1372,8 +1372,9 @@ CREATE TABLE IF NOT EXISTS billing_entitlements (
   entitlement_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id) ON DELETE CASCADE,
   provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
+  entitlement_kind TEXT NOT NULL CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite')),
   provider_customer_id TEXT,
-  provider_subscription_id TEXT NOT NULL,
+  provider_reference_id TEXT NOT NULL,
   provider_product_id TEXT,
   provider_price_id TEXT,
   purchase_email_normalized TEXT,
@@ -1389,7 +1390,8 @@ CREATE TABLE IF NOT EXISTS billing_entitlements (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   record JSONB NOT NULL,
-  UNIQUE (provider, provider_subscription_id)
+  CONSTRAINT billing_entitlements_provider_reference_unique
+    UNIQUE (provider, provider_reference_id)
 );
 ALTER TABLE billing_entitlements
   ADD COLUMN IF NOT EXISTS manage_url TEXT;
@@ -1566,6 +1568,82 @@ BEGIN
   END IF;
 END
 $stripe_only_billing$;
+COMMIT;
+BEGIN;
+SELECT pg_advisory_xact_lock(hashtextextended('hone:typed-billing-entitlements-migration', 0));
+DO $typed_billing_entitlements$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM cloud_schema_migrations
+    WHERE version = '20260806_typed_billing_entitlements'
+  ) THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'billing_entitlements'
+        AND column_name = 'provider_subscription_id'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'billing_entitlements'
+        AND column_name = 'provider_reference_id'
+    ) THEN
+      ALTER TABLE billing_entitlements
+        RENAME COLUMN provider_subscription_id TO provider_reference_id;
+    END IF;
+
+    ALTER TABLE billing_entitlements
+      ADD COLUMN IF NOT EXISTS provider_reference_id TEXT;
+    ALTER TABLE billing_entitlements
+      ADD COLUMN IF NOT EXISTS entitlement_kind TEXT;
+
+    UPDATE billing_entitlements
+    SET provider_reference_id = COALESCE(
+          provider_reference_id,
+          NULLIF(record->>'provider_reference_id', ''),
+          NULLIF(record->>'provider_subscription_id', '')
+        ),
+        entitlement_kind = COALESCE(
+          entitlement_kind,
+          NULLIF(record->>'entitlement_kind', ''),
+          CASE
+            WHEN provider = 'stripe' THEN 'recurring_subscription'
+            ELSE 'domestic_invite'
+          END
+        );
+
+    UPDATE billing_entitlements
+    SET record = (record - 'provider_subscription_id') || jsonb_build_object(
+      'provider_reference_id', provider_reference_id,
+      'entitlement_kind', entitlement_kind
+    );
+
+    ALTER TABLE billing_entitlements
+      ALTER COLUMN provider_reference_id SET NOT NULL;
+    ALTER TABLE billing_entitlements
+      ALTER COLUMN entitlement_kind SET NOT NULL;
+
+    ALTER TABLE billing_entitlements
+      DROP CONSTRAINT IF EXISTS billing_entitlements_provider_provider_subscription_id_key;
+    ALTER TABLE billing_entitlements
+      DROP CONSTRAINT IF EXISTS billing_entitlements_provider_provider_reference_id_key;
+    ALTER TABLE billing_entitlements
+      DROP CONSTRAINT IF EXISTS billing_entitlements_provider_reference_unique;
+    ALTER TABLE billing_entitlements
+      ADD CONSTRAINT billing_entitlements_provider_reference_unique
+      UNIQUE (provider, provider_reference_id);
+    ALTER TABLE billing_entitlements
+      DROP CONSTRAINT IF EXISTS billing_entitlements_entitlement_kind_check;
+    ALTER TABLE billing_entitlements
+      ADD CONSTRAINT billing_entitlements_entitlement_kind_check
+      CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite'));
+
+    INSERT INTO cloud_schema_migrations(version)
+    VALUES ('20260806_typed_billing_entitlements');
+  END IF;
+END
+$typed_billing_entitlements$;
 COMMIT;
 "#,
             )
@@ -2582,8 +2660,8 @@ DO UPDATE SET
             .execute(
                 r#"
 INSERT INTO billing_entitlements(
-  entitlement_id, user_id, provider, provider_customer_id,
-  provider_subscription_id, provider_product_id, provider_price_id,
+  entitlement_id, user_id, provider, entitlement_kind, provider_customer_id,
+  provider_reference_id, provider_product_id, provider_price_id,
   purchase_email_normalized, raw_status, access_state,
   current_period_start, current_period_end, cancel_at_period_end, manage_url,
   grace_expires_at,
@@ -2591,7 +2669,8 @@ INSERT INTO billing_entitlements(
 )
 VALUES (
   $1->>'entitlement_id', $1->>'user_id', $1->>'provider',
-  NULLIF($1->>'provider_customer_id', ''), $1->>'provider_subscription_id',
+  $1->>'entitlement_kind', NULLIF($1->>'provider_customer_id', ''),
+  $1->>'provider_reference_id',
   NULLIF($1->>'provider_product_id', ''), NULLIF($1->>'provider_price_id', ''),
   NULLIF($1->>'purchase_email_normalized', ''), $1->>'raw_status',
   $1->>'access_state', NULLIF($1->>'current_period_start', ''),
@@ -2602,9 +2681,10 @@ VALUES (
   $1->>'last_event_id', $1->>'last_event_created_at',
   $1->>'created_at', $1->>'updated_at', $1
 )
-ON CONFLICT (provider, provider_subscription_id)
+ON CONFLICT (provider, provider_reference_id)
 DO UPDATE SET
   user_id = EXCLUDED.user_id,
+  entitlement_kind = EXCLUDED.entitlement_kind,
   provider_customer_id = EXCLUDED.provider_customer_id,
   provider_product_id = EXCLUDED.provider_product_id,
   provider_price_id = EXCLUDED.provider_price_id,
@@ -2638,7 +2718,7 @@ WHERE EXCLUDED.last_event_created_at > billing_entitlements.last_event_created_a
     pub async fn find_billing_entitlement_record(
         &self,
         provider: &str,
-        provider_subscription_id: &str,
+        provider_reference_id: &str,
     ) -> HoneResult<Option<serde_json::Value>> {
         let client = self.connect_client().await?;
         let row = client
@@ -2646,9 +2726,9 @@ WHERE EXCLUDED.last_event_created_at > billing_entitlements.last_event_created_a
                 r#"
 SELECT record
 FROM billing_entitlements
-WHERE provider = $1 AND provider_subscription_id = $2
+WHERE provider = $1 AND provider_reference_id = $2
 "#,
-                &[&provider, &provider_subscription_id],
+                &[&provider, &provider_reference_id],
             )
             .await
             .map_err(|err| {

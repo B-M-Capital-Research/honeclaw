@@ -127,7 +127,7 @@ html {
   color: var(--hone-link);
 }
 .public-activate-inner {
-  width: min(100%, 500px);
+  width: min(100%, 720px);
   min-width: 0;
 }
 .public-activate-header {
@@ -176,6 +176,71 @@ html {
   background: var(--hone-paper-100);
   color: var(--hone-ink-500);
   text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.public-activate-offers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+.public-activate-offers legend {
+  grid-column: 1 / -1;
+  margin-bottom: 1px;
+  color: var(--hone-ink-800);
+  font-size: 12px;
+  font-weight: 800;
+}
+.public-activate-offer {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  font: 500 12px/1.45 var(--hone-font-body);
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+.public-activate-offer:hover {
+  border-color: color-mix(in srgb, var(--hone-coral-500) 55%, var(--hone-line-strong));
+}
+.public-activate-offer.is-selected {
+  border-color: var(--hone-coral-500);
+  background: color-mix(in srgb, var(--hone-coral-500) 7%, var(--hone-control-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hone-coral-500) 12%, transparent);
+}
+.public-activate-offer:focus-visible {
+  outline: 3px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+.public-activate-offer:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.public-activate-offer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--hone-ink-950);
+}
+.public-activate-offer-head strong {
+  font-size: 14px;
+}
+.public-activate-offer-head b {
+  color: var(--hone-link);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.public-activate-offer small {
+  color: var(--hone-ink-500);
   font-size: 11px;
   font-weight: 700;
 }
@@ -266,6 +331,9 @@ html {
   }
   .public-activate-card {
     padding: 18px !important;
+  }
+  .public-activate-offers {
+    grid-template-columns: 1fr;
   }
   .public-activate-code-row {
     grid-template-columns: minmax(0, 1fr) 112px !important;

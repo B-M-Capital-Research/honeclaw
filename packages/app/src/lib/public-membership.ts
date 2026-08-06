@@ -6,10 +6,7 @@ import type {
 export function billingEntitlementGrantsAccess(
   entitlement: PublicBillingEntitlement,
 ): boolean {
-  if (entitlement.access_state === "active") return true;
-  if (entitlement.access_state !== "grace" || !entitlement.grace_expires_at) return false;
-  const deadline = Date.parse(entitlement.grace_expires_at);
-  return Number.isFinite(deadline) && deadline >= Date.now();
+  return entitlement.grants_access;
 }
 
 export function publicUserHasProductAccess(user: PublicAuthUserInfo): boolean {
@@ -46,5 +43,20 @@ export function billingProviderLabel(provider: string): string {
       return "国内邀请";
     default:
       return provider;
+  }
+}
+
+export function billingEntitlementKindLabel(
+  entitlementKind: string,
+): string {
+  switch (entitlementKind) {
+    case "recurring_subscription":
+      return "自动续费年订阅";
+    case "fixed_term_purchase":
+      return "一次性年费（不自动续费）";
+    case "domestic_invite":
+      return "国内邀请权益";
+    default:
+      return entitlementKind;
   }
 }

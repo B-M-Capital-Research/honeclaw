@@ -31,14 +31,18 @@ chmod 700 "$TMP_ROOT"
 
 SERVER_PID=""
 LISTENER_PID=""
-CHECKOUT_SESSION_ID=""
-CHECKOUT_SESSION_EXPIRED=0
+SUBSCRIPTION_CHECKOUT_SESSION_ID=""
+SUBSCRIPTION_CHECKOUT_SESSION_EXPIRED=0
+FIXED_CHECKOUT_SESSION_ID=""
+FIXED_CHECKOUT_SESSION_EXPIRED=0
 TEST_CLOCK_ID=""
 TEST_CLOCK_DELETED=0
 PRODUCT_ID=""
 PRODUCT_ARCHIVED=0
-PRICE_ID=""
-PRICE_ARCHIVED=0
+SUBSCRIPTION_PRICE_ID=""
+SUBSCRIPTION_PRICE_ARCHIVED=0
+FIXED_PRICE_ID=""
+FIXED_PRICE_ARCHIVED=0
 
 stripe_api() {
   stripe --color off "$@"
@@ -57,14 +61,20 @@ cleanup() {
   trap - ERR
   set +e
 
-  if [[ -n "$CHECKOUT_SESSION_ID" && "$CHECKOUT_SESSION_EXPIRED" != 1 ]]; then
-    stripe_api checkout sessions expire "$CHECKOUT_SESSION_ID" --confirm >/dev/null 2>&1
+  if [[ -n "$SUBSCRIPTION_CHECKOUT_SESSION_ID" && "$SUBSCRIPTION_CHECKOUT_SESSION_EXPIRED" != 1 ]]; then
+    stripe_api checkout sessions expire "$SUBSCRIPTION_CHECKOUT_SESSION_ID" --confirm >/dev/null 2>&1
+  fi
+  if [[ -n "$FIXED_CHECKOUT_SESSION_ID" && "$FIXED_CHECKOUT_SESSION_EXPIRED" != 1 ]]; then
+    stripe_api checkout sessions expire "$FIXED_CHECKOUT_SESSION_ID" --confirm >/dev/null 2>&1
   fi
   if [[ -n "$TEST_CLOCK_ID" && "$TEST_CLOCK_DELETED" != 1 ]]; then
     stripe_api test_helpers test_clocks delete "$TEST_CLOCK_ID" --confirm >/dev/null 2>&1
   fi
-  if [[ -n "$PRICE_ID" && "$PRICE_ARCHIVED" != 1 ]]; then
-    stripe_api prices update "$PRICE_ID" --active=false --confirm >/dev/null 2>&1
+  if [[ -n "$SUBSCRIPTION_PRICE_ID" && "$SUBSCRIPTION_PRICE_ARCHIVED" != 1 ]]; then
+    stripe_api prices update "$SUBSCRIPTION_PRICE_ID" --active=false --confirm >/dev/null 2>&1
+  fi
+  if [[ -n "$FIXED_PRICE_ID" && "$FIXED_PRICE_ARCHIVED" != 1 ]]; then
+    stripe_api prices update "$FIXED_PRICE_ID" --active=false --confirm >/dev/null 2>&1
   fi
   if [[ -n "$PRODUCT_ID" && "$PRODUCT_ARCHIVED" != 1 ]]; then
     stripe_api products update "$PRODUCT_ID" --active=false --confirm >/dev/null 2>&1
@@ -208,12 +218,27 @@ price_json="$(stripe_api prices create \
   -d "metadata[hone_regression_run]=$RUN_ID" \
   --idempotency "hone-lifecycle-price-$RUN_ID" \
   --confirm)"
-PRICE_ID="$(jq -er '.id' <<<"$price_json")"
+SUBSCRIPTION_PRICE_ID="$(jq -er '.id' <<<"$price_json")"
 jq -e \
   --arg product_id "$PRODUCT_ID" \
   '.livemode == false and .active == true and .product == $product_id and .recurring.interval == "year"' \
   >/dev/null <<<"$price_json" \
   || fail "disposable annual price was not created correctly"
+
+fixed_price_json="$(stripe_api prices create \
+  --currency usd \
+  --unit-amount 22999 \
+  --product "$PRODUCT_ID" \
+  --nickname 'HONE fixed-term lifecycle regression only' \
+  -d "metadata[hone_regression_run]=$RUN_ID" \
+  --idempotency "hone-lifecycle-fixed-price-$RUN_ID" \
+  --confirm)"
+FIXED_PRICE_ID="$(jq -er '.id' <<<"$fixed_price_json")"
+jq -e \
+  --arg product_id "$PRODUCT_ID" \
+  '.livemode == false and .active == true and .product == $product_id and .type == "one_time" and .unit_amount == 22999' \
+  >/dev/null <<<"$fixed_price_json" \
+  || fail "disposable fixed-term price was not created correctly"
 
 WEBHOOK_SECRET="$(stripe listen --print-secret --skip-update --color off)"
 [[ "$WEBHOOK_SECRET" == whsec_* ]] || fail "Stripe CLI did not return a test listener secret"
@@ -221,7 +246,7 @@ WEBHOOK_SECRET="$(stripe listen --print-secret --skip-update --color off)"
 stripe listen \
   --skip-update \
   --color off \
-  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,invoice.paid,invoice.payment_failed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,invoice.paid,invoice.payment_failed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,charge.refunded \
   --forward-to "http://127.0.0.1:$PUBLIC_PORT/api/public/integrations/stripe/webhook" \
   > "$TMP_ROOT/stripe-listener.log" 2>&1 &
 LISTENER_PID=$!
@@ -259,7 +284,8 @@ done
     HONE_STRIPE_SECRET_KEY="$HONE_STRIPE_SECRET_KEY" \
     HONE_STRIPE_WEBHOOK_SECRET="$WEBHOOK_SECRET" \
     HONE_STRIPE_PRODUCT_ID="$PRODUCT_ID" \
-    HONE_STRIPE_PRICE_ID="$PRICE_ID" \
+    HONE_STRIPE_SUBSCRIPTION_PRICE_ID="$SUBSCRIPTION_PRICE_ID" \
+    HONE_STRIPE_FIXED_TERM_PRICE_ID="$FIXED_PRICE_ID" \
     HONE_STRIPE_PUBLIC_BASE_URL="http://127.0.0.1:$PUBLIC_PORT/" \
     HONE_BILLING_GRACE_DAYS=7 \
     "$REPO_ROOT/target/debug/hone-console-page"
@@ -300,7 +326,7 @@ with database:
             tos_accepted_at, tos_version
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (user_id, f"HONE-STRIPE-LIFECYCLE-{user_id}", "", now, now, now, "2.3"),
+        (user_id, f"HONE-STRIPE-LIFECYCLE-{user_id}", "", now, now, now, "2.4"),
     )
     database.execute(
         """
@@ -328,30 +354,65 @@ wait_for_billing \
 echo "[INFO] verifying real Checkout API creation without completing payment"
 checkout_json="$(curl -fsS \
   -X POST \
+  -H 'Content-Type: application/json' \
   -H "Cookie: hone_web_session=$SESSION_TOKEN" \
   -H "Origin: http://127.0.0.1:$PUBLIC_PORT" \
   -H 'Sec-Fetch-Site: same-origin' \
+  --data '{"offer":"subscription"}' \
   "http://127.0.0.1:$PUBLIC_PORT/api/public/billing/checkout/stripe")"
 checkout_url="$(jq -er '.checkout_url' <<<"$checkout_json")"
 [[ "$checkout_url" == https://checkout.stripe.com/* ]] \
   || fail "HONE returned an untrusted Checkout URL"
-CHECKOUT_SESSION_ID="$(grep -Eo 'cs_test_[A-Za-z0-9_]+' <<<"$checkout_url" | head -n 1)"
-[[ "$CHECKOUT_SESSION_ID" == cs_test_* ]] || fail "could not identify the test Checkout Session"
-checkout_object="$(stripe_api checkout sessions retrieve "$CHECKOUT_SESSION_ID")"
+SUBSCRIPTION_CHECKOUT_SESSION_ID="$(grep -Eo 'cs_test_[A-Za-z0-9_]+' <<<"$checkout_url" | head -n 1)"
+[[ "$SUBSCRIPTION_CHECKOUT_SESSION_ID" == cs_test_* ]] || fail "could not identify the test Checkout Session"
+checkout_object="$(stripe_api checkout sessions retrieve "$SUBSCRIPTION_CHECKOUT_SESSION_ID")"
 jq -e \
   --arg user_id "$USER_ID" \
   --arg product_id "$PRODUCT_ID" \
-  --arg price_id "$PRICE_ID" \
+  --arg price_id "$SUBSCRIPTION_PRICE_ID" \
   '.livemode == false
     and .mode == "subscription"
     and .client_reference_id == $user_id
     and .metadata.hone_user_id == $user_id
     and .metadata.hone_product_id == $product_id
-    and .metadata.hone_price_id == $price_id' \
+    and .metadata.hone_price_id == $price_id
+    and .metadata.hone_entitlement_kind == "recurring_subscription"' \
   >/dev/null <<<"$checkout_object" \
   || fail "Checkout Session metadata did not preserve the HONE binding"
-stripe_api checkout sessions expire "$CHECKOUT_SESSION_ID" --confirm >/dev/null
-CHECKOUT_SESSION_EXPIRED=1
+stripe_api checkout sessions expire "$SUBSCRIPTION_CHECKOUT_SESSION_ID" --confirm >/dev/null
+SUBSCRIPTION_CHECKOUT_SESSION_EXPIRED=1
+
+echo "[INFO] verifying real one-time Checkout API creation without completing payment"
+fixed_checkout_json="$(curl -fsS \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Cookie: hone_web_session=$SESSION_TOKEN" \
+  -H "Origin: http://127.0.0.1:$PUBLIC_PORT" \
+  -H 'Sec-Fetch-Site: same-origin' \
+  --data '{"offer":"fixed_term"}' \
+  "http://127.0.0.1:$PUBLIC_PORT/api/public/billing/checkout/stripe")"
+fixed_checkout_url="$(jq -er '.checkout_url' <<<"$fixed_checkout_json")"
+[[ "$fixed_checkout_url" == https://checkout.stripe.com/* ]] \
+  || fail "HONE returned an untrusted fixed-term Checkout URL"
+FIXED_CHECKOUT_SESSION_ID="$(grep -Eo 'cs_test_[A-Za-z0-9_]+' <<<"$fixed_checkout_url" | head -n 1)"
+[[ "$FIXED_CHECKOUT_SESSION_ID" == cs_test_* ]] || fail "could not identify the fixed-term Checkout Session"
+fixed_checkout_object="$(stripe_api checkout sessions retrieve "$FIXED_CHECKOUT_SESSION_ID")"
+jq -e \
+  --arg user_id "$USER_ID" \
+  --arg product_id "$PRODUCT_ID" \
+  --arg price_id "$FIXED_PRICE_ID" \
+  '.livemode == false
+    and .mode == "payment"
+    and .client_reference_id == $user_id
+    and .metadata.hone_user_id == $user_id
+    and .metadata.hone_product_id == $product_id
+    and .metadata.hone_price_id == $price_id
+    and .metadata.hone_entitlement_kind == "fixed_term_purchase"
+    and .metadata.hone_term_months == "12"' \
+  >/dev/null <<<"$fixed_checkout_object" \
+  || fail "fixed-term Checkout Session did not preserve the HONE binding"
+stripe_api checkout sessions expire "$FIXED_CHECKOUT_SESSION_ID" --confirm >/dev/null
+FIXED_CHECKOUT_SESSION_EXPIRED=1
 
 echo "[INFO] creating disposable Stripe Test Clock customer and paid subscription"
 clock_json="$(stripe_api test_helpers test_clocks create \
@@ -386,10 +447,10 @@ subscription_json="$(stripe_api subscriptions create \
   --customer "$CUSTOMER_ID" \
   --default-payment-method "$SUCCESS_PAYMENT_METHOD_ID" \
   --payment-behavior error_if_incomplete \
-  -d "items[0][price]=$PRICE_ID" \
+  -d "items[0][price]=$SUBSCRIPTION_PRICE_ID" \
   -d "metadata[hone_user_id]=$USER_ID" \
   -d "metadata[hone_product_id]=$PRODUCT_ID" \
-  -d "metadata[hone_price_id]=$PRICE_ID" \
+  -d "metadata[hone_price_id]=$SUBSCRIPTION_PRICE_ID" \
   -d "metadata[hone_regression_run]=$RUN_ID" \
   --idempotency "hone-lifecycle-subscription-1-$RUN_ID" \
   --confirm)"
@@ -504,10 +565,10 @@ repurchase_json="$(stripe_api subscriptions create \
   --customer "$CUSTOMER_ID" \
   --default-payment-method "$SUCCESS_PAYMENT_METHOD_ID" \
   --payment-behavior error_if_incomplete \
-  -d "items[0][price]=$PRICE_ID" \
+  -d "items[0][price]=$SUBSCRIPTION_PRICE_ID" \
   -d "metadata[hone_user_id]=$USER_ID" \
   -d "metadata[hone_product_id]=$PRODUCT_ID" \
-  -d "metadata[hone_price_id]=$PRICE_ID" \
+  -d "metadata[hone_price_id]=$SUBSCRIPTION_PRICE_ID" \
   -d "metadata[hone_regression_run]=$RUN_ID" \
   --idempotency "hone-lifecycle-subscription-2-$RUN_ID" \
   --confirm)"
@@ -570,10 +631,15 @@ echo "[INFO] removing disposable Stripe customer/subscriptions and archiving the
 stripe_api test_helpers test_clocks delete "$TEST_CLOCK_ID" --confirm >/dev/null
 TEST_CLOCK_DELETED=1
 
-archive_price_json="$(stripe_api prices update "$PRICE_ID" --active=false --confirm)"
+archive_price_json="$(stripe_api prices update "$SUBSCRIPTION_PRICE_ID" --active=false --confirm)"
 jq -e '.active == false' >/dev/null <<<"$archive_price_json" \
   || fail "disposable Stripe Price was not archived"
-PRICE_ARCHIVED=1
+SUBSCRIPTION_PRICE_ARCHIVED=1
+
+archive_fixed_price_json="$(stripe_api prices update "$FIXED_PRICE_ID" --active=false --confirm)"
+jq -e '.active == false' >/dev/null <<<"$archive_fixed_price_json" \
+  || fail "disposable fixed-term Stripe Price was not archived"
+FIXED_PRICE_ARCHIVED=1
 
 archive_product_json="$(stripe_api products update "$PRODUCT_ID" --active=false --confirm)"
 jq -e '.active == false' >/dev/null <<<"$archive_product_json" \

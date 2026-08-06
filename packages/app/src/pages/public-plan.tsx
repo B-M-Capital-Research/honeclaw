@@ -107,7 +107,9 @@ export default function PublicPlanPage() {
   >(null)
   const isZh = () => useLocale() === "zh"
   const purchasesAllowed = () => billingConfig()?.purchases_allowed_on_this_client === true
-  const stripeAvailable = () => billingConfig()?.stripe_checkout_enabled === true
+  const stripeAvailable = () =>
+    billingConfig()?.stripe.subscription.enabled === true ||
+    billingConfig()?.stripe.fixed_term.enabled === true
 
   onMount(async () => {
     try {

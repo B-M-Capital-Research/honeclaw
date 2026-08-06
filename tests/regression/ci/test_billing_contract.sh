@@ -47,6 +47,12 @@ fi
 contains 'POST /api/public/integrations/stripe/webhook' docs/runbooks/stripe-billing.md
 contains 'HONE_STRIPE_CHECKOUT_ENABLED=false' .env.example
 contains 'HONE_STRIPE_MODE=test' .env.example
+contains 'HONE_STRIPE_SUBSCRIPTION_PRICE_ID=' .env.example
+contains 'HONE_STRIPE_FIXED_TERM_PRICE_ID=' .env.example
+contains '"payment"' crates/hone-web-api/src/routes/stripe.rs
+contains 'charge.refunded' crates/hone-web-api/src/routes/stripe.rs
+contains 'fixed_term_purchase' memory/src/billing.rs
+contains 'provider_reference_id' memory/src/billing.rs
 contains 'window.location.assign(checkout_url)' packages/app/src/pages/public-activate.tsx
 contains 'const purchaseAvailable = createMemo' packages/app/src/pages/public-activate.tsx
 contains 'configReady()' packages/app/src/pages/public-activate.tsx
@@ -56,6 +62,7 @@ contains 'management_allowed_on_this_client' packages/app/src/pages/public-me.ts
 contains 'billing_entitlements' memory/src/billing.rs
 contains 'billing_webhook_events' memory/src/billing.rs
 contains '20260804_stripe_only_billing' crates/hone-core/src/cloud_runtime.rs
+contains '20260806_typed_billing_entitlements' crates/hone-core/src/cloud_runtime.rs
 
 if [[ -e crates/hone-web-api/src/routes/whop.rs ]]; then
   echo "[FAIL] Whop webhook adapter still exists" >&2

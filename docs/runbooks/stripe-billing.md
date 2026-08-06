@@ -1,14 +1,17 @@
-# Runbook: Stripe-only Billing
+# Runbook: Stripe Billing
 
-- status: `production_live`
-- last_updated: `2026-08-04`
+- status: `in_progress`
+- last_updated: `2026-08-06`
 - owner: `Codex`
 
 ## Purpose
 
-Operate HONE's international membership as one Stripe-backed billing path.
+Operate HONE's international membership as two server-owned Stripe offers:
+USD 199.99/year auto-renewing subscription and USD 229.99/12 months one-time
+annual pass. The one-time pass can use card, Alipay, or WeChat Pay and never
+auto-renews.
 `billing_entitlements` is the application-access truth source, while Stripe is
-the only external subscription authority. A redirect, query parameter, email
+the only external payment authority. A redirect, query parameter, email
 login, or frontend state never grants paid access.
 
 ## Runtime Shape
@@ -21,7 +24,10 @@ login, or frontend state never grants paid access.
 - Billing entitlements: `GET /api/public/billing/entitlements`
 - Stripe webhook: `POST /api/public/integrations/stripe/webhook`
 
-The public client obtains Product and Price only from the server. Checkout
+The public client chooses only `subscription` or `fixed_term`; it never submits
+an amount, currency, duration, Product ID, Price ID, or payment object ID. The
+server creates subscription Checkout with `mode=subscription` and one-time
+Checkout with `mode=payment`. Checkout
 success redirects to `/me`, but access changes only after a verified paid
 webhook is projected into the ledger. HONE iOS remains restore-only and does
 not display an external purchase action.
@@ -40,14 +46,17 @@ HONE_STRIPE_MODE=live
 HONE_STRIPE_SECRET_KEY=<rk_live_... or sk_live_...>
 HONE_STRIPE_WEBHOOK_SECRET=<whsec_... from the registered live destination>
 HONE_STRIPE_PRODUCT_ID=prod_V0FIIUS22IGljn
-HONE_STRIPE_PRICE_ID=price_1U0Eo6EK7h1dD4JHDrhlnPw8
+HONE_STRIPE_SUBSCRIPTION_PRICE_ID=price_1U0Eo6EK7h1dD4JHDrhlnPw8
+HONE_STRIPE_FIXED_TERM_PRICE_ID=price_1U1M0rEK7h1dD4JHbKBpIkZ2
 HONE_STRIPE_PUBLIC_BASE_URL=https://hone-claw.com/
 HONE_BILLING_GRACE_DAYS=7
 ```
 
 Mode and key prefixes must agree. A test runtime rejects live keys, and a live
-runtime rejects test keys. Product and Price IDs are configured server-side;
-the browser must never select or override them.
+runtime rejects test keys. Both Price IDs are configured server-side and must
+be distinct. The subscription Price is recurring yearly at USD 199.99; the
+fixed-term Price is one-time at USD 229.99. The browser must never select or
+override catalog values.
 
 ### Environment boundaries
 
@@ -84,8 +93,14 @@ Checkout. Never print the token, code, or recipient address during diagnosis.
 
 - Account: `acct_1U0D6UEK7h1dD4JH`
 - Product: `prod_V0FIIUS22IGljn`
-- Annual Price: `price_1U0Eo6EK7h1dD4JHDrhlnPw8`
-- Price: USD 199.99 yearly, quantity one, no trial
+- Subscription Price: `price_1U0Eo6EK7h1dD4JHDrhlnPw8`
+- Subscription: USD 199.99 yearly, quantity one, no trial, auto-renewing
+- Fixed-term Price: `price_1U1M0rEK7h1dD4JHbKBpIkZ2`
+- Fixed-term pass: USD 229.99 once, 12 calendar months, no renewal
+- Live wallet configuration: Alipay and WeChat Pay both have
+  `display_preference=on`; Stripe currently reports `available=false` and the
+  Dashboard shows `pending approval`, so live Checkout must not be described as
+  wallet-ready until Stripe changes both methods to available
 - Webhook destination: `we_1U0c0XEK7h1dD4JHrvQ9CRaH`
 - Webhook name: `HONE production billing`
 - API version: `2026-07-29.dahlia`
@@ -111,11 +126,13 @@ Subscribe the live destination to exactly:
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
 - `checkout.session.async_payment_failed`
+- `checkout.session.expired`
 - `invoice.paid`
 - `invoice.payment_failed`
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
+- `charge.refunded`
 
 The handler verifies `Stripe-Signature` over the untouched body with a
 five-minute tolerance, requires the configured mode and exact catalog, stores
@@ -123,6 +140,14 @@ a payload digest plus minimal normalized fields, and queues idempotent
 projection. A subscription-status event alone cannot grant first access;
 first access requires a paid signal. Failed renewal grants only a bounded
 grace period to an account that previously paid.
+
+For `fixed_term` Checkout, a paid completion or async success creates exactly
+one entitlement keyed by the PaymentIntent and ending 12 calendar months after
+the provider event time. A completed-but-unpaid, failed, or expired Session
+never grants access. A full `charge.refunded` event revokes only the fixed-term
+entitlement for that PaymentIntent; a partial refund does not mutate access.
+Recurring subscriptions continue to use Invoice and Subscription authority and
+are never revoked by a fixed-term refund.
 
 `checkout.session.completed` is provisional and orders from the Checkout
 Session creation time. Stripe can emit authoritative invoice/subscription
@@ -146,12 +171,18 @@ second access truth or roll a newer subscription state backward.
 ## Stripe-only Data Migration
 
 Fresh SQLite and PostgreSQL schemas accept only Stripe billing rows, plus the
-separate domestic-invite entitlement identity. The forward migration:
+separate domestic-invite entitlement identity. Entitlements carry an explicit
+`entitlement_kind` and a generic `provider_reference_id`: Stripe subscription
+IDs identify recurring rows, and PaymentIntent IDs identify fixed-term rows.
+The forward migration:
 
 1. deletes entitlement and webhook rows belonging to retired providers;
-2. replaces provider constraints with the Stripe-only contract;
-3. preserves every existing Stripe entitlement and inbox row;
-4. is idempotent and guarded by the normal startup migration lock.
+2. renames the old subscription-shaped reference to
+   `provider_reference_id` and backfills existing Stripe rows as
+   `recurring_subscription`;
+3. replaces provider/kind constraints with the typed Stripe-only contract;
+4. preserves every existing Stripe entitlement and inbox row;
+5. is idempotent and guarded by the normal startup migration lock.
 
 The 2026-08-04 production inventory found zero retired-provider entitlement
 rows and zero retired-provider webhook rows, so the live migration has no paid
@@ -180,9 +211,9 @@ bash tests/regression/ci/test_billing_http_e2e.sh
 
 `test_billing_http_e2e.sh` starts an isolated real backend with temporary
 SQLite and obviously fake test credentials. It sends signed raw Stripe events
-through the durable inbox and proves pending/paid/failure/grace/recovery/
-cancel/delete/repurchase transitions, replay safety, catalog filtering, and
-paid-route `402` behavior without an external account.
+through the durable inbox and proves subscription failure/grace/recovery/
+cancel/delete/repurchase plus fixed-term pending/paid/replay/refund/isolation,
+catalog filtering, and paid-route `402` behavior without an external account.
 
 The account-dependent lifecycle remains opt-in:
 
@@ -191,9 +222,11 @@ HONE_RUN_STRIPE_LIFECYCLE=1 \
 bash tests/regression/manual/test_stripe_billing_lifecycle.sh
 ```
 
-It accepts only a protected test key, creates disposable test objects, drives
-the real Checkout/Portal/Test Clock lifecycle, and deletes or archives every
-disposable object after acceptance.
+It accepts only a protected test key, creates disposable test objects, creates
+both Checkout modes, drives the recurring Portal/Test Clock lifecycle, and
+deletes or archives every disposable object after acceptance. Alipay and WeChat
+Pay require separate official test Checkout browser acceptance because their
+hosted confirmation surfaces cannot be proven by a fabricated webhook.
 
 ## Production Deployment
 
@@ -205,7 +238,8 @@ disposable object after acceptance.
    checks report zero.
 3. Back up the owner-only runtime environment file without printing it.
 4. Install the live mode, restricted API key, registered webhook secret, live
-   Product/Price IDs, public base URL, and seven-day grace period as one change.
+   Product plus both Price IDs, public base URL, and seven-day grace period as
+   one change.
 5. Remove retired provider and provider-selection variables from the runtime.
 6. Keep the environment file `root:root 0600`; validate names/prefixes only,
    never values.
@@ -213,8 +247,10 @@ disposable object after acceptance.
    revision, health dependencies, ports, and database migration.
 8. Verify an invalid public webhook signature returns `401` with zero database
    mutation.
-9. Verify `/plan`, `/activate`, and `/me`; create a live Checkout Session but do
-   not submit a real payment solely for technical smoke testing.
+9. Verify `/plan`, `/activate`, and `/me`; create one live Checkout Session for
+   each offer and confirm USD 199.99 recurring versus USD 229.99 one-time plus
+   the enabled wallet methods. Do not submit a real payment solely for
+   technical smoke testing.
 10. Retain redacted screenshots and event/status evidence outside Git.
 
 ## Accepted Production State (2026-08-04)
@@ -257,5 +293,6 @@ disposable object after acceptance.
 ## Known Follow-ups
 
 - Add provider API reconciliation for events missed beyond webhook retries.
-- Define and automate refund/dispute handling after explicit owner approval.
+- Define dispute handling and any partial-refund access policy after explicit
+  owner approval. Full fixed-term refunds already revoke the matching pass.
 - Re-evaluate Stripe Tax before broadening sales jurisdictions.

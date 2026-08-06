@@ -1213,10 +1213,13 @@ const CONTENT_ZH = {
       plan_planet: "知识星球与社区：完整的公司研报、估值和投资策略分享",
       plan_qa: "畅享：任何问题在社区都能得到及时反馈",
       cycle_until: "当前周期至",
+      expires_on: "权益有效至",
+      recurring_label: "自动续费年订阅",
+      fixed_term_label: "一次性年费 · 不自动续费",
       no_renew: "到期后不再自动续费。",
       opening: "正在打开…",
       manage_stripe: "在 Stripe 管理订阅",
-      no_access_sub: "这条订阅当前不授予 HONE 访问权限。",
+      no_access_sub: "这条权益当前不授予 HONE 访问权限。",
       intl_member: "国际会员 · 统一权益",
       cn_invite: "账号 · 国内邀请",
       entitled: "你的 HONE 权益已启用",
@@ -1332,6 +1335,15 @@ const CONTENT_ZH = {
       loading_channels: "正在读取可用的会员渠道…",
       reload: "重新加载",
       steps_title: "开通步骤",
+      offer_legend: "选择开通方式",
+      subscription_title: "年订阅",
+      subscription_price: "US${price} / 年",
+      subscription_desc: "每 12 个月自动续费，可随时在 Stripe 取消下一周期。",
+      subscription_methods: "适合信用卡 / 借记卡",
+      fixed_term_title: "一次性年费",
+      fixed_term_price: "US${price} / 12 个月",
+      fixed_term_desc: "只付一次，到期不自动续费，无需取消。",
+      fixed_term_methods: "支持信用卡、支付宝、微信支付",
       account_email: "账户邮箱",
       email_code: "邮箱验证码",
       code_placeholder: "8 位验证码",
@@ -1860,7 +1872,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Stripe 处理海外付款与订阅状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
+                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎、短信或邮件发送服务，并使用 Stripe 处理海外付款、一次性年费与订阅状态同步。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
               ],
             },
             {
@@ -1872,18 +1884,18 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "7. 订阅、自动续费、取消与退款",
+          title: "7. 订阅、一次性年费、取消与退款",
           body: [
             {
               kind: "p",
               parts: [
-                "海外年度会员通过 Stripe 结算。结账页会显示币种、价格、计费周期和适用税费；除非您在当前周期结束前取消，订阅将按结账时披露的周期自动续费并由原付款方式扣款。",
+                "海外年度会员通过 Stripe 结算，可选择自动续费年订阅或一次性 12 个月年费。结账页会显示币种、价格、付款方式和适用税费。年订阅除非在当前周期结束前取消，否则将每 12 个月自动续费；一次性年费只扣款一次，到期自动失效，不会自动续费。",
               ],
             },
             {
               kind: "p",
               parts: [
-                "您可通过账户页进入相应付款平台管理或取消订阅。取消通常在当前已付款周期结束时生效，不会自动退还已开始周期的费用。退款申请依购买页面披露、适用法律、我们明确作出的书面承诺及相应付款平台规则处理；适用法律要求退款的情形不受本条限制。",
+                "自动续费订阅可从账户页进入 Stripe 管理或取消；取消通常在当前已付款周期结束时生效。一次性年费无需取消，账户页会显示固定到期日。任何取消或到期均不会自动退还已开始周期的费用。退款申请依购买页面披露、适用法律、我们明确作出的书面承诺及 Stripe 规则处理；全额退款后，对应固定期限权益将被撤销。适用法律要求退款的情形不受本条限制。",
               ],
             },
           ],
@@ -2029,11 +2041,11 @@ const CONTENT_ZH = {
               items: [
                 [
                   { strong: "账号信息：" },
-                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Stripe 的 Customer、Subscription、Invoice、产品、价格、状态、续费周期和 webhook 事件标识；",
+                  "中国大陆渠道用户的手机号、短信验证码核验结果与历史邀请记录；海外渠道用户的购买邮箱、邮箱验证码核验结果，以及 Stripe 的 Customer、Subscription、Invoice、Checkout Session、PaymentIntent、Charge、产品、价格、状态、权益期限和 webhook 事件标识；",
                 ],
                 [
                   { strong: "付款信息：" },
-                  "海外付款由 Stripe 处理。我们接收用于确认权益的客户、订阅和账单状态标识，但不接收或存储完整银行卡号、安全码或磁条数据；",
+                  "海外付款由 Stripe 处理。我们接收用于确认订阅或一次性年费权益的客户、付款、退款和账单状态标识，但不接收或存储完整银行卡号、安全码、支付宝或微信支付凭证；",
                 ],
                 [
                   { strong: "使用数据：" },
@@ -2097,7 +2109,7 @@ const CONTENT_ZH = {
               kind: "ul",
               items: [
                 ["短信与邮件服务商（用于发送登录验证码）；"],
-                ["Stripe（用于处理海外付款、创建订阅管理会话并同步产品、账单和续费状态）；"],
+                ["Stripe（用于处理海外付款、支付宝与微信支付、创建订阅管理会话，并同步产品、付款、退款、权益期限和续费状态）；"],
                 ["大型语言模型提供方（用于生成回复）；"],
                 ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
               ],
@@ -3524,10 +3536,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       plan_planet: "Knowledge Planet and community: full company reports, valuation and strategy",
       plan_qa: "Ask anything and get a timely answer from the community",
       cycle_until: "Current period through",
+      expires_on: "Access valid through",
+      recurring_label: "Auto-renewing annual subscription",
+      fixed_term_label: "One-time annual pass · no auto-renewal",
       no_renew: "Will not auto-renew after it ends.",
       opening: "Opening…",
       manage_stripe: "Manage subscription in Stripe",
-      no_access_sub: "This subscription does not currently grant HONE access.",
+      no_access_sub: "This entitlement does not currently grant HONE access.",
       intl_member: "International member · unified benefits",
       cn_invite: "Account · China invite",
       entitled: "Your HONE access is active",
@@ -3643,6 +3658,15 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       loading_channels: "Loading available membership channels…",
       reload: "Reload",
       steps_title: "Steps",
+      offer_legend: "Choose how to pay",
+      subscription_title: "Annual subscription",
+      subscription_price: "US${price} / year",
+      subscription_desc: "Renews every 12 months. Cancel the next renewal in Stripe at any time.",
+      subscription_methods: "Best for credit or debit cards",
+      fixed_term_title: "One-time annual pass",
+      fixed_term_price: "US${price} / 12 months",
+      fixed_term_desc: "One payment only. It expires without renewing and needs no cancellation.",
+      fixed_term_methods: "Cards, Alipay and WeChat Pay",
       account_email: "Account email",
       email_code: "Email code",
       code_placeholder: "8-digit code",
@@ -4183,7 +4207,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Stripe for overseas payment processing and subscription synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
+                "The service may call third-party large language models (LLMs), market data, search engines, SMS or email delivery services, and Stripe for overseas payments, one-time annual passes, and subscription synchronization. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
               ],
             },
             {
@@ -4195,18 +4219,18 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "7. Subscriptions, renewal, cancellation & refunds",
+          title: "7. Subscriptions, one-time annual passes, cancellation & refunds",
           body: [
             {
               kind: "p",
               parts: [
-                "Overseas annual memberships are billed through Stripe. Checkout displays the currency, price, billing interval, and applicable taxes. Unless you cancel before the end of the current period, the subscription automatically renews on the disclosed interval and charges the original payment method.",
+                "Overseas annual memberships are billed through Stripe. You can choose an auto-renewing annual subscription or a one-time 12-month annual pass. Checkout displays the currency, price, payment method, and applicable taxes. The subscription renews every 12 months unless canceled before the current period ends; the one-time pass is charged once, expires automatically, and never auto-renews.",
               ],
             },
             {
               kind: "p",
               parts: [
-                "You can open the applicable provider from your account page to manage or cancel. Cancellation normally takes effect at the end of the paid period and does not automatically refund a period that has begun. Refund requests are handled under checkout disclosures, applicable law, our express written commitments, and the provider's rules; nothing here limits a refund required by law.",
+                "You can open Stripe from your account page to manage or cancel an auto-renewing subscription; cancellation normally takes effect at the end of the paid period. A one-time annual pass needs no cancellation and its fixed expiration appears on the account page. Cancellation or expiration does not automatically refund a period that has begun. Refund requests follow checkout disclosures, applicable law, our express written commitments, and Stripe's rules; a full refund revokes the matching fixed-term entitlement. Nothing here limits a refund required by law.",
               ],
             },
           ],
@@ -4359,11 +4383,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 [
                   { strong: "Account info:" },
-                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Stripe Customer, Subscription, Invoice, product, price, status, renewal-period, and webhook event identifiers;",
+                  " for mainland China channels, phone number, SMS verification result, and historical invite records; for overseas channels, purchase email, email verification result, and Stripe Customer, Subscription, Invoice, Checkout Session, PaymentIntent, Charge, product, price, status, entitlement-period, and webhook event identifiers;",
                 ],
                 [
                   { strong: "Payment info:" },
-                  " overseas payments are processed by Stripe. We receive customer, subscription, and invoice identifiers needed to confirm entitlements, but we do not receive or store full card numbers, security codes, or magnetic-stripe data;",
+                  " overseas payments are processed by Stripe. We receive customer, payment, refund, subscription, and invoice identifiers needed to confirm recurring or one-time entitlements, but we do not receive or store full card numbers, security codes, Alipay credentials, or WeChat Pay credentials;",
                 ],
                 [
                   { strong: "Usage data:" },
@@ -4443,7 +4467,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 ["SMS and email providers (to deliver login codes);"],
                 [
-                  "Stripe (to process overseas payments, create subscription-management sessions, and synchronize product, invoice, and renewal status);",
+                  "Stripe (to process overseas payments including Alipay and WeChat Pay, create subscription-management sessions, and synchronize product, payment, refund, entitlement-period, invoice, and renewal status);",
                 ],
                 ["large language model providers (to generate responses);"],
                 [

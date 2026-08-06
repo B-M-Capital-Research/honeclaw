@@ -13,6 +13,10 @@ use sha2::{Digest, Sha256};
 pub const BILLING_PROVIDER_STRIPE: &str = "stripe";
 pub const BILLING_PROVIDER_DOMESTIC_INVITE: &str = "domestic_invite";
 
+pub const BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION: &str = "recurring_subscription";
+pub const BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE: &str = "fixed_term_purchase";
+pub const BILLING_ENTITLEMENT_DOMESTIC_INVITE: &str = "domestic_invite";
+
 pub const BILLING_ACCESS_PENDING: &str = "pending";
 pub const BILLING_ACCESS_ACTIVE: &str = "active";
 pub const BILLING_ACCESS_GRACE: &str = "grace";
@@ -31,8 +35,9 @@ pub struct BillingEntitlement {
     pub entitlement_id: String,
     pub user_id: String,
     pub provider: String,
+    pub entitlement_kind: String,
     pub provider_customer_id: Option<String>,
-    pub provider_subscription_id: String,
+    pub provider_reference_id: String,
     pub provider_product_id: Option<String>,
     pub provider_price_id: Option<String>,
     pub purchase_email_normalized: Option<String>,
@@ -52,7 +57,14 @@ pub struct BillingEntitlement {
 impl BillingEntitlement {
     pub fn grants_paid_access(&self) -> bool {
         match self.access_state.as_str() {
-            BILLING_ACCESS_ACTIVE => true,
+            BILLING_ACCESS_ACTIVE => {
+                self.entitlement_kind != BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+                    || self
+                        .current_period_end
+                        .as_deref()
+                        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+                        .is_some_and(|deadline| deadline >= chrono::Utc::now())
+            }
             BILLING_ACCESS_GRACE => self
                 .grace_expires_at
                 .as_deref()
@@ -149,8 +161,9 @@ impl BillingStorage {
                 entitlement_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
+                entitlement_kind TEXT NOT NULL CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite')),
                 provider_customer_id TEXT,
-                provider_subscription_id TEXT NOT NULL,
+                provider_reference_id TEXT NOT NULL,
                 provider_product_id TEXT,
                 provider_price_id TEXT,
                 purchase_email_normalized TEXT,
@@ -165,7 +178,7 @@ impl BillingStorage {
                 last_event_created_at TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                UNIQUE(provider, provider_subscription_id),
+                UNIQUE(provider, provider_reference_id),
                 FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
             );
 
@@ -214,7 +227,7 @@ impl BillingStorage {
             "processing_started_at",
             "TEXT",
         )?;
-        migrate_sqlite_billing_to_stripe_only(&conn)?;
+        migrate_sqlite_billing_to_typed_entitlements(&conn)?;
         conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
@@ -244,8 +257,8 @@ impl BillingStorage {
         }
     }
 
-    pub fn entitlement_id(provider: &str, provider_subscription_id: &str) -> String {
-        let digest = Sha256::digest(format!("{provider}:{provider_subscription_id}").as_bytes());
+    pub fn entitlement_id(provider: &str, provider_reference_id: &str) -> String {
+        let digest = Sha256::digest(format!("{provider}:{provider_reference_id}").as_bytes());
         let suffix = digest[..16]
             .iter()
             .map(|byte| format!("{byte:02x}"))
@@ -267,8 +280,9 @@ impl BillingStorage {
         let mut stmt = conn
             .prepare(
                 "
-                SELECT entitlement_id, user_id, provider, provider_customer_id,
-                       provider_subscription_id, provider_product_id, provider_price_id,
+                SELECT entitlement_id, user_id, provider, entitlement_kind,
+                       provider_customer_id, provider_reference_id,
+                       provider_product_id, provider_price_id,
                        purchase_email_normalized, raw_status, access_state,
                        current_period_start, current_period_end, cancel_at_period_end,
                        manage_url, grace_expires_at, last_event_id, last_event_created_at,
@@ -288,14 +302,14 @@ impl BillingStorage {
     pub fn find_entitlement(
         &self,
         provider: &str,
-        provider_subscription_id: &str,
+        provider_reference_id: &str,
     ) -> HoneResult<Option<BillingEntitlement>> {
         if let Some(postgres) = self.cloud_postgres() {
             let provider = provider.to_string();
-            let provider_subscription_id = provider_subscription_id.to_string();
+            let provider_reference_id = provider_reference_id.to_string();
             return run_cloud_billing(async move {
                 postgres
-                    .find_billing_entitlement_record(&provider, &provider_subscription_id)
+                    .find_billing_entitlement_record(&provider, &provider_reference_id)
                     .await
             })?
             .map(entitlement_from_value)
@@ -304,16 +318,17 @@ impl BillingStorage {
         let conn = self.sqlite_conn()?;
         conn.query_row(
             "
-            SELECT entitlement_id, user_id, provider, provider_customer_id,
-                   provider_subscription_id, provider_product_id, provider_price_id,
+            SELECT entitlement_id, user_id, provider, entitlement_kind,
+                   provider_customer_id, provider_reference_id,
+                   provider_product_id, provider_price_id,
                    purchase_email_normalized, raw_status, access_state,
                    current_period_start, current_period_end, cancel_at_period_end,
                    manage_url, grace_expires_at, last_event_id, last_event_created_at,
                    created_at, updated_at
             FROM billing_entitlements
-            WHERE provider = ?1 AND provider_subscription_id = ?2
+            WHERE provider = ?1 AND provider_reference_id = ?2
             ",
-            params![provider, provider_subscription_id],
+            params![provider, provider_reference_id],
             map_entitlement,
         )
         .optional()
@@ -334,7 +349,7 @@ impl BillingStorage {
         normalize_entitlement_timestamps(&mut entitlement)?;
         validate_entitlement(&entitlement)?;
         let existing =
-            self.find_entitlement(&entitlement.provider, &entitlement.provider_subscription_id)?;
+            self.find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
         if let Some(current) = existing.as_ref() {
             match compare_event_order(
                 &entitlement.last_event_created_at,
@@ -355,10 +370,8 @@ impl BillingStorage {
                 postgres.upsert_billing_entitlement_record(record).await
             })?;
             if !changed {
-                let current = self.find_entitlement(
-                    &entitlement.provider,
-                    &entitlement.provider_subscription_id,
-                )?;
+                let current = self
+                    .find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
                 return Ok(
                     if current
                         .as_ref()
@@ -382,17 +395,19 @@ impl BillingStorage {
             .execute(
                 "
                 INSERT INTO billing_entitlements(
-                    entitlement_id, user_id, provider, provider_customer_id,
-                    provider_subscription_id, provider_product_id, provider_price_id,
+                    entitlement_id, user_id, provider, entitlement_kind,
+                    provider_customer_id, provider_reference_id,
+                    provider_product_id, provider_price_id,
                     purchase_email_normalized, raw_status, access_state,
                     current_period_start, current_period_end, cancel_at_period_end,
                     manage_url, grace_expires_at, last_event_id, last_event_created_at,
                     created_at, updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
-                ON CONFLICT(provider, provider_subscription_id)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                ON CONFLICT(provider, provider_reference_id)
                 DO UPDATE SET
                     user_id = excluded.user_id,
+                    entitlement_kind = excluded.entitlement_kind,
                     provider_customer_id = excluded.provider_customer_id,
                     provider_product_id = excluded.provider_product_id,
                     provider_price_id = excluded.provider_price_id,
@@ -417,8 +432,8 @@ impl BillingStorage {
             )
             .map_err(sql_err)?;
         if changed == 0 {
-            let current = self
-                .find_entitlement(&entitlement.provider, &entitlement.provider_subscription_id)?;
+            let current =
+                self.find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
             return Ok(
                 if current
                     .as_ref()
@@ -777,8 +792,8 @@ fn validate_entitlement(value: &BillingEntitlement) -> HoneResult<()> {
         ("entitlement_id", value.entitlement_id.as_str()),
         ("user_id", value.user_id.as_str()),
         (
-            "provider_subscription_id",
-            value.provider_subscription_id.as_str(),
+            "provider_reference_id",
+            value.provider_reference_id.as_str(),
         ),
         ("raw_status", value.raw_status.as_str()),
         ("last_event_id", value.last_event_id.as_str()),
@@ -792,6 +807,21 @@ fn validate_entitlement(value: &BillingEntitlement) -> HoneResult<()> {
         BILLING_PROVIDER_STRIPE | BILLING_PROVIDER_DOMESTIC_INVITE
     ) {
         return Err(HoneError::Config("billing provider 不合法".to_string()));
+    }
+    let kind_matches_provider = match value.provider.as_str() {
+        BILLING_PROVIDER_STRIPE => matches!(
+            value.entitlement_kind.as_str(),
+            BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION | BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+        ),
+        BILLING_PROVIDER_DOMESTIC_INVITE => {
+            value.entitlement_kind == BILLING_ENTITLEMENT_DOMESTIC_INVITE
+        }
+        _ => false,
+    };
+    if !kind_matches_provider {
+        return Err(HoneError::Config(
+            "billing entitlement_kind 与 provider 不匹配".to_string(),
+        ));
     }
     if !matches!(
         value.access_state.as_str(),
@@ -807,6 +837,18 @@ fn validate_entitlement(value: &BillingEntitlement) -> HoneResult<()> {
     parse_timestamp(&value.updated_at, "updated_at")?;
     if let Some(value) = value.grace_expires_at.as_deref() {
         parse_timestamp(value, "grace_expires_at")?;
+    }
+    if value.entitlement_kind == BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE {
+        if value.cancel_at_period_end {
+            return Err(HoneError::Config(
+                "fixed_term_purchase 不能设置 cancel_at_period_end".to_string(),
+            ));
+        }
+        if value.access_state == BILLING_ACCESS_ACTIVE && value.current_period_end.is_none() {
+            return Err(HoneError::Config(
+                "active fixed_term_purchase 必须设置 current_period_end".to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -896,8 +938,9 @@ fn entitlement_params(
         Value::Text(value.entitlement_id.clone()),
         Value::Text(value.user_id.clone()),
         Value::Text(value.provider.clone()),
+        Value::Text(value.entitlement_kind.clone()),
         option_text(&value.provider_customer_id),
-        Value::Text(value.provider_subscription_id.clone()),
+        Value::Text(value.provider_reference_id.clone()),
         option_text(&value.provider_product_id),
         option_text(&value.provider_price_id),
         option_text(&value.purchase_email_normalized),
@@ -928,22 +971,23 @@ fn map_entitlement(row: &Row<'_>) -> rusqlite::Result<BillingEntitlement> {
         entitlement_id: row.get(0)?,
         user_id: row.get(1)?,
         provider: row.get(2)?,
-        provider_customer_id: row.get(3)?,
-        provider_subscription_id: row.get(4)?,
-        provider_product_id: row.get(5)?,
-        provider_price_id: row.get(6)?,
-        purchase_email_normalized: row.get(7)?,
-        raw_status: row.get(8)?,
-        access_state: row.get(9)?,
-        current_period_start: row.get(10)?,
-        current_period_end: row.get(11)?,
-        cancel_at_period_end: row.get::<_, i64>(12)? != 0,
-        manage_url: row.get(13)?,
-        grace_expires_at: row.get(14)?,
-        last_event_id: row.get(15)?,
-        last_event_created_at: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        entitlement_kind: row.get(3)?,
+        provider_customer_id: row.get(4)?,
+        provider_reference_id: row.get(5)?,
+        provider_product_id: row.get(6)?,
+        provider_price_id: row.get(7)?,
+        purchase_email_normalized: row.get(8)?,
+        raw_status: row.get(9)?,
+        access_state: row.get(10)?,
+        current_period_start: row.get(11)?,
+        current_period_end: row.get(12)?,
+        cancel_at_period_end: row.get::<_, i64>(13)? != 0,
+        manage_url: row.get(14)?,
+        grace_expires_at: row.get(15)?,
+        last_event_id: row.get(16)?,
+        last_event_created_at: row.get(17)?,
+        created_at: row.get(18)?,
+        updated_at: row.get(19)?,
     })
 }
 
@@ -1031,17 +1075,31 @@ fn ensure_billing_column(
     Ok(())
 }
 
-fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
+fn migrate_sqlite_billing_to_typed_entitlements(conn: &Connection) -> HoneResult<()> {
     let entitlement_sql = sqlite_table_sql(conn, "billing_entitlements")?;
     let webhook_sql = sqlite_table_sql(conn, "billing_webhook_events")?;
     if entitlement_sql.contains("provider IN ('stripe', 'domestic_invite')")
+        && entitlement_sql.contains("entitlement_kind")
+        && entitlement_sql.contains("provider_reference_id")
         && webhook_sql.contains("provider = 'stripe'")
     {
         return Ok(());
     }
 
+    let reference_column = if entitlement_sql.contains("provider_reference_id") {
+        "provider_reference_id"
+    } else {
+        "provider_subscription_id"
+    };
+    let kind_expression = if entitlement_sql.contains("entitlement_kind") {
+        "entitlement_kind"
+    } else {
+        "CASE WHEN provider = 'stripe' THEN 'recurring_subscription' ELSE 'domestic_invite' END"
+    };
+
     conn.execute_batch(
-        "
+        &format!(
+            "
         BEGIN IMMEDIATE;
 
         ALTER TABLE billing_entitlements RENAME TO billing_entitlements_before_stripe_only;
@@ -1049,8 +1107,9 @@ fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
             entitlement_id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
+            entitlement_kind TEXT NOT NULL CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite')),
             provider_customer_id TEXT,
-            provider_subscription_id TEXT NOT NULL,
+            provider_reference_id TEXT NOT NULL,
             provider_product_id TEXT,
             provider_price_id TEXT,
             purchase_email_normalized TEXT,
@@ -1065,20 +1124,22 @@ fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
             last_event_created_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            UNIQUE(provider, provider_subscription_id),
+            UNIQUE(provider, provider_reference_id),
             FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
         );
         INSERT INTO billing_entitlements (
-            entitlement_id, user_id, provider, provider_customer_id,
-            provider_subscription_id, provider_product_id, provider_price_id,
+            entitlement_id, user_id, provider, entitlement_kind,
+            provider_customer_id, provider_reference_id,
+            provider_product_id, provider_price_id,
             purchase_email_normalized, raw_status, access_state,
             current_period_start, current_period_end, cancel_at_period_end,
             manage_url, grace_expires_at, last_event_id, last_event_created_at,
             created_at, updated_at
         )
         SELECT
-            entitlement_id, user_id, provider, provider_customer_id,
-            provider_subscription_id, provider_product_id, provider_price_id,
+            entitlement_id, user_id, provider, {kind_expression},
+            provider_customer_id, {reference_column},
+            provider_product_id, provider_price_id,
             purchase_email_normalized, raw_status, access_state,
             current_period_start, current_period_end, cancel_at_period_end,
             manage_url, grace_expires_at, last_event_id, last_event_created_at,
@@ -1101,7 +1162,7 @@ fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
             received_at TEXT NOT NULL,
             processing_started_at TEXT,
             processed_at TEXT,
-            normalized_payload TEXT NOT NULL DEFAULT '{}',
+            normalized_payload TEXT NOT NULL DEFAULT '{{}}',
             PRIMARY KEY(provider, event_id)
         );
         INSERT INTO billing_webhook_events (
@@ -1133,7 +1194,8 @@ fn migrate_sqlite_billing_to_stripe_only(conn: &Connection) -> HoneResult<()> {
             );
 
         COMMIT;
-        ",
+        "
+        ),
     )
     .map_err(sql_err)
 }
@@ -1170,17 +1232,22 @@ mod tests {
 
     fn entitlement_for(
         provider: &str,
-        subscription_id: &str,
+        reference_id: &str,
         event_id: &str,
         event_at: &str,
         state: &str,
     ) -> BillingEntitlement {
         BillingEntitlement {
-            entitlement_id: BillingStorage::entitlement_id(provider, subscription_id),
+            entitlement_id: BillingStorage::entitlement_id(provider, reference_id),
             user_id: "user_1".to_string(),
             provider: provider.to_string(),
+            entitlement_kind: if provider == BILLING_PROVIDER_STRIPE {
+                BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string()
+            } else {
+                BILLING_ENTITLEMENT_DOMESTIC_INVITE.to_string()
+            },
             provider_customer_id: Some("cus_1".to_string()),
-            provider_subscription_id: subscription_id.to_string(),
+            provider_reference_id: reference_id.to_string(),
             provider_product_id: Some("prod_1".to_string()),
             provider_price_id: Some("price_1".to_string()),
             purchase_email_normalized: Some("buyer@example.com".to_string()),
@@ -1335,6 +1402,25 @@ mod tests {
             sqlite_table_sql(&conn, "billing_entitlements")
                 .expect("entitlement schema")
                 .contains("provider IN ('stripe', 'domestic_invite')")
+        );
+        assert!(
+            sqlite_table_sql(&conn, "billing_entitlements")
+                .expect("entitlement schema")
+                .contains("provider_reference_id")
+        );
+        let migrated: (String, String) = conn
+            .query_row(
+                "SELECT entitlement_kind, provider_reference_id FROM billing_entitlements WHERE entitlement_id = 'ent_stripe'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("migrated entitlement");
+        assert_eq!(
+            migrated,
+            (
+                BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
+                "sub_1".to_string()
+            )
         );
         assert!(
             sqlite_table_sql(&conn, "billing_webhook_events")
@@ -1518,6 +1604,24 @@ mod tests {
         value.grace_expires_at = Some("2020-08-10T03:00:00+00:00".to_string());
         assert!(!value.grants_paid_access());
         value.grace_expires_at = None;
+        assert!(!value.grants_paid_access());
+    }
+
+    #[test]
+    fn fixed_term_access_requires_an_unexpired_period_end() {
+        let mut value = entitlement_for(
+            BILLING_PROVIDER_STRIPE,
+            "pi_fixed",
+            "evt_fixed",
+            "2026-08-03T03:00:00+00:00",
+            BILLING_ACCESS_ACTIVE,
+        );
+        value.entitlement_kind = BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE.to_string();
+        value.current_period_end = Some("2099-08-03T03:00:00+00:00".to_string());
+        assert!(value.grants_paid_access());
+        value.current_period_end = Some("2020-08-03T03:00:00+00:00".to_string());
+        assert!(!value.grants_paid_access());
+        value.current_period_end = None;
         assert!(!value.grants_paid_access());
     }
 }

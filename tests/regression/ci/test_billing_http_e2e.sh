@@ -65,7 +65,8 @@ cargo build -p hone-console-page --quiet
     HONE_STRIPE_SECRET_KEY=sk_test_ci_only_not_a_secret \
     HONE_STRIPE_WEBHOOK_SECRET=whsec_ci_only_not_a_secret \
     HONE_STRIPE_PRODUCT_ID=prod_ci_stripe \
-    HONE_STRIPE_PRICE_ID=price_ci_stripe \
+    HONE_STRIPE_SUBSCRIPTION_PRICE_ID=price_ci_subscription \
+    HONE_STRIPE_FIXED_TERM_PRICE_ID=price_ci_fixed \
     HONE_STRIPE_PUBLIC_BASE_URL="http://127.0.0.1:$PUBLIC_PORT/" \
     HONE_BILLING_GRACE_DAYS=7 \
     "$REPO_ROOT/target/debug/hone-console-page"
@@ -109,7 +110,7 @@ with database:
             "2026-08-03T00:00:00+00:00",
             "2026-08-03T00:00:00+00:00",
             "2026-08-03T00:00:00+00:00",
-            "2.3",
+            "2.4",
         ),
     )
     database.execute(
@@ -158,7 +159,8 @@ cookie = "hone_web_session=billing-ci-session"
 user_id = "web_billing_ci"
 email = "billing-ci@hone-claw.invalid"
 stripe_product = "prod_ci_stripe"
-stripe_price = "price_ci_stripe"
+stripe_subscription_price = "price_ci_subscription"
+stripe_fixed_price = "price_ci_fixed"
 stripe_secret = b"whsec_ci_only_not_a_secret"
 # This is an isolated loopback server. Ignore workstation/system proxy
 # discovery so macOS HTTP proxy settings cannot turn a CI-safe local request
@@ -252,7 +254,7 @@ def invoice(event_id, event_type, subscription_id, created):
                         {
                             "pricing": {
                                 "price_details": {
-                                    "price": stripe_price,
+                                    "price": stripe_subscription_price,
                                     "product": stripe_product,
                                 }
                             },
@@ -283,7 +285,7 @@ def subscription(event_id, event_type, subscription_id, status, created, cancel=
                 "items": {
                     "data": [
                         {
-                            "price": {"id": stripe_price, "product": stripe_product},
+                            "price": {"id": stripe_subscription_price, "product": stripe_product},
                             "current_period_start": created - 1000,
                             "current_period_end": created + 31536000,
                         }
@@ -295,10 +297,80 @@ def subscription(event_id, event_type, subscription_id, status, created, cancel=
     }
 
 
+def fixed_checkout(event_id, event_type, payment_status, created):
+    return {
+        "id": event_id,
+        "type": event_type,
+        "created": created,
+        "livemode": False,
+        "data": {
+            "object": {
+                "id": "cs_test_ci_fixed",
+                "created": created - 1,
+                "mode": "payment",
+                "payment_status": payment_status,
+                "payment_intent": "pi_ci_fixed",
+                "customer": "cus_ci_fixed",
+                "client_reference_id": user_id,
+                "metadata": {
+                    "hone_user_id": user_id,
+                    "hone_product_id": stripe_product,
+                    "hone_price_id": stripe_fixed_price,
+                    "hone_entitlement_kind": "fixed_term_purchase",
+                    "hone_term_months": "12",
+                },
+                "customer_details": {"email": email},
+            }
+        },
+    }
+
+
+def fixed_refund(event_id, amount_refunded, refunded, created):
+    return {
+        "id": event_id,
+        "type": "charge.refunded",
+        "created": created,
+        "livemode": False,
+        "data": {
+            "object": {
+                "id": "ch_ci_fixed",
+                "payment_intent": "pi_ci_fixed",
+                "customer": "cus_ci_fixed",
+                "amount": 22999,
+                "amount_refunded": amount_refunded,
+                "refunded": refunded,
+                "metadata": {
+                    "hone_user_id": user_id,
+                    "hone_product_id": stripe_product,
+                    "hone_price_id": stripe_fixed_price,
+                    "hone_entitlement_kind": "fixed_term_purchase",
+                    "hone_term_months": "12",
+                },
+                "billing_details": {"email": email},
+            }
+        },
+    }
+
+
 config_code, config = request("GET", "/api/public/billing/config")
 assert config_code == 200
 assert config == {
-    "stripe_checkout_enabled": True,
+    "stripe": {
+        "subscription": {
+            "enabled": True,
+            "amount_minor": 19999,
+            "currency": "usd",
+            "term_months": 12,
+            "auto_renews": True,
+        },
+        "fixed_term": {
+            "enabled": True,
+            "amount_minor": 22999,
+            "currency": "usd",
+            "term_months": 12,
+            "auto_renews": False,
+        },
+    },
     "purchases_allowed_on_this_client": True,
     "management_allowed_on_this_client": True,
 }
@@ -325,6 +397,7 @@ missing_origin_code, _ = request(
     "POST",
     "/api/public/billing/checkout/stripe",
     headers={"cookie": cookie},
+    body=json.dumps({"offer": "subscription"}).encode(),
 )
 assert missing_origin_code == 403
 ios_checkout_code, _ = request(
@@ -336,6 +409,7 @@ ios_checkout_code, _ = request(
         "sec-fetch-site": "same-origin",
         "user-agent": "HONE-iOS/1.0 WKWebView",
     },
+    body=json.dumps({"offer": "subscription"}).encode(),
 )
 assert ios_checkout_code == 403
 cross_site_checkout_code, _ = request(
@@ -346,6 +420,7 @@ cross_site_checkout_code, _ = request(
         "origin": "https://cross-site.example",
         "sec-fetch-site": "cross-site",
     },
+    body=json.dumps({"offer": "fixed_term"}).encode(),
 )
 assert cross_site_checkout_code == 403
 
@@ -378,13 +453,16 @@ checkout = {
         "object": {
             "id": "cs_test_ci",
             "created": base + 2,
+            "mode": "subscription",
+            "payment_status": "paid",
             "subscription": "sub_ci_old",
             "customer": "cus_ci_old",
             "client_reference_id": user_id,
             "metadata": {
                 "hone_user_id": user_id,
                 "hone_product_id": stripe_product,
-                "hone_price_id": stripe_price,
+                "hone_price_id": stripe_subscription_price,
+                "hone_entitlement_kind": "recurring_subscription",
             },
             "customer_details": {"email": email},
         }
@@ -416,6 +494,7 @@ active_checkout_code, _ = request(
         "origin": base_url,
         "sec-fetch-site": "same-origin",
     },
+    body=json.dumps({"offer": "subscription"}).encode(),
 )
 assert active_checkout_code == 409
 
@@ -535,6 +614,112 @@ wait_status(
     "all inactive must deny access",
     lambda value: not value["access_granted"]
     and all(item["access_state"] == "inactive" for item in value["entitlements"]),
+)
+assert paid_api_code() == 402
+
+assert stripe_post(
+    fixed_checkout(
+        "evt_ci_fixed_pending",
+        "checkout.session.completed",
+        "unpaid",
+        base + 100,
+    )
+)[0] == 202
+wait_status(
+    "unpaid fixed-term checkout must remain pending",
+    lambda value: not value["access_granted"]
+    and any(
+        item["entitlement_kind"] == "fixed_term_purchase"
+        and item["access_state"] == "pending"
+        and not item["grants_access"]
+        for item in value["entitlements"]
+    ),
+)
+
+fixed_paid = fixed_checkout(
+    "evt_ci_fixed_paid",
+    "checkout.session.async_payment_succeeded",
+    "paid",
+    base + 110,
+)
+assert stripe_post(fixed_paid)[0] == 202
+fixed_active = wait_status(
+    "paid fixed-term checkout must activate for a fixed period",
+    lambda value: value["access_granted"]
+    and any(
+        item["entitlement_kind"] == "fixed_term_purchase"
+        and item["access_state"] == "active"
+        and item["grants_access"]
+        and item["current_period_end"]
+        for item in value["entitlements"]
+    ),
+)
+fixed_period_end = next(
+    item["current_period_end"]
+    for item in fixed_active["entitlements"]
+    if item["entitlement_kind"] == "fixed_term_purchase"
+)
+assert stripe_post(fixed_paid)[0] == 202
+assert wait_status(
+    "replayed paid event must not extend the fixed period",
+    lambda value: any(
+        item["entitlement_kind"] == "fixed_term_purchase"
+        and item["current_period_end"] == fixed_period_end
+        for item in value["entitlements"]
+    ),
+)["access_granted"]
+
+assert stripe_post(
+    invoice("evt_ci_coexist_subscription", "invoice.paid", "sub_ci_coexist", base + 120)
+)[0] == 202
+coexisting = wait_status(
+    "one recurring and one fixed-term entitlement may coexist without duplicate warning",
+    lambda value: value["access_granted"]
+    and not value["has_duplicate_active_subscriptions"]
+    and sum(item["grants_access"] for item in value["entitlements"]) == 2,
+)
+assert coexisting["has_duplicate_active_subscriptions"] is False
+
+partial_code, partial_body = stripe_post(
+    fixed_refund("evt_ci_fixed_partial_refund", 1000, False, base + 130)
+)
+assert partial_code == 200
+assert partial_body == {"ignored": True, "ok": True, "reason": "partial_refund"}
+assert billing_status()["access_granted"] is True
+
+assert stripe_post(
+    fixed_refund("evt_ci_fixed_full_refund", 22999, True, base + 140)
+)[0] == 202
+after_refund = wait_status(
+    "full refund must revoke only the matching fixed-term entitlement",
+    lambda value: value["access_granted"]
+    and any(
+        item["entitlement_kind"] == "fixed_term_purchase"
+        and item["access_state"] == "inactive"
+        and not item["grants_access"]
+        for item in value["entitlements"]
+    )
+    and any(
+        item["entitlement_kind"] == "recurring_subscription"
+        and item["grants_access"]
+        for item in value["entitlements"]
+    ),
+)
+assert after_refund["has_duplicate_active_subscriptions"] is False
+
+assert stripe_post(
+    subscription(
+        "evt_ci_delete_coexist",
+        "customer.subscription.deleted",
+        "sub_ci_coexist",
+        "canceled",
+        base + 150,
+    )
+)[0] == 202
+wait_status(
+    "revoking the remaining recurring subscription must deny access",
+    lambda value: not value["access_granted"]
+    and all(not item["grants_access"] for item in value["entitlements"]),
 )
 assert paid_api_code() == 402
 

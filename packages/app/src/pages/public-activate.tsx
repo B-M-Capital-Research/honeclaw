@@ -10,6 +10,7 @@ import {
   getPublicBillingConfig,
   publicEmailLogin,
   publicSendEmailCode,
+  type StripeCheckoutOffer,
 } from "@/lib/api";
 import { TOS_VERSION } from "@/lib/tos";
 import type { PublicBillingConfig } from "@/lib/types";
@@ -22,6 +23,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function PublicActivatePage() {
   const navigate = useNavigate();
   const [config, setConfig] = createSignal<PublicBillingConfig>();
+  const [selectedOffer, setSelectedOffer] = createSignal<StripeCheckoutOffer>("subscription");
   const [emailAddress, setEmailAddress] = createSignal("");
   const [verifyCode, setVerifyCode] = createSignal("");
   const [remember, setRemember] = createSignal(true);
@@ -46,8 +48,17 @@ export default function PublicActivatePage() {
     () => config()?.purchases_allowed_on_this_client === false,
   );
   const purchaseAvailable = createMemo(
-    () => !restoreOnly() && config()?.stripe_checkout_enabled === true,
+    () =>
+      !restoreOnly() &&
+      (config()?.stripe.subscription.enabled === true ||
+        config()?.stripe.fixed_term.enabled === true),
   );
+  const selectedOfferAvailable = createMemo(() => {
+    const stripe = config()?.stripe;
+    return selectedOffer() === "subscription"
+      ? stripe?.subscription.enabled === true
+      : stripe?.fixed_term.enabled === true;
+  });
   const activationSteps = createMemo(() => {
     if (!purchaseAvailable()) return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_login, CONTENT.chat_page.activate_page.step_restore];
     return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_pay, CONTENT.chat_page.activate_page.step_confirm];
@@ -119,7 +130,11 @@ export default function PublicActivatePage() {
         setError(CONTENT.chat_page.activate_page.checkout_down);
         return;
       }
-      const { checkout_url } = await createStripeCheckout();
+      if (!selectedOfferAvailable()) {
+        setError(CONTENT.chat_page.activate_page.checkout_down);
+        return;
+      }
+      const { checkout_url } = await createStripeCheckout(selectedOffer());
       window.location.assign(checkout_url);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
@@ -190,6 +205,38 @@ export default function PublicActivatePage() {
               {activationSteps().map((label, index) => <span>{index + 1}. {label}</span>)}
             </div>
 
+            <Show when={purchaseAvailable()}>
+              <fieldset class="public-activate-offers">
+                <legend>{CONTENT.chat_page.activate_page.offer_legend}</legend>
+                <OfferOption
+                  offer="subscription"
+                  selected={selectedOffer() === "subscription"}
+                  enabled={config()?.stripe.subscription.enabled === true}
+                  title={CONTENT.chat_page.activate_page.subscription_title}
+                  price={CONTENT.chat_page.activate_page.subscription_price.replace(
+                    "{price}",
+                    formatAmount(config()?.stripe.subscription.amount_minor),
+                  )}
+                  description={CONTENT.chat_page.activate_page.subscription_desc}
+                  methods={CONTENT.chat_page.activate_page.subscription_methods}
+                  onSelect={setSelectedOffer}
+                />
+                <OfferOption
+                  offer="fixed_term"
+                  selected={selectedOffer() === "fixed_term"}
+                  enabled={config()?.stripe.fixed_term.enabled === true}
+                  title={CONTENT.chat_page.activate_page.fixed_term_title}
+                  price={CONTENT.chat_page.activate_page.fixed_term_price.replace(
+                    "{price}",
+                    formatAmount(config()?.stripe.fixed_term.amount_minor),
+                  )}
+                  description={CONTENT.chat_page.activate_page.fixed_term_desc}
+                  methods={CONTENT.chat_page.activate_page.fixed_term_methods}
+                  onSelect={setSelectedOffer}
+                />
+              </fieldset>
+            </Show>
+
             <label class="public-activate-field">
               <FieldLabel>{CONTENT.chat_page.activate_page.account_email}</FieldLabel>
               <TextInput
@@ -241,7 +288,7 @@ export default function PublicActivatePage() {
             <button
               class="public-activate-submit"
               type="button"
-              disabled={!loginReady()}
+              disabled={!loginReady() || (purchaseAvailable() && !selectedOfferAvailable())}
               onClick={submit}
             >
               {submitting()
@@ -258,6 +305,39 @@ export default function PublicActivatePage() {
         </Show>
       </div>
     </main>
+  );
+}
+
+function formatAmount(amountMinor?: number) {
+  return typeof amountMinor === "number" ? (amountMinor / 100).toFixed(2) : "—";
+}
+
+function OfferOption(props: {
+  offer: StripeCheckoutOffer;
+  selected: boolean;
+  enabled: boolean;
+  title: string;
+  price: string;
+  description: string;
+  methods: string;
+  onSelect: (offer: StripeCheckoutOffer) => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="public-activate-offer"
+      classList={{ "is-selected": props.selected }}
+      disabled={!props.enabled}
+      aria-pressed={props.selected}
+      onClick={() => props.onSelect(props.offer)}
+    >
+      <span class="public-activate-offer-head">
+        <strong>{props.title}</strong>
+        <b>{props.price}</b>
+      </span>
+      <span>{props.description}</span>
+      <small>{props.methods}</small>
+    </button>
   );
 }
 

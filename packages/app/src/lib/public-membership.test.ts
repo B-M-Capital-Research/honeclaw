@@ -17,8 +17,10 @@ function entitlement(
   return {
     entitlement_id: "ent_1",
     provider,
+    entitlement_kind: provider === "stripe" ? "recurring_subscription" : "domestic_invite",
     raw_status: accessState,
     access_state: accessState,
+    grants_access: accessState === "active" || accessState === "grace",
     cancel_at_period_end: cancelAtPeriodEnd,
     grace_expires_at: accessState === "grace" ? "2099-08-03T00:00:00Z" : undefined,
   };
@@ -54,10 +56,12 @@ describe("public membership policy", () => {
   it("fails closed when grace has no valid future deadline", () => {
     const missing = entitlement("grace");
     missing.grace_expires_at = undefined;
+    missing.grants_access = false;
     expect(billingEntitlementGrantsAccess(missing)).toBe(false);
 
     const expired = entitlement("grace");
     expired.grace_expires_at = "2020-08-03T00:00:00Z";
+    expired.grants_access = false;
     expect(billingEntitlementGrantsAccess(expired)).toBe(false);
     expect(billingEntitlementStatusLabel(expired)).toBe("宽限期已结束");
   });

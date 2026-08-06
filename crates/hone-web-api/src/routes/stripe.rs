@@ -7,7 +7,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use chrono::{SecondsFormat, TimeZone, Utc};
+use chrono::{Months, SecondsFormat, TimeZone, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -18,6 +18,7 @@ use url::Url;
 
 use hone_memory::{
     BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE, BILLING_ACCESS_PENDING,
+    BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE, BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION,
     BILLING_EVENT_RECEIVED, BILLING_PROVIDER_STRIPE, BillingEntitlement,
     BillingEntitlementUpsertOutcome, BillingStorage, BillingWebhookEvent,
     WEB_IDENTITY_INTERNATIONAL_EMAIL,
@@ -71,22 +72,80 @@ impl StripeMode {
 struct StripeCatalogConfig {
     mode: StripeMode,
     product_id: String,
-    price_id: String,
+    subscription_price_id: String,
+    fixed_term_price_id: String,
 }
 
 impl StripeCatalogConfig {
     fn from_env() -> Result<Self, String> {
         let mode = StripeMode::from_env()?;
         let product_id = required_env("HONE_STRIPE_PRODUCT_ID")?;
-        let price_id = required_env("HONE_STRIPE_PRICE_ID")?;
+        let subscription_price_id = required_env("HONE_STRIPE_SUBSCRIPTION_PRICE_ID")?;
+        let fixed_term_price_id = required_env("HONE_STRIPE_FIXED_TERM_PRICE_ID")?;
         validate_stripe_id(&product_id, "prod_", "HONE_STRIPE_PRODUCT_ID")?;
-        validate_stripe_id(&price_id, "price_", "HONE_STRIPE_PRICE_ID")?;
+        validate_stripe_id(
+            &subscription_price_id,
+            "price_",
+            "HONE_STRIPE_SUBSCRIPTION_PRICE_ID",
+        )?;
+        validate_stripe_id(
+            &fixed_term_price_id,
+            "price_",
+            "HONE_STRIPE_FIXED_TERM_PRICE_ID",
+        )?;
+        if subscription_price_id == fixed_term_price_id {
+            return Err("Stripe 订阅与单次年费必须使用不同 Price".to_string());
+        }
         Ok(Self {
             mode,
             product_id,
-            price_id,
+            subscription_price_id,
+            fixed_term_price_id,
         })
     }
+
+    fn price_id(&self, offer: StripeOffer) -> &str {
+        match offer {
+            StripeOffer::Subscription => &self.subscription_price_id,
+            StripeOffer::FixedTerm => &self.fixed_term_price_id,
+        }
+    }
+
+    fn price_for_kind(&self, entitlement_kind: &str) -> Option<&str> {
+        match entitlement_kind {
+            BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION => Some(&self.subscription_price_id),
+            BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE => Some(&self.fixed_term_price_id),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum StripeOffer {
+    Subscription,
+    FixedTerm,
+}
+
+impl StripeOffer {
+    fn entitlement_kind(self) -> &'static str {
+        match self {
+            Self::Subscription => BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION,
+            Self::FixedTerm => BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE,
+        }
+    }
+
+    fn checkout_mode(self) -> &'static str {
+        match self {
+            Self::Subscription => "subscription",
+            Self::FixedTerm => "payment",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct StripeCheckoutRequest {
+    offer: StripeOffer,
 }
 
 #[derive(Debug, Clone)]
@@ -143,7 +202,8 @@ impl StripeApiConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StripeEntitlementEvent {
     user_id: String,
-    subscription_id: String,
+    entitlement_kind: String,
+    provider_reference_id: String,
     customer_id: Option<String>,
     email_address: Option<String>,
     product_id: String,
@@ -240,7 +300,7 @@ pub(crate) async fn handle_stripe_webhook(
         provider: BILLING_PROVIDER_STRIPE.to_string(),
         event_id: event_id.clone(),
         event_type,
-        object_id: Some(normalized.subscription_id.clone()),
+        object_id: Some(normalized.provider_reference_id.clone()),
         payload_sha256: sha256_hex(&body),
         provider_created_at: normalized.event_at.clone(),
         processing_state: BILLING_EVENT_RECEIVED.to_string(),
@@ -276,6 +336,7 @@ pub(crate) async fn handle_stripe_webhook(
 pub(crate) async fn handle_create_checkout(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Json(request): Json<StripeCheckoutRequest>,
 ) -> Response {
     if !env_flag("HONE_STRIPE_CHECKOUT_ENABLED", false) {
         return crate::routes::json_error(
@@ -313,12 +374,13 @@ pub(crate) async fn handle_create_checkout(
     {
         return crate::routes::json_error(
             StatusCode::CONFLICT,
-            "账号已有有效订阅，请先在账户页管理现有订阅",
+            "账号已有有效权益，请先在账户页查看到期或续费状态",
         );
     }
     let customer_ids = entitlements
         .iter()
         .filter(|value| value.provider == BILLING_PROVIDER_STRIPE)
+        .filter(|value| value.entitlement_kind == BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION)
         .filter_map(|value| value.provider_customer_id.clone())
         .collect::<BTreeSet<_>>();
     if customer_ids.len() > 1 {
@@ -333,20 +395,23 @@ pub(crate) async fn handle_create_checkout(
             "请先完成邮箱验证，再创建 Stripe Checkout",
         );
     };
+    let offer = request.offer;
+    let price_id = config.catalog.price_id(offer).to_string();
     let success_url = format!(
-        "{}me?checkout=processing&session_id={{CHECKOUT_SESSION_ID}}",
-        normalized_base_url(&config.public_base_url)
+        "{}me?checkout=processing&offer={}&session_id={{CHECKOUT_SESSION_ID}}",
+        normalized_base_url(&config.public_base_url),
+        match offer {
+            StripeOffer::Subscription => "subscription",
+            StripeOffer::FixedTerm => "fixed_term",
+        },
     );
     let cancel_url = format!(
-        "{}plan?checkout=canceled",
+        "{}activate?checkout=canceled",
         normalized_base_url(&config.public_base_url)
     );
     let mut form = vec![
-        ("mode".to_string(), "subscription".to_string()),
-        (
-            "line_items[0][price]".to_string(),
-            config.catalog.price_id.clone(),
-        ),
+        ("mode".to_string(), offer.checkout_mode().to_string()),
+        ("line_items[0][price]".to_string(), price_id.clone()),
         ("line_items[0][quantity]".to_string(), "1".to_string()),
         ("success_url".to_string(), success_url),
         ("cancel_url".to_string(), cancel_url),
@@ -356,33 +421,72 @@ pub(crate) async fn handle_create_checkout(
             "metadata[hone_product_id]".to_string(),
             config.catalog.product_id.clone(),
         ),
+        ("metadata[hone_price_id]".to_string(), price_id.clone()),
         (
-            "metadata[hone_price_id]".to_string(),
-            config.catalog.price_id.clone(),
-        ),
-        (
-            "subscription_data[metadata][hone_user_id]".to_string(),
-            user.user_id.clone(),
-        ),
-        (
-            "subscription_data[metadata][hone_product_id]".to_string(),
-            config.catalog.product_id.clone(),
-        ),
-        (
-            "subscription_data[metadata][hone_price_id]".to_string(),
-            config.catalog.price_id.clone(),
+            "metadata[hone_entitlement_kind]".to_string(),
+            offer.entitlement_kind().to_string(),
         ),
         ("billing_address_collection".to_string(), "auto".to_string()),
         ("automatic_tax[enabled]".to_string(), "false".to_string()),
     ];
+    match offer {
+        StripeOffer::Subscription => {
+            form.extend([
+                (
+                    "subscription_data[metadata][hone_user_id]".to_string(),
+                    user.user_id.clone(),
+                ),
+                (
+                    "subscription_data[metadata][hone_product_id]".to_string(),
+                    config.catalog.product_id.clone(),
+                ),
+                (
+                    "subscription_data[metadata][hone_price_id]".to_string(),
+                    price_id.clone(),
+                ),
+                (
+                    "subscription_data[metadata][hone_entitlement_kind]".to_string(),
+                    offer.entitlement_kind().to_string(),
+                ),
+            ]);
+        }
+        StripeOffer::FixedTerm => {
+            form.extend([
+                ("metadata[hone_term_months]".to_string(), "12".to_string()),
+                (
+                    "payment_intent_data[metadata][hone_user_id]".to_string(),
+                    user.user_id.clone(),
+                ),
+                (
+                    "payment_intent_data[metadata][hone_product_id]".to_string(),
+                    config.catalog.product_id.clone(),
+                ),
+                (
+                    "payment_intent_data[metadata][hone_price_id]".to_string(),
+                    price_id.clone(),
+                ),
+                (
+                    "payment_intent_data[metadata][hone_entitlement_kind]".to_string(),
+                    offer.entitlement_kind().to_string(),
+                ),
+                (
+                    "payment_intent_data[metadata][hone_term_months]".to_string(),
+                    "12".to_string(),
+                ),
+            ]);
+        }
+    }
     if let Some(customer_id) = customer_ids.into_iter().next() {
         form.push(("customer".to_string(), customer_id));
     } else {
+        if offer == StripeOffer::FixedTerm {
+            form.push(("customer_creation".to_string(), "always".to_string()));
+        }
         form.push(("customer_email".to_string(), email_address));
     }
     let checkout_idempotency_key = checkout_idempotency_key(
         &user.user_id,
-        &config.catalog.price_id,
+        &price_id,
         &entitlements,
         &Utc::now().format("%Y%m%d").to_string(),
     );
@@ -511,6 +615,7 @@ fn normalize_stripe_event(
         | "checkout.session.async_payment_failed" => {
             normalize_checkout_event(object, config, &event_id, &event_type, created)
         }
+        "checkout.session.expired" => Ok(StripeNormalization::Ignored("checkout_expired")),
         "invoice.paid" | "invoice.payment_failed" => {
             normalize_invoice_event(object, config, &event_id, &event_type, created)
         }
@@ -518,6 +623,9 @@ fn normalize_stripe_event(
         | "customer.subscription.updated"
         | "customer.subscription.deleted" => {
             normalize_subscription_event(object, config, &event_id, &event_type, created)
+        }
+        "charge.refunded" => {
+            normalize_charge_refund_event(object, config, &event_id, &event_type, created)
         }
         _ => Ok(StripeNormalization::Ignored("unsupported_event")),
     }
@@ -532,8 +640,27 @@ fn normalize_checkout_event(
 ) -> Result<StripeNormalization, String> {
     let product_id = metadata_string(object, "hone_product_id").unwrap_or_default();
     let price_id = metadata_string(object, "hone_price_id").unwrap_or_default();
-    if product_id != config.product_id || price_id != config.price_id {
+    let entitlement_kind = metadata_string(object, "hone_entitlement_kind").unwrap_or_default();
+    let Some(expected_price_id) = config.price_for_kind(&entitlement_kind) else {
         return Ok(StripeNormalization::Ignored("catalog_mismatch"));
+    };
+    if product_id != config.product_id || price_id != expected_price_id {
+        return Ok(StripeNormalization::Ignored("catalog_mismatch"));
+    }
+    let checkout_mode =
+        json_string(object, &["mode"]).ok_or_else(|| "Stripe Checkout mode 缺失".to_string())?;
+    let expected_mode = if entitlement_kind == BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION {
+        "subscription"
+    } else {
+        "payment"
+    };
+    if checkout_mode != expected_mode {
+        return Err("Stripe Checkout mode 与权益类型不匹配".to_string());
+    }
+    if entitlement_kind == BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+        && metadata_string(object, "hone_term_months").as_deref() != Some("12")
+    {
+        return Err("Stripe 单次年费期限配置不合法".to_string());
     }
     let metadata_user_id = metadata_string(object, "hone_user_id")
         .ok_or_else(|| "Stripe Checkout hone_user_id 缺失".to_string())?;
@@ -542,17 +669,32 @@ fn normalize_checkout_event(
     if metadata_user_id != client_reference_id {
         return Err("Stripe Checkout 用户绑定字段不一致".to_string());
     }
-    let subscription_id = json_id_at(object, &["subscription"])
-        .ok_or_else(|| "Stripe Checkout subscription 缺失".to_string())?;
-    validate_stripe_id(&subscription_id, "sub_", "Stripe subscription")?;
+    let provider_reference_id = if entitlement_kind == BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION {
+        let subscription_id = json_id_at(object, &["subscription"])
+            .ok_or_else(|| "Stripe Checkout subscription 缺失".to_string())?;
+        validate_stripe_id(&subscription_id, "sub_", "Stripe subscription")?;
+        subscription_id
+    } else {
+        let payment_intent_id = json_id_at(object, &["payment_intent"])
+            .ok_or_else(|| "Stripe Checkout payment_intent 缺失".to_string())?;
+        validate_stripe_id(&payment_intent_id, "pi_", "Stripe PaymentIntent")?;
+        payment_intent_id
+    };
+    let payment_status = json_string(object, &["payment_status"]).unwrap_or_default();
     let (raw_status, access_signal) = match event_type {
         "checkout.session.async_payment_succeeded" => {
-            ("active".to_string(), StripeAccessSignal::Paid)
+            ("paid".to_string(), StripeAccessSignal::Paid)
         }
         "checkout.session.async_payment_failed" => (
             "payment_failed".to_string(),
             StripeAccessSignal::PaymentFailed,
         ),
+        "checkout.session.completed"
+            if entitlement_kind == BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+                && payment_status == "paid" =>
+        {
+            ("paid".to_string(), StripeAccessSignal::Paid)
+        }
         _ => (
             "checkout_completed".to_string(),
             StripeAccessSignal::Pending,
@@ -566,15 +708,27 @@ fn normalize_checkout_event(
     // Session creation time; the webhook inbox still preserves the real event
     // creation time for audit and every authoritative transition keeps using
     // its own event timestamp.
-    let ordering_created = if event_type == "checkout.session.completed" {
+    let ordering_created = if event_type == "checkout.session.completed"
+        && access_signal == StripeAccessSignal::Pending
+    {
         json_i64(object, &["created"]).ok_or_else(|| "Stripe Checkout created 缺失".to_string())?
     } else {
         created
     };
     let event_at = stripe_event_time(ordering_created, access_signal)?;
+    let (current_period_start, current_period_end) = if entitlement_kind
+        == BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+        && access_signal == StripeAccessSignal::Paid
+    {
+        let (start, end) = fixed_term_window(created)?;
+        (Some(start), Some(end))
+    } else {
+        (None, None)
+    };
     Ok(StripeNormalization::Relevant(StripeEntitlementEvent {
         user_id: metadata_user_id,
-        subscription_id,
+        entitlement_kind,
+        provider_reference_id,
         customer_id: json_id_at(object, &["customer"]),
         email_address: json_string(object, &["customer_details", "email"])
             .or_else(|| json_string(object, &["customer_email"])),
@@ -582,8 +736,8 @@ fn normalize_checkout_event(
         price_id,
         raw_status,
         access_signal,
-        current_period_start: None,
-        current_period_end: None,
+        current_period_start,
+        current_period_end,
         cancel_at_period_end: false,
         event_id: event_id.to_string(),
         event_type: event_type.to_string(),
@@ -598,7 +752,12 @@ fn normalize_invoice_event(
     event_type: &str,
     created: i64,
 ) -> Result<StripeNormalization, String> {
-    let matching_line = matching_catalog_item(object, &["lines", "data"], config);
+    let matching_line = matching_catalog_item(
+        object,
+        &["lines", "data"],
+        &config.product_id,
+        &config.subscription_price_id,
+    );
     let Some(line) = matching_line else {
         return Ok(StripeNormalization::Ignored("catalog_mismatch"));
     };
@@ -627,11 +786,12 @@ fn normalize_invoice_event(
     let event_at = stripe_event_time(created, access_signal)?;
     Ok(StripeNormalization::Relevant(StripeEntitlementEvent {
         user_id,
-        subscription_id,
+        entitlement_kind: BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
+        provider_reference_id: subscription_id,
         customer_id: json_id_at(object, &["customer"]),
         email_address: json_string(object, &["customer_email"]),
         product_id: config.product_id.clone(),
-        price_id: config.price_id.clone(),
+        price_id: config.subscription_price_id.clone(),
         raw_status,
         access_signal,
         current_period_start: unix_timestamp_at(line, &["period", "start"]),
@@ -650,7 +810,12 @@ fn normalize_subscription_event(
     event_type: &str,
     created: i64,
 ) -> Result<StripeNormalization, String> {
-    let matching_item = matching_catalog_item(object, &["items", "data"], config);
+    let matching_item = matching_catalog_item(
+        object,
+        &["items", "data"],
+        &config.product_id,
+        &config.subscription_price_id,
+    );
     let Some(item) = matching_item else {
         return Ok(StripeNormalization::Ignored("catalog_mismatch"));
     };
@@ -688,11 +853,12 @@ fn normalize_subscription_event(
     let event_at = stripe_event_time(created, access_signal)?;
     Ok(StripeNormalization::Relevant(StripeEntitlementEvent {
         user_id,
-        subscription_id,
+        entitlement_kind: BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
+        provider_reference_id: subscription_id,
         customer_id: json_id_at(object, &["customer"]),
         email_address: None,
         product_id: config.product_id.clone(),
-        price_id: config.price_id.clone(),
+        price_id: config.subscription_price_id.clone(),
         raw_status,
         access_signal,
         current_period_start: unix_timestamp_at(object, &["current_period_start"])
@@ -705,6 +871,57 @@ fn normalize_subscription_event(
         event_id: event_id.to_string(),
         event_type: event_type.to_string(),
         event_at,
+    }))
+}
+
+fn normalize_charge_refund_event(
+    object: &Value,
+    config: &StripeCatalogConfig,
+    event_id: &str,
+    event_type: &str,
+    created: i64,
+) -> Result<StripeNormalization, String> {
+    let entitlement_kind = metadata_string(object, "hone_entitlement_kind").unwrap_or_default();
+    let product_id = metadata_string(object, "hone_product_id").unwrap_or_default();
+    let price_id = metadata_string(object, "hone_price_id").unwrap_or_default();
+    if entitlement_kind != BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+        || product_id != config.product_id
+        || price_id != config.fixed_term_price_id
+    {
+        return Ok(StripeNormalization::Ignored("catalog_mismatch"));
+    }
+    if metadata_string(object, "hone_term_months").as_deref() != Some("12") {
+        return Err("Stripe 单次年费退款期限配置不合法".to_string());
+    }
+    let amount =
+        json_i64(object, &["amount"]).ok_or_else(|| "Stripe Charge amount 缺失".to_string())?;
+    let amount_refunded = json_i64(object, &["amount_refunded"])
+        .ok_or_else(|| "Stripe Charge amount_refunded 缺失".to_string())?;
+    let refunded = json_bool(object, &["refunded"]).unwrap_or(false);
+    if amount <= 0 || !refunded || amount_refunded < amount {
+        return Ok(StripeNormalization::Ignored("partial_refund"));
+    }
+    let user_id = metadata_string(object, "hone_user_id")
+        .ok_or_else(|| "Stripe Charge hone_user_id 缺失".to_string())?;
+    let provider_reference_id = json_id_at(object, &["payment_intent"])
+        .ok_or_else(|| "Stripe Charge payment_intent 缺失".to_string())?;
+    validate_stripe_id(&provider_reference_id, "pi_", "Stripe Charge PaymentIntent")?;
+    Ok(StripeNormalization::Relevant(StripeEntitlementEvent {
+        user_id,
+        entitlement_kind,
+        provider_reference_id,
+        customer_id: json_id_at(object, &["customer"]),
+        email_address: json_string(object, &["billing_details", "email"]),
+        product_id,
+        price_id,
+        raw_status: "refunded".to_string(),
+        access_signal: StripeAccessSignal::Inactive,
+        current_period_start: None,
+        current_period_end: None,
+        cancel_at_period_end: false,
+        event_id: event_id.to_string(),
+        event_type: event_type.to_string(),
+        event_at: stripe_event_time(created, StripeAccessSignal::Inactive)?,
     }))
 }
 
@@ -812,13 +1029,19 @@ fn apply_stripe_entitlement(
     }
     let existing = state
         .billing
-        .find_entitlement(BILLING_PROVIDER_STRIPE, &event.subscription_id)
+        .find_entitlement(BILLING_PROVIDER_STRIPE, &event.provider_reference_id)
         .map_err(|error| error.to_string())?;
     if existing
         .as_ref()
         .is_some_and(|current| current.user_id != user.user_id)
     {
-        return Err("Stripe Subscription 已绑定到另一个 HONE 用户".to_string());
+        return Err("Stripe 权益引用已绑定到另一个 HONE 用户".to_string());
+    }
+    if existing
+        .as_ref()
+        .is_some_and(|current| current.entitlement_kind != event.entitlement_kind)
+    {
+        return Err("Stripe 权益引用的类型发生冲突".to_string());
     }
     if let (Some(current), Some(incoming)) = (
         existing
@@ -827,7 +1050,7 @@ fn apply_stripe_entitlement(
         event.customer_id.as_deref(),
     ) && current != incoming
     {
-        return Err("Stripe Subscription 的 Customer 发生冲突".to_string());
+        return Err("Stripe 权益的 Customer 发生冲突".to_string());
     }
     let access_state = stripe_access_state(event, existing.as_ref());
     let grace_expires_at = if access_state == BILLING_ACCESS_GRACE {
@@ -845,16 +1068,17 @@ fn apply_stripe_entitlement(
         .upsert_entitlement(BillingEntitlement {
             entitlement_id: BillingStorage::entitlement_id(
                 BILLING_PROVIDER_STRIPE,
-                &event.subscription_id,
+                &event.provider_reference_id,
             ),
             user_id: user.user_id,
             provider: BILLING_PROVIDER_STRIPE.to_string(),
+            entitlement_kind: event.entitlement_kind.clone(),
             provider_customer_id: event.customer_id.clone().or_else(|| {
                 existing
                     .as_ref()
                     .and_then(|value| value.provider_customer_id.clone())
             }),
-            provider_subscription_id: event.subscription_id.clone(),
+            provider_reference_id: event.provider_reference_id.clone(),
             provider_product_id: Some(event.product_id.clone()),
             provider_price_id: Some(event.price_id.clone()),
             purchase_email_normalized: Some(profile_email),
@@ -888,6 +1112,16 @@ fn stripe_access_state(
     event: &StripeEntitlementEvent,
     existing: Option<&BillingEntitlement>,
 ) -> &'static str {
+    if event.entitlement_kind == BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE {
+        return match event.access_signal {
+            StripeAccessSignal::Paid => BILLING_ACCESS_ACTIVE,
+            StripeAccessSignal::Inactive => BILLING_ACCESS_INACTIVE,
+            StripeAccessSignal::Pending | StripeAccessSignal::PaymentFailed => {
+                BILLING_ACCESS_PENDING
+            }
+            StripeAccessSignal::Status => BILLING_ACCESS_PENDING,
+        };
+    }
     match event.access_signal {
         StripeAccessSignal::Paid => BILLING_ACCESS_ACTIVE,
         StripeAccessSignal::Pending => BILLING_ACCESS_PENDING,
@@ -1041,15 +1275,15 @@ fn verify_stripe_signature(headers: &HeaderMap, body: &[u8], secret: &str) -> Re
 fn matching_catalog_item<'a>(
     root: &'a Value,
     list_path: &[&str],
-    config: &StripeCatalogConfig,
+    product_id: &str,
+    price_id: &str,
 ) -> Option<&'a Value> {
     json_value_at(root, list_path)?
         .as_array()?
         .iter()
         .find(|item| {
-            catalog_ids(item).is_some_and(|(product, price)| {
-                product == config.product_id && price == config.price_id
-            })
+            catalog_ids(item)
+                .is_some_and(|(product, price)| product == product_id && price == price_id)
         })
 }
 
@@ -1084,6 +1318,20 @@ fn stripe_event_time(created: i64, signal: StripeAccessSignal) -> Result<String,
         .single()
         .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true))
         .ok_or_else(|| "Stripe event created 超出支持范围".to_string())
+}
+
+fn fixed_term_window(created: i64) -> Result<(String, String), String> {
+    let start = Utc
+        .timestamp_opt(created, 0)
+        .single()
+        .ok_or_else(|| "Stripe fixed-term paid timestamp 超出支持范围".to_string())?;
+    let end = start
+        .checked_add_months(Months::new(12))
+        .ok_or_else(|| "Stripe fixed-term 到期时间超出支持范围".to_string())?;
+    Ok((
+        start.to_rfc3339_opts(SecondsFormat::Secs, true),
+        end.to_rfc3339_opts(SecondsFormat::Secs, true),
+    ))
 }
 
 fn unix_timestamp_at(root: &Value, path: &[&str]) -> Option<String> {
@@ -1133,7 +1381,7 @@ fn checkout_idempotency_key(
     let stripe_state = entitlements
         .iter()
         .filter(|value| value.provider == BILLING_PROVIDER_STRIPE)
-        .map(|value| format!("{}:{}", value.provider_subscription_id, value.last_event_id))
+        .map(|value| format!("{}:{}", value.provider_reference_id, value.last_event_id))
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>()
@@ -1148,11 +1396,13 @@ fn is_supported_event_type(value: &str) -> bool {
         "checkout.session.completed"
             | "checkout.session.async_payment_succeeded"
             | "checkout.session.async_payment_failed"
+            | "checkout.session.expired"
             | "invoice.paid"
             | "invoice.payment_failed"
             | "customer.subscription.created"
             | "customer.subscription.updated"
             | "customer.subscription.deleted"
+            | "charge.refunded"
     )
 }
 
@@ -1278,14 +1528,16 @@ fn truncate(value: &str, max_chars: usize) -> String {
 mod tests {
     use super::{
         HmacSha256, StripeAccessSignal, StripeCatalogConfig, StripeEntitlementEvent, StripeMode,
-        StripeNormalization, checkout_idempotency_key, normalize_stripe_event, stripe_access_state,
-        verify_stripe_signature,
+        StripeNormalization, checkout_idempotency_key, fixed_term_window, normalize_stripe_event,
+        stripe_access_state, verify_stripe_signature,
     };
     use axum::http::{HeaderMap, HeaderValue};
     use hmac::Mac;
     use hone_memory::{
         BILLING_ACCESS_ACTIVE, BILLING_ACCESS_GRACE, BILLING_ACCESS_INACTIVE,
-        BILLING_ACCESS_PENDING, BILLING_PROVIDER_STRIPE, BillingEntitlement, BillingStorage,
+        BILLING_ACCESS_PENDING, BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE,
+        BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION, BILLING_PROVIDER_STRIPE, BillingEntitlement,
+        BillingStorage,
     };
     use serde_json::json;
 
@@ -1293,7 +1545,8 @@ mod tests {
         StripeCatalogConfig {
             mode: StripeMode::Test,
             product_id: "prod_test123".to_string(),
-            price_id: "price_test123".to_string(),
+            subscription_price_id: "price_test123".to_string(),
+            fixed_term_price_id: "price_fixed123".to_string(),
         }
     }
 
@@ -1335,8 +1588,9 @@ mod tests {
             entitlement_id: BillingStorage::entitlement_id(BILLING_PROVIDER_STRIPE, "sub_test123"),
             user_id: "web_test123".to_string(),
             provider: BILLING_PROVIDER_STRIPE.to_string(),
+            entitlement_kind: BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
             provider_customer_id: Some("cus_test123".to_string()),
-            provider_subscription_id: "sub_test123".to_string(),
+            provider_reference_id: "sub_test123".to_string(),
             provider_product_id: Some("prod_test123".to_string()),
             provider_price_id: Some("price_test123".to_string()),
             purchase_email_normalized: Some("buyer@example.com".to_string()),
@@ -1358,7 +1612,8 @@ mod tests {
     fn event(signal: StripeAccessSignal, status: &str) -> StripeEntitlementEvent {
         StripeEntitlementEvent {
             user_id: "web_test123".to_string(),
-            subscription_id: "sub_test123".to_string(),
+            entitlement_kind: BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
+            provider_reference_id: "sub_test123".to_string(),
             customer_id: Some("cus_test123".to_string()),
             email_address: Some("buyer@example.com".to_string()),
             product_id: "prod_test123".to_string(),
@@ -1408,7 +1663,7 @@ mod tests {
         else {
             panic!("expected relevant event")
         };
-        assert_eq!(event.subscription_id, "sub_test123");
+        assert_eq!(event.provider_reference_id, "sub_test123");
         assert_eq!(event.access_signal, StripeAccessSignal::Status);
         assert_eq!(
             event.current_period_end.as_deref(),
@@ -1508,13 +1763,15 @@ mod tests {
             "data": { "object": {
                 "id": "cs_test123",
                 "created": 1785686400,
+                "mode": "subscription",
                 "subscription": "sub_test123",
                 "customer": "cus_test123",
                 "client_reference_id": "web_test123",
                 "metadata": {
                     "hone_user_id": "web_test123",
                     "hone_product_id": "prod_test123",
-                    "hone_price_id": "price_test123"
+                    "hone_price_id": "price_test123",
+                    "hone_entitlement_kind": "recurring_subscription"
                 },
                 "customer_details": { "email": "buyer@example.com" }
             } }
@@ -1526,6 +1783,124 @@ mod tests {
         };
         assert_eq!(event.access_signal, StripeAccessSignal::Pending);
         assert_eq!(event.event_at, "2026-08-02T16:00:00.100Z");
+    }
+
+    #[test]
+    fn fixed_term_paid_checkout_grants_exact_twelve_calendar_months() {
+        let envelope = json!({
+            "id": "evt_fixed123",
+            "type": "checkout.session.completed",
+            "created": 1709208000,
+            "livemode": false,
+            "data": { "object": {
+                "id": "cs_fixed123",
+                "created": 1709207900,
+                "mode": "payment",
+                "payment_status": "paid",
+                "payment_intent": "pi_fixed123",
+                "customer": "cus_test123",
+                "client_reference_id": "web_test123",
+                "metadata": {
+                    "hone_user_id": "web_test123",
+                    "hone_product_id": "prod_test123",
+                    "hone_price_id": "price_fixed123",
+                    "hone_entitlement_kind": "fixed_term_purchase",
+                    "hone_term_months": "12"
+                },
+                "customer_details": { "email": "buyer@example.com" }
+            } }
+        });
+        let StripeNormalization::Relevant(event) =
+            normalize_stripe_event(&envelope, &config()).expect("fixed checkout")
+        else {
+            panic!("expected relevant event")
+        };
+        assert_eq!(
+            event.entitlement_kind,
+            BILLING_ENTITLEMENT_FIXED_TERM_PURCHASE
+        );
+        assert_eq!(event.provider_reference_id, "pi_fixed123");
+        assert_eq!(event.access_signal, StripeAccessSignal::Paid);
+        assert_eq!(
+            event.current_period_start.as_deref(),
+            Some("2024-02-29T12:00:00Z")
+        );
+        assert_eq!(
+            event.current_period_end.as_deref(),
+            Some("2025-02-28T12:00:00Z")
+        );
+        assert_eq!(stripe_access_state(&event, None), BILLING_ACCESS_ACTIVE);
+        assert_eq!(
+            fixed_term_window(1709208000).expect("window").1,
+            "2025-02-28T12:00:00Z"
+        );
+    }
+
+    #[test]
+    fn unpaid_fixed_term_checkout_never_grants_access() {
+        let envelope = json!({
+            "id": "evt_fixed_pending",
+            "type": "checkout.session.completed",
+            "created": 1785686700,
+            "livemode": false,
+            "data": { "object": {
+                "id": "cs_fixed_pending",
+                "created": 1785686400,
+                "mode": "payment",
+                "payment_status": "unpaid",
+                "payment_intent": "pi_fixed_pending",
+                "client_reference_id": "web_test123",
+                "metadata": {
+                    "hone_user_id": "web_test123",
+                    "hone_product_id": "prod_test123",
+                    "hone_price_id": "price_fixed123",
+                    "hone_entitlement_kind": "fixed_term_purchase",
+                    "hone_term_months": "12"
+                }
+            } }
+        });
+        let StripeNormalization::Relevant(event) =
+            normalize_stripe_event(&envelope, &config()).expect("pending checkout")
+        else {
+            panic!("expected relevant event")
+        };
+        assert_eq!(event.access_signal, StripeAccessSignal::Pending);
+        assert_eq!(stripe_access_state(&event, None), BILLING_ACCESS_PENDING);
+        assert!(event.current_period_end.is_none());
+    }
+
+    #[test]
+    fn full_refund_revokes_only_the_matching_fixed_term_reference() {
+        let envelope = json!({
+            "id": "evt_refund123",
+            "type": "charge.refunded",
+            "created": 1785686800,
+            "livemode": false,
+            "data": { "object": {
+                "id": "ch_fixed123",
+                "payment_intent": "pi_fixed123",
+                "customer": "cus_test123",
+                "amount": 22999,
+                "amount_refunded": 22999,
+                "refunded": true,
+                "metadata": {
+                    "hone_user_id": "web_test123",
+                    "hone_product_id": "prod_test123",
+                    "hone_price_id": "price_fixed123",
+                    "hone_entitlement_kind": "fixed_term_purchase",
+                    "hone_term_months": "12"
+                },
+                "billing_details": { "email": "buyer@example.com" }
+            } }
+        });
+        let StripeNormalization::Relevant(event) =
+            normalize_stripe_event(&envelope, &config()).expect("refund")
+        else {
+            panic!("expected relevant event")
+        };
+        assert_eq!(event.provider_reference_id, "pi_fixed123");
+        assert_eq!(event.access_signal, StripeAccessSignal::Inactive);
+        assert_eq!(stripe_access_state(&event, None), BILLING_ACCESS_INACTIVE);
     }
 
     #[test]

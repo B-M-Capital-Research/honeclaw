@@ -372,9 +372,13 @@ export async function getPublicBillingStatus(signal?: AbortSignal) {
   return parseJson<PublicBillingStatus>(response);
 }
 
-export async function createStripeCheckout() {
+export type StripeCheckoutOffer = "subscription" | "fixed_term";
+
+export async function createStripeCheckout(offer: StripeCheckoutOffer) {
   const response = await apiFetch("/api/public/billing/checkout/stripe", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ offer }),
   });
   return parseJson<{ checkout_url: string }>(response);
 }

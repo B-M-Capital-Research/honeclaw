@@ -217,8 +217,14 @@ export type PublicAuthUserInfo = {
 export type PublicBillingEntitlement = {
   entitlement_id: string;
   provider: "stripe" | "domestic_invite" | string;
+  entitlement_kind:
+    | "recurring_subscription"
+    | "fixed_term_purchase"
+    | "domestic_invite"
+    | string;
   raw_status: string;
   access_state: "pending" | "active" | "grace" | "inactive" | string;
+  grants_access: boolean;
   current_period_start?: string;
   current_period_end?: string;
   cancel_at_period_end: boolean;
@@ -233,9 +239,20 @@ export type PublicBillingSummary = {
 };
 
 export type PublicBillingConfig = {
-  stripe_checkout_enabled: boolean;
+  stripe: {
+    subscription: PublicBillingOfferConfig;
+    fixed_term: PublicBillingOfferConfig;
+  };
   purchases_allowed_on_this_client: boolean;
   management_allowed_on_this_client: boolean;
+};
+
+export type PublicBillingOfferConfig = {
+  enabled: boolean;
+  amount_minor: number;
+  currency: string;
+  term_months: number;
+  auto_renews: boolean;
 };
 
 export type PublicBillingStatus = {

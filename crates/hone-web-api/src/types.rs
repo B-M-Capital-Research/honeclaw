@@ -280,8 +280,10 @@ pub struct PublicAuthUserInfo {
 pub struct PublicBillingEntitlement {
     pub entitlement_id: String,
     pub provider: String,
+    pub entitlement_kind: String,
     pub raw_status: String,
     pub access_state: String,
+    pub grants_access: bool,
     pub current_period_start: Option<String>,
     pub current_period_end: Option<String>,
     pub cancel_at_period_end: bool,

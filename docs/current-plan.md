@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-05
-状态：有 10 个活跃任务
+最后更新：2026-08-06
+状态：有 11 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Stripe 支付宝 / 微信单次年费通道**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
+  - 摘要：保留 USD 199.99/year 信用卡自动续费，新增 USD 229.99/12 个月的支付宝/微信单次付款；把 Billing 权益重构为 recurring subscription 与 fixed-term purchase，补齐 paid webhook、固定期限、退款、测试模式真实 Checkout、GHCR 部署和生产页面验收
 
 - **Earnings Workflow 内容一致性与新闻深度修复**
   - 状态：`in_progress`

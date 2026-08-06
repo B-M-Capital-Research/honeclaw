@@ -1,12 +1,29 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.use({ locale: "zh-CN" });
+
 async function routeBillingConfig(page: Page, stripeCheckoutEnabled: boolean) {
   await page.route("**/api/public/billing/config", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        stripe_checkout_enabled: stripeCheckoutEnabled,
+        stripe: {
+          subscription: {
+            enabled: stripeCheckoutEnabled,
+            amount_minor: 19999,
+            currency: "usd",
+            term_months: 12,
+            auto_renews: true,
+          },
+          fixed_term: {
+            enabled: stripeCheckoutEnabled,
+            amount_minor: 22999,
+            currency: "usd",
+            term_months: 12,
+            auto_renews: false,
+          },
+        },
         purchases_allowed_on_this_client: true,
         management_allowed_on_this_client: true,
       }),
@@ -20,7 +37,9 @@ test("offers Stripe Checkout on the single activation route", async ({ page }) =
   await page.goto("/activate");
 
   await expect(page.getByRole("heading", { name: "验证邮箱并安全结账" })).toBeVisible();
-  await expect(page.getByText("STRIPE 安全结账", { exact: true })).toBeVisible();
+  await expect(page.getByText("安全结账", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /年订阅/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /一次性年费/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "验证并前往 Stripe" })).toBeVisible();
 });
 
@@ -51,7 +70,10 @@ test("waits for server billing policy before collecting account data", async ({ 
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        stripe_checkout_enabled: false,
+        stripe: {
+          subscription: { enabled: false, amount_minor: 19999, currency: "usd", term_months: 12, auto_renews: true },
+          fixed_term: { enabled: false, amount_minor: 22999, currency: "usd", term_months: 12, auto_renews: false },
+        },
         purchases_allowed_on_this_client: true,
         management_allowed_on_this_client: true,
       }),

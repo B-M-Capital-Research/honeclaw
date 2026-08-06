@@ -1253,3 +1253,70 @@ Last updated: 2026-08-05
 - Valuation-basis consequence: both reports on that quarter published a trailing P/E of roughly 46x. The correct figure against the just-filed year was about 18x; the provider's `eps`/`pe` still covered the pre-release window, and the competitor invented an explanation for the stale number rather than detecting it. `hone_valuation_basis` compares the provider's trailing EPS with `hone_ttm`, marks whether the provider window includes the latest filed quarter, publishes a recomputed EPS and P/E, and quarantines multiple claims when they disagree. This is structural and generalizes to every ticker in every earnings season; it is not a rule about one company.
 - Caching consequence: the four statement components keep the `financials` cache label. The caching policy refuses to memoize an empty payload for that data type, and a component-specific label would have silently opted out of the rule — an empty statement would have been cached for the full TTL.
 - Verification: `hone-tools` 179, `hone-channels` 779, `hone-agent` 148 pass. New coverage: the bundle's trailing window and quarter-over-quarter arithmetic, quarantine of a stale provider multiple, an unverifiable basis reported as unverified rather than confirmed, coverage-derived gap lists, and an end-to-end assertion that quarterly statements, the trailing window, margins and cash flow actually reach the runtime context. Acceptance contract 45 locks all of it and was confirmed to fail when the valuation basis or trailing-window helpers are removed.
+
+## D-2026-08-06-02 Offer Recurring And Fixed-term Stripe Memberships As Separate Products
+
+- title: Offer recurring and fixed-term Stripe memberships as separate products
+- status: `accepted_in_implementation`; production deployment and live-page acceptance pending
+- created_at: `2026-08-06`
+- updated_at: `2026-08-06`
+- owner: `Codex + owner`
+- related_files: `memory/src/billing.rs`, `crates/hone-core/src/cloud_runtime.rs`, `crates/hone-web-api/src/routes/{billing,stripe}.rs`, `packages/app/src/pages/{public-activate,public-me}.tsx`
+- related_docs: `docs/current-plans/stripe-wallet-one-time-pass.md`, `docs/runbooks/stripe-billing.md`
+- supersedes: subscription-shaped assumptions inside `D-2026-08-04-01`; Stripe-only provider authority remains unchanged
+- superseded_by:
+
+### Context
+
+Stripe's US account can sell a USD one-time product through card, Alipay, and
+WeChat Pay, but those wallets are not the renewal rail for HONE's existing
+subscription Checkout. Treating a PaymentIntent as a Subscription would make
+expiration, refund, Portal, and out-of-order webhook behavior ambiguous. The
+owner chose a clean cut: preserve USD 199.99/year auto-renewal and add a
+separate USD 229.99/12-month non-renewing pass, without compatibility code or
+a user-controlled catalog.
+
+### Decision
+
+Stripe remains the sole external payment authority, while the Billing ledger
+stores two explicit entitlement kinds. A `recurring_subscription` is keyed by
+Subscription ID and retains Invoice payment, renewal grace, cancellation, and
+Portal semantics. A `fixed_term_purchase` is keyed by PaymentIntent ID, starts
+only after a verified paid Checkout event, ends exactly 12 calendar months
+later, never receives grace, and has no Portal action. The server owns both
+Price IDs, amounts, currency, and term; the client selects only
+`subscription` or `fixed_term`.
+
+The one-time offer uses `mode=payment` with Stripe dynamic payment methods so
+the account's Payment Method Configuration can expose card, Alipay, and WeChat
+Pay. Completed-but-unpaid, failed, expired, wrong-mode, wrong-catalog, and
+forged events fail closed. A full Charge refund revokes only the entitlement
+whose PaymentIntent matches that Charge. Partial refund and dispute policy
+remain owner decisions and cannot silently alter unrelated access.
+
+### Consequences
+
+SQLite and PostgreSQL migrate the old `provider_subscription_id` shape to
+`provider_reference_id`, backfill every existing Stripe row as recurring, and
+admit typed fixed-term rows without a dual-read. Public Billing responses expose
+kind and server-derived access state. `/activate` presents two independently
+priced offers; `/me` shows a fixed validity date and never sends a fixed-term
+buyer to Customer Portal. Both kinds may coexist, and access is the OR of their
+independent valid rows.
+
+### Verification / Adoption
+
+Storage and Stripe unit tests cover migration, leap-day term calculation,
+pending/paid events, replay, full versus partial refund, and kind/reference
+isolation. Signed-event HTTP E2E additionally proves that unpaid Checkout grants
+nothing, a paid one-time event grants once, replay cannot extend it, full refund
+revokes only that pass, and an independent subscription continues to grant.
+Official Stripe test Checkout has now completed both an Alipay and WeChat Pay
+test payment at USD 229.99, and the complete repository gates pass. The live
+one-time Price exists as `price_1U1M0rEK7h1dD4JHbKBpIkZ2`; the production
+webhook destination listens to the exact ten-event contract. Stripe has
+accepted the live enablement requests but still reports both wallets as
+`pending approval` (`display_preference=on`, `available=false`). Remaining
+adoption work is immutable GHCR deployment and external-Chrome production-page
+acceptance without submitting real money; wallet availability remains an
+external Stripe approval gate.
