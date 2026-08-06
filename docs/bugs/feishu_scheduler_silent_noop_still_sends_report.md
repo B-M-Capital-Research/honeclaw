@@ -14,13 +14,20 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-07 06:02 CST 运行态复核：问题在 live source heartbeat / scheduler 出站候选中继续复发，状态从代码级 `Fixed` 回退为运行态 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-07 02:02-06:02 CST。
+    - 近窗 `deliver=57`，其中 30 条用户可见候选继续明写 `NOOP`、`noop`、`无新增`、`无触发`、`无新触发` 或 `无变化`。
+    - 03:06 CST 非文档提交 `e30c9d3e fix: suppress rich-text noop heartbeat deliveries` 后，03:30 `光模块板块关键事件心跳提醒` 写 `状态：noop — 无全新独立持仓触发事件` 仍进入 deliver；03:30 `持仓重大事件心跳提醒` 写 `心跳监控本轮检查结论：noop` 仍进入 deliver；04:00 `NVDA`、`中际旭创`、`光迅科技` 继续写 `本轮无触发` / `无新增高权重触发（noop）` 并进入 deliver；06:00 `存储板块关键事件心跳提醒` 写 `状态：noop — 无全新独立持仓触发事件` 仍进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题；虽然已有代码级修复提交，但真实运行窗口尚未闭环。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
 
 - 2026-08-06 20:10 CST `bug-2` 代码级修复：heartbeat 富文本 `noop` 正文此前只有在纯短句里才会被 `inspect_heartbeat_result(...)` 识别为 `PlainTextNoop`；像 `数据时间 ... **状态：noop — 无全新独立重大事件触发。**` 这种先给行情口径、后附表格说明的正文，会被误判成 `PlainTextTriggered` 并继续进入 deliver。
   - 本轮修改：

@@ -19,6 +19,11 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-07 06:02 CST 运行态继续复发，状态维持 `New/P2`。
+  - 2026-08-07 02:02-06:02 CST 同窗 `fmp_fail=126`、`fmp_ok=17`；`poller.fmp.news` 继续出现 `poll failed: FMP 请求失败 ... stock_news`，`poller.fmp.price` 多批 `FMP quote batch failed` 与 `poller.fmp.price poll failed` 覆盖多个 25 标的 batch。
+  - 同窗仍有 `poller.fmp.price` / `poller.fmp.extended_hours` ok 样本，说明 event-engine runtime 未整体停摆；失败集中在 FMP news 与部分 price 请求发送链路。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻 / 行情增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
   - 2026-08-07 02:01 CST 运行态继续复发，状态维持 `New/P2`。
   - 2026-08-06 22:01-2026-08-07 02:01 CST 同窗 `fmp_fail=229`、`fmp_ok=9`；`poller.fmp.news` 继续出现 `poll failed: FMP 请求失败 ... stock_news`，`poller.fmp.price` 多批 `FMP quote batch failed` 与 `poller.fmp.price poll failed` 覆盖多个 25 标的 batch。
   - 同窗仍有 `poller.fmp.extended_hours` ok 样本，说明 event-engine runtime 未整体停摆；失败集中在 FMP news 与 price 请求发送链路。

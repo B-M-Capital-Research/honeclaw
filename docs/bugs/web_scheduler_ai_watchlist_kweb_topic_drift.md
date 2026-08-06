@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-07 02:02-06:02 CST（UTC 2026-08-06 18:02-22:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 03:00 / 05:30 CST raw 与 deliver preview 继续把 heartbeat 主体转成 `grade` / `analyst_grade` 配置解释，05:30 deliver preview 还列出 `block_kinds`、`allow_kinds`、`immediate_kinds` 等配置字段；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是通知配置问答。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` / `target=web-user-499a1c6331c4` 在 05:30 CST deliver preview 变成“你问的是刚才”澄清式正文，并要求用户明确具体想问哪件事；该 heartbeat job 名义目标是光模块板块关键事件监控，不应退化成 direct follow-up 澄清。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-06 22:01-2026-08-07 02:01 CST（UTC 2026-08-06 14:01-18:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 23:00 / 23:30 CST deliver preview 主体转为解释 `analyst_grade` / `grade 是什么`，18:00 UTC / 02:00 CST 同一 job 又输出“你的当前推送配置如下”与定时推送配置表；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是通知配置问答。
