@@ -252,7 +252,7 @@ async fn t0_earnings_delivery_does_not_wait_for_background_continuity_review() {
         }
     }
 
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let continuity = Arc::new(BlockingContinuity {
         started: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
@@ -1050,7 +1050,7 @@ async fn structured_earnings_review_is_not_collapsed_by_plain_polisher() {
         }
     }
 
-    let (router, sink, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor();
     let router = router.with_polisher(Arc::new(DestructivePolisher));
     let mut event = earnings_event_with_severity(Severity::High);
     event.summary = "结论：增长改善\n关键证据：收入增长；现金流转正\n反向项：消费端承压\n后续核验：电话会核验指引".into();
