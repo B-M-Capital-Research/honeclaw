@@ -71,6 +71,13 @@ pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
             | "news"
             | "crypto_quote"
             | "etf_holdings"
+            | "valuation"
+            | "segments"
+            | "peers"
+            | "ownership"
+            | "corporate_actions"
+            | "press_releases"
+            | "transcript"
     )
 }
 
@@ -387,6 +394,194 @@ impl DataFetchTool {
         )
     }
 
+    /// Every aggregate data type is a list of `(key, path)` pairs against the
+    /// stable API. Adding a capability means adding a row to
+    /// `stable_bundle_components`, not another hand-written `tokio::join!` and
+    /// another coverage map — the reason earlier gaps were closed one endpoint
+    /// at a time is that each one cost a dispatcher change.
+    fn stable_bundle_components(
+        &self,
+        data_type: &str,
+        symbol: &str,
+        args: &Value,
+    ) -> Option<Vec<(&'static str, String)>> {
+        let stable = self.stable_base_url();
+        let s = |path: &str| format!("{stable}/stable/{path}");
+        let limit = args
+            .get("limit")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            .clamp(0, 100);
+        Some(match data_type {
+            // Official trailing metrics, ratios, enterprise value and the
+            // published health scores. Hone used to recompute a subset of this
+            // by hand and had no source at all for the rest.
+            "valuation" => vec![
+                (
+                    "key_metrics_ttm",
+                    s(&format!("key-metrics-ttm?symbol={symbol}")),
+                ),
+                ("ratios_ttm", s(&format!("ratios-ttm?symbol={symbol}"))),
+                (
+                    "enterprise_value",
+                    s(&format!("enterprise-values?symbol={symbol}&limit=2")),
+                ),
+                (
+                    "financial_scores",
+                    s(&format!("financial-scores?symbol={symbol}")),
+                ),
+                ("shares_float", s(&format!("shares-float?symbol={symbol}"))),
+                (
+                    "discounted_cash_flow",
+                    s(&format!("discounted-cash-flow?symbol={symbol}")),
+                ),
+                (
+                    "market_capitalization",
+                    s(&format!("market-capitalization?symbol={symbol}")),
+                ),
+            ],
+            // Which product lines and which regions the revenue comes from.
+            "segments" => vec![
+                (
+                    "product_segmentation",
+                    s(&format!("revenue-product-segmentation?symbol={symbol}")),
+                ),
+                (
+                    "geographic_segmentation",
+                    s(&format!("revenue-geographic-segmentation?symbol={symbol}")),
+                ),
+            ],
+            "ownership" => vec![
+                (
+                    "institutional_positions",
+                    s(&format!(
+                        "institutional-ownership/symbol-positions-summary?symbol={symbol}"
+                    )),
+                ),
+                (
+                    "insider_statistics",
+                    s(&format!("insider-trading/statistics?symbol={symbol}")),
+                ),
+                (
+                    "insider_trades",
+                    s(&format!(
+                        "insider-trading/search?symbol={symbol}&page=0&limit=20"
+                    )),
+                ),
+            ],
+            "corporate_actions" => vec![
+                (
+                    "dividends",
+                    s(&format!("dividends?symbol={symbol}&limit=12")),
+                ),
+                ("splits", s(&format!("splits?symbol={symbol}&limit=8"))),
+            ],
+            "press_releases" => vec![(
+                "press_releases",
+                s(&format!(
+                    "news/press-releases?symbols={symbol}&page=0&limit={}",
+                    if limit == 0 { 10 } else { limit }
+                )),
+            )],
+            "transcript" => {
+                let mut components = vec![(
+                    "transcript_dates",
+                    s(&format!("earning-call-transcript-dates?symbol={symbol}")),
+                )];
+                // Management's own words for a named quarter, when the caller
+                // already knows which one it wants.
+                if let (Some(year), Some(quarter)) = (
+                    args.get("year").and_then(Value::as_u64),
+                    args.get("quarter").and_then(Value::as_u64),
+                ) {
+                    components.push((
+                        "transcript",
+                        s(&format!(
+                            "earning-call-transcript?symbol={symbol}&year={year}&quarter={quarter}"
+                        )),
+                    ));
+                }
+                components
+            }
+            // Macro context is symbol-independent.
+            "macro" => vec![
+                ("treasury_rates", s("treasury-rates")),
+                ("gdp", s("economic-indicators?name=GDP")),
+                ("cpi", s("economic-indicators?name=CPI")),
+                (
+                    "unemployment",
+                    s("economic-indicators?name=unemploymentRate"),
+                ),
+                ("federal_funds", s("economic-indicators?name=federalFunds")),
+            ],
+            "market_hours" => vec![("all_exchange_market_hours", s("all-exchange-market-hours"))],
+            _ => return None,
+        })
+    }
+
+    /// The sector/industry P/E snapshot is what turns "43x" into "43x against
+    /// an industry at 21x". It needs the profile's industry, so it is fetched
+    /// after the peer stage rather than as a plain component.
+    async fn fetch_sector_industry_pe(&self, payload: &Value) -> Option<Value> {
+        let industry = payload
+            .pointer("/data/peer_quotes/0/industry")
+            .or_else(|| payload.pointer("/data/peers/0/industry"))
+            .and_then(Value::as_str)?;
+        let encoded = urlencoding_encode(industry);
+        self.fetch_from_url_cached(
+            &format!(
+                "{}/stable/industry-pe-snapshot?industry={encoded}",
+                self.stable_base_url()
+            ),
+            ttl_for_data_type("valuation"),
+            "valuation",
+        )
+        .await
+        .ok()
+        .filter(has_meaningful_fmp_value)
+    }
+
+    /// Runs every component of a bundle concurrently and reports, per key,
+    /// whether it actually returned something. A component that failed stays a
+    /// disclosed gap instead of vanishing.
+    async fn fetch_stable_bundle(
+        &self,
+        data_type: &str,
+        components: Vec<(&'static str, String)>,
+    ) -> (Value, Value, Option<Value>) {
+        let ttl = ttl_for_data_type(data_type);
+        let results = futures::future::join_all(
+            components
+                .iter()
+                .map(|(_, url)| self.fetch_from_url_cached(url, ttl, data_type)),
+        )
+        .await;
+
+        let mut data = serde_json::Map::new();
+        let mut coverage = serde_json::Map::new();
+        let mut errors = serde_json::Map::new();
+        for ((key, _), result) in components.iter().zip(results.into_iter()) {
+            match result {
+                Ok(value) if has_meaningful_fmp_value(&value) => {
+                    coverage.insert((*key).to_string(), Value::String("available".to_string()));
+                    data.insert((*key).to_string(), value);
+                }
+                Ok(_) => {
+                    coverage.insert((*key).to_string(), Value::String("empty".to_string()));
+                }
+                Err(err) => {
+                    coverage.insert((*key).to_string(), Value::String("unavailable".to_string()));
+                    errors.insert((*key).to_string(), Value::String(err));
+                }
+            }
+        }
+        (
+            Value::Object(data),
+            Value::Object(coverage),
+            (!errors.is_empty()).then(|| Value::Object(errors)),
+        )
+    }
+
     fn build_financials_component_url(
         &self,
         component: &str,
@@ -409,6 +604,10 @@ impl DataFetchTool {
                 "{}/stable/analyst-estimates?symbol={symbol}&period=quarter&page=0&limit=8",
                 self.stable_base_url()
             )),
+            "financial_growth" => Ok(format!(
+                "{}/stable/financial-growth?symbol={symbol}&period=quarter&limit=8",
+                self.stable_base_url()
+            )),
             _ => Err(format!("不支持的 financials 组件: {component}")),
         }
     }
@@ -424,16 +623,18 @@ impl DataFetchTool {
         let balance_url = self.build_financials_component_url("balance_sheet_quarter", ticker)?;
         let cash_flow_url = self.build_financials_component_url("cash_flow_quarter", ticker)?;
         let estimates_url = self.build_financials_component_url("analyst_estimates", ticker)?;
+        let growth_url = self.build_financials_component_url("financial_growth", ticker)?;
         let ttl = ttl_for_data_type("financials");
         // Every component keeps the `financials` cache label: the caching
         // policy refuses to memoize an empty payload for this data type, and a
         // component-specific label would silently opt out of that rule.
-        let (annual, quarterly, balance_sheet, cash_flow, estimates) = tokio::join!(
+        let (annual, quarterly, balance_sheet, cash_flow, estimates, growth) = tokio::join!(
             self.fetch_from_url_cached(&annual_url, ttl, "financials"),
             self.fetch_from_url_cached(&quarter_url, ttl, "financials"),
             self.fetch_from_url_cached(&balance_url, ttl, "financials"),
             self.fetch_from_url_cached(&cash_flow_url, ttl, "financials"),
             self.fetch_from_url_cached(&estimates_url, ttl, "financials"),
+            self.fetch_from_url_cached(&growth_url, ttl, "financials"),
         );
         // The annual statement is the only component the older evidence
         // normalizer reads, so a total failure there stays a failure.
@@ -444,6 +645,7 @@ impl DataFetchTool {
             balance_sheet.ok(),
             cash_flow.ok(),
             estimates.ok(),
+            growth.ok(),
         ))
     }
 
@@ -459,6 +661,10 @@ impl DataFetchTool {
                 "{stable}/stable/price-target-consensus?symbol={symbol}"
             )),
             "ratings_snapshot" => Ok(format!("{stable}/stable/ratings-snapshot?symbol={symbol}")),
+            "price_target_summary" => Ok(format!(
+                "{stable}/stable/price-target-summary?symbol={symbol}"
+            )),
+            "grades_consensus" => Ok(format!("{stable}/stable/grades-consensus?symbol={symbol}")),
             _ => Err(format!("不支持的 earnings_outlook 组件: {component}")),
         }
     }
@@ -753,7 +959,11 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
         }
         "news" => Some(FMP_TTL_NEWS),
         "profile" | "search" | "etf_holdings" => Some(FMP_TTL_PROFILE),
-        "financials" => Some(FMP_TTL_FINANCIALS),
+        "financials" | "valuation" | "segments" | "ownership" | "corporate_actions" => {
+            Some(FMP_TTL_FINANCIALS)
+        }
+        "peers" | "market_hours" | "macro" => Some(FMP_TTL_PROFILE),
+        "press_releases" | "transcript" => Some(FMP_TTL_NEWS),
         "earnings_calendar" | "earnings_outlook" => Some(FMP_TTL_EARNINGS),
         _ => None,
     }
@@ -763,6 +973,13 @@ fn should_cache_fmp_value(data_type: &str, value: &Value) -> bool {
     if !matches!(
         data_type,
         "financials"
+            | "valuation"
+            | "segments"
+            | "peers"
+            | "ownership"
+            | "corporate_actions"
+            | "press_releases"
+            | "transcript"
             | "profile"
             | "search"
             | "etf_holdings"
@@ -1069,6 +1286,47 @@ fn attach_quote_evidence_quality(value: &mut Value) {
     );
 }
 
+fn urlencoding_encode(raw: &str) -> String {
+    raw.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            b' ' => "%20".to_string(),
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
+
+/// Altman Z and Piotroski are published as bare numbers. Without their bands a
+/// reader cannot tell whether 2.4 is good, and the model is left to supply a
+/// threshold from memory — so the bands travel with the score.
+fn financial_score_semantics(data: &Value) -> Value {
+    let scores = data
+        .get("financial_scores")
+        .and_then(|value| value.as_array().and_then(|rows| rows.first()))
+        .or_else(|| data.get("financial_scores"));
+    let altman = scores.and_then(|row| statement_number(row, &["altmanZScore"]));
+    let piotroski = scores.and_then(|row| statement_number(row, &["piotroskiScore"]));
+    let altman_band = altman.map(|value| {
+        if value > 2.99 {
+            "safe_zone"
+        } else if value >= 1.81 {
+            "grey_zone"
+        } else {
+            "distress_zone"
+        }
+    });
+    serde_json::json!({
+        "altman_z_score": optional_number(altman),
+        "altman_band": altman_band.map_or(Value::Null, |band| Value::String(band.to_string())),
+        "altman_bands": "safe_zone >2.99；grey_zone 1.81-2.99；distress_zone <1.81。该模型面向制造业，对金融、地产与部分轻资产科技公司解释力有限，引用时说明这一限制。",
+        "piotroski_score": optional_number(piotroski),
+        "piotroski_scale": "0-9 分，衡量盈利能力、杠杆与经营效率的九项二元检验；7 分及以上通常视为基本面稳健，3 分及以下偏弱。",
+        "policy": "这些是 provider 发布的标准化评分，属于本轮可引用证据；引用时写明分数、所属区间与模型适用性限制，不要改写成自制评级，也不要在没有取到分数时凭记忆给出。"
+    })
+}
+
 fn statement_rows(value: Option<&Value>) -> &[Value] {
     value.and_then(Value::as_array).map_or(&[], Vec::as_slice)
 }
@@ -1269,6 +1527,7 @@ fn build_financials_bundle(
     balance_sheet: Option<Value>,
     cash_flow: Option<Value>,
     estimates: Option<Value>,
+    growth: Option<Value>,
 ) -> Value {
     // Derive everything that reads the rows before the arrays are moved into
     // the payload.
@@ -1292,6 +1551,7 @@ fn build_financials_bundle(
         ("quarterly_balance_sheet", balance_sheet.as_ref()),
         ("quarterly_cash_flow", cash_flow.as_ref()),
         ("analyst_estimates", estimates.as_ref()),
+        ("financial_growth", growth.as_ref()),
     ]
     .into_iter()
     .map(|(name, value)| {
@@ -1336,6 +1596,9 @@ fn build_financials_bundle(
     }
     if let Some(forward) = forward_summary {
         payload["hone_forward"] = forward;
+    }
+    if let Some(growth) = growth.filter(has_meaningful_fmp_value) {
+        payload["hone_financial_growth"] = growth;
     }
     payload
 }
@@ -1768,7 +2031,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计与 hone_latest_quarter 的环比/同比/毛利率/经营现金流；hone_statement_coverage 标出哪张表没取到）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -1888,13 +2151,76 @@ impl Tool for DataFetchTool {
         }
 
         if data_type == "snapshot" {
-            let quote = self
-                .fetch_data_type("quote", ticker)
-                .await
-                .map(normalize_quote_timestamp_metadata);
-            let profile = self.fetch_data_type("profile", ticker).await;
-            let news = self.fetch_data_type("news", ticker).await;
-            return Ok(self.build_snapshot_response(ticker, quote, profile, news));
+            let stable = self.stable_base_url();
+            let price_change_url = format!("{stable}/stable/stock-price-change?symbol={ticker}");
+            let aftermarket_url = format!("{stable}/stable/aftermarket-quote?symbol={ticker}");
+            // These were three sequential round-trips for no reason; nothing
+            // downstream depends on an earlier one.
+            let (quote, profile, news, price_change, aftermarket) = tokio::join!(
+                self.fetch_data_type("quote", ticker),
+                self.fetch_data_type("profile", ticker),
+                self.fetch_data_type("news", ticker),
+                self.fetch_from_url_cached(&price_change_url, ttl_for_data_type("quote"), "quote"),
+                self.fetch_from_url_cached(
+                    &aftermarket_url,
+                    ttl_for_data_type("extended_hours"),
+                    "extended_hours"
+                ),
+            );
+            let mut payload = self.build_snapshot_response(
+                ticker,
+                quote.map(normalize_quote_timestamp_metadata),
+                profile,
+                news,
+            );
+            // Multi-period performance answers "how has this done lately"
+            // without spending another research round on a chart.
+            if let Some(change) = price_change.ok().filter(has_meaningful_fmp_value) {
+                payload["data"]["price_change"] = change;
+                payload["hone_price_change_semantics"] = Value::String(
+                    "price_change 各字段是相对当前价的区间涨跌幅（1D/5D/1M/3M/6M/YTD/1Y/3Y/5Y/10Y/max），单位为百分数；它是区间表现，不是某一天的涨跌。".to_string(),
+                );
+            }
+            // The provider's own post-market quote, independent of the minute
+            // bars Hone aggregates itself.
+            if let Some(after) = aftermarket.ok().filter(has_meaningful_fmp_value) {
+                payload["data"]["aftermarket_quote"] = after;
+                payload["hone_aftermarket_semantics"] = Value::String(
+                    "aftermarket_quote 是 provider 直接给出的盘后买卖盘与时间戳，与 extended_hours 的分钟汇总互为印证；两者不一致时以时间戳更新者为准并说明来源。".to_string(),
+                );
+            }
+            return Ok(payload);
+        }
+
+        if data_type == "extended_hours" {
+            let stable = self.stable_base_url();
+            let after_quote_url = format!("{stable}/stable/aftermarket-quote?symbol={ticker}");
+            let after_trade_url = format!("{stable}/stable/aftermarket-trade?symbol={ticker}");
+            let extended_ttl = ttl_for_data_type("extended_hours");
+            let (bars, after_quote, after_trade) = tokio::join!(
+                self.fetch_data_type("extended_hours", ticker),
+                self.fetch_from_url_cached(&after_quote_url, extended_ttl, "extended_hours"),
+                self.fetch_from_url_cached(&after_trade_url, extended_ttl, "extended_hours"),
+            );
+            let bars = match bars {
+                Ok(bars) => bars,
+                Err(err) => return Ok(serde_json::json!({ "error": err })),
+            };
+            let mut normalized = match normalize_extended_hours_bar(ticker, &bars) {
+                Ok(bar) => bar,
+                Err(err) => return Ok(serde_json::json!({ "error": err })),
+            };
+            if let Some(quote) = after_quote.ok().filter(has_meaningful_fmp_value) {
+                normalized["hone_aftermarket_quote"] = quote;
+            }
+            if let Some(trade) = after_trade.ok().filter(has_meaningful_fmp_value) {
+                normalized["hone_aftermarket_trade"] = trade;
+            }
+            return Ok(serde_json::json!({
+                "data_type": data_type,
+                "ticker": ticker,
+                "data": normalized
+            }));
         }
 
         if data_type == "earnings_outlook" {
@@ -1911,6 +2237,12 @@ impl Tool for DataFetchTool {
             let ratings_url = self
                 .build_earnings_outlook_url("ratings_snapshot", ticker)
                 .expect("validated earnings symbol");
+            let target_summary_url = self
+                .build_earnings_outlook_url("price_target_summary", ticker)
+                .expect("validated earnings symbol");
+            let grades_url = self
+                .build_earnings_outlook_url("grades_consensus", ticker)
+                .expect("validated earnings symbol");
             let (
                 quote,
                 profile,
@@ -1919,6 +2251,8 @@ impl Tool for DataFetchTool {
                 price_target_consensus,
                 ratings_snapshot,
                 financials,
+                price_target_summary,
+                grades_consensus,
             ) = tokio::join!(
                 self.fetch_data_type("quote", ticker),
                 self.fetch_data_type("profile", ticker),
@@ -1943,8 +2277,18 @@ impl Tool for DataFetchTool {
                     "earnings_outlook_ratings_snapshot"
                 ),
                 self.fetch_financials_bundle(ticker),
+                self.fetch_from_url_cached(
+                    &target_summary_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook"
+                ),
+                self.fetch_from_url_cached(
+                    &grades_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_outlook"
+                ),
             );
-            return Ok(self.build_earnings_outlook_response(
+            let mut payload = self.build_earnings_outlook_response(
                 ticker,
                 quote.map(normalize_quote_timestamp_metadata),
                 profile,
@@ -1953,7 +2297,87 @@ impl Tool for DataFetchTool {
                 price_target_consensus,
                 ratings_snapshot,
                 financials,
-            ));
+            );
+            // A single consensus target hides the spread and the revision
+            // direction; the rating distribution hides how lopsided it is.
+            if let Some(summary) = price_target_summary.ok().filter(has_meaningful_fmp_value) {
+                payload["data"]["price_target_summary"] = summary;
+            }
+            if let Some(grades) = grades_consensus.ok().filter(has_meaningful_fmp_value) {
+                payload["data"]["grades_consensus"] = grades;
+            }
+            return Ok(payload);
+        }
+
+        // Peer comparison is two-stage: the registry names the peers, then one
+        // batch quote prices them. Doing it here means "is it expensive?" has
+        // an anchor instead of being answered from the model's memory of who
+        // the competitors are.
+        if data_type == "peers" {
+            let stable = self.stable_base_url();
+            let peers = self
+                .fetch_from_url_cached(
+                    &format!("{stable}/stable/stock-peers?symbol={ticker}"),
+                    ttl_for_data_type(data_type),
+                    data_type,
+                )
+                .await;
+            let peer_symbols = peers
+                .as_ref()
+                .ok()
+                .and_then(Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .filter_map(|row| row.get("symbol").and_then(Value::as_str))
+                        .take(8)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let quotes = if peer_symbols.is_empty() {
+                None
+            } else {
+                self.fetch_from_url_cached(
+                    &format!(
+                        "{stable}/stable/batch-quote?symbols={}",
+                        peer_symbols.join(",")
+                    ),
+                    ttl_for_data_type("quote"),
+                    "quote",
+                )
+                .await
+                .ok()
+            };
+            let mut payload = serde_json::json!({
+                "data_type": data_type,
+                "ticker": ticker,
+                "data": {
+                    "peers": peers.unwrap_or(Value::Null),
+                    "peer_quotes": quotes.unwrap_or(Value::Null),
+                },
+                "hone_peer_policy": "peers 来自 provider 的同业列表，不是模型记忆里的竞争对手；引用时写明是 provider 同业分类。对比倍数时同业与本标的必须用同一口径，并注意各家财年结束月份不同。"
+            });
+            if let Some(pe) = self.fetch_sector_industry_pe(&payload).await {
+                payload["data"]["industry_pe_snapshot"] = pe;
+            }
+            return Ok(payload);
+        }
+
+        if let Some(components) = self.stable_bundle_components(data_type, ticker, &args) {
+            let (data, coverage, errors) = self.fetch_stable_bundle(data_type, components).await;
+            let mut payload = serde_json::json!({
+                "data_type": data_type,
+                "ticker": ticker,
+                "data": data,
+                "coverage": coverage,
+                "evidence_policy": "coverage 为 unavailable/empty 的组件本轮确实没有数据，必须按缺口披露，不得由其它组件或记忆推算。"
+            });
+            if let Some(errors) = errors {
+                payload["errors"] = errors;
+            }
+            if data_type == "valuation" {
+                payload["hone_score_semantics"] = financial_score_semantics(&payload["data"]);
+            }
+            return Ok(payload);
         }
 
         if data_type == "financials" {
@@ -2023,11 +2447,12 @@ mod tests {
     use super::{
         DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
-        fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
-        normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
-        price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
-        should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
-        validated_data_fetch_symbols, valuation_basis_quality,
+        financial_score_semantics, fmp_base_url_is_loopback, forward_twelve_month_summary,
+        nonempty_fmp_error_message, normalize_extended_hours_bar,
+        normalize_quote_timestamp_metadata, price_target_consensus_quality,
+        sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
+        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
+        valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -3506,6 +3931,117 @@ mod tests {
                 .is_none()
         );
         assert_eq!(second["data"]["profile"][0]["companyName"], "Apple Inc.");
-        assert_eq!(request_count.load(Ordering::SeqCst), 3);
+        // quote, profile, news, stock-price-change, aftermarket-quote — all
+        // issued once and served from cache on the second call. The multi-period
+        // performance and the provider's own post-market quote ride along with
+        // the snapshot instead of costing a separate research round.
+        assert_eq!(request_count.load(Ordering::SeqCst), 5);
+        assert!(first["data"].get("price_change").is_some());
+        assert!(first["data"].get("aftermarket_quote").is_some());
+    }
+
+    #[tokio::test]
+    async fn a_bundle_reports_each_component_it_failed_to_get() {
+        // A capability that silently drops a failed component reads as "this
+        // company has no insider trades" rather than "that call failed".
+        let (addr, _requests) = spawn_path_scripted_http_server(vec![
+            (
+                "key-metrics-ttm",
+                vec![r#"[{"symbol":"SNDK","returnOnEquityTTM":1.24,"evToEBITDATTM":9.1}]"#],
+            ),
+            (
+                "financial-scores",
+                vec![r#"[{"symbol":"SNDK","altmanZScore":2.4,"piotroskiScore":7}]"#],
+            ),
+            ("ratios-ttm", vec!["[]"]),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "valuation", "ticker": "SNDK"}))
+            .await
+            .expect("valuation payload");
+
+        assert_eq!(payload["data"]["key_metrics_ttm"][0]["evToEBITDATTM"], 9.1);
+        assert_eq!(payload["coverage"]["key_metrics_ttm"], "available");
+        // Present but empty is a different fact from never returned, and both
+        // are different from "available".
+        assert_eq!(payload["coverage"]["ratios_ttm"], "empty");
+        assert_eq!(payload["coverage"]["discounted_cash_flow"], "empty");
+
+        // The bands travel with the score so 2.4 is not left to be judged from
+        // whatever threshold the model remembers.
+        assert_eq!(payload["hone_score_semantics"]["altman_z_score"], 2.4);
+        assert_eq!(payload["hone_score_semantics"]["altman_band"], "grey_zone");
+        assert_eq!(payload["hone_score_semantics"]["piotroski_score"], 7.0);
+    }
+
+    #[tokio::test]
+    async fn symbol_independent_bundles_resolve_without_a_ticker() {
+        // Treasury rates and exchange hours are not properties of a security;
+        // requiring a ticker for them would make the macro context reachable
+        // only inside a company question.
+        let (addr, _requests) = spawn_path_scripted_http_server(vec![
+            (
+                "treasury-rates",
+                vec![r#"[{"date":"2026-08-06","month3":4.1,"year10":4.35}]"#],
+            ),
+            (
+                "all-exchange-market-hours",
+                vec![r#"[{"exchange":"NASDAQ","openingHour":"09:30","closingHour":"16:00"}]"#],
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let macro_payload = tool
+            .execute(json!({"data_type": "macro"}))
+            .await
+            .expect("macro payload");
+        assert_eq!(macro_payload["data"]["treasury_rates"][0]["year10"], 4.35);
+        assert_eq!(macro_payload["coverage"]["treasury_rates"], "available");
+
+        let hours = tool
+            .execute(json!({"data_type": "market_hours"}))
+            .await
+            .expect("market hours payload");
+        assert_eq!(
+            hours["data"]["all_exchange_market_hours"][0]["exchange"],
+            "NASDAQ"
+        );
+
+        assert!(!data_fetch_data_type_uses_security_target("macro"));
+        assert!(!data_fetch_data_type_uses_security_target("market_hours"));
+        assert!(data_fetch_data_type_uses_security_target("valuation"));
+        assert!(data_fetch_data_type_uses_security_target("segments"));
+        assert!(data_fetch_data_type_uses_security_target("peers"));
+    }
+
+    #[test]
+    fn altman_bands_follow_the_published_thresholds() {
+        let band = |score: f64| {
+            financial_score_semantics(&json!({"financial_scores": [{"altmanZScore": score}]}))
+                ["altman_band"]
+                .as_str()
+                .map(str::to_string)
+        };
+        assert_eq!(band(3.0), Some("safe_zone".to_string()));
+        assert_eq!(band(2.99), Some("grey_zone".to_string()));
+        assert_eq!(band(1.81), Some("grey_zone".to_string()));
+        assert_eq!(band(1.80), Some("distress_zone".to_string()));
+        // No score means no band, rather than a default that reads as a verdict.
+        assert_eq!(
+            financial_score_semantics(&json!({}))["altman_band"],
+            serde_json::Value::Null
+        );
     }
 }

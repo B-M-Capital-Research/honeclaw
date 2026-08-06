@@ -274,6 +274,44 @@ else
   record fail "46.comparable-window-and-forward-basis" "comparisons can again mix fiscal years, forward multiples can be invented, or an uncovered listing can be dropped from the answer"
 fi
 
+# The provider publishes official trailing ratios, enterprise value, health
+# scores, segment revenue, peers and market hours. Recomputing a subset by hand
+# and having no source for the rest is what forced every earlier gap to be
+# closed one endpoint at a time, so the capability surface is table-driven and
+# locked here rather than rediscovered from the next wrong answer.
+if contains 'fn stable_bundle_components' "$DATA_FETCH" \
+  && contains 'fn fetch_stable_bundle' "$DATA_FETCH" \
+  && contains 'key-metrics-ttm' "$DATA_FETCH" \
+  && contains 'ratios-ttm' "$DATA_FETCH" \
+  && contains 'enterprise-values' "$DATA_FETCH" \
+  && contains 'financial-scores' "$DATA_FETCH" \
+  && contains 'discounted-cash-flow' "$DATA_FETCH" \
+  && contains 'revenue-product-segmentation' "$DATA_FETCH" \
+  && contains 'revenue-geographic-segmentation' "$DATA_FETCH" \
+  && contains 'stock-peers' "$DATA_FETCH" \
+  && contains 'industry-pe-snapshot' "$DATA_FETCH" \
+  && contains 'stock-price-change' "$DATA_FETCH" \
+  && contains 'aftermarket-quote' "$DATA_FETCH" \
+  && contains 'financial-growth' "$DATA_FETCH" \
+  && contains 'price-target-summary' "$DATA_FETCH" \
+  && contains 'grades-consensus' "$DATA_FETCH" \
+  && contains 'insider-trading/statistics' "$DATA_FETCH" \
+  && contains 'symbol-positions-summary' "$DATA_FETCH" \
+  && contains 'earning-call-transcript' "$DATA_FETCH" \
+  && contains 'all-exchange-market-hours' "$DATA_FETCH" \
+  && contains 'treasury-rates' "$DATA_FETCH" \
+  && contains 'fn financial_score_semantics' "$DATA_FETCH" \
+  && contains 'altman_band' "$DATA_FETCH" \
+  && contains 'a_bundle_reports_each_component_it_failed_to_get' "$DATA_FETCH" \
+  && contains 'altman_bands_follow_the_published_thresholds' "$DATA_FETCH" \
+  && contains 'symbol_independent_bundles_resolve_without_a_ticker' "$DATA_FETCH" \
+  && contains '"data_type": "valuation", "ticker": symbol' "$INVESTMENT_GUARD" \
+  && contains '另附 `valuation`' "$INVESTMENT_GUARD"; then
+  record success "47.provider-capability-coverage" "official trailing ratios, enterprise value, Altman/Piotroski scores with their bands, segment revenue, provider peers with an industry P/E anchor, multi-period performance, official aftermarket quotes, growth, target/grade detail, ownership, transcripts, macro and exchange hours are all reachable, table-driven, and preloaded for valuation"
+else
+  record fail "47.provider-capability-coverage" "the provider surface can regress to hand-computed subsets, leaving whole question classes unanswerable until the next wrong answer exposes them"
+fi
+
 if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
   record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
 else
@@ -701,8 +739,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 46 ]; then
-  echo "[ERROR] acceptance failed: expected all 46 successes"
+if [ "$success" -lt 47 ]; then
+  echo "[ERROR] acceptance failed: expected all 47 successes"
   exit 1
 fi
 

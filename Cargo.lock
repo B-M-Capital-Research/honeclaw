@@ -3092,6 +3092,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "chrono-tz",
+ "futures",
  "glob",
  "hone-core",
  "hone-event-engine",

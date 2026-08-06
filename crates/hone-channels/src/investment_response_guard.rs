@@ -3065,7 +3065,7 @@ async fn run_pre_turn_enrichment(
         // A quote alone cannot answer why a business moved: without the
         // quarterly trend, margins and cash flow the turn either spends a
         // research round fetching them or — more often — answers without them.
-        let (fetched, extended, fundamentals) = futures::future::join3(
+        let (fetched, extended, fundamentals, valuation) = futures::future::join4(
             futures::future::join_all(pending.iter().map(|(_, symbol)| {
                 registry.execute_tool(
                     "data_fetch",
@@ -3100,6 +3100,22 @@ async fn run_pre_turn_enrichment(
                 .await
                 .unwrap_or_default()
             },
+            // Official trailing ratios, enterprise value and the published
+            // health scores. Recomputing a subset of these by hand was how the
+            // turn ended up publishing a multiple against the wrong period.
+            async {
+                tokio::time::timeout(
+                    PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
+                    futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+                        registry.execute_tool(
+                            "data_fetch",
+                            json!({"data_type": "valuation", "ticker": symbol}),
+                        )
+                    })),
+                )
+                .await
+                .unwrap_or_default()
+            },
         )
         .await;
         for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
@@ -3110,11 +3126,20 @@ async fn run_pre_turn_enrichment(
             .into_iter()
             .map(|(_, value)| value)
             .collect::<Vec<_>>();
-        (web, identities, resolved, snapshots, extended, fundamentals)
+        (
+            web,
+            identities,
+            resolved,
+            snapshots,
+            extended,
+            fundamentals,
+            valuation,
+        )
     })
     .await;
 
-    let Ok((web, identities, resolved, snapshots, extended, fundamentals)) = staged else {
+    let Ok((web, identities, resolved, snapshots, extended, fundamentals, valuation)) = staged
+    else {
         tracing::warn!(
             channel = %actor.channel,
             user_id = %actor.user_id,
@@ -3192,6 +3217,15 @@ async fn run_pre_turn_enrichment(
             }
         }
     }
+    for ((_, symbol), bundle) in resolved.iter().zip(valuation.iter()) {
+        if let Some(value) = bundle.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            sections.push(format!(
+                "- `data_fetch(valuation, ticker={symbol:?})` →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT)
+            ));
+        }
+    }
     let mut live_extended_count = 0usize;
     let mut summary_extended_count = 0usize;
     for ((_, symbol), bar) in resolved.iter().zip(extended.iter()) {
@@ -3247,7 +3281,7 @@ async fn run_pre_turn_enrichment(
         if fundamentals_count == 0 {
             ""
         } else {
-            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
+            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n另附 `valuation`：官方 TTM 指标与比率（PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率）、企业价值、流通股、DCF，以及 `hone_score_semantics` 里的 Altman Z 与 Piotroski 分数及其区间语义。回答估值、回报率、偿债能力或财务健康时优先引用这些官方口径，不要用报表自己硬算；`coverage` 标为 empty/unavailable 的组件才是缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
         },
         if live_extended_count + summary_extended_count == 0 {
             ""
