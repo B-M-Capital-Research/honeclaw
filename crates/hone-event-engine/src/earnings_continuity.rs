@@ -31,6 +31,9 @@ pub const DEFAULT_EARNINGS_CONTINUITY_SYSTEM_PROMPT: &str = r#"你是专业股�
 硬规则：
 1. existing_items 中每一个项目都必须出现在 existing_item_updates。没有直接证据时保持原状态，并写“本季材料未回答”，不能让旧问题静默消失。
 2. 只有输入明确回答时才能标 answered / confirmed；只回答一部分用 partially_answered；出现直接反证用 contradicted；到期且材料明确不再适用才用 expired。
+   - open_question：完全回答才可用 answered + resolution_basis=answered；部分回答用 partially_answered + partial_answer；不得用 confirmed。
+   - management_commitment：仅当承诺事项已经实际发生/交付且证据明确时，才可用 confirmed + fulfilled；只是重申计划、仍 on track、维持指引或尚未到期时必须保持 open + reaffirmed。部分兑现用 partially_answered + partially_fulfilled；明确撤回或未兑现用 contradicted + missed_or_withdrawn；不得用 answered。
+   - 任何非 open 状态都必须有 evidence；状态与 resolution_basis 不匹配时系统会保持原状态。
 3. new_commitments 只能记录管理层明确作出的、未来可核验的承诺或量化指引，不能把模型推断、愿景或一般性措辞写成承诺。
 4. new_questions 必须会影响投资主线或下一次决策，而且说明预期验证材料或时间；不要生成“继续关注宏观环境”一类泛化问题。
 5. thesis_effect 只是供用户确认的本季建议，不得声称已经修改主线。只要 Saved profile sections 中“投资主线”不是“待补充”占位文字，就视为已有有效用户主线，必须在 strengthen / unchanged / watch / weaken 中选择；市场共识或“预期基线”缺失不等于投资主线缺失。只有“投资主线”本身缺失或仍是占位文字时才可用 insufficient_baseline。
@@ -42,7 +45,7 @@ pub const DEFAULT_EARNINGS_CONTINUITY_SYSTEM_PROMPT: &str = r#"你是专业股�
   "thesis_effect": "strengthen|unchanged|watch|weaken|insufficient_baseline",
   "thesis_reason_zh": "为什么，最多两句",
   "existing_item_updates": [
-    {"item_id":"原 ID", "status":"open|partially_answered|answered|confirmed|contradicted|expired", "assessment_zh":"最多60字的本季核对结论", "evidence":["最多1条、最多60字的输入内证据"]}
+    {"item_id":"原 ID", "status":"open|partially_answered|answered|confirmed|contradicted|expired", "resolution_basis":"none|reaffirmed|partial_answer|answered|partially_fulfilled|fulfilled|missed_or_withdrawn|superseded", "assessment_zh":"最多60字的本季核对结论", "evidence":["最多1条、最多60字的输入内证据"]}
   ],
   "new_questions": [
     {"statement":"可在未来核验的问题", "due_at":"预计季度/日期/材料", "reason_zh":"为何影响主线"}
@@ -57,6 +60,8 @@ pub const DEFAULT_EARNINGS_CONTINUITY_SYSTEM_PROMPT: &str = r#"你是专业股�
 pub struct ExistingResearchItemUpdate {
     pub item_id: String,
     pub status: String,
+    #[serde(default)]
+    pub resolution_basis: String,
     #[serde(default)]
     pub assessment_zh: String,
     #[serde(default)]
@@ -173,7 +178,7 @@ impl LlmEarningsContinuityReconciler {
         actor: &ActorIdentity,
         event: &MarketEvent,
     ) -> Option<CompanyProfileDocument> {
-        if !is_structured_earnings_review(event) {
+        if continuity_review_stage(event).is_none() {
             return None;
         }
         let profile = self.load_profile(actor, event)?;
@@ -272,16 +277,18 @@ impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
     ) -> Option<EarningsContinuityOutcome> {
         let profile = self.load_target_profile(actor, event)?;
         let research_object_key = earnings_research_object_key(event);
-        if let Some(existing) = existing_outcome(&profile, &research_object_key) {
+        let stage = continuity_review_stage(event)?;
+        if let Some(existing) = existing_outcome(&profile, &research_object_key, stage) {
             return Some(existing);
         }
 
         let inflight_key = format!(
-            "{}::{}::{}::{}",
+            "{}::{}::{}::{}::{}",
             actor.channel,
             actor.channel_scope.clone().unwrap_or_default(),
             actor.user_id,
-            research_object_key
+            research_object_key,
+            stage
         );
         {
             let mut inflight = self.inflight.lock().ok()?;
@@ -447,24 +454,44 @@ fn build_continuity_messages(
         .count();
     let new_questions_limit = 8usize.saturating_sub(active_questions).min(2);
     let new_commitments_limit = 6usize.saturating_sub(active_commitments).min(2);
-    let quality_review = event
-        .payload
-        .get("earnings_quality_review")
-        .cloned()
-        .unwrap_or(Value::Null);
+    let stage = continuity_review_stage(event).unwrap_or("earnings_release");
+    let (material_label, review_label, review) = if stage == "earnings_transcript" {
+        (
+            "verified earnings-call transcript review",
+            "Transcript review JSON",
+            event
+                .payload
+                .get("earnings_transcript_review")
+                .cloned()
+                .unwrap_or(Value::Null),
+        )
+    } else {
+        (
+            "verified earnings event",
+            "Quality review JSON",
+            event
+                .payload
+                .get("earnings_quality_review")
+                .cloned()
+                .unwrap_or(Value::Null),
+        )
+    };
     let user = format!(
-        "Company: {} ({})\nCoverage tier: {}\nnew_questions_limit: {}\nnew_commitments_limit: {}\n\nSaved profile sections:\n{}\n\nexisting_items:\n{}\n\nCurrent verified earnings event:\nTitle: {}\nOccurred at: {}\nSummary:\n{}\nQuality review JSON:\n{}\nSource URL: {}",
+        "Company: {} ({})\nCoverage tier: {}\nReview stage: {}\nnew_questions_limit: {}\nnew_commitments_limit: {}\n\nSaved profile sections:\n{}\n\nexisting_items:\n{}\n\nCurrent {}:\nTitle: {}\nOccurred at: {}\nSummary:\n{}\n{}:\n{}\nSource URL: {}",
         profile.metadata.company_name,
         profile.metadata.stock_code,
         profile.metadata.tracking.coverage_tier.as_str(),
+        stage,
         new_questions_limit,
         new_commitments_limit,
         sections,
         existing_items,
+        material_label,
         event.title,
         event.occurred_at.to_rfc3339(),
         event.summary,
-        quality_review,
+        review_label,
+        review,
         event.url.as_deref().unwrap_or("unavailable"),
     );
     vec![
@@ -531,11 +558,14 @@ fn normalize_review(
     let mut updates = Vec::new();
     for item in active_items {
         let (status, assessment, evidence) = match proposed.get(item.item_id.as_str()) {
-            Some(update) => (
-                parse_research_status(&update.status).unwrap_or_else(|| item.status.clone()),
-                truncate_chars(update.assessment_zh.trim(), 240),
-                clean_strings(&update.evidence, 1, 240),
-            ),
+            Some(update) => {
+                let evidence = clean_strings(&update.evidence, 1, 240);
+                (
+                    validated_existing_status(item, update, !evidence.is_empty()),
+                    truncate_chars(update.assessment_zh.trim(), 240),
+                    evidence,
+                )
+            }
             None => (
                 item.status.clone(),
                 "本季材料未提供足以改变状态的直接证据。".to_string(),
@@ -596,6 +626,42 @@ fn normalize_review(
     ))
 }
 
+fn validated_existing_status(
+    item: &ResearchLedgerItem,
+    update: &ExistingResearchItemUpdate,
+    has_evidence: bool,
+) -> ResearchItemStatus {
+    let proposed = parse_research_status(&update.status).unwrap_or_else(|| item.status.clone());
+    let basis = update.resolution_basis.trim().to_ascii_lowercase();
+    if proposed == ResearchItemStatus::Open {
+        return item.status.clone();
+    }
+    if !has_evidence {
+        return item.status.clone();
+    }
+    match item.kind {
+        ResearchItemKind::OpenQuestion => match (proposed, basis.as_str()) {
+            (ResearchItemStatus::PartiallyAnswered, "partial_answer") => {
+                ResearchItemStatus::PartiallyAnswered
+            }
+            (ResearchItemStatus::Answered, "answered") => ResearchItemStatus::Answered,
+            (ResearchItemStatus::Expired, "superseded") => ResearchItemStatus::Expired,
+            _ => item.status.clone(),
+        },
+        ResearchItemKind::ManagementCommitment => match (proposed, basis.as_str()) {
+            (ResearchItemStatus::PartiallyAnswered, "partially_fulfilled") => {
+                ResearchItemStatus::PartiallyAnswered
+            }
+            (ResearchItemStatus::Confirmed, "fulfilled") => ResearchItemStatus::Confirmed,
+            (ResearchItemStatus::Contradicted, "missed_or_withdrawn") => {
+                ResearchItemStatus::Contradicted
+            }
+            (ResearchItemStatus::Expired, "superseded") => ResearchItemStatus::Expired,
+            _ => item.status.clone(),
+        },
+    }
+}
+
 fn new_update(
     kind: ResearchItemKind,
     item: &NewResearchItem,
@@ -628,14 +694,38 @@ fn build_profile_event(
     updates: &[ResearchLedgerUpdate],
     model: &str,
 ) -> AppendEventInput {
+    let stage = continuity_review_stage(event).unwrap_or("earnings_release");
+    let (event_type, title_label, evidence_pointer, source_label) =
+        if stage == "earnings_transcript" {
+            (
+                "earnings_transcript_reconciliation",
+                "电话会连续性复核",
+                "/earnings_transcript_review/prepared_findings",
+                "结构化电话会卡",
+            )
+        } else {
+            (
+                "earnings_reconciliation",
+                "财报连续性复核",
+                "/earnings_quality_review/evidence",
+                "结构化财报卡",
+            )
+        };
     let evidence = event
         .payload
-        .pointer("/earnings_quality_review/evidence")
+        .pointer(evidence_pointer)
         .and_then(Value::as_array)
         .map(|values| {
             values
                 .iter()
-                .filter_map(Value::as_str)
+                .filter_map(|value| {
+                    value.as_str().map(str::to_string).or_else(|| {
+                        value
+                            .get("finding_zh")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                })
                 .take(3)
                 .map(|value| format!("- {}", value.trim()))
                 .collect::<Vec<_>>()
@@ -663,10 +753,11 @@ fn build_profile_event(
     let follow_up = follow_up_items.join("\n");
     AppendEventInput {
         title: format!(
-            "{} 财报连续性复核",
-            event.symbols.first().cloned().unwrap_or_default()
+            "{} {}",
+            event.symbols.first().cloned().unwrap_or_default(),
+            title_label
         ),
-        event_type: "earnings_reconciliation".to_string(),
+        event_type: event_type.to_string(),
         occurred_at: event.occurred_at.to_rfc3339(),
         mainline_impact: thesis_effect.to_string(),
         changed_sections: vec![
@@ -687,7 +778,7 @@ fn build_profile_event(
         mainline_effect: format!("建议状态：{thesis_effect}；等待用户在决策记录中确认。"),
         evidence,
         research_log: format!(
-            "后台连续性复核模型：{model}；仅使用本次结构化财报卡和当前 actor 画像。"
+            "后台连续性复核模型：{model}；仅使用本次{source_label}和当前 actor 画像。"
         ),
         follow_up,
     }
@@ -696,9 +787,15 @@ fn build_profile_event(
 fn existing_outcome(
     profile: &CompanyProfileDocument,
     research_object_key: &str,
+    stage: &str,
 ) -> Option<EarningsContinuityOutcome> {
+    let event_type = if stage == "earnings_transcript" {
+        "earnings_transcript_reconciliation"
+    } else {
+        "earnings_reconciliation"
+    };
     let event = profile.events.iter().find(|event| {
-        event.metadata.event_type == "earnings_reconciliation"
+        event.metadata.event_type == event_type
             && event.metadata.research_object_key.as_deref() == Some(research_object_key)
     })?;
     let ledger = profile.research_ledger();
@@ -790,13 +887,28 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
     }
 }
 
-fn is_structured_earnings_review(event: &MarketEvent) -> bool {
-    matches!(event.kind, EventKind::EarningsReleased)
-        && event
-            .payload
-            .get("earnings_quality_review_applied")
-            .and_then(Value::as_bool)
-            == Some(true)
+pub(crate) fn continuity_review_stage(event: &MarketEvent) -> Option<&'static str> {
+    match event.kind {
+        EventKind::EarningsReleased
+            if event
+                .payload
+                .get("earnings_quality_review_applied")
+                .and_then(Value::as_bool)
+                == Some(true) =>
+        {
+            Some("earnings_release")
+        }
+        EventKind::EarningsCallTranscript
+            if event
+                .payload
+                .get("earnings_transcript_review_applied")
+                .and_then(Value::as_bool)
+                == Some(true) =>
+        {
+            Some("earnings_transcript")
+        }
+        _ => None,
+    }
 }
 
 fn actor_key(actor: &ActorIdentity) -> String {
@@ -941,6 +1053,96 @@ mod tests {
         }
     }
 
+    fn ledger_item(kind: ResearchItemKind) -> ResearchLedgerItem {
+        ResearchLedgerItem {
+            item_id: "item-1".into(),
+            kind,
+            statement: "在2026年发布新产品".into(),
+            status: ResearchItemStatus::Open,
+            first_seen_at: "2026-01-01T00:00:00Z".into(),
+            last_reviewed_at: "2026-01-01T00:00:00Z".into(),
+            due_at: Some("2026".into()),
+            latest_assessment: String::new(),
+            evidence: vec![],
+            latest_event_id: "seed".into(),
+            update_count: 1,
+        }
+    }
+
+    #[test]
+    fn reaffirmed_commitment_cannot_be_closed_as_confirmed() {
+        let item = ledger_item(ResearchItemKind::ManagementCommitment);
+        let update = ExistingResearchItemUpdate {
+            item_id: item.item_id.clone(),
+            status: "confirmed".into(),
+            resolution_basis: "reaffirmed".into(),
+            assessment_zh: "管理层仍称按计划推进。".into(),
+            evidence: vec!["仍计划在2026年发布".into()],
+        };
+        assert_eq!(
+            validated_existing_status(&item, &update, true),
+            ResearchItemStatus::Open
+        );
+    }
+
+    #[test]
+    fn only_evidenced_fulfillment_closes_management_commitment() {
+        let item = ledger_item(ResearchItemKind::ManagementCommitment);
+        let mut update = ExistingResearchItemUpdate {
+            item_id: item.item_id.clone(),
+            status: "confirmed".into(),
+            resolution_basis: "fulfilled".into(),
+            assessment_zh: "产品已正式发布。".into(),
+            evidence: vec!["本季已发布并开始出货".into()],
+        };
+        assert_eq!(
+            validated_existing_status(&item, &update, true),
+            ResearchItemStatus::Confirmed
+        );
+        assert_eq!(
+            validated_existing_status(&item, &update, false),
+            ResearchItemStatus::Open
+        );
+        update.status = "answered".into();
+        assert_eq!(
+            validated_existing_status(&item, &update, true),
+            ResearchItemStatus::Open
+        );
+    }
+
+    #[test]
+    fn question_and_commitment_resolution_vocabularies_do_not_cross() {
+        let item = ledger_item(ResearchItemKind::OpenQuestion);
+        let update = ExistingResearchItemUpdate {
+            item_id: item.item_id.clone(),
+            status: "confirmed".into(),
+            resolution_basis: "fulfilled".into(),
+            assessment_zh: "不适用的问题状态。".into(),
+            evidence: vec!["有证据但状态类型错误".into()],
+        };
+        assert_eq!(
+            validated_existing_status(&item, &update, true),
+            ResearchItemStatus::Open
+        );
+    }
+
+    #[test]
+    fn open_without_new_resolution_never_erases_partial_progress() {
+        let mut item = ledger_item(ResearchItemKind::OpenQuestion);
+        item.status = ResearchItemStatus::PartiallyAnswered;
+        let update = ExistingResearchItemUpdate {
+            item_id: item.item_id.clone(),
+            status: "open".into(),
+            resolution_basis: "none".into(),
+            assessment_zh: "本季没有新增回答。".into(),
+            evidence: vec![],
+        };
+        assert_eq!(
+            validated_existing_status(&item, &update, false),
+            ResearchItemStatus::PartiallyAnswered
+        );
+    }
+
     fn tracked_profile(storage: &CompanyProfileStorage) -> CompanyProfileDocument {
         let scoped = storage.for_actor(&actor());
         let mut sections = BTreeMap::new();
@@ -1010,6 +1212,84 @@ mod tests {
             .expect("existing outcome");
         assert_eq!(second.recorded_event_id, first.recorded_event_id);
         assert_eq!(*provider.calls.lock().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn reviewed_transcript_gets_a_distinct_same_quarter_reconciliation() {
+        let dir = tempdir().unwrap();
+        let storage = CompanyProfileStorage::new(dir.path());
+        let profile = tracked_profile(&storage);
+        let provider = Arc::new(StaticProvider {
+            response: json!({
+                "thesis_effect": "strengthen",
+                "thesis_reason_zh": "电话会直接回答了企业级订单持续性。",
+                "existing_item_updates": [],
+                "new_questions": [],
+                "new_commitments": [],
+                "next_actions": ["下季复核订单转化"]
+            })
+            .to_string(),
+            calls: Mutex::new(0),
+        });
+        let reconciler = LlmEarningsContinuityReconciler::new(
+            provider.clone(),
+            "x-ai/grok-4.5",
+            CompanyProfileStorage::new(dir.path()),
+        );
+
+        let release = reconciler
+            .reconcile(&actor(), &event())
+            .await
+            .expect("release reconciliation");
+        let mut transcript = event();
+        transcript.id = "transcript:SNDK:2026-q2:reviewed".into();
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.title = "电话会：较此前更有信心".into();
+        transcript.summary = "分析师问答：企业订单能见度延伸（直接回答）".into();
+        transcript.url = Some("https://ir.example/sndk-q2-transcript.pdf".into());
+        transcript.payload = json!({
+            "hone_earnings_research_object_key": "sec:sndk:q2",
+            "earnings_transcript_review_applied": true,
+            "earnings_transcript_review": {
+                "source_scope": "prepared_and_qa",
+                "management_tone": "more_confident",
+                "prepared_findings": [],
+                "qa_findings": [{
+                    "topic": "订单",
+                    "answer_quality": "direct",
+                    "answer_zh": "企业订单能见度延伸"
+                }]
+            }
+        });
+        assert!(reconciler.should_schedule(&actor(), &transcript));
+        let transcript_outcome = reconciler
+            .reconcile(&actor(), &transcript)
+            .await
+            .expect("transcript reconciliation");
+        assert_ne!(
+            transcript_outcome.recorded_event_id,
+            release.recorded_event_id
+        );
+        assert_eq!(*provider.calls.lock().unwrap(), 2);
+
+        let repeated = reconciler
+            .reconcile(&actor(), &transcript)
+            .await
+            .expect("idempotent transcript reconciliation");
+        assert_eq!(
+            repeated.recorded_event_id,
+            transcript_outcome.recorded_event_id
+        );
+        assert_eq!(*provider.calls.lock().unwrap(), 2);
+        let refreshed = storage
+            .for_actor(&actor())
+            .get_profile(&profile.profile_id)
+            .unwrap()
+            .unwrap();
+        assert!(refreshed.events.iter().any(|event| {
+            event.metadata.event_type == "earnings_transcript_reconciliation"
+                && event.metadata.research_object_key.as_deref() == Some("sec:sndk:q2")
+        }));
     }
 
     #[test]
@@ -1137,6 +1417,7 @@ mod tests {
             existing_item_updates: vec![ExistingResearchItemUpdate {
                 item_id: "open_question-old".to_string(),
                 status: "unexpected_provider_status".to_string(),
+                resolution_basis: "none".to_string(),
                 assessment_zh: "状态字段异常，但评估内容仍可保留。".to_string(),
                 evidence: vec![],
             }],

@@ -1,0 +1,94 @@
+{
+  "version": "2026-08-06",
+  "description": "Eight official IR-hosted full earnings-call transcripts. The fixture stores source URLs and research baselines only; transcript bodies are fetched into memory during the opt-in live replay and are never persisted.",
+  "companies": [
+    {
+      "symbol": "AMD",
+      "company_name": "Advanced Micro Devices",
+      "company_type": "fabless_semiconductor",
+      "thesis": "数据中心 CPU/GPU 份额提升与软件生态成熟能够扩大收入规模，并在高研发投入下改善盈利质量。",
+      "focus_metrics": ["Data Center revenue and growth", "AI accelerator demand and supply", "gross margin", "software ecosystem adoption"],
+      "seed_questions": ["AI 加速器供应和客户部署节奏能否支持全年收入目标？", "数据中心增长中客户集中度与可持续份额提升各占多少？"],
+      "calls": [
+        {
+          "date": "2025-11-04",
+          "period": "2025-Q3",
+          "format": "pdf",
+          "url": "https://d1io3yog0oux5.cloudfront.net/_817d9055fe55c169fc54d22003e81d33/amd/db/841/9182/webcast_transcript/amd3q2025call.pdf"
+        },
+        {
+          "date": "2026-05-05",
+          "period": "2026-Q1",
+          "format": "pdf",
+          "url": "https://d1io3yog0oux5.cloudfront.net/_817d9055fe55c169fc54d22003e81d33/amd/db/841/9232/webcast_transcript/AMD_1Q_2026_Earnings.pdf"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "company_name": "Microsoft",
+      "company_type": "mega_cap_recurring_cloud",
+      "thesis": "Azure 与商业软件的经常性收入可以把 AI 基础设施投入转化为持久增长，但资本开支回报和供给瓶颈决定自由现金流质量。",
+      "focus_metrics": ["Azure growth", "AI capacity and demand", "capital expenditures", "commercial bookings and RPO"],
+      "seed_questions": ["AI 容量限制何时缓解，并会如何影响 Azure 增速？", "资本开支增长何时转化为可观察的收入和现金回报？"],
+      "calls": [
+        {
+          "date": "2025-10-29",
+          "period": "FY2026-Q1",
+          "format": "docx",
+          "url": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftcorp/TranscriptFY26Q1"
+        },
+        {
+          "date": "2026-01-28",
+          "period": "FY2026-Q2",
+          "format": "docx",
+          "url": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftcorp/TranscriptQandAFY26q2"
+        }
+      ]
+    },
+    {
+      "symbol": "QCOM",
+      "company_name": "Qualcomm",
+      "company_type": "diversified_semiconductor_licensing",
+      "thesis": "手机平台与授权业务提供现金流底座，汽车、IoT 与端侧 AI 的规模化决定增长能否摆脱手机周期。",
+      "focus_metrics": ["QCT handset revenue", "automotive pipeline conversion", "IoT revenue", "QTL margin and licensing stability"],
+      "seed_questions": ["汽车设计订单何时转化为可量化收入增量？", "非手机业务增长能否抵消手机需求和客户集中风险？"],
+      "calls": [
+        {
+          "date": "2026-02-04",
+          "period": "FY2026-Q1",
+          "format": "pdf",
+          "url": "https://s204.q4cdn.com/645488518/files/doc_events/2026/Feb/04/Q1FY26-Earnings-Call-Transcript_2-5-26_Final.pdf"
+        },
+        {
+          "date": "2026-04-29",
+          "period": "FY2026-Q2",
+          "format": "pdf",
+          "url": "https://s204.q4cdn.com/645488518/files/doc_events/2026/Apr/29/Q2FY26-Earnings-Call-Transcript_4-30-26_Final.pdf"
+        }
+      ]
+    },
+    {
+      "symbol": "CAT",
+      "company_name": "Caterpillar",
+      "company_type": "cyclical_industrial_backlog",
+      "thesis": "高质量 backlog、服务收入和经销商纪律可缓冲设备周期，同时数据中心电力需求提供新的结构性增长。",
+      "focus_metrics": ["backlog quality and conversion", "dealer inventory", "segment margins", "energy and transportation demand"],
+      "seed_questions": ["backlog 增长中价格、排产和真实终端需求分别贡献多少？", "经销商库存与订单取消是否预示周期拐点？"],
+      "calls": [
+        {
+          "date": "2026-01-29",
+          "period": "2025-Q4",
+          "format": "pdf",
+          "url": "https://s25.q4cdn.com/358376879/files/doc_financials/2025/q4/updated/4Q-2025-Caterpillar-Inc-Earnings-Conference-Call_Transcript.pdf"
+        },
+        {
+          "date": "2026-04-30",
+          "period": "2026-Q1",
+          "format": "pdf",
+          "url": "https://s25.q4cdn.com/358376879/files/doc_financials/2026/q1/Q1-2026-Earnings-Transcript.pdf"
+        }
+      ]
+    }
+  ]
+}

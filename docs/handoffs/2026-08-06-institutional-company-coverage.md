@@ -142,3 +142,26 @@ Continue from `docs/current-plans/institutional-company-coverage.md`: add transc
 - The current material event carries only the event-provided summary/reference. At least eight full historical transcripts still need a source-backed harness and a second-stage Grok reconciliation that explicitly resolves or carries forward old questions/management commitments.
 - The public professional-investor UI still needs one quarterly object view with thesis suggestion, open questions, commitments, material status, and user-confirmed decision history.
 - The 14-point human blind review and a real forward A-tier earnings-season run remain open. The active plan must not be archived yet.
+
+## Phase 6 Update: Full Transcript Facts And Actor Reconciliation
+
+### What Changed
+
+- `earnings_transcript.rs` adds one source-bounded shared review over a complete company-IR transcript. It separates prepared remarks from analyst Q&A, grades each answer as direct/partial/evaded/unclear, distinguishes explicit future commitments from aspiration, and persists only compact facts.
+- Reviewed transcript events now enter A-tier continuity as a transcript-specific stage on the same quarterly research object. Release and transcript profile events/jobs remain independently idempotent, while the actor's saved mainline remains read-only.
+- FMP's observed AMD→GLPI transcript misattribution is rejected when the title's explicit ticker conflicts with the payload symbol.
+- Continuity updates now require a kind-compatible `resolution_basis` and evidence for every non-open state. The live replay's premature confirmation of an on-track Venice launch became a regression: reaffirmation remains open; only fulfilled commitments can become confirmed.
+- The official-IR fixture stores URLs and research baselines only. Its eight documents cover AMD, Microsoft, Qualcomm, and Caterpillar; the paid harness extracts PDF/DOCX into ephemeral memory and never outputs or persists source bodies.
+
+### Verification
+
+- Offline transcript fixture contract: 4 company types, 8 unique HTTPS sources, 2 calls per company, no body/transcript field; passed without network or model cost.
+- First full Grok 4.5 replay: 8/8 at 15/15, 16 calls, 122,723 prompt tokens, 21,512 completion tokens, about `$0.374518`, 206 seconds. It classified 11 direct, 17 partial, and 4 evaded Q&A answers.
+- Auditable-ledger replay: 8/8 at 15/15, 16 calls, 122,736 prompt tokens, 22,946 completion tokens, about `$0.383148`, 233 seconds. The output included only compact ledger state/assessment/evidence, not source text.
+- After the premature-confirmation guard, AMD-only replay: 2/2 at 15/15, 4 calls, 31,217 prompt tokens, 4,980 completion tokens, about `$0.092314`; future Venice and OpenAI/Oracle milestones remained open with reaffirmation assessments.
+- Focused transcript, continuity, job-stage, and exact FMP cross-company identity regressions passed. The final run also passed `cargo fmt --all -- --check`, changed-file Rust formatting, 590 event-engine tests with 13 expected ignores, event-engine all-target checks, full workspace check/test, 374 Web tests, Edge Worker typecheck plus 45 tests, the offline transcript contract, all CI-safe regressions, and `git diff --check`.
+
+### Remaining Product Work
+
+- Current FMP credentials return a restricted-endpoint response for the official transcript API; `stock_news` contains only short excerpts. Production automatic full-source acquisition therefore remains disabled until a licensed sustainable provider/source policy is chosen.
+- The professional-investor UI, 14-point human blind review, three real A-tier portraits, and a forward earnings-season trial remain open. The umbrella plan stays `in_progress`; no archive is appropriate.

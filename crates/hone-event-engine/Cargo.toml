@@ -25,6 +25,8 @@ futures = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 serde_yaml = { workspace = true }
+pdf-extract = "0.10.0"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 [[example]]
 name = "push_smoke"
@@ -45,3 +47,7 @@ path = "examples/earnings_quality_models.rs"
 [[example]]
 name = "earnings_continuity_models"
 path = "examples/earnings_continuity_models.rs"
+
+[[example]]
+name = "earnings_transcript_models"
+path = "examples/earnings_transcript_models.rs"

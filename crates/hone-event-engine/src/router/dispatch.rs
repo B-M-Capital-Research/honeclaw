@@ -17,6 +17,7 @@
 use tracing::info;
 
 use crate::digest::time_window::EffectiveTz;
+use crate::earnings_continuity::continuity_review_stage;
 use crate::earnings_document::{
     earnings_research_material_kind, earnings_research_object_key_for_event,
     is_earnings_release_document_event,
@@ -609,7 +610,7 @@ impl NotificationRouter {
     }
 
     fn schedule_earnings_continuity(&self, actor: &hone_core::ActorIdentity, event: &MarketEvent) {
-        if !is_structured_earnings_review(event) {
+        if continuity_review_stage(event).is_none() {
             return;
         }
         let Some(reconciler) = self.earnings_continuity.clone() else {

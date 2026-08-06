@@ -9,6 +9,7 @@
 pub mod daily_report;
 pub mod digest;
 pub mod earnings_continuity;
+pub mod earnings_transcript;
 pub mod event;
 pub mod fmp;
 pub mod global_digest;
@@ -39,6 +40,10 @@ pub use digest::DigestBuffer;
 pub use earnings_continuity::{
     EarningsContinuityOutcome, EarningsContinuityReconciler, EarningsContinuityReview,
     EarningsResearchMaterialOutcome, LlmEarningsContinuityReconciler,
+};
+pub use earnings_transcript::{
+    EarningsTranscriptReview, EarningsTranscriptReviewer, LlmEarningsTranscriptReviewer,
+    apply_earnings_transcript_review,
 };
 pub use engine::EventEngine;
 pub use event::{EventKind, MarketEvent, Severity};

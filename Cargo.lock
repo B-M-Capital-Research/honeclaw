@@ -2947,6 +2947,7 @@ dependencies = [
  "hone-core",
  "hone-llm",
  "hone-memory",
+ "pdf-extract",
  "quick-xml 0.36.2",
  "regex",
  "reqwest 0.12.28",
@@ -2958,6 +2959,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "zip",
 ]
 
 [[package]]

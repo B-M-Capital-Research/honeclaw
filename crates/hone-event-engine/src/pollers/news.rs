@@ -178,6 +178,39 @@ pub fn is_earnings_call_transcript_title(title: &str) -> bool {
     lower.contains("earnings call transcript") || lower.contains("earnings transcript")
 }
 
+/// FMP `stock_news` 偶尔会把另一家公司的 transcript 贴到查询 ticker 上。
+/// 仅当标题包含紧邻季度标识的显式 `(TICKER)` 时做强校验；没有这种标识的
+/// 官方标题仍保留，避免用公司名猜证券代码。
+fn transcript_title_matches_symbol(title: &str, symbol: Option<&str>) -> bool {
+    if !is_earnings_call_transcript_title(title) {
+        return true;
+    }
+    let Some(symbol) = symbol.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    static TITLE_TICKER: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let regex = TITLE_TICKER.get_or_init(|| {
+        regex::Regex::new(r"\(([A-Z][A-Z0-9.\-]{0,9})\)\s+(?:Q[1-4]|FQ[1-4]|FY\s*\d)")
+            .expect("valid transcript title ticker regex")
+    });
+    let Some(title_symbol) = regex
+        .captures(title)
+        .and_then(|captures| captures.get(1))
+        .map(|capture| capture.as_str())
+    else {
+        return true;
+    };
+    normalize_ticker(title_symbol) == normalize_ticker(symbol)
+}
+
+fn normalize_ticker(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_uppercase)
+        .collect()
+}
+
 /// 默认高影响关键词（小写匹配）。测试或调用方可通过 `with_keywords` 覆盖。
 const DEFAULT_CRITICAL_KEYWORDS: &[&str] = &[
     "bankruptcy",
@@ -310,6 +343,15 @@ fn events_from_stock_news(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> 
 
             let source_class = classify_news_source(&site);
             let is_transcript = is_earnings_call_transcript_title(&title);
+            if is_transcript && !transcript_title_matches_symbol(&title, symbol.as_deref()) {
+                tracing::warn!(
+                    supplied_symbol = symbol.as_deref().unwrap_or_default(),
+                    title,
+                    url = url.as_deref().unwrap_or_default(),
+                    "dropped earnings transcript with conflicting title ticker"
+                );
+                return None;
+            }
             let severity = if is_transcript {
                 Severity::Low
             } else {
@@ -644,6 +686,35 @@ mod tests {
                 .and_then(|v| v.as_bool()),
             Some(true)
         );
+    }
+
+    #[test]
+    fn drops_exact_observed_cross_company_transcript_misattribution() {
+        let raw = serde_json::json!([{
+            "symbol": "AMD",
+            "publishedDate": "2026-08-02 21:30:00",
+            "title": "Gaming and Leisure Properties, Inc. (GLPI) Q2 2026 Earnings Call Transcript",
+            "site": "seekingalpha.com",
+            "text": "A short provider excerpt.",
+            "url": "https://example.com/glpi-transcript"
+        }]);
+        assert!(events_from_stock_news(&raw, &default_kws()).is_empty());
+    }
+
+    #[test]
+    fn keeps_matching_and_unmarked_official_transcript_titles() {
+        assert!(transcript_title_matches_symbol(
+            "Advanced Micro Devices, Inc. (AMD) Q2 2026 Earnings Call Transcript",
+            Some("AMD")
+        ));
+        assert!(transcript_title_matches_symbol(
+            "Microsoft FY26 Q2 earnings call transcript",
+            Some("MSFT")
+        ));
+        assert!(!transcript_title_matches_symbol(
+            "Gaming and Leisure Properties, Inc. (GLPI) Q2 2026 Earnings Call Transcript",
+            Some("AMD")
+        ));
     }
 
     #[test]

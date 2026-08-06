@@ -337,9 +337,14 @@ impl EventStore {
             None => return Ok(None),
         };
         let job_key = format!(
-            "{}::{}",
+            "{}::{}{}",
             delivery_actor_key(actor),
-            research_object_key.trim()
+            research_object_key.trim(),
+            if matches!(event.kind, EventKind::EarningsCallTranscript) {
+                "::earnings_transcript"
+            } else {
+                ""
+            }
         );
         let now = Utc::now().timestamp();
         let conn = self.conn.lock().unwrap();
@@ -2417,6 +2422,42 @@ mod tests {
                 .as_deref(),
             Some("completed")
         );
+    }
+
+    #[test]
+    fn release_and_reviewed_transcript_have_distinct_continuity_jobs() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
+        let occurred_at = Utc::now();
+        let mut release = reviewed_release("release-job-stage", occurred_at);
+        let research_object_key = store
+            .link_earnings_research_object(&mut release)
+            .unwrap()
+            .unwrap();
+        let release_job = store
+            .enqueue_earnings_continuity_job(&actor, &release)
+            .unwrap()
+            .unwrap();
+
+        let mut transcript = sample_event("transcript-job-stage");
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.symbols = release.symbols.clone();
+        transcript.payload = serde_json::json!({
+            (EARNINGS_RESEARCH_OBJECT_KEY): research_object_key,
+            "earnings_transcript_review_applied": true
+        });
+        let transcript_job = store
+            .enqueue_earnings_continuity_job(&actor, &transcript)
+            .unwrap()
+            .unwrap();
+        assert_ne!(release_job, transcript_job);
+        assert!(transcript_job.ends_with("::earnings_transcript"));
+
+        let jobs = store
+            .claim_due_earnings_continuity_jobs(Utc::now() + chrono::Duration::seconds(1), 4)
+            .unwrap();
+        assert_eq!(jobs.len(), 2);
     }
 
     #[test]
