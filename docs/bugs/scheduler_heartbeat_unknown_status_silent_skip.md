@@ -6898,3 +6898,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定，不是新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 Feishu direct 图片分析和 SGOV/BIL 问答均有 assistant 收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-06 10:01 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-06 06:01-10:01 CST。
+  - 同窗 heartbeat / scheduler parse 分布继续漂移：`PlainTextTriggered=125`、`JsonNoop=24`、`PlainTextNoop=11`、`PlainTextSuppressed=9`、`JsonUnknownStatus=2`、`JsonTriggered=1`。
+  - 同窗还有 `run_start=108`、`run_finish=108`、`deliver=62`、`duplicate_suppressed=10`、`execution_failed=10`、raw `<think>` preview 109 条。
+  - 代表样本包括 07:00 / 07:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced JSON / `status/triggered` 协议载荷开头；多条 raw preview 仍以 `<think>` 开头后进入自然语言或 JSON/noop 解析分支。
+- 本轮判断
+  - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败、误送达和去重之间漂移；没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达、漏送或被 duplicate suppression；普通 direct 主链路本窗无新增可审计 final，未见错投、敏感泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。

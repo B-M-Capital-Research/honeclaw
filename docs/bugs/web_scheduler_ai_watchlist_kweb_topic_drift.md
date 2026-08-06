@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-06 06:01-10:01 CST（UTC 2026-08-05 22:01-2026-08-06 02:01）。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 10:00 CST raw preview 写 `the user's question about NBIS vs NAND Flash relationship`，随后围绕 `NBIS is AI cloud computing` 与 `NAND Flash` 关系组织分析。
+  - 10:00 CST deliver preview 开头写 `行情口径：NBIS $218.99`，随后主体进入 `NBIS vs NAND Flash` 关系、估值和产业链解释；该 heartbeat job 名义目标是 `中际旭创关键事件`，不是 NBIS / NAND 通用关系问答。
+  - 调度和投递主链路正常收口，该样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-06 02:00-06:01 CST（UTC 2026-08-05 18:00-22:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 06:00 CST 触发 prompt 明确是检测 `AAPL + NVDA + BE` 关键事件并即时推送；同窗 job 名和 run_start 均只指向这三个标的。
