@@ -22,18 +22,20 @@ pub use billing::{
     BillingWebhookEvent, BillingWebhookRecordOutcome,
 };
 pub use company_profile::{
-    AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,
-    CompanyProfileEventDocument, CompanyProfileImportApplyInput, CompanyProfileImportApplyResult,
-    CompanyProfileImportConflict, CompanyProfileImportConflictDetail, CompanyProfileImportDiffLine,
+    AppendEventInput, AppendResearchEventInput, CompanyProfileConflictDecision,
+    CompanyProfileDocument, CompanyProfileEventDocument, CompanyProfileImportApplyInput,
+    CompanyProfileImportApplyResult, CompanyProfileImportConflict,
+    CompanyProfileImportConflictDetail, CompanyProfileImportDiffLine,
     CompanyProfileImportDiffLineKind, CompanyProfileImportEventDiff, CompanyProfileImportMode,
     CompanyProfileImportPreview, CompanyProfileImportProfileSummary,
     CompanyProfileImportResolutionInput, CompanyProfileImportResolutionResult,
     CompanyProfileImportResolutionStrategy, CompanyProfileImportSectionChangeType,
     CompanyProfileImportSectionDiff, CompanyProfileStorage, CompanyProfileTransferManifest,
-    CompanyProfileTransferManifestProfile, CreateProfileInput, IndustryTemplate,
-    ProfileEventMetadata, ProfileMetadata, ProfileSpaceSummary, ProfileSummary, RawProfileDocument,
-    RawProfileEventDocument, RawProfileSummary, TrackingConfig,
-    configure_cloud_company_profile_storage,
+    CompanyProfileTransferManifestProfile, CompanyResearchLedger, CoverageTier, CreateProfileInput,
+    IndustryTemplate, ProfileEventMetadata, ProfileMetadata, ProfileSpaceSummary, ProfileSummary,
+    RawProfileDocument, RawProfileEventDocument, RawProfileSummary, ResearchItemKind,
+    ResearchItemStatus, ResearchLedgerItem, ResearchLedgerUpdate, TrackingConfig,
+    configure_cloud_company_profile_storage, research_item_id,
 };
 pub use cron_job::{ChannelTargetRecord, CronJobStorage};
 pub use llm_audit::{

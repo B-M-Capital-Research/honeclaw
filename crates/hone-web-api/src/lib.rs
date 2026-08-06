@@ -130,6 +130,15 @@ fn earnings_quality_review_max_tokens(core_cfg: &HoneConfig) -> u16 {
     requested.clamp(1, u16::MAX as u32) as u16
 }
 
+fn earnings_continuity_review_max_tokens(core_cfg: &HoneConfig) -> u16 {
+    let requested = core_cfg
+        .event_engine
+        .earnings
+        .continuity_review
+        .max_review_tokens;
+    requested.clamp(1, u16::MAX as u32) as u16
+}
+
 fn mainline_distill_max_tokens(_core_cfg: &HoneConfig) -> u16 {
     DEFAULT_MAINLINE_DISTILL_MAX_TOKENS
 }
@@ -195,6 +204,41 @@ fn build_earnings_quality_review_llm(core_cfg: &HoneConfig) -> Option<CreatedLlm
         Err(e) => {
             tracing::warn!(
                 "event engine: earnings quality review LLM provider 不可用,earnings_surprise 将跳过 EPS-only candidates: {e}"
+            );
+            None
+        }
+    }
+}
+
+/// A-tier 研究连续性会逐项带回历史问题与承诺，必须使用独立于 T0 短财报卡的
+/// provider/output budget，避免多个季度后 JSON 被短输出上限截断。
+fn build_earnings_continuity_review_llm(core_cfg: &HoneConfig) -> Option<CreatedLlmProvider> {
+    let review = &core_cfg.event_engine.earnings.continuity_review;
+    if !core_cfg.event_engine.sources.earnings_surprise
+        || !core_cfg.event_engine.earnings.quality_review.enabled
+        || !review.enabled
+    {
+        return None;
+    }
+    let max_tokens = earnings_continuity_review_max_tokens(core_cfg);
+    match LlmResolver::new(core_cfg).provider_for_profile_or_openrouter_model(
+        Some(&review.llm),
+        &review.model,
+        &review.model,
+        Some(max_tokens),
+    ) {
+        Ok(created) => {
+            info!(
+                max_tokens,
+                model = %created.model,
+                profile = ?created.profile_name,
+                "event engine: earnings continuity review LLM provider 装配"
+            );
+            Some(created)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "event engine: earnings continuity review LLM provider 不可用,A-tier 研究账本暂不更新: {e}"
             );
             None
         }
@@ -930,6 +974,12 @@ pub async fn start_server(
         }
         let earnings_quality_review_provider =
             earnings_quality_review.map(|created| created.provider);
+        let earnings_continuity_review = build_earnings_continuity_review_llm(&state.core.config);
+        if let Some(created) = &earnings_continuity_review {
+            engine_cfg.earnings.continuity_review.model = created.model.clone();
+        }
+        let earnings_continuity_review_provider =
+            earnings_continuity_review.map(|created| created.provider);
         let mainline_distill = build_mainline_distill_llm(&state.core.config);
         let global_digest_llms = build_global_digest_llms(&state.core.config);
         if let Some((pass1, pass2, event_dedupe)) = &global_digest_llms {
@@ -988,6 +1038,7 @@ pub async fn start_server(
                 .with_store_path(events_db)
                 .with_events_jsonl_path(Some(events_jsonl))
                 .with_portfolio_dir(portfolio_dir)
+                .with_company_profile_dir(hone_channels::sandbox_base_dir())
                 .with_prefs_dir(notif_prefs_dir)
                 .with_digest_dir(digest_dir)
                 .with_task_runs_dir(Some(engine_task_runs_dir))
@@ -1010,6 +1061,9 @@ pub async fn start_server(
             }
             if let Some(p) = earnings_quality_review_provider {
                 engine = engine.with_earnings_quality_review_provider(p);
+            }
+            if let Some(p) = earnings_continuity_review_provider {
+                engine = engine.with_earnings_continuity_review_provider(p);
             }
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");
@@ -1113,6 +1167,20 @@ mod tests {
             .enrichment
             .max_summary_tokens = 70_000;
         assert_eq!(sec_filings_enrichment_max_tokens(&config), u16::MAX);
+    }
+
+    #[test]
+    fn earnings_continuity_uses_its_own_larger_completion_budget() {
+        let mut config = HoneConfig::default();
+        assert_eq!(earnings_quality_review_max_tokens(&config), 1800);
+        assert_eq!(earnings_continuity_review_max_tokens(&config), 3600);
+
+        config
+            .event_engine
+            .earnings
+            .continuity_review
+            .max_review_tokens = 70_000;
+        assert_eq!(earnings_continuity_review_max_tokens(&config), u16::MAX);
     }
 
     #[test]

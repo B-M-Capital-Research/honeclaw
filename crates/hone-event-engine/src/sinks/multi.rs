@@ -9,8 +9,9 @@
 //! engine = engine.with_sink(Arc::new(sink));
 //! ```
 //!
-//! 未注册的渠道会走 fallback(默认传入的 `LogSink`),这样新增渠道或渠道暂时
-//! 下线时 engine 不会失败,只是在日志里留下记录。
+//! 未注册的渠道会走 fallback(默认 `LogSink`) 并按 `dryrun`审计。
+//! 已注册的真实渠道发送失败时，fallback 只保留调试副本，原错误继续
+//! 向上返回，不得把“写了日志”记成“用户已收到”。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -65,7 +66,14 @@ impl OutboundSink for MultiChannelSink {
                         user = %actor.user_id,
                         "channel sink failed, falling back to log: {e:#}"
                     );
-                    self.fallback.send(actor, body).await
+                    if let Err(fallback_error) = self.fallback.send(actor, body).await {
+                        warn!(
+                            channel = %actor.channel,
+                            user = %actor.user_id,
+                            "channel sink and diagnostic fallback both failed: {fallback_error:#}"
+                        );
+                    }
+                    Err(e)
                 }
             }
         } else {
@@ -89,6 +97,13 @@ impl OutboundSink for MultiChannelSink {
         }
     }
 
+    fn success_status_for(&self, actor: &ActorIdentity) -> &'static str {
+        self.sinks
+            .get(&actor.channel)
+            .map(|sink| sink.success_status_for(actor))
+            .unwrap_or_else(|| self.fallback.success_status_for(actor))
+    }
+
     /// 必须 override:default 实现会忽略 payload 走 `self.send`,multi 里那条路径
     /// 就是 `MultiChannelSink::send`,但内层 sink 的富文本 override 必须看到 payload
     /// 才能生效。这里把 payload 透传给目标 channel 的 sink 自己处理。
@@ -107,9 +122,18 @@ impl OutboundSink for MultiChannelSink {
                         user = %actor.user_id,
                         "channel digest sink failed, falling back to log: {e:#}"
                     );
-                    self.fallback
+                    if let Err(fallback_error) = self
+                        .fallback
                         .send_digest(actor, payload, fallback_body)
                         .await
+                    {
+                        warn!(
+                            channel = %actor.channel,
+                            user = %actor.user_id,
+                            "channel digest sink and diagnostic fallback both failed: {fallback_error:#}"
+                        );
+                    }
+                    Err(e)
                 }
             }
         } else {
@@ -174,12 +198,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn falls_back_when_channel_sink_errors() {
+    async fn channel_error_is_logged_to_fallback_but_still_reported_as_failure() {
         let fb = Arc::new(Spy(Mutex::new(Vec::new())));
         let sink = MultiChannelSink::new(fb.clone()).with_channel("feishu", Arc::new(Failing));
         let actor = ActorIdentity::new("feishu", "u1", None::<String>).unwrap();
-        sink.send(&actor, "hi").await.unwrap();
+        assert!(sink.send(&actor, "hi").await.is_err());
         assert_eq!(fb.0.lock().unwrap().len(), 1, "errored channel falls back");
+    }
+
+    #[test]
+    fn success_status_distinguishes_registered_delivery_from_log_fallback() {
+        let sink = MultiChannelSink::with_log_fallback()
+            .with_channel("discord", Arc::new(Spy(Mutex::new(Vec::new()))));
+        let registered = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
+        let unregistered = ActorIdentity::new("unknown", "u2", None::<String>).unwrap();
+        assert_eq!(sink.success_status_for(&registered), "sent");
+        assert_eq!(sink.success_status_for(&unregistered), "dryrun");
     }
 
     #[test]
@@ -234,5 +268,30 @@ mod tests {
             1,
             "应路由到 inner sink 的 send_digest"
         );
+    }
+
+    #[tokio::test]
+    async fn digest_channel_error_is_logged_but_not_acknowledged() {
+        use crate::digest::DigestPayload;
+        use crate::event::Severity;
+
+        let fallback = Arc::new(Spy(Mutex::new(Vec::new())));
+        let sink =
+            MultiChannelSink::new(fallback.clone()).with_channel("discord", Arc::new(Failing));
+        let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
+        let payload = DigestPayload {
+            label: "test".into(),
+            items: vec![],
+            cap_overflow: 0,
+            max_severity: Severity::Low,
+            generated_at: chrono::Utc::now(),
+        };
+
+        assert!(
+            sink.send_digest(&actor, &payload, "fallback")
+                .await
+                .is_err()
+        );
+        assert_eq!(fallback.0.lock().unwrap().len(), 1);
     }
 }

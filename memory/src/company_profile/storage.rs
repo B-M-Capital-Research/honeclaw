@@ -16,9 +16,10 @@ use super::markdown::{
 };
 use super::types::default_profile_status;
 use super::{
-    CompanyProfileDocument, CompanyProfileEventDocument, CompanyProfileStorage, CreateProfileInput,
-    ProfileEventMetadata, ProfileMetadata, ProfileSpaceSummary, ProfileSummary, RawProfileDocument,
-    RawProfileEventDocument, RawProfileSummary, TrackingConfig,
+    AppendResearchEventInput, CompanyProfileDocument, CompanyProfileEventDocument,
+    CompanyProfileStorage, CreateProfileInput, ProfileEventMetadata, ProfileMetadata,
+    ProfileSpaceSummary, ProfileSummary, RawProfileDocument, RawProfileEventDocument,
+    RawProfileSummary, TrackingConfig,
 };
 
 impl CompanyProfileStorage {
@@ -159,6 +160,8 @@ impl CompanyProfileStorage {
                     industry_template: document.metadata.industry_template.clone(),
                     status: document.metadata.status.clone(),
                     tracking_enabled: document.metadata.tracking.enabled,
+                    coverage_tier: document.metadata.tracking.coverage_tier.clone(),
+                    investment_horizon: document.metadata.tracking.investment_horizon.clone(),
                     tracking_cadence: document.metadata.tracking.cadence.clone(),
                     updated_at: document.metadata.updated_at.clone(),
                     last_reviewed_at: document.metadata.last_reviewed_at.clone(),
@@ -535,25 +538,42 @@ impl CompanyProfileStorage {
         profile_id: &str,
         input: super::AppendEventInput,
     ) -> Result<Option<CompanyProfileEventDocument>, String> {
+        self.append_research_event(
+            profile_id,
+            AppendResearchEventInput {
+                event: input,
+                research_object_key: None,
+                research_updates: Vec::new(),
+            },
+        )
+    }
+
+    pub fn append_research_event(
+        &self,
+        profile_id: &str,
+        input: AppendResearchEventInput,
+    ) -> Result<Option<CompanyProfileEventDocument>, String> {
         let Some(mut document) = self.get_profile(profile_id)? else {
             return Ok(None);
         };
-        if input.what_happened.trim().is_empty()
-            && input.why_it_matters.trim().is_empty()
-            && input.mainline_effect.trim().is_empty()
-            && input.evidence.trim().is_empty()
-            && input.research_log.trim().is_empty()
-            && input.follow_up.trim().is_empty()
+        let event_input = &input.event;
+        if event_input.what_happened.trim().is_empty()
+            && event_input.why_it_matters.trim().is_empty()
+            && event_input.mainline_effect.trim().is_empty()
+            && event_input.evidence.trim().is_empty()
+            && event_input.research_log.trim().is_empty()
+            && event_input.follow_up.trim().is_empty()
         {
             return Err("事件内容不能为空".to_string());
         }
+        validate_research_updates(&document, &input)?;
 
-        let occurred_date = normalize_event_date(&input.occurred_at);
+        let occurred_date = normalize_event_date(&event_input.occurred_at);
         let event_filename = format!(
             "{}-{}-{}.md",
             occurred_date,
-            sanitize_id(&input.event_type),
-            slugify(&input.title)
+            sanitize_id(&event_input.event_type),
+            slugify(&event_input.title)
         );
         let event_id = event_filename.trim_end_matches(".md").to_string();
         if self.cloud.is_some() {
@@ -567,14 +587,21 @@ impl CompanyProfileStorage {
                 )?));
             }
             let metadata = ProfileEventMetadata {
-                event_type: input.event_type.trim().to_string(),
-                occurred_at: input.occurred_at.trim().to_string(),
+                event_type: event_input.event_type.trim().to_string(),
+                occurred_at: event_input.occurred_at.trim().to_string(),
                 captured_at: Utc::now().to_rfc3339(),
-                mainline_impact: input.mainline_impact.trim().to_string(),
-                changed_sections: unique_strings(&input.changed_sections),
-                refs: unique_strings(&input.refs),
+                mainline_impact: event_input.mainline_impact.trim().to_string(),
+                changed_sections: unique_strings(&event_input.changed_sections),
+                refs: unique_strings(&event_input.refs),
+                research_object_key: input
+                    .research_object_key
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+                research_updates: input.research_updates.clone(),
             };
-            let markdown = render_event_markdown(&input.title, &metadata, &input);
+            let markdown = render_event_markdown(&event_input.title, &metadata, event_input);
             self.cloud_upsert_file(&document.profile_id, &relative_path, &markdown)?;
 
             document.metadata.updated_at = Utc::now().to_rfc3339();
@@ -590,7 +617,7 @@ impl CompanyProfileStorage {
             return Ok(Some(CompanyProfileEventDocument {
                 id: event_id,
                 filename: event_filename,
-                title: input.title.trim().to_string(),
+                title: event_input.title.trim().to_string(),
                 metadata,
                 markdown,
             }));
@@ -613,15 +640,22 @@ impl CompanyProfileStorage {
         }
 
         let metadata = ProfileEventMetadata {
-            event_type: input.event_type.trim().to_string(),
-            occurred_at: input.occurred_at.trim().to_string(),
+            event_type: event_input.event_type.trim().to_string(),
+            occurred_at: event_input.occurred_at.trim().to_string(),
             captured_at: Utc::now().to_rfc3339(),
-            mainline_impact: input.mainline_impact.trim().to_string(),
-            changed_sections: unique_strings(&input.changed_sections),
-            refs: unique_strings(&input.refs),
+            mainline_impact: event_input.mainline_impact.trim().to_string(),
+            changed_sections: unique_strings(&event_input.changed_sections),
+            refs: unique_strings(&event_input.refs),
+            research_object_key: input
+                .research_object_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            research_updates: input.research_updates.clone(),
         };
 
-        let markdown = render_event_markdown(&input.title, &metadata, &input);
+        let markdown = render_event_markdown(&event_input.title, &metadata, event_input);
         fs::write(&event_path, markdown.as_bytes())
             .map_err(|err| format!("写事件文件失败: {err}"))?;
 
@@ -638,7 +672,7 @@ impl CompanyProfileStorage {
         Ok(Some(CompanyProfileEventDocument {
             id: event_id,
             filename: event_filename,
-            title: input.title.trim().to_string(),
+            title: event_input.title.trim().to_string(),
             metadata,
             markdown,
         }))
@@ -1103,6 +1137,8 @@ impl CompanyProfileStorage {
                 industry_template: document.metadata.industry_template.clone(),
                 status: document.metadata.status.clone(),
                 tracking_enabled: document.metadata.tracking.enabled,
+                coverage_tier: document.metadata.tracking.coverage_tier.clone(),
+                investment_horizon: document.metadata.tracking.investment_horizon.clone(),
                 tracking_cadence: document.metadata.tracking.cadence.clone(),
                 updated_at: document.metadata.updated_at.clone(),
                 last_reviewed_at: document.metadata.last_reviewed_at.clone(),
@@ -1273,6 +1309,62 @@ fn unique_strings(values: &[String]) -> Vec<String> {
         }
     }
     unique
+}
+
+fn validate_research_updates(
+    document: &CompanyProfileDocument,
+    input: &AppendResearchEventInput,
+) -> Result<(), String> {
+    if input.research_updates.len() > 20 {
+        return Err("单个事件最多包含 20 条研究账本变更".to_string());
+    }
+    if input
+        .research_object_key
+        .as_deref()
+        .is_some_and(|value| value.trim().chars().count() > 240)
+    {
+        return Err("research_object_key 过长".to_string());
+    }
+
+    let existing = document
+        .research_ledger()
+        .items
+        .into_iter()
+        .map(|item| (item.item_id.clone(), item))
+        .collect::<HashMap<_, _>>();
+    let mut seen = HashSet::new();
+    for update in &input.research_updates {
+        let item_id = update.item_id.trim();
+        if item_id.is_empty() || item_id.chars().count() > 96 || sanitize_id(item_id) != item_id {
+            return Err("research item_id 非法".to_string());
+        }
+        if !seen.insert(item_id.to_string()) {
+            return Err(format!("同一事件重复更新 research item: {item_id}"));
+        }
+        if update.statement.chars().count() > 1_000
+            || update.assessment.chars().count() > 2_000
+            || update.evidence.len() > 8
+        {
+            return Err(format!("research item 内容超出限制: {item_id}"));
+        }
+        match existing.get(item_id) {
+            Some(item) if item.kind != update.kind => {
+                return Err(format!("research item kind 不可改写: {item_id}"));
+            }
+            Some(item)
+                if !update.statement.trim().is_empty()
+                    && update.statement.trim() != item.statement =>
+            {
+                return Err(format!("research item statement 不可静默改写: {item_id}"));
+            }
+            Some(_) => {}
+            None if update.statement.trim().is_empty() => {
+                return Err(format!("新 research item 缺少 statement: {item_id}"));
+            }
+            None => {}
+        }
+    }
+    Ok(())
 }
 
 fn actor_from_scoped_user_key(key: &str) -> Option<(Option<String>, String)> {

@@ -17,8 +17,9 @@
 use tracing::info;
 
 use crate::digest::time_window::EffectiveTz;
+use crate::earnings_document::is_earnings_release_document_event;
 use crate::event::{EventKind, MarketEvent, Severity};
-use crate::prefs::kind_tag;
+use crate::prefs::{NotificationPrefs, kind_tag};
 use crate::renderer::{self, RenderFormat};
 
 use super::config::NotificationRouter;
@@ -120,6 +121,44 @@ impl NotificationRouter {
                     "skipped by user prefs"
                 );
                 continue;
+            }
+            // T0 推送不能等待第二次、actor-scoped 的 Grok 对账。A 级画像在后台
+            // 把本季事实与旧问题/承诺逐项核对并落入 append-only 研究账本；失败
+            // 只影响深度卡，不阻塞已核验的即时事实卡。
+            self.schedule_earnings_continuity(&actor, event);
+            // 结构化财报卡已经对该 actor 成功交付时，同一新闻稿型
+            // 8-K 不再入摘要。只认 sent/dryrun 成功证据；财报卡失败或
+            // quiet-held 时保留 SEC 项，queued 时由 digest buffer 保留优先级
+            // 更高的结构化卡，不能把待投递路径整体清空。
+            if is_earnings_release_document_event(event) {
+                match event.url.as_deref().map(|url| {
+                    self.store
+                        .actor_has_delivered_earnings_for_document(&actor_key(&actor), url)
+                }) {
+                    Some(Ok(true)) => {
+                        let _ = self.store.log_delivery(
+                            &event.id,
+                            &actor_key(&actor),
+                            "router",
+                            sev,
+                            "superseded",
+                            None,
+                        );
+                        info!(
+                            actor = %actor_key(&actor),
+                            event_id = %event.id,
+                            "earnings-release SEC document suppressed after structured earnings delivery"
+                        );
+                        continue;
+                    }
+                    Some(Err(error)) => tracing::warn!(
+                        actor = %actor_key(&actor),
+                        event_id = %event.id,
+                        degraded = true,
+                        "earnings delivery lookup failed; keeping SEC digest fallback: {error:#}"
+                    ),
+                    _ => {}
+                }
             }
             // High daily cap:同一 actor 当日 sink-sent High 条数达到上限后,
             // 后续 High 一律降级到 digest,避免"某 ticker 一天连发 8-K + 财报 +
@@ -352,8 +391,12 @@ impl NotificationRouter {
             match effective_sev {
                 Severity::High => {
                     let fmt = self.sink.format_for(&actor);
-                    let default_body = renderer::render_immediate(event, fmt);
-                    let body = if matches!(fmt, RenderFormat::Plain) {
+                    let mainline = actor_mainline_for_event(event, &user_prefs);
+                    let default_body =
+                        renderer::render_immediate_with_mainline(event, fmt, mainline);
+                    let body = if matches!(fmt, RenderFormat::Plain)
+                        && !is_structured_earnings_review(event)
+                    {
                         match self.polisher.polish(event, &default_body).await {
                             Some(polished) => polished,
                             None => default_body,
@@ -382,7 +425,7 @@ impl NotificationRouter {
                         );
                         continue;
                     }
-                    let success_status = self.sink.success_status();
+                    let success_status = self.sink.success_status_for(&actor);
                     let delivery_result = if success_status == "sent" {
                         self.store
                             .log_confirmed_delivery(&event.id, &actor, "sink", sev, &body, None)
@@ -415,6 +458,33 @@ impl NotificationRouter {
                         body_preview = %body_preview(&body),
                         "sink delivered"
                     );
+                    if is_structured_earnings_review(event)
+                        && let Some(document_url) = event.url.as_deref()
+                    {
+                        match self
+                            .digest
+                            .remove_earnings_release_documents(&actor, document_url)
+                        {
+                            Ok(removed) => {
+                                for superseded in removed {
+                                    let _ = self.store.log_delivery(
+                                        &superseded.id,
+                                        &actor_key(&actor),
+                                        "router",
+                                        superseded.severity,
+                                        "superseded",
+                                        None,
+                                    );
+                                }
+                            }
+                            Err(error) => tracing::warn!(
+                                actor = %actor_key(&actor),
+                                event_id = %event.id,
+                                degraded = true,
+                                "failed to remove superseded earnings-release SEC digest item: {error:#}"
+                            ),
+                        }
+                    }
                     sent += 1;
                 }
                 Severity::Medium | Severity::Low => {
@@ -479,6 +549,35 @@ impl NotificationRouter {
     }
 }
 
+impl NotificationRouter {
+    fn schedule_earnings_continuity(&self, actor: &hone_core::ActorIdentity, event: &MarketEvent) {
+        if !is_structured_earnings_review(event) {
+            return;
+        }
+        let Some(reconciler) = self.earnings_continuity.clone() else {
+            return;
+        };
+        let actor = actor.clone();
+        let event = event.clone();
+        tokio::spawn(async move {
+            if let Some(outcome) = reconciler.reconcile(&actor, &event).await {
+                tracing::info!(
+                    actor = %actor_key(&actor),
+                    event_id = %event.id,
+                    research_object_key = %outcome.research_object_key,
+                    thesis_effect = %outcome.thesis_effect,
+                    checked_existing_items = outcome.checked_existing_items,
+                    created_questions = outcome.created_questions,
+                    created_commitments = outcome.created_commitments,
+                    active_questions_after = outcome.active_questions_after,
+                    active_commitments_after = outcome.active_commitments_after,
+                    "earnings continuity ledger reconciled"
+                );
+            }
+        });
+    }
+}
+
 fn analyst_grade_source_article_key(event: &MarketEvent) -> Option<(&str, &str)> {
     if !matches!(event.kind, EventKind::AnalystGrade) {
         return None;
@@ -497,4 +596,30 @@ fn analyst_grade_source_article_key(event: &MarketEvent) -> Option<(&str, &str)>
         return None;
     }
     Some((symbol, news_url))
+}
+
+fn actor_mainline_for_event<'a>(
+    event: &MarketEvent,
+    prefs: &'a NotificationPrefs,
+) -> Option<&'a str> {
+    if !matches!(event.kind, EventKind::EarningsReleased) {
+        return None;
+    }
+    let mainlines = prefs.mainline_by_ticker.as_ref()?;
+    event.symbols.iter().find_map(|symbol| {
+        mainlines
+            .iter()
+            .find(|(ticker, _)| ticker.eq_ignore_ascii_case(symbol))
+            .map(|(_, mainline)| mainline.trim())
+            .filter(|mainline| !mainline.is_empty())
+    })
+}
+
+fn is_structured_earnings_review(event: &MarketEvent) -> bool {
+    matches!(event.kind, EventKind::EarningsReleased)
+        && event
+            .payload
+            .get("earnings_quality_review_applied")
+            .and_then(|value| value.as_bool())
+            == Some(true)
 }

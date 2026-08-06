@@ -31,6 +31,7 @@ use rusqlite::{
     Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
 };
 
+use crate::earnings_document::{EARNINGS_DOCUMENT_KEY, canonical_earnings_document_key};
 use crate::event::MarketEvent;
 
 pub struct EventStore {
@@ -282,6 +283,61 @@ impl EventStore {
         let event_count: i64 =
             conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
         Ok(event_count)
+    }
+
+    /// 快速查询稳定事件 id 是否已入库。高频 poller 可在执行下游
+    /// SEC 抓取 / LLM 复核前跨重启短路；最终投递幂等仍由
+    /// `insert_event` 和 delivery log 负责。
+    pub fn contains_event(&self, event_id: &str) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let exists: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM events WHERE id = ?1)",
+            params![event_id],
+            |row| row.get(0),
+        )?;
+        Ok(exists != 0)
+    }
+
+    /// 某 actor 是否已成功收到由同一财报文档生成的结构化财报卡。
+    /// 只把 sink/digest_item 的成功状态当作已交付；`failed` / `queued` /
+    /// `quiet_held` 不会被当成已送达。queued 结构化卡可在 digest buffer 内
+    /// 取代同文档 SEC 项，但不能让 router 把该文档的待投递路径全部压掉。
+    pub(crate) fn actor_has_delivered_earnings_for_document(
+        &self,
+        actor: &str,
+        document_url: &str,
+    ) -> anyhow::Result<bool> {
+        let Some(document_key) = canonical_earnings_document_key(document_url) else {
+            return Ok(false);
+        };
+        let conn = self.conn.lock().unwrap();
+        let key_path = format!("$.{EARNINGS_DOCUMENT_KEY}");
+        let exists: i64 = conn.query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM delivery_log d
+                JOIN events e ON e.id = d.event_id
+                WHERE d.actor = ?1
+                  AND d.status IN ('sent', 'dryrun')
+                  AND d.channel IN ('sink', 'digest_item')
+                  AND e.kind_json LIKE '%"earnings_released"%'
+                  AND json_extract(e.payload_json, '$.earnings_quality_review_applied') = 1
+                  AND (
+                    lower(rtrim(substr(e.url, 1,
+                      CASE
+                        WHEN instr(e.url, '?') > 0 THEN instr(e.url, '?') - 1
+                        ELSE length(e.url)
+                      END
+                    ), '/')) = ?2
+                    OR lower(json_extract(e.payload_json, ?3)) = ?2
+                  )
+            )
+            "#,
+            params![actor, document_key, key_path],
+            |row| row.get(0),
+        )?;
+        Ok(exists != 0)
     }
 
     /// 列出 `[start, end]` 窗口内、`symbol` 命中的事件的 kind tag (snake_case
@@ -1656,6 +1712,69 @@ mod tests {
         assert!(store.insert_event(&event).unwrap()); // 首次
         assert!(!store.insert_event(&event).unwrap()); // 重复
         assert_eq!(store.count_events().unwrap(), 1);
+    }
+
+    #[test]
+    fn contains_event_supports_cross_restart_poller_short_circuit() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        assert!(!store.contains_event("earnings:SNDK:q4").unwrap());
+        store
+            .insert_event(&sample_event("earnings:SNDK:q4"))
+            .unwrap();
+        assert!(store.contains_event("earnings:SNDK:q4").unwrap());
+    }
+
+    #[test]
+    fn sec_fallback_is_superseded_only_after_actor_received_structured_earnings() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let mut earnings = sample_event("earnings_surprise:SNDK:2026-08-05");
+        earnings.kind = EventKind::EarningsReleased;
+        earnings.severity = Severity::High;
+        earnings.url =
+            Some("https://www.sec.gov/Archives/sndkq4-26ex991xpressrelease.htm?source=fmp".into());
+        earnings.payload = serde_json::json!({
+            "earnings_quality_review_applied": true,
+            "hone_earnings_release_document_key":
+                "https://www.sec.gov/archives/sndkq4-26ex991xpressrelease.htm"
+        });
+        store.insert_event(&earnings).unwrap();
+
+        let delivered_actor = "discord::::delivered";
+        let failed_actor = "discord::::failed";
+        store
+            .log_delivery(
+                &earnings.id,
+                delivered_actor,
+                "sink",
+                Severity::High,
+                "sent",
+                None,
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                &earnings.id,
+                failed_actor,
+                "sink",
+                Severity::High,
+                "failed",
+                None,
+            )
+            .unwrap();
+
+        let lookup_url = "HTTPS://WWW.SEC.GOV/Archives/sndkq4-26ex991xpressrelease.htm#document";
+        assert!(
+            store
+                .actor_has_delivered_earnings_for_document(delivered_actor, lookup_url)
+                .unwrap()
+        );
+        assert!(
+            !store
+                .actor_has_delivered_earnings_for_document(failed_actor, lookup_url)
+                .unwrap()
+        );
     }
 
     #[test]

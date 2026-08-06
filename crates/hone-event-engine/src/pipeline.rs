@@ -163,3 +163,242 @@ pub(crate) async fn cron_minute_tick<F>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use chrono::TimeZone;
+    use hone_core::ActorIdentity;
+    use tempfile::tempdir;
+
+    use crate::digest::DigestBuffer;
+    use crate::event::{EventKind, Severity};
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+    use crate::router::{NotificationRouter, OutboundSink};
+    use crate::store::DeliveryLogFilter;
+    use crate::subscription::{PortfolioSubscription, SharedRegistry, SubscriptionRegistry};
+
+    #[derive(Default)]
+    struct CapturingSink {
+        calls: Mutex<Vec<(String, String)>>,
+    }
+
+    #[async_trait]
+    impl OutboundSink for CapturingSink {
+        async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+            self.calls.lock().unwrap().push((
+                format!(
+                    "{}::{}::{}",
+                    actor.channel,
+                    actor.channel_scope.clone().unwrap_or_default(),
+                    actor.user_id
+                ),
+                body.to_string(),
+            ));
+            Ok(())
+        }
+    }
+
+    struct FailingSink;
+
+    #[async_trait]
+    impl OutboundSink for FailingSink {
+        async fn send(&self, _actor: &ActorIdentity, _body: &str) -> anyhow::Result<()> {
+            anyhow::bail!("simulated sink failure")
+        }
+    }
+
+    fn actor(user_id: &str) -> ActorIdentity {
+        ActorIdentity::new("discord", user_id, None::<&str>).unwrap()
+    }
+
+    fn sec_release_event(id: &str) -> MarketEvent {
+        MarketEvent {
+            id: id.into(),
+            kind: EventKind::SecFiling { form: "8-K".into() },
+            severity: Severity::Medium,
+            symbols: vec!["SNDK".into()],
+            occurred_at: Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap(),
+            title: "SNDK filed 8-K".into(),
+            summary: "earnings release supporting document".into(),
+            url: Some("https://www.sec.gov/Archives/sndkq4-26ex991xpressrelease.htm".into()),
+            source: "fmp.sec_filings".into(),
+            payload: serde_json::json!({
+                "hone_earnings_release_document": true,
+                "hone_earnings_release_document_key":
+                    "https://www.sec.gov/archives/sndkq4-26ex991xpressrelease.htm"
+            }),
+        }
+    }
+
+    fn reviewed_earnings_event() -> MarketEvent {
+        MarketEvent {
+            id: "earnings_surprise:SNDK:2026-08-05".into(),
+            kind: EventKind::EarningsReleased,
+            severity: Severity::High,
+            symbols: vec!["SNDK".into()],
+            occurred_at: Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap(),
+            title: "数据中心强劲，消费端仍承压".into(),
+            summary: "结论：数据中心驱动增长\n关键证据：订单增长；毛利率改善\n反向项：消费端下滑\n尚未确认：量价贡献\n后续核验：电话会核验客户采用".into(),
+            url: Some(
+                "https://www.sec.gov/Archives/sndkq4-26ex991xpressrelease.htm".into(),
+            ),
+            source: "fmp.earnings_surprises".into(),
+            payload: serde_json::json!({
+                "earnings_quality_review_applied": true,
+                "earnings_quality_review": {"conclusion": "mixed_positive"},
+                "hone_earnings_release_document_key":
+                    "https://www.sec.gov/archives/sndkq4-26ex991xpressrelease.htm"
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn earnings_chain_is_personalized_idempotent_and_single_delivery_per_document() {
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        let mut registry = SubscriptionRegistry::new();
+        for (user_id, mainline) in [
+            ("ai", "AI 数据层与企业级 SSD 客户采用"),
+            ("cycle", "NAND ASP、库存与供给纪律"),
+        ] {
+            let actor = actor(user_id);
+            registry.register(Box::new(PortfolioSubscription::new(
+                actor.clone(),
+                vec!["SNDK".into()],
+            )));
+            prefs
+                .save(
+                    &actor,
+                    &NotificationPrefs {
+                        mainline_by_ticker: Some(HashMap::from([("SNDK".into(), mainline.into())])),
+                        ..NotificationPrefs::default()
+                    },
+                )
+                .unwrap();
+        }
+        let sink = Arc::new(CapturingSink::default());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(registry)),
+            sink.clone(),
+            store.clone(),
+            digest.clone(),
+        )
+        .with_prefs(prefs);
+
+        let first_sec = sec_release_event("sec:SNDK:release");
+        process_events("fmp.sec_filings", vec![first_sec], &store, &router).await;
+        process_events(
+            "fmp.earnings_surprises",
+            vec![reviewed_earnings_event()],
+            &store,
+            &router,
+        )
+        .await;
+        // 同 id 重复轮询不再投递。
+        process_events(
+            "fmp.earnings_surprises",
+            vec![reviewed_earnings_event()],
+            &store,
+            &router,
+        )
+        .await;
+
+        let calls = sink.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let ai = calls.iter().find(|(key, _)| key.ends_with("::ai")).unwrap();
+        let cycle = calls
+            .iter()
+            .find(|(key, _)| key.ends_with("::cycle"))
+            .unwrap();
+        assert!(ai.1.contains("AI 数据层"));
+        assert!(!ai.1.contains("NAND ASP"));
+        assert!(cycle.1.contains("NAND ASP"));
+        assert!(!cycle.1.contains("AI 数据层"));
+        drop(calls);
+
+        // 财报卡成功送达后，先到的 SEC 兜底从摘要清除。
+        let ai_remaining = digest.drain_actor(&actor("ai")).unwrap();
+        let cycle_remaining = digest.drain_actor(&actor("cycle")).unwrap();
+        assert!(ai_remaining.is_empty(), "ai remaining: {ai_remaining:?}");
+        assert!(
+            cycle_remaining.is_empty(),
+            "cycle remaining: {cycle_remaining:?}"
+        );
+
+        // 后到的同文档 SEC 也不再重新入摘要。
+        process_events(
+            "fmp.sec_filings",
+            vec![sec_release_event("sec:SNDK:release:amended")],
+            &store,
+            &router,
+        )
+        .await;
+        assert!(digest.drain_actor(&actor("ai")).unwrap().is_empty());
+        assert!(digest.drain_actor(&actor("cycle")).unwrap().is_empty());
+
+        let superseded = store
+            .list_recent_delivery_logs(&DeliveryLogFilter {
+                status: Some("superseded".into()),
+                limit: 20,
+                ..DeliveryLogFilter::default()
+            })
+            .unwrap();
+        assert_eq!(superseded.len(), 4);
+        assert_eq!(store.count_events().unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn failed_structured_earnings_delivery_keeps_sec_digest_fallback() {
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let mut registry = SubscriptionRegistry::new();
+        let target = actor("failed");
+        registry.register(Box::new(PortfolioSubscription::new(
+            target.clone(),
+            vec!["SNDK".into()],
+        )));
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(registry)),
+            Arc::new(FailingSink),
+            store.clone(),
+            digest.clone(),
+        );
+
+        process_events(
+            "fmp.sec_filings",
+            vec![sec_release_event("sec:SNDK:fallback")],
+            &store,
+            &router,
+        )
+        .await;
+        process_events(
+            "fmp.earnings_surprises",
+            vec![reviewed_earnings_event()],
+            &store,
+            &router,
+        )
+        .await;
+
+        let buffered = digest.drain_actor(&target).unwrap();
+        assert_eq!(buffered.len(), 1);
+        assert_eq!(buffered[0].id, "sec:SNDK:fallback");
+        let failures = store
+            .list_recent_delivery_logs(&DeliveryLogFilter {
+                actor: Some("discord::::failed".into()),
+                status: Some("failed".into()),
+                limit: 20,
+                ..DeliveryLogFilter::default()
+            })
+            .unwrap();
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].event_id, "earnings_surprise:SNDK:2026-08-05");
+    }
+}

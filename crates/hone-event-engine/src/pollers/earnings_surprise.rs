@@ -1,7 +1,7 @@
 //! EarningsSurprisePoller — 拉取已发布财报的 surprise%。
 //!
-//! 源：FMP `v3/earnings-surprises/{ticker}`。盘后 16:30 ET 之后由 scheduler
-//! 触发。和 `EarningsPoller` 的区别：
+//! 源：FMP `v3/earnings-surprises/{ticker}`。美股常见盘前/盘后发布窗口内
+//! 按配置间隔轮询。和 `EarningsPoller` 的区别：
 //! - `EarningsPoller` 日历/预告（T-1 Medium），不含实际数据
 //! - `EarningsSurprisePoller` 实际 vs 预期，含 `actualEarningResult` + `estimatedEarning`
 //!
@@ -12,19 +12,23 @@
 //!
 //! id 稳定：`earnings_surprise:{SYMBOL}:{date}`——一家公司一个季度只有一条。
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDateTime, TimeZone, Timelike, Utc, Weekday};
+use chrono_tz::US::Eastern;
 use serde_json::{Value, json};
 use tracing::warn;
 
+use crate::earnings_document::is_earnings_release_document_url;
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
 use crate::pollers::earnings_quality::{EarningsQualityReviewer, apply_earnings_quality_review};
 use crate::pollers::sec_enrichment::extract_filing_llm_context;
 use crate::source::{EventSource, SourceSchedule};
+use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
 
 const EPS_PERCENT_MIN_DENOMINATOR: f64 = 0.10;
@@ -43,6 +47,11 @@ pub struct EarningsSurprisePoller {
     quality_min_immediate_confidence: f64,
     sec_user_agent: String,
     sec_http: reqwest::Client,
+    /// 成功完成质量判断的当前进程事件 id，用于同一运行期内短路。
+    reviewed_event_ids: Arc<Mutex<HashSet<String>>>,
+    /// 可选持久事件库，用于服务重启后在 SEC/LLM 之前短路已复核事件。
+    /// 仅成功产出并入库的事件会命中；失败样本仍会在下一 tick 重试。
+    event_store: Option<Arc<EventStore>>,
 }
 
 impl EarningsSurprisePoller {
@@ -64,7 +73,14 @@ impl EarningsSurprisePoller {
             quality_min_immediate_confidence: 0.9,
             sec_user_agent: String::new(),
             sec_http,
+            reviewed_event_ids: Arc::new(Mutex::new(HashSet::new())),
+            event_store: None,
         }
+    }
+
+    pub fn with_event_store(mut self, store: Arc<EventStore>) -> Self {
+        self.event_store = Some(store);
+        self
     }
 
     pub fn with_lookback_days(mut self, days: i64) -> Self {
@@ -123,7 +139,11 @@ impl EarningsSurprisePoller {
                         continue;
                     }
                     for mut event in candidates {
+                        if self.was_reviewed(&event.id) {
+                            continue;
+                        }
                         if self.apply_quality_review(&mut event).await {
+                            self.mark_reviewed(&event.id);
                             events.push(event);
                         }
                     }
@@ -132,6 +152,44 @@ impl EarningsSurprisePoller {
             }
         }
         Ok(events)
+    }
+
+    fn was_reviewed(&self, event_id: &str) -> bool {
+        if self
+            .reviewed_event_ids
+            .lock()
+            .map(|ids| ids.contains(event_id))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        let Some(store) = self.event_store.as_ref() else {
+            return false;
+        };
+        match store.contains_event(event_id) {
+            Ok(reviewed) => reviewed,
+            Err(error) => {
+                warn!(
+                    event_id,
+                    degraded = true,
+                    "earnings event-store dedup lookup failed: {error:#}"
+                );
+                false
+            }
+        }
+    }
+
+    fn mark_reviewed(&self, event_id: &str) {
+        // 生产路径注入 EventStore 时，只有 pipeline 真正入库后才算可跨 tick
+        // 短路。如果在 poller 返回事件时就写内存 cache，后续入库失败会
+        // 让该事件在本进程永久消失。无 store 的独立测试/工具路径才使用
+        // 进程内 cache。
+        if self.event_store.is_some() {
+            return;
+        }
+        if let Ok(mut ids) = self.reviewed_event_ids.lock() {
+            ids.insert(event_id.to_string());
+        }
     }
 
     async fn apply_quality_review(&self, event: &mut MarketEvent) -> bool {
@@ -151,6 +209,7 @@ impl EarningsSurprisePoller {
         let Some(review) = reviewer.review(event, &context.context).await else {
             return false;
         };
+        let accepted_at = context.accepted_at;
         let applied = apply_earnings_quality_review(
             event,
             review,
@@ -158,6 +217,17 @@ impl EarningsSurprisePoller {
             self.quality_min_review_confidence,
             self.quality_min_immediate_confidence,
         );
+        if applied {
+            // FMP surprise 只有日期，午夜并不是实际发布时间。采用同一 earnings
+            // release 8-K 的 acceptedDate，后续才能准确计算发布到推送的时效。
+            event.occurred_at = accepted_at;
+            if let Some(payload) = event.payload.as_object_mut() {
+                payload.insert(
+                    "earnings_release_accepted_at".into(),
+                    Value::String(accepted_at.to_rfc3339()),
+                );
+            }
+        }
         if !applied {
             warn!(
                 event_id = %event.id,
@@ -243,7 +313,11 @@ impl EarningsSurprisePoller {
             );
             return None;
         }
-        Some(EarningsReviewContext { url, context })
+        Some(EarningsReviewContext {
+            url,
+            context,
+            accepted_at,
+        })
     }
 }
 
@@ -258,6 +332,9 @@ impl EventSource for EarningsSurprisePoller {
     }
 
     async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+        if !is_us_earnings_release_window(Utc::now()) {
+            return Ok(vec![]);
+        }
         let symbols = self.registry.load().watch_pool();
         if symbols.is_empty() {
             return Ok(vec![]);
@@ -354,6 +431,7 @@ struct EpsSurprisePresentation {
 struct EarningsReviewContext {
     url: String,
     context: String,
+    accepted_at: DateTime<Utc>,
 }
 
 fn eps_surprise_presentation(
@@ -429,7 +507,10 @@ fn select_recent_8k_url(
     filing_items
         .iter()
         .filter_map(|item| recent_8k_candidate(item, occurred_at, max_delta_secs))
-        .min_by_key(|(_, _, delta_secs)| *delta_secs)
+        // surprise 只有财报日期而没有发布时间。多个 8-K 同时落在宽窗口时，
+        // 先选 URL 明确指向财报/新闻稿的文档，再在同类文档中选最新披露；
+        // 避免窗口内更晚的无关 8-K 抢走财报上下文。
+        .max_by_key(|(url, accepted_at, _)| (is_earnings_release_document_url(url), *accepted_at))
         .map(|(url, accepted_at, _)| (url, accepted_at))
 }
 
@@ -468,12 +549,29 @@ fn sec_filing_url(item: &Value) -> Option<String> {
 
 fn parse_fmp_datetime(s: &str) -> Option<DateTime<Utc>> {
     if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&ndt));
+        // FMP SEC acceptedDate 使用美国东部时间但不附 offset。必须按
+        // US/Eastern(DST-aware)解释；当成 UTC 会把发布时刻提前 4/5 小时。
+        return Eastern
+            .from_local_datetime(&ndt)
+            .single()
+            .map(|value| value.with_timezone(&Utc));
     }
     if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Some(Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?));
     }
     None
+}
+
+/// 美股财报最常见的正式发布窗口。窗口外轮询直接 no-op，既把正式披露到发现
+/// 的目标压到配置 interval 内，又避免全天按 watch pool 烧 FMP / SEC 配额。
+/// pre: 04:00–10:00 ET；post: 16:00–23:00 ET；周末关闭。
+fn is_us_earnings_release_window(now: DateTime<Utc>) -> bool {
+    let eastern = now.with_timezone(&Eastern);
+    if matches!(eastern.weekday(), Weekday::Sat | Weekday::Sun) {
+        return false;
+    }
+    let minutes = eastern.hour() * 60 + eastern.minute();
+    (4 * 60..10 * 60).contains(&minutes) || (16 * 60..23 * 60).contains(&minutes)
 }
 
 #[cfg(test)]
@@ -573,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_nearest_recent_8k_for_quality_review_context() {
+    fn selects_latest_recent_8k_for_quality_review_context() {
         let occurred_at = Utc.with_ymd_and_hms(2026, 5, 8, 0, 0, 0).unwrap();
         let raw = serde_json::json!([
             {
@@ -593,10 +691,115 @@ mod tests {
             }
         ]);
         let (url, accepted_at) = select_recent_8k_url(&raw, occurred_at, 72).expect("recent 8-K");
-        assert_eq!(url, "https://sec.gov/old.htm");
+        assert_eq!(url, "https://sec.gov/earnings.htm");
         assert_eq!(
             accepted_at,
-            Utc.with_ymd_and_hms(2026, 5, 7, 22, 0, 0).unwrap()
+            Utc.with_ymd_and_hms(2026, 5, 9, 1, 0, 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn prefers_earnings_release_over_later_unrelated_8k() {
+        let occurred_at = Utc.with_ymd_and_hms(2026, 8, 6, 0, 0, 0).unwrap();
+        let raw = serde_json::json!([
+            {
+                "type": "8-K",
+                "acceptedDate": "2026-08-05 16:09:06",
+                "finalLink": "https://sec.gov/sndkq4-26ex991xpressrelease.htm"
+            },
+            {
+                "type": "8-K",
+                "acceptedDate": "2026-08-05 18:30:00",
+                "finalLink": "https://sec.gov/unrelated8k.htm"
+            }
+        ]);
+        let (url, accepted_at) = select_recent_8k_url(&raw, occurred_at, 72).expect("recent 8-K");
+        assert!(url.contains("pressrelease"));
+        assert_eq!(
+            accepted_at,
+            Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap()
+        );
+    }
+
+    #[test]
+    fn sec_accepted_date_is_parsed_as_us_eastern_with_dst() {
+        let parsed = parse_fmp_datetime("2026-08-05 16:09:06").expect("accepted date");
+        assert_eq!(parsed, Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap());
+    }
+
+    #[test]
+    fn earnings_release_poll_window_covers_pre_and_post_market_only() {
+        assert!(is_us_earnings_release_window(
+            Utc.with_ymd_and_hms(2026, 8, 5, 8, 30, 0).unwrap()
+        )); // 04:30 EDT
+        assert!(is_us_earnings_release_window(
+            Utc.with_ymd_and_hms(2026, 8, 5, 20, 5, 0).unwrap()
+        )); // 16:05 EDT
+        assert!(!is_us_earnings_release_window(
+            Utc.with_ymd_and_hms(2026, 8, 5, 15, 0, 0).unwrap()
+        )); // 11:00 EDT
+        assert!(!is_us_earnings_release_window(
+            Utc.with_ymd_and_hms(2026, 8, 8, 20, 5, 0).unwrap()
+        )); // Saturday
+    }
+
+    #[test]
+    fn persisted_event_short_circuits_review_after_poller_restart() {
+        use crate::subscription::SubscriptionRegistry;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let raw = serde_json::json!([surprise(0, 0.18, 0.10)]);
+        let mut events =
+            events_from_surprises(&raw, "SNDK", Utc::now() - chrono::Duration::days(3), 5.0);
+        let event = events.remove(0);
+        store.insert_event(&event).unwrap();
+
+        let client = FmpClient::from_config(&hone_core::config::FmpConfig {
+            api_key: "test-key".into(),
+            api_keys: vec![],
+            base_url: "http://127.0.0.1:1".into(),
+            timeout: 1,
+        });
+        let registry = Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+        let restarted = EarningsSurprisePoller::new(
+            client,
+            registry,
+            SourceSchedule::FixedInterval(Duration::from_secs(60)),
+        )
+        .with_event_store(store);
+
+        assert!(restarted.was_reviewed(&event.id));
+        assert!(!restarted.was_reviewed("earnings_surprise:OTHER:2026-08-05"));
+    }
+
+    #[test]
+    fn store_backed_poller_does_not_cache_before_pipeline_persists_event() {
+        use crate::subscription::SubscriptionRegistry;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let client = FmpClient::from_config(&hone_core::config::FmpConfig {
+            api_key: "test-key".into(),
+            api_keys: vec![],
+            base_url: "http://127.0.0.1:1".into(),
+            timeout: 1,
+        });
+        let registry = Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+        let poller = EarningsSurprisePoller::new(
+            client,
+            registry,
+            SourceSchedule::FixedInterval(Duration::from_secs(60)),
+        )
+        .with_event_store(store);
+        let event_id = "earnings_surprise:SNDK:2026-08-05";
+
+        poller.mark_reviewed(event_id);
+        assert!(
+            !poller.was_reviewed(event_id),
+            "failed pipeline persistence must remain retryable on the next tick"
         );
     }
 
@@ -662,6 +865,8 @@ mod tests {
                 summary_zh: "收入、毛利率和经营现金流同步改善".into(),
                 evidence: vec!["收入增长79%".into(), "经营现金流转正".into()],
                 risks: vec![],
+                unknowns: vec!["量价贡献未披露".into()],
+                follow_ups: vec!["电话会核验现金流持续性".into()],
                 override_eps_only: true,
             },
             Some(filing_url.clone()),

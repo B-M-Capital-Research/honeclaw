@@ -29,8 +29,19 @@ pub enum RenderFormat {
 }
 
 pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
+    render_immediate_with_mainline(event, fmt, None)
+}
+
+/// 渲染 actor 级即时消息。只有财报质量事件会消费 `mainline`;其他 kind 保持
+/// 与 `render_immediate` 完全相同。这里不让模型替用户修改主线，只把已确认的
+/// actor 主线与通用财报事实放在同一张快报里，供用户继续核验。
+pub fn render_immediate_with_mainline(
+    event: &MarketEvent,
+    fmt: RenderFormat,
+    mainline: Option<&str>,
+) -> String {
     if matches!(fmt, RenderFormat::FeishuPost) {
-        return render_immediate_feishu_post(event);
+        return render_immediate_feishu_post(event, mainline);
     }
 
     let tag = severity_tag(event.severity);
@@ -51,7 +62,7 @@ pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
 
     let mut out = format!("{head_out}\n{title_out}");
 
-    let body = effective_body(event);
+    let body = effective_body_with_mainline(event, mainline);
     let body_trim = body.trim();
     if !body_trim.is_empty() {
         out.push_str("\n\n");
@@ -83,7 +94,70 @@ pub fn effective_body(event: &MarketEvent) -> Cow<'_, str> {
     Cow::Borrowed(&event.summary)
 }
 
-fn render_immediate_feishu_post(event: &MarketEvent) -> String {
+fn effective_body_with_mainline<'a>(
+    event: &'a MarketEvent,
+    mainline: Option<&str>,
+) -> Cow<'a, str> {
+    let body = effective_body(event);
+    if !matches!(event.kind, EventKind::EarningsReleased)
+        || event
+            .payload
+            .get("earnings_quality_review_applied")
+            .and_then(|value| value.as_bool())
+            != Some(true)
+    {
+        return body;
+    }
+
+    let conclusion = event
+        .payload
+        .pointer("/earnings_quality_review/conclusion")
+        .and_then(|value| value.as_str())
+        .map(earnings_conclusion_label)
+        .unwrap_or("待判断");
+    let profile_context = mainline
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            format!(
+                "你的长期主线（仅用于本次对照，不会自动改写）：{}\n主线初判：财报综合信号为{conclusion}；是否正式强化或削弱主线，仍需按关键因子确认。",
+                truncate_chars(value, 240)
+            )
+        })
+        .unwrap_or_else(|| {
+            "个性化状态：尚未建立这家公司的用户主线；当前仅为通用事实卡，不能冒充个性化判断。"
+                .to_string()
+        });
+
+    Cow::Owned(if body.trim().is_empty() {
+        profile_context
+    } else {
+        format!("{}\n\n{profile_context}", body.trim())
+    })
+}
+
+fn earnings_conclusion_label(value: &str) -> &'static str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "positive" => "正面",
+        "mixed_positive" => "混合偏正",
+        "neutral" => "中性",
+        "mixed_negative" => "混合偏负",
+        "negative" => "负面",
+        _ => "待判断",
+    }
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let head = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{head}…")
+    } else {
+        head
+    }
+}
+
+fn render_immediate_feishu_post(event: &MarketEvent, mainline: Option<&str>) -> String {
     let tag = severity_tag(event.severity);
     let head = header_line(event);
     let head_plain = if tag.is_empty() {
@@ -100,7 +174,7 @@ fn render_immediate_feishu_post(event: &MarketEvent) -> String {
     }
     content.push(title_row);
 
-    let body = effective_body(event);
+    let body = effective_body_with_mainline(event, mainline);
     let body_trim = body.trim();
     if !body_trim.is_empty() {
         content.push(vec![feishu_text(body_trim)]);
@@ -450,6 +524,65 @@ mod tests {
         let rendered = render_immediate(&event, RenderFormat::Plain);
         assert!(rendered.contains("EPS beat"));
         assert!(!rendered.contains("should not show up"));
+    }
+
+    #[test]
+    fn reviewed_earnings_renders_actor_mainline_without_claiming_it_was_rewritten() {
+        let mut event = event_with_kind(EventKind::EarningsReleased);
+        event.title = "营收与毛利率显著改善".into();
+        event.summary = "结论：数据中心驱动增长\n关键证据：收入增长79%；现金流转正\n反向项：消费端环比下降\n尚未确认：量价贡献\n后续核验：电话会核验订单能见度".into();
+        event.payload = serde_json::json!({
+            "earnings_quality_review_applied": true,
+            "earnings_quality_review": {"conclusion": "mixed_positive"}
+        });
+
+        for format in [
+            RenderFormat::Plain,
+            RenderFormat::TelegramHtml,
+            RenderFormat::DiscordMarkdown,
+            RenderFormat::FeishuPost,
+        ] {
+            let rendered = render_immediate_with_mainline(
+                &event,
+                format,
+                Some("AI 数据层扩容；重点核验企业级 SSD、客户采用和供给纪律。"),
+            );
+            assert!(
+                rendered.contains("关键证据：收入增长79%"),
+                "{format:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("反向项：消费端环比下降"),
+                "{format:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("尚未确认：量价贡献"),
+                "{format:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("后续核验：电话会核验订单能见度"),
+                "{format:?}: {rendered}"
+            );
+            assert!(rendered.contains("你的长期主线"), "{format:?}: {rendered}");
+            assert!(rendered.contains("AI 数据层扩容"), "{format:?}: {rendered}");
+            assert!(
+                rendered.contains("财报综合信号为混合偏正"),
+                "{format:?}: {rendered}"
+            );
+            assert!(rendered.contains("不会自动改写"), "{format:?}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn reviewed_earnings_without_mainline_declares_generic_fallback() {
+        let mut event = event_with_kind(EventKind::EarningsReleased);
+        event.payload = serde_json::json!({
+            "earnings_quality_review_applied": true,
+            "earnings_quality_review": {"conclusion": "positive"}
+        });
+        let rendered = render_immediate(&event, RenderFormat::Plain);
+        assert!(rendered.contains("尚未建立这家公司的用户主线"));
+        assert!(rendered.contains("不能冒充个性化判断"));
     }
 
     #[test]

@@ -15,6 +15,7 @@ use tracing::{info, warn};
 
 use crate::daily_report::DailyReport;
 use crate::digest::{self, DigestBuffer};
+use crate::earnings_continuity::LlmEarningsContinuityReconciler;
 use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::pipeline;
@@ -42,6 +43,9 @@ pub struct EventEngine {
     store_path: PathBuf,
     events_jsonl_path: Option<PathBuf>,
     portfolio_dir: PathBuf,
+    /// actor sandbox 的根目录；配置后，tracking-enabled 公司画像会和持仓一起
+    /// 构成 watch pool。None 保持历史上的 portfolio-only 行为。
+    company_profile_dir: Option<PathBuf>,
     digest_dir: PathBuf,
     prefs_dir: PathBuf,
     daily_report_dir: PathBuf,
@@ -66,6 +70,7 @@ pub struct EventEngine {
     /// EarningsReleased 综合质量 review 的独立 LLM provider。该路径输出 JSON
     /// judgement,completion budget 介于短摘要和 global_digest 之间。
     earnings_quality_review_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    earnings_continuity_review_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     retention_days: i64,
 }
 
@@ -77,6 +82,7 @@ impl EventEngine {
             store_path: PathBuf::from("./data/events.db"),
             events_jsonl_path: Some(PathBuf::from("./data/events.jsonl")),
             portfolio_dir: PathBuf::from("./data/portfolio"),
+            company_profile_dir: None,
             digest_dir: PathBuf::from("./data/digest_buffer"),
             prefs_dir: PathBuf::from("./data/notif_prefs"),
             daily_report_dir: PathBuf::from("./data/daily_reports"),
@@ -90,6 +96,7 @@ impl EventEngine {
             global_digest_event_dedupe_provider: None,
             sec_filings_enrichment_provider: None,
             earnings_quality_review_provider: None,
+            earnings_continuity_review_provider: None,
             retention_days: 30,
         }
     }
@@ -121,6 +128,11 @@ impl EventEngine {
 
     pub fn with_portfolio_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.portfolio_dir = path.into();
+        self
+    }
+
+    pub fn with_company_profile_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.company_profile_dir = Some(path.into());
         self
     }
 
@@ -207,6 +219,14 @@ impl EventEngine {
         self
     }
 
+    pub fn with_earnings_continuity_review_provider(
+        mut self,
+        provider: Arc<dyn hone_llm::LlmProvider>,
+    ) -> Self {
+        self.earnings_continuity_review_provider = Some(provider);
+        self
+    }
+
     /// 启动事件引擎。非阻塞：内部 spawn 后立即返回 Ok。
     pub async fn start(&self) -> anyhow::Result<()> {
         if !self.engine_cfg.enabled {
@@ -290,7 +310,13 @@ impl EventEngine {
 
         // 基于持仓构建订阅注册中心，封装在 SharedRegistry 里支持运行时热刷新。
         // 初次读盘在 start() 内完成；之后后台任务每 60s 重建一次（下面 spawn）。
-        let registry = Arc::new(SharedRegistry::from_portfolio_dir(&self.portfolio_dir));
+        let registry = Arc::new(match self.company_profile_dir.as_ref() {
+            Some(profile_dir) => SharedRegistry::from_portfolio_and_company_profiles(
+                &self.portfolio_dir,
+                profile_dir,
+            ),
+            None => SharedRegistry::from_portfolio_dir(&self.portfolio_dir),
+        });
         info!(
             subscribers = registry.load().len(),
             "subscription registry initialized (hot-refreshable)"
@@ -368,6 +394,24 @@ impl EventEngine {
         if let Some(classifier) = self.news_classifier.clone() {
             router_builder = router_builder.with_news_classifier(classifier);
             info!("event engine: news LLM classifier 已装配 (uncertain-source 升 Medium)");
+        }
+        if self.engine_cfg.earnings.continuity_review.enabled
+            && let (Some(provider), Some(profile_dir)) = (
+                self.earnings_continuity_review_provider.clone(),
+                self.company_profile_dir.as_ref(),
+            )
+        {
+            router_builder = router_builder.with_earnings_continuity(Arc::new(
+                LlmEarningsContinuityReconciler::new(
+                    provider,
+                    self.engine_cfg.earnings.continuity_review.model.clone(),
+                    hone_memory::CompanyProfileStorage::new(profile_dir),
+                ),
+            ));
+            info!(
+                model = %self.engine_cfg.earnings.continuity_review.model,
+                "event engine: A-tier earnings continuity ledger enabled"
+            );
         }
         let router = Arc::new(router_builder);
         if !self.engine_cfg.disabled_kinds.is_empty() {
@@ -744,11 +788,14 @@ impl EventEngine {
                         EarningsSurprisePoller::new(
                             client.clone(),
                             registry.clone(),
-                            SourceSchedule::CronAligned {
-                                prefetch_at: prefetch_at.clone(),
-                                tz_offset,
-                            },
+                            SourceSchedule::FixedInterval(Duration::from_secs(
+                                self.engine_cfg
+                                    .poll_intervals
+                                    .earnings_surprise_secs
+                                    .max(60),
+                            )),
                         )
+                        .with_event_store(store.clone())
                         .with_quality_reviewer(
                             reviewer,
                             review_cfg.sec_recent_hours,
@@ -887,11 +934,13 @@ mod tests {
         let global: Arc<dyn LlmProvider> = Arc::new(StubProvider);
         let sec: Arc<dyn LlmProvider> = Arc::new(StubProvider);
         let earnings: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+        let continuity: Arc<dyn LlmProvider> = Arc::new(StubProvider);
 
         let engine = EventEngine::new(EventEngineConfig::default(), FmpConfig::default())
             .with_global_digest_provider(global.clone())
             .with_sec_filings_enrichment_provider(sec.clone())
-            .with_earnings_quality_review_provider(earnings.clone());
+            .with_earnings_quality_review_provider(earnings.clone())
+            .with_earnings_continuity_review_provider(continuity.clone());
 
         assert!(Arc::ptr_eq(
             engine.global_digest_provider.as_ref().unwrap(),
@@ -912,6 +961,14 @@ mod tests {
         assert!(!Arc::ptr_eq(
             engine.global_digest_provider.as_ref().unwrap(),
             engine.earnings_quality_review_provider.as_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            engine.earnings_continuity_review_provider.as_ref().unwrap(),
+            &continuity
+        ));
+        assert!(!Arc::ptr_eq(
+            engine.earnings_quality_review_provider.as_ref().unwrap(),
+            engine.earnings_continuity_review_provider.as_ref().unwrap()
         ));
     }
 

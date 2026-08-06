@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-06
-状态：有 11 个活跃任务
+状态：有 12 个活跃任务
 
 ## 说明
 
@@ -20,6 +20,11 @@
   - 状态：`blocked`
   - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
   - 摘要：双 entitlement、单次 Checkout、退款语义、全仓验证、官方测试模式支付宝/微信付款、精确 GHCR/GCE 部署和生产 USD 229.99 Checkout 验收均已完成；生产 Checkout 当前只有银行卡，Stripe Dashboard/API 仍将支付宝与微信标为 `pending approval` / `available=false`，待外部审批通过后做最后一次无付款页面验收并归档
+
+- **机构化公司长期覆盖与财报研究闭环**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/institutional-company-coverage.md`
+  - 摘要：四个本地切口已完成：结构化财报卡与 actor 主线隔离；同一文档即时/摘要去重、重启幂等和失败兜底；真实 SEC 材料的 Grok 4.5 模型赛马与 B/M 单位护栏；以及画像驱动 A/B/C 订阅、追加式问题/承诺账本和 T0 后台连续四季对账。6 类公司 × 4 季的 24 个 SEC 一手样本最终实跑 24/24、自动合同 18/18，成本约 `$0.567`。任务保持活跃，下一阶段是 transcript 同卡补充、人工盲评、真实 A 级画像与一个完整前瞻财报季
 
 - **Earnings Workflow 内容一致性与新闻深度修复**
   - 状态：`in_progress`

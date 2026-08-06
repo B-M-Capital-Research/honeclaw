@@ -23,6 +23,13 @@ pub trait OutboundSink: Send + Sync {
         "sent"
     }
 
+    /// 按最终 actor 解析成功状态。普通 sink 与 `success_status`一致；
+    /// MultiChannelSink 需要根据是否命中真实渠道区分 `sent` 和
+    /// fallback `dryrun`。
+    fn success_status_for(&self, _actor: &ActorIdentity) -> &'static str {
+        self.success_status()
+    }
+
     /// 该 Sink 期望的消息格式。若渠道使用富文本,override 这里同时在 send()
     /// 带上对应的 parse_mode / msg_type,否则会出现 `<b>` 当字面量泄露。
     fn format(&self) -> RenderFormat {

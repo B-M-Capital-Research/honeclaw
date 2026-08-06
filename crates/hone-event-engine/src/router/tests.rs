@@ -7,6 +7,7 @@ use crate::subscription::{PortfolioSubscription, SharedRegistry, SubscriptionReg
 use async_trait::async_trait;
 use chrono::Utc;
 use hone_core::ActorIdentity;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
 
@@ -137,6 +138,150 @@ async fn high_severity_goes_to_sink_immediately() {
         .unwrap();
     assert_eq!(delivered_context.records.len(), 1);
     assert!(delivered_context.records[0].body.contains("财报发布"));
+}
+
+#[tokio::test]
+async fn reviewed_earnings_uses_each_actors_own_mainline() {
+    use std::collections::HashMap;
+
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("long-term"),
+        vec!["SNDK".into()],
+    )));
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("cycle"),
+        vec!["SNDK".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_storage = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+    let prefs_for = |mainline: &str| NotificationPrefs {
+        mainline_by_ticker: Some(HashMap::from([("sndk".to_string(), mainline.to_string())])),
+        ..NotificationPrefs::default()
+    };
+    prefs_storage
+        .save(
+            &actor("long-term"),
+            &prefs_for("AI 数据层扩容与企业级 SSD 客户采用"),
+        )
+        .unwrap();
+    prefs_storage
+        .save(
+            &actor("cycle"),
+            &prefs_for("NAND ASP、库存与供给纪律的周期拐点"),
+        )
+        .unwrap();
+
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    )
+    .with_prefs(prefs_storage);
+    let event = MarketEvent {
+        id: "earnings_surprise:SNDK:2026-08-05".into(),
+        kind: EventKind::EarningsReleased,
+        severity: Severity::High,
+        symbols: vec!["SNDK".into()],
+        occurred_at: Utc::now(),
+        title: "营收与毛利率显著改善".into(),
+        summary: "结论：数据中心驱动增长\n反向项：消费端下滑".into(),
+        url: Some("https://sec.example.test/sndk.htm".into()),
+        source: "fmp.earnings_surprises".into(),
+        payload: serde_json::json!({
+            "earnings_quality_review_applied": true,
+            "earnings_quality_review": {"conclusion": "mixed_positive"}
+        }),
+    };
+
+    let (sent, pending) = router.dispatch(&event).await.unwrap();
+    assert_eq!((sent, pending), (2, 0));
+    let calls = sink.calls.lock().unwrap();
+    let long_term = calls
+        .iter()
+        .find(|(actor, _)| actor.ends_with("long-term"))
+        .expect("long-term actor body");
+    let cycle = calls
+        .iter()
+        .find(|(actor, _)| actor.ends_with("cycle"))
+        .expect("cycle actor body");
+    assert!(long_term.1.contains("AI 数据层扩容"));
+    assert!(!long_term.1.contains("NAND ASP"));
+    assert!(cycle.1.contains("NAND ASP"));
+    assert!(!cycle.1.contains("AI 数据层扩容"));
+}
+
+#[tokio::test]
+async fn t0_earnings_delivery_does_not_wait_for_background_continuity_review() {
+    use crate::earnings_continuity::{EarningsContinuityOutcome, EarningsContinuityReconciler};
+
+    struct BlockingContinuity {
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl EarningsContinuityReconciler for BlockingContinuity {
+        async fn reconcile(
+            &self,
+            _actor: &ActorIdentity,
+            _event: &MarketEvent,
+        ) -> Option<EarningsContinuityOutcome> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.started.notify_one();
+            self.release.notified().await;
+            Some(EarningsContinuityOutcome {
+                profile_id: "SNDK".to_string(),
+                research_object_key: "sndk-q4".to_string(),
+                thesis_effect: "watch".to_string(),
+                recorded_event_id: "ledger-event".to_string(),
+                checked_existing_items: 1,
+                created_questions: 1,
+                created_commitments: 0,
+                active_questions_after: 2,
+                active_commitments_after: 0,
+            })
+        }
+    }
+
+    let (router, sink, _tmp) = router_with_aapl_actor();
+    let continuity = Arc::new(BlockingContinuity {
+        started: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        calls: AtomicUsize::new(0),
+    });
+    let router = router.with_earnings_continuity(continuity.clone());
+    let mut event = earnings_event_with_severity(Severity::High);
+    event.payload = serde_json::json!({
+        "earnings_quality_review_applied": true,
+        "earnings_quality_review": {"conclusion": "mixed_positive"}
+    });
+
+    let dispatched = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        router.dispatch(&event),
+    )
+    .await
+    .expect("T0 delivery must not wait for continuity LLM")
+    .unwrap();
+    assert_eq!(dispatched, (1, 0));
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        continuity.started.notified(),
+    )
+    .await
+    .expect("continuity task started");
+    assert_eq!(continuity.calls.load(Ordering::SeqCst), 1);
+    continuity.release.notify_one();
 }
 
 #[tokio::test]
@@ -891,6 +1036,34 @@ async fn polisher_body_overrides_default_template() {
         .unwrap();
     let calls = sink.calls.lock().unwrap();
     assert_eq!(calls[0].1, "POLISHED BODY");
+}
+
+#[tokio::test]
+async fn structured_earnings_review_is_not_collapsed_by_plain_polisher() {
+    use crate::polisher::BodyPolisher;
+
+    struct DestructivePolisher;
+    #[async_trait]
+    impl BodyPolisher for DestructivePolisher {
+        async fn polish(&self, _e: &MarketEvent, _b: &str) -> Option<String> {
+            Some("TOO SHORT".into())
+        }
+    }
+
+    let (router, sink, _tmp) = router_with_aapl_actor();
+    let router = router.with_polisher(Arc::new(DestructivePolisher));
+    let mut event = earnings_event_with_severity(Severity::High);
+    event.summary = "结论：增长改善\n关键证据：收入增长；现金流转正\n反向项：消费端承压\n后续核验：电话会核验指引".into();
+    event.payload = serde_json::json!({
+        "earnings_quality_review_applied": true,
+        "earnings_quality_review": {"conclusion": "mixed_positive"}
+    });
+
+    router.dispatch(&event).await.unwrap();
+    let calls = sink.calls.lock().unwrap();
+    assert!(calls[0].1.contains("关键证据：收入增长"));
+    assert!(calls[0].1.contains("反向项：消费端承压"));
+    assert!(!calls[0].1.contains("TOO SHORT"));
 }
 
 #[tokio::test]

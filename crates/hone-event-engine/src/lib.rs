@@ -8,6 +8,7 @@
 
 pub mod daily_report;
 pub mod digest;
+pub mod earnings_continuity;
 pub mod event;
 pub mod fmp;
 pub mod global_digest;
@@ -25,6 +26,7 @@ pub mod unified_digest;
 
 // ── 内部子 module:engine 主体 + spawn 模板 + 共享 pipeline ──
 // 保持 crate 私有:EventEngine 通过下面的 pub use 暴露,其它三个不外露。
+mod earnings_document;
 mod engine;
 mod pipeline;
 mod spawner;
@@ -34,6 +36,10 @@ mod tests;
 
 pub use daily_report::DailyReport;
 pub use digest::DigestBuffer;
+pub use earnings_continuity::{
+    EarningsContinuityOutcome, EarningsContinuityReconciler, EarningsContinuityReview,
+    LlmEarningsContinuityReconciler,
+};
 pub use engine::EventEngine;
 pub use event::{EventKind, MarketEvent, Severity};
 pub use fmp::FmpClient;
@@ -58,7 +64,8 @@ pub use store::{
     EventStore,
 };
 pub use subscription::{
-    GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription, SubscriptionRegistry,
-    registry_from_portfolios,
+    CompanyProfileSubscription, GlobalSubscription, PortfolioSubscription, SharedRegistry,
+    Subscription, SubscriptionRegistry, registry_from_portfolios,
+    registry_from_portfolios_and_profiles,
 };
 pub use unified_digest::UnifiedDigestScheduler;

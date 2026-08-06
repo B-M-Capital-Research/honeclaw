@@ -9,15 +9,21 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
+use crate::earnings_document::{
+    canonical_earnings_document_key, earnings_document_key_for_event,
+    is_earnings_release_document_event,
+};
 use crate::event::{EventKind, MarketEvent};
 
 pub struct DigestBuffer {
     dir: PathBuf,
+    io_lock: Mutex<()>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +37,10 @@ impl DigestBuffer {
     pub fn new(dir: impl Into<PathBuf>) -> anyhow::Result<Self> {
         let dir = dir.into();
         std::fs::create_dir_all(&dir)?;
-        Ok(Self { dir })
+        Ok(Self {
+            dir,
+            io_lock: Mutex::new(()),
+        })
     }
 
     fn file_for(&self, actor: &ActorIdentity) -> PathBuf {
@@ -43,6 +52,10 @@ impl DigestBuffer {
     }
 
     pub fn enqueue(&self, actor: &ActorIdentity, event: &MarketEvent) -> anyhow::Result<()> {
+        let _guard = self
+            .io_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("digest buffer lock poisoned"))?;
         let rec = BufferRecord {
             actor: actor.clone(),
             event: event.clone(),
@@ -50,7 +63,10 @@ impl DigestBuffer {
         };
         let line = serde_json::to_string(&rec)?;
         if let Some(key) = price_digest_key(event) {
-            return self.enqueue_latest(actor, &line, &key);
+            return self.enqueue_latest_locked(actor, &line, &key);
+        }
+        if let Some(key) = earnings_document_key_for_event(event) {
+            return self.enqueue_preferred_earnings_locked(actor, event, &line, &key);
         }
         let mut f = std::fs::OpenOptions::new()
             .create(true)
@@ -60,12 +76,16 @@ impl DigestBuffer {
         Ok(())
     }
 
-    fn enqueue_latest(&self, actor: &ActorIdentity, line: &str, key: &str) -> anyhow::Result<()> {
+    fn enqueue_latest_locked(
+        &self,
+        actor: &ActorIdentity,
+        line: &str,
+        key: &str,
+    ) -> anyhow::Result<()> {
         let path = self.file_for(actor);
         let mut kept = Vec::new();
         if path.exists() {
-            let f = std::fs::File::open(&path)?;
-            for line in BufReader::new(f).lines().map_while(Result::ok) {
+            for line in read_buffer_lines(&path)? {
                 if line.trim().is_empty() {
                     continue;
                 }
@@ -80,29 +100,97 @@ impl DigestBuffer {
             }
         }
         kept.push(line.to_string());
+        rewrite_buffer_lines(&path, &kept)
+    }
 
-        let tmp = path.with_extension(format!(
-            "jsonl.tmp-{}-{}",
-            std::process::id(),
-            Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-        {
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(&tmp)?;
-            for item in kept {
-                writeln!(f, "{item}")?;
+    fn enqueue_preferred_earnings_locked(
+        &self,
+        actor: &ActorIdentity,
+        event: &MarketEvent,
+        line: &str,
+        key: &str,
+    ) -> anyhow::Result<()> {
+        let path = self.file_for(actor);
+        let lines = if path.exists() {
+            read_buffer_lines(&path)?
+        } else {
+            Vec::new()
+        };
+        let incoming_priority = earnings_document_digest_priority(event);
+        let existing_has_higher_priority = lines.iter().any(|existing_line| {
+            serde_json::from_str::<BufferRecord>(existing_line)
+                .ok()
+                .filter(|record| {
+                    earnings_document_key_for_event(&record.event).as_deref() == Some(key)
+                })
+                .is_some_and(|record| {
+                    earnings_document_digest_priority(&record.event) > incoming_priority
+                })
+        });
+        if existing_has_higher_priority {
+            return Ok(());
+        }
+
+        let mut kept = lines
+            .into_iter()
+            .filter(|existing_line| {
+                serde_json::from_str::<BufferRecord>(existing_line)
+                    .ok()
+                    .and_then(|record| earnings_document_key_for_event(&record.event))
+                    .as_deref()
+                    != Some(key)
+            })
+            .collect::<Vec<_>>();
+        kept.push(line.to_string());
+        rewrite_buffer_lines(&path, &kept)
+    }
+
+    /// 结构化财报卡成功即时送达后，移除该 actor 摘要 buffer 里由同一
+    /// 文档产生的 SEC 支撑项。返回被移除事件，让 router 可以写可审计的
+    /// `superseded` 状态。
+    pub(crate) fn remove_earnings_release_documents(
+        &self,
+        actor: &ActorIdentity,
+        document_url: &str,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let Some(key) = canonical_earnings_document_key(document_url) else {
+            return Ok(Vec::new());
+        };
+        let _guard = self
+            .io_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("digest buffer lock poisoned"))?;
+        let path = self.file_for(actor);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let mut kept = Vec::new();
+        let mut removed = Vec::new();
+        for line in read_buffer_lines(&path)? {
+            match serde_json::from_str::<BufferRecord>(&line) {
+                Ok(record)
+                    if is_earnings_release_document_event(&record.event)
+                        && earnings_document_key_for_event(&record.event).as_deref()
+                            == Some(key.as_str()) =>
+                {
+                    removed.push(record.event);
+                }
+                _ => kept.push(line),
             }
         }
-        std::fs::rename(tmp, path)?;
-        Ok(())
+        if !removed.is_empty() {
+            rewrite_buffer_lines(&path, &kept)?;
+        }
+        Ok(removed)
     }
 
     /// 原子地把 actor 的 buffer 文件改名为 `*.flushed-{ts}`，再读出事件返回。
     /// 读失败的行忽略（保留已改名文件以便人工排查）。
     pub fn drain_actor(&self, actor: &ActorIdentity) -> anyhow::Result<Vec<MarketEvent>> {
+        let _guard = self
+            .io_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("digest buffer lock poisoned"))?;
         let path = self.file_for(actor);
         if !path.exists() {
             return Ok(vec![]);
@@ -137,6 +225,9 @@ impl DigestBuffer {
 
     /// 列出 buffer 目录下所有有待 flush 的 actor。
     pub fn list_pending_actors(&self) -> Vec<ActorIdentity> {
+        let Ok(_guard) = self.io_lock.lock() else {
+            return Vec::new();
+        };
         let mut actors = HashMap::new();
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return vec![];
@@ -152,6 +243,37 @@ impl DigestBuffer {
         }
         actors.into_values().collect()
     }
+}
+
+fn read_buffer_lines(path: &Path) -> anyhow::Result<Vec<String>> {
+    let file = std::fs::File::open(path)?;
+    Ok(BufReader::new(file).lines().map_while(Result::ok).collect())
+}
+
+fn rewrite_buffer_lines(path: &Path, lines: &[String]) -> anyhow::Result<()> {
+    if lines.is_empty() {
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        return Ok(());
+    }
+    let tmp = path.with_extension(format!(
+        "jsonl.tmp-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&tmp)?;
+        for line in lines {
+            writeln!(file, "{line}")?;
+        }
+    }
+    std::fs::rename(tmp, path)?;
+    Ok(())
 }
 
 fn first_buffer_actor(path: &Path) -> Option<ActorIdentity> {
@@ -216,4 +338,12 @@ fn price_digest_key(event: &MarketEvent) -> Option<String> {
                 .to_string()
         });
     Some(format!("{symbol}:{date}"))
+}
+
+fn earnings_document_digest_priority(event: &MarketEvent) -> u8 {
+    match event.kind {
+        EventKind::EarningsReleased => 2,
+        EventKind::SecFiling { .. } => 1,
+        _ => 0,
+    }
 }

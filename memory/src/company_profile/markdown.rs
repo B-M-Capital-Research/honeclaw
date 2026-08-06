@@ -7,7 +7,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use super::types::{default_mainline_impact, default_profile_status};
 use super::{
     AppendEventInput, CompanyProfileEventDocument, IndustryTemplate, ProfileEventMetadata,
-    ProfileMetadata, TrackingConfig,
+    ProfileMetadata, ResearchItemKind, ResearchLedgerUpdate, TrackingConfig,
 };
 
 pub(super) fn parse_frontmatter(content: &str) -> Result<(String, String), String> {
@@ -186,6 +186,8 @@ fn infer_event_metadata(filename: &str, updated_at: Option<String>) -> ProfileEv
         mainline_impact: default_mainline_impact(),
         changed_sections: Vec::new(),
         refs: Vec::new(),
+        research_object_key: None,
+        research_updates: Vec::new(),
     }
 }
 
@@ -231,8 +233,9 @@ pub(super) fn render_event_markdown(
 ) -> String {
     let frontmatter =
         serde_yaml::to_string(metadata).unwrap_or_else(|_| "event_type: unknown\n".to_string());
+    let ledger_changes = render_research_updates(&metadata.research_updates);
     format!(
-        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 为什么重要\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对投资主线的影响\n{}\n\n## 证据与来源\n{}\n\n## 本轮研究路径\n{}\n\n## 需要继续跟踪什么\n{}\n",
+        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 为什么重要\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对投资主线的影响\n{}\n\n## 证据与来源\n{}\n\n## 本轮研究路径\n{}\n\n## 研究账本变更\n{}\n\n## 需要继续跟踪什么\n{}\n",
         frontmatter,
         title.trim(),
         fallback_markdown(&input.what_happened),
@@ -241,8 +244,41 @@ pub(super) fn render_event_markdown(
         fallback_markdown(&input.mainline_effect),
         render_evidence_markdown(&input.evidence, &input.refs),
         fallback_markdown(&input.research_log),
+        ledger_changes,
         fallback_markdown(&input.follow_up),
     )
+}
+
+fn render_research_updates(updates: &[ResearchLedgerUpdate]) -> String {
+    if updates.is_empty() {
+        return "暂无".to_string();
+    }
+    updates
+        .iter()
+        .map(|update| {
+            let label = match update.kind {
+                ResearchItemKind::OpenQuestion => "问题",
+                ResearchItemKind::ManagementCommitment => "承诺",
+            };
+            let statement = if update.statement.trim().is_empty() {
+                "沿用首次记录"
+            } else {
+                update.statement.trim()
+            };
+            let assessment = if update.assessment.trim().is_empty() {
+                String::new()
+            } else {
+                format!("；{}", update.assessment.trim())
+            };
+            format!(
+                "- [{label}/{}] `{}`：{}{assessment}",
+                update.status.as_str(),
+                update.item_id.trim(),
+                statement
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub(super) fn create_profile_body(sections: &[(String, String)]) -> String {
@@ -359,6 +395,10 @@ pub(super) fn build_initial_sections(
 pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String, String)> {
     let mut sections = vec![
         (
+            "覆盖级别与期限".to_string(),
+            "待用户确认：A 核心覆盖 / B 观察覆盖 / C 发现池，以及预期持有或观察期限。覆盖等级只能由用户确认，不能由事件自动升级。".to_string(),
+        ),
+        (
             "投资主张".to_string(),
             "待补充：这家公司当前最核心的长期判断、为何值得跟踪，以及现阶段最重要的一句话结论。".to_string(),
         ),
@@ -395,8 +435,16 @@ pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String,
             template_operating_metrics_markdown(template),
         ),
         (
+            "预期基线".to_string(),
+            "待补充：下一次财报最重要指标的公司指引、市场共识、用户自己的基准假设和上季实际；拿不到的基线明确标为未知。".to_string(),
+        ),
+        (
             "估值框架".to_string(),
             "待补充：估值方法、关键假设、敏感性、可比对象和当前估值区间。".to_string(),
+        ),
+        (
+            "估值情景".to_string(),
+            "待补充：悲观 / 基准 / 乐观三种情景，各自的经营假设、概率和主要证伪条件；不强制给单一目标价。".to_string(),
         ),
         (
             "风险台账".to_string(),
@@ -408,7 +456,19 @@ pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String,
         ),
         (
             "未决问题".to_string(),
-            "待补充：当前还未验证、但会显著影响投资主线 的问题列表。".to_string(),
+            "待补充：当前还未验证、但会显著影响投资主线的问题、预计验证日期和所需材料。".to_string(),
+        ),
+        (
+            "管理层承诺台账".to_string(),
+            "待补充：承诺内容、提出日期、预计验证日期、当前状态和实际兑现结果；到期项目不能静默消失。".to_string(),
+        ),
+        (
+            "催化剂与观察日历".to_string(),
+            "待补充：财报、产品、监管、客户、产能、资本配置和行业节点，以及每个节点要验证的问题。".to_string(),
+        ),
+        (
+            "决策记录".to_string(),
+            "待补充：用户何时确认维持、修改、降级或关闭主线，以及当时依据的证据；自动流程不得代替用户确认。".to_string(),
         ),
         (
             "行业模板附录".to_string(),

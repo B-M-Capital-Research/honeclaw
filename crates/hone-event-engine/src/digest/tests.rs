@@ -56,6 +56,34 @@ fn price_event_fixture(id: &str, symbol: &str, pct_change: f64) -> MarketEvent {
     }
 }
 
+fn earnings_document_fixture(id: &str, kind: EventKind) -> MarketEvent {
+    let reviewed = matches!(kind, EventKind::EarningsReleased);
+    MarketEvent {
+        id: id.into(),
+        kind,
+        severity: Severity::Medium,
+        symbols: vec!["SNDK".into()],
+        occurred_at: Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap(),
+        title: if reviewed {
+            "数据中心强劲，消费端仍承压".into()
+        } else {
+            "SNDK filed 8-K".into()
+        },
+        summary: String::new(),
+        url: Some("https://www.sec.gov/Archives/sndkq4-26ex991xpressrelease.htm?source=fmp".into()),
+        source: if reviewed {
+            "fmp.earnings_surprises".into()
+        } else {
+            "fmp.sec_filings".into()
+        },
+        payload: if reviewed {
+            serde_json::json!({"earnings_quality_review_applied": true})
+        } else {
+            serde_json::json!({"hone_earnings_release_document": true})
+        },
+    }
+}
+
 #[test]
 fn enqueue_then_drain_returns_events_in_order() {
     let dir = tempdir().unwrap();
@@ -121,6 +149,54 @@ fn price_enqueue_collapses_band_and_close_for_same_symbol_day() {
     let drained = buf.drain_actor(&actor).unwrap();
     assert_eq!(drained.len(), 1, "band + close 应只剩一条");
     assert_eq!(drained[0].id, "price_close:AMD:2026-04-24");
+}
+
+#[test]
+fn earnings_digest_keeps_structured_card_regardless_of_arrival_order() {
+    for structured_first in [false, true] {
+        let dir = tempdir().unwrap();
+        let buffer = DigestBuffer::new(dir.path()).unwrap();
+        let actor = actor_identity_fixture(if structured_first { "first" } else { "second" });
+        let sec = earnings_document_fixture(
+            "sec:sndk:release",
+            EventKind::SecFiling { form: "8-K".into() },
+        );
+        let structured = earnings_document_fixture("earnings:sndk:q4", EventKind::EarningsReleased);
+
+        if structured_first {
+            buffer.enqueue(&actor, &structured).unwrap();
+            buffer.enqueue(&actor, &sec).unwrap();
+        } else {
+            buffer.enqueue(&actor, &sec).unwrap();
+            buffer.enqueue(&actor, &structured).unwrap();
+        }
+
+        let drained = buffer.drain_actor(&actor).unwrap();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].id, structured.id);
+    }
+}
+
+#[test]
+fn successful_immediate_earnings_can_remove_queued_sec_fallback() {
+    let dir = tempdir().unwrap();
+    let buffer = DigestBuffer::new(dir.path()).unwrap();
+    let actor = actor_identity_fixture("cleanup");
+    let sec = earnings_document_fixture(
+        "sec:sndk:release",
+        EventKind::SecFiling { form: "8-K".into() },
+    );
+    buffer.enqueue(&actor, &sec).unwrap();
+
+    let removed = buffer
+        .remove_earnings_release_documents(
+            &actor,
+            "HTTPS://WWW.SEC.GOV/Archives/sndkq4-26ex991xpressrelease.htm#top",
+        )
+        .unwrap();
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0].id, sec.id);
+    assert!(buffer.drain_actor(&actor).unwrap().is_empty());
 }
 
 #[test]

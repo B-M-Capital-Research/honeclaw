@@ -15,9 +15,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono_tz::US::Eastern;
 use serde_json::Value;
 use tracing::warn;
 
+use crate::earnings_document::{
+    EARNINGS_DOCUMENT_FLAG, EARNINGS_DOCUMENT_KEY, canonical_earnings_document_key,
+    is_earnings_release_document_url,
+};
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
 use crate::pollers::sec_enrichment::SecFilingSummarizer;
@@ -329,12 +334,25 @@ fn events_from_sec_filings(raw: &Value, ticker: &str) -> Vec<MarketEvent> {
             // - 10-Q(季报)/ 10-K(年报)→ Medium(数字本身已被 PriceAlert 覆盖,
             //   这里推送是为了 LLM 摘要里的 backlog / 资本配置等业务信号)
             // - DEF 14A(委托书)→ Low(治理/薪酬,影响最间接)
+            let earnings_release_document =
+                form == "8-K" && is_earnings_release_document_url(&accession);
             let severity = match form.as_str() {
+                // finalLink 已经直接指向财报新闻稿时，结构化 EarningsReleased 会
+                // 复用同一材料生成更完整、可个性化的快报。这里降到摘要，避免
+                // 同一用户几秒内连续收到 SEC 8-K + 财报两条同源要闻。
+                "8-K" if earnings_release_document => Severity::Medium,
                 "8-K" | "S-1" => Severity::High,
                 "10-Q" | "10-K" => Severity::Medium,
                 "DEF 14A" => Severity::Low,
                 _ => Severity::Medium,
             };
+            let mut payload = item.clone();
+            if earnings_release_document && let Some(object) = payload.as_object_mut() {
+                object.insert(EARNINGS_DOCUMENT_FLAG.into(), Value::Bool(true));
+                if let Some(key) = canonical_earnings_document_key(&accession) {
+                    object.insert(EARNINGS_DOCUMENT_KEY.into(), Value::String(key));
+                }
+            }
             Some(MarketEvent {
                 id: format!("sec:{ticker}:{accession}"),
                 kind: EventKind::SecFiling { form: form.clone() },
@@ -345,7 +363,7 @@ fn events_from_sec_filings(raw: &Value, ticker: &str) -> Vec<MarketEvent> {
                 summary: filed.to_string(),
                 url: Some(accession.clone()),
                 source: "fmp.sec_filings".into(),
-                payload: item.clone(),
+                payload,
             })
         })
         .collect()
@@ -353,7 +371,10 @@ fn events_from_sec_filings(raw: &Value, ticker: &str) -> Vec<MarketEvent> {
 
 fn parse_fmp_datetime(s: &str) -> Option<chrono::DateTime<Utc>> {
     if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&ndt));
+        return Eastern
+            .from_local_datetime(&ndt)
+            .single()
+            .map(|value| value.with_timezone(&Utc));
     }
     if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Some(Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?));
@@ -407,6 +428,40 @@ mod tests {
             _ => panic!("expected SecFiling kind"),
         }
         assert!(events[0].id.starts_with("sec:TSLA:"));
+    }
+
+    #[test]
+    fn earnings_release_exhibit_is_digest_material_not_second_immediate() {
+        let raw = serde_json::json!([
+            {
+                "symbol": "SNDK",
+                "type": "8-K",
+                "fillingDate": "2026-08-05",
+                "acceptedDate": "2026-08-05 16:09:06",
+                "finalLink": "https://www.sec.gov/Archives/edgar/data/2023554/sndkq4-26ex991xpressrelease.htm"
+            }
+        ]);
+        let events = events_from_sec_filings(&raw, "SNDK");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].severity, Severity::Medium);
+        assert_eq!(
+            events[0]
+                .payload
+                .get("hone_earnings_release_document")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            events[0]
+                .payload
+                .get(EARNINGS_DOCUMENT_KEY)
+                .and_then(Value::as_str),
+            Some("https://www.sec.gov/archives/edgar/data/2023554/sndkq4-26ex991xpressrelease.htm")
+        );
+        assert_eq!(
+            events[0].occurred_at,
+            Utc.with_ymd_and_hms(2026, 8, 5, 20, 9, 6).unwrap()
+        );
     }
 
     #[test]

@@ -107,6 +107,17 @@ fn profile_id_prefers_stock_code_then_slugified_name() {
 }
 
 #[test]
+fn legacy_tracking_config_defaults_to_discovery_and_long_term() {
+    let tracking: TrackingConfig =
+        serde_yaml::from_str("enabled: true\ncadence: weekly\nfocus_metrics:\n  - revenue\n")
+            .expect("legacy tracking config");
+    assert!(tracking.enabled);
+    assert_eq!(tracking.coverage_tier, CoverageTier::C);
+    assert_eq!(tracking.investment_horizon, "long_term");
+    assert_eq!(tracking.focus_metrics, vec!["revenue"]);
+}
+
+#[test]
 fn create_profile_generates_markdown_template_and_industry_sections() {
     let dir = make_temp_dir("company_profile_create");
     let actor = test_actor("discord", "alice", Some("watchlist"));
@@ -128,8 +139,15 @@ fn create_profile_generates_markdown_template_and_industry_sections() {
     assert_eq!(document.profile_id, "SNOW");
     assert!(document.markdown.contains("## 投资主张"));
     assert!(document.markdown.contains("## 投资主线"));
+    assert!(document.markdown.contains("## 覆盖级别与期限"));
     assert!(document.markdown.contains("## 关键经营指标"));
+    assert!(document.markdown.contains("## 预期基线"));
+    assert!(document.markdown.contains("## 估值情景"));
+    assert!(document.markdown.contains("## 管理层承诺台账"));
+    assert!(document.markdown.contains("## 决策记录"));
     assert!(document.markdown.contains("ARR"));
+    assert_eq!(document.metadata.tracking.coverage_tier, CoverageTier::C);
+    assert_eq!(document.metadata.tracking.investment_horizon, "long_term");
     assert!(
         dir.join(actor.channel_fs_component())
             .join(actor.scoped_user_fs_key())
@@ -266,6 +284,197 @@ fn append_event_is_idempotent_by_filename() {
     assert_eq!(loaded.events.len(), 1);
     assert!(loaded.events[0].markdown.contains("## 为什么重要"));
     assert!(loaded.events[0].markdown.contains("## 本轮研究路径"));
+}
+
+#[test]
+fn research_ledger_carries_questions_and_commitments_across_quarters() {
+    let dir = make_temp_dir("company_profile_research_ledger");
+    let storage = scoped_storage(&dir, "discord", "alice", None);
+    let (document, _) = storage
+        .create_profile(CreateProfileInput {
+            company_name: "SanDisk".to_string(),
+            stock_code: Some("SNDK".to_string()),
+            sector: Some("Semiconductors".to_string()),
+            aliases: vec![],
+            industry_template: IndustryTemplate::SemiconductorHardware,
+            tracking: Some(TrackingConfig {
+                enabled: true,
+                coverage_tier: CoverageTier::A,
+                ..TrackingConfig::default()
+            }),
+            initial_sections: BTreeMap::new(),
+        })
+        .expect("create profile");
+
+    let question = "企业级 SSD 客户采用是否开始形成可持续收入贡献？";
+    let commitment = "管理层计划在下一财年维持供给纪律。";
+    let question_id = research_item_id(&ResearchItemKind::OpenQuestion, question);
+    let commitment_id = research_item_id(&ResearchItemKind::ManagementCommitment, commitment);
+    let event = |title: &str, occurred_at: &str| AppendEventInput {
+        title: title.to_string(),
+        event_type: "earnings".to_string(),
+        occurred_at: occurred_at.to_string(),
+        mainline_impact: "watch".to_string(),
+        changed_sections: vec!["未决问题".to_string(), "管理层承诺台账".to_string()],
+        refs: vec!["https://www.sec.gov/example".to_string()],
+        what_happened: "季度财报更新。".to_string(),
+        why_it_matters: "用于核对长期主线。".to_string(),
+        mainline_effect: "暂不自动改写主线。".to_string(),
+        evidence: "SEC earnings release".to_string(),
+        research_log: "自动财报连续性复核".to_string(),
+        follow_up: "下一季度继续核验。".to_string(),
+    };
+
+    storage
+        .append_research_event(
+            &document.profile_id,
+            AppendResearchEventInput {
+                event: event("FY26 Q1 财报研究卡", "2025-11-06T21:00:00Z"),
+                research_object_key: Some("earnings:SNDK:FY26-Q1".to_string()),
+                research_updates: vec![
+                    ResearchLedgerUpdate {
+                        item_id: question_id.clone(),
+                        kind: ResearchItemKind::OpenQuestion,
+                        statement: question.to_string(),
+                        status: ResearchItemStatus::Open,
+                        assessment: "本季材料尚未量化客户采用。".to_string(),
+                        due_at: Some("FY26 Q2".to_string()),
+                        evidence: vec!["Q1 release".to_string()],
+                    },
+                    ResearchLedgerUpdate {
+                        item_id: commitment_id.clone(),
+                        kind: ResearchItemKind::ManagementCommitment,
+                        statement: commitment.to_string(),
+                        status: ResearchItemStatus::Open,
+                        assessment: "等待后续产能和 capex 披露。".to_string(),
+                        due_at: Some("FY26".to_string()),
+                        evidence: vec!["Q1 call".to_string()],
+                    },
+                ],
+            },
+        )
+        .expect("append q1")
+        .expect("q1 event");
+
+    storage
+        .append_research_event(
+            &document.profile_id,
+            AppendResearchEventInput {
+                event: event("FY26 Q2 财报研究卡", "2026-02-05T21:00:00Z"),
+                research_object_key: Some("earnings:SNDK:FY26-Q2".to_string()),
+                research_updates: vec![
+                    ResearchLedgerUpdate {
+                        item_id: question_id.clone(),
+                        kind: ResearchItemKind::OpenQuestion,
+                        statement: String::new(),
+                        status: ResearchItemStatus::PartiallyAnswered,
+                        assessment: "披露新增 hyperscaler 订单，但收入贡献仍未拆分。".to_string(),
+                        due_at: Some("FY26 Q3".to_string()),
+                        evidence: vec!["Q2 release".to_string()],
+                    },
+                    ResearchLedgerUpdate {
+                        item_id: commitment_id.clone(),
+                        kind: ResearchItemKind::ManagementCommitment,
+                        statement: String::new(),
+                        status: ResearchItemStatus::Confirmed,
+                        assessment: "capex 指引与供给纪律表述一致。".to_string(),
+                        due_at: None,
+                        evidence: vec!["Q2 call".to_string()],
+                    },
+                ],
+            },
+        )
+        .expect("append q2")
+        .expect("q2 event");
+
+    let loaded = storage
+        .get_profile(&document.profile_id)
+        .expect("load")
+        .expect("profile exists");
+    assert_eq!(loaded.events.len(), 2);
+    assert_eq!(
+        loaded.events[0].metadata.research_object_key.as_deref(),
+        Some("earnings:SNDK:FY26-Q2")
+    );
+    assert!(loaded.events[0].markdown.contains("## 研究账本变更"));
+
+    let ledger = loaded.research_ledger();
+    assert_eq!(ledger.items.len(), 2);
+    let question_item = ledger
+        .items
+        .iter()
+        .find(|item| item.item_id == question_id)
+        .expect("question");
+    assert_eq!(question_item.statement, question);
+    assert_eq!(question_item.status, ResearchItemStatus::PartiallyAnswered);
+    assert_eq!(question_item.update_count, 2);
+    assert_eq!(ledger.active_questions().count(), 1);
+    assert_eq!(ledger.active_commitments().count(), 0);
+}
+
+#[test]
+fn research_ledger_rejects_silent_statement_rewrite() {
+    let dir = make_temp_dir("company_profile_research_identity");
+    let storage = scoped_storage(&dir, "discord", "alice", None);
+    let document = create_profile_with_thesis(&storage, "SanDisk", "SNDK", "NAND 供给纪律");
+    let original = "毛利率改善能否穿越 NAND 周期？";
+    let item_id = research_item_id(&ResearchItemKind::OpenQuestion, original);
+    let base = AppendEventInput {
+        title: "Q1 财报".to_string(),
+        event_type: "earnings".to_string(),
+        occurred_at: "2026-01-01T00:00:00Z".to_string(),
+        mainline_impact: "watch".to_string(),
+        changed_sections: vec![],
+        refs: vec![],
+        what_happened: "更新".to_string(),
+        why_it_matters: String::new(),
+        mainline_effect: String::new(),
+        evidence: String::new(),
+        research_log: String::new(),
+        follow_up: String::new(),
+    };
+    storage
+        .append_research_event(
+            &document.profile_id,
+            AppendResearchEventInput {
+                event: base.clone(),
+                research_object_key: None,
+                research_updates: vec![ResearchLedgerUpdate {
+                    item_id: item_id.clone(),
+                    kind: ResearchItemKind::OpenQuestion,
+                    statement: original.to_string(),
+                    status: ResearchItemStatus::Open,
+                    assessment: String::new(),
+                    due_at: None,
+                    evidence: vec![],
+                }],
+            },
+        )
+        .expect("seed item");
+
+    let error = storage
+        .append_research_event(
+            &document.profile_id,
+            AppendResearchEventInput {
+                event: AppendEventInput {
+                    title: "Q2 财报".to_string(),
+                    occurred_at: "2026-04-01T00:00:00Z".to_string(),
+                    ..base
+                },
+                research_object_key: None,
+                research_updates: vec![ResearchLedgerUpdate {
+                    item_id,
+                    kind: ResearchItemKind::OpenQuestion,
+                    statement: "模型擅自改写后的问题".to_string(),
+                    status: ResearchItemStatus::Answered,
+                    assessment: String::new(),
+                    due_at: None,
+                    evidence: vec![],
+                }],
+            },
+        )
+        .expect_err("rewrite must fail");
+    assert!(error.contains("statement 不可静默改写"));
 }
 
 #[test]

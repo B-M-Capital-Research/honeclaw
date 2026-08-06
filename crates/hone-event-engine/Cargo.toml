@@ -37,3 +37,11 @@ path = "examples/news_llm_e2e.rs"
 [[example]]
 name = "per_actor_override_e2e"
 path = "examples/per_actor_override_e2e.rs"
+
+[[example]]
+name = "earnings_quality_models"
+path = "examples/earnings_quality_models.rs"
+
+[[example]]
+name = "earnings_continuity_models"
+path = "examples/earnings_continuity_models.rs"

@@ -272,6 +272,11 @@ fn assert_config_example_profile_refs(config: &HoneConfig) {
     );
     assert_profile_exists(
         config,
+        "event_engine.earnings.continuity_review.llm",
+        &config.event_engine.earnings.continuity_review.llm,
+    );
+    assert_profile_exists(
+        config,
         "event_engine.sec_filings.enrichment.llm",
         &config.event_engine.sec_filings.enrichment.llm,
     );
@@ -379,7 +384,19 @@ fn assert_config_example_event_engine_defaults(config: &HoneConfig, raw: &str) {
     assert_eq!(config.event_engine.news_classifier_model, "x-ai/grok-4.3");
     assert_eq!(
         config.event_engine.earnings.quality_review.model,
-        "x-ai/grok-4.3"
+        "x-ai/grok-4.5"
+    );
+    assert_eq!(
+        config.event_engine.earnings.continuity_review.model,
+        "x-ai/grok-4.5"
+    );
+    assert_eq!(
+        config
+            .event_engine
+            .earnings
+            .continuity_review
+            .max_review_tokens,
+        3600
     );
     assert_eq!(
         config.event_engine.sec_filings.enrichment.model,
@@ -967,6 +984,8 @@ event_engine:
   earnings:
     quality_review:
       llm: earnings_quality
+    continuity_review:
+      llm: earnings_continuity
   sec_filings:
     enrichment:
       llm: filing_summary
@@ -982,6 +1001,10 @@ event_engine:
     assert_eq!(
         config.event_engine.earnings.quality_review.llm,
         "earnings_quality"
+    );
+    assert_eq!(
+        config.event_engine.earnings.continuity_review.llm,
+        "earnings_continuity"
     );
     assert_eq!(
         config.event_engine.sec_filings.enrichment.llm,
@@ -2050,6 +2073,27 @@ agent:
 fn default_language_is_zh() {
     let config = HoneConfig::default();
     assert_eq!(config.language, super::Locale::Zh);
+}
+
+#[test]
+fn earnings_surprise_poll_interval_defaults_and_deserializes() {
+    let default_config = HoneConfig::default();
+    assert_eq!(
+        default_config
+            .event_engine
+            .poll_intervals
+            .earnings_surprise_secs,
+        600
+    );
+
+    let config: HoneConfig =
+        serde_yaml::from_str("event_engine:\n  poll_intervals:\n    earnings_surprise_secs: 90\n")
+            .unwrap();
+    assert_eq!(
+        config.event_engine.poll_intervals.earnings_surprise_secs,
+        90
+    );
+    assert_eq!(config.event_engine.poll_intervals.news_secs, 900);
 }
 
 #[test]

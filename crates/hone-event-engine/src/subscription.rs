@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use hone_core::ActorIdentity;
-use hone_memory::PortfolioStorage;
+use hone_memory::{CompanyProfileStorage, CoverageTier, PortfolioStorage};
 
 use crate::event::{MarketEvent, Severity};
 
@@ -79,6 +79,84 @@ impl Subscription for PortfolioSubscription {
 
     fn watch_symbols(&self) -> Vec<String> {
         self.symbols.iter().cloned().collect()
+    }
+}
+
+/// 用户明确开启 tracking 的公司画像订阅。它让“观察但尚未持仓”的专业研究
+/// 对象也能进入事件链；A/B/C 只控制覆盖密度，不会自动修改用户投资主线。
+pub struct CompanyProfileSubscription {
+    id: String,
+    actor: ActorIdentity,
+    symbol: String,
+    tier: CoverageTier,
+}
+
+impl CompanyProfileSubscription {
+    pub fn new(actor: ActorIdentity, symbol: impl Into<String>, tier: CoverageTier) -> Self {
+        let symbol = symbol.into().trim().to_ascii_uppercase();
+        let id = format!(
+            "company_profile:{}:{}:{}:{}:{}",
+            actor.channel,
+            actor.channel_scope.clone().unwrap_or_default(),
+            actor.user_id,
+            tier.as_str(),
+            symbol,
+        );
+        Self {
+            id,
+            actor,
+            symbol,
+            tier,
+        }
+    }
+}
+
+impl Subscription for CompanyProfileSubscription {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn matches(&self, event: &MarketEvent) -> bool {
+        if !event
+            .symbols
+            .iter()
+            .any(|symbol| symbol.eq_ignore_ascii_case(&self.symbol))
+        {
+            return false;
+        }
+        match self.tier {
+            CoverageTier::A => true,
+            CoverageTier::B => matches!(
+                &event.kind,
+                crate::event::EventKind::EarningsReleased
+                    | crate::event::EventKind::EarningsCallTranscript
+                    | crate::event::EventKind::SecFiling { .. }
+                    | crate::event::EventKind::NewsCritical
+                    | crate::event::EventKind::Dividend
+                    | crate::event::EventKind::Split
+            ),
+            CoverageTier::C => matches!(&event.kind, crate::event::EventKind::EarningsReleased),
+        }
+    }
+
+    fn actors(&self) -> Vec<ActorIdentity> {
+        vec![self.actor.clone()]
+    }
+
+    fn severity_override(&self, event: &MarketEvent) -> Option<Severity> {
+        match self.tier {
+            CoverageTier::A => None,
+            CoverageTier::B => Some(if matches!(event.severity, Severity::High) {
+                Severity::Medium
+            } else {
+                event.severity
+            }),
+            CoverageTier::C => Some(Severity::Low),
+        }
+    }
+
+    fn watch_symbols(&self) -> Vec<String> {
+        vec![self.symbol.clone()]
     }
 }
 
@@ -236,6 +314,7 @@ pub(crate) fn actor_storage_key(a: &ActorIdentity) -> String {
 pub struct SharedRegistry {
     inner: RwLock<Arc<SubscriptionRegistry>>,
     portfolio_dir: Option<PathBuf>,
+    company_profile_dir: Option<PathBuf>,
 }
 
 impl SharedRegistry {
@@ -247,6 +326,25 @@ impl SharedRegistry {
         Self {
             inner: RwLock::new(Arc::new(reg)),
             portfolio_dir: Some(dir),
+            company_profile_dir: None,
+        }
+    }
+
+    /// 同时从持仓与启用 tracking 的公司画像建立订阅。画像可覆盖未持仓观察标的，
+    /// cloud mode 仍由 CompanyProfileStorage 的统一后端决定。
+    pub fn from_portfolio_and_company_profiles(
+        portfolio_dir: impl Into<PathBuf>,
+        company_profile_dir: impl Into<PathBuf>,
+    ) -> Self {
+        let portfolio_dir = portfolio_dir.into();
+        let company_profile_dir = company_profile_dir.into();
+        let portfolios = PortfolioStorage::new(&portfolio_dir);
+        let profiles = CompanyProfileStorage::new(&company_profile_dir);
+        let reg = registry_from_portfolios_and_profiles(&portfolios, &profiles);
+        Self {
+            inner: RwLock::new(Arc::new(reg)),
+            portfolio_dir: Some(portfolio_dir),
+            company_profile_dir: Some(company_profile_dir),
         }
     }
 
@@ -255,6 +353,7 @@ impl SharedRegistry {
         Self {
             inner: RwLock::new(Arc::new(reg)),
             portfolio_dir: None,
+            company_profile_dir: None,
         }
     }
 
@@ -271,7 +370,13 @@ impl SharedRegistry {
     pub fn refresh(&self) -> Option<usize> {
         let dir = self.portfolio_dir.as_ref()?;
         let storage = PortfolioStorage::new(dir);
-        let new_reg = registry_from_portfolios(&storage);
+        let new_reg = match self.company_profile_dir.as_ref() {
+            Some(profile_dir) => registry_from_portfolios_and_profiles(
+                &storage,
+                &CompanyProfileStorage::new(profile_dir),
+            ),
+            None => registry_from_portfolios(&storage),
+        };
         let n = new_reg.len();
         match self.inner.write() {
             Ok(mut g) => *g = Arc::new(new_reg),
@@ -327,11 +432,41 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
     reg
 }
 
+pub fn registry_from_portfolios_and_profiles(
+    portfolios: &PortfolioStorage,
+    profiles: &CompanyProfileStorage,
+) -> SubscriptionRegistry {
+    let mut registry = registry_from_portfolios(portfolios);
+    for space in profiles.list_profile_spaces() {
+        let Ok(actor) = ActorIdentity::new(space.channel, space.user_id, space.channel_scope)
+        else {
+            continue;
+        };
+        if !actor.is_direct() {
+            continue;
+        }
+        for profile in profiles.for_actor(&actor).list_profiles() {
+            let symbol = profile.stock_code.trim();
+            if !profile.tracking_enabled || symbol.is_empty() {
+                continue;
+            }
+            registry.register(Box::new(CompanyProfileSubscription::new(
+                actor.clone(),
+                symbol,
+                profile.coverage_tier,
+            )));
+        }
+    }
+    registry
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::event::{EventKind, MarketEvent, Severity};
     use chrono::Utc;
+    use hone_memory::{CreateProfileInput, IndustryTemplate, TrackingConfig};
+    use std::collections::BTreeMap;
 
     fn actor(channel: &str, user: &str) -> ActorIdentity {
         ActorIdentity::new(channel, user, None::<&str>).unwrap()
@@ -431,6 +566,81 @@ mod tests {
         let hits = reg.resolve(&macro_event);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0.user_id, "u_macro");
+    }
+
+    #[test]
+    fn profile_tracking_adds_unheld_symbols_and_applies_tier_cadence() {
+        let portfolio_dir = tempfile::tempdir().unwrap();
+        let profile_dir = tempfile::tempdir().unwrap();
+        let profiles = CompanyProfileStorage::new(profile_dir.path());
+        for (user, symbol, tier) in [
+            ("core", "SNDK", CoverageTier::A),
+            ("watch", "AMD", CoverageTier::B),
+            ("discover", "BE", CoverageTier::C),
+        ] {
+            profiles
+                .for_actor(&actor("discord", user))
+                .create_profile(CreateProfileInput {
+                    company_name: symbol.to_string(),
+                    stock_code: Some(symbol.to_string()),
+                    sector: None,
+                    aliases: vec![],
+                    industry_template: IndustryTemplate::General,
+                    tracking: Some(TrackingConfig {
+                        enabled: true,
+                        coverage_tier: tier,
+                        ..TrackingConfig::default()
+                    }),
+                    initial_sections: BTreeMap::new(),
+                })
+                .expect("create tracked profile");
+        }
+
+        let registry = registry_from_portfolios_and_profiles(
+            &PortfolioStorage::new(portfolio_dir.path()),
+            &profiles,
+        );
+        assert_eq!(registry.watch_pool(), vec!["AMD", "BE", "SNDK"]);
+
+        let core = registry.resolve(&test_event(
+            "sndk-news",
+            "SNDK",
+            Severity::High,
+            EventKind::NewsCritical,
+        ));
+        assert_eq!(core.len(), 1);
+        assert_eq!(core[0].0.user_id, "core");
+        assert_eq!(core[0].1, Severity::High);
+
+        let watch = registry.resolve(&test_event(
+            "amd-news",
+            "AMD",
+            Severity::High,
+            EventKind::NewsCritical,
+        ));
+        assert_eq!(watch.len(), 1);
+        assert_eq!(watch[0].0.user_id, "watch");
+        assert_eq!(watch[0].1, Severity::Medium);
+
+        assert!(
+            registry
+                .resolve(&test_event(
+                    "be-news",
+                    "BE",
+                    Severity::High,
+                    EventKind::NewsCritical,
+                ))
+                .is_empty(),
+            "C 级发现池不应接收普通新闻"
+        );
+        let discovery_earnings = registry.resolve(&test_event(
+            "be-earnings",
+            "BE",
+            Severity::High,
+            EventKind::EarningsReleased,
+        ));
+        assert_eq!(discovery_earnings.len(), 1);
+        assert_eq!(discovery_earnings[0].1, Severity::Low);
     }
 
     #[test]

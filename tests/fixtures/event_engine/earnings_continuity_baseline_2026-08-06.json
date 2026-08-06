@@ -1,0 +1,108 @@
+{
+  "version": "2026-08-06",
+  "description": "Six-company, four-quarter SEC earnings-release replay for institutional company coverage. URLs are public first-party SEC exhibits; no article bodies or private actor data are stored.",
+  "companies": [
+    {
+      "symbol": "SNDK",
+      "company_name": "SanDisk",
+      "company_type": "cyclical_semiconductor",
+      "thesis": "企业级 SSD 与 AI 数据层采用能否在 NAND 周期中形成更高质量、可持续的盈利能力，同时保持供给纪律。",
+      "focus_metrics": ["data center revenue", "enterprise SSD adoption", "gross margin", "NAND supply discipline"],
+      "seed_questions": [
+        "企业级 SSD 客户采用是否开始形成可持续收入贡献？",
+        "毛利率改善有多少来自结构性产品组合，而不是低基数或短期供需？"
+      ],
+      "events": [
+        {"date":"2025-11-06","period":"FY26 Q1","url":"https://www.sec.gov/Archives/edgar/data/2023554/000162828025050180/sndkq1fy26ex991-pressrelea.htm"},
+        {"date":"2026-01-29","period":"FY26 Q2","url":"https://www.sec.gov/Archives/edgar/data/2023554/000162828026004121/sndkq2fy26ex991-pressrelea.htm"},
+        {"date":"2026-04-30","period":"FY26 Q3","url":"https://www.sec.gov/Archives/edgar/data/2023554/000162828026028879/sndkq3-26ex991xpressrelease.htm"},
+        {"date":"2026-08-05","period":"FY26 Q4","url":"https://www.sec.gov/Archives/edgar/data/2023554/000162828026053346/sndkq4-26ex991xpressrelease.htm"}
+      ]
+    },
+    {
+      "symbol": "AMD",
+      "company_name": "Advanced Micro Devices",
+      "company_type": "profitable_growth",
+      "thesis": "数据中心与 AI 加速器增长能否扩大长期计算平台份额，并在高研发投入下持续转化为利润和现金流。",
+      "focus_metrics": ["data center revenue", "AI accelerator revenue", "gross margin", "free cash flow"],
+      "seed_questions": [
+        "AI 加速器增长是否伴随毛利率和现金流同步改善？",
+        "客户端和游戏业务的周期波动是否会抵消数据中心增量？"
+      ],
+      "events": [
+        {"date":"2025-11-04","period":"2025 Q3","url":"https://www.sec.gov/Archives/edgar/data/2488/000000248825000163/q32025991.htm"},
+        {"date":"2026-02-03","period":"2025 Q4","url":"https://www.sec.gov/Archives/edgar/data/2488/000000248826000014/q42025991.htm"},
+        {"date":"2026-05-05","period":"2026 Q1","url":"https://www.sec.gov/Archives/edgar/data/2488/000000248826000072/q12026991.htm"},
+        {"date":"2026-08-04","period":"2026 Q2","url":"https://www.sec.gov/Archives/edgar/data/2488/000000248826000121/q22026991.htm"}
+      ]
+    },
+    {
+      "symbol": "BE",
+      "company_name": "Bloom Energy",
+      "company_type": "loss_to_profit_growth",
+      "thesis": "数据中心电力需求与产品交付能否把订单增长转化为可重复的盈利和现金流，而不是依赖少数大项目。",
+      "focus_metrics": ["product and service revenue", "backlog", "gross margin", "operating cash flow", "customer concentration"],
+      "seed_questions": [
+        "大额数据中心订单能否按计划交付并转化为经营现金流？",
+        "盈利改善是否在扣除一次性项目和客户集中影响后仍然成立？"
+      ],
+      "events": [
+        {"date":"2025-10-28","period":"2025 Q3","url":"https://www.sec.gov/Archives/edgar/data/1664703/000162828025046745/ex991_q32025financialresul.htm"},
+        {"date":"2026-02-05","period":"2025 Q4","url":"https://www.sec.gov/Archives/edgar/data/1664703/000162828026005798/ex991_q42025financialresul.htm"},
+        {"date":"2026-04-28","period":"2026 Q1","url":"https://www.sec.gov/Archives/edgar/data/1664703/000162828026027913/ex991_q126financialresults.htm"},
+        {"date":"2026-07-28","period":"2026 Q2","url":"https://www.sec.gov/Archives/edgar/data/1664703/000162828026050150/ex991_q226financialresults.htm"}
+      ]
+    },
+    {
+      "symbol": "SNOW",
+      "company_name": "Snowflake",
+      "company_type": "loss_growth_saas",
+      "thesis": "产品收入、剩余履约义务与客户扩张能否证明 AI 数据云需求持续，同时改善销售效率和自由现金流质量。",
+      "focus_metrics": ["product revenue", "RPO", "net revenue retention", "large customers", "free cash flow margin"],
+      "seed_questions": [
+        "产品收入增速与 RPO 是否共同支持未来需求能见度？",
+        "AI 产品采用是否带来可量化消费增长，而不只是客户试用和叙事？"
+      ],
+      "events": [
+        {"date":"2025-08-27","period":"FY26 Q2","url":"https://www.sec.gov/Archives/edgar/data/1640147/000164014725000177/fy2026q2earnings.htm"},
+        {"date":"2025-12-03","period":"FY26 Q3","url":"https://www.sec.gov/Archives/edgar/data/1640147/000164014725000207/fy2026q3earnings.htm"},
+        {"date":"2026-02-25","period":"FY26 Q4","url":"https://www.sec.gov/Archives/edgar/data/1640147/000162828026011631/fy2026q4earnings.htm"},
+        {"date":"2026-05-27","period":"FY27 Q1","url":"https://www.sec.gov/Archives/edgar/data/1640147/000164014726000027/fy2027q1earnings.htm"}
+      ]
+    },
+    {
+      "symbol": "COST",
+      "company_name": "Costco Wholesale",
+      "company_type": "mature_cash_flow",
+      "thesis": "会员续费、客流与经营效率能否在成熟规模上维持高质量现金流和资本回报，而不依赖短期通胀。",
+      "focus_metrics": ["comparable sales", "traffic", "membership renewal", "membership fee income", "operating cash flow"],
+      "seed_questions": [
+        "剔除汽油与汇率后，同店增长是否主要由客流而非价格推动？",
+        "会员费收入与续费率能否继续支撑利润质量？"
+      ],
+      "events": [
+        {"date":"2025-09-25","period":"FY25 Q4","url":"https://www.sec.gov/Archives/edgar/data/909832/000090983225000093/costex9918-k92525.htm"},
+        {"date":"2025-12-11","period":"FY26 Q1","url":"https://www.sec.gov/Archives/edgar/data/909832/000090983225000164/costex9918-k121125.htm"},
+        {"date":"2026-03-05","period":"FY26 Q2","url":"https://www.sec.gov/Archives/edgar/data/909832/000090983226000025/costex9918-k3526.htm"},
+        {"date":"2026-05-28","period":"FY26 Q3","url":"https://www.sec.gov/Archives/edgar/data/909832/000090983226000046/costex9918-k52826.htm"}
+      ]
+    },
+    {
+      "symbol": "MU",
+      "company_name": "Micron Technology",
+      "company_type": "cyclical_memory",
+      "thesis": "HBM 与数据中心需求能否改善产品组合并穿越存储周期，同时维持库存、资本开支和行业供给纪律。",
+      "focus_metrics": ["data center revenue", "HBM revenue", "DRAM bit shipments", "NAND bit shipments", "gross margin", "capex"],
+      "seed_questions": [
+        "HBM 增长能否在供给约束下持续改善整体产品组合和毛利率？",
+        "资本开支与库存变化是否符合跨周期供给纪律？"
+      ],
+      "events": [
+        {"date":"2025-09-23","period":"FY25 Q4","url":"https://www.sec.gov/Archives/edgar/data/723125/000072312525000024/a2025q4ex991-pressrelease.htm"},
+        {"date":"2025-12-17","period":"FY26 Q1","url":"https://www.sec.gov/Archives/edgar/data/723125/000072312525000044/a2026q1ex991-pressrelease.htm"},
+        {"date":"2026-03-18","period":"FY26 Q2","url":"https://www.sec.gov/Archives/edgar/data/723125/000072312526000004/a2026q2ex991-pressrelease.htm"},
+        {"date":"2026-06-24","period":"FY26 Q3","url":"https://www.sec.gov/Archives/edgar/data/723125/000072312526000013/a2026q3ex991-pressrelease.htm"}
+      ]
+    }
+  ]
+}

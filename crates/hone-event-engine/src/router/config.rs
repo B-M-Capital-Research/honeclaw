@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use crate::digest::DigestBuffer;
+use crate::earnings_continuity::EarningsContinuityReconciler;
 use crate::news_classifier::{DEFAULT_IMPORTANCE_PROMPT, NewsClassifier};
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::prefs::{AllowAllPrefs, PrefsProvider, PriceAlertPolicyDefaults};
@@ -28,6 +29,8 @@ pub struct NotificationRouter {
     pub(super) digest: Arc<DigestBuffer>,
     pub(super) polisher: Arc<dyn BodyPolisher>,
     pub(super) prefs: Arc<dyn PrefsProvider>,
+    /// A 级公司财报送达后的异步研究账本对账。不得阻塞 T0 推送。
+    pub(super) earnings_continuity: Option<Arc<dyn EarningsContinuityReconciler>>,
     /// 每 actor 当日 sink=sent 且 severity=high 的条数上限。超过后新的 High
     /// 事件自动降级进 digest,并在 delivery_log 写 status="capped"。
     /// 0 = 不启用。
@@ -81,6 +84,7 @@ impl NotificationRouter {
             digest,
             polisher: Arc::new(NoopPolisher),
             prefs: Arc::new(AllowAllPrefs),
+            earnings_continuity: None,
             high_daily_cap: 0,
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
@@ -111,6 +115,14 @@ impl NotificationRouter {
     /// 注入用户偏好源。未注入时默认放行所有事件（维持旧行为）。
     pub fn with_prefs(mut self, prefs: Arc<dyn PrefsProvider>) -> Self {
         self.prefs = prefs;
+        self
+    }
+
+    pub fn with_earnings_continuity(
+        mut self,
+        reconciler: Arc<dyn EarningsContinuityReconciler>,
+    ) -> Self {
+        self.earnings_continuity = Some(reconciler);
         self
     }
 

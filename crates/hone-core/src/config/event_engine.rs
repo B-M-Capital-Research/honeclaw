@@ -98,6 +98,8 @@ pub struct EarningsConfig {
     pub window_days: i64,
     #[serde(default)]
     pub quality_review: EarningsQualityReviewConfig,
+    #[serde(default)]
+    pub continuity_review: EarningsContinuityReviewConfig,
 }
 
 impl Default for EarningsConfig {
@@ -105,8 +107,46 @@ impl Default for EarningsConfig {
         Self {
             window_days: default_earnings_window_days(),
             quality_review: EarningsQualityReviewConfig::default(),
+            continuity_review: EarningsContinuityReviewConfig::default(),
         }
     }
+}
+
+/// A-tier 公司画像在财报投递后的连续性复核配置。
+///
+/// 这一步必须与 T0 财报质量判断使用独立 provider/output budget：质量判断只生成
+/// 一张短卡，而连续性复核需要逐项带回历史问题与管理层承诺。复用 1800 token 的
+/// 短输出预算会在研究账本积累多个季度后截断 JSON。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsContinuityReviewConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 可选 LLM profile 名称。配置后优先于 `model`。
+    #[serde(default)]
+    pub llm: String,
+    #[serde(default = "default_earnings_continuity_review_model")]
+    pub model: String,
+    #[serde(default = "default_earnings_continuity_review_max_tokens")]
+    pub max_review_tokens: u32,
+}
+
+impl Default for EarningsContinuityReviewConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            llm: String::new(),
+            model: default_earnings_continuity_review_model(),
+            max_review_tokens: default_earnings_continuity_review_max_tokens(),
+        }
+    }
+}
+
+fn default_earnings_continuity_review_model() -> String {
+    "x-ai/grok-4.5".into()
+}
+
+fn default_earnings_continuity_review_max_tokens() -> u32 {
+    3_600
 }
 
 fn default_earnings_window_days() -> i64 {
@@ -156,7 +196,7 @@ impl Default for EarningsQualityReviewConfig {
 }
 
 fn default_earnings_quality_review_model() -> String {
-    "x-ai/grok-4.3".into()
+    "x-ai/grok-4.5".into()
 }
 
 fn default_earnings_quality_review_max_tokens() -> u32 {
@@ -393,21 +433,19 @@ fn default_enabled() -> bool {
     false
 }
 
-/// 只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**
-/// 的 poller 配置。原来的 `earnings_secs` / `corp_action_secs` / `macro_secs` /
-/// `analyst_grade_secs` / `earnings_surprise_secs` 5 个 24h 间隔字段已被删除；这些日频来源
-/// （后来拆出的 sec filings 也一样）改成 **cron-aligned**:在 `digest.default_slots` 各 slot
-/// 前 `digest.prefetch_offset_mins` 分钟执行一次拉取,这样推送的数据永远是 flush 之前刚拉的,
-/// 不会因为用户重启时机而漂到几小时前。
-///
-/// 旧 config 里这 5 个字段即使仍存在也会被 `#[serde(default)]` + unknown-field tolerant
-/// 悄悄忽略(serde 默认 deny_unknown_fields=false),YAML 不用改就能继续工作。
+/// 时效敏感 poller 的固定间隔。财报实际发布恢复独立 interval，但
+/// `EarningsSurprisePoller` 只在美股常见 pre/post earnings 窗口做网络请求，窗口外
+/// no-op；这样能把发现时延压到分钟级，又不会全天按 watch pool 烧配额。
+/// earnings calendar / corp action / macro / analyst grade / sec filings 继续
+/// cron-aligned，在 digest slot 前预取。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PollIntervals {
     #[serde(default = "default_news_interval")]
     pub news_secs: u64,
     #[serde(default = "default_price_interval")]
     pub price_secs: u64,
+    #[serde(default = "default_earnings_surprise_interval")]
+    pub earnings_surprise_secs: u64,
 }
 
 impl Default for PollIntervals {
@@ -415,6 +453,7 @@ impl Default for PollIntervals {
         Self {
             news_secs: default_news_interval(),
             price_secs: default_price_interval(),
+            earnings_surprise_secs: default_earnings_surprise_interval(),
         }
     }
 }
@@ -424,6 +463,9 @@ fn default_news_interval() -> u64 {
 }
 fn default_price_interval() -> u64 {
     5 * 60
+}
+fn default_earnings_surprise_interval() -> u64 {
+    10 * 60
 }
 
 /// 单个默认 digest slot 时刻。`label` 缺省时,scheduler 渲染成 `定时摘要 · HH:MM`。

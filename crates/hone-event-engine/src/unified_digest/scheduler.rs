@@ -538,7 +538,7 @@ impl UnifiedDigestScheduler {
                     merged.len()
                 );
                 let status = if send_result.is_ok() {
-                    self.sink.success_status()
+                    self.sink.success_status_for(&actor)
                 } else {
                     "failed"
                 };
@@ -932,7 +932,7 @@ impl UnifiedDigestScheduler {
         let date = effective_tz_date_key(user_prefs, self.tz_offset_hours, now);
         let batch_id = format!("quiet-flush:{date}@{}:{}", qh.to, filtered.len());
         let status = if send_result.is_ok() {
-            self.sink.success_status()
+            self.sink.success_status_for(actor)
         } else {
             "failed"
         };
