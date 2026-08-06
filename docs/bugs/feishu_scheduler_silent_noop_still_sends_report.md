@@ -14,13 +14,26 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-06 20:10 CST `bug-2` 代码级修复：heartbeat 富文本 `noop` 正文此前只有在纯短句里才会被 `inspect_heartbeat_result(...)` 识别为 `PlainTextNoop`；像 `数据时间 ... **状态：noop — 无全新独立重大事件触发。**` 这种先给行情口径、后附表格说明的正文，会被误判成 `PlainTextTriggered` 并继续进入 deliver。
+  - 本轮修改：
+    - `crates/hone-channels/src/scheduler.rs` 的 `heartbeat_plain_text_indicates_noop(...)` 现在额外识别显式 `状态/检查结论/检查结果/监测结论 = noop` 与 `无新增触发（noop）/无高权重触发（noop）` 这类富文本心跳结论。
+    - 解析时仍保留 triggered override，避免“已触发 + 引述旧 noop”被误压成静默。
+  - 新增回归：
+    - `heartbeat_rich_plain_text_noop_status_is_compatible_noop`
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_rich_plain_text_noop_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_is_compatible_noop --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 结论：
+    - 当前已完成安全可提交的代码级闭环，但本轮未重启 live runtime，先记 `Fixed`；后续仍需在自然运行窗口确认 `状态：noop` / `本轮检查结论：NOOP` 等富文本心跳不再进入 deliver，再决定是否推进 `Closed`。
 
 - 2026-08-07 02:01 CST 运行态复核：问题继续在 live source heartbeat / scheduler 出站候选中复发，状态维持 `New / P2`。
   - `data/logs/hone-console-page-source.log`

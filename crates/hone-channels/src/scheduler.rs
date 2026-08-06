@@ -719,7 +719,7 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         .collect::<Vec<_>>()
         .join("")
         .to_ascii_lowercase();
-    [
+    let basic_noop_markers = [
         "条件未满足",
         "条件不满足",
         "不满足触发",
@@ -739,9 +739,50 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         "notrigger",
         "conditionisnotmet",
         "conditionsarenotmet",
+    ];
+    if basic_noop_markers
+        .iter()
+        .any(|marker| compact.contains(marker))
+    {
+        return true;
+    }
+
+    let has_explicit_noop_status = [
+        "状态：noop",
+        "状态:noop",
+        "检查结论：noop",
+        "检查结论:noop",
+        "检查结果：noop",
+        "检查结果:noop",
+        "监测结论：noop",
+        "监测结论:noop",
+        "本轮检查：noop",
+        "本轮检查:noop",
+        "本轮无触发（noop）",
+        "本轮无触发(noop)",
+        "无新增触发（noop）",
+        "无新增触发(noop)",
+        "无高权重触发（noop）",
+        "无高权重触发(noop)",
+        "无新增高权重触发（noop）",
+        "无新增高权重触发(noop)",
     ]
     .iter()
-    .any(|marker| compact.contains(marker))
+    .any(|marker| compact.contains(marker));
+    if !has_explicit_noop_status {
+        return false;
+    }
+
+    let has_trigger_override = [
+        "已触发",
+        "触发事实",
+        "触发条件已满足",
+        "conditionmet",
+        "alerttriggered",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    !has_trigger_override
 }
 
 fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
@@ -6333,6 +6374,19 @@ mod tests {
     #[test]
     fn heartbeat_closed_think_only_noop_is_compatible_noop() {
         let content = "<think>当前没有触发条件，本轮不发送。</think>";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
+        );
+        let execution = heartbeat_execution_from_content(content, "MiniMax-M2.7-highspeed");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextNoop");
+    }
+
+    #[test]
+    fn heartbeat_rich_plain_text_noop_status_is_compatible_noop() {
+        let content = "数据时间：北京时间 2026-08-06 10:00；行情口径：AAOI $128.56（NASDAQ，2026-08-06 04:00:01 北京时间，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立重大事件触发。**\n\n---\n\n## 本轮核验\n\n### AAOI 行情（无新报价，本轮报价仍为 04:00 数据）";
         assert_eq!(
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
