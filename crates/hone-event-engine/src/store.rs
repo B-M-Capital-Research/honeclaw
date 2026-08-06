@@ -9,6 +9,9 @@
 //! - `delivered_push_context (delivery_log_id UNIQUE, actor, source_id,
 //!                  delivered_at_ms, body, claim/consume state)` — 下一轮 Agent
 //!                  一次性上下文领取状态；只由显式“确认送达”写入创建
+//! - `earnings_continuity_jobs (job_key PK, actor_json, event_json, status,
+//!                  attempts, next_attempt_ts, lease_until_ts, ...)` — A 级财报
+//!                  研究对账的持久任务、租约和退避状态
 //!
 //! 幂等语义：`insert_event` 使用 `INSERT OR IGNORE`；同 id 只落一次。
 //! baseline：首次打开 DB 时写入 `baseline_at_ts = now`，之后读取；低于 baseline
@@ -31,8 +34,14 @@ use rusqlite::{
     Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
 };
 
-use crate::earnings_document::{EARNINGS_DOCUMENT_KEY, canonical_earnings_document_key};
-use crate::event::MarketEvent;
+use crate::earnings_document::{
+    EARNINGS_DOCUMENT_KEY, EARNINGS_RESEARCH_OBJECT_KEY, canonical_earnings_document_key,
+    earnings_research_material_kind, earnings_research_object_key_for_event,
+};
+use crate::event::{EventKind, MarketEvent};
+
+const EARNINGS_RESEARCH_LINK_WINDOW_SECS: i64 = 45 * 24 * 60 * 60;
+const EARNINGS_CONTINUITY_LEASE_SECS: i64 = 15 * 60;
 
 pub struct EventStore {
     conn: Mutex<Connection>,
@@ -83,6 +92,14 @@ pub struct DeliveredPushContextRecord {
 pub struct DeliveredPushContextClaim {
     pub records: Vec<DeliveredPushContextRecord>,
     pub remaining_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EarningsContinuityJob {
+    pub job_key: String,
+    pub actor: ActorIdentity,
+    pub event: MarketEvent,
+    pub attempts: u32,
 }
 
 impl EventStore {
@@ -151,6 +168,21 @@ impl EventStore {
                 ON delivered_push_context(
                     actor, consumed_at_ms, delivered_at_ms, delivery_log_id
                 );
+
+            CREATE TABLE IF NOT EXISTS earnings_continuity_jobs (
+                job_key          TEXT PRIMARY KEY,
+                actor_json       TEXT NOT NULL,
+                event_json       TEXT NOT NULL,
+                status           TEXT NOT NULL,
+                attempts         INTEGER NOT NULL DEFAULT 0,
+                next_attempt_ts  INTEGER NOT NULL,
+                lease_until_ts   INTEGER,
+                last_error       TEXT,
+                created_at_ts    INTEGER NOT NULL,
+                updated_at_ts    INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_earnings_continuity_jobs_due
+                ON earnings_continuity_jobs(status, next_attempt_ts, lease_until_ts);
             "#,
         )?;
         let store = Self {
@@ -225,6 +257,18 @@ impl EventStore {
             )?
         };
         let is_new = affected > 0;
+        if is_new
+            && earnings_research_material_kind(event) == Some("earnings_release")
+            && let Some(research_object_key) = earnings_research_object_key_for_event(event)
+            && let Err(error) =
+                self.backfill_earnings_research_materials(event, &research_object_key)
+        {
+            tracing::warn!(
+                event_id = %event.id,
+                research_object_key = %research_object_key,
+                "earnings research material backfill failed: {error:#}"
+            );
+        }
         if is_new && let Err(e) = self.append_jsonl_mirror(event) {
             tracing::warn!(
                 event_id = %event.id,
@@ -234,6 +278,452 @@ impl EventStore {
             );
         }
         Ok(is_new)
+    }
+
+    /// 在事件首次入库前，为财报 release / transcript / 10-Q(10-K) 解析同一研究对象。
+    ///
+    /// release 使用已核验新闻稿的 canonical key；后续材料只在同 ticker 且 45 天
+    /// 临近窗口内关联最近的结构化财报卡。没有可靠锚点时保持未关联，禁止按日期
+    /// 或模型常识猜 fiscal quarter。
+    pub(crate) fn link_earnings_research_object(
+        &self,
+        event: &mut MarketEvent,
+    ) -> anyhow::Result<Option<String>> {
+        let Some(material_kind) = earnings_research_material_kind(event) else {
+            return Ok(None);
+        };
+        if let Some(existing) = event
+            .payload
+            .get(EARNINGS_RESEARCH_OBJECT_KEY)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(Some(existing.to_string()));
+        }
+
+        let research_object_key = if material_kind == "earnings_release" {
+            earnings_research_object_key_for_event(event)
+        } else {
+            let Some(symbol) = event
+                .symbols
+                .first()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+            else {
+                return Ok(None);
+            };
+            self.nearest_earnings_research_object_key(symbol, event.occurred_at.timestamp())?
+        };
+        if let Some(key) = research_object_key.as_deref() {
+            ensure_payload_object(&mut event.payload).insert(
+                EARNINGS_RESEARCH_OBJECT_KEY.to_string(),
+                serde_json::Value::String(key.to_string()),
+            );
+        }
+        Ok(research_object_key)
+    }
+
+    pub(crate) fn enqueue_earnings_continuity_job(
+        &self,
+        actor: &ActorIdentity,
+        event: &MarketEvent,
+    ) -> anyhow::Result<Option<String>> {
+        let research_object_key = match earnings_research_object_key_for_event(event) {
+            Some(key) => key,
+            None if earnings_research_material_kind(event) == Some("earnings_release") => {
+                event.id.clone()
+            }
+            None => return Ok(None),
+        };
+        let job_key = format!(
+            "{}::{}",
+            delivery_actor_key(actor),
+            research_object_key.trim()
+        );
+        let now = Utc::now().timestamp();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO earnings_continuity_jobs (
+                job_key, actor_json, event_json, status, attempts,
+                next_attempt_ts, lease_until_ts, last_error,
+                created_at_ts, updated_at_ts
+            ) VALUES (?1, ?2, ?3, 'pending', 0, ?4, NULL, NULL, ?4, ?4)
+            "#,
+            params![
+                job_key,
+                serde_json::to_string(actor)?,
+                serde_json::to_string(event)?,
+                now,
+            ],
+        )?;
+        Ok(Some(job_key))
+    }
+
+    pub(crate) fn claim_due_earnings_continuity_jobs(
+        &self,
+        now: DateTime<Utc>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<EarningsContinuityJob>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let now_ts = now.timestamp();
+        let lease_until_ts = now_ts + EARNINGS_CONTINUITY_LEASE_SECS;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let rows = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT job_key, actor_json, event_json, attempts
+                FROM earnings_continuity_jobs
+                WHERE (
+                    status IN ('pending', 'retry') AND next_attempt_ts <= ?1
+                ) OR (
+                    status = 'running' AND COALESCE(lease_until_ts, 0) <= ?1
+                )
+                ORDER BY next_attempt_ts ASC, created_at_ts ASC
+                LIMIT ?2
+                "#,
+            )?;
+            let mapped = stmt.query_map(params![now_ts, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, u32>(3)?,
+                ))
+            })?;
+            mapped.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let mut jobs = Vec::with_capacity(rows.len());
+        for (job_key, actor_json, event_json, attempts) in rows {
+            let actor = match serde_json::from_str::<ActorIdentity>(&actor_json) {
+                Ok(actor) => actor,
+                Err(error) => {
+                    tx.execute(
+                        "UPDATE earnings_continuity_jobs SET status='dead', last_error=?2, updated_at_ts=?3 WHERE job_key=?1",
+                        params![job_key, truncate_store_error(&format!("invalid actor_json: {error}")), now_ts],
+                    )?;
+                    continue;
+                }
+            };
+            let event = match serde_json::from_str::<MarketEvent>(&event_json) {
+                Ok(event) => event,
+                Err(error) => {
+                    tx.execute(
+                        "UPDATE earnings_continuity_jobs SET status='dead', last_error=?2, updated_at_ts=?3 WHERE job_key=?1",
+                        params![job_key, truncate_store_error(&format!("invalid event_json: {error}")), now_ts],
+                    )?;
+                    continue;
+                }
+            };
+            let attempts = attempts.saturating_add(1);
+            tx.execute(
+                r#"
+                UPDATE earnings_continuity_jobs
+                SET status='running', attempts=?2, lease_until_ts=?3,
+                    updated_at_ts=?4, last_error=NULL
+                WHERE job_key=?1
+                "#,
+                params![job_key, attempts, lease_until_ts, now_ts],
+            )?;
+            jobs.push(EarningsContinuityJob {
+                job_key,
+                actor,
+                event,
+                attempts,
+            });
+        }
+        tx.commit()?;
+        Ok(jobs)
+    }
+
+    pub(crate) fn complete_earnings_continuity_job(
+        &self,
+        job_key: &str,
+        attempts: u32,
+    ) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let affected = conn.execute(
+            r#"
+            UPDATE earnings_continuity_jobs
+            SET status='completed', lease_until_ts=NULL, last_error=NULL, updated_at_ts=?2
+            WHERE job_key=?1 AND status='running' AND attempts=?3
+            "#,
+            params![job_key, Utc::now().timestamp(), attempts],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub(crate) fn retry_earnings_continuity_job(
+        &self,
+        job_key: &str,
+        attempts: u32,
+        error: &str,
+        now: DateTime<Utc>,
+    ) -> anyhow::Result<bool> {
+        let exponent = attempts.saturating_sub(1).min(8);
+        let delay_secs = 60_i64.saturating_mul(1_i64 << exponent).min(6 * 60 * 60);
+        let conn = self.conn.lock().unwrap();
+        let affected = conn.execute(
+            r#"
+            UPDATE earnings_continuity_jobs
+            SET status='retry', next_attempt_ts=?2, lease_until_ts=NULL,
+                last_error=?3, updated_at_ts=?4
+            WHERE job_key=?1 AND status='running' AND attempts=?5
+            "#,
+            params![
+                job_key,
+                now.timestamp() + delay_secs,
+                truncate_store_error(error),
+                now.timestamp(),
+                attempts,
+            ],
+        )?;
+        Ok(affected > 0)
+    }
+
+    #[cfg(test)]
+    fn earnings_continuity_job_status(&self, job_key: &str) -> anyhow::Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT status FROM earnings_continuity_jobs WHERE job_key=?1",
+            params![job_key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(anyhow::Error::from)
+    }
+
+    fn nearest_earnings_research_object_key(
+        &self,
+        symbol: &str,
+        occurred_at_ts: i64,
+    ) -> anyhow::Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT kind_json, symbols_json, payload_json
+            FROM events
+            WHERE occurred_at_ts BETWEEN ?1 AND ?2
+              AND EXISTS (
+                  SELECT 1 FROM json_each(events.symbols_json)
+                  WHERE lower(CAST(value AS TEXT)) = lower(?4)
+              )
+            ORDER BY ABS(occurred_at_ts - ?3) ASC
+            LIMIT 200
+            "#,
+        )?;
+        let mut rows = stmt.query(params![
+            occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS,
+            occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS,
+            occurred_at_ts,
+            symbol,
+        ])?;
+        while let Some(row) = rows.next()? {
+            let kind_json: String = row.get(0)?;
+            let symbols_json: String = row.get(1)?;
+            let payload_json: String = row.get(2)?;
+            let Ok(EventKind::EarningsReleased) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
+            if !symbols
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(symbol))
+            {
+                continue;
+            }
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            if payload
+                .get("earnings_quality_review_applied")
+                .and_then(|value| value.as_bool())
+                != Some(true)
+            {
+                continue;
+            }
+            if let Some(key) = payload
+                .get(EARNINGS_RESEARCH_OBJECT_KEY)
+                .or_else(|| payload.get(EARNINGS_DOCUMENT_KEY))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                return Ok(Some(key.to_string()));
+            }
+        }
+        Ok(None)
+    }
+
+    fn backfill_earnings_research_materials(
+        &self,
+        release: &MarketEvent,
+        research_object_key: &str,
+    ) -> anyhow::Result<usize> {
+        let Some(symbol) = release
+            .symbols
+            .first()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(0);
+        };
+        let occurred_at_ts = release.occurred_at.timestamp();
+        let mut conn = self.conn.lock().unwrap();
+        let candidates = {
+            let mut stmt = conn.prepare(
+                r#"
+                SELECT id, kind_json, symbols_json, payload_json
+                FROM events
+                WHERE occurred_at_ts BETWEEN ?1 AND ?2
+                  AND id <> ?3
+                  AND EXISTS (
+                      SELECT 1 FROM json_each(events.symbols_json)
+                      WHERE lower(CAST(value AS TEXT)) = lower(?5)
+                  )
+                ORDER BY ABS(occurred_at_ts - ?4) ASC
+                LIMIT 200
+                "#,
+            )?;
+            let rows = stmt.query_map(
+                params![
+                    occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS,
+                    occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS,
+                    release.id,
+                    occurred_at_ts,
+                    symbol,
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut updated = 0usize;
+        for (event_id, kind_json, symbols_json, payload_json) in candidates {
+            let Ok(kind) = serde_json::from_str::<EventKind>(&kind_json) else {
+                continue;
+            };
+            let is_follow_up_material = matches!(kind, EventKind::EarningsCallTranscript)
+                || matches!(
+                    kind,
+                    EventKind::SecFiling { ref form }
+                        if form.eq_ignore_ascii_case("10-Q") || form.eq_ignore_ascii_case("10-K")
+                );
+            if !is_follow_up_material {
+                continue;
+            }
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
+            if !symbols
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(symbol))
+            {
+                continue;
+            }
+            let mut payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            if payload.get(EARNINGS_RESEARCH_OBJECT_KEY).is_some() {
+                continue;
+            }
+            ensure_payload_object(&mut payload).insert(
+                EARNINGS_RESEARCH_OBJECT_KEY.to_string(),
+                serde_json::Value::String(research_object_key.to_string()),
+            );
+            updated += tx.execute(
+                "UPDATE events SET payload_json = ?2 WHERE id = ?1",
+                params![event_id, serde_json::to_string(&payload)?],
+            )?;
+        }
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    pub(crate) fn list_earnings_research_materials(
+        &self,
+        research_object_key: &str,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+                   title, summary, url, source, payload_json
+            FROM events
+            WHERE json_extract(payload_json, '$.hone_earnings_research_object_key') = ?1
+            ORDER BY occurred_at_ts ASC, id ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![research_object_key], |row| {
+            let kind_json: String = row.get(1)?;
+            let severity: String = row.get(2)?;
+            let symbols_json: String = row.get(3)?;
+            let payload_json: String = row.get(9)?;
+            let kind = serde_json::from_str::<EventKind>(&kind_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    kind_json.len(),
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let severity = match severity.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let occurred_at_ts: i64 = row.get(4)?;
+            let occurred_at = Utc
+                .timestamp_opt(occurred_at_ts, 0)
+                .single()
+                .ok_or_else(|| rusqlite::Error::IntegralValueOutOfRange(4, occurred_at_ts))?;
+            Ok(MarketEvent {
+                id: row.get(0)?,
+                kind,
+                severity,
+                symbols: serde_json::from_str(&symbols_json).unwrap_or_default(),
+                occurred_at,
+                title: row.get(5)?,
+                summary: row.get(6)?,
+                url: row.get(7)?,
+                source: row.get(8)?,
+                payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
+            })
+        })?;
+        let mut materials = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        materials.retain(|event| {
+            matches!(
+                earnings_research_material_kind(event),
+                Some("earnings_call_transcript" | "formal_filing")
+            )
+        });
+        Ok(materials)
+    }
+
+    #[cfg(test)]
+    fn event_research_object_key(&self, event_id: &str) -> anyhow::Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let payload_json: Option<String> = conn
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = ?1",
+                params![event_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(payload_json
+            .and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
+            .and_then(|payload| {
+                payload
+                    .get(EARNINGS_RESEARCH_OBJECT_KEY)
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            }))
     }
 
     fn append_jsonl_mirror(&self, event: &MarketEvent) -> anyhow::Result<()> {
@@ -1577,6 +2067,21 @@ pub fn delivery_breakdown_per_actor(
         .map_err(anyhow::Error::from)
 }
 
+fn ensure_payload_object(
+    payload: &mut serde_json::Value,
+) -> &mut serde_json::Map<String, serde_json::Value> {
+    if !payload.is_object() {
+        *payload = serde_json::Value::Object(serde_json::Map::new());
+    }
+    payload
+        .as_object_mut()
+        .expect("payload was normalized to an object")
+}
+
+fn truncate_store_error(error: &str) -> String {
+    error.chars().take(300).collect()
+}
+
 fn severity_tag(severity: &crate::event::Severity) -> &'static str {
     match severity {
         crate::event::Severity::Low => "low",
@@ -1704,6 +2209,19 @@ mod tests {
         }
     }
 
+    fn reviewed_release(id: &str, occurred_at: DateTime<Utc>) -> MarketEvent {
+        let mut event = sample_event(id);
+        event.kind = EventKind::EarningsReleased;
+        event.symbols = vec!["SNDK".into()];
+        event.occurred_at = occurred_at;
+        event.url = Some("https://sec.gov/Archives/sndk-q4-ex991.htm".into());
+        event.payload = serde_json::json!({
+            "earnings_quality_review_applied": true,
+            EARNINGS_DOCUMENT_KEY: "https://sec.gov/archives/sndk-q4-ex991.htm"
+        });
+        event
+    }
+
     #[test]
     fn insert_is_idempotent_per_id() {
         let dir = tempdir().unwrap();
@@ -1712,6 +2230,193 @@ mod tests {
         assert!(store.insert_event(&event).unwrap()); // 首次
         assert!(!store.insert_event(&event).unwrap()); // 重复
         assert_eq!(store.count_events().unwrap(), 1);
+    }
+
+    #[test]
+    fn transcript_and_formal_filing_link_to_the_nearest_reviewed_release() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let occurred_at = Utc::now();
+        let mut release = reviewed_release("release", occurred_at);
+        let release_key = store
+            .link_earnings_research_object(&mut release)
+            .unwrap()
+            .unwrap();
+        store.insert_event(&release).unwrap();
+
+        let mut transcript = sample_event("transcript");
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.symbols = vec!["SNDK".into()];
+        transcript.occurred_at = occurred_at + chrono::Duration::hours(3);
+        transcript.payload = serde_json::json!({"fmp": {"year": 2026, "quarter": 4}});
+        // 全局同一时段即使有超过查询上限的其它 ticker 噪声，也必须先在 SQL
+        // 层按 symbol 收窄，不能把 SNDK release 挤出候选集。
+        for index in 0..250 {
+            let mut noise = sample_event(&format!("noise-nearest-{index}"));
+            noise.symbols = vec!["AMD".into()];
+            noise.occurred_at = transcript.occurred_at;
+            store.insert_event(&noise).unwrap();
+        }
+        assert_eq!(
+            store
+                .link_earnings_research_object(&mut transcript)
+                .unwrap()
+                .as_deref(),
+            Some(release_key.as_str())
+        );
+
+        let mut filing = sample_event("10q");
+        filing.kind = EventKind::SecFiling {
+            form: "10-Q".into(),
+        };
+        filing.symbols = vec!["SNDK".into()];
+        filing.occurred_at = occurred_at + chrono::Duration::days(2);
+        assert_eq!(
+            store
+                .link_earnings_research_object(&mut filing)
+                .unwrap()
+                .as_deref(),
+            Some(release_key.as_str())
+        );
+    }
+
+    #[test]
+    fn reviewed_release_backfills_a_transcript_that_arrived_first() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let occurred_at = Utc.with_ymd_and_hms(2026, 8, 5, 20, 0, 0).unwrap();
+        let mut transcript = sample_event("transcript-first");
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.symbols = vec!["SNDK".into()];
+        transcript.occurred_at = occurred_at - chrono::Duration::hours(2);
+        assert!(
+            store
+                .link_earnings_research_object(&mut transcript)
+                .unwrap()
+                .is_none()
+        );
+        store.insert_event(&transcript).unwrap();
+        for index in 0..250 {
+            let mut noise = sample_event(&format!("noise-backfill-{index}"));
+            noise.symbols = vec!["AMD".into()];
+            noise.occurred_at = occurred_at;
+            store.insert_event(&noise).unwrap();
+        }
+
+        let mut release = reviewed_release("release-later", occurred_at);
+        let release_key = store
+            .link_earnings_research_object(&mut release)
+            .unwrap()
+            .unwrap();
+        store.insert_event(&release).unwrap();
+        assert_eq!(
+            store
+                .event_research_object_key("transcript-first")
+                .unwrap()
+                .as_deref(),
+            Some(release_key.as_str())
+        );
+        let materials = store
+            .list_earnings_research_materials(&release_key)
+            .unwrap();
+        assert_eq!(materials.len(), 1);
+        assert_eq!(materials[0].id, "transcript-first");
+    }
+
+    #[test]
+    fn continuity_job_survives_restart_retries_and_recovers_an_expired_lease() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
+        let occurred_at = Utc::now();
+        let job_key = {
+            let store = EventStore::open(&path).unwrap();
+            let mut release = reviewed_release("release-job", occurred_at);
+            store.link_earnings_research_object(&mut release).unwrap();
+            store
+                .enqueue_earnings_continuity_job(&actor, &release)
+                .unwrap()
+                .unwrap()
+        };
+
+        let store = EventStore::open(&path).unwrap();
+        // enqueue 使用真实时钟写入 next_attempt_ts；给模拟领取时钟留出一秒，
+        // 避免测试恰好跨过整秒边界时把新任务误判为尚未到期。
+        let first_claim_at = Utc::now() + chrono::Duration::seconds(1);
+        let first = store
+            .claim_due_earnings_continuity_jobs(first_claim_at, 4)
+            .unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].job_key, job_key);
+        assert_eq!(first[0].attempts, 1);
+        assert!(
+            store
+                .claim_due_earnings_continuity_jobs(
+                    first_claim_at + chrono::Duration::minutes(14),
+                    4,
+                )
+                .unwrap()
+                .is_empty()
+        );
+
+        // 模拟进程在 running 状态崩溃：租约过期后可由新 worker 重新领取。
+        drop(store);
+        let store = EventStore::open(&path).unwrap();
+        let recovered = store
+            .claim_due_earnings_continuity_jobs(first_claim_at + chrono::Duration::minutes(16), 4)
+            .unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].attempts, 2);
+        // 第一份 worker 即使在租约过期后迟到，也不能完成或重排第二份 worker
+        // 已领取的 attempt。
+        assert!(
+            !store
+                .complete_earnings_continuity_job(&job_key, first[0].attempts)
+                .unwrap()
+        );
+        assert!(
+            store
+                .retry_earnings_continuity_job(
+                    &job_key,
+                    recovered[0].attempts,
+                    "temporary provider failure",
+                    first_claim_at + chrono::Duration::minutes(16),
+                )
+                .unwrap()
+        );
+        assert_eq!(
+            store
+                .earnings_continuity_job_status(&job_key)
+                .unwrap()
+                .as_deref(),
+            Some("retry")
+        );
+        assert!(
+            store
+                .claim_due_earnings_continuity_jobs(
+                    first_claim_at + chrono::Duration::minutes(17),
+                    4,
+                )
+                .unwrap()
+                .is_empty()
+        );
+        let retried = store
+            .claim_due_earnings_continuity_jobs(first_claim_at + chrono::Duration::minutes(19), 4)
+            .unwrap();
+        assert_eq!(retried.len(), 1);
+        assert_eq!(retried[0].attempts, 3);
+        assert!(
+            store
+                .complete_earnings_continuity_job(&job_key, retried[0].attempts)
+                .unwrap()
+        );
+        assert_eq!(
+            store
+                .earnings_continuity_job_status(&job_key)
+                .unwrap()
+                .as_deref(),
+            Some("completed")
+        );
     }
 
     #[test]

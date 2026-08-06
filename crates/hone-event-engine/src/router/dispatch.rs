@@ -17,7 +17,10 @@
 use tracing::info;
 
 use crate::digest::time_window::EffectiveTz;
-use crate::earnings_document::is_earnings_release_document_event;
+use crate::earnings_document::{
+    earnings_research_material_kind, earnings_research_object_key_for_event,
+    is_earnings_release_document_event,
+};
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::prefs::{NotificationPrefs, kind_tag};
 use crate::renderer::{self, RenderFormat};
@@ -125,6 +128,7 @@ impl NotificationRouter {
             // T0 推送不能等待第二次、actor-scoped 的 Grok 对账。A 级画像在后台
             // 把本季事实与旧问题/承诺逐项核对并落入 append-only 研究账本；失败
             // 只影响深度卡，不阻塞已核验的即时事实卡。
+            self.schedule_earnings_material_record(&actor, event);
             self.schedule_earnings_continuity(&actor, event);
             // 结构化财报卡已经对该 actor 成功交付时，同一新闻稿型
             // 8-K 不再入摘要。只认 sent/dryrun 成功证据；财报卡失败或
@@ -550,6 +554,60 @@ impl NotificationRouter {
 }
 
 impl NotificationRouter {
+    fn schedule_earnings_material_record(
+        &self,
+        actor: &hone_core::ActorIdentity,
+        event: &MarketEvent,
+    ) {
+        let Some(material_kind) = earnings_research_material_kind(event) else {
+            return;
+        };
+        let Some(reconciler) = self.earnings_continuity.clone() else {
+            return;
+        };
+        let materials = if material_kind == "earnings_release" {
+            let Some(research_object_key) = earnings_research_object_key_for_event(event) else {
+                return;
+            };
+            match self
+                .store
+                .list_earnings_research_materials(&research_object_key)
+            {
+                Ok(materials) => materials,
+                Err(error) => {
+                    tracing::warn!(
+                        actor = %actor_key(actor),
+                        event_id = %event.id,
+                        research_object_key = %research_object_key,
+                        "earnings linked material lookup failed: {error:#}"
+                    );
+                    return;
+                }
+            }
+        } else {
+            vec![event.clone()]
+        };
+        if materials.is_empty() {
+            return;
+        }
+        let actor = actor.clone();
+        tokio::task::spawn_blocking(move || {
+            for material in materials {
+                if let Some(outcome) = reconciler.record_material(&actor, &material) {
+                    tracing::info!(
+                        actor = %actor_key(&actor),
+                        event_id = %material.id,
+                        research_object_key = %outcome.research_object_key,
+                        profile_id = %outcome.profile_id,
+                        material_kind = %outcome.material_kind,
+                        recorded_event_id = %outcome.recorded_event_id,
+                        "earnings research material appended to quarterly object"
+                    );
+                }
+            }
+        });
+    }
+
     fn schedule_earnings_continuity(&self, actor: &hone_core::ActorIdentity, event: &MarketEvent) {
         if !is_structured_earnings_review(event) {
             return;
@@ -557,25 +615,126 @@ impl NotificationRouter {
         let Some(reconciler) = self.earnings_continuity.clone() else {
             return;
         };
-        let actor = actor.clone();
-        let event = event.clone();
-        tokio::spawn(async move {
-            if let Some(outcome) = reconciler.reconcile(&actor, &event).await {
-                tracing::info!(
-                    actor = %actor_key(&actor),
+        if !reconciler.should_schedule(actor, event) {
+            return;
+        }
+        let job_key = match self.store.enqueue_earnings_continuity_job(actor, event) {
+            Ok(Some(job_key)) => job_key,
+            Ok(None) => return,
+            Err(error) => {
+                tracing::warn!(
+                    actor = %actor_key(actor),
                     event_id = %event.id,
-                    research_object_key = %outcome.research_object_key,
-                    thesis_effect = %outcome.thesis_effect,
-                    checked_existing_items = outcome.checked_existing_items,
-                    created_questions = outcome.created_questions,
-                    created_commitments = outcome.created_commitments,
-                    active_questions_after = outcome.active_questions_after,
-                    active_commitments_after = outcome.active_commitments_after,
-                    "earnings continuity ledger reconciled"
+                    "earnings continuity job enqueue failed: {error:#}"
                 );
+                return;
+            }
+        };
+        let store = self.store.clone();
+        tokio::spawn(async move {
+            if let Err(error) = run_earnings_continuity_jobs_once(store, reconciler, 4).await {
+                tracing::warn!(job_key = %job_key, "earnings continuity worker failed: {error:#}");
             }
         });
     }
+
+    /// 启动进程级恢复 worker。立即扫描一次，之后每分钟回收 pending/retry 或
+    /// 15 分钟租约过期的 running 任务；模型失败按指数退避，T0 投递永不等待它。
+    pub(crate) fn spawn_earnings_continuity_retry_worker(&self) {
+        let Some(reconciler) = self.earnings_continuity.clone() else {
+            return;
+        };
+        let store = self.store.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticker.tick().await;
+                if let Err(error) =
+                    run_earnings_continuity_jobs_once(store.clone(), reconciler.clone(), 4).await
+                {
+                    tracing::warn!("earnings continuity retry tick failed: {error:#}");
+                }
+            }
+        });
+    }
+}
+
+async fn run_earnings_continuity_jobs_once(
+    store: std::sync::Arc<crate::store::EventStore>,
+    reconciler: std::sync::Arc<dyn crate::earnings_continuity::EarningsContinuityReconciler>,
+    limit: usize,
+) -> anyhow::Result<usize> {
+    let jobs = store.claim_due_earnings_continuity_jobs(chrono::Utc::now(), limit)?;
+    let claimed = jobs.len();
+    for job in jobs {
+        if !reconciler.should_schedule(&job.actor, &job.event) {
+            let completed = store.complete_earnings_continuity_job(&job.job_key, job.attempts)?;
+            if !completed {
+                tracing::warn!(
+                    job_key = %job.job_key,
+                    attempts = job.attempts,
+                    "earnings continuity coverage-close ignored after lease ownership changed"
+                );
+                continue;
+            }
+            tracing::info!(
+                actor = %actor_key(&job.actor),
+                event_id = %job.event.id,
+                job_key = %job.job_key,
+                "earnings continuity job closed because A-tier coverage is no longer active"
+            );
+            continue;
+        }
+        if let Some(outcome) = reconciler.reconcile(&job.actor, &job.event).await {
+            let completed = store.complete_earnings_continuity_job(&job.job_key, job.attempts)?;
+            if !completed {
+                tracing::warn!(
+                    job_key = %job.job_key,
+                    attempts = job.attempts,
+                    "earnings continuity durable result kept but stale lease could not complete job"
+                );
+                continue;
+            }
+            tracing::info!(
+                actor = %actor_key(&job.actor),
+                event_id = %job.event.id,
+                job_key = %job.job_key,
+                attempts = job.attempts,
+                research_object_key = %outcome.research_object_key,
+                thesis_effect = %outcome.thesis_effect,
+                checked_existing_items = outcome.checked_existing_items,
+                created_questions = outcome.created_questions,
+                created_commitments = outcome.created_commitments,
+                active_questions_after = outcome.active_questions_after,
+                active_commitments_after = outcome.active_commitments_after,
+                "earnings continuity ledger reconciled"
+            );
+        } else {
+            let retried = store.retry_earnings_continuity_job(
+                &job.job_key,
+                job.attempts,
+                "reconciler returned no durable outcome",
+                chrono::Utc::now(),
+            )?;
+            if !retried {
+                tracing::warn!(
+                    job_key = %job.job_key,
+                    attempts = job.attempts,
+                    "earnings continuity retry ignored after lease ownership changed"
+                );
+                continue;
+            }
+            tracing::warn!(
+                actor = %actor_key(&job.actor),
+                event_id = %job.event.id,
+                job_key = %job.job_key,
+                attempts = job.attempts,
+                "earnings continuity job scheduled for retry"
+            );
+        }
+    }
+    Ok(claimed)
 }
 
 fn analyst_grade_source_article_key(event: &MarketEvent) -> Option<(&str, &str)> {

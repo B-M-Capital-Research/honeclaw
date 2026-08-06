@@ -38,8 +38,15 @@ pub(crate) async fn process_events(
     router.reset_tick_counters();
     let (mut new_count, mut duplicate_count, mut sent_count, mut pending_digest_count) =
         (0u32, 0u32, 0u32, 0u32);
-    for event in &events {
-        let is_new = match store.insert_event(event) {
+    for mut event in events {
+        if let Err(error) = store.link_earnings_research_object(&mut event) {
+            warn!(
+                poller = name,
+                event_id = %event.id,
+                "earnings research object linking failed: {error:#}"
+            );
+        }
+        let is_new = match store.insert_event(&event) {
             Ok(is_new) => is_new,
             Err(e) => {
                 warn!(poller = name, "insert_event failed: {e:#}");
@@ -48,7 +55,7 @@ pub(crate) async fn process_events(
         };
         if is_new {
             new_count += 1;
-            match router.dispatch(event).await {
+            match router.dispatch(&event).await {
                 Ok((dispatch_sent, dispatch_pending)) => {
                     sent_count += dispatch_sent;
                     pending_digest_count += dispatch_pending;

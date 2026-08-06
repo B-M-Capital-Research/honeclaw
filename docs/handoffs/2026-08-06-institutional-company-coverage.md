@@ -109,6 +109,36 @@ Continue from `docs/current-plans/institutional-company-coverage.md`: add transc
 
 - This fixture proves earnings-release continuity, not transcript continuity. At least eight call transcripts still need to update the same research object and answer previously registered questions.
 - The 18-point replay score is a deterministic schema/chain contract. The plan's 14-point fact quality and decision-usefulness score still needs blind human review, especially for mixed/negative and apparently strong-but-low-quality quarters.
-- The background task is non-blocking and retries provider transport internally, but there is not yet a durable continuity-job queue for a process crash after T0. Add replayable pending/failed job state before claiming operational exactly-once completion.
+- This Phase 4 crash-recovery gap is closed by the Phase 5 SQLite lease queue below; full transcript reconciliation remains a separate product-quality gap.
 - The structured ledger is visible in portrait event Markdown, but the public professional-investor UI does not yet provide a dedicated open-question/commitment/decision-history view.
-- No commit, push, deployment, restart, or production notification was performed. The active plan stays `in_progress`; no archive action is appropriate.
+- At the end of Phase 4 no commit, push, deployment, restart, or production notification had been performed. Phase 1–4 were subsequently pushed as recorded below; the active umbrella plan stays `in_progress`, so no archive action is appropriate.
+
+## Phase 5 Update: Quarterly Material Identity And Recoverable Continuity Work
+
+### Current State
+
+- Phase 1–4 were rebased onto the then-current `origin/main`, revalidated, and pushed as `d3aa626916a37e9936ac49f17a9f91e70791936f` plus the integration fix `13331f379d0982a0e26adebe1efe59de5a62c34f`. Local and remote were verified `0/0` immediately after that push.
+- Phase 5 is fully implemented and locally verified. It does not deploy, restart services, send production notifications, or spend additional OpenRouter budget.
+
+### What Changed
+
+- `earnings_document.rs` now distinguishes a canonical release document from the broader quarterly research object. A reviewed release anchors the object; same-ticker transcript and 10-Q/10-K events can join only inside a 45-day disclosure window.
+- `EventStore` links later materials before insertion and backfills transcript/formal-filing rows that arrived before the release. Release dispatch re-reads those backfilled rows so actor profile archival is not permanently skipped by arrival order.
+- A/B profiles append transcript and formal-filing references as separate `earnings_material_*` events under the shared research-object key. These records explicitly say pending cross-check, spend no LLM tokens, and do not alter questions, commitments, or thesis state. C-tier profiles remain excluded.
+- A-tier continuity now uses `earnings_continuity_jobs` in SQLite. Actor + research object is the idempotency key; workers claim with a fifteen-minute lease, recover expired running work after restart, retry with exponential delay capped at six hours, and complete only after a durable reconciler outcome. T0 still returns before model work.
+- Two pre-existing earnings decision identifiers conflicted with newer remote decisions after rebase; the earnings decisions are now uniquely indexed as `D-2026-08-06-05` and `D-2026-08-06-06`.
+
+### Verification
+
+- `cargo test -p hone-event-engine --lib`: 578 passed, 13 ignored, 0 failed.
+- Focused regressions passed for release→transcript/10-Q linking, transcript→release backfill, ticker-first lookup despite 250 same-time noise events, linked-material lookup, zero-token/idempotent profile archival, persistent job reopen, expired-lease recovery, stale-attempt fencing, retry→complete, and non-blocking T0.
+- `cargo test -p hone-memory --lib`: 139 passed; `cargo test -p hone-core --lib`: 137 passed.
+- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`: passed with two pre-existing dead-code warnings.
+- `bun run test:web`: 364 passed; Public Community Edge typecheck and 45 tests passed.
+- `bash tests/regression/run_ci.sh`, changed-file rustfmt, and `git diff --check`: passed.
+
+### Remaining Product Work
+
+- The current material event carries only the event-provided summary/reference. At least eight full historical transcripts still need a source-backed harness and a second-stage Grok reconciliation that explicitly resolves or carries forward old questions/management commitments.
+- The public professional-investor UI still needs one quarterly object view with thesis suggestion, open questions, commitments, material status, and user-confirmed decision history.
+- The 14-point human blind review and a real forward A-tier earnings-season run remain open. The active plan must not be archived yet.

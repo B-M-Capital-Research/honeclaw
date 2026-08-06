@@ -19,7 +19,9 @@ use hone_memory::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::earnings_document::EARNINGS_DOCUMENT_KEY;
+use crate::earnings_document::{
+    earnings_research_material_kind, earnings_research_object_key_for_event,
+};
 use crate::event::{EventKind, MarketEvent};
 
 pub const DEFAULT_EARNINGS_CONTINUITY_SYSTEM_PROMPT: &str = r#"你是专业股票研究团队的季度连续性审计员。输入包含：本次已核验的财报事实、某一用户明确保存的公司画像，以及此前仍在跟踪的问题和管理层承诺。
@@ -98,8 +100,31 @@ pub struct EarningsContinuityOutcome {
     pub active_commitments_after: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EarningsResearchMaterialOutcome {
+    pub profile_id: String,
+    pub research_object_key: String,
+    pub material_kind: String,
+    pub recorded_event_id: String,
+}
+
 #[async_trait]
 pub trait EarningsContinuityReconciler: Send + Sync {
+    /// 只有 actor 自己启用的 A 级画像才进入付费连续性对账队列。
+    fn should_schedule(&self, _actor: &ActorIdentity, _event: &MarketEvent) -> bool {
+        true
+    }
+
+    /// transcript / 10-Q(10-K) 作为同一季度研究对象的追加材料归档。
+    /// 这里不调用模型，也不修改研究账本状态；默认实现保持测试替身兼容。
+    fn record_material(
+        &self,
+        _actor: &ActorIdentity,
+        _event: &MarketEvent,
+    ) -> Option<EarningsResearchMaterialOutcome> {
+        None
+    }
+
     async fn reconcile(
         &self,
         actor: &ActorIdentity,
@@ -128,6 +153,21 @@ impl LlmEarningsContinuityReconciler {
         }
     }
 
+    fn load_profile(
+        &self,
+        actor: &ActorIdentity,
+        event: &MarketEvent,
+    ) -> Option<CompanyProfileDocument> {
+        let symbol = event.symbols.first()?.trim();
+        if symbol.is_empty() {
+            return None;
+        }
+        let actor_storage = self.storage.for_actor(actor);
+        let profile_id = actor_storage.find_profile_id(None, Some(symbol))?;
+        let profile = actor_storage.get_profile(&profile_id).ok().flatten()?;
+        profile.metadata.tracking.enabled.then_some(profile)
+    }
+
     fn load_target_profile(
         &self,
         actor: &ActorIdentity,
@@ -136,13 +176,7 @@ impl LlmEarningsContinuityReconciler {
         if !is_structured_earnings_review(event) {
             return None;
         }
-        let symbol = event.symbols.first()?.trim();
-        if symbol.is_empty() {
-            return None;
-        }
-        let actor_storage = self.storage.for_actor(actor);
-        let profile_id = actor_storage.find_profile_id(None, Some(symbol))?;
-        let profile = actor_storage.get_profile(&profile_id).ok().flatten()?;
+        let profile = self.load_profile(actor, event)?;
         (profile.metadata.tracking.enabled
             && matches!(profile.metadata.tracking.coverage_tier, CoverageTier::A))
         .then_some(profile)
@@ -151,6 +185,86 @@ impl LlmEarningsContinuityReconciler {
 
 #[async_trait]
 impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
+    fn should_schedule(&self, actor: &ActorIdentity, event: &MarketEvent) -> bool {
+        self.load_target_profile(actor, event).is_some()
+    }
+
+    fn record_material(
+        &self,
+        actor: &ActorIdentity,
+        event: &MarketEvent,
+    ) -> Option<EarningsResearchMaterialOutcome> {
+        let material_kind = earnings_research_material_kind(event)?;
+        if material_kind == "earnings_release" {
+            return None;
+        }
+        let research_object_key = earnings_research_object_key_for_event(event)?;
+        let profile = self.load_profile(actor, event)?;
+        if matches!(profile.metadata.tracking.coverage_tier, CoverageTier::C) {
+            return None;
+        }
+        let material_label = match material_kind {
+            "earnings_call_transcript" => "财报电话会纪要",
+            "formal_filing" => "正式季报",
+            _ => "财报补充材料",
+        };
+        let symbol = event.symbols.first().cloned().unwrap_or_default();
+        let follow_up = match material_kind {
+            "earnings_call_transcript" => {
+                "核对管理层问答是否回答未决问题，并区分正式承诺与一般性表述。"
+            }
+            "formal_filing" => "核对会计口径、现金流、分部披露与新闻稿是否一致。",
+            _ => "与本季已核验财报事实交叉核对。",
+        };
+        let actor_storage = self.storage.for_actor(actor);
+        let stored = actor_storage
+            .append_research_event(
+                &profile.profile_id,
+                AppendResearchEventInput {
+                    event: AppendEventInput {
+                        title: format!("{symbol} {material_label}归档"),
+                        event_type: format!("earnings_material_{material_kind}"),
+                        occurred_at: event.occurred_at.to_rfc3339(),
+                        mainline_impact: "new_evidence".to_string(),
+                        changed_sections: vec!["研究材料".to_string()],
+                        refs: event.url.clone().into_iter().collect(),
+                        what_happened: if event.summary.trim().is_empty() {
+                            event.title.clone()
+                        } else {
+                            format!("{}\n\n{}", event.title, event.summary)
+                        },
+                        why_it_matters: format!(
+                            "该{material_label}已归入同一季度研究对象，当前状态为待交叉核验；归档本身不代表材料结论已被确认。"
+                        ),
+                        mainline_effect:
+                            "新增证据材料，不自动加强、削弱或改写用户确认的投资主线。".to_string(),
+                        evidence: format!("来源：{}；事件：{}", event.source, event.id),
+                        research_log:
+                            "系统自动归档材料引用；未调用 LLM，未改变问题或承诺状态。".to_string(),
+                        follow_up: follow_up.to_string(),
+                    },
+                    research_object_key: Some(research_object_key.clone()),
+                    research_updates: Vec::new(),
+                },
+            )
+            .map_err(|error| {
+                tracing::warn!(
+                    actor = %actor_key(actor),
+                    event_id = %event.id,
+                    material_kind,
+                    "earnings research material write failed: {error}"
+                );
+            })
+            .ok()
+            .flatten()?;
+        Some(EarningsResearchMaterialOutcome {
+            profile_id: profile.profile_id,
+            research_object_key,
+            material_kind: material_kind.to_string(),
+            recorded_event_id: stored.id,
+        })
+    }
+
     async fn reconcile(
         &self,
         actor: &ActorIdentity,
@@ -622,14 +736,7 @@ fn existing_outcome(
 }
 
 fn earnings_research_object_key(event: &MarketEvent) -> String {
-    event
-        .payload
-        .get(EARNINGS_DOCUMENT_KEY)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(&event.id)
-        .to_string()
+    earnings_research_object_key_for_event(event).unwrap_or_else(|| event.id.clone())
 }
 
 fn parse_continuity_review(content: &str) -> Option<EarningsContinuityReview> {
@@ -903,6 +1010,107 @@ mod tests {
             .expect("existing outcome");
         assert_eq!(second.recorded_event_id, first.recorded_event_id);
         assert_eq!(*provider.calls.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn transcript_is_appended_to_the_same_quarter_without_spending_model_tokens() {
+        let dir = tempdir().unwrap();
+        let storage = CompanyProfileStorage::new(dir.path());
+        let profile = tracked_profile(&storage);
+        let provider = Arc::new(StaticProvider {
+            response: "not used".to_string(),
+            calls: Mutex::new(0),
+        });
+        let reconciler = LlmEarningsContinuityReconciler::new(
+            provider.clone(),
+            "x-ai/grok-4.5",
+            CompanyProfileStorage::new(dir.path()),
+        );
+        let mut transcript = event();
+        transcript.id = "transcript:SNDK:2026-q2".to_string();
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.title = "SNDK Q2 earnings call transcript".to_string();
+        transcript.summary = "Prepared remarks and Q&A are available.".to_string();
+        transcript.url = Some("https://example.com/sndk-q2-transcript".to_string());
+        transcript.payload = json!({
+            "hone_earnings_research_object_key": "sec:sndk:q2"
+        });
+
+        let first = reconciler
+            .record_material(&actor(), &transcript)
+            .expect("material recorded");
+        let second = reconciler
+            .record_material(&actor(), &transcript)
+            .expect("idempotent existing material");
+        assert_eq!(first.research_object_key, "sec:sndk:q2");
+        assert_eq!(first.recorded_event_id, second.recorded_event_id);
+        assert_eq!(*provider.calls.lock().unwrap(), 0);
+
+        let refreshed = storage
+            .for_actor(&actor())
+            .get_profile(&profile.profile_id)
+            .unwrap()
+            .unwrap();
+        let material = refreshed
+            .events
+            .iter()
+            .find(|event| event.metadata.event_type == "earnings_material_earnings_call_transcript")
+            .expect("transcript event");
+        assert_eq!(
+            material.metadata.research_object_key.as_deref(),
+            Some("sec:sndk:q2")
+        );
+        assert!(material.markdown.contains("待交叉核验"));
+        assert!(material.markdown.contains("不自动加强、削弱或改写"));
+    }
+
+    #[test]
+    fn material_archival_follows_a_b_not_c_coverage_depth() {
+        let dir = tempdir().unwrap();
+        let storage = CompanyProfileStorage::new(dir.path());
+        let profile = tracked_profile(&storage);
+        let scoped = storage.for_actor(&actor());
+        scoped
+            .set_tracking(
+                &profile.profile_id,
+                TrackingConfig {
+                    enabled: true,
+                    coverage_tier: CoverageTier::B,
+                    ..TrackingConfig::default()
+                },
+            )
+            .unwrap();
+        let provider = Arc::new(StaticProvider {
+            response: "not used".to_string(),
+            calls: Mutex::new(0),
+        });
+        let reconciler = LlmEarningsContinuityReconciler::new(
+            provider.clone(),
+            "x-ai/grok-4.5",
+            CompanyProfileStorage::new(dir.path()),
+        );
+        let mut transcript = event();
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.id = "transcript-b".to_string();
+        transcript.payload = json!({
+            "hone_earnings_research_object_key": "sec:sndk:q2"
+        });
+        assert!(reconciler.record_material(&actor(), &transcript).is_some());
+
+        scoped
+            .set_tracking(
+                &profile.profile_id,
+                TrackingConfig {
+                    enabled: true,
+                    coverage_tier: CoverageTier::C,
+                    ..TrackingConfig::default()
+                },
+            )
+            .unwrap();
+        transcript.id = "transcript-c".to_string();
+        transcript.occurred_at += chrono::Duration::days(1);
+        assert!(reconciler.record_material(&actor(), &transcript).is_none());
+        assert_eq!(*provider.calls.lock().unwrap(), 0);
     }
 
     #[test]

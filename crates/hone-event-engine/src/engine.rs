@@ -414,6 +414,7 @@ impl EventEngine {
             );
         }
         let router = Arc::new(router_builder);
+        router.spawn_earnings_continuity_retry_worker();
         if !self.engine_cfg.disabled_kinds.is_empty() {
             info!(
                 disabled = ?self.engine_cfg.disabled_kinds,

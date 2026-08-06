@@ -38,7 +38,7 @@ pub use daily_report::DailyReport;
 pub use digest::DigestBuffer;
 pub use earnings_continuity::{
     EarningsContinuityOutcome, EarningsContinuityReconciler, EarningsContinuityReview,
-    LlmEarningsContinuityReconciler,
+    EarningsResearchMaterialOutcome, LlmEarningsContinuityReconciler,
 };
 pub use engine::EventEngine;
 pub use event::{EventKind, MarketEvent, Severity};
