@@ -1,7 +1,7 @@
 # Stripe 支付宝 / 微信单次年费通道
 
 - title: Stripe 支付宝 / 微信单次年费通道
-- status: `in_progress`
+- status: `blocked`
 - created_at: `2026-08-06`
 - updated_at: `2026-08-06`
 - owner: `Codex + owner`
@@ -18,7 +18,7 @@
   - `docs/decisions.md#d-2026-08-04-01-make-stripe-the-only-external-billing-provider`
   - `docs/handoffs/2026-08-04-stripe-only-production-cutover.md`
 - verification: focused Billing tests; Stripe signed-event HTTP E2E; real Stripe test-mode Alipay and WeChat Checkout lifecycle; full repository gates; exact GHCR deployment; live Checkout and `/me` browser QA without a real live payment
-- risks: one-time wallet payments have no automatic renewal; current entitlement schema is subscription-shaped; refund and expiry semantics must fail closed; production payment configuration and keys must never enter Git or logs
+- risks: one-time wallet payments have no automatic renewal; refund and expiry semantics must fail closed; production payment configuration and keys must never enter Git or logs; live Alipay and WeChat Pay remain unavailable until Stripe completes its external approval
 
 ## Goal
 
@@ -64,9 +64,9 @@
 - 在 `docs/decisions.md` 记录自动续费订阅与单次年费的长期产品/架构决策。
 - 更新 `docs/runbooks/stripe-billing.md` 的目录、事件、配置、测试、退款和生产
   验收流程。
-- 完成后新增 `docs/handoffs/2026-08-06-stripe-wallet-one-time-pass.md`，更新
-  `docs/archive/index.md`，把本计划移入 `docs/archive/plans/` 并从
-  `docs/current-plan.md` 移除。
+- 已新增 `docs/handoffs/2026-08-06-stripe-wallet-one-time-pass.md` 并更新
+  `docs/archive/index.md`。本计划因 Stripe 钱包外部审批保持 `blocked` 和活跃；
+  审批通过并完成最终 live Checkout 验收后再归档并从 `docs/current-plan.md` 移除。
 
 ## Risks / Open Questions
 
@@ -92,3 +92,12 @@
   the Dashboard shows `pending approval`; this is an external go-live gate.
 - Test mode completed official hosted Checkout payments for both Alipay and
   WeChat Pay at USD 229.99 without using production funds.
+- Implementation revision `c99babc1e1ea3c54db41256331eb65dcefa7bd1d` is live
+  from immutable GHCR digest
+  `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`.
+- Production `/activate` exposes both offers, and an authenticated live
+  fixed-term Checkout showed USD 229.99 with no recurring marker. No live
+  payment was submitted.
+- The live Checkout currently exposes card only. This correctly matches the
+  Stripe API/Dashboard state while Alipay and WeChat Pay remain pending;
+  wallet-visible live Checkout acceptance is the only remaining task.

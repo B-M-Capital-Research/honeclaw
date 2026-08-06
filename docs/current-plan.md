@@ -17,9 +17,9 @@
 ## 活跃任务
 
 - **Stripe 支付宝 / 微信单次年费通道**
-  - 状态：`in_progress`
+  - 状态：`blocked`
   - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
-  - 摘要：保留 USD 199.99/year 信用卡自动续费，新增 USD 229.99/12 个月的支付宝/微信单次付款；把 Billing 权益重构为 recurring subscription 与 fixed-term purchase，补齐 paid webhook、固定期限、退款、测试模式真实 Checkout、GHCR 部署和生产页面验收
+  - 摘要：双 entitlement、单次 Checkout、退款语义、全仓验证、官方测试模式支付宝/微信付款、精确 GHCR/GCE 部署和生产 USD 229.99 Checkout 验收均已完成；生产 Checkout 当前只有银行卡，Stripe Dashboard/API 仍将支付宝与微信标为 `pending approval` / `available=false`，待外部审批通过后做最后一次无付款页面验收并归档
 
 - **Earnings Workflow 内容一致性与新闻深度修复**
   - 状态：`in_progress`

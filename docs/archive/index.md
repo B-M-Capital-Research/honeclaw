@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
+
+## 2026-08-06
+
+### Stripe Wallet Fixed-term Pass Deployment
+
+- Status: blocked only on external Stripe wallet approval; code and production deployment complete
+- Date: 2026-08-06
+- Plan: `docs/current-plans/stripe-wallet-one-time-pass.md` (kept active until both live wallets are available)
+- Handoff: `docs/handoffs/2026-08-06-stripe-wallet-one-time-pass.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-06-02-offer-recurring-and-fixed-term-stripe-memberships-as-separate-products`
+- Related PRs / commits: direct `main` implementation `c99babc1e1ea3c54db41256331eb65dcefa7bd1d`; no PR, formal release, or tag
+- Related runbooks / regressions: `docs/runbooks/stripe-billing.md`; complete repository gates; signed Billing HTTP E2E; official Stripe test-mode Alipay and WeChat Pay payment lifecycles; Runtime Image run `31082512757`
+- Current conclusion: HONE production runs the exact implementation from GHCR digest `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`, exposes the existing USD 199.99/year subscription and the USD 229.99/12-month non-renewing pass, and creates a correct authenticated live fixed-term Checkout. No live payment was submitted. Stripe still reports both wallets `pending approval` / `available=false`, so the authoritative live form currently exposes card only.
+- Next entry point: after Stripe approval, require both methods `available=true`, create one fresh no-payment live fixed-term Checkout, verify card plus Alipay plus WeChat Pay, retain a redacted screenshot, then archive the active plan.
 
 ## 2026-08-05
 

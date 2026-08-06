@@ -278,6 +278,43 @@ hosted confirmation surfaces cannot be proven by a fabricated webhook.
 - Redacted evidence: `20-plan-live.png` through
   `24-whop-product-plan-hidden.png` in the plan's acceptance directory
 
+## Accepted Fixed-term Deployment (2026-08-06)
+
+- Implementation revision:
+  `c99babc1e1ea3c54db41256331eb65dcefa7bd1d`
+- Runtime Image workflow run: `31082512757`, job `92554342413`
+- Immutable GHCR digest:
+  `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`
+- Release:
+  `/opt/hone/releases/c99babc1e1ea3c54db41256331eb65dcefa7bd1d-ghcr-runtime`
+- Binary SHA-256:
+  `14b4aaa79484f598223aabf8ebd144afcae819c02670af49ea7437b26b4068f2`
+- Protected runtime backup:
+  `/etc/hone/runtime.env.pre-stripe-fixed-term-20260806T160000Z`
+- `/api/meta`: exact source revision, build timestamp
+  `2026-08-06T07:51:28Z`, `ghcr_linux_oci`, healthy authoritative
+  PostgreSQL/S3, and zero local durable dependency
+- Service: `hone-web.service` active, `NRestarts=0`, ports `8077/8088`;
+  protected runtime environment remains `root:root 0600`
+- Public catalog: recurring USD 199.99/12 months/auto-renewing and fixed USD
+  229.99/12 months/non-renewing both report `enabled=true`
+- Security boundary: invalid webhook signature returned `401`; unauthenticated
+  fixed-term Checkout creation returned `401`
+- Browser acceptance: production `/activate` showed both offers; authenticated
+  hosted live Checkout showed USD 229.99 with no recurring marker. The payment
+  form exposed card only, and no live payment was submitted.
+- Wallet gate: the card-only live form matches Stripe's current authority.
+  Alipay and WeChat Pay remain `display_preference=on`, `available=false`, and
+  `pending approval`. Test mode already completed real hosted test-payment
+  lifecycles for both methods; production must not be called wallet-ready until
+  the live API reports both available and hosted Checkout renders them.
+- Redacted evidence outside Git:
+  `25-test-checkout-alipay-wechat.png`, `27-live-dual-offer-activate.png`,
+  `28-live-fixed-checkout-summary.png`, and
+  `29-live-fixed-checkout-payment-methods.png` in the Stripe acceptance
+  directory. The live screenshots exclude email, verification codes, payment
+  credentials, Checkout identifiers, and secrets.
+
 ## Rollback
 
 1. Set `HONE_STRIPE_CHECKOUT_ENABLED=false` and restart the exact prior package

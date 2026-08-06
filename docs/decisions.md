@@ -1257,7 +1257,7 @@ Last updated: 2026-08-05
 ## D-2026-08-06-02 Offer Recurring And Fixed-term Stripe Memberships As Separate Products
 
 - title: Offer recurring and fixed-term Stripe memberships as separate products
-- status: `accepted_in_implementation`; production deployment and live-page acceptance pending
+- status: `deployed`; live wallet availability blocked on Stripe approval
 - created_at: `2026-08-06`
 - updated_at: `2026-08-06`
 - owner: `Codex + owner`
@@ -1316,7 +1316,11 @@ test payment at USD 229.99, and the complete repository gates pass. The live
 one-time Price exists as `price_1U1M0rEK7h1dD4JHbKBpIkZ2`; the production
 webhook destination listens to the exact ten-event contract. Stripe has
 accepted the live enablement requests but still reports both wallets as
-`pending approval` (`display_preference=on`, `available=false`). Remaining
-adoption work is immutable GHCR deployment and external-Chrome production-page
-acceptance without submitting real money; wallet availability remains an
-external Stripe approval gate.
+`pending approval` (`display_preference=on`, `available=false`). Exact revision
+`c99babc1e1ea3c54db41256331eb65dcefa7bd1d` is deployed from immutable GHCR
+digest `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`.
+External Chrome confirmed both production offers and a USD 229.99 fixed-term
+live Checkout without submitting money. The live form currently exposes card
+only, which matches Stripe's pending state; wallet-visible production
+acceptance remains an external Stripe approval gate rather than application
+implementation work.
