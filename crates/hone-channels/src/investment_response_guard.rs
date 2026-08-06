@@ -2862,6 +2862,14 @@ const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
 /// an ordinary Agent-owned turn rather than delaying the user.
 const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
 const PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT: usize = 3_000;
+/// Four financial statements do not fit in the per-item budget written for a
+/// quote, and truncating them mid-array is what turns a fundamentals answer
+/// back into a headline-only one.
+const PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT: usize = 12_000;
+/// Bounded below the overall enrichment deadline so the statements can be
+/// abandoned on their own without discarding the rest of the pass.
+const PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE: std::time::Duration =
+    std::time::Duration::from_secs(8);
 const PRETURN_WEB_QUERY_CHAR_LIMIT: usize = 400;
 
 /// Anchor the pre-turn search on absolute dates. The target market's local date
@@ -3042,27 +3050,48 @@ async fn run_pre_turn_enrichment(
                 pending.push((index, symbol.clone()));
             }
         }
-        let fetched = futures::future::join_all(pending.iter().map(|(_, symbol)| {
-            registry.execute_tool(
-                "data_fetch",
-                json!({"data_type": "snapshot", "ticker": symbol}),
-            )
-        }))
-        .await;
-        // A regular-session quote reports the previous close while pre/post
-        // market is running, so the extended bar has to come with it or the
-        // turn reads a moving stock as an unopened one.
-        let extended = if now_session != "regular" {
-            futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+        // Snapshot, extended-hours and fundamentals do not depend on each
+        // other, so they share one stage instead of three sequential ones.
+        // A quote alone cannot answer why a business moved: without the
+        // quarterly trend, margins and cash flow the turn either spends a
+        // research round fetching them or — more often — answers without them.
+        let (fetched, extended, fundamentals) = futures::future::join3(
+            futures::future::join_all(pending.iter().map(|(_, symbol)| {
                 registry.execute_tool(
                     "data_fetch",
-                    json!({"data_type": "extended_hours", "ticker": symbol}),
+                    json!({"data_type": "snapshot", "ticker": symbol}),
                 )
-            }))
-            .await
-        } else {
-            Vec::new()
-        };
+            })),
+            // A regular-session quote reports the previous close while pre/post
+            // market is running, so the extended bar has to come with it or the
+            // turn reads a moving stock as an unopened one.
+            futures::future::join_all(resolved.iter().filter(|_| now_session != "regular").map(
+                |(_, symbol)| {
+                    registry.execute_tool(
+                        "data_fetch",
+                        json!({"data_type": "extended_hours", "ticker": symbol}),
+                    )
+                },
+            )),
+            // Four statements are the slowest call in this stage. It gets its
+            // own deadline so a slow fundamentals fetch degrades to "no
+            // fundamentals" instead of timing out the whole pass and taking
+            // the quote and the session summaries down with it.
+            async {
+                tokio::time::timeout(
+                    PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
+                    futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+                        registry.execute_tool(
+                            "data_fetch",
+                            json!({"data_type": "financials", "ticker": symbol}),
+                        )
+                    })),
+                )
+                .await
+                .unwrap_or_default()
+            },
+        )
+        .await;
         for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
             snapshots.push((index, Some(value)));
         }
@@ -3071,11 +3100,11 @@ async fn run_pre_turn_enrichment(
             .into_iter()
             .map(|(_, value)| value)
             .collect::<Vec<_>>();
-        (web, identities, resolved, snapshots, extended)
+        (web, identities, resolved, snapshots, extended, fundamentals)
     })
     .await;
 
-    let Ok((web, identities, resolved, snapshots, extended)) = staged else {
+    let Ok((web, identities, resolved, snapshots, extended, fundamentals)) = staged else {
         tracing::warn!(
             channel = %actor.channel,
             user_id = %actor.user_id,
@@ -3115,6 +3144,17 @@ async fn run_pre_turn_enrichment(
             sections.push(format!(
                 "- `data_fetch(snapshot, ticker={symbol:?})` →\n{}",
                 bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+            ));
+        }
+    }
+    let mut fundamentals_count = 0usize;
+    for ((_, symbol), bundle) in resolved.iter().zip(fundamentals.iter()) {
+        if let Some(value) = bundle.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            fundamentals_count += 1;
+            sections.push(format!(
+                "- `data_fetch(financials, ticker={symbol:?})` →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT)
             ));
         }
     }
@@ -3168,8 +3208,13 @@ async fn run_pre_turn_enrichment(
     }
 
     let block = format!(
-        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}",
+        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}{}",
         sections.join("\n"),
+        if fundamentals_count == 0 {
+            ""
+        } else {
+            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计，`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。若 provider quote 的 `pe`/`eps` 与 `hone_ttm` 明显不一致，说明 provider 的 TTM 尚未包含最新季度，此时不得直接发布该倍数。"
+        },
         if live_extended_count + summary_extended_count == 0 {
             ""
         } else {
@@ -7879,7 +7924,7 @@ fn append_agent_entity_discovery_context(
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状；关系问答保持最小充分，并继续完成当前证据能够支持的分析。"
+         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。"
     ));
 }
 
@@ -11128,26 +11173,68 @@ fn normalized_company_financial_evidence(symbol: &str, value: Value) -> (bool, V
         .take(4)
         .collect::<Vec<_>>();
     if !records.is_empty() {
-        return (
-            true,
-            json!({
-                "symbol": symbol,
-                "status": "verified",
-                "statement_scope": "annual_income_statement_only",
-                "annual_periods": records,
-                "metric_semantics": {
-                    "net_income": "净利润；不是净现金",
-                    "operating_income": "营业利润；不是经营现金流",
-                    "gross_margin_ratio": "小数比例；展示百分比时乘以 100"
-                },
-                "not_provided": [
-                    "cash_and_equivalents", "debt", "net_cash", "net_debt",
-                    "operating_cash_flow", "free_cash_flow", "capital_expenditure",
-                    "analyst_consensus", "forward_estimates", "peer_multiples"
-                ],
-                "instruction": "未提供字段必须写本轮未核验；不得把净利润改写成净现金或从模型记忆补一致预期/同业倍数"
-            }),
-        );
+        // The tool now returns quarterly statements, a balance sheet and a cash
+        // flow alongside the annual income statement. Declaring those "未核验"
+        // from a fixed list would hide evidence the turn actually holds, so the
+        // gap list is derived from what this payload really carries.
+        let statement_available = |name: &str| {
+            value
+                .get("hone_statement_coverage")
+                .and_then(|coverage| coverage.get(name))
+                .and_then(Value::as_str)
+                == Some("available")
+        };
+        let has_cash_flow = statement_available("quarterly_cash_flow");
+        let has_balance_sheet = statement_available("quarterly_balance_sheet");
+        let has_quarterly = statement_available("quarterly_income_statement");
+        let mut not_provided = Vec::new();
+        if !has_balance_sheet {
+            not_provided.extend(["cash_and_equivalents", "debt", "net_cash", "net_debt"]);
+        }
+        if !has_cash_flow {
+            not_provided.extend([
+                "operating_cash_flow",
+                "free_cash_flow",
+                "capital_expenditure",
+            ]);
+        }
+        // `financials` never carries these regardless of statement coverage.
+        not_provided.extend(["analyst_consensus", "forward_estimates", "peer_multiples"]);
+        let mut scope = vec!["annual_income_statement"];
+        if has_quarterly {
+            scope.push("quarterly_income_statement");
+        }
+        if has_balance_sheet {
+            scope.push("quarterly_balance_sheet");
+        }
+        if has_cash_flow {
+            scope.push("quarterly_cash_flow");
+        }
+        let mut evidence = json!({
+            "symbol": symbol,
+            "status": "verified",
+            "statement_scope": scope,
+            "annual_periods": records,
+            "metric_semantics": {
+                "net_income": "净利润；不是净现金",
+                "operating_income": "营业利润；不是经营现金流",
+                "gross_margin_ratio": "小数比例；展示百分比时乘以 100"
+            },
+            "not_provided": not_provided,
+            "instruction": "not_provided 中的字段必须写本轮未核验；已在 statement_scope 中的报表属于本轮证据，应当据此展开环比、同比、利润率与现金流分析，不要反过来声称未核验。不得把净利润改写成净现金或从模型记忆补一致预期/同业倍数"
+        });
+        for key in [
+            "hone_ttm",
+            "hone_latest_quarter",
+            "hone_quarterly_income_statement",
+            "hone_quarterly_balance_sheet",
+            "hone_quarterly_cash_flow",
+        ] {
+            if let Some(block) = value.get(key) {
+                evidence[key] = block.clone();
+            }
+        }
+        return (true, evidence);
     }
     let reason = if value_has_error(&value) {
         "provider_error"
@@ -11162,7 +11249,9 @@ fn normalized_company_financial_evidence(symbol: &str, value: Value) -> (bool, V
             "symbol": symbol,
             "status": "unverified",
             "reason": reason,
-            "statement_scope": "annual_income_statement_only",
+            // Nothing was verified, so no statement is in scope. Naming one
+            // here used to imply the annual figures had been checked.
+            "statement_scope": [],
             "instruction": "第 5 节和第 6 节明确写本轮未核验；不得从历史或模型记忆补财务数字"
         }),
     )
@@ -13292,7 +13381,12 @@ mod tests {
         assert!(answer_contract.contains("market_date_new_york / new_york"));
         assert!(answer_contract.contains("禁止据此写‘纽交所’或‘收盘价’"));
         assert!(answer_contract.contains("不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定"));
-        assert!(answer_contract.ends_with("继续完成当前证据能够支持的分析。"));
+        // Restraint applies to how strongly a claim is stated, never to how
+        // much of the gathered evidence reaches the answer.
+        assert!(answer_contract.contains("克制的是断言强度而不是覆盖面"));
+        assert!(answer_contract.contains("不得因为惜字而把已核验的证据留在上下文里不用"));
+        assert!(answer_contract.contains("也不得把已核验的口径写成“本轮未核验”"));
+        assert!(answer_contract.ends_with("真正缺失的口径按缺口如实披露。"));
     }
 
     #[test]
@@ -14800,6 +14894,63 @@ mod tests {
         assert!(data[0]["title"].as_str().unwrap().contains("Rambus"));
         assert_eq!(filtered["entity_filter"]["input_count"], 2);
         assert_eq!(filtered["entity_filter"]["retained_count"], 1);
+    }
+
+    /// The gap list used to be a fixed constant, so a turn that had just
+    /// fetched a cash-flow statement still told the model cash flow was
+    /// unverified — the same "answer narrower than the evidence" failure the
+    /// SNDK comparison exposed. It is now derived from the payload.
+    #[test]
+    fn financial_evidence_gaps_follow_the_statements_actually_fetched() {
+        let annual = json!([{
+            "symbol":"SNDK","calendarYear":"2026","period":"FY","date":"2026-06-30",
+            "reportedCurrency":"USD","revenue":20248,"grossProfit":14000,
+            "netIncome":11433,"epsdiluted":73.76
+        }]);
+        let (verified, evidence) = normalized_company_financial_evidence(
+            "SNDK",
+            json!({
+                "data": annual.clone(),
+                "hone_statement_coverage": {
+                    "annual_income_statement": "available",
+                    "quarterly_income_statement": "available",
+                    "quarterly_cash_flow": "available",
+                    "quarterly_balance_sheet": "unavailable"
+                },
+                "hone_ttm": {"eps_diluted": 73.76},
+                "hone_latest_quarter": {"revenue_qoq_pct": 50.67},
+                "hone_quarterly_cash_flow": [{"operatingCashFlow": 7126}]
+            }),
+        );
+        assert!(verified);
+        let gaps = evidence["not_provided"].to_string();
+        // Fetched, therefore no longer a gap.
+        assert!(!gaps.contains("operating_cash_flow"), "{gaps}");
+        assert!(!gaps.contains("free_cash_flow"), "{gaps}");
+        // Genuinely missing, therefore still disclosed.
+        assert!(gaps.contains("net_debt"), "{gaps}");
+        // `financials` never carries these whatever the coverage.
+        assert!(gaps.contains("analyst_consensus"), "{gaps}");
+        assert_eq!(evidence["statement_scope"][0], "annual_income_statement");
+        assert!(
+            evidence["statement_scope"]
+                .to_string()
+                .contains("quarterly_cash_flow")
+        );
+        // The derived blocks travel with the evidence so the answer can use them.
+        assert_eq!(evidence["hone_ttm"]["eps_diluted"], 73.76);
+        assert_eq!(evidence["hone_latest_quarter"]["revenue_qoq_pct"], 50.67);
+
+        // With no coverage map the payload is the old annual-only shape, and
+        // every derived gap must come back.
+        let (_, legacy) = normalized_company_financial_evidence("SNDK", json!({"data": annual}));
+        let legacy_gaps = legacy["not_provided"].to_string();
+        assert!(legacy_gaps.contains("operating_cash_flow"), "{legacy_gaps}");
+        assert!(legacy_gaps.contains("net_debt"), "{legacy_gaps}");
+        assert_eq!(
+            legacy["statement_scope"],
+            json!(["annual_income_statement"])
+        );
     }
 
     #[test]

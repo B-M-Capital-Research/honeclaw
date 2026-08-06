@@ -8253,6 +8253,127 @@ async fn overnight_enrichment_keeps_yesterdays_post_session_summary() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// The SNDK comparison exposed answers that were arithmetically correct and
+/// still thin: a headline revenue number with no trend, no margin, no cash
+/// flow. That was an evidence-supply problem, not a writing one — the turn
+/// never held the quarterly statements. This asserts they arrive before the
+/// model starts thinking.
+#[tokio::test]
+async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_window() {
+    let root = make_temp_dir("hone_channels_preturn_fundamentals");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=SNDK".to_string(),
+            serde_json::json!([{
+                "symbol": "SNDK",
+                "name": "Sandisk Corporation",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/quote/SNDK".to_string(),
+            // The provider trailing EPS still predates the quarter just filed.
+            serde_json::json!([{
+                "symbol": "SNDK", "price": 1350.50, "exchange": "NASDAQ",
+                "eps": 29.63, "pe": 45.58
+            }]),
+        ),
+        (
+            "/profile/SNDK".to_string(),
+            serde_json::json!([{
+                "symbol": "SNDK",
+                "companyName": "Sandisk Corporation",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }]),
+        ),
+        (
+            "income-statement/SNDK?period=quarter".to_string(),
+            serde_json::json!([
+                {"symbol":"SNDK","date":"2026-06-30","period":"Q4","calendarYear":"2026","revenue":8965,"grossProfit":7584,"netIncome":6903,"epsdiluted":43.97},
+                {"symbol":"SNDK","date":"2026-03-31","period":"Q3","calendarYear":"2026","revenue":5950,"grossProfit":4665,"netIncome":3615,"epsdiluted":23.03},
+                {"symbol":"SNDK","date":"2025-12-31","period":"Q2","calendarYear":"2026","revenue":3400,"grossProfit":1900,"netIncome":800,"epsdiluted":5.10},
+                {"symbol":"SNDK","date":"2025-09-30","period":"Q1","calendarYear":"2026","revenue":1933,"grossProfit":700,"netIncome":115,"epsdiluted":1.66}
+            ]),
+        ),
+        (
+            "income-statement/SNDK".to_string(),
+            serde_json::json!([
+                {"symbol":"SNDK","date":"2026-06-30","period":"FY","calendarYear":"2026","revenue":20248,"netIncome":11433}
+            ]),
+        ),
+        (
+            "cash-flow-statement/SNDK".to_string(),
+            serde_json::json!([
+                {"symbol":"SNDK","date":"2026-06-30","operatingCashFlow":7126,"freeCashFlow":6000}
+            ]),
+        ),
+        (
+            "balance-sheet-statement/SNDK".to_string(),
+            serde_json::json!([
+                {"symbol":"SNDK","date":"2026-06-30","totalAssets":27000,"totalLiabilities":9000}
+            ]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-fundamentals", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-fundamentals",
+        false,
+        "SNDK 财报这么好为什么股价还跌",
+        AgentTurnOrigin::Interactive,
+        "2026-08-06 10:20",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    assert!(
+        runtime_input.contains("data_fetch(financials, ticker=\"SNDK\")"),
+        "{runtime_input}"
+    );
+    // The trailing window is recomputed from the four filed quarters, which is
+    // what makes the provider's stale 45.58x multiple detectable.
+    assert!(runtime_input.contains("\"hone_ttm\""), "{runtime_input}");
+    assert!(runtime_input.contains("73.76"), "{runtime_input}");
+    // Sequential and year-ago comparisons plus the cash-flow line: the three
+    // things the thin answer was missing.
+    assert!(runtime_input.contains("revenue_qoq_pct"), "{runtime_input}");
+    assert!(runtime_input.contains("50.67"), "{runtime_input}");
+    assert!(runtime_input.contains("84.6"), "{runtime_input}");
+    assert!(
+        runtime_input.contains("operating_cash_flow"),
+        "{runtime_input}"
+    );
+    assert!(runtime_input.contains("7126"), "{runtime_input}");
+    assert!(
+        runtime_input.contains("hone_quarterly_balance_sheet"),
+        "{runtime_input}"
+    );
+    // And the turn is told to use them rather than declare them unverified.
+    assert!(
+        runtime_input.contains("本轮已附带 `financials`"),
+        "{runtime_input}"
+    );
+    assert!(
+        runtime_input.contains("不要以“未核验”带过"),
+        "{runtime_input}"
+    );
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
@@ -8305,7 +8426,8 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("终稿在事实旁内联来源标题与原始 URL")
                 && runtime_input.contains("以‘推断：’开头")
                 && runtime_input.contains("禁止据此写‘纽交所’或‘收盘价’")
-                && runtime_input.ends_with("继续完成当前证据能够支持的分析。"),
+                && runtime_input.contains("克制的是断言强度而不是覆盖面")
+                && runtime_input.ends_with("真正缺失的口径按缺口如实披露。"),
             "{input}: {runtime_input}"
         );
     }

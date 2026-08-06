@@ -387,6 +387,59 @@ impl DataFetchTool {
         )
     }
 
+    fn build_financials_component_url(
+        &self,
+        component: &str,
+        ticker: &str,
+    ) -> Result<String, String> {
+        let symbol = encode_fmp_symbols(ticker, false)?;
+        let base = &self.base_url;
+        match component {
+            "income_annual" => Ok(format!("{base}/v3/income-statement/{symbol}?limit=4")),
+            "income_quarter" => Ok(format!(
+                "{base}/v3/income-statement/{symbol}?period=quarter&limit=8"
+            )),
+            "balance_sheet_quarter" => Ok(format!(
+                "{base}/v3/balance-sheet-statement/{symbol}?period=quarter&limit=5"
+            )),
+            "cash_flow_quarter" => Ok(format!(
+                "{base}/v3/cash-flow-statement/{symbol}?period=quarter&limit=8"
+            )),
+            _ => Err(format!("不支持的 financials 组件: {component}")),
+        }
+    }
+
+    /// One income statement is not financial evidence. A quarter-over-quarter
+    /// read, an operating cash-flow line and a balance sheet are what separate
+    /// "revenue was X" from an answer that can discuss the business, so all of
+    /// them are fetched together rather than left for a follow-up round that
+    /// the research budget may never grant.
+    async fn fetch_financials_bundle(&self, ticker: &str) -> Result<Value, String> {
+        let annual_url = self.build_financials_component_url("income_annual", ticker)?;
+        let quarter_url = self.build_financials_component_url("income_quarter", ticker)?;
+        let balance_url = self.build_financials_component_url("balance_sheet_quarter", ticker)?;
+        let cash_flow_url = self.build_financials_component_url("cash_flow_quarter", ticker)?;
+        let ttl = ttl_for_data_type("financials");
+        // Every component keeps the `financials` cache label: the caching
+        // policy refuses to memoize an empty payload for this data type, and a
+        // component-specific label would silently opt out of that rule.
+        let (annual, quarterly, balance_sheet, cash_flow) = tokio::join!(
+            self.fetch_from_url_cached(&annual_url, ttl, "financials"),
+            self.fetch_from_url_cached(&quarter_url, ttl, "financials"),
+            self.fetch_from_url_cached(&balance_url, ttl, "financials"),
+            self.fetch_from_url_cached(&cash_flow_url, ttl, "financials"),
+        );
+        // The annual statement is the only component the older evidence
+        // normalizer reads, so a total failure there stays a failure.
+        let annual = annual?;
+        Ok(build_financials_bundle(
+            annual,
+            quarterly.ok(),
+            balance_sheet.ok(),
+            cash_flow.ok(),
+        ))
+    }
+
     fn build_earnings_outlook_url(&self, component: &str, ticker: &str) -> Result<String, String> {
         let symbol = encode_fmp_symbols(ticker, false)?;
         let stable = self.stable_base_url();
@@ -574,6 +627,7 @@ impl DataFetchTool {
         let current_price = first_positive_number(&quote_value, &["price"]);
         let target_quality = price_target_consensus_quality(&target_value, current_price);
         let listing_evidence = security_listing_evidence(ticker, &quote_value, &profile_value);
+        let valuation_basis = valuation_basis_quality(&quote_value, &financials_value);
 
         let coverage = [
             ("quote", &quote_value),
@@ -586,10 +640,15 @@ impl DataFetchTool {
         ]
         .into_iter()
         .map(|(name, value)| {
+            let available = if name == "financials" {
+                financials_component_available(value)
+            } else {
+                has_meaningful_fmp_value(value)
+            };
             (
                 name.to_string(),
                 Value::String(
-                    if has_meaningful_fmp_value(value) {
+                    if available {
                         "available"
                     } else {
                         "unavailable"
@@ -607,10 +666,10 @@ impl DataFetchTool {
             &estimates_value,
             &target_value,
             &ratings_value,
-            &financials_value,
         ]
         .into_iter()
-        .all(|value| !has_meaningful_fmp_value(value));
+        .all(|value| !has_meaningful_fmp_value(value))
+            && !financials_component_available(&financials_value);
 
         let mut payload = serde_json::json!({
             "data_type": "earnings_outlook",
@@ -627,6 +686,7 @@ impl DataFetchTool {
             "coverage": Value::Object(coverage),
             "hone_security_listing_evidence": listing_evidence,
             "hone_target_consensus_quality": target_quality,
+            "hone_valuation_basis": valuation_basis,
             "evidence_policy": "Use only component fields whose Hone quality flags authorize that claim type. Missing or quarantined components must be disclosed; do not infer them from another component. An active_listing result is current-turn provider evidence and must not be contradicted by stale acquisition or delisting memory."
         });
 
@@ -1002,6 +1062,234 @@ fn attach_quote_evidence_quality(value: &mut Value) {
     );
 }
 
+fn statement_rows(value: Option<&Value>) -> &[Value] {
+    value.and_then(Value::as_array).map_or(&[], Vec::as_slice)
+}
+
+fn statement_number(row: &Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| row.get(*key))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+}
+
+fn statement_period_label(row: &Value) -> Option<String> {
+    let period = row.get("period").and_then(Value::as_str)?;
+    let year = row
+        .get("calendarYear")
+        .and_then(|year| {
+            year.as_str()
+                .map(str::to_string)
+                .or_else(|| year.as_i64().map(|value| value.to_string()))
+        })
+        .unwrap_or_default();
+    Some(if year.is_empty() {
+        period.to_string()
+    } else {
+        format!("{period} {year}")
+    })
+}
+
+fn pct_change(current: Option<f64>, previous: Option<f64>) -> Option<f64> {
+    match (current, previous) {
+        (Some(current), Some(previous)) if previous.abs() > f64::EPSILON => {
+            Some(((current - previous) / previous.abs() * 10_000.0).round() / 100.0)
+        }
+        _ => None,
+    }
+}
+
+fn optional_number(value: Option<f64>) -> Value {
+    value.map_or(Value::Null, |value| {
+        serde_json::Number::from_f64(value).map_or(Value::Null, Value::Number)
+    })
+}
+
+/// Sums the four most recent reported quarters. This is the only trailing
+/// window the turn can prove, which makes it the reference for deciding whether
+/// a provider's own TTM aggregate has caught up with the latest release.
+fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
+    let window = quarterly.get(..4)?;
+    let mut revenue = 0.0;
+    let mut net_income = 0.0;
+    let mut eps = 0.0;
+    let mut eps_complete = true;
+    let mut periods = Vec::with_capacity(4);
+    for row in window {
+        revenue += statement_number(row, &["revenue"])?;
+        net_income += statement_number(row, &["netIncome"])?;
+        match statement_number(row, &["epsdiluted", "epsDiluted", "eps"]) {
+            Some(value) => eps += value,
+            None => eps_complete = false,
+        }
+        periods.push(Value::String(
+            row.get("date")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        ));
+    }
+    let round4 = |value: f64| (value * 10_000.0).round() / 10_000.0;
+    Some(serde_json::json!({
+        "basis": "last_4_reported_quarters",
+        "period_ends": periods,
+        "latest_period_end": window.first().and_then(|row| row.get("date")).cloned().unwrap_or(Value::Null),
+        "latest_period_label": window.first().and_then(statement_period_label).map_or(Value::Null, Value::String),
+        "revenue": optional_number(Some(round4(revenue))),
+        "net_income": optional_number(Some(round4(net_income))),
+        "eps_diluted": optional_number(eps_complete.then(|| round4(eps))),
+        "note": "由本轮已发布的四个季度直接相加得到，可用于校验 provider 的 TTM 口径是否已含最新季度"
+    }))
+}
+
+/// The latest quarter with its own sequential and year-over-year comparisons.
+/// Without this the turn can state a revenue number but cannot say whether the
+/// business accelerated or decelerated, which is most of what the question is.
+fn latest_quarter_summary(quarterly: &[Value], cash_flow: &[Value]) -> Option<Value> {
+    let latest = quarterly.first()?;
+    let previous = quarterly.get(1);
+    let year_ago = quarterly.get(4);
+    let revenue = statement_number(latest, &["revenue"]);
+    let gross_profit = statement_number(latest, &["grossProfit"]);
+    let gross_margin_pct = match (gross_profit, revenue) {
+        (Some(profit), Some(revenue)) if revenue.abs() > f64::EPSILON => {
+            Some((profit / revenue * 10_000.0).round() / 100.0)
+        }
+        _ => None,
+    };
+    let operating_cash_flow = cash_flow
+        .first()
+        .and_then(|row| statement_number(row, &["operatingCashFlow"]));
+    Some(serde_json::json!({
+        "period_end": latest.get("date").cloned().unwrap_or(Value::Null),
+        "period_label": statement_period_label(latest).map_or(Value::Null, Value::String),
+        "revenue": optional_number(revenue),
+        "revenue_qoq_pct": optional_number(pct_change(revenue, previous.and_then(|row| statement_number(row, &["revenue"])))),
+        "revenue_yoy_pct": optional_number(pct_change(revenue, year_ago.and_then(|row| statement_number(row, &["revenue"])))),
+        "gross_margin_pct": optional_number(gross_margin_pct),
+        "operating_income": optional_number(statement_number(latest, &["operatingIncome"])),
+        "net_income": optional_number(statement_number(latest, &["netIncome"])),
+        "eps_diluted": optional_number(statement_number(latest, &["epsdiluted", "epsDiluted", "eps"])),
+        "operating_cash_flow": optional_number(operating_cash_flow),
+        "note": "环比对比上一披露季度，同比对比四个季度之前；两者都来自本轮同一份季度序列"
+    }))
+}
+
+fn build_financials_bundle(
+    annual: Value,
+    quarterly: Option<Value>,
+    balance_sheet: Option<Value>,
+    cash_flow: Option<Value>,
+) -> Value {
+    // Derive everything that reads the rows before the arrays are moved into
+    // the payload.
+    let ttm_summary = trailing_twelve_month_summary(statement_rows(quarterly.as_ref()));
+    let latest_summary = latest_quarter_summary(
+        statement_rows(quarterly.as_ref()),
+        statement_rows(cash_flow.as_ref()),
+    );
+    let coverage = [
+        ("annual_income_statement", Some(&annual)),
+        ("quarterly_income_statement", quarterly.as_ref()),
+        ("quarterly_balance_sheet", balance_sheet.as_ref()),
+        ("quarterly_cash_flow", cash_flow.as_ref()),
+    ]
+    .into_iter()
+    .map(|(name, value)| {
+        (
+            name.to_string(),
+            Value::String(
+                if value.is_some_and(has_meaningful_fmp_value) {
+                    "available"
+                } else {
+                    "unavailable"
+                }
+                .to_string(),
+            ),
+        )
+    })
+    .collect::<serde_json::Map<_, _>>();
+
+    let mut payload = serde_json::json!({
+        // `data` stays the annual income statement array so every existing
+        // consumer of this payload keeps reading the same shape.
+        "data": annual,
+        "hone_statement_coverage": Value::Object(coverage),
+        "hone_financials_policy": "覆盖状态为 unavailable 的报表本轮确实没有取到，必须按缺口披露，不得由其它报表或记忆推算。金额单位以 provider 原始字段为准；毛利率等比率字段已换算为百分数。"
+    });
+    if let Some(quarterly) = quarterly.filter(has_meaningful_fmp_value) {
+        payload["hone_quarterly_income_statement"] = quarterly;
+    }
+    if let Some(balance_sheet) = balance_sheet.filter(has_meaningful_fmp_value) {
+        payload["hone_quarterly_balance_sheet"] = balance_sheet;
+    }
+    if let Some(cash_flow) = cash_flow.filter(has_meaningful_fmp_value) {
+        payload["hone_quarterly_cash_flow"] = cash_flow;
+    }
+    if let Some(ttm) = ttm_summary {
+        payload["hone_ttm"] = ttm;
+    }
+    if let Some(latest) = latest_summary {
+        payload["hone_latest_quarter"] = latest;
+    }
+    payload
+}
+
+/// A provider's trailing `eps`/`pe` fields keep the pre-release window for days
+/// after a company reports, which is exactly when people ask about the print.
+/// The turn already knows the four reported quarters, so it can say whether the
+/// provider aggregate has caught up instead of publishing a multiple computed
+/// against a quarter that no longer exists.
+fn valuation_basis_quality(quote: &Value, financials: &Value) -> Value {
+    let quote_row = quote
+        .as_array()
+        .and_then(|rows| rows.first())
+        .unwrap_or(quote);
+    let provider_eps = statement_number(quote_row, &["eps"]);
+    let provider_pe = statement_number(quote_row, &["pe"]);
+    let price = statement_number(quote_row, &["price"]);
+    let ttm = financials.get("hone_ttm");
+    let recomputed_eps = ttm.and_then(|ttm| statement_number(ttm, &["eps_diluted"]));
+    let latest_period = ttm
+        .and_then(|ttm| ttm.get("latest_period_end"))
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    // Without both numbers there is nothing to compare; say so rather than
+    // implying the provider figure was checked.
+    let (includes_latest, recomputed_pe) = match (provider_eps, recomputed_eps) {
+        (Some(provider), Some(recomputed)) if recomputed.abs() > f64::EPSILON => {
+            let drift = (provider - recomputed).abs() / recomputed.abs();
+            let recomputed_pe = price
+                .filter(|_| recomputed.abs() > f64::EPSILON)
+                .map(|price| (price / recomputed * 100.0).round() / 100.0);
+            (Some(drift <= 0.10), recomputed_pe)
+        }
+        _ => (None, None),
+    };
+
+    let usable = includes_latest.unwrap_or(false);
+    let mut warnings = Vec::new();
+    if includes_latest == Some(false) {
+        warnings.push("provider_ttm_excludes_latest_reported_quarter");
+    }
+    if includes_latest.is_none() {
+        warnings.push("provider_ttm_basis_unverified");
+    }
+
+    serde_json::json!({
+        "provider_ttm_eps": optional_number(provider_eps),
+        "provider_pe": optional_number(provider_pe),
+        "recomputed_ttm_eps": optional_number(recomputed_eps),
+        "recomputed_pe": optional_number(recomputed_pe),
+        "latest_reported_period_end": latest_period,
+        "provider_ttm_includes_latest_reported_quarter": includes_latest.map_or(Value::Null, Value::Bool),
+        "usable_for_multiple_claims": usable,
+        "warnings": warnings,
+        "policy": "usable_for_multiple_claims=false 时，不得直接发布 provider 的 pe/eps 倍数。要么改用 recomputed_pe / recomputed_ttm_eps 并写明是按本轮已披露四个季度重算，要么说明该倍数尚未包含最新季度。财报发布后数日内 provider 的 TTM 常常仍是上一口径。"
+    })
+}
+
 fn price_target_consensus_quality(value: &Value, current_price: Option<f64>) -> Value {
     let row = value
         .as_array()
@@ -1142,6 +1430,21 @@ fn has_meaningful_fmp_value(value: &Value) -> bool {
         Value::Array(items) => items.iter().any(has_meaningful_fmp_value),
         Value::Object(fields) => fields.values().any(has_meaningful_fmp_value),
         Value::Bool(_) | Value::Number(_) => true,
+    }
+}
+
+/// The financials bundle always carries its own policy text, so the generic
+/// "is anything in here" check would call it available even when every
+/// statement failed. Its own coverage map is the authority when present.
+fn financials_component_available(value: &Value) -> bool {
+    match value
+        .get("hone_statement_coverage")
+        .and_then(Value::as_object)
+    {
+        Some(coverage) => coverage
+            .values()
+            .any(|state| state.as_str() == Some("available")),
+        None => has_meaningful_fmp_value(value),
     }
 }
 
@@ -1330,7 +1633,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计与 hone_latest_quarter 的环比/同比/毛利率/经营现金流；hone_statement_coverage 标出哪张表没取到）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -1504,7 +1807,7 @@ impl Tool for DataFetchTool {
                     ttl_for_data_type(data_type),
                     "earnings_outlook_ratings_snapshot"
                 ),
-                self.fetch_data_type("financials", ticker),
+                self.fetch_financials_bundle(ticker),
             );
             return Ok(self.build_earnings_outlook_response(
                 ticker,
@@ -1516,6 +1819,17 @@ impl Tool for DataFetchTool {
                 ratings_snapshot,
                 financials,
             ));
+        }
+
+        if data_type == "financials" {
+            return match self.fetch_financials_bundle(ticker).await {
+                Ok(mut payload) => {
+                    payload["data_type"] = Value::String(data_type.to_string());
+                    payload["ticker"] = Value::String(ticker.to_string());
+                    Ok(payload)
+                }
+                Err(err) => Ok(serde_json::json!({ "error": err })),
+            };
         }
 
         if data_type == "earnings_calendar" {
@@ -1578,6 +1892,7 @@ mod tests {
         normalize_quote_timestamp_metadata, price_target_consensus_quality,
         sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
         ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
+        valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -1723,6 +2038,63 @@ mod tests {
         });
 
         (addr, request_count)
+    }
+
+    /// `financials` fans out to four statement endpoints concurrently, so a
+    /// strictly sequential script can no longer express "this endpoint returns
+    /// empty first". Routes are matched on a request-target substring and each
+    /// keeps its own reply sequence; the last reply repeats once exhausted.
+    async fn spawn_path_scripted_http_server(
+        routes: Vec<(&'static str, Vec<&'static str>)>,
+    ) -> (SocketAddr, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind path-scripted test server");
+        let addr = listener
+            .local_addr()
+            .expect("path-scripted server local addr");
+        let requests = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let requests_for_server = requests.clone();
+
+        tokio::spawn(async move {
+            let mut cursors = std::collections::HashMap::<&'static str, usize>::new();
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                let mut buf = [0_u8; 4096];
+                let read = socket.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..read]).to_string();
+                let target = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("")
+                    .to_string();
+                requests_for_server
+                    .lock()
+                    .expect("record request")
+                    .push(target.clone());
+                let body = routes
+                    .iter()
+                    .find(|(needle, _)| target.contains(needle))
+                    .map(|(needle, bodies)| {
+                        let cursor = cursors.entry(needle).or_insert(0);
+                        let body = bodies[(*cursor).min(bodies.len().saturating_sub(1))];
+                        *cursor += 1;
+                        body
+                    })
+                    .unwrap_or("[]");
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        (addr, requests)
     }
 
     async fn spawn_truncated_body_server() -> (SocketAddr, Arc<AtomicUsize>) {
@@ -2699,13 +3071,13 @@ mod tests {
 
     #[tokio::test]
     async fn empty_financials_are_refetched_then_nonempty_result_is_cached() {
-        let (addr, request_count) = spawn_scripted_http_server(vec![
-            ("200 OK", "[]"),
-            (
-                "200 OK",
+        let (addr, requests) = spawn_path_scripted_http_server(vec![(
+            "income-statement/AAPL?limit=4",
+            vec![
+                "[]",
                 r#"[{"symbol":"AAPL","date":"2025-09-30","revenue":1000}]"#,
-            ),
-        ])
+            ],
+        )])
         .await;
         let tool = DataFetchTool::new(
             vec!["test_key".to_string()],
@@ -2729,7 +3101,130 @@ mod tests {
         assert_eq!(first["data"], json!([]));
         assert_eq!(second["data"][0]["symbol"], "AAPL");
         assert_eq!(third, second);
-        assert_eq!(request_count.load(Ordering::SeqCst), 2);
+        let annual_requests = requests
+            .lock()
+            .expect("read requests")
+            .iter()
+            .filter(|target| target.contains("income-statement/AAPL?limit=4"))
+            .count();
+        // Empty is refetched, the nonempty answer is cached from then on.
+        assert_eq!(annual_requests, 2);
+    }
+
+    #[tokio::test]
+    async fn financials_return_quarterly_statements_with_a_trailing_window() {
+        let (addr, _requests) = spawn_path_scripted_http_server(vec![
+            (
+                "income-statement/SNDK?limit=4",
+                vec![r#"[{"symbol":"SNDK","date":"2026-06-30","period":"FY","calendarYear":"2026","revenue":20248,"netIncome":11433}]"#],
+            ),
+            (
+                "income-statement/SNDK?period=quarter",
+                vec![
+                    r#"[
+                      {"symbol":"SNDK","date":"2026-06-30","period":"Q4","calendarYear":"2026","revenue":8965,"grossProfit":7584,"operatingIncome":7100,"netIncome":6903,"epsdiluted":43.97},
+                      {"symbol":"SNDK","date":"2026-03-31","period":"Q3","calendarYear":"2026","revenue":5950,"grossProfit":4665,"operatingIncome":3900,"netIncome":3615,"epsdiluted":23.03},
+                      {"symbol":"SNDK","date":"2025-12-31","period":"Q2","calendarYear":"2026","revenue":3400,"grossProfit":1900,"operatingIncome":1200,"netIncome":800,"epsdiluted":5.10},
+                      {"symbol":"SNDK","date":"2025-09-30","period":"Q1","calendarYear":"2026","revenue":1933,"grossProfit":700,"operatingIncome":200,"netIncome":115,"epsdiluted":1.66},
+                      {"symbol":"SNDK","date":"2025-06-30","period":"Q4","calendarYear":"2025","revenue":1901,"grossProfit":498,"operatingIncome":-90,"netIncome":-23,"epsdiluted":-0.16}
+                    ]"#,
+                ],
+            ),
+            (
+                "cash-flow-statement/SNDK",
+                vec![r#"[{"symbol":"SNDK","date":"2026-06-30","operatingCashFlow":7126,"freeCashFlow":6000}]"#],
+            ),
+            ("balance-sheet-statement/SNDK", vec!["[]"]),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "financials", "ticker": "SNDK"}))
+            .await
+            .expect("financials payload");
+
+        // The annual array keeps its historical shape for existing consumers.
+        assert_eq!(payload["data"][0]["symbol"], "SNDK");
+        assert_eq!(
+            payload["hone_statement_coverage"]["quarterly_income_statement"],
+            "available"
+        );
+        // A statement that genuinely failed must stay disclosed as a gap.
+        assert_eq!(
+            payload["hone_statement_coverage"]["quarterly_balance_sheet"],
+            "unavailable"
+        );
+        assert!(payload.get("hone_quarterly_balance_sheet").is_none());
+
+        // 8965 + 5950 + 3400 + 1933
+        assert_eq!(payload["hone_ttm"]["revenue"], 20248.0);
+        assert_eq!(payload["hone_ttm"]["eps_diluted"], 73.76);
+        assert_eq!(payload["hone_ttm"]["latest_period_end"], "2026-06-30");
+
+        let latest = &payload["hone_latest_quarter"];
+        assert_eq!(latest["period_label"], "Q4 2026");
+        // 8965 / 5950 - 1
+        assert_eq!(latest["revenue_qoq_pct"], 50.67);
+        // 8965 / 1901 - 1
+        assert_eq!(latest["revenue_yoy_pct"], 371.59);
+        assert_eq!(latest["gross_margin_pct"], 84.6);
+        assert_eq!(latest["operating_cash_flow"], 7126.0);
+    }
+
+    #[test]
+    fn a_provider_trailing_window_that_predates_the_latest_release_is_quarantined() {
+        // The provider still carries the pre-release TTM EPS while the turn has
+        // already read the quarter that made it obsolete.
+        let quote = json!([{"symbol":"SNDK","price":1350.50,"eps":29.63,"pe":45.58}]);
+        let financials = json!({
+            "hone_ttm": {"eps_diluted": 73.76, "latest_period_end": "2026-06-30"}
+        });
+
+        let basis = valuation_basis_quality(&quote, &financials);
+
+        assert_eq!(
+            basis["provider_ttm_includes_latest_reported_quarter"],
+            false
+        );
+        assert_eq!(basis["usable_for_multiple_claims"], false);
+        assert_eq!(basis["recomputed_ttm_eps"], 73.76);
+        // 1350.50 / 73.76
+        assert_eq!(basis["recomputed_pe"], 18.31);
+        assert_eq!(
+            basis["warnings"][0],
+            "provider_ttm_excludes_latest_reported_quarter"
+        );
+    }
+
+    #[test]
+    fn a_provider_trailing_window_matching_the_reported_quarters_stays_usable() {
+        let quote = json!([{"symbol":"SNDK","price":1350.50,"eps":73.76,"pe":18.31}]);
+        let financials = json!({"hone_ttm": {"eps_diluted": 73.76}});
+
+        let basis = valuation_basis_quality(&quote, &financials);
+
+        assert_eq!(basis["provider_ttm_includes_latest_reported_quarter"], true);
+        assert_eq!(basis["usable_for_multiple_claims"], true);
+        assert_eq!(basis["warnings"], json!([]));
+    }
+
+    #[test]
+    fn an_unverifiable_trailing_window_is_not_reported_as_confirmed() {
+        let quote = json!([{"symbol":"SNDK","price":1350.50,"eps":29.63}]);
+
+        let basis = valuation_basis_quality(&quote, &json!({}));
+
+        assert_eq!(
+            basis["provider_ttm_includes_latest_reported_quarter"],
+            serde_json::Value::Null
+        );
+        assert_eq!(basis["usable_for_multiple_claims"], false);
+        assert_eq!(basis["warnings"][0], "provider_ttm_basis_unverified");
     }
 
     #[tokio::test]

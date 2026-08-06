@@ -47,7 +47,10 @@ const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
 const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const MAX_AGENT_OWNED_HISTORY_USER_TURNS: usize = 4;
 const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
-const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 3;
+/// Three rounds is enough to confirm a price and stop. Answering why a business
+/// moved needs the release, the comparison and the reaction, which is a round
+/// each — the budget, not the model, was what kept answers at headline depth.
+const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 5;
 /// Entity identity resolution is a precondition of research, not research
 /// itself. A turn whose first rounds only ask "which security is this?" must
 /// not arrive at the forced final having never looked at the user's actual
@@ -93,7 +96,7 @@ const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研
 #[cfg(test)]
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
 #[cfg(test)]
-const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中提交本轮结构化证据交接，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织最小充分终稿，不要重新展开工具决策、套用与问题无关的深度模板或冗长隐藏推演。只有服务端注入的 Session 时间前缀本身不需要外部证据；行情口径中的报价、币种、涨跌与报价源时间仍必须来自交接中的 resolved_evidence 或 fallback_evidence。外部事实只能由这些机械解析出的原文或字段自行归纳；交接不包含任何已验证的自由文本 claim。推断只能来自交接中 inferences 并明确标记，缺失维度只能按 gaps 披露。不得在终稿新增交接外事实。`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据不构成拒答。";
+const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中提交本轮结构化证据交接，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织终稿，不要重新展开工具决策、套用与问题无关的深度模板或冗长隐藏推演。克制的对象是结论与篇幅膨胀，不是覆盖面——交接中已核验的口径、趋势、对比与风险应当写足，不要把已取得的证据留在交接里不用。只有服务端注入的 Session 时间前缀本身不需要外部证据；行情口径中的报价、币种、涨跌与报价源时间仍必须来自交接中的 resolved_evidence 或 fallback_evidence。外部事实只能由这些机械解析出的原文或字段自行归纳；交接不包含任何已验证的自由文本 claim。推断只能来自交接中 inferences 并明确标记，缺失维度只能按 gaps 披露。不得在终稿新增交接外事实。`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据不构成拒答。";
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
     "当前上市状态必须服从本轮同代码结构化证据。若 `hone_security_listing_evidence.status=active_listing`，必须视为当前上市交易；不得再回答该证券未上市、已退市或应替换成旧母公司。公司过去被收购或退市的历史不能覆盖其后续分拆、重新上市事实。若本轮当前权威监管文件与 provider 证据冲突，继续取得并披露监管证据与冲突，不得凭模型记忆裁决。",
@@ -13658,7 +13661,13 @@ mod tests {
                 arguments: r#"{"data_type":"search","query":"CTA","entity_route":"cta","identity_match":"exact_symbol"}"#.to_string(),
             }]
         };
+        // Enough identity-only rounds to drain the identity budget and then the
+        // whole research budget, which is what triggers the rescue round.
+        assert_eq!(MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUNDS, 2);
+        assert_eq!(MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS, 5);
         let llm = StreamingMockLlmProvider::with_rounds(vec![
+            identity_round(),
+            identity_round(),
             identity_round(),
             identity_round(),
             identity_round(),
@@ -13682,7 +13691,7 @@ mod tests {
             Arc::new(llm),
             Arc::new(registry),
             String::new(),
-            9,
+            11,
             Some(audit.clone()),
         )
         .with_agent_owned_finance_loop(true);
@@ -13758,8 +13767,24 @@ mod tests {
                 name: Some("web_search".to_string()),
                 arguments: r#"{"query":"CoreWeave capacity agreement"}"#.to_string(),
             }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_crwv_3".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CoreWeave backlog conversion"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_crwv_4".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CoreWeave margin trend"}"#.to_string(),
+            }],
             vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ]);
+        // The script above holds exactly one identity round plus a full
+        // research budget, so raising the budget without extending it would
+        // silently stop testing the forced final.
+        assert_eq!(MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS, 5);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_tool_names = llm.seen_tool_names.clone();
         let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
@@ -13773,7 +13798,7 @@ mod tests {
             Arc::new(llm),
             Arc::new(registry),
             String::new(),
-            6,
+            8,
             Some(audit.clone()),
         )
         .with_agent_owned_finance_loop(true)
@@ -13789,16 +13814,16 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
-        // The identity-only first batch draws on the identity budget, so three
-        // substantive rounds still run before the tools-disabled final.
-        assert_eq!(response.iterations, 5);
-        assert_eq!(response.tool_calls_made.len(), 4);
+        // The identity-only first batch draws on the identity budget, so the
+        // full research budget still runs before the tools-disabled final.
+        assert_eq!(response.iterations, 7);
+        assert_eq!(response.tool_calls_made.len(), 6);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts")
                 .as_slice(),
-            [2, 2, 2, 2, 0]
+            [2, 2, 2, 2, 2, 2, 0]
         );
         assert!(
             seen_tool_names
@@ -13819,6 +13844,8 @@ mod tests {
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
             ]
         );
         assert_eq!(
@@ -13835,7 +13862,7 @@ mod tests {
         assert!(forced_prompt.contains("本轮没有任何可用工具"));
         drop(requests);
         let records = audit.records.lock().expect("audit records");
-        assert_eq!(records.len(), 5);
+        assert_eq!(records.len(), 7);
         assert!(
             records
                 .iter()
@@ -13846,7 +13873,7 @@ mod tests {
         assert_eq!(forced.metadata["has_tools"], false);
         assert_eq!(forced.metadata["force_finance_final"], true);
         assert_eq!(forced.metadata["finance_identity_rounds"], 1);
-        assert_eq!(forced.metadata["finance_tool_rounds"], 3);
+        assert_eq!(forced.metadata["finance_tool_rounds"], 5);
         assert_eq!(forced.metadata["evidence_rescue_rounds"], 0);
         assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
     }
@@ -13970,7 +13997,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn precommitted_prefix_forces_empty_tools_final_after_three_web_only_rounds() {
+    async fn precommitted_prefix_forces_empty_tools_final_after_the_web_only_research_budget() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
         let answer = format!("{prefix}\n\n连续三轮网页取证后的同 Agent 自然终稿。");
         let llm = StreamingMockLlmProvider::with_rounds(vec![
@@ -13992,8 +14019,24 @@ mod tests {
                 name: Some("web_search".to_string()),
                 arguments: r#"{"query":"China listed data center operators filing"}"#.to_string(),
             }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_4".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"China data center operator capacity disclosure"}"#
+                    .to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_5".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"China data center operator margin disclosure"}"#
+                    .to_string(),
+            }],
             vec![ChatStreamEvent::ContentDelta(answer.clone())],
         ]);
+        // One web-only round per unit of research budget, then the final.
+        assert_eq!(MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS, 5);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_tool_names = llm.seen_tool_names.clone();
         let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
@@ -14012,7 +14055,7 @@ mod tests {
             Arc::new(llm),
             Arc::new(registry),
             String::new(),
-            5,
+            8,
             Some(audit.clone()),
         )
         .with_agent_owned_finance_loop(true)
@@ -14025,15 +14068,15 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
-        assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 3);
-        assert_eq!(stream_calls.load(Ordering::SeqCst), 4);
+        assert_eq!(response.iterations, 6);
+        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 6);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts")
                 .as_slice(),
-            [1, 1, 1, 0]
+            [1, 1, 1, 1, 1, 0]
         );
         assert!(
             seen_tool_names
@@ -14053,6 +14096,8 @@ mod tests {
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
             ]
         );
         assert_eq!(
@@ -14061,7 +14106,7 @@ mod tests {
                 .lock()
                 .expect("tool observer events")
                 .len(),
-            6
+            10
         );
         assert!(
             stream_observer
@@ -14086,7 +14131,7 @@ mod tests {
         let records = audit.records.lock().expect("audit records");
         let forced = records.last().expect("forced-final audit");
         assert_eq!(forced.request["tools"], json!([]));
-        assert_eq!(forced.metadata["finance_tool_rounds"], 3);
+        assert_eq!(forced.metadata["finance_tool_rounds"], 5);
         assert_eq!(forced.metadata["force_finance_final"], true);
         assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
     }

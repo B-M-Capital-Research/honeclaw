@@ -217,6 +217,38 @@ else
   record fail "11.deep-stock-data-preflight" "deep single-stock data preflight is incomplete"
 fi
 
+# A correct headline number in a thin answer is still the wrong answer. The
+# statements have to be fetched, the derived window has to be computed, the
+# provider's stale multiple has to be quarantined, and the contract must not
+# tell the turn to be brief with evidence it already holds.
+if contains 'fn fetch_financials_bundle' "$DATA_FETCH" \
+  && contains 'balance-sheet-statement' "$DATA_FETCH" \
+  && contains 'cash-flow-statement' "$DATA_FETCH" \
+  && contains 'period=quarter' "$DATA_FETCH" \
+  && contains 'hone_statement_coverage' "$DATA_FETCH" \
+  && contains 'fn trailing_twelve_month_summary' "$DATA_FETCH" \
+  && contains 'fn latest_quarter_summary' "$DATA_FETCH" \
+  && contains 'revenue_qoq_pct' "$DATA_FETCH" \
+  && contains 'fn valuation_basis_quality' "$DATA_FETCH" \
+  && contains 'provider_ttm_excludes_latest_reported_quarter' "$DATA_FETCH" \
+  && contains 'usable_for_multiple_claims' "$DATA_FETCH" \
+  && contains 'financials_return_quarterly_statements_with_a_trailing_window' "$DATA_FETCH" \
+  && contains 'a_provider_trailing_window_that_predates_the_latest_release_is_quarantined' "$DATA_FETCH" \
+  && contains 'an_unverifiable_trailing_window_is_not_reported_as_confirmed' "$DATA_FETCH" \
+  && contains '"data_type": "financials", "ticker": symbol' "$INVESTMENT_GUARD" \
+  && contains 'PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT' "$INVESTMENT_GUARD" \
+  && contains '本轮已附带 `financials`' "$INVESTMENT_GUARD" \
+  && contains '克制的是断言强度而不是覆盖面' "$INVESTMENT_GUARD" \
+  && contains '不得因为惜字而把已核验的证据留在上下文里不用' "$INVESTMENT_GUARD" \
+  && contains 'financial_evidence_gaps_follow_the_statements_actually_fetched' "$INVESTMENT_GUARD" \
+  && contains 'pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_window' "$AGENT_TESTS" \
+  && ! contains '"statement_scope": "annual_income_statement_only"' "$INVESTMENT_GUARD" \
+  && ! contains '直接组织最小充分终稿' "$FUNCTION_AGENT"; then
+  record success "45.fundamental-coverage-and-valuation-basis" "quarterly statements, cash flow and balance sheet are preloaded, the trailing window is recomputed from filed quarters, a stale provider multiple is quarantined, and no instruction trades coverage for brevity"
+else
+  record fail "45.fundamental-coverage-and-valuation-basis" "answers can regress to a headline number with no trend, margin, cash flow, or valuation basis"
+fi
+
 if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
   record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
 else
@@ -562,7 +594,7 @@ if contains 'exact_symbol_constraint: Option<String>' "$FUNCTION_AGENT" \
   && contains 'invalid_explicit_identity_searches_never_execute_or_ack_deferred_prefix' "$FUNCTION_AGENT" \
   && contains 'deferred_prefix_ignores_structurally_invalid_datafetch_activation' "$FUNCTION_AGENT" \
   && contains 'precommitted_prefix_blocks_unregistered_mcp_datafetch_and_still_answers' "$FUNCTION_AGENT" \
-  && contains 'precommitted_prefix_forces_empty_tools_final_after_three_web_only_rounds' "$FUNCTION_AGENT" \
+  && contains 'precommitted_prefix_forces_empty_tools_final_after_the_web_only_research_budget' "$FUNCTION_AGENT" \
   && contains 'unknown_route_aliases_merge_by_unique_symbol_without_creating_orphans' "$FUNCTION_AGENT" \
   && contains 'wrongly typed identity metadata cannot establish a security evidence floor' "$FUNCTION_AGENT" \
   && contains 'ledger_uses_the_executor_target_and_rejects_spoofed_or_malformed_symbol_fields' "$FUNCTION_AGENT" \
@@ -644,8 +676,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 44 ]; then
-  echo "[ERROR] acceptance failed: expected all 44 successes"
+if [ "$success" -lt 45 ]; then
+  echo "[ERROR] acceptance failed: expected all 45 successes"
   exit 1
 fi
 
