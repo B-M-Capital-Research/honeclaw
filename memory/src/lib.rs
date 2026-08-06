@@ -11,6 +11,7 @@ pub mod portfolio;
 pub mod quota;
 pub mod session;
 pub mod session_sqlite;
+pub mod survey;
 pub mod web_auth;
 
 pub use billing::{
@@ -61,6 +62,10 @@ pub use session::{
     session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };
 pub use session_sqlite::InterruptedSessionInfo;
+pub use survey::{
+    ACTIVE_SURVEY_ID, SURVEY_CLIENT_WINDOW_HOURS, SURVEY_CLIENT_WINDOW_LIMIT, SurveyResponse,
+    SurveyStorage, configure_cloud_survey_storage,
+};
 pub use web_auth::{
     EmailVerificationResult, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT,
     WEB_ADMIN_DAILY_INVITE_LIMIT, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,

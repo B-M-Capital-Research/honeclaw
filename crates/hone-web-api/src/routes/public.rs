@@ -1967,7 +1967,14 @@ fn forwarded_proto_is_https(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
-fn public_client_key(headers: &HeaderMap) -> String {
+/// Survey responses live beside the other runtime data rather than in a
+/// per-actor sandbox: they are submitted without a login, so there is no actor
+/// to scope them to.
+pub(crate) fn public_survey_data_dir() -> std::path::PathBuf {
+    hone_channels::sandbox_base_dir().join("survey")
+}
+
+pub(crate) fn public_client_key(headers: &HeaderMap) -> String {
     if let Some(forwarded_for) = headers
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok())

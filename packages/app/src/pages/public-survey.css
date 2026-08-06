@@ -1,0 +1,373 @@
+/* public-survey.css — 问卷页。沿用 --hone-* 设计令牌，深浅色自适应。 */
+
+.survey-main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.25rem 5rem;
+}
+
+.survey-head {
+  margin-bottom: 2rem;
+}
+
+.survey-eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hone-accent, #ff7a59);
+  margin-bottom: 0.6rem;
+}
+
+.survey-head h1 {
+  font-size: clamp(1.6rem, 4vw, 2.25rem);
+  line-height: 1.25;
+  margin: 0 0 0.85rem;
+  color: var(--hone-text-strong, #16181d);
+}
+
+.survey-intro {
+  margin: 0 0 0.6rem;
+  line-height: 1.7;
+  color: var(--hone-text, #3d424d);
+}
+
+.survey-privacy {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+/* Progress stays visible while scrolling: a 12-question form needs to keep
+   telling the reader how much is left. */
+.survey-progress {
+  position: sticky;
+  /* Clears the fixed public nav (top 8px + 60px tall); at top: 0 the bar
+     scrolls underneath it and the reader loses the progress count. */
+  top: 4.5rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  background: var(--hone-surface, #fff);
+  font-size: 0.82rem;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+.survey-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hone-border, #e5e7eb);
+  overflow: hidden;
+}
+
+.survey-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--hone-accent, #ff7a59);
+  transition: width 0.25s ease;
+}
+
+.survey-restored {
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  background: color-mix(in srgb, var(--hone-accent, #ff7a59) 10%, transparent);
+  color: var(--hone-text, #3d424d);
+}
+
+.survey-questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.survey-question {
+  padding: 1.25rem;
+  border: 1px solid var(--hone-border, #e5e7eb);
+  border-radius: 0.9rem;
+  background: var(--hone-surface-raised, #fbfbfc);
+}
+
+.survey-question-head {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.survey-question-index {
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--hone-accent, #ff7a59);
+  color: #fff;
+}
+
+.survey-question h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--hone-text-strong, #16181d);
+}
+
+.survey-question-hint,
+.survey-question-limit {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+.survey-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.survey-option {
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--hone-border, #e5e7eb);
+  border-radius: 999px;
+  background: var(--hone-surface, #fff);
+  color: var(--hone-text, #3d424d);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  /* Comfortable tap target on a phone, where most of these will be filled. */
+  min-height: 2.35rem;
+}
+
+.survey-option:hover:not(.is-disabled) {
+  border-color: var(--hone-accent, #ff7a59);
+}
+
+.survey-option.is-selected {
+  border-color: var(--hone-accent, #ff7a59);
+  background: var(--hone-accent, #ff7a59);
+  color: #fff;
+}
+
+.survey-option.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.survey-other-input,
+.survey-textarea,
+.survey-contact input {
+  width: 100%;
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--hone-border, #e5e7eb);
+  border-radius: 0.6rem;
+  background: var(--hone-surface, #fff);
+  color: var(--hone-text, #3d424d);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+.survey-textarea {
+  resize: vertical;
+}
+
+.survey-other-input:focus,
+.survey-textarea:focus,
+.survey-contact input:focus {
+  outline: 2px solid color-mix(in srgb, var(--hone-accent, #ff7a59) 45%, transparent);
+  outline-offset: 1px;
+  border-color: var(--hone-accent, #ff7a59);
+}
+
+.survey-contact {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px dashed var(--hone-border, #e5e7eb);
+  border-radius: 0.9rem;
+}
+
+.survey-contact h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--hone-text-strong, #16181d);
+}
+
+.survey-contact label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+.survey-contact-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+.survey-error {
+  margin: 1.25rem 0 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.6rem;
+  font-size: 0.88rem;
+  background: color-mix(in srgb, #dc2626 12%, transparent);
+  color: #b91c1c;
+}
+
+.survey-submit-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.survey-primary,
+.survey-secondary {
+  padding: 0.7rem 1.5rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease;
+}
+
+.survey-primary {
+  background: var(--hone-accent, #ff7a59);
+  color: #fff;
+}
+
+.survey-secondary {
+  background: transparent;
+  border-color: var(--hone-border, #e5e7eb);
+  color: var(--hone-text, #3d424d);
+}
+
+.survey-primary:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.survey-submit-note {
+  font-size: 0.82rem;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+.survey-done {
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.survey-done-mark {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  background: var(--hone-accent, #ff7a59);
+  color: #fff;
+}
+
+.survey-done h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.6rem;
+  color: var(--hone-text-strong, #16181d);
+}
+
+.survey-done p {
+  margin: 0 auto 1.75rem;
+  max-width: 32rem;
+  line-height: 1.7;
+  color: var(--hone-text, #3d424d);
+}
+
+.survey-done-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Home-page entry card. */
+.survey-home-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin: 2.5rem auto;
+  max-width: 62rem;
+  padding: 1.4rem 1.6rem;
+  border: 1px solid var(--hone-border, #e5e7eb);
+  border-radius: 1rem;
+  background: var(--hone-surface-raised, #fbfbfc);
+}
+
+.survey-home-card .survey-eyebrow {
+  margin-bottom: 0.4rem;
+}
+
+.survey-home-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--hone-text-strong, #16181d);
+}
+
+.survey-home-card p {
+  margin: 0;
+  max-width: 40rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--hone-text-muted, #6b7280);
+}
+
+@media (prefers-color-scheme: dark) {
+  .survey-progress {
+    background: var(--hone-surface, #14161a);
+  }
+}
+
+/* Most of these answers get tapped on a phone, and there are ~90 chips to get
+   through. Below the 44px guidance a mis-tap silently changes an answer, so
+   the touch layout trades density for a target people can actually hit. */
+@media (max-width: 640px) {
+  .survey-main {
+    padding: 2.25rem 1rem 4rem;
+  }
+
+  .survey-option {
+    min-height: 2.75rem;
+    padding: 0.6rem 0.95rem;
+  }
+
+  .survey-question {
+    padding: 1rem;
+  }
+
+  .survey-primary,
+  .survey-secondary {
+    min-height: 2.75rem;
+  }
+
+  .survey-submit-row {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+}

@@ -126,6 +126,7 @@ impl HoneBotCore {
         configure_cloud_skill_registry(cloud_pg_runtime.clone());
         configure_cloud_notification_prefs(cloud_pg_runtime.clone());
         configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
+        hone_memory::configure_cloud_survey_storage(cloud_pg_runtime.clone());
         configure_cloud_llm_audit_storage(cloud_pg_runtime.clone());
         configure_cloud_company_profile_storage(cloud_pg_runtime.clone());
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());

@@ -23,6 +23,7 @@ pub(crate) mod public_finance_calendar;
 pub(crate) mod public_portfolio;
 pub(crate) mod public_pushes;
 pub(crate) mod public_quotes;
+pub(crate) mod public_survey;
 pub(crate) mod research;
 pub(crate) mod schedule;
 pub(crate) mod skills;
@@ -312,6 +313,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route(
             "/integrations/stripe/webhook",
             post(stripe::handle_stripe_webhook),
+        )
+        .route("/survey", post(public_survey::handle_submit_survey))
+        .route(
+            "/admin/survey",
+            get(public_survey::handle_admin_survey_report),
         )
         .route("/bootstrap", get(public::handle_bootstrap))
         .route("/history", get(public::handle_history))

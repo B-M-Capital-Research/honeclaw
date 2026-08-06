@@ -18,6 +18,9 @@ const EMAIL_SEND_ADDRESS_WINDOW: Duration = Duration::from_secs(24 * 60 * 60);
 const EMAIL_SEND_ADDRESS_LIMIT: usize = 10;
 const EMAIL_SEND_IP_WINDOW: Duration = Duration::from_secs(60 * 60);
 const EMAIL_SEND_IP_LIMIT: usize = 60;
+const SURVEY_SUBMIT_COOLDOWN: Duration = Duration::from_secs(20);
+const SURVEY_SUBMIT_IP_WINDOW: Duration = Duration::from_secs(60 * 60);
+const SURVEY_SUBMIT_IP_LIMIT: usize = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublicAuthLimitStatus {
@@ -131,6 +134,22 @@ impl PublicAuthLimiter {
             SMS_SEND_PHONE_WINDOW,
             SMS_SEND_PHONE_LIMIT,
             SMS_SEND_COOLDOWN,
+        )
+    }
+
+    /// The survey has no login, so the address is the only handle there is.
+    /// The window is deliberately looser than the auth ones — a shared office
+    /// NAT must still be able to answer — and the durable per-client count in
+    /// storage is what actually caps repeated submissions.
+    pub fn consume_survey_submit(&self, ip_key: &str) -> PublicAuthLimitStatus {
+        self.consume_send_attempt(
+            &format!("survey-submit-ip:{ip_key}"),
+            &format!("survey-submit-cooldown:{ip_key}"),
+            SURVEY_SUBMIT_IP_WINDOW,
+            SURVEY_SUBMIT_IP_LIMIT,
+            SURVEY_SUBMIT_IP_WINDOW,
+            SURVEY_SUBMIT_IP_LIMIT,
+            SURVEY_SUBMIT_COOLDOWN,
         )
     }
 

@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { CONTENT } from "@/lib/public-content"
+import "./public-survey.css"
 import { latestPublicBlogPost } from "@/lib/public-blog"
 import { useLocale } from "@/lib/i18n"
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
@@ -233,6 +234,18 @@ export default function PublicHomePage() {
           <div class="hone-home-blog-shot">
             <img src={featuredPost().heroImage} alt={featuredPost().title} loading="lazy" />
           </div>
+        </section>
+
+        {/* ── 用户调研入口（无需登录） ── */}
+        <section class="survey-home-card">
+          <div>
+            <div class="survey-eyebrow">{C.survey.home_eyebrow}</div>
+            <h3>{C.survey.home_title}</h3>
+            <p>{C.survey.home_desc}</p>
+          </div>
+          <button type="button" class="survey-primary" onClick={() => navigate("/survey")}>
+            {C.survey.home_cta}
+          </button>
         </section>
 
         {/* ── Plan 预告 ── */}

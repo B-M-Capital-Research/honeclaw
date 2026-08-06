@@ -313,6 +313,15 @@ pub struct CloudCommunityContentRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudSurveyResponseRecord {
+    pub response_id: i64,
+    pub locale: String,
+    pub answers: serde_json::Value,
+    pub contact: Option<String>,
+    pub submitted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudCommunityResourceRecord {
     pub resource_id: i64,
     pub ordinal: i32,
@@ -1467,6 +1476,19 @@ CREATE TABLE IF NOT EXISTS cloud_company_profile_files (
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_company_profile_files_actor
   ON cloud_company_profile_files(actor_storage_key, updated_at DESC);
+CREATE TABLE IF NOT EXISTS survey_responses (
+  response_id BIGSERIAL PRIMARY KEY,
+  survey_id TEXT NOT NULL,
+  locale TEXT NOT NULL DEFAULT 'zh',
+  answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  contact TEXT,
+  -- Salted digest of the client key, never the address itself: enough to spot
+  -- one machine flooding the form, useless for identifying a respondent.
+  client_digest TEXT,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_survey_responses_recent
+  ON survey_responses(survey_id, submitted_at DESC, response_id DESC);
 CREATE TABLE IF NOT EXISTS community_spaces (
   community_id BIGSERIAL PRIMARY KEY,
   source TEXT NOT NULL,
@@ -1650,6 +1672,88 @@ COMMIT;
             .await
             .map_err(|err| HoneError::Config(format!("Postgres schema 初始化失败: {err}")))?;
         Ok(())
+    }
+
+    pub async fn insert_survey_response(
+        &self,
+        survey_id: &str,
+        locale: &str,
+        answers: &serde_json::Value,
+        contact: Option<&str>,
+        client_digest: Option<&str>,
+    ) -> HoneResult<i64> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_one(
+                r#"
+INSERT INTO survey_responses(survey_id, locale, answers, contact, client_digest)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING response_id
+"#,
+                &[&survey_id, &locale, answers, &contact, &client_digest],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 问卷写入失败: {err}")))?;
+        Ok(row.get(0))
+    }
+
+    pub async fn list_survey_responses(
+        &self,
+        survey_id: &str,
+        limit: usize,
+    ) -> HoneResult<Vec<CloudSurveyResponseRecord>> {
+        let client = self.connect_cached_client().await?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let rows = client
+            .query(
+                r#"
+SELECT response_id, locale, answers, contact,
+       to_char(submitted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+FROM survey_responses
+WHERE survey_id = $1
+ORDER BY submitted_at DESC, response_id DESC
+LIMIT $2
+"#,
+                &[&survey_id, &limit],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 问卷读取失败: {err}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudSurveyResponseRecord {
+                response_id: row.get(0),
+                locale: row.get(1),
+                answers: row.get(2),
+                contact: row.get(3),
+                submitted_at: row.get(4),
+            })
+            .collect())
+    }
+
+    /// Counts submissions from one client digest inside a recent window. The
+    /// in-process limiter resets when the service restarts and does not span
+    /// replicas, so the durable store is what actually caps a flood.
+    pub async fn count_recent_survey_responses(
+        &self,
+        survey_id: &str,
+        client_digest: &str,
+        window_hours: i32,
+    ) -> HoneResult<i64> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_one(
+                r#"
+SELECT count(*)
+FROM survey_responses
+WHERE survey_id = $1
+  AND client_digest = $2
+  AND submitted_at > now() - make_interval(hours => $3)
+"#,
+                &[&survey_id, &client_digest, &window_hours],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 问卷计数失败: {err}")))?;
+        Ok(row.get(0))
     }
 
     /// Return a cursor page from a community timeline. `before_content_id` is

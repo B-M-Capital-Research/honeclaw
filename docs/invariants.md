@@ -286,3 +286,11 @@ Last updated: 2026-08-06
   - `config.yaml` is the only long-lived user-writable config source
   - `data/runtime/effective-config.yaml` is generated runtime input for child processes
   - deleting `data/runtime/` must be a safe runtime reset that does not remove user config
+
+## 用户调研问卷
+
+- 问卷是无登录入口，因此绝不落原始 IP 或 User-Agent，只落 `sha256(salt + ":" + client_key)`。盐来自 `HONE_SURVEY_DIGEST_SALT`，多副本部署必须显式设置——每个副本各自生成盐会让 24 小时去重完全失效。无盐的 IP 哈希不是匿名化：整个 IPv4 空间可在数秒内枚举。
+- `client_digest` 不属于 `SurveyResponse`，任何读取路径都不可能把它带到前端；这一点由测试锁定，不能靠调用方自觉。
+- 题库只在前端定义，后端只做结构校验（键的字符集与长度、题数、选项数、类型）。后端不认识任何选项文本，所以改题、加题、调整选项都不需要动后端与数据库。超长开放题截断而不是拒绝——一段认真写的长回答不该整条丢失。
+- 提交限流分三层：同 IP 冷却、进程内每小时配额、按摘要的落库计数。只有最后一层跨副本且能在重启后存活，前两层是快速拒绝而不是保证。落库计数失败时放行并记 warn，不能因为计不了数就丢掉一个正常用户的回答。
+- 问卷页面上对隐私的承诺与实现是同一件事的两面：改动存储行为时必须同步改 `CONTENT.survey.privacy`。

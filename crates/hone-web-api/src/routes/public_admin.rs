@@ -723,6 +723,15 @@ fn update_latest_activity(current: &mut String, candidate: &str) {
     }
 }
 
+/// Read-only admin gate for other public modules. The mutation variant adds a
+/// header marker on top of this; a report endpoint does not need it.
+pub(crate) fn require_public_admin_for_read(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<WebInviteUser, Response> {
+    require_public_admin(state, headers)
+}
+
 fn require_public_admin(state: &AppState, headers: &HeaderMap) -> Result<WebInviteUser, Response> {
     let user = crate::routes::public::require_public_session_user(state, headers)?;
     match state.web_auth.is_web_admin(&user.user_id) {
