@@ -7,6 +7,13 @@
 
 ## 最新进展
 
+- `2026-08-06 22:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-06 18:01-22:01 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 18:30 / 19:00 / 21:31 / 22:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 直接以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`condition`、`detail` 等协议字段。
+    - 同窗还出现 19:30 CST `中际旭创关键事件心跳提醒` deliver preview 以残留闭合片段 `` `]}` `` 开头的格式污染样本；该样本与协议载荷清理不稳同源，归入本缺陷与结构化状态退化缺陷，不另建重复文档。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-06 18:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-06 14:00-18:03 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。

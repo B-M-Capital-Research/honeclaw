@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-06 18:01-22:01 CST（UTC 2026-08-06 10:01-14:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:00 CST raw preview 写工具预算受限后改用已有 web search 信息，并转向“小米与英伟达”的客户 / 供应关系分析。
+  - 22:00 CST deliver preview 开头写 `行情口径：待核验`，随后主体为 `小米与英伟达的关系`、车载 AI 计算平台、客户 / 供应关系；该 heartbeat job 名义目标是 AI / 科技持仓观察，不是小米与英伟达关系问答。
+  - 调度和投递主链路正常收口，该样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-06 06:01-10:01 CST（UTC 2026-08-05 22:01-2026-08-06 02:01）。
   - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` / `target=web-user-c2776780c59d`。
   - 10:00 CST raw preview 写 `the user's question about NBIS vs NAND Flash relationship`，随后围绕 `NBIS is AI cloud computing` 与 `NAND Flash` 关系组织分析。
