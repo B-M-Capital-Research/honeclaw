@@ -249,6 +249,31 @@ else
   record fail "45.fundamental-coverage-and-valuation-basis" "answers can regress to a headline number with no trend, margin, cash flow, or valuation basis"
 fi
 
+# Every number can be individually right and the comparison still wrong: one
+# company on FY2025 beside another on FY2026 is a full year of cycle apart, and
+# a trailing multiple on a trough year beside one on a peak year compares
+# nothing. Comparisons must land on one window, and forward multiples need a
+# real source rather than model arithmetic over a price and some EPS.
+if contains 'fn forward_twelve_month_summary' "$DATA_FETCH" \
+  && contains 'analyst-estimates' "$DATA_FETCH" \
+  && contains 'next_4_estimated_quarters' "$DATA_FETCH" \
+  && contains 'min_analyst_count' "$DATA_FETCH" \
+  && contains 'forward_pe' "$DATA_FETCH" \
+  && contains 'forward_ps' "$DATA_FETCH" \
+  && contains 'operating_margin_pct' "$DATA_FETCH" \
+  && contains 'forward_estimates_use_only_periods_after_the_latest_reported_quarter' "$DATA_FETCH" \
+  && contains 'pub fn valuation_basis_quality' "$DATA_FETCH" \
+  && contains 'hone_tools::data_fetch::valuation_basis_quality' "$INVESTMENT_GUARD" \
+  && contains 'fn preturn_snapshot_quote' "$INVESTMENT_GUARD" \
+  && contains '跨公司对比必须落在同一个窗口上' "$INVESTMENT_GUARD" \
+  && contains '不得混用不同财年的 trailing 倍数与利润率' "$INVESTMENT_GUARD" \
+  && contains '显式标注这是公开来源口径而非 provider 报价' "$INVESTMENT_GUARD" \
+  && contains '不得写进 `行情口径：` 首行' "$INVESTMENT_GUARD"; then
+  record success "46.comparable-window-and-forward-basis" "cross-company tables are pinned to one window, forward multiples come from dated analyst estimates after the last filed quarter, the multiple is computed server-side, and an uncovered listing stays answerable through labelled public sources"
+else
+  record fail "46.comparable-window-and-forward-basis" "comparisons can again mix fiscal years, forward multiples can be invented, or an uncovered listing can be dropped from the answer"
+fi
+
 if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
   record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
 else
@@ -676,8 +701,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 45 ]; then
-  echo "[ERROR] acceptance failed: expected all 45 successes"
+if [ "$success" -lt 46 ]; then
+  echo "[ERROR] acceptance failed: expected all 46 successes"
   exit 1
 fi
 

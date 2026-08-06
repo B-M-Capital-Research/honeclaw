@@ -8315,6 +8315,16 @@ async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_wind
                 {"symbol":"SNDK","date":"2026-06-30","totalAssets":27000,"totalLiabilities":9000}
             ]),
         ),
+        (
+            "analyst-estimates".to_string(),
+            serde_json::json!([
+                {"date":"2026-06-30","epsAvg":40.0,"revenueAvg":8800,"numAnalystsEps":21},
+                {"date":"2026-09-30","epsAvg":45.0,"revenueAvg":10500,"numAnalystsEps":19},
+                {"date":"2026-12-31","epsAvg":47.0,"revenueAvg":11000,"numAnalystsEps":17},
+                {"date":"2027-03-31","epsAvg":44.0,"revenueAvg":10200,"numAnalystsEps":12},
+                {"date":"2027-06-30","epsAvg":44.0,"revenueAvg":10100,"numAnalystsEps":9}
+            ]),
+        ),
     ]);
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
@@ -8368,6 +8378,34 @@ async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_wind
     );
     assert!(
         runtime_input.contains("不要以“未核验”带过"),
+        "{runtime_input}"
+    );
+
+    // The forward window skips the already-reported 2026-06-30 estimate and
+    // takes the four quarters after it.
+    assert!(
+        runtime_input.contains("\"hone_forward\""),
+        "{runtime_input}"
+    );
+    assert!(runtime_input.contains("2027-06-30"), "{runtime_input}");
+    // The multiple is computed server-side from the quote and the statements
+    // rather than left to the model to divide a price by some EPS it picks.
+    assert!(
+        runtime_input.contains("hone_valuation_basis(\"SNDK\")"),
+        "{runtime_input}"
+    );
+    // Provider trailing EPS 29.63 vs the four filed quarters' 73.76.
+    assert!(
+        runtime_input.contains("provider_ttm_excludes_latest_reported_quarter"),
+        "{runtime_input}"
+    );
+    assert!(runtime_input.contains("18.31"), "{runtime_input}");
+    // 1350.50 / (45 + 47 + 44 + 44)
+    assert!(runtime_input.contains("7.5"), "{runtime_input}");
+    // Cross-company tables must land on one window, not each company's own
+    // fiscal-year label.
+    assert!(
+        runtime_input.contains("跨公司对比必须落在同一个窗口上"),
         "{runtime_input}"
     );
     fmp_stub.join().expect("join FMP stub");

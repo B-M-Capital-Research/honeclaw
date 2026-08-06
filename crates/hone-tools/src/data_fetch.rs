@@ -405,6 +405,10 @@ impl DataFetchTool {
             "cash_flow_quarter" => Ok(format!(
                 "{base}/v3/cash-flow-statement/{symbol}?period=quarter&limit=8"
             )),
+            "analyst_estimates" => Ok(format!(
+                "{}/stable/analyst-estimates?symbol={symbol}&period=quarter&page=0&limit=8",
+                self.stable_base_url()
+            )),
             _ => Err(format!("不支持的 financials 组件: {component}")),
         }
     }
@@ -419,15 +423,17 @@ impl DataFetchTool {
         let quarter_url = self.build_financials_component_url("income_quarter", ticker)?;
         let balance_url = self.build_financials_component_url("balance_sheet_quarter", ticker)?;
         let cash_flow_url = self.build_financials_component_url("cash_flow_quarter", ticker)?;
+        let estimates_url = self.build_financials_component_url("analyst_estimates", ticker)?;
         let ttl = ttl_for_data_type("financials");
         // Every component keeps the `financials` cache label: the caching
         // policy refuses to memoize an empty payload for this data type, and a
         // component-specific label would silently opt out of that rule.
-        let (annual, quarterly, balance_sheet, cash_flow) = tokio::join!(
+        let (annual, quarterly, balance_sheet, cash_flow, estimates) = tokio::join!(
             self.fetch_from_url_cached(&annual_url, ttl, "financials"),
             self.fetch_from_url_cached(&quarter_url, ttl, "financials"),
             self.fetch_from_url_cached(&balance_url, ttl, "financials"),
             self.fetch_from_url_cached(&cash_flow_url, ttl, "financials"),
+            self.fetch_from_url_cached(&estimates_url, ttl, "financials"),
         );
         // The annual statement is the only component the older evidence
         // normalizer reads, so a total failure there stays a failure.
@@ -437,6 +443,7 @@ impl DataFetchTool {
             quarterly.ok(),
             balance_sheet.ok(),
             cash_flow.ok(),
+            estimates.ok(),
         ))
     }
 
@@ -1108,12 +1115,22 @@ fn optional_number(value: Option<f64>) -> Value {
 /// Sums the four most recent reported quarters. This is the only trailing
 /// window the turn can prove, which makes it the reference for deciding whether
 /// a provider's own TTM aggregate has caught up with the latest release.
+///
+/// It is also the only window under which companies on different fiscal
+/// calendars can be compared. Publishing one company's FY2025 beside another's
+/// FY2026 — a two-year gap for the same industry cycle — is what makes a
+/// comparison table wrong while every individual number in it is right, so the
+/// margins are computed here rather than left to be read off annual reports.
 fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
     let window = quarterly.get(..4)?;
     let mut revenue = 0.0;
     let mut net_income = 0.0;
     let mut eps = 0.0;
+    let mut gross_profit = 0.0;
+    let mut operating_income = 0.0;
     let mut eps_complete = true;
+    let mut gross_complete = true;
+    let mut operating_complete = true;
     let mut periods = Vec::with_capacity(4);
     for row in window {
         revenue += statement_number(row, &["revenue"])?;
@@ -1121,6 +1138,14 @@ fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
         match statement_number(row, &["epsdiluted", "epsDiluted", "eps"]) {
             Some(value) => eps += value,
             None => eps_complete = false,
+        }
+        match statement_number(row, &["grossProfit"]) {
+            Some(value) => gross_profit += value,
+            None => gross_complete = false,
+        }
+        match statement_number(row, &["operatingIncome"]) {
+            Some(value) => operating_income += value,
+            None => operating_complete = false,
         }
         periods.push(Value::String(
             row.get("date")
@@ -1130,6 +1155,10 @@ fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
         ));
     }
     let round4 = |value: f64| (value * 10_000.0).round() / 10_000.0;
+    let margin = |total: f64, complete: bool| {
+        (complete && revenue.abs() > f64::EPSILON)
+            .then(|| (total / revenue * 10_000.0).round() / 100.0)
+    };
     Some(serde_json::json!({
         "basis": "last_4_reported_quarters",
         "period_ends": periods,
@@ -1138,7 +1167,9 @@ fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
         "revenue": optional_number(Some(round4(revenue))),
         "net_income": optional_number(Some(round4(net_income))),
         "eps_diluted": optional_number(eps_complete.then(|| round4(eps))),
-        "note": "由本轮已发布的四个季度直接相加得到，可用于校验 provider 的 TTM 口径是否已含最新季度"
+        "gross_margin_pct": optional_number(margin(gross_profit, gross_complete)),
+        "operating_margin_pct": optional_number(margin(operating_income, operating_complete)),
+        "note": "由本轮已发布的四个季度直接相加得到。它既用于校验 provider 的 TTM 口径是否已含最新季度，也是跨公司对比唯一同口径的窗口：各公司财年结束月份不同，直接并列各自的 FY 标签会把不同年份的周期位置混在一张表里。对比多家公司时用本窗口并标注 period_ends。"
     }))
 }
 
@@ -1175,11 +1206,69 @@ fn latest_quarter_summary(quarterly: &[Value], cash_flow: &[Value]) -> Option<Va
     }))
 }
 
+/// Sums the four estimate periods that fall strictly after the latest reported
+/// quarter. Nothing in the pipeline previously turned analyst estimates into a
+/// number, so a forward multiple had no source at all and every valuation
+/// comparison had to fall back to a trailing one — which is meaningless across
+/// companies sitting at different points of the same cycle.
+fn forward_twelve_month_summary(
+    estimates: &[Value],
+    latest_reported_end: Option<&str>,
+) -> Option<Value> {
+    let mut forward = estimates
+        .iter()
+        .filter_map(|row| {
+            let date = row.get("date").and_then(Value::as_str)?;
+            // "Forward" is defined by the reported window, not by a clock the
+            // provider and Hone might disagree about.
+            latest_reported_end
+                .is_none_or(|latest| date > latest)
+                .then_some((date, row))
+        })
+        .collect::<Vec<_>>();
+    forward.sort_by_key(|(date, _)| *date);
+    let window = forward.get(..4)?;
+
+    let mut eps = 0.0;
+    let mut revenue = 0.0;
+    let mut eps_complete = true;
+    let mut revenue_complete = true;
+    let mut analyst_counts = Vec::new();
+    let mut period_ends = Vec::new();
+    for (date, row) in window {
+        match statement_number(row, &["epsAvg", "estimatedEpsAvg"]) {
+            Some(value) => eps += value,
+            None => eps_complete = false,
+        }
+        match statement_number(row, &["revenueAvg", "estimatedRevenueAvg"]) {
+            Some(value) => revenue += value,
+            None => revenue_complete = false,
+        }
+        if let Some(count) = statement_number(row, &["numAnalystsEps", "numberAnalystEstimatedEps"])
+        {
+            analyst_counts.push(count);
+        }
+        period_ends.push(Value::String((*date).to_string()));
+    }
+    let round4 = |value: f64| (value * 10_000.0).round() / 10_000.0;
+    Some(serde_json::json!({
+        "basis": "next_4_estimated_quarters",
+        "period_ends": period_ends,
+        "eps": optional_number(eps_complete.then(|| round4(eps))),
+        "revenue": optional_number(revenue_complete.then(|| round4(revenue))),
+        "min_analyst_count": optional_number(analyst_counts.iter().copied().fold(None, |acc: Option<f64>, value| {
+            Some(acc.map_or(value, |current: f64| current.min(value)))
+        })),
+        "note": "分析师一致预期，不是已实现业绩。窗口取严格晚于最新已披露季度的四个预期季度；analyst_count 过低时该预期的代表性有限，应在结论中说明。"
+    }))
+}
+
 fn build_financials_bundle(
     annual: Value,
     quarterly: Option<Value>,
     balance_sheet: Option<Value>,
     cash_flow: Option<Value>,
+    estimates: Option<Value>,
 ) -> Value {
     // Derive everything that reads the rows before the arrays are moved into
     // the payload.
@@ -1188,11 +1277,21 @@ fn build_financials_bundle(
         statement_rows(quarterly.as_ref()),
         statement_rows(cash_flow.as_ref()),
     );
+    let latest_reported_end = ttm_summary
+        .as_ref()
+        .and_then(|ttm| ttm.get("latest_period_end"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let forward_summary = forward_twelve_month_summary(
+        statement_rows(estimates.as_ref()),
+        latest_reported_end.as_deref(),
+    );
     let coverage = [
         ("annual_income_statement", Some(&annual)),
         ("quarterly_income_statement", quarterly.as_ref()),
         ("quarterly_balance_sheet", balance_sheet.as_ref()),
         ("quarterly_cash_flow", cash_flow.as_ref()),
+        ("analyst_estimates", estimates.as_ref()),
     ]
     .into_iter()
     .map(|(name, value)| {
@@ -1232,6 +1331,12 @@ fn build_financials_bundle(
     if let Some(latest) = latest_summary {
         payload["hone_latest_quarter"] = latest;
     }
+    if let Some(estimates) = estimates.filter(has_meaningful_fmp_value) {
+        payload["hone_analyst_estimates"] = estimates;
+    }
+    if let Some(forward) = forward_summary {
+        payload["hone_forward"] = forward;
+    }
     payload
 }
 
@@ -1240,7 +1345,12 @@ fn build_financials_bundle(
 /// The turn already knows the four reported quarters, so it can say whether the
 /// provider aggregate has caught up instead of publishing a multiple computed
 /// against a quarter that no longer exists.
-fn valuation_basis_quality(quote: &Value, financials: &Value) -> Value {
+///
+/// It also derives the forward multiples, because a trailing multiple compares
+/// two companies at different points of the same cycle and says nothing useful:
+/// a trough-year EPS produces a flattering P/E and a peak-year EPS a punishing
+/// one, on identical businesses.
+pub fn valuation_basis_quality(quote: &Value, financials: &Value) -> Value {
     let quote_row = quote
         .as_array()
         .and_then(|rows| rows.first())
@@ -1277,6 +1387,26 @@ fn valuation_basis_quality(quote: &Value, financials: &Value) -> Value {
         warnings.push("provider_ttm_basis_unverified");
     }
 
+    let forward = financials.get("hone_forward");
+    let forward_eps = forward.and_then(|forward| statement_number(forward, &["eps"]));
+    let forward_revenue = forward.and_then(|forward| statement_number(forward, &["revenue"]));
+    let market_cap = statement_number(quote_row, &["marketCap"]);
+    let forward_pe = match (price, forward_eps) {
+        (Some(price), Some(eps)) if eps.abs() > f64::EPSILON => {
+            Some((price / eps * 100.0).round() / 100.0)
+        }
+        _ => None,
+    };
+    let forward_ps = match (market_cap, forward_revenue) {
+        (Some(cap), Some(revenue)) if revenue.abs() > f64::EPSILON => {
+            Some((cap / revenue * 100.0).round() / 100.0)
+        }
+        _ => None,
+    };
+    if forward_eps.is_none() && forward_revenue.is_none() {
+        warnings.push("forward_estimates_unavailable");
+    }
+
     serde_json::json!({
         "provider_ttm_eps": optional_number(provider_eps),
         "provider_pe": optional_number(provider_pe),
@@ -1285,8 +1415,13 @@ fn valuation_basis_quality(quote: &Value, financials: &Value) -> Value {
         "latest_reported_period_end": latest_period,
         "provider_ttm_includes_latest_reported_quarter": includes_latest.map_or(Value::Null, Value::Bool),
         "usable_for_multiple_claims": usable,
+        "forward_eps": optional_number(forward_eps),
+        "forward_revenue": optional_number(forward_revenue),
+        "forward_pe": optional_number(forward_pe),
+        "forward_ps": optional_number(forward_ps),
+        "forward_period_ends": forward.and_then(|forward| forward.get("period_ends")).cloned().unwrap_or(Value::Null),
         "warnings": warnings,
-        "policy": "usable_for_multiple_claims=false 时，不得直接发布 provider 的 pe/eps 倍数。要么改用 recomputed_pe / recomputed_ttm_eps 并写明是按本轮已披露四个季度重算，要么说明该倍数尚未包含最新季度。财报发布后数日内 provider 的 TTM 常常仍是上一口径。"
+        "policy": "usable_for_multiple_claims=false 时，不得直接发布 provider 的 pe/eps 倍数。要么改用 recomputed_pe / recomputed_ttm_eps 并写明是按本轮已披露四个季度重算，要么说明该倍数尚未包含最新季度。财报发布后数日内 provider 的 TTM 常常仍是上一口径。forward_pe / forward_ps 由现价（或市值）除以 hone_forward 的未来四个季度一致预期得到，是预期不是已实现业绩，须标注 forward_period_ends；跨公司比较倍数时优先用 forward 或同一 TTM 窗口，不要并列各自财年的 trailing 倍数。"
     })
 }
 
@@ -1888,11 +2023,11 @@ mod tests {
     use super::{
         DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
-        fmp_base_url_is_loopback, nonempty_fmp_error_message, normalize_extended_hours_bar,
-        normalize_quote_timestamp_metadata, price_target_consensus_quality,
-        sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
-        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
-        valuation_basis_quality,
+        fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
+        normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
+        price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
+        should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
+        validated_data_fetch_symbols, valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -3203,14 +3338,61 @@ mod tests {
 
     #[test]
     fn a_provider_trailing_window_matching_the_reported_quarters_stays_usable() {
-        let quote = json!([{"symbol":"SNDK","price":1350.50,"eps":73.76,"pe":18.31}]);
-        let financials = json!({"hone_ttm": {"eps_diluted": 73.76}});
+        let quote = json!([{"symbol":"SNDK","price":1350.50,"eps":73.76,"pe":18.31,"marketCap":209_000_000_000.0}]);
+        let financials = json!({
+            "hone_ttm": {"eps_diluted": 73.76},
+            "hone_forward": {
+                "eps": 180.0,
+                "revenue": 41_800_000_000.0,
+                "period_ends": ["2026-09-30", "2026-12-31", "2027-03-31", "2027-06-30"]
+            }
+        });
 
         let basis = valuation_basis_quality(&quote, &financials);
 
         assert_eq!(basis["provider_ttm_includes_latest_reported_quarter"], true);
         assert_eq!(basis["usable_for_multiple_claims"], true);
         assert_eq!(basis["warnings"], json!([]));
+        // 1350.50 / 180 — the multiple that actually compares across a cycle.
+        assert_eq!(basis["forward_pe"], 7.5);
+        // 209_000 / 41_800
+        assert_eq!(basis["forward_ps"], 5.0);
+        assert_eq!(basis["forward_period_ends"][0], "2026-09-30");
+    }
+
+    /// A trailing multiple built on a trough year and one built on a peak year
+    /// describe the same business completely differently, which is how a
+    /// comparison table ends up with a 19.8x and a 43.4x that mean nothing
+    /// beside each other.
+    #[test]
+    fn forward_estimates_use_only_periods_after_the_latest_reported_quarter() {
+        let estimates = json!([
+            // Already reported — must never enter the forward window.
+            {"date":"2026-06-30","epsAvg":40.0,"revenueAvg":8_800_000_000.0,"numAnalystsEps":21},
+            {"date":"2026-03-31","epsAvg":22.0,"revenueAvg":5_900_000_000.0,"numAnalystsEps":20},
+            {"date":"2026-09-30","epsAvg":45.0,"revenueAvg":10_500_000_000.0,"numAnalystsEps":19},
+            {"date":"2026-12-31","epsAvg":47.0,"revenueAvg":11_000_000_000.0,"numAnalystsEps":17},
+            {"date":"2027-03-31","epsAvg":44.0,"revenueAvg":10_200_000_000.0,"numAnalystsEps":12},
+            {"date":"2027-06-30","epsAvg":44.0,"revenueAvg":10_100_000_000.0,"numAnalystsEps":9}
+        ]);
+        let rows = estimates.as_array().expect("rows");
+
+        let forward =
+            forward_twelve_month_summary(rows, Some("2026-06-30")).expect("forward window");
+
+        assert_eq!(
+            forward["period_ends"],
+            json!(["2026-09-30", "2026-12-31", "2027-03-31", "2027-06-30"])
+        );
+        // 45 + 47 + 44 + 44
+        assert_eq!(forward["eps"], 180.0);
+        assert_eq!(forward["revenue"], 41_800_000_000.0f64);
+        // Thin coverage on the far quarters is disclosed, not averaged away.
+        assert_eq!(forward["min_analyst_count"], 9.0);
+
+        // Fewer than four forward periods is not a trailing-twelve-month
+        // estimate and must not be published as one.
+        assert!(forward_twelve_month_summary(rows, Some("2026-12-31")).is_none());
     }
 
     #[test]

@@ -2967,6 +2967,16 @@ struct PreTurnEnrichment {
 /// it fixes no entity, constrains no answer, and the Agent stays free to
 /// ignore it and run its own tools. It exists so the first thinking round is
 /// never evidence-free, instead of catching an evidence-free answer afterwards.
+/// The snapshot aggregate nests the quote under `data.quote`; the valuation
+/// basis needs that row, not the wrapper.
+fn preturn_snapshot_quote(snapshot: &Value) -> Option<Value> {
+    [Some(snapshot), snapshot.get("data")]
+        .into_iter()
+        .flatten()
+        .find_map(|candidate| candidate.get("quote"))
+        .cloned()
+}
+
 async fn run_pre_turn_enrichment(
     core: &Arc<HoneBotCore>,
     actor: &ActorIdentity,
@@ -3148,7 +3158,7 @@ async fn run_pre_turn_enrichment(
         }
     }
     let mut fundamentals_count = 0usize;
-    for ((_, symbol), bundle) in resolved.iter().zip(fundamentals.iter()) {
+    for (index, ((_, symbol), bundle)) in resolved.iter().zip(fundamentals.iter()).enumerate() {
         if let Some(value) = bundle.as_ref().ok().filter(|v| !value_has_error(v)) {
             calls += 1;
             fundamentals_count += 1;
@@ -3156,6 +3166,30 @@ async fn run_pre_turn_enrichment(
                 "- `data_fetch(financials, ticker={symbol:?})` →\n{}",
                 bounded_evidence_json(value, PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT)
             ));
+            // Price and statements are both in hand right here, which is the
+            // only place the multiple can be computed once instead of being
+            // left to the model to divide a current price by whichever EPS it
+            // happens to pick up.
+            let quote = snapshots
+                .get(index)
+                .and_then(|snapshot| snapshot.as_ref())
+                .and_then(|result| result.as_ref().ok())
+                .and_then(preturn_snapshot_quote);
+            if let Some(quote) = quote {
+                // `data` on the financials payload is the annual statement
+                // array; the derived windows sit beside it. Pick whichever
+                // level actually carries them rather than assuming a depth.
+                let payload = [Some(value), value.get("data")]
+                    .into_iter()
+                    .flatten()
+                    .find(|candidate| candidate.get("hone_ttm").is_some())
+                    .unwrap_or(value);
+                let basis = hone_tools::data_fetch::valuation_basis_quality(&quote, payload);
+                sections.push(format!(
+                    "- `hone_valuation_basis({symbol:?})`（服务端按上面两项算好，直接引用） →\n{}",
+                    bounded_evidence_json(&basis, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+                ));
+            }
         }
     }
     let mut live_extended_count = 0usize;
@@ -3213,7 +3247,7 @@ async fn run_pre_turn_enrichment(
         if fundamentals_count == 0 {
             ""
         } else {
-            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计，`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。若 provider quote 的 `pe`/`eps` 与 `hone_ttm` 明显不一致，说明 provider 的 TTM 尚未包含最新季度，此时不得直接发布该倍数。"
+            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
         },
         if live_extended_count + summary_extended_count == 0 {
             ""
@@ -7924,7 +7958,7 @@ fn append_agent_entity_discovery_context(
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。"
+         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。"
     ));
 }
 
