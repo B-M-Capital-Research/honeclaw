@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-07 18:01-22:01 CST（UTC 2026-08-07 10:01-14:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 21:30 CST deliver preview 主体转为 AI 基础设施电力瓶颈与核能赛道定价逻辑，输出能源赛道投研框架；该 heartbeat job 名义目标是 AI / 科技持仓观察关键事件，不是核能主题深度报告。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 22:00 CST deliver preview 主体转为 DeepSeek 与 Nvidia 关系解释，且写明 NVDA 行情接口未稳定返回；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是 DeepSeek 关系问答。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-07 14:02-18:01 CST（UTC 2026-08-07 06:02-10:02）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 16:00 CST deliver preview 主体转为解释当前通知偏好和立即推送规则，列出 `earnings_released`、`earnings_upcoming` 等配置项；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是通知配置说明。
