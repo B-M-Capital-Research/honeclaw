@@ -14,13 +14,31 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-07 `bug-2` 代码级补强：继续按 `2026-08-07` 作为当前日期回写，本轮不沿用文档中已有的 future-dated `2026-08-08` 巡检时间戳作为当前事实。
+  - 根因补强：
+    - 现有 `heartbeat_plain_text_indicates_noop(...)` 只覆盖了少量 `状态：noop` / `本轮检查：noop` 句式，仍会把近期真实日志中的 `无新触发。`、`30 分钟心跳检查：NOOP`、`本轮心跳监控检查结论：noop`、`无全新独立持仓触发事件`、`不推送`、`未命中` 等变体判成 `PlainTextTriggered`。
+    - 同时，不能把所有含 `noop` 的文本一刀切压成静默；像“无新增即时触发事件，但本轮出现值得记录的状态变化”“重大政策催化，对持仓具有中长期意义”这类边界样本仍应保留送达能力。
+  - 本轮修改：
+    - `crates/hone-channels/src/scheduler.rs` 的 plain-text noop 归一新增覆盖近期 live 样本里的 `无新触发` / `无新增即时触发事件` / `无全新独立持仓触发事件` / `无新增高权重触发` / `不推送` / `未命中` 等静默摘要。
+    - 同一分支增加 material-update override，避免把 `值得记录`、`值得关注`、`需告知用户`、`重大政策催化`、`中长期意义` 这类明确声明“虽未命中阈值但有新事实需要告知”的文本误压掉。
+  - 新增回归：
+    - `heartbeat_plain_text_noop_recognizes_untriggered_summary_variants`
+    - `heartbeat_plain_text_noop_keeps_material_update_overrides_deliverable`
+    - `heartbeat_plain_text_noop_override_phrase_is_not_mistaken_for_noop`
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_ --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_rich_plain_text_noop_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 结论：
+    - 本轮完成代码级修复并补齐回归，先将状态更新为 `Fixed`；由于本任务不重启当前服务，仍需后续自然运行窗口确认 `PlainTextTriggered` 中的 `noop/无新触发/未命中` 送达样本是否明显收敛，再决定是否推进 `Closed`。
 
 - 2026-08-08 02:01 CST 运行态复核：问题在 live source heartbeat / scheduler 出站候选中继续复发，状态维持 `New / P2`。
   - `data/logs/hone-console-page-source.log`

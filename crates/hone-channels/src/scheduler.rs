@@ -719,6 +719,7 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         .collect::<Vec<_>>()
         .join("")
         .to_ascii_lowercase();
+    let normalized = compact.replace(['*', '`', '_', '#'], "");
     let basic_noop_markers = [
         "条件未满足",
         "条件不满足",
@@ -734,6 +735,23 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         "returnnoop",
         "outputnoop",
         "shouldoutputnoop",
+        "不推送",
+        "保持静默",
+        "跳过发送",
+        "无符合推送条件",
+        "无新触发",
+        "无新增触发",
+        "无新增即时触发事件",
+        "无新增即时触发",
+        "无新触发事实",
+        "无新增触发事实",
+        "无全新独立持仓触发事件",
+        "无全新独立事件触发",
+        "无全新独立重大事件触发",
+        "无新增高权重触发",
+        "无高权重触发",
+        "无变化无新触发",
+        "未命中",
         "notmet",
         "nottriggered",
         "notrigger",
@@ -742,9 +760,24 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
     ];
     if basic_noop_markers
         .iter()
-        .any(|marker| compact.contains(marker))
+        .any(|marker| normalized.contains(marker))
     {
-        return true;
+        let has_material_update_override = [
+            "但本轮",
+            "值得关注",
+            "值得记录",
+            "需告知用户",
+            "本轮有增量",
+            "重新站上",
+            "重大政策催化",
+            "重大事件补充确认",
+            "中长期意义",
+            "新增已核验",
+            "已核验公告",
+        ]
+        .iter()
+        .any(|marker| text.contains(marker));
+        return !has_material_update_override;
     }
 
     let has_explicit_noop_status = [
@@ -756,10 +789,18 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         "检查结果:noop",
         "监测结论：noop",
         "监测结论:noop",
+        "本轮检查状态：noop",
+        "本轮检查状态:noop",
         "本轮检查：noop",
         "本轮检查:noop",
+        "心跳监控检查结论：noop",
+        "心跳监控检查结论:noop",
+        "30分钟心跳检查：noop",
+        "30分钟心跳检查:noop",
         "本轮无触发（noop）",
         "本轮无触发(noop)",
+        "本轮无新触发（noop）",
+        "本轮无新触发(noop)",
         "无新增触发（noop）",
         "无新增触发(noop)",
         "无高权重触发（noop）",
@@ -768,7 +809,7 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
         "无新增高权重触发(noop)",
     ]
     .iter()
-    .any(|marker| compact.contains(marker));
+    .any(|marker| normalized.contains(marker));
     if !has_explicit_noop_status {
         return false;
     }
@@ -4829,7 +4870,8 @@ mod tests {
         guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
         heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
         heartbeat_execution_from_content_at, heartbeat_execution_from_content_at_beijing,
-        heartbeat_execution_from_runner_error, heartbeat_max_tool_calls, heartbeat_recovery_reason,
+        heartbeat_execution_from_runner_error, heartbeat_max_tool_calls,
+        heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
         heartbeat_recovery_reason_label, heartbeat_runner_selection,
         heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
         is_empty_success_fallback, is_stale_market_data_success_fallback, load_actor_quiet_hours,
@@ -6395,6 +6437,40 @@ mod tests {
         assert!(!execution.should_deliver);
         assert!(execution.error.is_none());
         assert_eq!(execution.metadata["parse_kind"], "PlainTextNoop");
+    }
+
+    #[test]
+    fn heartbeat_plain_text_noop_recognizes_untriggered_summary_variants() {
+        for content in [
+            "**无新触发。**\n\n| 指标 | 状态 |\n|---|---|\n| 现价 | $218.99 |",
+            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**30 分钟心跳检查：NOOP**\n\n**本轮无新触发。**",
+            "数据时间：北京时间 2026-08-07 23:30；行情口径：SNDK $1,238.74（NASDAQ，2026-08-07 23:30:14 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立持仓触发事件。以下为已知事件的结构性补充确认。**",
+            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 Web 搜索（行情工具已达上限）。\n\n**本轮心跳监控检查结论：noop**",
+        ] {
+            assert_eq!(
+                inspect_heartbeat_result(content),
+                (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop),
+                "content should be treated as noop: {content}"
+            );
+        }
+    }
+
+    #[test]
+    fn heartbeat_plain_text_noop_keeps_material_update_overrides_deliverable() {
+        for content in [
+            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**无新增即时触发事件。** 但本轮行情出现一个值得记录的状态变化：\n\n**NVDA** $224.42，当前重新站上该阈值。",
+            "数据时间：北京时间 2026-08-07 23:00；行情口径：AAOI $137.50（NASDAQ，2026-08-07 23:00:25 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — AAOI 股价无新触发阈值。以下为结构性重大事件补充确认，对持仓具有中长期意义。**\n\n## 重大政策催化\nFCC 拟禁止进口中国光模块。",
+        ] {
+            let (outcome, parse_kind) = inspect_heartbeat_result(content);
+            assert_eq!(parse_kind, HeartbeatParseKind::PlainTextTriggered);
+            assert!(matches!(outcome, HeartbeatOutcome::Deliver(_)));
+        }
+    }
+
+    #[test]
+    fn heartbeat_plain_text_noop_override_phrase_is_not_mistaken_for_noop() {
+        let content = "数据时间：北京时间 2026-08-07 19:30；行情口径：002281.SZ ¥193.04（深圳交易所，hone_quote_time 2026-08-07 15:04:45 北京，深交所收盘，最新可得、非逐笔）。\n\n**本轮有增量值得关注（noop 边界，但需告知用户）**";
+        assert!(!heartbeat_plain_text_indicates_noop(content));
     }
 
     #[test]
