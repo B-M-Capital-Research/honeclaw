@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-07 22:01-2026-08-08 02:01 CST（UTC 2026-08-07 14:01-18:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 23:00 CST deliver preview 主体转为 `NBIX` 工具结果、Neurocrine Biosciences 公司身份和财报事件核验；该 heartbeat job 名义目标是 AI / 科技持仓观察关键事件，不是 NBIX 单标的问答。
+  - 02:00 CST 同一 job deliver preview 主体转为 `META` 新墨西哥州儿童安全案追加判罚；该任务目标虽含 META，但正文同时写明其余标的因工具上限未完成核验，说明目标列表执行仍被单一工具结果抢占。
+  - `job_id=j_aa99140a` / `job=光迅科技关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 01:00 CST deliver preview 退化成“无法创建每 30 分钟自动检查任务”的工具 / 配置说明，而非光迅科技关键事件检查；02:00 CST raw preview 仍围绕任务创建请求而不是当前 heartbeat 结果组织。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-07 18:01-22:01 CST（UTC 2026-08-07 10:01-14:01）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 21:30 CST deliver preview 主体转为 AI 基础设施电力瓶颈与核能赛道定价逻辑，输出能源赛道投研框架；该 heartbeat job 名义目标是 AI / 科技持仓观察关键事件，不是核能主题深度报告。

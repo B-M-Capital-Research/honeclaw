@@ -18,6 +18,15 @@
 
 ## 修复进展
 
+- `2026-08-08 02:01 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-07 22:01-2026-08-08 02:01 CST。
+    - 01:00 CST `光迅科技关键事件心跳提醒` 已作为既有 heartbeat job 触发，raw preview 却先写 `heartbeat_monitor技能不存在`、`没有看到 cron_job 作为独立工具`，deliver preview 直接回复“系统当前暴露的工具集中没有独立的 cron_job 定时任务工具，无法直接创建每 30 分钟的自动检查任务”，并转向 `notification_prefs` 配置替代方案。
+    - 02:00 CST `NVDA 关键事件心跳提醒` 又把当前 heartbeat 轮次当成用户只发 `NVDA` 的直聊澄清，询问用户想了解哪方面或是否调整监控条件，而不是执行关键事件心跳。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被任务创建 / 工具可用性 / 普通直聊澄清污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-08-05 02:01 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-04 22:01-2026-08-05 02:01 CST。
