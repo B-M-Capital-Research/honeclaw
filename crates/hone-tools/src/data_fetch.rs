@@ -1284,6 +1284,83 @@ fn attach_quote_evidence_quality(value: &mut Value) {
             "policy": "A false flag quarantines only that claim type. Preserve raw provider fields for audit; do not publish a precise claim from a quarantined field group."
         }),
     );
+
+    // Provider money fields are raw units. Converting 45_570_000_000 into 亿 is
+    // arithmetic, and arithmetic done in prose is where a market cap becomes
+    // ten times too large. Render it once, here, and have the answer copy it.
+    let currency = fields
+        .get("currency")
+        .and_then(Value::as_str)
+        .unwrap_or("USD");
+    let mut display = serde_json::Map::new();
+    if let Some(market_cap) = finite_number(fields.get("marketCap")) {
+        display.insert(
+            "market_cap".to_string(),
+            Value::String(chinese_scaled_money(market_cap, currency)),
+        );
+    }
+    if let Some(shares) = finite_number(fields.get("sharesOutstanding")) {
+        display.insert(
+            "shares_outstanding".to_string(),
+            Value::String(chinese_scaled_count(shares)),
+        );
+    }
+    if !display.is_empty() {
+        display.insert(
+            "policy".to_string(),
+            Value::String(
+                "这些字符串是服务端按原始字段换算好的中文计数单位，发布金额或股数时直接引用，不要自己把 marketCap 之类的原始数字换算成亿或万亿。".to_string(),
+            ),
+        );
+        fields.insert("hone_display".to_string(), Value::Object(display));
+    }
+}
+
+/// 1e8 is 一亿 and 1e12 is 一万亿. Getting this wrong by one power of ten is
+/// invisible in prose and changes the entire conclusion.
+fn chinese_scaled_money(value: f64, currency: &str) -> String {
+    let unit = match currency.to_ascii_uppercase().as_str() {
+        "USD" => "美元",
+        "CNY" | "RMB" => "元",
+        "HKD" => "港元",
+        "EUR" => "欧元",
+        "JPY" => "日元",
+        "KRW" => "韩元",
+        "GBP" => "英镑",
+        other => return format!("{} {other}", scaled_with_chinese_magnitude(value)),
+    };
+    format!("{}{unit}", scaled_with_chinese_magnitude(value))
+}
+
+fn chinese_scaled_count(value: f64) -> String {
+    format!("{}股", scaled_with_chinese_magnitude(value))
+}
+
+fn scaled_with_chinese_magnitude(value: f64) -> String {
+    // Each step is a factor of 10_000, so a value that rounds to 10000.00 in
+    // one unit is really 1.00 of the next one; printing "10000.00 万" reads as
+    // 一亿 and defeats the point of rendering it at all.
+    const UNITS: [(f64, &str); 3] = [(1e4, "万"), (1e8, "亿"), (1e12, "万亿")];
+    let magnitude = value.abs();
+    let mut chosen: Option<(f64, &'static str)> = None;
+    for (divisor, unit) in UNITS {
+        if magnitude >= divisor {
+            chosen = Some((divisor, unit));
+        }
+    }
+    let Some((divisor, unit)) = chosen else {
+        return format!("{value:.2} ");
+    };
+    let scaled = value / divisor;
+    if (scaled.abs() * 100.0).round() / 100.0 >= 10_000.0
+        && let Some(index) = UNITS
+            .iter()
+            .position(|(candidate, _)| *candidate == divisor)
+        && let Some((next_divisor, next_unit)) = UNITS.get(index + 1)
+    {
+        return format!("{:.2} {next_unit}", value / next_divisor);
+    }
+    format!("{scaled:.2} {unit}")
 }
 
 fn urlencoding_encode(raw: &str) -> String {
@@ -1412,6 +1489,11 @@ fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
                 .to_string(),
         ));
     }
+    let reported_currency = window
+        .first()
+        .and_then(|row| row.get("reportedCurrency"))
+        .and_then(Value::as_str)
+        .unwrap_or("USD");
     let round4 = |value: f64| (value * 10_000.0).round() / 10_000.0;
     let margin = |total: f64, complete: bool| {
         (complete && revenue.abs() > f64::EPSILON)
@@ -1427,6 +1509,11 @@ fn trailing_twelve_month_summary(quarterly: &[Value]) -> Option<Value> {
         "eps_diluted": optional_number(eps_complete.then(|| round4(eps))),
         "gross_margin_pct": optional_number(margin(gross_profit, gross_complete)),
         "operating_margin_pct": optional_number(margin(operating_income, operating_complete)),
+        "hone_display": {
+            "revenue": chinese_scaled_money(revenue, reported_currency),
+            "net_income": chinese_scaled_money(net_income, reported_currency),
+            "policy": "直接引用这些换算好的字符串，不要自己把原始金额换算成亿或万亿。"
+        },
         "note": "由本轮已发布的四个季度直接相加得到。它既用于校验 provider 的 TTM 口径是否已含最新季度，也是跨公司对比唯一同口径的窗口：各公司财年结束月份不同，直接并列各自的 FY 标签会把不同年份的周期位置混在一张表里。对比多家公司时用本窗口并标注 period_ends。"
     }))
 }
@@ -2445,14 +2532,14 @@ impl Tool for DataFetchTool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
-        effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
-        financial_score_semantics, fmp_base_url_is_loopback, forward_twelve_month_summary,
-        nonempty_fmp_error_message, normalize_extended_hours_bar,
-        normalize_quote_timestamp_metadata, price_target_consensus_quality,
-        sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
-        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
-        valuation_basis_quality,
+        DataFetchTool, chinese_scaled_money, data_fetch_data_type_uses_security_target,
+        effective_data_fetch_data_type, effective_data_fetch_security_target,
+        effective_data_fetch_target, extended_hours_session, financial_score_semantics,
+        fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
+        normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
+        price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
+        should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
+        validated_data_fetch_symbols, valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -4024,6 +4111,47 @@ mod tests {
         assert!(data_fetch_data_type_uses_security_target("valuation"));
         assert!(data_fetch_data_type_uses_security_target("segments"));
         assert!(data_fetch_data_type_uses_security_target("peers"));
+    }
+
+    /// A 45.57bn market cap was published as 4557 亿 — ten times too large —
+    /// because converting a raw provider integer into 亿 was left to prose.
+    /// One power of ten is invisible in a sentence and changes the conclusion.
+    #[test]
+    fn money_is_rendered_into_chinese_units_by_the_server() {
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "NBIS",
+            "price": 189.88,
+            "marketCap": 45_570_000_000.0_f64,
+            "sharesOutstanding": 240_000_000.0_f64,
+            "currency": "USD"
+        }]));
+
+        let display = &normalized[0]["hone_display"];
+        // 45_570_000_000 / 1e8 = 455.7, not 4557.
+        assert_eq!(display["market_cap"], "455.70 亿美元");
+        assert_eq!(display["shares_outstanding"], "2.40 亿股");
+
+        // The magnitude boundaries themselves.
+        assert_eq!(
+            chinese_scaled_money(1_020_000_000_000.0, "USD"),
+            "1.02 万亿美元"
+        );
+        // 9999.9999 万 rounds to 10000.00 万, which reads as 一亿; it is promoted.
+        assert_eq!(chinese_scaled_money(99_999_999.0, "USD"), "1.00 亿美元");
+        assert_eq!(chinese_scaled_money(99_990_000.0, "USD"), "9999.00 万美元");
+        assert_eq!(chinese_scaled_money(100_000_000.0, "USD"), "1.00 亿美元");
+        // A negative figure keeps its sign rather than flipping magnitude.
+        assert_eq!(
+            chinese_scaled_money(-2_500_000_000.0, "USD"),
+            "-25.00 亿美元"
+        );
+        // Non-USD listings keep their own unit instead of being called 美元.
+        assert_eq!(
+            chinese_scaled_money(1_061_000_000_000_000.0, "KRW"),
+            "1061.00 万亿韩元"
+        );
+        // An unmapped currency falls back to the ISO code rather than guessing.
+        assert!(chinese_scaled_money(5_000_000_000.0, "SEK").contains("SEK"));
     }
 
     #[test]

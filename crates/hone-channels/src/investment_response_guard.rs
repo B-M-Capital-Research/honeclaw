@@ -2858,6 +2858,9 @@ async fn prepare_verified_broad_investment_turn(
 
 /// How many scanner candidates the pre-turn enrichment will try to resolve.
 const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
+/// Identity-anchored searches run in addition to the user-worded one, bounded
+/// so a multi-symbol question does not fan out without limit.
+const PRETURN_IDENTITY_SEARCH_MAX_QUERIES: usize = 2;
 /// Wall-clock ceiling for the whole enrichment stage. Exceeding it degrades to
 /// an ordinary Agent-owned turn rather than delaying the user.
 const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
@@ -2876,6 +2879,28 @@ const PRETURN_WEB_QUERY_CHAR_LIMIT: usize = 400;
 /// has to travel with it: a Beijing morning is still the previous New York
 /// session, so a Beijing-only anchor points at a US date that has not happened
 /// yet and pulls nothing or the wrong day.
+/// The user's own words reach the coverage written in the user's language. A
+/// Chinese question about a US listing therefore misses the English reporting
+/// that actually moved the stock, so once the registry has confirmed an
+/// identity the turn searches again under the standard symbol, the registry's
+/// company name and the New York trading date.
+fn identity_anchored_web_query(
+    symbol: &str,
+    name: &str,
+    answer_time_new_york: chrono::DateTime<chrono_tz::Tz>,
+) -> String {
+    let name = name.trim();
+    let query = if name.is_empty() || name.eq_ignore_ascii_case(symbol) {
+        format!("{symbol} stock news")
+    } else {
+        format!("{symbol} {name} stock news")
+    };
+    truncate_chars(
+        &format!("{query} {}", answer_time_new_york.format("%Y-%m-%d")),
+        PRETURN_WEB_QUERY_CHAR_LIMIT,
+    )
+}
+
 fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
     let beijing_date = answer_time_beijing
         .split_whitespace()
@@ -3042,6 +3067,33 @@ async fn run_pre_turn_enrichment(
             })
             .collect::<Vec<_>>();
 
+        // The first search runs before the registry has resolved anything, so
+        // it can only use the user's own words — which for a Chinese question
+        // about a US listing reaches Chinese-language coverage and misses the
+        // English reporting that moved the stock. Once the identity is known,
+        // search again anchored on the verified symbol and the registry's own
+        // company name. A single-angle search is how a same-day article about
+        // a secondary story becomes "the core reason".
+        let identity_queries = candidates
+            .iter()
+            .zip(identities.iter())
+            .filter_map(|(candidate, identity)| {
+                let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
+                let row = match value.get("data")?.as_array()?.as_slice() {
+                    [only] => only,
+                    _ => return None,
+                };
+                let symbol = row.get("symbol")?.as_str()?;
+                let name = row.get("name").and_then(Value::as_str).unwrap_or(candidate);
+                Some(identity_anchored_web_query(
+                    symbol,
+                    name,
+                    answer_time_new_york,
+                ))
+            })
+            .take(PRETURN_IDENTITY_SEARCH_MAX_QUERIES)
+            .collect::<Vec<_>>();
+
         // Reuse the speculative result only when the registry resolved that
         // exact candidate to itself; a different symbol must never be answered
         // with market data fetched for the user's raw token.
@@ -3065,7 +3117,7 @@ async fn run_pre_turn_enrichment(
         // A quote alone cannot answer why a business moved: without the
         // quarterly trend, margins and cash flow the turn either spends a
         // research round fetching them or — more often — answers without them.
-        let (fetched, extended, fundamentals, valuation) = futures::future::join4(
+        let (fetched, extended, fundamentals, valuation, identity_web) = futures::future::join5(
             futures::future::join_all(pending.iter().map(|(_, symbol)| {
                 registry.execute_tool(
                     "data_fetch",
@@ -3116,6 +3168,9 @@ async fn run_pre_turn_enrichment(
                 .await
                 .unwrap_or_default()
             },
+            futures::future::join_all(identity_queries.iter().map(|query| {
+                registry.execute_tool("web_search", json!({"query": query, "time_range": "week"}))
+            })),
         )
         .await;
         for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
@@ -3134,11 +3189,23 @@ async fn run_pre_turn_enrichment(
             extended,
             fundamentals,
             valuation,
+            identity_queries,
+            identity_web,
         )
     })
     .await;
 
-    let Ok((web, identities, resolved, snapshots, extended, fundamentals, valuation)) = staged
+    let Ok((
+        web,
+        identities,
+        resolved,
+        snapshots,
+        extended,
+        fundamentals,
+        valuation,
+        identity_queries,
+        identity_web,
+    )) = staged
     else {
         tracing::warn!(
             channel = %actor.channel,
@@ -3217,6 +3284,15 @@ async fn run_pre_turn_enrichment(
             }
         }
     }
+    for (query, result) in identity_queries.iter().zip(identity_web.iter()) {
+        if let Some(value) = result.as_ref().ok().filter(|v| !value_has_error(v)) {
+            calls += 1;
+            sections.push(format!(
+                "- `web_search(query={query:?}, time_range=\"week\")`（按已核验身份补检索） →\n{}",
+                bounded_evidence_json(value, PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT)
+            ));
+        }
+    }
     for ((_, symbol), bundle) in resolved.iter().zip(valuation.iter()) {
         if let Some(value) = bundle.as_ref().ok().filter(|v| !value_has_error(v)) {
             calls += 1;
@@ -3281,7 +3357,7 @@ async fn run_pre_turn_enrichment(
         if fundamentals_count == 0 {
             ""
         } else {
-            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n另附 `valuation`：官方 TTM 指标与比率（PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率）、企业价值、流通股、DCF，以及 `hone_score_semantics` 里的 Altman Z 与 Piotroski 分数及其区间语义。回答估值、回报率、偿债能力或财务健康时优先引用这些官方口径，不要用报表自己硬算；`coverage` 标为 empty/unavailable 的组件才是缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
+            "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n另附 `valuation`：官方 TTM 指标与比率（PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率）、企业价值、流通股、DCF，以及 `hone_score_semantics` 里的 Altman Z 与 Piotroski 分数及其区间语义。回答估值、回报率、偿债能力或财务健康时优先引用这些官方口径，不要用报表自己硬算；`coverage` 标为 empty/unavailable 的组件才是缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n金额与股数一律直接引用服务端已换算好的 `hone_display` 字符串（市值、营收、净利、股本等），不要自己把 marketCap 之类的原始数字换算成亿或万亿——1 亿是 1e8、1 万亿是 1e12，差一个数量级在行文里看不出来却会改变整个结论。\n本轮附带了两类检索：以用户原话发起的，以及在实体核验后以标准代码与公司名重新发起的。回答“为什么涨/为什么跌”这类归因问题时，必须先通读两类结果再定性：同一天可能有多条不同性质的消息（社区反对、分析师调整、做空披露、财报前瞻等），单一来源指认的单一原因不足以写成“核心原因”。若只有一个来源支持某个原因，就如实说明它是目前检索到的唯一指认并列出同期其它已检索到的消息；若多条来源指向不同原因，全部列出并说明各自证据强度，不要因为先读到某条就收口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
         },
         if live_extended_count + summary_extended_count == 0 {
             ""
@@ -16476,6 +16552,39 @@ mod tests {
         // The time of day never enters the query: it only gives the search
         // engine a literal `09:31` to match on.
         assert!(!query.contains("09:31"), "{query}");
+    }
+
+    /// The user-worded query above reaches Chinese-language coverage. A Michael
+    /// Burry short disclosure that moved NBIS 13% was reported in English only,
+    /// and a same-day Chinese article about a local zoning hearing was
+    /// published as the core reason instead. The second query is anchored on
+    /// what the registry confirmed, not on how the user typed it.
+    #[test]
+    fn identity_anchored_query_uses_the_verified_symbol_and_name() {
+        let new_york = super::answer_time_in_new_york("2026-08-07 14:39");
+        let query = super::identity_anchored_web_query("NBIS", "Nebius Group N.V.", new_york);
+
+        assert_eq!(query, "NBIS Nebius Group N.V. stock news 2026-08-07");
+        // The user's raw lowercase token never appears; the standard symbol does.
+        assert!(!query.contains("nbis"), "{query}");
+
+        // A registry row whose name is just the symbol must not stutter.
+        assert_eq!(
+            super::identity_anchored_web_query("NBIS", "NBIS", new_york),
+            "NBIS stock news 2026-08-07"
+        );
+        assert_eq!(
+            super::identity_anchored_web_query("NBIS", "   ", new_york),
+            "NBIS stock news 2026-08-07"
+        );
+
+        // Provider limits still bound it.
+        let long_name = "N".repeat(super::PRETURN_WEB_QUERY_CHAR_LIMIT * 2);
+        let bounded = super::identity_anchored_web_query("NBIS", &long_name, new_york);
+        assert!(
+            bounded.chars().count() <= super::PRETURN_WEB_QUERY_CHAR_LIMIT,
+            "{bounded}"
+        );
     }
 
     #[test]

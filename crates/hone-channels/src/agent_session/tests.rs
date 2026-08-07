@@ -8412,6 +8412,84 @@ async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_wind
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// A Chinese question about a US listing was answered from Chinese-language
+/// coverage of a same-day secondary story, and the dominant English-language
+/// story never surfaced. The first search runs before the registry resolves
+/// anything, so it can only use the user's own words; the second one is
+/// anchored on the verified symbol and the registry's company name.
+#[tokio::test]
+async fn pre_turn_enrichment_searches_again_under_the_verified_identity() {
+    let root = make_temp_dir("hone_channels_preturn_identity_search");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "name": "Nebius Group N.V.",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/quote/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS", "price": 189.88, "exchange": "NASDAQ",
+                "marketCap": 45_570_000_000.0_f64,
+                "sharesOutstanding": 240_000_000.0_f64,
+                "currency": "USD"
+            }]),
+        ),
+        (
+            "/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "companyName": "Nebius Group N.V.",
+                "exchangeShortName": "NASDAQ",
+                "isActivelyTrading": true
+            }]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "preturn-identity", None::<String>).expect("actor");
+
+    let mut runtime_input = String::new();
+    let mut preloaded = 0u32;
+    crate::investment_response_guard::prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "preturn-identity",
+        false,
+        "分析nbis昨天大跌的原因",
+        AgentTurnOrigin::Interactive,
+        "2026-08-07 14:39",
+        &mut runtime_input,
+        &mut preloaded,
+    )
+    .await
+    .expect("interactive enrichment must never fail the turn");
+
+    // The market cap is rendered once, server-side: 45.57bn is 455.70 亿, and
+    // the answer was publishing 4557 亿.
+    assert!(runtime_input.contains("455.70 亿美元"), "{runtime_input}");
+    assert!(!runtime_input.contains("4557 亿"), "{runtime_input}");
+    // And a single source naming a single cause may not be published as the
+    // core reason.
+    assert!(
+        runtime_input.contains("单一来源指认的单一原因不足以写成"),
+        "{runtime_input}"
+    );
+    assert!(
+        runtime_input.contains("不要自己把 marketCap 之类的原始数字换算成亿或万亿"),
+        "{runtime_input}"
+    );
+    fmp_stub.join().expect("join FMP stub");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");

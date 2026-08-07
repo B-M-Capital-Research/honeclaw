@@ -312,6 +312,26 @@ else
   record fail "47.provider-capability-coverage" "the provider surface can regress to hand-computed subsets, leaving whole question classes unanswerable until the next wrong answer exposes them"
 fi
 
+# A market cap ten times too large and a same-day zoning story published as the
+# core reason for a 13% drop are the same failure: the turn did work that the
+# server should have done for it — unit arithmetic in prose, and a single search
+# in the user's own language standing in for coverage.
+if contains 'fn chinese_scaled_money' "$DATA_FETCH" \
+  && contains 'fn scaled_with_chinese_magnitude' "$DATA_FETCH" \
+  && contains 'hone_display' "$DATA_FETCH" \
+  && contains 'money_is_rendered_into_chinese_units_by_the_server' "$DATA_FETCH" \
+  && contains 'fn identity_anchored_web_query' "$INVESTMENT_GUARD" \
+  && contains 'PRETURN_IDENTITY_SEARCH_MAX_QUERIES' "$INVESTMENT_GUARD" \
+  && contains 'identity_anchored_query_uses_the_verified_symbol_and_name' "$INVESTMENT_GUARD" \
+  && contains '按已核验身份补检索' "$INVESTMENT_GUARD" \
+  && contains '不要自己把 marketCap 之类的原始数字换算成亿或万亿' "$INVESTMENT_GUARD" \
+  && contains '单一来源指认的单一原因不足以写成' "$INVESTMENT_GUARD" \
+  && contains 'pre_turn_enrichment_searches_again_under_the_verified_identity' "$AGENT_TESTS"; then
+  record success "48.rendered-units-and-identity-anchored-search" "money is scaled server-side into Chinese magnitudes and copied rather than converted in prose, the turn searches again under the registry-confirmed symbol and name so non-Chinese coverage is reachable, and a single source naming a single cause cannot be published as the core reason"
+else
+  record fail "48.rendered-units-and-identity-anchored-search" "unit conversion can regress into prose, coverage can shrink to the user's own language, or one article can again become the core reason"
+fi
+
 if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
   record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
 else
@@ -739,8 +759,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 47 ]; then
-  echo "[ERROR] acceptance failed: expected all 47 successes"
+if [ "$success" -lt 48 ]; then
+  echo "[ERROR] acceptance failed: expected all 48 successes"
   exit 1
 fi
 
