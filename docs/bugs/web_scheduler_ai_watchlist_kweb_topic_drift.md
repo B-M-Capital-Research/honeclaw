@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-07 14:02-18:01 CST（UTC 2026-08-07 06:02-10:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 16:00 CST deliver preview 主体转为解释当前通知偏好和立即推送规则，列出 `earnings_released`、`earnings_upcoming` 等配置项；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是通知配置说明。
+  - `job_id=j_eab1a3b2` / `job=NBIS关键事件心跳提醒` 与 `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒`。
+  - 16:30 CST `NBIS` deliver preview 主体转为 NAND Flash 短缺与 NBIS 成本压力的关系分析；15:30 CST `中际旭创` deliver preview 以 NBIS 行情口径和 NBIS 分析组织正文；17:30 CST `中际旭创` 又转成光迅科技上游材料体系全图。
+  - 18:00 CST `持仓财报与重大新闻心跳提醒` 一度退化为“我目前具备以下几个核心能力模块”的产品能力介绍，而非持仓财报与重大新闻监控结果。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-07 10:02-14:02 CST（UTC 2026-08-07 02:02-06:02）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 10:30 CST deliver preview 主体继续转向“小米与英伟达的关系”；11:30 / 12:30 CST deliver preview 又退化成“我是一个以金融分析为核心能力的投研助理平台”产品能力说明。该 heartbeat job 名义目标是 AI / 科技持仓关键事件，不是小米与英伟达关系问答或产品介绍。
