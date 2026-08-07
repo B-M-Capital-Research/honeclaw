@@ -834,3 +834,14 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，用户能看到核心检查数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-07 10:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-07 06:02-10:02 CST。
+  - 06:30 / 07:00 / 07:31 / 08:01 / 08:31 / 09:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 的 `deliver_preview` 继续以 fenced JSON 开头。
+  - 代表字段包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"condition"`、`"detail"` 等协议载荷，而不是产品化自然语言提醒。
+  - 同窗 parse 分布仍有 `JsonTriggered=6` 与大量 `PlainTextTriggered=118`，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。

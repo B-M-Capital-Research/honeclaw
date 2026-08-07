@@ -86,6 +86,16 @@
     - 但同一 Web 投递链路仍把实际 channel closed / dryrun fallback 记为 `sent`，会误导用户、调度审计和后续补发判断，因此维持功能性 `P2/New`。
     - 同窗 event-engine 和 scheduler 仍有运行 / 送达样本，未见全渠道不可用、错对象投递、敏感泄露或数据破坏，非 P1，不创建 GitHub Issue。
 
+- `2026-08-07 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-07 06:02-10:02 CST`。
+    - 08:30-08:31 CST 多个 Web actor 先记录 `web push broadcast failed: channel closed`，随后 `[dryrun sink]` 写出 `盘前摘要` body preview；同窗也有多条 Feishu / Discord / legacy dryrun sink 样本。
+    - `data/sessions.sqlite3` 同窗 `web_push_messages` 增量为 0，`web_push_messages.max(created_at)` 仍停在 `2026-07-19T13:30:44.965959+08:00`。
+  - 判断：
+    - 这不是 2026-05 原始问题中的“assistant 承诺手机系统通知”复发；旧能力边界提示仍可视为已修。
+    - 但同一 Web 投递链路仍把实际 channel closed / dryrun fallback 记为送达候选，会误导用户、调度审计和后续补发判断，因此维持功能性 `P2/New`。
+    - 同窗 event-engine 和 scheduler 仍有运行 / 送达样本，未见全渠道不可用、错对象投递、敏感泄露或数据破坏，非 P1，不创建 GitHub Issue。
+
 - `2026-08-04 06:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：`2026-08-04 02:00-06:02 CST`。
