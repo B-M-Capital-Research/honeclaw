@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-08 02:01-06:01 CST（UTC 2026-08-07 18:01-22:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 03:30 CST deliver preview 主体转为 DeepSeek 与 Nvidia 的关系解释，04:00 CST 转为“当前配置状态确认”，05:00 CST 又转为 NVDA 单项估值和财报催化分析；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是配置问答或单一主题深度报告。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` / `target=web-user-c2776780c59d` 在 03:30 CST 退化成“无法直接创建每 30 分钟自动检查任务”的配置说明。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5` 在 06:00 CST 退化成连续直聊澄清和触发条件选择。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-07 22:01-2026-08-08 02:01 CST（UTC 2026-08-07 14:01-18:01）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 23:00 CST deliver preview 主体转为 `NBIX` 工具结果、Neurocrine Biosciences 公司身份和财报事件核验；该 heartbeat job 名义目标是 AI / 科技持仓观察关键事件，不是 NBIX 单标的问答。

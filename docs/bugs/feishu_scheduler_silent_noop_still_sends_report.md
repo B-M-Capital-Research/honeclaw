@@ -14,13 +14,20 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-08 06:01 CST 运行态复核：`2026-08-07 19:08Z / 2026-08-08 03:08 CST` 代码级补强提交 `f72aeefc` 后，live source heartbeat / scheduler 出站候选仍继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-08 02:01-06:01 CST。
+    - 近窗 `HeartbeatDiag run_start=109`、`run_finish=109`、`deliver=48`、`duplicate_suppressed=11`、raw `<think>` preview 107 条，parse_kind 分布 `PlainTextTriggered=97`、`JsonNoop=51`、`PlainTextNoop=4`、`JsonTriggered=2`、`PlainTextSuppressed=1`。
+    - 03:00 / 03:30 / 04:00 / 05:00 `NVDA 关键事件心跳提醒` 多次明写 `无新触发` 仍以 `PlainTextTriggered` 进入 deliver；03:30 / 05:30 `持仓财报与重大新闻心跳提醒` 明写 `状态：noop — 无全新持仓触发事件` 仍进入 deliver；06:00 `持仓重大事件心跳提醒` 明写 `本轮心跳监控检查结论：noop` 仍进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题；虽然已有代码级修复提交，但 live 自然运行窗口仍未闭环，可能是运行进程未部署 / 未重启或仍有漏网句式。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
 
 - 2026-08-07 `bug-2` 代码级补强：继续按 `2026-08-07` 作为当前日期回写，本轮不沿用文档中已有的 future-dated `2026-08-08` 巡检时间戳作为当前事实。
   - 根因补强：
