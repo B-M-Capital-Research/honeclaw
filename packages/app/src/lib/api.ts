@@ -45,6 +45,7 @@ import {
   friendlyBackendErrorMessage,
 } from "./backend";
 import { useLocale } from "./i18n";
+import { setCachedPublicUser } from "./public-session-cache";
 
 export class ApiError extends Error {
   status: number;
@@ -353,6 +354,8 @@ export async function publicLogout() {
 export async function getPublicAuthMe(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/auth/me", { signal });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  // Remember it so the next route can paint before its own round-trip.
+  setCachedPublicUser(payload.user);
   return payload.user;
 }
 

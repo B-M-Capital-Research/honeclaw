@@ -17,6 +17,11 @@ import {
 } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
 import {
+  cachedPublicUser,
+  hasCachedPublicUser,
+  setCachedPublicUser,
+} from "@/lib/public-session-cache";
+import {
   billingEntitlementGrantsAccess,
   billingEntitlementStatusLabel,
   billingProviderLabel,
@@ -275,8 +280,10 @@ function AccountView(props: {
 
 export default function PublicMePage() {
   const navigate = useNavigate();
-  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null);
-  const [loading, setLoading] = createSignal(true);
+  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
+  // Arriving from a chat that already knows the user must not blank the screen
+  // for a round-trip. Paint from what is known, then revalidate behind it.
+  const [loading, setLoading] = createSignal(!hasCachedPublicUser());
   const [managementAllowed, setManagementAllowed] = createSignal(false);
   const [syncing, setSyncing] = createSignal(
     new URLSearchParams(window.location.search).has("checkout") ||
@@ -297,6 +304,7 @@ export default function PublicMePage() {
       }
     } catch {
       setUser(null);
+      setCachedPublicUser(null);
       setSyncing(false);
       if (pollTimer) clearInterval(pollTimer);
     } finally {
@@ -330,6 +338,7 @@ export default function PublicMePage() {
       await publicLogout();
     } finally {
       setUser(null);
+      setCachedPublicUser(null);
       navigate("/chat");
     }
   };

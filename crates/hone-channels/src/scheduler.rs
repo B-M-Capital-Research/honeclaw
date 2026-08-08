@@ -4749,6 +4749,7 @@ async fn run_heartbeat_task(
         &mut investment_runtime_suffix,
         // Heartbeat work never takes the Interactive enrichment path.
         &mut 0,
+        None,
     )
     .await?;
     let mut profile = HeartbeatExecutionProfile::Primary;

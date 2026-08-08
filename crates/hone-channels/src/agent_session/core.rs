@@ -1373,18 +1373,34 @@ impl AgentSession {
                     .await;
             }
             let mut preloaded_evidence_calls = 0u32;
-            let contract_result = prepare_verified_investment_turn(
-                &self.core,
-                &self.actor,
-                &self.channel_target,
-                self.allow_cron,
-                entity_resolution_input,
-                options.turn_origin,
-                &answer_time_beijing,
-                &mut runtime_input,
-                &mut preloaded_evidence_calls,
-            )
-            .await;
+            // The pass reports each stage as it starts. Draining the channel
+            // concurrently is what turns roughly twenty silent provider calls
+            // into visible movement naming the securities being read.
+            let (progress_tx, mut progress_rx) =
+                tokio::sync::mpsc::unbounded_channel::<(&'static str, Option<String>)>();
+            let contract_result = {
+                let pass = prepare_verified_investment_turn(
+                    &self.core,
+                    &self.actor,
+                    &self.channel_target,
+                    self.allow_cron,
+                    entity_resolution_input,
+                    options.turn_origin,
+                    &answer_time_beijing,
+                    &mut runtime_input,
+                    &mut preloaded_evidence_calls,
+                    emit_preturn_progress.then_some(&progress_tx),
+                );
+                tokio::pin!(pass);
+                loop {
+                    tokio::select! {
+                        result = &mut pass => break result,
+                        Some((stage, detail)) = progress_rx.recv() => {
+                            self.emit(session_progress_event(stage, detail)).await;
+                        }
+                    }
+                }
+            };
             if emit_preturn_progress {
                 self.emit(session_progress_event("preturn.enrichment.done", None))
                     .await;

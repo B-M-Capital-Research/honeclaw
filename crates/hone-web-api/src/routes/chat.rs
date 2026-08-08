@@ -216,8 +216,10 @@ impl AgentSessionListener for SseSessionListener {
                 });
                 let _ = self.tx.send(("tool_call".into(), payload)).await;
             }
-            AgentSessionEvent::Run(RunEvent::Progress { stage, detail: _ }) => {
-                let (phase, status_text) = public_progress_status(stage, self.reply_language);
+            AgentSessionEvent::Run(RunEvent::Progress { stage, detail }) => {
+                let (phase, status_text) =
+                    public_progress_status(stage, self.reply_language, detail.as_deref());
+                let status_text = status_text.as_str();
                 let run = self
                     .active_run
                     .as_ref()
@@ -385,11 +387,62 @@ fn emit_web_progress_heartbeat(
     ));
 }
 
+/// A stage detail is server-authored — a resolved symbol list, a count — but it
+/// still reaches the browser, so only characters that can appear in a ticker or
+/// a company name survive, bounded in length. Anything else is dropped and the
+/// stage falls back to its detail-free wording.
+fn public_progress_detail(detail: Option<&str>) -> Option<String> {
+    let cleaned = detail?
+        .chars()
+        .filter(|character| {
+            character.is_alphanumeric() || matches!(character, '.' | '-' | '、' | ',' | ' ' | '/')
+        })
+        .take(60)
+        .collect::<String>();
+    let cleaned = cleaned.trim().to_string();
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
 fn public_progress_status(
     stage: &str,
     reply_language: Option<ReplyLanguage>,
-) -> (&'static str, &'static str) {
+    detail: Option<&str>,
+) -> (&'static str, String) {
+    if let Some(detail) = public_progress_detail(detail) {
+        let described = match stage {
+            "preturn.identity" => Some((
+                "running",
+                format!("正在核验 {detail} 的证券身份"),
+                format!("Verifying the security identity of {detail}"),
+            )),
+            "preturn.evidence" => Some((
+                "running",
+                format!("正在读取 {detail} 的行情、季度财报与估值口径"),
+                format!("Reading quotes, quarterly statements and valuation basis for {detail}"),
+            )),
+            _ => None,
+        };
+        if let Some((phase, chinese, english)) = described {
+            return (
+                phase,
+                match reply_language {
+                    Some(ReplyLanguage::English) => english,
+                    _ => chinese,
+                },
+            );
+        }
+    }
     let (phase, chinese, english) = match stage {
+        "preturn.identity" => (
+            "running",
+            "正在核验当前问题里的证券身份",
+            "Verifying the securities named in this question",
+        ),
+        "preturn.evidence" => (
+            "running",
+            "正在读取行情、季度财报与估值口径",
+            "Reading quotes, quarterly statements and valuation basis",
+        ),
         "session.compress" => (
             "thinking",
             "正在整理会话上下文",
@@ -446,7 +499,10 @@ fn public_progress_status(
             "Preparing and verifying the required information",
         ),
     };
-    (phase, localized(reply_language, chinese, english))
+    (
+        phase,
+        localized(reply_language, chinese, english).to_string(),
+    )
 }
 
 /// User-facing wording for the tool the turn is currently running. The runner
@@ -866,13 +922,76 @@ mod tests {
     fn pre_turn_enrichment_window_is_not_silent() {
         use super::public_progress_status;
 
-        let (phase, text) = public_progress_status("preturn.enrichment", None);
+        let (phase, text) = public_progress_status("preturn.enrichment", None, None);
         assert_eq!(phase, "running");
         assert!(text.contains("搜索引擎查询"), "{text}");
         assert!(text.contains("行情"), "{text}");
-        let (done_phase, done_text) = public_progress_status("preturn.enrichment.done", None);
+        let (done_phase, done_text) = public_progress_status("preturn.enrichment.done", None, None);
         assert_eq!(done_phase, "running");
         assert!(done_text.contains("正在分析"), "{done_text}");
+    }
+
+    /// Around twenty provider calls run before the first token. Two static
+    /// lines for that whole window read as a hang, so the stages name the
+    /// securities actually being read.
+    #[test]
+    fn pre_turn_stages_name_the_securities_being_read() {
+        use super::public_progress_status;
+
+        let (phase, text) = public_progress_status("preturn.identity", None, Some("NBIS、CRWV"));
+        assert_eq!(phase, "running");
+        assert!(text.contains("NBIS、CRWV"), "{text}");
+
+        let (_, text) = public_progress_status("preturn.evidence", None, Some("NBIS"));
+        assert!(text.contains("NBIS"), "{text}");
+        assert!(text.contains("季度财报"), "{text}");
+
+        // Without a detail the stage still reads as work in progress.
+        let (_, text) = public_progress_status("preturn.evidence", None, None);
+        assert!(text.contains("行情"), "{text}");
+        assert!(!text.contains("{}"), "{text}");
+
+        // English readers get the same stage in their own language.
+        let (_, english) = public_progress_status(
+            "preturn.evidence",
+            Some(super::ReplyLanguage::English),
+            Some("NBIS"),
+        );
+        assert!(english.contains("NBIS"), "{english}");
+        assert!(english.contains("quarterly"), "{english}");
+    }
+
+    /// The detail is server-authored, but it still reaches the browser.
+    #[test]
+    fn progress_detail_drops_anything_that_is_not_an_identifier() {
+        use super::public_progress_detail;
+
+        assert_eq!(
+            public_progress_detail(Some("NBIS、CRWV")),
+            Some("NBIS、CRWV".to_string())
+        );
+        // `/` survives because provider symbols use it (BRK/B), but nothing
+        // that could open a tag, close an attribute or start a call does.
+        let sanitized = public_progress_detail(Some("<script>alert(1)</script>"))
+            .expect("letters survive sanitizing");
+        for forbidden in ['<', '>', '(', ')', '"', '\'', '&', ';', '='] {
+            assert!(
+                !sanitized.contains(forbidden),
+                "{forbidden} survived: {sanitized}"
+            );
+        }
+        assert_eq!(
+            public_progress_detail(Some("BRK/B、BRK-B")),
+            Some("BRK/B、BRK-B".to_string())
+        );
+        assert_eq!(public_progress_detail(Some("   ")), None);
+        assert_eq!(public_progress_detail(None), None);
+        // Length is bounded so a long list cannot flood the status line.
+        let long = "A".repeat(200);
+        assert_eq!(
+            public_progress_detail(Some(&long)).map(|value| value.chars().count()),
+            Some(60)
+        );
     }
 
     #[tokio::test]

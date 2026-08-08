@@ -7847,6 +7847,7 @@ async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
         "2026-07-19 09:31",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -7921,6 +7922,7 @@ async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
         "2026-07-19 09:31",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -7998,6 +8000,7 @@ async fn sndk_pre_turn_enrichment_injects_current_active_listing_before_agent_ca
         "2026-08-03 20:35",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("SNDK enrichment must not fail the turn");
@@ -8072,6 +8075,7 @@ async fn speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere(
         "2026-07-19 09:31",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -8143,6 +8147,7 @@ async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
         "2026-08-04 19:33",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -8226,6 +8231,7 @@ async fn overnight_enrichment_keeps_yesterdays_post_session_summary() {
         "2026-08-05 14:30",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -8345,6 +8351,7 @@ async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_wind
         "2026-08-06 10:20",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -8468,6 +8475,7 @@ async fn pre_turn_enrichment_searches_again_under_the_verified_identity() {
         "2026-08-07 14:39",
         &mut runtime_input,
         &mut preloaded,
+        None,
     )
     .await
     .expect("interactive enrichment must never fail the turn");
@@ -8518,6 +8526,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
             "2026-07-19 09:31",
             &mut runtime_input,
             &mut 0,
+            None,
         )
         .await
         .expect("interactive entity discovery must not fail before the runner");
@@ -9569,6 +9578,7 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
             "2026-07-19 09:31",
             &mut runtime_input,
             &mut 0,
+            None,
         )
         .await
         .expect_err("test config has no FMP key, so deterministic DataFetch must fail");
@@ -9762,6 +9772,7 @@ async fn interactive_portfolio_wording_stays_inside_the_main_agent_tool_loop() {
         "2026-07-19 09:31",
         &mut runtime_input,
         &mut 0,
+        None,
     )
     .await
     .expect("interactive portfolio wording must reach the main agent");

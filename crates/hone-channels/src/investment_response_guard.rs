@@ -2857,6 +2857,22 @@ async fn prepare_verified_broad_investment_turn(
 }
 
 /// How many scanner candidates the pre-turn enrichment will try to resolve.
+/// Stage updates emitted while the pre-turn pass runs. The pass issues around
+/// twenty provider calls before the model produces its first token, and without
+/// this the user watches a single static line for the whole window.
+pub(crate) type PreTurnProgressSink =
+    tokio::sync::mpsc::UnboundedSender<(&'static str, Option<String>)>;
+
+fn report_preturn_progress(
+    sink: Option<&PreTurnProgressSink>,
+    stage: &'static str,
+    detail: Option<String>,
+) {
+    if let Some(sink) = sink {
+        let _ = sink.send((stage, detail));
+    }
+}
+
 const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
 /// Identity-anchored searches run in addition to the user-worded one, bounded
 /// so a multi-symbol question does not fan out without limit.
@@ -3010,6 +3026,7 @@ async fn run_pre_turn_enrichment(
     user_input: &str,
     seed_mentions: &[EntityMention],
     answer_time_beijing: &str,
+    progress: Option<&PreTurnProgressSink>,
 ) -> PreTurnEnrichment {
     let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
     let candidates = seed_mentions
@@ -3040,6 +3057,11 @@ async fn run_pre_turn_enrichment(
     let answer_time_new_york = answer_time_in_new_york(answer_time_beijing);
     let extended_session = us_extended_session(answer_time_new_york);
     let now_session = us_session_at(answer_time_new_york);
+    report_preturn_progress(
+        progress,
+        "preturn.identity",
+        (!candidates.is_empty()).then(|| candidates.join("、")),
+    );
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
         let (web, identities, mut speculative) = futures::future::join3(
             registry.execute_tool(
@@ -3112,6 +3134,17 @@ async fn run_pre_turn_enrichment(
                 pending.push((index, symbol.clone()));
             }
         }
+        report_preturn_progress(
+            progress,
+            "preturn.evidence",
+            (!resolved.is_empty()).then(|| {
+                resolved
+                    .iter()
+                    .map(|(_, symbol)| symbol.as_str())
+                    .collect::<Vec<_>>()
+                    .join("、")
+            }),
+        );
         // Snapshot, extended-hours and fundamentals do not depend on each
         // other, so they share one stage instead of three sequential ones.
         // A quote alone cannot answer why a business moved: without the
@@ -3388,6 +3421,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     answer_time_beijing: &str,
     runtime_input: &mut String,
     preloaded_evidence_calls: &mut u32,
+    progress: Option<&PreTurnProgressSink>,
 ) -> Result<Option<InvestmentResponseContract>, String> {
     let preloaded_evidence_calls = preloaded_evidence_calls;
     let scope = extract_entity_scope(user_input, origin);
@@ -3409,6 +3443,7 @@ pub(crate) async fn prepare_verified_investment_turn(
                     user_input,
                     &seed_mentions,
                     answer_time_beijing,
+                    progress,
                 )
                 .await;
                 runtime_input.push_str(&enrichment.block);

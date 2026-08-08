@@ -10,7 +10,8 @@ import {
   type JSX,
 } from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
-import { CONTENT } from "@/lib/public-content";
+import { CONTENT } from "@/lib/public-content"
+import { routePrefetchHandlers } from "@/lib/route-prefetch";
 import { groupResearchByDate } from "@/lib/public-agent-workspace";
 import type {
   AgentWorkspaceEvent,
@@ -118,8 +119,8 @@ export function AgentWorkspaceSidebar(props: {
       </button>
       <nav class="agent-workspace-nav">
         <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
-        <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
-        <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
+        <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+        <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
       </nav>
       <div class="agent-workspace-sidebar-rule" />
       <div class="agent-workspace-nav-label">{CONTENT.chat_page.workspace.history_label}</div>
@@ -162,7 +163,7 @@ export function AgentWorkspaceSidebar(props: {
         </Show>
       </section>
       <div class="agent-workspace-user">
-        <button type="button" class="agent-workspace-user-main" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}>
+        <button type="button" class="agent-workspace-user-main" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}>
           <span class="agent-workspace-avatar">{avatar()}</span>
           <span><strong>{props.userName}</strong><small>{CONTENT.chat_page.workspace.personal_space}</small></span>
         </button>
@@ -367,7 +368,7 @@ export function AgentWorkspaceMobileHeader(props: {
     props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
       ? "H"
       : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label={CONTENT.chat_page.workspace.open_menu} class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label={CONTENT.chat_page.workspace.history_title} class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.pushes}><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={CONTENT.chat_page.workspace.open_account.replace("{name}", props.userName)}>{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label={CONTENT.chat_page.workspace.open_menu} class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label={CONTENT.chat_page.workspace.history_title} class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.pushes}><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={CONTENT.chat_page.workspace.open_account.replace("{name}", props.userName)}>{avatar()}</button></div></header>;
 }
 
 /**
@@ -475,8 +476,8 @@ export function AgentWorkspaceHistoryDrawer(props: {
         </header>
         <nav class="agent-workspace-drawer-nav" aria-label={CONTENT.chat_page.workspace.main_menu}>
           <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span></button>
-          <button type="button" onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
-          <button type="button" onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
+          <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+          <button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
         </nav>
         <label class="agent-workspace-history-search agent-workspace-drawer-search">
           <AgentWorkspaceIcon name="search" size={16} />
@@ -535,6 +536,6 @@ export function AgentWorkspaceMobileNav(props: {
   return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
     <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
-    <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
+    <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
   </nav>;
 }
