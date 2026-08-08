@@ -45,7 +45,10 @@ import {
   friendlyBackendErrorMessage,
 } from "./backend";
 import { useLocale } from "./i18n";
-import { setCachedPublicUser } from "./public-session-cache";
+import {
+  setCachedCommunityFeed,
+  setCachedPublicUser,
+} from "./public-session-cache";
 
 export class ApiError extends Error {
   status: number;
@@ -339,6 +342,11 @@ export async function publicEmailLogin(input: {
 }
 
 export async function publicLogout() {
+  // Clear synchronously. The chat page intentionally does not await logout,
+  // and no route may paint private data from the old session while the network
+  // request is still in flight.
+  setCachedPublicUser(null);
+  setCachedCommunityFeed(null);
   try {
     const response = await apiFetch("/api/public/auth/logout", {
       method: "POST",
@@ -455,11 +463,18 @@ export async function disablePublicAdminInvite(userId: string) {
 }
 
 export async function getPublicChatBootstrap(signal?: AbortSignal) {
-  const response = await apiFetch("/api/public/bootstrap", {
-    signal,
-    cache: "no-store",
-  });
-  return parseJson<PublicChatBootstrapResponse>(response);
+  try {
+    const response = await apiFetch("/api/public/bootstrap", {
+      signal,
+      cache: "no-store",
+    });
+    const payload = await parseJson<PublicChatBootstrapResponse>(response);
+    setCachedPublicUser(payload.user);
+    return payload;
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) setCachedPublicUser(null);
+    throw error;
+  }
 }
 
 export async function getPublicHistory(before?: number, signal?: AbortSignal) {

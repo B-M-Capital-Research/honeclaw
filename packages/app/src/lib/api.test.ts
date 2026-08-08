@@ -30,6 +30,12 @@ import {
   resetApiFetchRetryDelayForTests,
   setApiFetchRetryDelayForTests,
 } from "./backend";
+import {
+  cachedCommunityFeed,
+  cachedPublicUser,
+  setCachedCommunityFeed,
+  setCachedPublicUser,
+} from "./public-session-cache";
 
 const originalFetch = globalThis.fetch;
 
@@ -37,6 +43,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   resetApiFetchRetryDelayForTests();
   resetPublicCommunityEdgeDiscoveryForTests();
+  setCachedPublicUser(null);
 });
 
 function mockFetch(response: Response) {
@@ -190,6 +197,28 @@ describe("public chat bootstrap API", () => {
     expect(payload.history_start).toBe(42);
     expect(payload.next_before).toBe(42);
     expect(requestedInit?.cache).toBe("no-store");
+    expect(cachedPublicUser()?.user_id).toBe("web-user-1");
+  });
+
+  test("logout clears route caches before the request settles", async () => {
+    setCachedPublicUser({ user_id: "old-user" } as never);
+    setCachedCommunityFeed([{ id: "old-content" }]);
+    let release!: () => void;
+    globalThis.fetch = ((() =>
+      new Promise<Response>((resolve) => {
+        release = () =>
+          resolve(
+            new Response(JSON.stringify({ ok: true }), {
+              headers: { "content-type": "application/json" },
+            }),
+          );
+      })) as unknown) as typeof fetch;
+
+    const pending = publicLogout();
+    expect(cachedPublicUser()).toBeNull();
+    expect(cachedCommunityFeed()).toBeNull();
+    release();
+    await pending;
   });
 
   test("requests the previous history page with a stable cursor", async () => {

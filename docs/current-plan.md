@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-06
-状态：有 12 个活跃任务
+最后更新：2026-08-08
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Production GCE Rollout — 2026-08-08**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/production-gce-rollout-2026-08-08.md`
+  - 摘要：已审查当前生产 revision 到 `7efdc01d` 的后端会话恢复、前置取证、定时实体判断与公开 Web 导航/主题/缓存改造，并修复外层取证 deadline 与跨会话前端缓存两个上线阻断点；完整门禁通过，下一步以包含审查修复的精确 GHCR artifact 更新生产 GCE，并验证 `/api/meta`、云权威、公开资产和运行恢复协议
 
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`

@@ -2888,9 +2888,12 @@ const PRETURN_ENRICHMENT_MAX_CANDIDATES: usize = 3;
 /// Identity-anchored searches run in addition to the user-worded one, bounded
 /// so a multi-symbol question does not fan out without limit.
 const PRETURN_IDENTITY_SEARCH_MAX_QUERIES: usize = 2;
-/// Wall-clock ceiling for the whole enrichment stage. Exceeding it degrades to
-/// an ordinary Agent-owned turn rather than delaying the user.
-const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
+/// Wall-clock ceiling for the whole enrichment stage. Keep this strictly above
+/// the sequential identity + evidence phase budgets: otherwise the outer
+/// timeout can discard branches that already completed while the last bounded
+/// branch is winding down, recreating the all-or-nothing failure this staging
+/// is meant to remove.
+const PRETURN_ENRICHMENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
 const PRETURN_ENRICHMENT_ITEM_CHAR_LIMIT: usize = 3_000;
 /// Four financial statements do not fit in the per-item budget written for a
 /// quote, and truncating them mid-array is what turns a fundamentals answer
@@ -16617,6 +16620,21 @@ mod tests {
         assert!(
             bounded.chars().count() <= super::PRETURN_WEB_QUERY_CHAR_LIMIT,
             "{bounded}"
+        );
+    }
+
+    #[test]
+    fn preturn_outer_deadline_cannot_preempt_bounded_phases() {
+        assert!(
+            super::PRETURN_ENRICHMENT_DEADLINE
+                > super::PRETURN_IDENTITY_DEADLINE + super::PRETURN_EVIDENCE_BRANCH_DEADLINE,
+            "the outer timeout must leave room for both sequential phases"
+        );
+        assert!(
+            super::PRETURN_ENRICHMENT_DEADLINE
+                > super::PRETURN_IDENTITY_DEADLINE
+                    + super::PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
+            "the outer timeout must not discard completed evidence while fundamentals time out"
         );
     }
 

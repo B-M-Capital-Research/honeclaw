@@ -15,9 +15,19 @@ import type { PublicAuthUserInfo } from "@/lib/types";
 const [cachedPublicUser, setCachedPublicUserSignal] =
   createSignal<PublicAuthUserInfo | null>(null);
 
+const [cachedCommunityFeed, setCachedCommunityFeedSignal] = createSignal<
+  readonly unknown[] | null
+>(null);
+
 export { cachedPublicUser };
 
 export function setCachedPublicUser(user: PublicAuthUserInfo | null) {
+  const previousUserId = cachedPublicUser()?.user_id;
+  if (user === null || (previousUserId && previousUserId !== user.user_id)) {
+    // Community data belongs to the authenticated session. Never let a later
+    // account paint the previous account's cached page while it revalidates.
+    setCachedCommunityFeedSignal(null);
+  }
   setCachedPublicUserSignal(user === null ? null : { ...user });
 }
 
@@ -31,10 +41,6 @@ export function hasCachedPublicUser(): boolean {
  * reason: reopening the section used to show a loading line even when the
  * previous page was still perfectly good to look at while it revalidated.
  */
-const [cachedCommunityFeed, setCachedCommunityFeedSignal] = createSignal<
-  readonly unknown[] | null
->(null);
-
 export { cachedCommunityFeed };
 
 export function setCachedCommunityFeed(items: readonly unknown[] | null) {

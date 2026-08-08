@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 
 import {
+  cachedCommunityFeed,
   cachedPublicUser,
   hasCachedPublicUser,
+  setCachedCommunityFeed,
   setCachedPublicUser,
 } from "@/lib/public-session-cache";
 import type { PublicAuthUserInfo } from "@/lib/types";
@@ -51,5 +53,17 @@ describe("signed-in user survives a route change", () => {
     original.user_id = "u-b";
 
     expect(cachedPublicUser()?.user_id).toBe("u-a");
+  });
+
+  it("never carries a community page across logout or account replacement", () => {
+    setCachedPublicUser(user("u-a"));
+    setCachedCommunityFeed([{ id: "private-a" }]);
+
+    setCachedPublicUser(user("u-b"));
+    expect(cachedCommunityFeed()).toBeNull();
+
+    setCachedCommunityFeed([{ id: "private-b" }]);
+    setCachedPublicUser(null);
+    expect(cachedCommunityFeed()).toBeNull();
   });
 });

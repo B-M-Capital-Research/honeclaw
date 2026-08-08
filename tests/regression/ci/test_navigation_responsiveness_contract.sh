@@ -50,6 +50,10 @@ contains 'routePrefetchHandlers("community")' "$WORKSPACE" ||
 # 2. A route paints from what is already known and revalidates behind it.
 contains "setCachedPublicUser(payload.user)" "$API" ||
   fail "the resolved user is no longer cached for the next route"
+contains "setCachedPublicUser(null)" "$API" ||
+  fail "the shared logout/bootstrap boundary no longer clears stale user state"
+contains "setCachedCommunityFeed(null)" "$API" ||
+  fail "logout no longer clears cached community data"
 contains "createSignal<PublicAuthUserInfo | null>(cachedPublicUser())" "$ME_PAGE" ||
   fail "the account page stopped painting from cache"
 contains "createSignal(!hasCachedPublicUser())" "$ME_PAGE" ||
