@@ -8070,7 +8070,14 @@ fn extract_entity_scope(input: &str, origin: AgentTurnOrigin) -> EntityResolutio
     if is_portfolio_scope_request(input) {
         return EntityResolutionScope::Portfolio(deterministic);
     }
-    if deterministic_ticker_scope_is_complete(input, &deterministic) {
+    // Only reached for scheduled and heartbeat work: Interactive returned
+    // above. A tentative mention is a candidate, not a decided entity, and
+    // building a deterministic contract from one means sending an unattended
+    // push about a security nothing in the request actually named. Handing it
+    // to Agent discovery instead gives the request the reader it lacked.
+    if deterministic_ticker_scope_is_complete(input, &deterministic)
+        && !deterministic.iter().any(|mention| mention.tentative_symbol)
+    {
         return EntityResolutionScope::Securities(deterministic);
     }
     if deterministic.is_empty()
@@ -8443,19 +8450,21 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                             .is_some_and(|base| base.len() <= 3)
                 }
             };
-        // Typed scheduled/heartbeat work resolves these mentions into a
-        // contract with no Agent reading the request, so it still needs a
-        // deterministic brake. Interactive turns have the Agent itself and get
-        // raw candidates instead.
-        if origin != AgentTurnOrigin::Interactive
-            && deterministic_non_security_token(&symbol)
-            && !(exact_input
-                || explicit_ticker_label
-                || explicit_ticker_binding
-                || direct_market_binding)
-        {
-            continue;
-        }
+        // Typed scheduled/heartbeat work builds a contract with no Agent
+        // reading the request, so a bare token that nothing in the sentence
+        // binds to a security cannot be treated as settled. It used to be
+        // matched against a hand-kept vocabulary of "obviously not a ticker"
+        // acronyms, which silently dropped ARM, NOW, ON, AA, BE, IT and BB —
+        // all real listings — while no grammar signal in this scanner
+        // distinguishes "ARM 的财报" from "AI 板块" anyway. The token is kept
+        // and marked tentative instead: the turn's own Agent reads the whole
+        // request and decides, exactly as it already does interactively.
+        let bound_to_a_security = exact_input
+            || explicit_ticker_label
+            || explicit_ticker_binding
+            || direct_market_binding;
+        let unsettled_without_a_reader =
+            origin != AgentTurnOrigin::Interactive && !bound_to_a_security;
         if all_numeric
             && !numeric_identifier_has_security_binding(
                 input,
@@ -8598,15 +8607,16 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 && !symbol_cluster_binding
                 && numeric_market.is_none()
                 && numeric_asset.is_none();
-            let tentative_symbol = identifier.kind == SecurityIdentifierKind::Bare
-                && !explicit_ticker_label
-                && !explicit_ticker_binding
-                && (only_clause_subject_support
-                    || !identifier
-                        .raw
-                        .chars()
-                        .filter(|character| character.is_ascii_alphabetic())
-                        .all(|character| character.is_ascii_uppercase()));
+            let tentative_symbol = unsettled_without_a_reader
+                || identifier.kind == SecurityIdentifierKind::Bare
+                    && !explicit_ticker_label
+                    && !explicit_ticker_binding
+                    && (only_clause_subject_support
+                        || !identifier
+                            .raw
+                            .chars()
+                            .filter(|character| character.is_ascii_alphabetic())
+                            .all(|character| character.is_ascii_uppercase()));
             candidates.push(EntityMention {
                 mention: identifier.raw,
                 search_query: symbol.clone(),
@@ -9008,146 +9018,6 @@ fn is_ascii_title_case_word(word: &str) -> bool {
 /// `identifier_requires_explicit_security_binding`, `is_identifier_grammar_word`).
 /// Removing it entirely requires routing scheduled entity resolution through
 /// the same Agent loop; it is not removable while that path stays deterministic.
-fn deterministic_non_security_token(token: &str) -> bool {
-    matches!(
-        token.to_ascii_uppercase().as_str(),
-        "AI" | "ML"
-            | "LLM"
-            | "GPU"
-            | "CPU"
-            | "TPU"
-            | "NPU"
-            | "HBM"
-            | "CPO"
-            | "LPO"
-            | "API"
-            | "HTTP"
-            | "JSON"
-            | "SQL"
-            | "SSE"
-            | "CLI"
-            | "UI"
-            | "PE"
-            | "PB"
-            | "PS"
-            | "PEG"
-            | "EPS"
-            | "DPS"
-            | "ROE"
-            | "ROA"
-            | "ROI"
-            | "ROIC"
-            | "WACC"
-            | "DCF"
-            | "FCF"
-            | "IRR"
-            | "NPV"
-            | "CAGR"
-            | "ARR"
-            | "MRR"
-            | "EBITDA"
-            | "EBIT"
-            | "EBITA"
-            | "NOPAT"
-            | "CAPEX"
-            | "OPEX"
-            | "AUM"
-            | "NAV"
-            | "SEC"
-            | "GAAP"
-            | "IFRS"
-            | "IPO"
-            | "ETF"
-            | "REIT"
-            | "ADR"
-            | "OTC"
-            | "NYSE"
-            | "NASDAQ"
-            | "USD"
-            | "RMB"
-            | "CNY"
-            | "US"
-            | "USA"
-            | "CN"
-            | "HK"
-            | "JP"
-            | "EU"
-            | "IT"
-            | "ON"
-            | "BE"
-            | "NOW"
-            | "ARM"
-            | "IS"
-            | "AS"
-            | "AT"
-            | "IN"
-            | "OF"
-            | "TO"
-            | "FOR"
-            | "WITH"
-            | "FROM"
-            | "THE"
-            | "AND"
-            | "OR"
-            | "WHAT"
-            | "HOW"
-            | "GOOD"
-            | "AAA"
-            | "AA"
-            | "BBB"
-            | "BB"
-            | "CNN"
-            | "URL"
-            | "PPI"
-            | "FDA"
-            | "MONITOR"
-            | "WATCHLIST"
-            | "DAILY"
-            | "HOURLY"
-            | "REPEAT"
-            | "PCE"
-            | "CPI"
-            | "GDP"
-            | "FOMC"
-            | "NFP"
-            | "PMI"
-            | "NASA"
-            | "PDUFA"
-            | "ARK"
-            | "BUY"
-            | "HOLD"
-            | "BULL"
-            | "BEAR"
-            | "CASE"
-            | "TICKER"
-            | "SYMBOL"
-            | "STOCK"
-            | "SHARE"
-            | "PRICE"
-            | "QUOTE"
-            | "MARKET"
-            | "SECTOR"
-            | "INDUSTRY"
-            | "HELLO"
-            | "HI"
-            | "THANKS"
-            | "UPDATE"
-            | "OUTPUT"
-            | "NEWS"
-            | "HELP"
-            | "WEATHER"
-            | "STATUS"
-            | "OPENAI"
-            | "CODEX"
-            | "ABOUT"
-            | "PLEASE"
-            | "ANALYZE"
-            | "COMPARE"
-            | "TODAY"
-            | "RECENTLY"
-            | "LATELY"
-    )
-}
 
 /// Whether a bare ASCII token in this span is shaped like a code rather than
 /// like prose: uppercase, or sitting directly against non-ASCII text, or being
@@ -13101,20 +12971,33 @@ mod tests {
                 EntityResolutionScope::AgentToolDiscovery(_)
             ));
         }
-        for input in [
-            "监控 ASTS 的 FCC/NASA/PDUFA 事件",
-            "AAPL股价 BUY/HOLD/BULL CASE",
+        // Scheduled work no longer decides these from a vocabulary. The bound
+        // subject stays settled; everything else survives as a tentative seed
+        // for the turn's own Agent to read, and the presence of a tentative
+        // seed is what stops a deterministic contract from being built.
+        for (input, settled) in [
+            ("监控 ASTS 的 FCC/NASA/PDUFA 事件", "ASTS"),
+            ("AAPL股价 BUY/HOLD/BULL CASE", "AAPL"),
         ] {
-            assert_eq!(
-                plain_ticker_mentions(input, AgentTurnOrigin::Scheduled)
-                    .into_iter()
-                    .filter_map(|mention| mention.explicit_symbol)
-                    .collect::<Vec<_>>(),
-                [if input.starts_with("监控") {
-                    "ASTS"
-                } else {
-                    "AAPL"
-                }],
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
+            assert!(
+                mentions
+                    .iter()
+                    .any(|mention| mention.explicit_symbol.as_deref() == Some(settled)),
+                "{input}: {mentions:?}"
+            );
+            assert!(
+                mentions
+                    .iter()
+                    .filter(|mention| mention.explicit_symbol.as_deref() != Some(settled))
+                    .all(|mention| mention.tentative_symbol),
+                "{input}: unbound tokens must stay tentative, not settled: {mentions:?}"
+            );
+            assert!(
+                !matches!(
+                    extract_entity_scope(input, AgentTurnOrigin::Scheduled),
+                    EntityResolutionScope::Securities(_)
+                ),
                 "{input}"
             );
         }
@@ -13834,13 +13717,91 @@ mod tests {
         );
     }
 
+    /// The scanner used to consult a 136-entry vocabulary of "obviously not a
+    /// ticker" acronyms for scheduled and heartbeat work. Eleven entries were
+    /// real US listings, so a task saying "每天盯一下 ARM 的财报" lost ARM
+    /// before anything could check it — and no grammar signal in this scanner
+    /// separates "ARM 的财报" from "AI 板块" anyway, which is why the judgment
+    /// belongs to something that reads the sentence.
+    #[test]
+    fn scheduled_scans_keep_real_listings_that_look_like_common_words() {
+        for (symbol, company) in [
+            ("ARM", "ARM Holdings"),
+            ("NOW", "ServiceNow"),
+            ("ON", "ON Semiconductor"),
+            ("AA", "Alcoa"),
+            ("BE", "Bloom Energy"),
+            ("IT", "Gartner"),
+            ("BB", "BlackBerry"),
+            ("AS", "Amer Sports"),
+            ("OR", "Osisko Gold Royalties"),
+            ("GOOD", "Gladstone Commercial"),
+            ("BULL", "Webull"),
+        ] {
+            let input = format!("每天盯一下 {symbol} 的财报进度和分析师目标价变化。");
+            let mentions = plain_ticker_mentions(&input, AgentTurnOrigin::Scheduled);
+            assert!(
+                mentions
+                    .iter()
+                    .any(|mention| mention.explicit_symbol.as_deref() == Some(symbol)),
+                "{symbol} ({company}) was dropped before anything could verify it: {mentions:?}"
+            );
+            // Surviving is not the same as being settled: with nothing in the
+            // sentence binding it to a security, an unattended push must not be
+            // built from it without a reader.
+            assert!(
+                mentions
+                    .iter()
+                    .filter(|mention| mention.explicit_symbol.as_deref() == Some(symbol))
+                    .all(|mention| mention.tentative_symbol),
+                "{symbol} must reach the Agent as a candidate, not as a decided entity"
+            );
+            assert!(
+                matches!(
+                    extract_entity_scope(&input, AgentTurnOrigin::Scheduled),
+                    EntityResolutionScope::AgentToolDiscovery(_)
+                ),
+                "{symbol} must go to the reader rather than a deterministic contract"
+            );
+        }
+    }
+
+    /// An explicitly bound subject stays settled, so scheduled work that names
+    /// its security properly still gets the deterministic contract it relies on.
+    #[test]
+    fn scheduled_scans_still_settle_an_explicitly_bound_subject() {
+        let input = "股票代码: RKLB 每日收盘播报";
+        let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
+        assert_eq!(
+            mentions
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            ["RKLB"],
+            "{mentions:?}"
+        );
+        assert!(
+            mentions.iter().all(|mention| !mention.tentative_symbol),
+            "an explicitly labelled ticker is settled, not tentative: {mentions:?}"
+        );
+    }
+
     #[test]
     fn scheduler_and_heartbeat_skip_macro_regulatory_and_name_components() {
         let macro_mentions = plain_ticker_mentions(
             "汇总 PCE、FOMC、GDP 与降息概率变化，生成美股风控摘要。",
             AgentTurnOrigin::Scheduled,
         );
-        assert!(macro_mentions.is_empty(), "{macro_mentions:?}");
+        // These used to be erased by a hand-kept vocabulary. They now survive
+        // as tentative seeds — which is what keeps the same scan from erasing
+        // ARM, NOW, ON, AA, BE, IT and BB, all real listings that shared that
+        // vocabulary's shape. Nothing settled comes out of them.
+        assert!(
+            macro_mentions
+                .iter()
+                .all(|mention| mention.tentative_symbol),
+            "{macro_mentions:?}"
+        );
         assert!(
             !matches!(
                 extract_entity_scope(

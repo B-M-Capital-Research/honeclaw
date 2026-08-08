@@ -756,11 +756,28 @@ else
   record fail "44.invisible-current-turn-aware-context-overflow-recovery" "context overflow can again quadratically trim/replay oversized evidence, depend only on history compaction, or expose manual compact/new-session guidance"
 fi
 
+# The last hand-kept vocabulary. It answered "is this token a security?" for
+# scheduled and heartbeat work from a 136-entry list of acronyms, eleven of
+# which were real US listings — ARM, NOW, ON, AA, BE, IT, BB, AS, OR, GOOD,
+# BULL — so those were erased before anything could verify them. No grammar
+# signal in the scanner separates "ARM 的财报" from "AI 板块", so the judgment
+# belongs to the reader, not to a list.
+if ! contains 'deterministic_non_security_token' "$INVESTMENT_GUARD" \
+  && contains 'unsettled_without_a_reader' "$INVESTMENT_GUARD" \
+  && contains 'let tentative_symbol = unsettled_without_a_reader' "$INVESTMENT_GUARD" \
+  && contains 'scheduled_scans_keep_real_listings_that_look_like_common_words' "$INVESTMENT_GUARD" \
+  && contains 'scheduled_scans_still_settle_an_explicitly_bound_subject' "$INVESTMENT_GUARD" \
+  && contains '.any(|mention| mention.tentative_symbol)' "$INVESTMENT_GUARD"; then
+  record success "49.no-vocabulary-decides-what-is-a-security" "scheduled and heartbeat scans keep every candidate, mark the unbound ones tentative so no deterministic contract is built without a reader, and settle only what the sentence actually binds"
+else
+  record fail "49.no-vocabulary-decides-what-is-a-security" "a hand-kept word list can again decide what counts as a security, silently erasing real listings that share its shape"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 48 ]; then
-  echo "[ERROR] acceptance failed: expected all 48 successes"
+if [ "$success" -lt 49 ]; then
+  echo "[ERROR] acceptance failed: expected all 49 successes"
   exit 1
 fi
 
