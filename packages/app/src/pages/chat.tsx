@@ -616,7 +616,7 @@ function FileCard(props: {
             "font-family": "var(--hone-font-label)",
             "font-size": "12px",
             color:
-              downloadState() === "error" ? "var(--hone-danger-700)" : subColor(),
+              downloadState() === "error" ? "var(--hone-error-600)" : subColor(),
             "margin-top": "3px",
           }}
         >

@@ -12,14 +12,17 @@ const FS_KEY = "hone.public.fs";
 
 export function normalizeStoredPublicTheme(value: string | null): PublicTheme {
   if (value === "light" || value === "dark" || value === "auto") return value;
-  return "light";
+  // A first visit follows the system, the same way the interface language
+  // does. Defaulting to light showed a light page to someone whose whole
+  // machine was dark, and nothing on screen explained why.
+  return "auto";
 }
 
 function readTheme(): PublicTheme {
   try {
     return normalizeStoredPublicTheme(localStorage.getItem(THEME_KEY));
   } catch {}
-  return "light";
+  return "auto";
 }
 
 function readFontScale(): PublicFontScale {

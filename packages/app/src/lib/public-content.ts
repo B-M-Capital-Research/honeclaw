@@ -88,7 +88,7 @@ const CONTENT_ZH = {
     title: "两个版本，简单直接",
     sub: "核心永远开源免费、可自托管；完整服务把直播、社群与研报一次打通。",
     host: {
-      name: "Hari老王",
+      name: "巴芒科技-主理人-Hari老王",
       role: "美股主理人 · HONE 出品人",
       bio: "深耕美股二十年。视频免费看，研报与社群按年订阅，HONE 投研助手开源可自托管——这一页汇总了所有入口。",
       stats: [
@@ -2614,7 +2614,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     title: "Two editions, plain and simple",
     sub: "The core stays open source and self-hostable; Full Access bundles the live sessions, community, and research notes.",
     host: {
-      name: "Hari",
+      name: "巴芒科技-主理人-Hari老王",
       role: "U.S. equity lead · creator of HONE",
       bio: "Twenty years in U.S. equities. Videos are free, research notes and the community are a yearly subscription, and the HONE research assistant is open source — this page gathers every entry point.",
       stats: [

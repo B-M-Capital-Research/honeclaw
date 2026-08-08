@@ -3,8 +3,9 @@ import { normalizeStoredPublicTheme } from "./public-prefs";
 
 describe("public theme preference", () => {
   it("defaults a new or invalid preference to the light theme", () => {
-    expect(normalizeStoredPublicTheme(null)).toBe("light");
-    expect(normalizeStoredPublicTheme("unexpected")).toBe("light");
+    // A first visit follows the system, the same way the language does.
+    expect(normalizeStoredPublicTheme(null)).toBe("auto");
+    expect(normalizeStoredPublicTheme("unexpected")).toBe("auto");
   });
 
   it("preserves every explicit supported preference", () => {

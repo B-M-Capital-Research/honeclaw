@@ -14,7 +14,7 @@
   font-size: 0.78rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--hone-accent, #ff7a59);
+  color: var(--hone-coral-500);
   margin-bottom: 0.6rem;
 }
 
@@ -22,20 +22,20 @@
   font-size: clamp(1.6rem, 4vw, 2.25rem);
   line-height: 1.25;
   margin: 0 0 0.85rem;
-  color: var(--hone-text-strong, #16181d);
+  color: var(--hone-ink-950);
 }
 
 .survey-intro {
   margin: 0 0 0.6rem;
   line-height: 1.7;
-  color: var(--hone-text, #3d424d);
+  color: var(--hone-ink-950);
 }
 
 .survey-privacy {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.6;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 /* Progress stays visible while scrolling: a 12-question form needs to keep
@@ -50,23 +50,23 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 0;
-  background: var(--hone-surface, #fff);
+  background: var(--hone-surface-raised);
   font-size: 0.82rem;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 .survey-progress-track {
   flex: 1;
   height: 4px;
   border-radius: 999px;
-  background: var(--hone-border, #e5e7eb);
+  background: var(--hone-paper-200);
   overflow: hidden;
 }
 
 .survey-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--hone-accent, #ff7a59);
+  background: var(--hone-coral-500);
   transition: width 0.25s ease;
 }
 
@@ -75,8 +75,8 @@
   padding: 0.55rem 0.8rem;
   border-radius: 0.6rem;
   font-size: 0.85rem;
-  background: color-mix(in srgb, var(--hone-accent, #ff7a59) 10%, transparent);
-  color: var(--hone-text, #3d424d);
+  background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent);
+  color: var(--hone-ink-950);
 }
 
 .survey-questions {
@@ -90,7 +90,7 @@
 
 .survey-question {
   padding: 1.25rem;
-  border: 1px solid var(--hone-border, #e5e7eb);
+  border: 1px solid var(--hone-paper-200);
   border-radius: 0.9rem;
   background: var(--hone-surface-raised, #fbfbfc);
 }
@@ -110,7 +110,7 @@
   place-items: center;
   font-size: 0.8rem;
   font-weight: 600;
-  background: var(--hone-accent, #ff7a59);
+  background: var(--hone-coral-500);
   color: #fff;
 }
 
@@ -118,7 +118,7 @@
   margin: 0;
   font-size: 1rem;
   line-height: 1.5;
-  color: var(--hone-text-strong, #16181d);
+  color: var(--hone-ink-950);
 }
 
 .survey-question-hint,
@@ -126,7 +126,7 @@
   margin: 0.35rem 0 0;
   font-size: 0.82rem;
   line-height: 1.55;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 .survey-options {
@@ -137,10 +137,10 @@
 
 .survey-option {
   padding: 0.5rem 0.85rem;
-  border: 1px solid var(--hone-border, #e5e7eb);
+  border: 1px solid var(--hone-paper-200);
   border-radius: 999px;
-  background: var(--hone-surface, #fff);
-  color: var(--hone-text, #3d424d);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
   font-size: 0.88rem;
   line-height: 1.4;
   cursor: pointer;
@@ -150,12 +150,12 @@
 }
 
 .survey-option:hover:not(.is-disabled) {
-  border-color: var(--hone-accent, #ff7a59);
+  border-color: var(--hone-coral-500);
 }
 
 .survey-option.is-selected {
-  border-color: var(--hone-accent, #ff7a59);
-  background: var(--hone-accent, #ff7a59);
+  border-color: var(--hone-coral-500);
+  background: var(--hone-coral-500);
   color: #fff;
 }
 
@@ -170,10 +170,10 @@
   width: 100%;
   margin-top: 0.65rem;
   padding: 0.6rem 0.75rem;
-  border: 1px solid var(--hone-border, #e5e7eb);
+  border: 1px solid var(--hone-paper-200);
   border-radius: 0.6rem;
-  background: var(--hone-surface, #fff);
-  color: var(--hone-text, #3d424d);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.6;
@@ -187,35 +187,35 @@
 .survey-other-input:focus,
 .survey-textarea:focus,
 .survey-contact input:focus {
-  outline: 2px solid color-mix(in srgb, var(--hone-accent, #ff7a59) 45%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--hone-coral-500) 45%, transparent);
   outline-offset: 1px;
-  border-color: var(--hone-accent, #ff7a59);
+  border-color: var(--hone-coral-500);
 }
 
 .survey-contact {
   margin-top: 2rem;
   padding: 1.25rem;
-  border: 1px dashed var(--hone-border, #e5e7eb);
+  border: 1px dashed var(--hone-paper-200);
   border-radius: 0.9rem;
 }
 
 .survey-contact h2 {
   margin: 0 0 0.5rem;
   font-size: 1rem;
-  color: var(--hone-text-strong, #16181d);
+  color: var(--hone-ink-950);
 }
 
 .survey-contact label {
   display: block;
   font-size: 0.85rem;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 .survey-contact-hint {
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
   line-height: 1.55;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 .survey-error {
@@ -247,14 +247,14 @@
 }
 
 .survey-primary {
-  background: var(--hone-accent, #ff7a59);
+  background: var(--hone-coral-500);
   color: #fff;
 }
 
 .survey-secondary {
   background: transparent;
-  border-color: var(--hone-border, #e5e7eb);
-  color: var(--hone-text, #3d424d);
+  border-color: var(--hone-paper-200);
+  color: var(--hone-ink-950);
 }
 
 .survey-primary:disabled {
@@ -264,7 +264,7 @@
 
 .survey-submit-note {
   font-size: 0.82rem;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
 .survey-done {
@@ -280,21 +280,21 @@
   display: grid;
   place-items: center;
   font-size: 1.4rem;
-  background: var(--hone-accent, #ff7a59);
+  background: var(--hone-coral-500);
   color: #fff;
 }
 
 .survey-done h1 {
   margin: 0 0 0.75rem;
   font-size: 1.6rem;
-  color: var(--hone-text-strong, #16181d);
+  color: var(--hone-ink-950);
 }
 
 .survey-done p {
   margin: 0 auto 1.75rem;
   max-width: 32rem;
   line-height: 1.7;
-  color: var(--hone-text, #3d424d);
+  color: var(--hone-ink-950);
 }
 
 .survey-done-actions {
@@ -314,7 +314,7 @@
   margin: 2.5rem auto;
   max-width: 62rem;
   padding: 1.4rem 1.6rem;
-  border: 1px solid var(--hone-border, #e5e7eb);
+  border: 1px solid var(--hone-paper-200);
   border-radius: 1rem;
   background: var(--hone-surface-raised, #fbfbfc);
 }
@@ -326,7 +326,7 @@
 .survey-home-card h3 {
   margin: 0 0 0.35rem;
   font-size: 1.05rem;
-  color: var(--hone-text-strong, #16181d);
+  color: var(--hone-ink-950);
 }
 
 .survey-home-card p {
@@ -334,13 +334,14 @@
   max-width: 40rem;
   font-size: 0.88rem;
   line-height: 1.6;
-  color: var(--hone-text-muted, #6b7280);
+  color: var(--hone-ink-600);
 }
 
-@media (prefers-color-scheme: dark) {
-  .survey-progress {
-    background: var(--hone-surface, #14161a);
-  }
+/* Every other surface keys off the app's own theme attribute. Keying this one
+   off the OS meant the survey could be dark while the page around it was
+   light, whenever the user had chosen a theme that differed from the system. */
+[data-theme="dark"] .survey-progress {
+  background: var(--hone-surface-raised);
 }
 
 /* Most of these answers get tapped on a phone, and there are ~90 chips to get
