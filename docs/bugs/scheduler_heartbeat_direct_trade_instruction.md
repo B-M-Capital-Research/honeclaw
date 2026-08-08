@@ -7,6 +7,12 @@
 
 ## 最新进展
 
+- `2026-08-08 14:02-18:01 CST` 真实运行态继续确认同一自动 heartbeat 出站交易动作边界活跃，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 16:00 CST `AAPL + NVDA + BE 关键事件提醒` `job_id=j_35a69a63` 作为自动 Web heartbeat 出站，用户可见 deliver preview 写出 `BE` 当前价格、全天震荡区间，并直接判断“距你买入价约 5.5x 已到必须认真考虑仓位的节点”。
+    - 同窗该任务仍是周期性 heartbeat，不是用户主动直聊投研；将行情核验扩展成仓位动作边界判断，和既有“自动 heartbeat 出站交易动作边界”同根。
+  - 判断：该样本不是原始“无条件止损”字面话术，但仍来自自动 heartbeat，而非用户主动直聊投研；它把事实核验扩展成持仓仓位处理节点判断。严重等级维持 `P2`；当前主发送链路未整体阻断，同窗未见错投、敏感泄露或 P1 级故障，不创建 GitHub Issue。
+
 - `2026-08-01 10:00-14:02 CST` 真实运行态继续确认同一自动 heartbeat 出站交易动作边界活跃，状态维持 `New/P2`：
   - `data/sessions.sqlite3` / `cron_job_runs` / `data/runtime/logs/web.log.2026-08-01`
     - 11:01 `AAOI 全面心跳检测` `run_id=51369` 作为自动 heartbeat 出站，用户可见 preview 写“持有可守，但当前位置已含较多乐观预期，减仓锁定部分盈利是更理性的选择”，把监控检查扩展成减仓动作判断。

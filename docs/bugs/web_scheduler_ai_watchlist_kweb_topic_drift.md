@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-08 14:02-18:01 CST（UTC 2026-08-08 06:02-10:01）。
+  - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 15:00 CST deliver preview 从“每 30 分钟的存储板块心跳监控已在运行中”退化成“你想了解什么”的 direct follow-up 询问；16:00 / 16:30 / 17:30 / 18:00 CST 多轮主体转成“光纤光缆与光电 / 光子产业链全景”，并写明“本轮为产业链知识问答 / 无即时价格监控需求”。该 heartbeat job 名义目标是存储板块关键事件监控，不是光纤光缆产业链知识问答。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` / `target=web-user-499a1c6331c4` 在 17:00 CST 直接写“这是一个纯产业链知识问答，不涉及具体持仓的即时价格监控触发或新事件核验”，主体同样转成光纤光缆与光电产业链。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d` 在 17:00 CST deliver preview 改以 `TQQQ` 当前报价和昨收表格为主体；TQQQ 不在该 job 名义目标列表中。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-08 02:01-06:01 CST（UTC 2026-08-07 18:01-22:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 03:30 CST deliver preview 主体转为 DeepSeek 与 Nvidia 的关系解释，04:00 CST 转为“当前配置状态确认”，05:00 CST 又转为 NVDA 单项估值和财报催化分析；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是配置问答或单一主题深度报告。
