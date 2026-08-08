@@ -25,3 +25,18 @@ export function setCachedPublicUser(user: PublicAuthUserInfo | null) {
 export function hasCachedPublicUser(): boolean {
   return cachedPublicUser() !== null;
 }
+
+/**
+ * The last community feed page, remembered the same way and for the same
+ * reason: reopening the section used to show a loading line even when the
+ * previous page was still perfectly good to look at while it revalidated.
+ */
+const [cachedCommunityFeed, setCachedCommunityFeedSignal] = createSignal<
+  readonly unknown[] | null
+>(null);
+
+export { cachedCommunityFeed };
+
+export function setCachedCommunityFeed(items: readonly unknown[] | null) {
+  setCachedCommunityFeedSignal(items === null ? null : [...items]);
+}

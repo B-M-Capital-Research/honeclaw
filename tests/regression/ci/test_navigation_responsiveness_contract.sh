@@ -71,6 +71,22 @@ contains "fn public_progress_detail" "$WEB_CHAT" ||
 contains '"preturn.evidence" => Some((' "$WEB_CHAT" ||
   fail "the evidence stage lost its user-facing wording"
 
+# 4. A slow provider degrades one branch, not the whole pass.
+contains "async fn bounded_branch" "$GUARD" ||
+  fail "evidence branches share one budget again"
+contains "PRETURN_IDENTITY_DEADLINE" "$GUARD" ||
+  fail "identity resolution lost its own budget"
+contains "PRETURN_EVIDENCE_BRANCH_DEADLINE" "$GUARD" ||
+  fail "evidence branches lost their own budget"
+contains "bounded_branch(futures::future::join_all(pending" "$GUARD" ||
+  fail "the quote branch is unbounded again"
+
+# 5. Reopening a section repaints before it revalidates.
+contains "cachedCommunityFeed()" "packages/app/src/pages/public-community.tsx" ||
+  fail "the community feed stopped painting from cache"
+contains "setCachedCommunityFeed(null)" "packages/app/src/pages/public-community.tsx" ||
+  fail "a signed-out visitor can keep reading a cached feed"
+
 cargo test -p hone-web-api routes::chat::tests --quiet
 if command -v bun >/dev/null 2>&1; then
   bun test --preload ./packages/app/happydom.ts \

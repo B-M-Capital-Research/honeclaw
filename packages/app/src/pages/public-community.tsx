@@ -1,6 +1,10 @@
 import { Title } from "@solidjs/meta";
 import { CONTENT } from "@/lib/public-content";
 import {
+  cachedCommunityFeed,
+  setCachedCommunityFeed,
+} from "@/lib/public-session-cache";
+import {
   For,
   Match,
   Show,
@@ -533,8 +537,14 @@ function CommunityMediaPreview(props: {
 }
 
 export default function PublicCommunityPage() {
-  const [state, setState] = createSignal<ViewState>("loading");
-  const [items, setItems] = createSignal<PublicCommunityContent[]>([]);
+  // Reopening the section repaints the previous page immediately and
+  // revalidates behind it, rather than showing a loading line over content
+  // that was already good enough to read.
+  const restored = cachedCommunityFeed() as PublicCommunityContent[] | null;
+  const [state, setState] = createSignal<ViewState>(
+    restored && restored.length > 0 ? "ready" : "loading",
+  );
+  const [items, setItems] = createSignal<PublicCommunityContent[]>(restored ?? []);
   const [nextBefore, setNextBefore] = createSignal<number | null>(null);
   const [loadingMore, setLoadingMore] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -556,7 +566,8 @@ export default function PublicCommunityPage() {
       setLoadingMore(true);
       setLoadMoreError("");
     } else {
-      setState("loading");
+      // Only blank the list when there is nothing worth showing yet.
+      if (items().length === 0) setState("loading");
       setError("");
     }
     try {
@@ -564,6 +575,7 @@ export default function PublicCommunityPage() {
         before: more ? nextBefore() ?? undefined : undefined,
       });
       setItems((current) => (more ? [...current, ...page.items] : page.items));
+      if (!more) setCachedCommunityFeed(page.items);
       setNextBefore(page.next_before ?? null);
       setState("ready");
       if (!more && page.items[0]) {
@@ -571,12 +583,17 @@ export default function PublicCommunityPage() {
       }
     } catch (cause) {
       if (isUnauthorizedApiError(cause)) {
+        // A signed-out visitor must not keep reading a cached feed.
+        setCachedCommunityFeed(null);
+        setItems([]);
         setState("login");
       } else if (more) {
         setLoadMoreError(cause instanceof Error ? cause.message : CONTENT.chat_page.community_page.older_failed);
       } else {
         setError(cause instanceof Error ? cause.message : CONTENT.chat_page.community_page.load_failed);
-        setState("error");
+        // A failed refresh over a list already on screen is not worth
+        // replacing that list with an error page.
+        if (items().length === 0) setState("error");
       }
     } finally {
       setLoadingMore(false);

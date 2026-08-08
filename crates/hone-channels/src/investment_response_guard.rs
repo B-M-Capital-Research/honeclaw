@@ -2863,6 +2863,17 @@ async fn prepare_verified_broad_investment_turn(
 pub(crate) type PreTurnProgressSink =
     tokio::sync::mpsc::UnboundedSender<(&'static str, Option<String>)>;
 
+/// Bounds one evidence branch so a slow provider degrades that branch to
+/// "nothing fetched" instead of discarding every branch that already returned.
+async fn bounded_branch<F, T>(work: F) -> Vec<T>
+where
+    F: std::future::Future<Output = Vec<T>>,
+{
+    tokio::time::timeout(PRETURN_EVIDENCE_BRANCH_DEADLINE, work)
+        .await
+        .unwrap_or_default()
+}
+
 fn report_preturn_progress(
     sink: Option<&PreTurnProgressSink>,
     stage: &'static str,
@@ -2889,6 +2900,14 @@ const PRETURN_ENRICHMENT_FINANCIALS_CHAR_LIMIT: usize = 12_000;
 /// abandoned on their own without discarding the rest of the pass.
 const PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE: std::time::Duration =
     std::time::Duration::from_secs(8);
+/// Identity resolution gates everything after it, so it gets its own budget:
+/// nothing downstream can be attempted without a confirmed symbol, and a slow
+/// registry should fail fast rather than eat the whole pass.
+const PRETURN_IDENTITY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(6);
+/// Each evidence branch is bounded on its own. One slow provider call used to
+/// discard the entire pass — including the identity searches and quotes that
+/// had already returned — because a single timeout wrapped all of them.
+const PRETURN_EVIDENCE_BRANCH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(8);
 const PRETURN_WEB_QUERY_CHAR_LIMIT: usize = 400;
 
 /// Anchor the pre-turn search on absolute dates. The target market's local date
@@ -3062,16 +3081,26 @@ async fn run_pre_turn_enrichment(
         "preturn.identity",
         (!candidates.is_empty()).then(|| candidates.join("、")),
     );
+    // Phase budgets rather than one budget over everything: a single slow
+    // provider call used to discard the identity searches and quotes that had
+    // already returned, leaving the turn with no preloaded evidence at all.
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
-        let (web, identities, mut speculative) = futures::future::join3(
-            registry.execute_tool(
-                "web_search",
-                json!({"query": web_query, "time_range": "week"}),
+        let Ok((web, identities, mut speculative)) = tokio::time::timeout(
+            PRETURN_IDENTITY_DEADLINE,
+            futures::future::join3(
+                registry.execute_tool(
+                    "web_search",
+                    json!({"query": web_query, "time_range": "week"}),
+                ),
+                futures::future::join_all(identity_lookups),
+                futures::future::OptionFuture::from(speculative_snapshot),
             ),
-            futures::future::join_all(identity_lookups),
-            futures::future::OptionFuture::from(speculative_snapshot),
         )
-        .await;
+        .await
+        else {
+            // Nothing downstream can run without a confirmed identity.
+            return None;
+        };
 
         // Only a unique registry hit earns a market-data call. The service does
         // not decide that a token is a security; the registry does.
@@ -3151,22 +3180,27 @@ async fn run_pre_turn_enrichment(
         // quarterly trend, margins and cash flow the turn either spends a
         // research round fetching them or — more often — answers without them.
         let (fetched, extended, fundamentals, valuation, identity_web) = futures::future::join5(
-            futures::future::join_all(pending.iter().map(|(_, symbol)| {
-                registry.execute_tool(
-                    "data_fetch",
-                    json!({"data_type": "snapshot", "ticker": symbol}),
-                )
-            })),
-            // A regular-session quote reports the previous close while pre/post
-            // market is running, so the extended bar has to come with it or the
-            // turn reads a moving stock as an unopened one.
-            futures::future::join_all(resolved.iter().filter(|_| now_session != "regular").map(
+            bounded_branch(futures::future::join_all(pending.iter().map(
                 |(_, symbol)| {
                     registry.execute_tool(
                         "data_fetch",
-                        json!({"data_type": "extended_hours", "ticker": symbol}),
+                        json!({"data_type": "snapshot", "ticker": symbol}),
                     )
                 },
+            ))),
+            // A regular-session quote reports the previous close while pre/post
+            // market is running, so the extended bar has to come with it or the
+            // turn reads a moving stock as an unopened one.
+            bounded_branch(futures::future::join_all(
+                resolved
+                    .iter()
+                    .filter(|_| now_session != "regular")
+                    .map(|(_, symbol)| {
+                        registry.execute_tool(
+                            "data_fetch",
+                            json!({"data_type": "extended_hours", "ticker": symbol}),
+                        )
+                    }),
             )),
             // Four statements are the slowest call in this stage. It gets its
             // own deadline so a slow fundamentals fetch degrades to "no
@@ -3201,9 +3235,12 @@ async fn run_pre_turn_enrichment(
                 .await
                 .unwrap_or_default()
             },
-            futures::future::join_all(identity_queries.iter().map(|query| {
-                registry.execute_tool("web_search", json!({"query": query, "time_range": "week"}))
-            })),
+            bounded_branch(futures::future::join_all(identity_queries.iter().map(
+                |query| {
+                    registry
+                        .execute_tool("web_search", json!({"query": query, "time_range": "week"}))
+                },
+            ))),
         )
         .await;
         for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
@@ -3214,7 +3251,7 @@ async fn run_pre_turn_enrichment(
             .into_iter()
             .map(|(_, value)| value)
             .collect::<Vec<_>>();
-        (
+        Some((
             web,
             identities,
             resolved,
@@ -3224,11 +3261,11 @@ async fn run_pre_turn_enrichment(
             valuation,
             identity_queries,
             identity_web,
-        )
+        ))
     })
     .await;
 
-    let Ok((
+    let Ok(Some((
         web,
         identities,
         resolved,
@@ -3238,7 +3275,7 @@ async fn run_pre_turn_enrichment(
         valuation,
         identity_queries,
         identity_web,
-    )) = staged
+    ))) = staged
     else {
         tracing::warn!(
             channel = %actor.channel,

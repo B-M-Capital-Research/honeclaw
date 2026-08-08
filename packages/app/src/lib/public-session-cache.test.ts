@@ -7,12 +7,16 @@ import {
 } from "@/lib/public-session-cache";
 import type { PublicAuthUserInfo } from "@/lib/types";
 
-const user = (email: string) =>
+const user = (userId: string) =>
   ({
-    id: 1,
-    email,
-    is_admin: false,
-    billing: { access_granted: true },
+    user_id: userId,
+    created_at: "2026-08-07T00:00:00Z",
+    daily_limit: 10,
+    success_count: 0,
+    in_flight: 0,
+    remaining_today: 10,
+    has_password: false,
+    identity_kind: "domestic_invite",
   }) as unknown as PublicAuthUserInfo;
 
 describe("signed-in user survives a route change", () => {
@@ -26,15 +30,15 @@ describe("signed-in user survives a route change", () => {
   });
 
   it("keeps the user so the next route paints without a round-trip", () => {
-    setCachedPublicUser(user("a@example.com"));
+    setCachedPublicUser(user("u-a"));
 
     expect(hasCachedPublicUser()).toBe(true);
-    expect(cachedPublicUser()?.email).toBe("a@example.com");
+    expect(cachedPublicUser()?.user_id).toBe("u-a");
   });
 
   it("forgets the user on sign-out", () => {
     // A stale cache after logout would paint the account page as signed in.
-    setCachedPublicUser(user("a@example.com"));
+    setCachedPublicUser(user("u-a"));
     setCachedPublicUser(null);
 
     expect(hasCachedPublicUser()).toBe(false);
@@ -42,10 +46,10 @@ describe("signed-in user survives a route change", () => {
   });
 
   it("stores a copy so a later mutation cannot rewrite history", () => {
-    const original = user("a@example.com");
+    const original = user("u-a");
     setCachedPublicUser(original);
-    original.email = "b@example.com";
+    original.user_id = "u-b";
 
-    expect(cachedPublicUser()?.email).toBe("a@example.com");
+    expect(cachedPublicUser()?.user_id).toBe("u-a");
   });
 });

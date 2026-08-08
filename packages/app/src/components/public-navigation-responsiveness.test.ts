@@ -14,6 +14,10 @@ const prefetch = readFileSync(
   new URL("../lib/route-prefetch.ts", import.meta.url),
   "utf8",
 );
+const communityPage = readFileSync(
+  new URL("../pages/public-community.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("switching sections feels immediate", () => {
   it("warms a lazy route's chunk before the click that needs it", () => {
@@ -41,6 +45,19 @@ describe("switching sections feels immediate", () => {
     expect(api).toContain("setCachedPublicUser(payload.user)");
     expect(mePage).toContain("createSignal<PublicAuthUserInfo | null>(cachedPublicUser())");
     expect(mePage).toContain("createSignal(!hasCachedPublicUser())");
+  });
+
+  it("repaints the community feed before revalidating it", () => {
+    // Reopening the section showed a loading line over a page that was still
+    // perfectly readable.
+    expect(communityPage).toContain("cachedCommunityFeed()");
+    expect(communityPage).toContain("setCachedCommunityFeed(page.items)");
+    // A refresh that fails, or that is slower than the eye, must not replace
+    // content already on screen.
+    expect(communityPage).toContain("if (items().length === 0) setState(\"loading\")");
+    expect(communityPage).toContain("if (items().length === 0) setState(\"error\")");
+    // ...and a signed-out visitor must stop seeing it.
+    expect(communityPage).toContain("setCachedCommunityFeed(null)");
   });
 
   it("drops the cached user whenever the session ends", () => {
