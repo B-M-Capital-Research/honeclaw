@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-09 02:01-06:01 CST（UTC 2026-08-08 18:01-22:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 02:31 CST deliver preview 转成 DeepSeek 与 Nvidia 的关系分析；03:30 CST 同 job 写成“待机，无新增触发事件”并复述监控覆盖范围；06:00 CST 又输出“过去 24 小时无遗漏事件”和监控范围说明。该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不应被关系问答或配置说明反复抢占。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 02:30 CST duplicate preview 主体仍是 `GTC 与光模块 CapEx 的关系` 产业链知识问答；06:00 CST deliver preview 明写“本轮查询为关系问答，无即时价格监控”。
+  - `job_id=j_eab1a3b2` / `job=NBIS关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 06:00 CST deliver preview 主体转向 NAND Flash 短缺全景与 WDC/SNDK 利好分析，说明 job 内容仍易被单一历史主题或工具结果抢占。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-08 22:02-2026-08-09 02:02 CST（UTC 2026-08-08 14:02-18:02）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 02:00 CST deliver preview 转成“现在美国处于什么时期”的宏观周期问答，并说明“这不是证券/股票/ETF/加密货币/金融市场问题”；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是美国宏观时期问答。
