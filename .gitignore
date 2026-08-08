@@ -228,6 +228,7 @@ config.yaml
 data/
 dist/
 node_modules/
+.npm-cache/
 src-tauri/binaries/
 *.log
 *.pid
