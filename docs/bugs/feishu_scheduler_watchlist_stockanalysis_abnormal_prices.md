@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,10 +22,20 @@
 
 ## 最新进展
 
-- 2026-08-09 02:02 CST 缺陷巡检复核：22:02-02:02 CST live source 仍有多条高风险数量级行情锚进入 heartbeat deliver preview，但本轮不把这些仅凭数量级偏离历史击球区的样本追加为本缺陷的新复发证据：
-  - 22:30-02:00 CST `闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒` 多次写入 `SNDK $1,212.21` 与 `AAOI $135.63`；22:30 / 23:30 / 02:00 `持仓重大事件心跳提醒` 写入 `SPCX $133.11`、`DRAM $50.60`；01:30 `AI与科技持仓观察关键事件心跳提醒` 写入 `COHR $379.13`、`BE $219.34`。
-  - 2026-08-06 17:55 CST 用户反馈链路已经证明 `MU $893.19`、`SNDK $1,350.50`、`WDC $519.17`、`STX $837.66` 与当轮独立行情核验一致；因此本轮这些高数量级样本仍不能单独证明价格源错误。
-  - 当前文档状态仍保持 `New / P0`，因为历史同根链路已有异常行情锚污染调度判断的强证据；后续巡检需优先证明同轮独立 quote 冲突、公司行动口径冲突或 provider 解析错位，不能只凭“看起来数量级过高”登记新复发样本。
+- 2026-08-08 `bug-2` 代码级修复：补齐 `stale_market_data_fallback` 对“降级文案 + 无币种精确价格锚”的拦截，状态更新为 `Fixed / P0`。
+  - 根因补强：
+    - `crates/hone-channels/src/scheduler.rs` 的 `is_stale_market_data_success_fallback(...)` 先前只稳定识别带币种或货币符号的精确价格锚；历史运行态却已出现 `MU 848.95` 这类没有币种但仍被当作最新行情锚的正文，导致“行情工具调用受限 / 未重新核验”后的 scheduler / heartbeat 输出仍可能漏过守卫。
+    - 同期缺陷台账里出现的 `2026-08-09` 记录相对当前日期 `2026-08-08` 属于未来时间戳，不能作为已发生的运行态证据；本轮已从最新进展与导航摘要里移除。
+  - 本轮修改：
+    - 新增 `contains_precise_market_price_anchor(...)`，除原有带币种价格外，也识别 `MU 848.95`、`SNDK 1,288.03 美元` 这类 ticker 紧邻精确价格的降级正文写法。
+    - `is_stale_market_data_success_fallback(...)` 统一复用该识别器；只要命中 `行情工具调用受限 / quote 工具调用异常 / 主行情源未返回` 等失败文案且仍携带精确价格锚，就继续 fail-closed，不再向用户投递。
+  - 新增回归：
+    - `scheduler_detects_stale_market_data_success_fallback` 新增 `行情工具调用受限 + MU 848.95 / SNDK 1,288.03 美元` 正例。
+  - 验证：
+    - `cargo test -p hone-channels scheduler_detects_stale_market_data_success_fallback --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 结论：
+    - 这是代码级闭环；按任务约束本轮未重启 live runtime，因此仍需后续自然运行窗口确认这类“无币种精确价格锚”不再出现在 source runtime 出站候选里，再决定是否推进 `Closed`。
 
 - 2026-08-08 22:01 CST 缺陷巡检复核：18:01-22:01 CST live source 仍有多条高风险数量级行情锚进入 heartbeat deliver preview，但本轮不把这些仅凭数量级偏离历史击球区的样本追加为本缺陷的新复发证据：
   - 21:00-22:01 CST `闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒` 多次写入 `SNDK $1,212.21`；22:00 CST `持仓重大事件心跳提醒` 写入 `SPY $773.26`、`QQQ $723.03`；21:30 CST `持仓重大事件心跳提醒` 写入 `SPCX $133.11`、`DRAM $50.60`。

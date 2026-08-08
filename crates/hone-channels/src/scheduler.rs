@@ -3001,6 +3001,38 @@ fn recover_scheduler_delivery_from_failed_response(
     Some(sanitized)
 }
 
+fn contains_precise_market_price_anchor(text: &str) -> bool {
+    let precise_price_re = regex::Regex::new(
+        r"(?is)(?:[A-Z0-9]{2,8}(?:\.[A-Z]{1,3})?[^\n。；;]{0,48})?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*\d[\d,]*(?:\.\d+)?",
+    )
+    .expect("valid stale market data price anchor regex");
+    if precise_price_re.is_match(text) {
+        return true;
+    }
+
+    let bare_ticker_price_re = regex::Regex::new(
+        r"(?is)\b[A-Z]{2,8}(?:\.[A-Z]{1,3})?\b(?:[^\n。；;]{0,20}?(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|报价|交投于|报于|锚点|参考锚点|已知报价|quote|price|current\s+price|latest\s+price|last\s+price|current\s+status[^\n。；;]{0,12}?price)?[^\d]{0,8})(?P<price>\d{1,4}(?:,\d{3})*(?:\.\d+)?)",
+    )
+    .expect("valid stale market data bare ticker price regex");
+    bare_ticker_price_re.captures_iter(text).any(|captures| {
+        let Some(price_match) = captures.name("price") else {
+            return false;
+        };
+        let suffix = text[price_match.end()..]
+            .chars()
+            .take(6)
+            .collect::<String>();
+        let trimmed_suffix = suffix.trim_start();
+        !trimmed_suffix.starts_with('%')
+            && !trimmed_suffix.starts_with('％')
+            && !trimmed_suffix.starts_with('x')
+            && !trimmed_suffix.starts_with('X')
+            && !trimmed_suffix.starts_with('倍')
+            && !trimmed_suffix.starts_with('亿')
+            && !trimmed_suffix.starts_with('万')
+    })
+}
+
 fn is_stale_market_data_success_fallback(text: &str) -> bool {
     let normalized = text
         .chars()
@@ -3056,15 +3088,8 @@ fn is_stale_market_data_success_fallback(text: &str) -> bool {
     .iter()
     .any(|term| normalized.contains(&term.to_ascii_lowercase()));
 
-    let public_fallback_with_precise_price = if market_data_failed {
-        let precise_price_re = regex::Regex::new(
-            r"(?is)(?:[A-Z0-9]{2,8}(?:\.[A-Z]{1,3})?[^\n。；;]{0,48})?(?:USD|HKD|CAD|AUD|EUR|GBP|JPY|CNY|CNH|SGD|CHF|KRW|港元|港币|美元|人民币|¥|￥|\$|₩)\s*\d[\d,]*(?:\.\d+)?",
-        )
-        .expect("valid stale market data price anchor regex");
-        precise_price_re.is_match(text)
-    } else {
-        false
-    };
+    let public_fallback_with_precise_price =
+        market_data_failed && contains_precise_market_price_anchor(text);
 
     market_data_failed && (stale_price_reused || public_fallback_with_precise_price)
 }
@@ -6166,6 +6191,9 @@ mod tests {
         ));
         assert!(is_stale_market_data_success_fallback(
             "数据时间：北京时间 2026-07-22 16:00；行情口径：最新可得、非逐笔（参考锚点：AAOI $119.26 / SNDK $1,589.40，本轮工具调用受限未能重新核验）。"
+        ));
+        assert!(is_stale_market_data_success_fallback(
+            "已核验事实：行情工具调用受限，本轮不能重新核验；MU 848.95，SNDK 1,288.03 美元，后续只保留新闻与事件变化。"
         ));
         assert!(!is_stale_market_data_success_fallback(
             "本轮新闻检索正常，以下价格使用同窗 data_fetch 返回的最新行情。"
