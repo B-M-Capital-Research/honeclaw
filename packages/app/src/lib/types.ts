@@ -71,6 +71,8 @@ export type PublicChatActiveRun = {
   phase: "thinking" | "running";
   status_text: string;
   updated_at_ms: number;
+  /** Stages this run already passed through, newest last. */
+  steps?: string[];
 };
 
 export type PublicChatBootstrapResponse = PublicHistoryPageResponse & {

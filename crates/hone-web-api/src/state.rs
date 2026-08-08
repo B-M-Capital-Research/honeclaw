@@ -97,6 +97,30 @@ pub struct ActiveChatRun {
     pub updated_at_ms: i64,
     pub phase: String,
     pub status_text: String,
+    /// The stages this run has already passed through, newest last.
+    ///
+    /// Only the latest status used to survive here, so a refresh mid-run
+    /// replaced a visible trail — searched, read quotes, read statements —
+    /// with whichever single line happened to be current. The pre-turn pass
+    /// alone issues around twenty provider calls, so that trail is most of
+    /// what tells the user the wait is doing something.
+    pub steps: Vec<String>,
+}
+
+/// Matches the client's own cap and de-duplication, so a trail recovered after
+/// a refresh reads exactly like the one that was on screen before it.
+const ACTIVE_RUN_MAX_STEPS: usize = 6;
+
+fn append_active_run_step(steps: &mut Vec<String>, status_text: &str) {
+    let normalized = status_text.trim();
+    if normalized.is_empty() || steps.last().is_some_and(|last| last == normalized) {
+        return;
+    }
+    steps.push(normalized.to_string());
+    if steps.len() > ACTIVE_RUN_MAX_STEPS {
+        let overflow = steps.len() - ACTIVE_RUN_MAX_STEPS;
+        steps.drain(..overflow);
+    }
 }
 
 #[derive(Default)]
@@ -120,6 +144,7 @@ impl ActiveChatRunRegistry {
             updated_at_ms: now_ms,
             phase: "thinking".to_string(),
             status_text: "正在准备并核验所需信息".to_string(),
+            steps: vec!["正在准备并核验所需信息".to_string()],
         };
         entries.insert(session_id.clone(), run.clone());
         Ok(ActiveChatRunGuard {
@@ -153,6 +178,7 @@ impl ActiveChatRunRegistry {
         }
         run.phase = phase.to_string();
         run.status_text = status_text.to_string();
+        append_active_run_step(&mut run.steps, status_text);
         run.updated_at_ms = Utc::now().timestamp_millis();
         Some(run.clone())
     }
@@ -180,7 +206,10 @@ impl ActiveChatRunRegistry {
         }
         if run.status_text.trim().is_empty() {
             run.status_text = status_text.to_string();
+            append_active_run_step(&mut run.steps, status_text);
         }
+        // A heartbeat proves liveness, not progress, so it never appends a
+        // step of its own — the trail would fill with "still working".
         run.updated_at_ms = now_ms;
         Some(run.clone())
     }
@@ -280,8 +309,9 @@ pub struct AuthState {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
-    use super::ActiveChatRunRegistry;
+    use super::{ACTIVE_RUN_MAX_STEPS, ActiveChatRunRegistry};
 
     #[test]
     fn active_chat_run_keeps_stable_start_and_is_removed_by_guard() {
@@ -339,5 +369,78 @@ mod tests {
         assert_eq!(registry.get("session-1").unwrap().run_id, replacement_id);
         drop(replacement);
         assert_eq!(registry.count(), 0);
+    }
+
+    /// The pre-turn pass alone issues around twenty provider calls before the
+    /// first token. Only the newest status used to survive a refresh, so the
+    /// visible trail — searched, read quotes, read statements — collapsed to
+    /// one line and the run read as if it had forgotten what it was doing.
+    #[test]
+    fn a_run_keeps_the_stages_it_already_passed_through() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-steps".to_string())
+            .expect("first run");
+        let handle = guard.handle();
+
+        handle.update("running", "正在核验 NBIS 的证券身份");
+        handle.update("running", "正在读取 NBIS 的行情、季度财报与估值口径");
+        // A repeated status is the same stage, not a new one.
+        handle.update("running", "正在读取 NBIS 的行情、季度财报与估值口径");
+        handle.update("running", "正在输出最终回答");
+
+        let run = registry.get("session-steps").expect("active run");
+        assert_eq!(
+            run.steps,
+            [
+                "正在准备并核验所需信息",
+                "正在核验 NBIS 的证券身份",
+                "正在读取 NBIS 的行情、季度财报与估值口径",
+                "正在输出最终回答",
+            ]
+        );
+        assert_eq!(run.status_text, "正在输出最终回答");
+    }
+
+    #[test]
+    fn a_long_run_keeps_only_the_most_recent_stages() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-cap".to_string())
+            .expect("first run");
+        let handle = guard.handle();
+        for index in 0..12 {
+            handle.update("running", &format!("阶段 {index}"));
+        }
+
+        let run = registry.get("session-cap").expect("active run");
+        // Bounded so a long run cannot grow this in-memory entry without limit.
+        assert_eq!(run.steps.len(), ACTIVE_RUN_MAX_STEPS);
+        assert_eq!(run.steps.last().unwrap(), "阶段 11");
+        assert!(
+            !run.steps
+                .iter()
+                .any(|step| step == "正在准备并核验所需信息")
+        );
+    }
+
+    /// A heartbeat proves the run is alive, not that it moved on.
+    #[test]
+    fn heartbeats_do_not_pad_the_trail() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-heartbeat".to_string())
+            .expect("first run");
+        let handle = guard.handle();
+        handle.update("running", "正在读取行情数据");
+        let before = registry.get("session-heartbeat").expect("run").steps;
+
+        for _ in 0..5 {
+            handle.heartbeat("running", "仍在处理中", Duration::ZERO);
+        }
+
+        let after = registry.get("session-heartbeat").expect("run").steps;
+        assert_eq!(before, after);
+        assert_eq!(after.last().unwrap(), "正在读取行情数据");
     }
 }

@@ -227,7 +227,13 @@ export function resolvePublicChatRecovery(input: {
         startedAt: activeRun.started_at_ms,
         runId,
         statusUpdatedAt: updatedAt,
-        steps: [],
+        // The trail the run has already walked. Dropping it turned a refresh
+        // into "it forgot what it was doing", which is exactly the impression
+        // the trail exists to prevent.
+        steps: (activeRun.steps ?? [])
+          .map((step) => step.trim())
+          .filter((step, index, all) => step.length > 0 && all[index - 1] !== step)
+          .slice(-6),
       },
     };
   }

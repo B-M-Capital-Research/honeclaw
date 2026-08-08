@@ -87,10 +87,28 @@ contains "cachedCommunityFeed()" "packages/app/src/pages/public-community.tsx" |
 contains "setCachedCommunityFeed(null)" "packages/app/src/pages/public-community.tsx" ||
   fail "a signed-out visitor can keep reading a cached feed"
 
+# 6. A refresh mid-run keeps the trail, and one run per session stays one run.
+STATE="crates/hone-web-api/src/state.rs"
+PUBLIC_CHAT="packages/app/src/lib/public-chat.ts"
+contains "pub steps: Vec<String>" "$STATE" ||
+  fail "the run registry no longer remembers the stages it passed through"
+contains "fn append_active_run_step" "$STATE" ||
+  fail "stage de-duplication and the trail cap are gone"
+contains "ACTIVE_RUN_MAX_STEPS" "$STATE" ||
+  fail "the in-memory trail is unbounded"
+contains "steps: (activeRun.steps ?? [])" "$PUBLIC_CHAT" ||
+  fail "a refresh discards the recovered trail again"
+# One run per session is deliberate: concurrent runs would write the same
+# conversation from two places.
+contains "return Err(active.clone())" "$STATE" ||
+  fail "a session can start a second concurrent run"
+
 cargo test -p hone-web-api routes::chat::tests --quiet
+cargo test -p hone-web-api state::tests --quiet
 if command -v bun >/dev/null 2>&1; then
   bun test --preload ./packages/app/happydom.ts \
     packages/app/src/lib/public-session-cache.test.ts \
+    packages/app/src/lib/public-chat-recovery.test.ts \
     packages/app/src/components/public-navigation-responsiveness.test.ts
 else
   echo "[INFO] bun unavailable; frontend-checks owns the complete Web unit suite"
