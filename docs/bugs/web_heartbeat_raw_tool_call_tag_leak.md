@@ -23,6 +23,10 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-08 10:01-14:02 CST（UTC 2026-08-08 02:01-06:02）。
+  - 本轮未再检出 `<minimax:tool_call>`、`<invoke name=` 或 `<absolute-path>` 进入 heartbeat `deliver_preview`。
+  - 状态仍维持 `New/P3`：10:00 CST 样本仍是未修复的最近真实证据，且本轮没有对应代码修复或清理层闭环；需后续自然窗口继续观察。
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-08 06:01-10:01 CST（UTC 2026-08-07 22:01-2026-08-08 02:01）。
   - `2026-08-08T02:00:30Z` / 10:00 CST，`job_id=j_348d0f87`、`job=中际旭创关键事件心跳提醒`、`target=web-user-c2776780c59d`。
   - 同轮 `HeartbeatDiag` 记录 `parse_kind=PlainTextTriggered` 并进入 `deliver`；`deliver_preview` 开头先写“已存在心跳任务 ... 我来用你提供的条件更新它”，随后直接包含 `<minimax:tool_call>`、`<invoke name="cron_job">` 与 `<absolute-path>` 占位式协议片段。
