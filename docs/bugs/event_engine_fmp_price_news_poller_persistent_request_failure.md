@@ -19,6 +19,11 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-08 10:01 CST 运行态继续复发，状态维持 `New/P2`。
+  - 2026-08-08 06:01-10:01 CST 同窗有 10 条 `poll failed`，集中在 `poller.fmp.news`、`poller.fmp.macro`、`poller.fmp.earnings` 请求发送失败；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 heartbeat run / deliver 与 event-engine sink fallback 信号，说明 event-engine 未整体停摆。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻 / 宏观 / 财报事件增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
   - 2026-08-08 06:01 CST 运行态继续复发，状态维持 `New/P2`。
   - 2026-08-08 02:01-06:01 CST 同窗继续出现 FMP 请求发送失败：`poll failed` 18 条，覆盖 `poller.fmp.price`、`poller.fmp.news`，并有大量 `poller.fmp.extended_hours` prev_close fetch / skip 信号；同窗仍有 `poller ok` 与 heartbeat run / deliver 样本。
   - 说明 event-engine / scheduler runtime 未整体停摆；失败集中在 FMP price / news / extended-hours 请求发送链路。
