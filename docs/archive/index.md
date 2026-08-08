@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-06
+Last updated: 2026-08-08
+
+## 2026-08-08
+
+### Reviewed GCE Production Rollout
+
+- Status: done; exact GHCR/GCE and Cloudflare Pages deployment complete; no formal release or tag
+- Date: 2026-08-08
+- Plan: `docs/archive/plans/production-gce-rollout-2026-08-08.md`
+- Handoff: `docs/handoffs/2026-08-08-production-gce-rollout.md`
+- Decision / ADR: no new decision; the review fixed violations of the existing bounded-enrichment and authenticated-session isolation contracts
+- Related PRs / commits: direct `main` review-fix commit and exact deployed runtime `d379cccc6e909129d02e726c04919e7c7ec250e1`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; complete Rust/Web/Worker/CI-safe gates; Runtime Image run `31241183454`; CI run `31241183462`; Cloudflare Pages exact-commit check
+- Current conclusion: production runs exact GHCR digest `sha256:adc956533d59e46cd50a44ff6380019aa5ece64de5013a2a6eb95646bbd1ca05` with healthy PostgreSQL/R2 cloud authority, zero local durable dependencies, zero active chats and `NRestarts=0`. Review fixed an outer preturn deadline that could erase completed branch evidence and a public route cache that could survive logout/account replacement. Pages serves the reviewed active-run recovery protocol and required security headers.
+- Next entry point: `docs/handoffs/2026-08-08-production-gce-rollout.md`; use retained `beaf05c360a7397ce6335ce177fdb74380756662-ghcr-runtime` for immediate rollback. The stale `origin.hone-claw.com` tunnel alias remains a known separate risk while the public Worker API route is healthy.
 
 ## 2026-08-06
 
