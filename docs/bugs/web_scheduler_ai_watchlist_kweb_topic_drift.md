@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-08 18:01-22:01 CST（UTC 2026-08-08 10:01-14:01）。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 21:00 CST deliver preview 退化成“你已经连续多轮只发 NVDA”“你需要我做什么”的 direct follow-up 澄清，并要求用户选择暂停、设置触发条件或做深度分析；该 heartbeat job 名义上应执行 NVDA 关键事件检查，不应在到点运行时反问用户。
+  - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced` 在 21:01 CST 转成 `Starlink Direct-to-Cell 是什么` 的科普问答；22:00 CST 同 job 又以 SPY / QQQ 大盘复盘为主体，未稳定围绕配置的持仓重大事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d` 在 22:00 CST 转成 `DeepSeek vs. Nvidia` 市场叙事分析，开头还写“这个不是证券买卖问题”；该 job 名义目标是 AAPL / NVDA / BE 关键事件，不是 DeepSeek 关系问答。
+  - `job_id=j_19dd9a1e` / `job=闪迪关键事件心跳提醒` / `target=web-user-c2776780c59d` 在 22:01 CST 明说 DataFetch 因工具预算限制未返回 WDC / SK hynix 报价与新闻，随后主体转成 WDC 与 SK hynix 是否直接竞争的关系分析；该 job 名义目标是闪迪关键事件心跳。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-08 14:02-18:01 CST（UTC 2026-08-08 06:02-10:01）。
   - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
   - 15:00 CST deliver preview 从“每 30 分钟的存储板块心跳监控已在运行中”退化成“你想了解什么”的 direct follow-up 询问；16:00 / 16:30 / 17:30 / 18:00 CST 多轮主体转成“光纤光缆与光电 / 光子产业链全景”，并写明“本轮为产业链知识问答 / 无即时价格监控需求”。该 heartbeat job 名义目标是存储板块关键事件监控，不是光纤光缆产业链知识问答。
