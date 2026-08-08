@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-08 22:02-2026-08-09 02:02 CST（UTC 2026-08-08 14:02-18:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 02:00 CST deliver preview 转成“现在美国处于什么时期”的宏观周期问答，并说明“这不是证券/股票/ETF/加密货币/金融市场问题”；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是美国宏观时期问答。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 01:30 CST deliver preview 主体转为博通（AVGO）公司分析与估值判断；该 heartbeat job 名义目标是中际旭创关键事件，不是 AVGO 单标的投研。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 01:31 CST deliver preview 以 fenced JSON / `status=triggered` 协议载荷组织 COHR 事件；该样本同时归入 JSON 载荷质量缺陷，但也说明该 job 的用户可见内容仍被单一工具结果 / 协议形态抢占。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-08 18:01-22:01 CST（UTC 2026-08-08 10:01-14:01）。
   - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
   - 21:00 CST deliver preview 退化成“你已经连续多轮只发 NVDA”“你需要我做什么”的 direct follow-up 澄清，并要求用户选择暂停、设置触发条件或做深度分析；该 heartbeat job 名义上应执行 NVDA 关键事件检查，不应在到点运行时反问用户。

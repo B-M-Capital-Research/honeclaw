@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-08-09 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-08 22:02-2026-08-09 02:02 CST 近窗统计 `run_start=96`、`run_finish=96`、`deliver=52`、`duplicate_suppressed=26`。
+    - parse / raw 信号继续分裂：`PlainTextTriggered=104`、`JsonNoop=32`、`PlainTextSuppressed=9`、`JsonUnknownStatus=2`、`PlainTextNoop=2`；同窗 raw preview 以 `<think>` 开头的信号有 96 条。
+    - 代表样本：22:30 `光模块板块关键事件心跳提醒` 落成 `JsonUnknownStatus`；23:30 与 02:00 多个 Web heartbeat 仍以 `PlainTextTriggered` 发送 `noop / 无新增 / 无全新 / 无触发` 正文；01:31 `AI与科技持仓观察关键事件心跳提醒` 继续以 fenced JSON / `status=triggered` 协议载荷进入 deliver。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-08 22:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-08 18:01-22:01 CST 近窗统计 `run_start=97`、`run_finish=100`、`deliver=48`、`duplicate_suppressed=15`。
