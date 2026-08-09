@@ -18,6 +18,14 @@
 
 ## 修复进展
 
+- `2026-08-09 22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-09 18:03-22:03 CST。
+    - 21:00 CST `光迅科技关键事件心跳提醒` 已作为既有 heartbeat job 触发，却回复“当前运行环境中未暴露定时任务（cron_job/scheduled_task）工具，无法直接创建每 30 分钟自动触发的监控任务”，并转向事件引擎 / `notification_prefs` 配置方案。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被任务创建 / 工具可用性 / 配置说明污染；不是新的独立根因。
+    - 因 heartbeat job 会发送无关内容、污染去重基线或漏过本轮检查，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
 - `2026-08-09 14:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-09 10:00-14:01 CST。

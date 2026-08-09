@@ -6,6 +6,14 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-08-09 22:03 CST）
+
+- `2026-08-09 18:03-22:03 CST` 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log` 记录 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` / `盘前美股要闻与SNDK/MU存储产业链日报`，任务正文包含宏观指标 `PCE`、PMI、FOMC、收益率、美元指数和多只存储链标的。
+  - 同轮日志显示投资 guard 批量探测 `["SNDK", "MU", "AI", "SSD", "NAND", "DRAM", "WDC", "STX", "SOXX", "QQQ", "LRCX", "KLAC", "AMAT"]`，其中产品/行业词 `AI`、`SSD` 被作为 explicit security 解析；随后 `session.persist_assistant detail=failed`，用户可见 scheduler failure 以正文开头落错为错误信息。
+  - 判断：该样本仍是 scheduler 任务正文、宏观/行业词与持仓列表进入实体 guard / resolver 后误抽或误拦，导致 scheduler fail-closed；与既有缺陷同根，不新建重复文档。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文，但同窗 source runtime 和其它 scheduler / heartbeat 仍在运行，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-31 10:02 CST）
 
 ## 运行态复核（2026-08-02 22:04 CST）

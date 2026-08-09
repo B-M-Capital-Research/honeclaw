@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-09 18:03-22:03 CST（UTC 2026-08-09 10:03-14:03）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 19:00 CST deliver preview 主体转为“你的推送日程 / 即时推阈值 / 最低严重度”等配置说明；21:30 CST deliver preview 转为通用“选股框架”；22:00 CST deliver preview 转为 DeepSeek 与 Nvidia 叙事分析。该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是配置查询、选股教程或单一叙事问答。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` 与 `job_id=j_19dd9a1e` / `job=闪迪关键事件心跳提醒`。
+  - 18:30 CST `中际旭创` deliver preview 转向 NBIS 投研；21:30 CST `闪迪` deliver preview 写“实体口径重要更新：SNDK 已退市，本轮触发实际监控对象切换”，主体转向 WDC / Western Digital。两者都偏离原始 heartbeat 标的约束。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-09 10:00-14:01 CST（UTC 2026-08-09 02:00-06:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 10:30 / 11:00 CST deliver preview 继续以 `NVDA x Lancium`、SpaceX 优先供货和能源基础设施为主体，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查；13:30 又只围绕 NVDA 新闻组织检查结果。
