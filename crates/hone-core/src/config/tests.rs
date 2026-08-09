@@ -96,6 +96,7 @@ fn assert_config_example_roots(root: &serde_yaml::Mapping) {
         "agent",
         "cloud",
         "discord",
+        "email",
         "event_engine",
         "feishu",
         "fmp",

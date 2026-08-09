@@ -24,6 +24,7 @@ pub mod text;
 pub mod time;
 pub mod tool_effect;
 pub mod tool_event;
+pub mod unsubscribe_token;
 
 pub const CHANNEL_DISABLED_EXIT_CODE: i32 = 20;
 

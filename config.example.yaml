@@ -124,6 +124,26 @@ nano_banana:
   download_dir: "gen_images"
 
 # Financial Modeling Prep API config
+# Outbound transactional email for push subscriptions (Cloudflare Email Sending).
+# Leave api_token empty and export CLOUDFLARE_API_TOKEN instead — a credential
+# that can send mail from a verified domain must never live in the repository.
+# With no token resolved the feature is simply off: pushes still deliver, they
+# just do not also arrive by mail.
+email:
+  account_id: "52dfc1420d779b403c08196b792ce926"
+  from_address: "no-reply@hone-claw.com"
+  from_name: "HONE"
+  api_token: ""
+  api_token_env: "CLOUDFLARE_API_TOKEN"
+  api_base: "https://api.cloudflare.com/client/v4"
+  timeout: 20
+  # Hone's own ceiling, below Cloudflare's daily quota, so a scheduler fault
+  # cannot burn the whole allowance in one morning.
+  daily_limit: 150
+  # Signs the login-free unsubscribe links carried by every delivered push.
+  # Environment-only. Empty means no link is emitted rather than a broken one.
+  unsubscribe_secret_env: "HONE_UNSUBSCRIBE_SECRET"
+
 fmp:
   # Legacy single-key fallback; prefer api_keys for new configs
   api_key: ""

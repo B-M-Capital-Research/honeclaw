@@ -80,6 +80,11 @@ pub struct EmailConfig {
     /// runaway scheduler cannot burn the whole allowance in one morning.
     #[serde(default = "default_email_daily_limit")]
     pub daily_limit: u32,
+    /// Environment variable holding the secret that signs unsubscribe links.
+    /// Environment-only, like every other signing secret here: a link that can
+    /// switch off someone's pushes must not be forgeable from the repository.
+    #[serde(default = "default_unsubscribe_secret_env")]
+    pub unsubscribe_secret_env: String,
 }
 
 impl Default for EmailConfig {
@@ -93,6 +98,7 @@ impl Default for EmailConfig {
             api_base: default_email_api_base(),
             timeout: default_email_timeout(),
             daily_limit: default_email_daily_limit(),
+            unsubscribe_secret_env: default_unsubscribe_secret_env(),
         }
     }
 }
@@ -122,6 +128,13 @@ impl EmailConfig {
             && !self.resolved_api_token().is_empty()
     }
 
+    /// Empty means no unsubscribe link is emitted at all. A push with no way
+    /// to stop it is worse than a push with no link, so the caller omits the
+    /// footer rather than printing one that cannot work.
+    pub fn resolved_unsubscribe_secret(&self) -> String {
+        env_value(&self.unsubscribe_secret_env)
+    }
+
     pub fn send_endpoint(&self) -> String {
         format!(
             "{}/accounts/{}/email/sending/send",
@@ -149,6 +162,10 @@ fn default_email_timeout() -> u64 {
 
 fn default_email_daily_limit() -> u32 {
     150
+}
+
+fn default_unsubscribe_secret_env() -> String {
+    "HONE_UNSUBSCRIBE_SECRET".to_string()
 }
 
 fn default_research_api_base() -> String {
