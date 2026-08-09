@@ -1559,3 +1559,18 @@
 - 本轮判断
   - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像完全停滞”；这会继续误导巡检、补发判断和调度排障。
   - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-10 02:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-08-09 22:03-2026-08-10 02:02 CST。
+  - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`，`sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`。
+  - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`，`session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`。
+  - `cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`，`web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`。
+  - 本窗口 `sessions.updated_at`、`sessions.last_message_at`、`session_messages.timestamp`、`session_messages.imported_at`、`cron_job_runs.executed_at`、`web_push_messages.created_at` 增量均为 0。
+- `data/logs/hone-console-page-source.log`
+  - 同窗 source runtime 继续写入真实运行信号：`HeartbeatDiag run_start=96`、`run_finish=96`、`deliver=48`、`duplicate_suppressed=27`。
+  - 02:00 CST 前后仍有多批 Web heartbeat `run_finish`、`deliver_preview` 与 event-engine `poller ok` / `poll failed` 信号。
+- 本轮判断
+  - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像完全停滞”；这会继续误导巡检、补发判断和调度排障。
+  - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
