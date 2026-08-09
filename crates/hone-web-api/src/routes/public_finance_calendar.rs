@@ -6,8 +6,8 @@
 //! paths as structured session metadata beside compatibility image markers.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Query, State};
@@ -17,7 +17,7 @@ use chrono::{Datelike, NaiveDate};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use hone_core::ActorIdentity;
 
@@ -25,6 +25,27 @@ use crate::routes::json_error;
 use crate::state::{AppState, PushEvent};
 
 const FINANCE_CALENDAR_SOURCE: &str = "hone.public.finance_calendar";
+
+/// Single-letter FMP suffixes that address an exchange rather than a US share
+/// class, so `SHEL.L` must not be rewritten the way `BRK.B` is.
+const FMP_SINGLE_LETTER_EXCHANGE_SUFFIXES: [&str; 4] = ["L", "F", "V", "T"];
+
+/// Status FMP uses when a symbol sits outside the account's subscription. The
+/// answer is stable for the life of the plan, so re-asking every calendar build
+/// only burns upstream quota.
+const FMP_PLAN_REJECTED_MARKER: &str = "HTTP 402";
+
+/// How long an out-of-plan symbol stays skipped. Short enough that a plan
+/// upgrade takes effect the same day without a restart.
+const FMP_UNSUPPORTED_SYMBOL_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+
+#[derive(Default)]
+struct UnsupportedFmpSymbols {
+    entries: HashMap<String, Instant>,
+}
+
+static FMP_UNSUPPORTED_SYMBOLS: LazyLock<Mutex<UnsupportedFmpSymbols>> =
+    LazyLock::new(|| Mutex::new(UnsupportedFmpSymbols::default()));
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct FinanceCalendarQuery {
@@ -569,11 +590,29 @@ fn calendar_symbols_from_holdings(holdings: &[hone_memory::portfolio::Holding]) 
 }
 
 fn normalize_calendar_symbol(raw: &str) -> String {
-    raw.trim()
+    let cleaned = raw
+        .trim()
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
         .collect::<String>()
-        .to_ascii_uppercase()
+        .to_ascii_uppercase();
+
+    // FMP addresses a US share class with a dash (`BRK-B`) and a non-US listing
+    // with an exchange suffix (`0700.HK`). Portfolios store the dotted share
+    // class, which FMP rejects with HTTP 402, so translate only that form and
+    // leave every exchange suffix alone.
+    let Some((base, suffix)) = cleaned.rsplit_once('.') else {
+        return cleaned;
+    };
+    if base.is_empty()
+        || base.contains('.')
+        || suffix.len() != 1
+        || !suffix.chars().all(|ch| ch.is_ascii_alphabetic())
+        || FMP_SINGLE_LETTER_EXCHANGE_SUFFIXES.contains(&suffix)
+    {
+        return cleaned;
+    }
+    format!("{base}-{suffix}")
 }
 
 enum EarningsFetchOutcome {
@@ -599,14 +638,33 @@ async fn fetch_earnings_for_symbols(
 
     let mut events = Vec::new();
     let mut errors = Vec::new();
+    let mut unsupported = Vec::new();
     for symbol in symbols {
+        if fmp_symbol_is_known_unsupported(symbol) {
+            unsupported.push(symbol.clone());
+            continue;
+        }
         match fetch_symbol_earnings(state, keys, symbol).await {
             Ok(value) => events.extend(earnings_events_from_value(symbol, &value, month)),
+            Err(error) if fmp_error_is_plan_rejection(&error) => {
+                // Not a failure to retry: the plan will answer the same way
+                // until it is upgraded, so remember it and stop asking.
+                remember_unsupported_fmp_symbol(symbol);
+                debug!(%symbol, "finance calendar FMP symbol outside subscription: {error}");
+                unsupported.push(symbol.clone());
+            }
             Err(error) => {
                 warn!(%symbol, "finance calendar FMP earnings fetch failed: {error}");
                 errors.push(format!("{symbol}: {error}"));
             }
         }
+    }
+
+    if !unsupported.is_empty() {
+        errors.push(format!(
+            "以下标的不在当前 FMP 订阅覆盖范围内，已跳过财报日期：{}",
+            unsupported.join("、")
+        ));
     }
 
     if errors.is_empty() {
@@ -616,6 +674,32 @@ async fn fetch_earnings_for_symbols(
     } else {
         EarningsFetchOutcome::Partial { events, errors }
     }
+}
+
+fn fmp_error_is_plan_rejection(error: &str) -> bool {
+    error.contains(FMP_PLAN_REJECTED_MARKER)
+}
+
+fn fmp_symbol_is_known_unsupported(symbol: &str) -> bool {
+    let Ok(mut cache) = FMP_UNSUPPORTED_SYMBOLS.lock() else {
+        return false;
+    };
+    let now = Instant::now();
+    cache
+        .entries
+        .retain(|_, seen_at| now.duration_since(*seen_at) < FMP_UNSUPPORTED_SYMBOL_TTL);
+    cache.entries.contains_key(symbol)
+}
+
+fn remember_unsupported_fmp_symbol(symbol: &str) {
+    if let Ok(mut cache) = FMP_UNSUPPORTED_SYMBOLS.lock() {
+        cache.entries.insert(symbol.to_string(), Instant::now());
+    }
+}
+
+/// FMP error bodies arrive as free-form text; keep them on one log line.
+fn collapse_fmp_body_whitespace(body: &str) -> String {
+    body.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 async fn fetch_symbol_earnings(
@@ -658,11 +742,21 @@ pub(crate) async fn fetch_fmp_json_once(
         .text()
         .await
         .map_err(|error| sanitize_fmp_error(&format!("FMP 响应读取失败: {error}")))?;
-    let value: Value = serde_json::from_str(&body)
-        .map_err(|error| sanitize_fmp_error(&format!("FMP JSON 解析失败: {error}")))?;
     if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
         return Err(format!("FMP Key 无效（HTTP {status}）"));
     }
+    // FMP answers plan and quota rejections with plain text, not JSON. Parsing
+    // before checking the status turned every one of them into a misleading
+    // "JSON 解析失败: expected value at line 1 column 1".
+    if !status.is_success() {
+        return Err(sanitize_fmp_error(&format!(
+            "FMP 请求被拒绝（HTTP {}）: {}",
+            status.as_u16(),
+            collapse_fmp_body_whitespace(&body)
+        )));
+    }
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|error| sanitize_fmp_error(&format!("FMP JSON 解析失败: {error}")))?;
     if let Some(message) = value.get("Error Message").and_then(|value| value.as_str()) {
         return Err(sanitize_fmp_error(message));
     }
@@ -983,8 +1077,71 @@ mod tests {
         ];
         assert_eq!(
             calendar_symbols_from_holdings(&holdings),
-            vec!["AAPL".to_string(), "BRK.B".to_string()]
+            vec!["AAPL".to_string(), "BRK-B".to_string()]
         );
+    }
+
+    #[test]
+    fn finance_calendar_symbol_rewrites_share_class_but_keeps_exchange_suffix() {
+        // FMP serves BRK-B and rejects BRK.B with HTTP 402.
+        assert_eq!(normalize_calendar_symbol("brk.b"), "BRK-B");
+        assert_eq!(normalize_calendar_symbol("BF.A"), "BF-A");
+
+        // Exchange suffixes must survive untouched, including the single-letter
+        // ones that would otherwise look like a share class.
+        assert_eq!(normalize_calendar_symbol("0700.HK"), "0700.HK");
+        assert_eq!(normalize_calendar_symbol("688167.SH"), "688167.SH");
+        assert_eq!(normalize_calendar_symbol("SHEL.L"), "SHEL.L");
+        assert_eq!(normalize_calendar_symbol("AAPL"), "AAPL");
+        assert_eq!(normalize_calendar_symbol("BRK-B"), "BRK-B");
+
+        // Degenerate input must not grow a dash out of nowhere.
+        assert_eq!(normalize_calendar_symbol(".B"), ".B");
+        assert_eq!(normalize_calendar_symbol("A.B.C"), "A.B.C");
+        assert_eq!(normalize_calendar_symbol("BRK.12"), "BRK.12");
+    }
+
+    #[test]
+    fn fmp_plan_rejection_is_reported_with_its_status_not_as_a_parse_error() {
+        // Regression: the body of an FMP 402 is plain text, and parsing it
+        // before checking the status reported "JSON 解析失败" for what is
+        // really a subscription limit.
+        let rejection = sanitize_fmp_error(&format!(
+            "FMP 请求被拒绝（HTTP {}）: {}",
+            402,
+            collapse_fmp_body_whitespace(
+                "Premium Query Parameter: 'Special Endpoint :\n  This value set for 'symbol' is not available"
+            )
+        ));
+
+        assert!(rejection.contains("HTTP 402"));
+        assert!(!rejection.contains("JSON 解析失败"));
+        assert!(!rejection.contains('\n'));
+        assert!(fmp_error_is_plan_rejection(&rejection));
+        assert!(!fmp_error_is_plan_rejection(
+            "FMP JSON 解析失败: expected value at line 1 column 1"
+        ));
+        assert!(!fmp_error_is_plan_rejection("FMP Key 无效（HTTP 401）"));
+    }
+
+    #[test]
+    fn unsupported_fmp_symbols_are_remembered_and_expire() {
+        let symbol = "0700.HK-test-remembered";
+        assert!(!fmp_symbol_is_known_unsupported(symbol));
+
+        remember_unsupported_fmp_symbol(symbol);
+        assert!(fmp_symbol_is_known_unsupported(symbol));
+
+        // An entry older than the TTL must not keep a symbol suppressed after a
+        // plan upgrade.
+        {
+            let mut cache = FMP_UNSUPPORTED_SYMBOLS.lock().expect("cache");
+            let expired = Instant::now()
+                .checked_sub(FMP_UNSUPPORTED_SYMBOL_TTL + Duration::from_secs(1))
+                .expect("expired instant");
+            cache.entries.insert(symbol.to_string(), expired);
+        }
+        assert!(!fmp_symbol_is_known_unsupported(symbol));
     }
 
     #[test]
