@@ -1,12 +1,17 @@
 import { Show, createSignal, onMount } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 
 import { CONTENT } from "@/lib/public-content";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicSubscriptionManager } from "@/components/public-subscription-manager";
+import { PublicPushInbox } from "@/components/public-push-inbox";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { getPublicAuthMe } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
+import {
+  publicPushUnreadCount,
+  setPublicPushUnreadCount,
+} from "@/lib/public-push-unread";
 import {
   cachedPublicUser,
   hasCachedPublicUser,
@@ -25,10 +30,15 @@ import "./public-pushes.css";
  */
 export default function PublicPushesPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Same treatment as the account page: paint from what is already known and
   // revalidate behind it rather than blanking the viewport for a round-trip.
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
   const [loading, setLoading] = createSignal(!hasCachedPublicUser());
+  const view = () => searchParams.view === "manage" ? "manage" : "messages";
+  const setView = (next: "messages" | "manage") => {
+    setSearchParams({ view: next === "manage" ? "manage" : undefined }, { replace: true });
+  };
 
   const load = async () => {
     try {
@@ -57,9 +67,33 @@ export default function PublicPushesPage() {
           <PublicWorkspaceShell
             active="pushes"
             userName={workspaceUserName(currentUser().user_id)}
+            pushUnreadCount={
+              view() === "messages" ? publicPushUnreadCount() : undefined
+            }
           >
             <main class="public-pushes-main">
-              <PublicSubscriptionManager />
+              <nav class="public-pushes-tabs" aria-label={CONTENT.chat_page.workspace.pushes_tab}>
+                <button
+                  type="button"
+                  classList={{ "is-active": view() === "messages" }}
+                  onClick={() => setView("messages")}
+                >
+                  {CONTENT.chat_page.push_center.messages_tab}
+                </button>
+                <button
+                  type="button"
+                  classList={{ "is-active": view() === "manage" }}
+                  onClick={() => setView("manage")}
+                >
+                  {CONTENT.chat_page.push_center.manage_tab}
+                </button>
+              </nav>
+              <Show
+                when={view() === "messages"}
+                fallback={<PublicSubscriptionManager />}
+              >
+                <PublicPushInbox onUnreadCountChange={setPublicPushUnreadCount} />
+              </Show>
               <button
                 type="button"
                 class="public-pushes-back"

@@ -30,6 +30,8 @@ describe("public chat visual contract", () => {
     expect(workspace).toContain("CONTENT.chat_page.workspace.pushes_tab");
     expect(workspace).toContain("CONTENT.chat_page.workspace.insights");
     expect(workspace).toContain("CONTENT.chat_page.workspace.me");
+    expect(workspace).toContain("props.unreadPushCount > 0");
+    expect(chat).toContain("unreadPushCount={pushUnreadCount()}");
     expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(workspaceCss).toContain("grid-template-columns: repeat(4,1fr)");
     expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");

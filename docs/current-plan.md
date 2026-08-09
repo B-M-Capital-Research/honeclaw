@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-09
-状态：有 12 个活跃任务
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public 推送消息中心与未读状态闭环**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-push-inbox-state-closure.md`
+  - 摘要：恢复 `/pushes` 的实际消息内容与完整详情，按订阅任务分类，并让顶部、侧栏和移动端底部入口共享服务端确认的未读红点；订阅管理保留为同页独立视图
 
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`

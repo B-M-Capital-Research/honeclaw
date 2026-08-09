@@ -15,23 +15,14 @@ import {
 } from "@/components/public-agent-workspace";
 import { PublicPrefsButton } from "@/components/public-prefs-button";
 import {
-  PublicPushCenter,
-  PublicPushDetailDialog,
-} from "@/components/public-push-center";
-import {
   getPublicChatBootstrap,
   getPublicPushes,
-  openPublicPush,
 } from "@/lib/api";
-import {
-  latestUnreadPushId,
-  mergePublicPushItems,
-} from "@/lib/public-chat";
 import { publicWorkspaceResearchFromHistory } from "@/lib/public-workspace-research";
-import type {
-  PublicPushDetail,
-  PublicPushListItem,
-} from "@/lib/types";
+import {
+  publicPushUnreadCount,
+  setPublicPushUnreadCount,
+} from "@/lib/public-push-unread";
 import "@/pages/public-foundation.css";
 import "@/pages/public-site.css";
 import "@/pages/public-agent-workspace.css";
@@ -47,6 +38,8 @@ export function PublicWorkspaceShell(
     topbarLabel?: string;
     searchPlaceholder?: string;
     onSearch?: (value: string) => void;
+    /** The push page owns this while it performs authoritative read-through. */
+    pushUnreadCount?: number;
   }>,
 ) {
   const navigate = useNavigate();
@@ -56,17 +49,6 @@ export function PublicWorkspaceShell(
   >([]);
   const [researchLoading, setResearchLoading] = createSignal(true);
   const [historyDrawerOpen, setHistoryDrawerOpen] = createSignal(false);
-  const [pushCenterOpen, setPushCenterOpen] = createSignal(false);
-  const [pushItems, setPushItems] = createSignal<PublicPushListItem[]>([]);
-  const [pushUnreadCount, setPushUnreadCount] = createSignal(0);
-  const [pushNextBefore, setPushNextBefore] = createSignal<string>();
-  const [pushLoading, setPushLoading] = createSignal(false);
-  const [pushLoadingMore, setPushLoadingMore] = createSignal(false);
-  const [pushError, setPushError] = createSignal<string>();
-  const [pushDetailOpen, setPushDetailOpen] = createSignal(false);
-  const [pushDetailLoading, setPushDetailLoading] = createSignal(false);
-  const [pushDetailError, setPushDetailError] = createSignal<string>();
-  const [pushDetail, setPushDetail] = createSignal<PublicPushDetail>();
   let disposed = false;
   let bootstrapController: AbortController | undefined;
 
@@ -103,96 +85,28 @@ export function PublicWorkspaceShell(
     }
   };
 
-  const loadPushes = async (mode: "reset" | "more" = "reset") => {
-    if (mode === "more") {
-      if (!pushNextBefore() || pushLoadingMore()) return;
-      setPushLoadingMore(true);
-    } else {
-      if (pushLoading()) return;
-      setPushLoading(true);
-      setPushError(undefined);
-    }
+  const pushUnreadCount = () => props.pushUnreadCount ?? publicPushUnreadCount();
+
+  const loadPushUnreadCount = async () => {
+    if (props.pushUnreadCount !== undefined) return;
     try {
-      const payload = await getPublicPushes(
-        mode === "more" ? pushNextBefore() : undefined,
-      );
+      const payload = await getPublicPushes(undefined, 1);
       if (disposed) return;
-      setPushItems((current) =>
-        mode === "more"
-          ? mergePublicPushItems(current, payload.items)
-          : payload.items,
-      );
-      setPushUnreadCount(pushCenterOpen() ? 0 : payload.unread_count);
-      setPushNextBefore(payload.next_before ?? undefined);
-    } catch (error) {
-      if (!disposed) {
-        setPushError(error instanceof Error ? error.message : String(error));
-      }
-    } finally {
-      if (!disposed) {
-        setPushLoading(false);
-        setPushLoadingMore(false);
-      }
+      setPublicPushUnreadCount(payload.unread_count);
+    } catch {
+      // A badge refresh must never interrupt the workspace itself.
     }
   };
 
-  const acknowledgePushCenter = async (unreadBeforeOpen: number) => {
-    let items = pushItems();
-    let unread = unreadBeforeOpen;
-    try {
-      if (items.length === 0) {
-        const payload = await getPublicPushes();
-        if (disposed) return;
-        items = payload.items;
-        unread = payload.unread_count;
-        setPushItems(payload.items);
-        setPushNextBefore(payload.next_before ?? undefined);
-      }
-      const latestPushId = latestUnreadPushId(items, unread);
-      if (!latestPushId) return;
-      const payload = await openPublicPush(latestPushId);
-      if (!disposed) setPushUnreadCount(payload.unread_count);
-    } catch (error) {
-      if (!disposed) {
-        setPushUnreadCount(unreadBeforeOpen || unread);
-        setPushError(error instanceof Error ? error.message : String(error));
-      }
-    }
-  };
-
-  const openPushCenter = () => {
-    const unreadBeforeOpen = pushUnreadCount();
-    setPushCenterOpen(true);
-    setPushUnreadCount(0);
-    void acknowledgePushCenter(unreadBeforeOpen);
-  };
-
-  const openPushListItem = async (item: PublicPushListItem) => {
-    setPushDetailOpen(true);
-    setPushDetail(undefined);
-    setPushDetailError(undefined);
-    setPushDetailLoading(true);
-    try {
-      const payload = await openPublicPush(item.push_id);
-      if (disposed) return;
-      setPushDetail(payload.push);
-      setPushUnreadCount(payload.unread_count);
-    } catch (error) {
-      if (!disposed) {
-        setPushDetailError(error instanceof Error ? error.message : String(error));
-      }
-    } finally {
-      if (!disposed) setPushDetailLoading(false);
-    }
-  };
+  const openPushCenter = () => navigate("/pushes");
 
   onMount(() => {
     void loadResearch();
-    void loadPushes();
+    void loadPushUnreadCount();
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
       void loadResearch();
-      void loadPushes();
+      void loadPushUnreadCount();
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -213,6 +127,7 @@ export function PublicWorkspaceShell(
         activeMode="conversation"
         activeSection={props.active}
         onPushes={() => navigate("/pushes")}
+        unreadPushCount={pushUnreadCount()}
         communityUnread={props.communityUnread ?? false}
         onNewResearch={startNewResearch}
         onSelectResearch={openResearch}
@@ -239,7 +154,7 @@ export function PublicWorkspaceShell(
           preferences={<PublicPrefsButton />}
           onMenu={() => setHistoryDrawerOpen(true)}
           onPushes={openPushCenter}
-        onAccount={() => navigate("/me")}
+          onAccount={() => navigate("/me")}
         />
         <main class="public-workspace-content">{props.children}</main>
       </div>
@@ -247,6 +162,7 @@ export function PublicWorkspaceShell(
         activeMode="conversation"
         activeSection={props.active}
         communityUnread={props.communityUnread ?? false}
+        unreadPushCount={pushUnreadCount()}
         onHome={goAgent}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
@@ -269,24 +185,6 @@ export function PublicWorkspaceShell(
         onHome={goAgent}
         onInsights={() => navigate("/community")}
         onAccount={() => navigate("/me")}
-      />
-      <PublicPushCenter
-        open={pushCenterOpen()}
-        items={pushItems()}
-        loading={pushLoading()}
-        loadingMore={pushLoadingMore()}
-        error={pushError()}
-        nextBefore={pushNextBefore()}
-        onClose={() => setPushCenterOpen(false)}
-        onOpenPush={(item) => void openPushListItem(item)}
-        onLoadMore={() => void loadPushes("more")}
-      />
-      <PublicPushDetailDialog
-        open={pushDetailOpen()}
-        detail={pushDetail()}
-        loading={pushDetailLoading()}
-        error={pushDetailError()}
-        onClose={() => setPushDetailOpen(false)}
       />
     </div>
   );

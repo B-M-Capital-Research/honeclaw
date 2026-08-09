@@ -12,6 +12,11 @@ const startup = readFileSync(
 const css = readFileSync(new URL("./public-workspace.css", import.meta.url), "utf8");
 const community = readFileSync(new URL("./public-community.tsx", import.meta.url), "utf8");
 const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
+const pushes = readFileSync(new URL("./public-pushes.tsx", import.meta.url), "utf8");
+const pushInbox = readFileSync(
+  new URL("../components/public-push-inbox.tsx", import.meta.url),
+  "utf8",
+);
 const adminUsage = readFileSync(
   new URL("../components/public-admin-usage-panel.tsx", import.meta.url),
   "utf8",
@@ -29,9 +34,21 @@ describe("public workspace page contract", () => {
     expect(community).toContain('<PublicWorkspaceShell\n          active="insights"');
     expect(me).toContain('<PublicWorkspaceShell active="me"');
     expect(shell).toContain("<PublicPrefsButton");
-    expect(shell).toContain("<PublicPushCenter");
+    expect(shell).toContain('const openPushCenter = () => navigate("/pushes")');
+    expect(shell).toContain("unreadPushCount={pushUnreadCount()}");
     expect(shell).toContain("getPublicChatBootstrap");
     expect(shell).toContain("publicWorkspaceResearchFromHistory");
+  });
+
+  it("keeps push content and subscription management in one state-closed destination", () => {
+    expect(pushes).toContain("<PublicPushInbox");
+    expect(pushes).toContain("<PublicSubscriptionManager");
+    expect(pushes).toContain('searchParams.view === "manage"');
+    expect(pushes).toContain('view() === "messages" ? publicPushUnreadCount() : undefined');
+    expect(pushInbox).toContain("publicPushCategories(items())");
+    expect(pushInbox).toContain("latestUnreadPushId(loadedItems, unreadCount)");
+    expect(pushInbox).toContain("props.onUnreadCountChange(payload.unread_count)");
+    expect(pushInbox).not.toContain("onUnreadCountChange(0)");
   });
 
   it("uses a continuous insight stream and separate desktop/mobile tracking views", () => {

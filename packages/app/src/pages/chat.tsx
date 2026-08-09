@@ -36,7 +36,6 @@ import {
 } from "@/components/finance-calendar-card";
 import { FinanceCalendarMessageImage } from "@/components/finance-calendar-message";
 import {
-  PublicPushCenter,
   PublicPushDetailDialog,
   PushNavIcon,
   PushUnreadDot,
@@ -82,7 +81,6 @@ import {
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
-  latestUnreadPushId,
   PUBLIC_CHAT_CONTROLLED_PINCH_SELECTOR,
   PUBLIC_CHAT_VIEWPORT_CONTENT,
   PUBLIC_RESTORE_TIMEOUT_MS,
@@ -100,7 +98,6 @@ import {
   isPublicChatRestoreCurrent,
   isPublicChatTerminalStreamEvent,
   mergePublicHistoryWindow,
-  mergePublicPushItems,
   shouldPollPublicChatRecovery,
   shouldRecoverPublicChatAfterEof,
   shouldRetryPublicRestore,
@@ -116,6 +113,10 @@ import {
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
 import {
+  publicPushUnreadCount,
+  setPublicPushUnreadCount,
+} from "@/lib/public-push-unread";
+import {
   daySeparatorLabel,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
@@ -124,7 +125,6 @@ import type {
   PublicCommunityContent,
   PublicAuthUserInfo,
   PublicPushDetail,
-  PublicPushListItem,
 } from "@/lib/types";
 import type {
   PublicChatAttachment,
@@ -2505,13 +2505,8 @@ export default function PublicChatPage() {
   const [historyStart, setHistoryStart] = createSignal(0);
   const [historyNextBefore, setHistoryNextBefore] = createSignal<number>();
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
-  const [pushCenterOpen, setPushCenterOpen] = createSignal(false);
-  const [pushItems, setPushItems] = createSignal<PublicPushListItem[]>([]);
-  const [pushUnreadCount, setPushUnreadCount] = createSignal(0);
-  const [pushNextBefore, setPushNextBefore] = createSignal<string>();
-  const [pushLoading, setPushLoading] = createSignal(false);
-  const [pushLoadingMore, setPushLoadingMore] = createSignal(false);
-  const [pushError, setPushError] = createSignal<string>();
+  const pushUnreadCount = publicPushUnreadCount;
+  const setPushUnreadCount = setPublicPushUnreadCount;
   const [pushDetailOpen, setPushDetailOpen] = createSignal(false);
   const [pushDetailLoading, setPushDetailLoading] = createSignal(false);
   const [pushDetailError, setPushDetailError] = createSignal<string>();
@@ -2661,62 +2656,18 @@ export default function PublicChatPage() {
     });
   });
 
-  const loadPushes = async (mode: "reset" | "more" = "reset") => {
-    if (mode === "more") {
-      if (!pushNextBefore() || pushLoadingMore()) return;
-      setPushLoadingMore(true);
-    } else {
-      if (pushLoading()) return;
-      setPushLoading(true);
-      setPushError(undefined);
-    }
+  const refreshPushUnread = async () => {
     try {
-      const payload = await getPublicPushes(
-        mode === "more" ? pushNextBefore() : undefined,
-      );
-      setPushItems((current) =>
-        mode === "more"
-          ? mergePublicPushItems(current, payload.items)
-          : payload.items,
-      );
-      setPushUnreadCount(pushCenterOpen() ? 0 : payload.unread_count);
-      setPushNextBefore(payload.next_before ?? undefined);
-    } catch (error) {
-      setPushError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPushLoading(false);
-      setPushLoadingMore(false);
-    }
-  };
-
-  const acknowledgePushCenter = async (unreadBeforeOpen: number) => {
-    let items = pushItems();
-    let unread = unreadBeforeOpen;
-    try {
-      if (items.length === 0) {
-        const payload = await getPublicPushes();
-        items = payload.items;
-        unread = payload.unread_count;
-        setPushItems(payload.items);
-        setPushNextBefore(payload.next_before ?? undefined);
-      }
-      const latestPushId = latestUnreadPushId(items, unread);
-      if (!latestPushId) return;
-      const payload = await openPublicPush(latestPushId);
+      const payload = await getPublicPushes(undefined, 1);
       setPushUnreadCount(payload.unread_count);
-    } catch (error) {
-      setPushUnreadCount(unreadBeforeOpen || unread);
-      setPushError(error instanceof Error ? error.message : String(error));
+    } catch {
+      // Badge availability must not interrupt the primary chat flow.
     }
   };
 
   const openPushCenter = () => {
-    // The bell used to open a read-only modal, which is where the "I cannot
-    // manage these" feeling came from. It now goes to the section that can
-    // actually change them; the unread badge is still cleared here.
-    const unreadBeforeOpen = pushUnreadCount();
-    setPushUnreadCount(0);
-    void acknowledgePushCenter(unreadBeforeOpen);
+    // The destination owns read-through and only clears the badge after the
+    // server confirms it. Navigating must never optimistically mutate unread.
     navigate("/pushes");
   };
 
@@ -2761,14 +2712,6 @@ export default function PublicChatPage() {
       setPushDetailLoading(false);
     }
   };
-
-  const openPushListItem = (item: PublicPushListItem) =>
-    openScheduledPush({
-      pushId: item.push_id,
-      title: item.title,
-      summary: item.summary,
-      createdAt: item.created_at,
-    });
 
   const loadOlderMessages = async () => {
     if (!hasOlderMessages() || loadingOlderMessages()) return;
@@ -2902,9 +2845,7 @@ export default function PublicChatPage() {
   const logoutPublicChat = () => {
     void publicLogout();
     pushUserId = undefined;
-    setPushCenterOpen(false);
     setPushDetailOpen(false);
-    setPushItems([]);
     setPushUnreadCount(0);
     setCommunityUnread(false);
     setCurrentUser(null);
@@ -3184,7 +3125,9 @@ export default function PublicChatPage() {
   createEffect(() => {
     if (authState() !== "ready" || !currentUser()) return;
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refreshCommunityUnread();
+      if (document.visibilityState !== "visible") return;
+      void refreshCommunityUnread();
+      void refreshPushUnread();
     };
     const intervalId = window.setInterval(refreshWhenVisible, 60_000);
     window.addEventListener("focus", refreshWhenVisible);
@@ -3201,10 +3144,8 @@ export default function PublicChatPage() {
     if (authState() !== "ready" || !userId) return;
     if (pushUserId === userId) return;
     pushUserId = userId;
-    setPushItems([]);
     setPushUnreadCount(0);
-    setPushNextBefore(undefined);
-    void loadPushes("reset");
+    void refreshPushUnread();
   });
 
   onMount(() => {
@@ -3315,16 +3256,6 @@ export default function PublicChatPage() {
       setPushUnreadCount((current) =>
         unreadCountAfterScheduledPush(current, payload.unread_count),
       );
-      if (payload.push_id) {
-        const item: PublicPushListItem = {
-          push_id: payload.push_id,
-          job_id: payload.job_id ?? "",
-          title,
-          summary,
-          created_at: payload.created_at ?? new Date().toISOString(),
-        };
-        setPushItems((current) => mergePublicPushItems([item], current));
-      }
       if (shouldStayAtBottom) pinToBottom(1200);
     };
 
@@ -3906,6 +3837,7 @@ export default function PublicChatPage() {
                   activeMode="conversation"
                   activeSection="agent"
                   communityUnread={communityUnread()}
+                  unreadPushCount={pushUnreadCount()}
                   onHome={startNewConversation}
                   onInsights={() => navigate("/community")}
                   onAgent={startNewConversation}
@@ -3937,18 +3869,6 @@ export default function PublicChatPage() {
               </>
         </Match>
       </Switch>
-
-      <PublicPushCenter
-        open={pushCenterOpen()}
-        items={pushItems()}
-        loading={pushLoading()}
-        loadingMore={pushLoadingMore()}
-        error={pushError()}
-        nextBefore={pushNextBefore()}
-        onClose={() => setPushCenterOpen(false)}
-        onOpenPush={openPushListItem}
-        onLoadMore={() => void loadPushes("more")}
-      />
 
       <PublicPushDetailDialog
         open={pushDetailOpen()}

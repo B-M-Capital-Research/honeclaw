@@ -2,9 +2,197 @@
    a surface written against literals is a surface that stops flipping with
    the rest of the product. */
 .public-pushes-main {
-  max-width: 46rem;
+  max-width: 54rem;
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
+}
+
+.public-pushes-tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-bottom: 2rem;
+  padding: 0.25rem;
+  border: 1px solid var(--hone-paper-200);
+  border-radius: 999px;
+  background: var(--hone-control-surface);
+}
+
+.public-pushes-tabs button {
+  min-height: 2.35rem;
+  padding: 0.45rem 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.public-pushes-tabs button.is-active {
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  box-shadow: 0 2px 10px rgb(20 24 21 / 0.08);
+}
+
+.public-push-inbox-heading > span {
+  color: var(--hone-coral-600);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.public-push-inbox-heading h2 {
+  margin: 0.45rem 0 0.35rem;
+  color: var(--hone-ink-950);
+  font-size: 1.45rem;
+}
+
+.public-push-inbox-heading p {
+  margin: 0;
+  color: var(--hone-ink-600);
+  line-height: 1.6;
+}
+
+.public-push-categories {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.5rem -0.1rem 1rem;
+  padding: 0.1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.public-push-categories::-webkit-scrollbar { display: none; }
+
+.public-push-categories button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--hone-paper-200);
+  border-radius: 999px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.public-push-categories button.is-active {
+  border-color: var(--hone-coral-500);
+  color: var(--hone-coral-600);
+}
+
+.public-push-categories i {
+  min-width: 1.2rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-600);
+  font-size: 0.7rem;
+  font-style: normal;
+  text-align: center;
+}
+
+.public-push-inbox-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.public-push-inbox-item {
+  width: 100%;
+  display: grid;
+  gap: 0.7rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--hone-paper-200);
+  border-radius: 16px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.public-push-inbox-item:hover {
+  border-color: var(--hone-coral-500);
+  transform: translateY(-1px);
+}
+
+.public-push-inbox-item-meta,
+.public-push-inbox-item-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.public-push-inbox-item-meta span {
+  color: var(--hone-coral-600);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.public-push-inbox-item-meta time {
+  color: var(--hone-ink-500);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.public-push-inbox-item strong {
+  font-size: 0.96rem;
+  font-weight: 620;
+  line-height: 1.55;
+}
+
+.public-push-inbox-item-action {
+  justify-content: flex-start;
+  color: var(--hone-ink-600);
+  font-size: 0.78rem;
+}
+
+.public-push-inbox-item-action span { color: var(--hone-coral-600); }
+
+.public-push-inbox-state,
+.public-push-inbox-empty {
+  margin-top: 1rem;
+  padding: 2.5rem 1.25rem;
+  border: 1px dashed var(--hone-paper-200);
+  border-radius: 16px;
+  color: var(--hone-ink-600);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.public-push-inbox-empty strong { color: var(--hone-ink-950); }
+.public-push-inbox-empty p { margin: 0.4rem 0 0; }
+.public-push-inbox-state.is-error { color: var(--hone-error-600); }
+
+.public-push-inbox-state.is-error button,
+.public-push-inbox-more {
+  display: block;
+  margin: 0.8rem auto 0;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--hone-paper-200);
+  border-radius: 999px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.public-push-read-warning {
+  margin: 1rem 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--hone-error-600) 35%, transparent);
+  border-radius: 10px;
+  color: var(--hone-error-600);
+  font-size: 0.8rem;
 }
 
 .public-pushes-loading {
@@ -223,6 +411,25 @@
 }
 
 @media (max-width: 640px) {
+  .public-pushes-main {
+    padding: 1.25rem 1rem calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .public-pushes-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-bottom: 1.5rem;
+  }
+
+  .public-push-inbox-item { padding: 1rem; }
+
+  .public-push-inbox-item-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
   .public-subscription-list li {
     flex-direction: column;
     align-items: stretch;
