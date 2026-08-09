@@ -70,7 +70,14 @@ const MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES: usize = 6;
 const MAX_AGENT_OWNED_FINANCE_TOOL_CALLS: u32 = 24;
 const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
 const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
-const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
+// One retry was not enough in practice: production drafts kept failing the same
+// "cite the target date and the source URL in the cause paragraph" rule on the
+// single correction round and degraded to the deterministic gap answer. The
+// citation itself must stay the model's job — stapling an eligible URL onto a
+// cause paragraph mechanically would manufacture exactly the evidence link this
+// check exists to verify — so the only honest lever is one more attempt. Both
+// rounds still sit far below the agent's 18-iteration ceiling.
+const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 2;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const MAX_LISTING_FINAL_CORRECTIONS: u32 = 1;
 /// The one structural marker an investment answer must open with. It is the
@@ -5657,6 +5664,12 @@ fn effective_global_tool_budget(
     Some(limit.saturating_sub(AGENT_OWNED_FINANCE_RESERVED_OPEN_RESEARCH_CALLS))
 }
 
+/// Pure budget check: two of the three call sites use it as a feasibility probe
+/// (`.is_none()` / `.is_some()`) rather than to reject anything, so this must
+/// stay side-effect free. Logging it here reported a rejection that never
+/// happened, and at heartbeat budgets (global 3 / web_search 1 / data_fetch 2)
+/// that buried real errors in the channel journals. The site that actually
+/// rejects a call does the logging.
 fn tool_budget_error(
     tool_name: &str,
     max_tool_calls: Option<u32>,
@@ -5667,11 +5680,6 @@ fn tool_budget_error(
     if let Some(limit) = max_tool_calls
         && total_tool_calls >= limit
     {
-        tracing::warn!(
-            tool = tool_name,
-            limit,
-            "function_calling tool call rejected by global budget"
-        );
         return Some(serde_json::json!({
             "error": format!("tool call limit reached ({limit})")
         }));
@@ -5682,12 +5690,6 @@ fn tool_budget_error(
     };
     let used = tool_call_counts.get(tool_name).copied().unwrap_or(0);
     if used >= limit {
-        tracing::warn!(
-            tool = tool_name,
-            limit,
-            used,
-            "function_calling tool call rejected by per-tool budget"
-        );
         return Some(serde_json::json!({
             "error": format!("tool `{tool_name}` call limit reached ({limit})")
         }));
@@ -6956,6 +6958,20 @@ impl Agent for FunctionCallingAgent {
                                         total_tool_calls,
                                         &tool_call_counts,
                                     ) {
+                                        // Reaching a configured budget is the
+                                        // designed stop, not a fault: the model
+                                        // gets the error and finalizes.
+                                        tracing::debug!(
+                                            session_id = %context.session_id,
+                                            iteration = iterations,
+                                            tool = tool_name,
+                                            total_tool_calls,
+                                            detail = %error_result
+                                                .get("error")
+                                                .and_then(|value| value.as_str())
+                                                .unwrap_or_default(),
+                                            "function_calling tool call rejected by budget"
+                                        );
                                         // Reserved open-research slots are not
                                         // exhaustion: the turn can still search
                                         // the user's actual question, so the
@@ -7458,6 +7474,40 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+
+    #[test]
+    fn tool_budget_error_is_a_pure_probe_over_its_inputs() {
+        // Two of the three call sites use this as a feasibility probe rather
+        // than to reject a call, so it must decide purely from its arguments
+        // and never report a rejection on its own.
+        let limits = HashMap::from([("web_search".to_string(), 1)]);
+        let counts = HashMap::from([("web_search".to_string(), 1)]);
+        let empty_counts: HashMap<String, u32> = HashMap::new();
+
+        // Under both budgets: nothing to reject.
+        assert!(tool_budget_error("web_search", Some(3), &limits, 0, &empty_counts).is_none());
+        // Per-tool budget spent, global budget still open.
+        let per_tool = tool_budget_error("web_search", Some(3), &limits, 1, &counts)
+            .expect("per-tool budget should reject");
+        assert_eq!(
+            per_tool["error"],
+            json!("tool `web_search` call limit reached (1)")
+        );
+        // Global budget takes precedence over the per-tool one.
+        let global = tool_budget_error("web_search", Some(3), &limits, 3, &empty_counts)
+            .expect("global budget should reject");
+        assert_eq!(global["error"], json!("tool call limit reached (3)"));
+        // A tool without its own limit rides only the global budget.
+        assert!(tool_budget_error("data_fetch", Some(3), &limits, 2, &counts).is_none());
+        // No global budget configured means no global rejection.
+        assert!(tool_budget_error("data_fetch", None, &limits, 999, &counts).is_none());
+
+        // Repeating a probe must return the same answer.
+        assert_eq!(
+            tool_budget_error("web_search", Some(3), &limits, 1, &counts),
+            tool_budget_error("web_search", Some(3), &limits, 1, &counts)
+        );
+    }
 
     #[test]
     fn hidden_stream_formatter_suppresses_minimax_tool_protocol() {
