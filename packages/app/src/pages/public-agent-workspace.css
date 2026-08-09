@@ -280,7 +280,7 @@
     position: fixed;
     inset: calc(66px + env(safe-area-inset-top, 0px)) 0 calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom));
   }
-  .agent-workspace-mobile-nav { height: calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom)); display: grid; grid-template-columns: repeat(3,1fr); align-items: start; padding: 1px 8px var(--agent-mobile-safe-bottom); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid #e7e9e6; background: #fff; }
+  .agent-workspace-mobile-nav { height: calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom)); display: grid; grid-template-columns: repeat(4,1fr); align-items: start; padding: 1px 8px var(--agent-mobile-safe-bottom); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid #e7e9e6; background: #fff; }
   .agent-workspace-mobile-nav button { min-width: 0; height: 54px; display: grid; grid-template-rows: 30px 14px; align-content: center; justify-items: center; row-gap: 3px; position: relative; padding: 0; border: 0; background: transparent; color: #757974; cursor: pointer; font-family: inherit; font-size: 10px; font-weight: 500; letter-spacing: 0; line-height: 14px; }
   .agent-workspace-mobile-nav button.is-active { color: #171917; font-weight: 650; }
   .agent-workspace-mobile-nav button > span { height: 14px; display: flex; grid-row: 2; align-items: center; justify-content: center; margin: 0; line-height: 14px; }

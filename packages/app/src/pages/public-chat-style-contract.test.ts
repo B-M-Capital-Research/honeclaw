@@ -25,12 +25,13 @@ describe("public chat visual contract", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
     expect(chat).toContain('onInsights={() => navigate("/community")}');
-    // 三项导航：Agent / 洞察 / 我的
+    // 四项导航：Agent / 推送 / 洞察 / 我的
     expect(workspace).toContain("<span>Agent</span>");
+    expect(workspace).toContain("CONTENT.chat_page.workspace.pushes_tab");
     expect(workspace).toContain("CONTENT.chat_page.workspace.insights");
     expect(workspace).toContain("CONTENT.chat_page.workspace.me");
     expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)");
-    expect(workspaceCss).toContain("grid-template-columns: repeat(3,1fr)");
+    expect(workspaceCss).toContain("grid-template-columns: repeat(4,1fr)");
     expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");
   });
 
@@ -69,7 +70,7 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain("--agent-mobile-composer-gap: 4px");
     expect(workspaceCss).toContain("grid-template-rows: 30px 14px");
     expect(workspaceCss).toContain("grid-row: 2");
-    // 三项导航后不再有中间凸起的 Agent 悬浮按钮
+    // 四项导航不再有中间凸起的 Agent 悬浮按钮
     expect(workspaceCss).not.toContain("button.is-agent");
     expect(workspaceCss).toContain(
       ".public-chat-page--ready { --agent-mobile-safe-bottom: 0px; }",

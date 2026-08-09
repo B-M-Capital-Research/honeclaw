@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-09
-状态：有 12 个活跃任务
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **移动端底部四菜单恢复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/mobile-bottom-nav-four-tabs.md`
+  - 摘要：修复底部导航已有四个按钮但 CSS 仍按三列布局，导致第四项“我的”换行到固定高度外并被裁掉；补四列布局回归，完成移动端真实视口验收后上线
 
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`
