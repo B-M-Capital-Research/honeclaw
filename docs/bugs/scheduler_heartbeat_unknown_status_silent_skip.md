@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-09 10:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-09 06:00-10:02 CST 近窗统计 `run_start=109`、`run_finish=109`、`deliver=57`、`duplicate_suppressed=20`。
+    - 近窗仍有 9 条 `failure_kind=execution_failed` / `execution_failed` 相关信号，另有 2 条 OpenAI-compatible HTTP 529 `provider_http_error`，错误继续集中在 heartbeat 非结构化输出、provider 短时失败和跳过发送。
+    - parse / raw 信号继续分裂：`PlainTextTriggered=114`、`JsonNoop=39`、`PlainTextSuppressed=9`、`PlainTextNoop=4`、`JsonTriggered=2`；同窗 raw preview 以 `<think>` 开头的信号有 111 条。
+    - 代表样本：06:00-10:00 多个 Web heartbeat 仍以 `PlainTextTriggered` 发送 `noop / 无新增 / 无全新 / 无触发` 正文；07:30-10:00 多条 heartbeat 在 `JsonNoop`、`PlainTextNoop`、`PlainTextTriggered` 与跳过发送之间漂移；10:00 `持仓重大事件心跳提醒` 因 provider HTTP 529 跳过发送。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-09 06:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-09 02:01-06:01 CST 近窗统计 `run_start=96`、`run_finish=96`、`deliver=44`、`duplicate_suppressed=21`。

@@ -23,6 +23,17 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-09 06:00-10:02 CST（UTC 2026-08-08 22:00-2026-08-09 02:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 07:00 CST deliver preview 转向 `NVDA x Lancium $30亿投资` 的单项分析；09:30 CST 同 job 继续以 NVDA / Lancium 投资为主体，而不是 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_aa99140a` / `job=光迅科技关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 07:00 CST deliver preview 改为 TSMC 建仓 / 估值窗口；07:30 / 08:00 CST 又转向光迅科技持仓成本、加仓窗口与 PE 149x 判断。该 job 名义目标是光迅科技关键事件监控，不应持续输出建仓/持仓策略长文。
+  - `job_id=j_eab1a3b2` / `job=NBIS关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 07:30 CST deliver preview 以光迅科技持仓分析为主体；08:00 CST 转向 NAND Flash 短缺与 WDC / SNDK 受益链条；均偏离 NBIS 关键事件监控。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 10:00 CST deliver preview 在工具持续限速后转为 Palantir 业务模式 / Gotham / Foundry 介绍，未覆盖原目标列表的关键事件筛查。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-09 02:01-06:01 CST（UTC 2026-08-08 18:01-22:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 02:31 CST deliver preview 转成 DeepSeek 与 Nvidia 的关系分析；03:30 CST 同 job 写成“待机，无新增触发事件”并复述监控覆盖范围；06:00 CST 又输出“过去 24 小时无遗漏事件”和监控范围说明。该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不应被关系问答或配置说明反复抢占。
