@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::config::EmailConfig;
@@ -112,24 +113,12 @@ impl EmailSender {
         match response {
             Ok(response) => {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
-                if status.is_success() {
-                    EmailOutcome::Sent {
-                        message_id: extract_message_id(&body),
-                    }
-                } else {
-                    // The body can echo request fields; the token is only ever
-                    // a header, so it cannot appear here, but the text is still
-                    // bounded before it reaches a log.
-                    EmailOutcome::Failed(format!(
-                        "cloudflare email send failed: {status} {}",
-                        bounded_detail(&body)
-                    ))
-                }
+                let envelope = response.json::<CloudflareEmailEnvelope>().await;
+                classify_response(status, envelope)
             }
             Err(error) => EmailOutcome::Failed(format!(
                 "cloudflare email send transport error: {}",
-                bounded_detail(&error.to_string())
+                request_error_kind(&error)
             )),
         }
     }
@@ -153,22 +142,75 @@ pub fn recipient_is_plausible(address: &str) -> bool {
     !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
 }
 
-fn extract_message_id(body: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(body).ok()?;
-    for pointer in ["/result/message_id", "/result/messageId", "/messageId"] {
-        if let Some(id) = value.pointer(pointer).and_then(serde_json::Value::as_str) {
-            return Some(id.to_string());
-        }
-    }
-    None
+#[derive(Debug, Deserialize)]
+struct CloudflareEmailEnvelope {
+    success: bool,
+    #[serde(default)]
+    errors: Vec<CloudflareEmailError>,
+    result: Option<CloudflareEmailResult>,
 }
 
-fn bounded_detail(detail: &str) -> String {
-    let mut end = detail.len().min(300);
-    while end > 0 && !detail.is_char_boundary(end) {
-        end -= 1;
+#[derive(Debug, Deserialize)]
+struct CloudflareEmailError {
+    code: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudflareEmailResult {
+    #[serde(default)]
+    delivered: Vec<String>,
+    #[serde(default, alias = "messageId")]
+    message_id: Option<String>,
+    #[serde(default)]
+    permanent_bounces: Vec<String>,
+    #[serde(default)]
+    queued: Vec<String>,
+}
+
+fn classify_response(
+    status: reqwest::StatusCode,
+    envelope: Result<CloudflareEmailEnvelope, reqwest::Error>,
+) -> EmailOutcome {
+    let Ok(envelope) = envelope else {
+        return EmailOutcome::Failed(format!(
+            "cloudflare email send returned an invalid response: {status}"
+        ));
+    };
+    if !status.is_success() || !envelope.success {
+        let code = envelope
+            .errors
+            .first()
+            .map(|error| error.code.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        return EmailOutcome::Failed(format!(
+            "cloudflare email send failed: {status} code={code}"
+        ));
     }
-    detail[..end].replace('\n', " ")
+    let Some(result) = envelope.result else {
+        return EmailOutcome::Failed("cloudflare email send response missing result".to_string());
+    };
+    if !result.permanent_bounces.is_empty() {
+        return EmailOutcome::Failed("cloudflare email permanently bounced".to_string());
+    }
+    let message_id = result
+        .message_id
+        .filter(|message_id| !message_id.trim().is_empty());
+    if result.delivered.is_empty() && result.queued.is_empty() && message_id.is_none() {
+        return EmailOutcome::Failed("cloudflare email did not accept the message".to_string());
+    }
+    EmailOutcome::Sent { message_id }
+}
+
+fn request_error_kind(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connect"
+    } else if error.is_request() {
+        "request"
+    } else {
+        "transport"
+    }
 }
 
 #[cfg(test)]
@@ -277,9 +319,69 @@ mod tests {
     }
 
     #[test]
-    fn failure_detail_is_bounded_and_single_line() {
-        let detail = bounded_detail(&format!("{}\nsecond line", "x".repeat(500)));
-        assert!(detail.chars().count() <= 300);
-        assert!(!detail.contains('\n'));
+    fn provider_success_requires_an_accepted_delivery() {
+        let accepted: CloudflareEmailEnvelope = serde_json::from_value(json!({
+            "success": true,
+            "errors": [],
+            "result": {
+                "delivered": [],
+                "permanent_bounces": [],
+                "queued": ["recipient@example.com"],
+                "message_id": "message-1"
+            }
+        }))
+        .expect("valid envelope");
+        assert_eq!(
+            classify_response(reqwest::StatusCode::OK, Ok(accepted)),
+            EmailOutcome::Sent {
+                message_id: Some("message-1".to_string())
+            }
+        );
+
+        let empty: CloudflareEmailEnvelope = serde_json::from_value(json!({
+            "success": true,
+            "errors": [],
+            "result": { "delivered": [], "permanent_bounces": [], "queued": [] }
+        }))
+        .expect("valid envelope");
+        assert!(matches!(
+            classify_response(reqwest::StatusCode::OK, Ok(empty)),
+            EmailOutcome::Failed(_)
+        ));
+    }
+
+    #[test]
+    fn provider_failures_expose_only_status_and_numeric_code() {
+        let failed: CloudflareEmailEnvelope = serde_json::from_value(json!({
+            "success": false,
+            "errors": [{ "code": 10102, "message": "recipient@example.com rejected" }],
+            "result": null
+        }))
+        .expect("valid envelope");
+        let outcome = classify_response(reqwest::StatusCode::FORBIDDEN, Ok(failed));
+        let EmailOutcome::Failed(detail) = outcome else {
+            panic!("expected failure");
+        };
+        assert!(detail.contains("403"));
+        assert!(detail.contains("10102"));
+        assert!(!detail.contains("recipient@example.com"));
+    }
+
+    #[test]
+    fn permanent_bounce_is_not_reported_as_sent() {
+        let bounced: CloudflareEmailEnvelope = serde_json::from_value(json!({
+            "success": true,
+            "errors": [],
+            "result": {
+                "delivered": [],
+                "permanent_bounces": ["recipient@example.com"],
+                "queued": []
+            }
+        }))
+        .expect("valid envelope");
+        assert!(matches!(
+            classify_response(reqwest::StatusCode::OK, Ok(bounced)),
+            EmailOutcome::Failed(_)
+        ));
     }
 }

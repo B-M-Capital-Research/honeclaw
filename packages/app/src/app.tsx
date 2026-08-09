@@ -128,7 +128,7 @@ function PublicSurface() {
             <Route path="/blog" component={PublicBlogPage} />
             <Route path="/blog/:slug" component={PublicBlogPostPage} />
             <Route path="/me" component={PublicSiteMePage} />
-<Route path="/pushes" component={PublicPushesPage} />
+            <Route path="/pushes" component={PublicPushesPage} />
             <Route path="/activate" component={PublicActivatePage} />
             {/* 投资与跟踪已并入「我的」，旧链接保留跳转 */}
             <Route path="/portfolio" component={() => <Navigate href="/me" />} />

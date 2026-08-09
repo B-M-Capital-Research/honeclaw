@@ -336,6 +336,30 @@ reach the service. If the Pages homepage loads but `/api/public/*` or
 
 ## Public Auth Runtime Env
 
+### Scheduled-push unsubscribe and Email Sending
+
+Scheduled pushes delivered to Feishu, Discord, or Telegram append a signed,
+login-free unsubscribe link when `HONE_UNSUBSCRIBE_SECRET` is present. Generate
+at least 32 random bytes, keep the same value in every backend/channel process,
+and store it only in the production secret environment. Rotating it immediately
+invalidates every previously delivered unsubscribe link. Missing configuration
+fails closed: no link is emitted and no unsigned link is accepted.
+
+The public capability URL is
+`/api/public/unsubscribe/{job_id}.{signature}`. Production Pages only proxies
+`/api/public/*`, so the handler must remain on the public API router. `GET`
+renders a confirmation page and must never mutate state; only the form `POST`
+disables the job.
+
+Cloudflare Email Sending uses the existing runtime-only
+`HONE_CLOUDFLARE_ACCOUNT_ID`, `HONE_CLOUDFLARE_EMAIL_API_TOKEN`, and
+`HONE_EMAIL_FROM` inputs. The `email.api_token_env` config defaults to the same
+token variable so operators do not duplicate the credential. The current
+`hone_core::email::EmailSender` is provider plumbing and is not yet called by a
+scheduler delivery path; configuring these values enables the existing email
+verification sender and prepares the push sender, but does not by itself make
+scheduled pushes arrive by email.
+
 Public SMS login and optional captcha are runtime env configuration, not
 `config.yaml` fields. Keep real values in the backend host environment or
 supervisor, never in committed files. The active, non-revoked admin-created Web

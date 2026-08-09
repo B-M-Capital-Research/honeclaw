@@ -1656,7 +1656,10 @@ const CONTENT_ZH = {
       close: "关闭",
       every_day: "每天",
       weekdays_only: "工作日",
-      weekdays: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+      trading_days_only: "美股交易日",
+      market_holidays: "美股休市日",
+      continuous_monitoring: "持续监测",
+      weekdays: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
       back_to_chat: "返回对话",
     },
     push_center: {
@@ -4240,7 +4243,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       close: "Close",
       every_day: "Daily",
       weekdays_only: "Weekdays",
-      weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      trading_days_only: "US trading days",
+      market_holidays: "US market holidays",
+      continuous_monitoring: "Continuous monitoring",
+      weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
       back_to_chat: "Back to chat",
     },
     push_center: {

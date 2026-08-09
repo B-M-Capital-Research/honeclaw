@@ -125,7 +125,7 @@ nano_banana:
 
 # Financial Modeling Prep API config
 # Outbound transactional email for push subscriptions (Cloudflare Email Sending).
-# Leave api_token empty and export CLOUDFLARE_API_TOKEN instead — a credential
+# Leave api_token empty and export HONE_CLOUDFLARE_EMAIL_API_TOKEN instead — a credential
 # that can send mail from a verified domain must never live in the repository.
 # With no token resolved the feature is simply off: pushes still deliver, they
 # just do not also arrive by mail.
@@ -134,7 +134,7 @@ email:
   from_address: "no-reply@hone-claw.com"
   from_name: "HONE"
   api_token: ""
-  api_token_env: "CLOUDFLARE_API_TOKEN"
+  api_token_env: "HONE_CLOUDFLARE_EMAIL_API_TOKEN"
   api_base: "https://api.cloudflare.com/client/v4"
   timeout: 20
   # Hone's own ceiling, below Cloudflare's daily quota, so a scheduler fault

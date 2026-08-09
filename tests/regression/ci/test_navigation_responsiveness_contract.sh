@@ -118,6 +118,8 @@ contains "fn verify_unsubscribe_token" "crates/hone-core/src/unsubscribe_token.r
   fail "unsubscribe links are no longer signed"
 contains "handle_unsubscribe_submit" "crates/hone-web-api/src/routes/mod.rs" ||
   fail "the unsubscribe landing page is unrouted"
+contains '"{}/api/public/unsubscribe/{token}"' "crates/hone-core/src/unsubscribe_token.rs" ||
+  fail "unsubscribe links do not target the production public API route"
 # GET must stay non-mutating: chat clients fetch links to build previews.
 contains "get(unsubscribe::handle_unsubscribe_page).post(unsubscribe::handle_unsubscribe_submit)" \
   "crates/hone-web-api/src/routes/mod.rs" ||

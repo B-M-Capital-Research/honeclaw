@@ -145,7 +145,10 @@ impl EmailConfig {
 }
 
 fn default_email_token_env() -> String {
-    "CLOUDFLARE_API_TOKEN".to_string()
+    // Reuse the established runtime-only Email Sending credential rather than
+    // asking operators to duplicate one token under a generic Wrangler-style
+    // name. The Web API verification sender already consumes this variable.
+    "HONE_CLOUDFLARE_EMAIL_API_TOKEN".to_string()
 }
 
 fn default_email_from_name() -> String {

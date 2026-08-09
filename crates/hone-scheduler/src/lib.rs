@@ -697,7 +697,7 @@ mod unsubscribe_footer_tests {
 
         assert!(out.starts_with("今日复盘。"));
         assert!(out.contains("不想再收到这条推送"));
-        assert!(out.contains("https://hone-claw.com/unsubscribe/job-7."));
+        assert!(out.contains("https://hone-claw.com/api/public/unsubscribe/job-7."));
         unsafe { std::env::remove_var("HONE_TEST_FOOTER_SECRET") };
     }
 
@@ -715,7 +715,7 @@ mod unsubscribe_footer_tests {
         unsafe { std::env::set_var("HONE_TEST_FOOTER_SECRET2", "s3cret") };
         let config = config_with_secret("HONE_TEST_FOOTER_SECRET2");
         let out = with_unsubscribe_footer("执行失败：上游超时".to_string(), &config, "job-9");
-        assert!(out.contains("/unsubscribe/job-9."));
+        assert!(out.contains("/api/public/unsubscribe/job-9."));
         unsafe { std::env::remove_var("HONE_TEST_FOOTER_SECRET2") };
     }
 

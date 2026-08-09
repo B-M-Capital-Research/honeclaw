@@ -96,14 +96,6 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 
     let api = Router::new()
         .route("/meta", get(meta::handle_meta))
-        // Login-free: the signed token in the path is the authorisation. GET
-        // only renders a confirmation, because chat clients fetch links to
-        // build previews and a mutating GET would unsubscribe people who never
-        // clicked.
-        .route(
-            "/unsubscribe/{token}",
-            get(unsubscribe::handle_unsubscribe_page).post(unsubscribe::handle_unsubscribe_submit),
-        )
         .route("/language", put(meta::handle_put_language))
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
         .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
@@ -288,7 +280,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             public_origin_allowed(origin, &configured_origins)
         }))
-        .allow_methods(AllowMethods::list([Method::GET, Method::POST]))
+        .allow_methods(AllowMethods::list([Method::GET, Method::POST, Method::PUT]))
         .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true);
 
@@ -366,6 +358,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))
         .route("/pushes", get(public_pushes::handle_list_pushes))
+        // Login-free: the signed token in the path is the authorisation. This
+        // must live on the public API router because production only proxies
+        // `/api/public/*` from Pages to the backend. GET renders a confirmation
+        // and POST performs the mutation, so link previews stay harmless.
+        .route(
+            "/unsubscribe/{token}",
+            get(unsubscribe::handle_unsubscribe_page).post(unsubscribe::handle_unsubscribe_submit),
+        )
         // The caller's own schedules. Scoped to their actor: managing a push
         // used to be admin-only, which is why nobody could turn theirs off.
         .route(

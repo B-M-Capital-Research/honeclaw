@@ -110,7 +110,7 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 /// The link put at the bottom of every delivered push.
 pub fn unsubscribe_link(base_url: &str, token: &str) -> String {
     format!(
-        "{}/unsubscribe/{token}",
+        "{}/api/public/unsubscribe/{token}",
         base_url.trim().trim_end_matches('/')
     )
 }
@@ -202,7 +202,7 @@ mod tests {
         for base in ["https://hone-claw.com", "https://hone-claw.com/"] {
             assert_eq!(
                 unsubscribe_link(base, "job-1.abcd"),
-                "https://hone-claw.com/unsubscribe/job-1.abcd"
+                "https://hone-claw.com/api/public/unsubscribe/job-1.abcd"
             );
         }
     }
