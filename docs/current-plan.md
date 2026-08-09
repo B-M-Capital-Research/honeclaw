@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-09
-状态：有 13 个活跃任务
+状态：有 12 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **推送订阅 / Cloudflare 邮件生产上线**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/push-subscription-email-production-rollout.md`
-  - 摘要：审查新的订阅管理、免登录退订与 Cloudflare Email Sending 前置能力，收口生产阻断后按精确 revision 更新 GCE；Cloudflare token 与新生成的 HONE 退订签名 secret 只进入生产 secret 环境，不写入仓库或日志。当前需先确认发信客户端是否已接入真实调度投递路径，再决定可宣称的上线范围
 
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`

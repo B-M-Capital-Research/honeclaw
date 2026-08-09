@@ -2292,3 +2292,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; Codex ACP `1.1.7` missing-rollout executable fixture; complete local and GitHub CI gates; real Caris report/PDF restart-persistence acceptance
 - Current conclusion: HONE now replaces a Codex native binding only when the validated adapter proves that the exact persisted rollout is absent before prompt, checkpointing the replacement before execution while all ambiguous resume failures remain fail-closed. The affected Caris binding received a bounded backup/repair; exact production revision `f819584c` is healthy and a real Caris financial analysis persisted one PDF that remained downloadable after service restart. Five superseded reproducible GHCR releases were removed after a staging-time disk-capacity incident, leaving about 5GB free and preserving current, immediate rollback and secondary rollback releases.
 - Next entry point: `docs/handoffs/2026-08-05-codex-acp-missing-rollout-recovery.md`; do not bulk-clear the remaining stale bindings, and check system-disk headroom before staging another runtime.
+
+### Push Subscription / Email Production Rollout
+
+- Status: done
+- Date: 2026-08-09
+- Plan: `docs/archive/plans/push-subscription-email-production-rollout.md`
+- Handoff: `docs/handoffs/2026-08-09-push-subscription-email-production-rollout.md`
+- Decision / ADR: no new architecture decision; the public unsubscribe route and provider/runtime boundary are recorded in the deployment runbook and regression tests
+- Related PRs / commits: direct `main` implementation commit `9eff909aba898dfd12b268a75f71bc269f1e7c4d`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; core email/unsubscribe, scheduler and Web API focused tests; Web public subscription model tests; complete local/GitHub CI; immutable GHCR manifest and production public probes
+- Current conclusion: push management and login-free unsubscribe are live on the public API/Pages path, with Monday-first schedule semantics and provider failures that do not expose response PII. Exact GCE revision `9eff909a` is active from digest `sha256:1335325fb6075c98a85ee585bbfc12a3e1073a2b90d3ad860e3fcafec13ba758`, Cloudflare email and unsubscribe secret names are configured in the protected runtime environment, PostgreSQL/S3 authority is healthy, and active chats are zero. Scheduled email pushes remain a follow-up because the scheduler does not yet call `EmailSender` or resolve verified recipient emails.
+- Next entry point: `docs/handoffs/2026-08-09-push-subscription-email-production-rollout.md`; preserve the signing secret across normal deploys, rotate the chat-exposed provider token, and implement scheduler-to-email delivery before advertising email pushes.
