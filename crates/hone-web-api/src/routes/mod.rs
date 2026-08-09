@@ -29,6 +29,7 @@ pub(crate) mod schedule;
 pub(crate) mod skills;
 pub(crate) mod stripe;
 pub(crate) mod task_runs;
+pub(crate) mod unsubscribe;
 pub(crate) mod users;
 pub(crate) mod web_users;
 
@@ -94,6 +95,14 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 
     let api = Router::new()
         .route("/meta", get(meta::handle_meta))
+        // Login-free: the signed token in the path is the authorisation. GET
+        // only renders a confirmation, because chat clients fetch links to
+        // build previews and a mutating GET would unsubscribe people who never
+        // clicked.
+        .route(
+            "/unsubscribe/{token}",
+            get(unsubscribe::handle_unsubscribe_page).post(unsubscribe::handle_unsubscribe_submit),
+        )
         .route("/language", put(meta::handle_put_language))
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
         .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
