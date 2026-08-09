@@ -334,6 +334,27 @@ reach the service. If the Pages homepage loads but `/api/public/*` or
 5. Require repeated `401` responses from both the origin and public hostname,
    plus one real public-client bootstrap, before declaring recovery.
 
+### Origin access log
+
+The reverse proxy in front of `8088` writes a per-request JSON access log to
+`/var/log/caddy/origin-access.log`, rolling at 20MiB with five files kept for
+14 days. Use it to answer "did this request reach the origin at all", which the
+process journal cannot: a rejected or unauthenticated request produces no
+application log line, so journal silence is not evidence of non-delivery. Each
+entry carries `Cf-Ray`, so an upstream delivery dispute can be reconciled by ray
+ID against the provider's own logs.
+
+Both this log and the default error logger delete `X-Hone-Origin-Token`,
+`Cookie`, `Authorization` and `Stripe-Signature` before writing. Keep that
+filter when editing the proxy config: the shared origin token is a credential,
+and it was previously written verbatim into every proxy error entry.
+
+Validate proxy config as root with care. Running the validator under `sudo`
+creates the log file owned by `root`, and the service account then cannot open
+it, which fails the reload and leaves the unit stuck in `reloading`. Ensure the
+log file is owned by the proxy service account, then reload through the proxy's
+admin API rather than restarting, so the listener keeps its connections.
+
 ## Public Auth Runtime Env
 
 ### Scheduled-push unsubscribe and Email Sending
