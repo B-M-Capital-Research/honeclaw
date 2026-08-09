@@ -48,7 +48,7 @@ pub use mutation::{
     read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
-    CloudConfig, CloudMode, CommunityDeliveryConfig, CommunityDeliveryMode, FmpConfig,
+    CloudConfig, CloudMode, CommunityDeliveryConfig, CommunityDeliveryMode, EmailConfig, FmpConfig,
     LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig, SearchConfig, SecurityConfig,
     StorageConfig, ToolGuardConfig, WebConfig,
 };
@@ -104,6 +104,8 @@ pub struct HoneConfig {
     pub nano_banana: NanoBananaConfig,
     #[serde(default)]
     pub fmp: FmpConfig,
+    #[serde(default)]
+    pub email: EmailConfig,
     #[serde(default)]
     pub search: SearchConfig,
     #[serde(default)]

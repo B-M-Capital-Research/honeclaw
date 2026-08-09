@@ -49,6 +49,108 @@ impl WebConfig {
     }
 }
 
+/// Outbound transactional email through Cloudflare Email Sending.
+///
+/// The token is a credential and never lives in the repository: set
+/// `api_token` in the deployed config, or leave it empty and let it come from
+/// the environment variable named by `api_token_env`. With no token resolved
+/// the sender is simply disabled — a missing credential must degrade to "no
+/// email" rather than failing a scheduled push that otherwise succeeded.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EmailConfig {
+    /// Cloudflare account that owns the verified sending domain.
+    #[serde(default)]
+    pub account_id: String,
+    /// Prefer the environment variable; this exists for deployments that
+    /// manage secrets through the config file itself.
+    #[serde(default)]
+    pub api_token: String,
+    #[serde(default = "default_email_token_env")]
+    pub api_token_env: String,
+    /// Must be an address on a domain verified in Cloudflare Email Sending.
+    #[serde(default)]
+    pub from_address: String,
+    #[serde(default = "default_email_from_name")]
+    pub from_name: String,
+    #[serde(default = "default_email_api_base")]
+    pub api_base: String,
+    #[serde(default = "default_email_timeout")]
+    pub timeout: u64,
+    /// Cloudflare enforces its own daily quota; this is Hone's own ceiling so a
+    /// runaway scheduler cannot burn the whole allowance in one morning.
+    #[serde(default = "default_email_daily_limit")]
+    pub daily_limit: u32,
+}
+
+impl Default for EmailConfig {
+    fn default() -> Self {
+        Self {
+            account_id: String::new(),
+            api_token: String::new(),
+            api_token_env: default_email_token_env(),
+            from_address: String::new(),
+            from_name: default_email_from_name(),
+            api_base: default_email_api_base(),
+            timeout: default_email_timeout(),
+            daily_limit: default_email_daily_limit(),
+        }
+    }
+}
+
+impl EmailConfig {
+    /// The token, from config or the named environment variable. Never logged.
+    pub fn resolved_api_token(&self) -> String {
+        let direct = self.api_token.trim();
+        if !direct.is_empty() {
+            return direct.to_string();
+        }
+        let env_name = self.api_token_env.trim();
+        if env_name.is_empty() {
+            return String::new();
+        }
+        std::env::var(env_name)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    }
+
+    /// Sending needs all three: an account, a credential and a verified
+    /// sender. Partially configured is off, not half-on.
+    pub fn is_configured(&self) -> bool {
+        !self.account_id.trim().is_empty()
+            && !self.from_address.trim().is_empty()
+            && !self.resolved_api_token().is_empty()
+    }
+
+    pub fn send_endpoint(&self) -> String {
+        format!(
+            "{}/accounts/{}/email/sending/send",
+            self.api_base.trim().trim_end_matches('/'),
+            self.account_id.trim()
+        )
+    }
+}
+
+fn default_email_token_env() -> String {
+    "CLOUDFLARE_API_TOKEN".to_string()
+}
+
+fn default_email_from_name() -> String {
+    "HONE".to_string()
+}
+
+fn default_email_api_base() -> String {
+    "https://api.cloudflare.com/client/v4".to_string()
+}
+
+fn default_email_timeout() -> u64 {
+    20
+}
+
+fn default_email_daily_limit() -> u32 {
+    150
+}
+
 fn default_research_api_base() -> String {
     "https://research.example.com".to_string()
 }

@@ -11,6 +11,7 @@ pub mod channel_process;
 pub mod cloud_runtime;
 pub mod config;
 pub mod context_window;
+pub mod email;
 pub mod error;
 pub mod heartbeat;
 pub mod logging;
