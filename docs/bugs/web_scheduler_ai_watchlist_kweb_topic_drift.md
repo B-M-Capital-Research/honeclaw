@@ -23,6 +23,17 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-09 10:00-14:01 CST（UTC 2026-08-09 02:00-06:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 10:30 / 11:00 CST deliver preview 继续以 `NVDA x Lancium`、SpaceX 优先供货和能源基础设施为主体，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查；13:30 又只围绕 NVDA 新闻组织检查结果。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 11:00 CST deliver preview 改用 NBIS 行情口径并讨论 NBIS 财报节点；13:30 CST 又以 NVDA / 北京亦庄新城关系核验为主体。该 job 名义目标是中际旭创关键事件监控。
+  - `job_id=j_19dd9a1e` / `job=闪迪关键事件心跳提醒` / `target=web-user-c2776780c59d`。
+  - 12:00 / 13:00 CST deliver preview 转向 Western Digital 与 SK hynix 竞争关系和 NAND Flash 市场分析，未稳定执行 SNDK 关键事件监控。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 11:30 / 12:00 CST deliver preview 在 PLTR 单标的估值、追入价位和持仓策略上展开，未覆盖原目标列表的关键事件筛查。
+  - 调度和投递主链路正常收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-09 06:00-10:02 CST（UTC 2026-08-08 22:00-2026-08-09 02:02）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 07:00 CST deliver preview 转向 `NVDA x Lancium $30亿投资` 的单项分析；09:30 CST 同 job 继续以 NVDA / Lancium 投资为主体，而不是 AAPL / NVDA / BE 全目标关键事件筛查。

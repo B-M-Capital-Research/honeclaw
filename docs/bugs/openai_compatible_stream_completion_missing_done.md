@@ -22,6 +22,15 @@ New
 
 ## 证据来源
 
+- 运行态复核（2026-08-09 14:02 CST）
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-09 10:00-14:01 CST。
+    - 13:02 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 记录 `runner_error`，错误为 OpenAI-compatible stream transport response body decode failure，随后 `failure_kind=runner_error` 并跳过发送。
+    - 同窗还有 108 条 heartbeat run_start / run_finish 与 56 条 deliver，说明不是 scheduler 或 runtime 整体停摆；该样本是单轮 stream 收口失败。
+  - 判断：
+    - 最新样本仍是 OpenAI-compatible / function-calling 流式响应体解码失败后无法恢复为可用 heartbeat 正文；与既有缺陷同根，不新建重复缺陷。
+    - 影响是单个 heartbeat 业务提醒缺失，严重等级维持功能性 `P2 / New`；同窗仍有多个 heartbeat 成功样本，非 P1，不创建 GitHub Issue。
+
 - 运行态复核（2026-07-26 11:02 CST）
   - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-26`
     - 巡检窗口：2026-07-26 07:02-11:02 CST。

@@ -19,6 +19,11 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-09 14:02 CST 运行态继续复发，状态维持 `New/P2`。
+  - 2026-08-09 10:00-14:01 CST 同窗有 8 条 `poll failed`，均为 `poller.fmp.news` 的 `stock_news` 请求发送失败；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 `HeartbeatDiag run_start=108`、`run_finish=108`、`deliver=56` 与 `poller.fmp.news` 以外的 heartbeat 运行信号，说明 event-engine / scheduler 未整体停摆；失败集中在 FMP news 增量抓取。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻事件增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
   - 2026-08-09 10:02 CST 运行态继续复发，状态维持 `New/P2`。
   - 2026-08-09 06:00-10:02 CST 同窗继续出现 FMP 请求发送失败：`poller.fmp.news` / `stock_news` 约每 30 分钟失败；00:00 / 00:30 UTC 还扩展到 `poller.fmp.earnings`、`poller.fmp.macro`、split/dividend calendar 与大量 `fmp.sec_filings`。日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
   - 同窗仍有 `HeartbeatDiag run_start=109`、`run_finish=109`、`deliver=57` 与 `poller.fmp.price` / `poller.fmp.extended_hours` 的 ok 样本，说明 event-engine 与 scheduler 未整体停摆；失败集中在部分 FMP 事件源 / SEC filing 链路。
@@ -203,9 +208,10 @@
 - 后续 2026-06-07 23:02-2026-06-08 03:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 后续 2026-06-08 03:02-07:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 后续 2026-06-08 07:01-11:02 CST 复核窗口内，quote/news poller 在 09:14 CST 前仍失败，09:19 CST 起 price/news 转为连续 `ok + items=0`；当前按“部分恢复待复核”处理，状态暂不关闭。
-- 后续 2026-06-08 11:01-15:01 CST 复核窗口内，quote/news poller 已连续恢复为 `ok + items=0`；当前没有新的 FMP 请求发送失败、用户可见 FMP 原始错误或下游新鲜度投诉，因此本轮关闭该缺陷。
+- 后续 2026-06-08 11:01-15:01 CST 复核窗口内，quote/news poller 曾连续恢复为 `ok + items=0`，当日因此关闭过该缺陷；但 2026-08-05 之后真实运行窗口持续复发，当前状态已回退为 `New/P2`。
+- 2026-08-09 10:00-14:01 CST 复核窗口内，`poller.fmp.news` / `stock_news` 继续约每 30 分钟请求发送失败，共 8 条；同窗 heartbeat run / deliver 仍运行，说明 event-engine 未整体停摆。
 - 同一 runtime 的 extended-hours poller 仍按节奏运行并返回 `ok`，说明不是调度器完全停止。
-- 该缺陷关闭前未直接表现为用户可见错误、错投或格式污染；此前影响集中在事件引擎数据摄取链路退化。
+- 当前复发窗口未直接表现为用户可见错误、错投或格式污染；影响集中在事件引擎数据摄取链路退化。
 
 ## 用户影响
 
@@ -216,7 +222,7 @@
 ## 根因判断
 
 - 直接原因是 FMP quote/news HTTP 请求在 poller 层持续 `error sending request`。
-- 当前证据不足以确认是本机网络、FMP 上游、key/plan 限制、请求 batch 形态或客户端超时配置导致；2026-06-08 09:19 CST 后链路自行恢复，更像上游/网络/运行态瞬时退化恢复，而不是已知代码修复闭环。
+- 当前证据不足以确认是本机网络、FMP 上游、key/plan 限制、请求 batch 形态或客户端超时配置导致；2026-06-08 09:19 CST 后链路曾自行恢复，但 2026-08-05 之后再次复发，说明仍缺少稳定修复闭环。
 - 该问题不同于已关闭的 `event_engine_price_poller_transient_fetch_failure.md`：本轮不是单 tick 抖动，而是从 2026-06-06 09:29 CST 起持续到最近四小时的 price/news poller 全失败。
 - 也不同于历史 `event_engine_price_poller_unbounded_quote_batch.md` 的已修复 batch 拆分问题：本轮错误信息是请求发送失败，尚未证明为 URL path 过长或单 batch 丢弃其它成功 batch。
 
@@ -224,6 +230,6 @@
 
 - 先检查 event-engine FMP client 对 `error sending request` 的错误分类、重试和超时设置，确认是否需要按网络/上游/配置分别记录 `failure_kind`。
 - 对 price/news poller 增加连续失败阈值告警，避免长时间只写 `task_runs` 而没有运行态告警。
-- 后续巡检继续统计 FMP price/news poller；若再次连续一个巡检窗口出现 `failed + items=0`，重新打开本缺陷并补充新证据。
+- 后续巡检继续统计 FMP price/news poller；若连续一个完整巡检窗口恢复为 `ok` 且无下游新鲜度投诉，再考虑从 `New` 调整为 `Closed`。
 - 检查失败期间是否仍有其它行情源或缓存被下游使用；若没有，应在 digest / alert 生成前显式注入数据新鲜度缺口。
 - 对比 FMP quote/news 与 extended-hours 的请求域名、batch 大小、timeout、key 使用路径，定位为何 extended-hours 仍 ok 而 quote/news 持续失败。
