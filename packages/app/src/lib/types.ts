@@ -929,3 +929,21 @@ export type CompanyProfileImportApplyResult = {
   replaced_count: number;
   skipped_count: number;
 };
+
+/** One of the caller's own scheduled pushes, as the push page shows it. */
+export type PublicSubscription = {
+  job_id: string;
+  name: string;
+  task_prompt: string;
+  enabled: boolean;
+  channel: string;
+  schedule: {
+    hour: number;
+    minute: number;
+    repeat: string;
+    weekday?: number | null;
+    date?: string | null;
+  };
+  created_at?: string | null;
+  last_run_at?: string | null;
+};

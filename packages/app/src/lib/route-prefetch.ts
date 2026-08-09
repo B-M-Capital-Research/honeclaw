@@ -10,6 +10,7 @@
 const loaders = {
   me: () => import("@/pages/public-me"),
   community: () => import("@/pages/public-community"),
+  pushes: () => import("@/pages/public-pushes"),
   plan: () => import("@/pages/public-plan"),
 } satisfies Record<string, () => Promise<unknown>>;
 

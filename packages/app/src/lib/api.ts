@@ -1,4 +1,5 @@
 import type {
+  PublicSubscription,
   ChannelStatusInfo,
   CompanyProfile,
   CompanyProfileImportApplyRequest,
@@ -1686,4 +1687,40 @@ export async function putLanguage(language: "zh" | "en"): Promise<"zh" | "en"> {
   });
   const payload = await parseJson<{ language: "zh" | "en" }>(response);
   return payload.language;
+}
+
+export async function listPublicSubscriptions(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/subscriptions", { signal });
+  const payload = await parseJson<{ subscriptions: PublicSubscription[] }>(response);
+  return payload.subscriptions;
+}
+
+export async function updatePublicSubscription(
+  jobId: string,
+  patch: {
+    name?: string;
+    task_prompt?: string;
+    hour?: number;
+    minute?: number;
+    repeat?: string;
+    weekday?: number | null;
+    date?: string | null;
+    enabled?: boolean;
+  },
+) {
+  const response = await apiFetch(`/api/public/subscriptions/${encodeURIComponent(jobId)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const payload = await parseJson<{ subscription: PublicSubscription }>(response);
+  return payload.subscription;
+}
+
+export async function unsubscribePublicSubscription(jobId: string) {
+  const response = await apiFetch(
+    `/api/public/subscriptions/${encodeURIComponent(jobId)}/unsubscribe`,
+    { method: "POST" },
+  );
+  return parseJson<{ subscription: PublicSubscription; already_unsubscribed: boolean }>(response);
 }

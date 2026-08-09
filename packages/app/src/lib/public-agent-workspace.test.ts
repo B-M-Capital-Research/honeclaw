@@ -110,3 +110,13 @@ describe("public Agent workspace helpers", () => {
     expect(daySeparatorLabel(undefined, undefined, now)).toBeNull();
   });
 });
+
+describe("a workspace header never takes down its route", () => {
+  it("falls back to the generic name instead of throwing", () => {
+    // Every workspace surface renders its header through this, so an
+    // exception here blanks the whole page rather than one label.
+    expect(workspaceUserName(undefined)).toBe("HONE 用户");
+    expect(workspaceUserName(null)).toBe("HONE 用户");
+    expect(workspaceUserName("   ")).toBe("HONE 用户");
+  });
+});

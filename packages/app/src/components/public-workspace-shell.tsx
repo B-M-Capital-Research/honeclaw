@@ -37,7 +37,7 @@ import "@/pages/public-site.css";
 import "@/pages/public-agent-workspace.css";
 import "@/pages/public-workspace.css";
 
-export type PublicWorkspaceSection = "insights" | "me";
+export type PublicWorkspaceSection = "pushes" | "insights" | "me";
 
 export function PublicWorkspaceShell(
   props: ParentProps<{
@@ -212,6 +212,7 @@ export function PublicWorkspaceShell(
         researchLoading={researchLoading()}
         activeMode="conversation"
         activeSection={props.active}
+        onPushes={() => navigate("/pushes")}
         communityUnread={props.communityUnread ?? false}
         onNewResearch={startNewResearch}
         onSelectResearch={openResearch}
@@ -238,7 +239,7 @@ export function PublicWorkspaceShell(
           preferences={<PublicPrefsButton />}
           onMenu={() => setHistoryDrawerOpen(true)}
           onPushes={openPushCenter}
-          onAccount={() => navigate("/me")}
+        onAccount={() => navigate("/me")}
         />
         <main class="public-workspace-content">{props.children}</main>
       </div>
@@ -249,6 +250,7 @@ export function PublicWorkspaceShell(
         onHome={goAgent}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
+        onPushesTab={() => navigate("/pushes")}
         onAccount={() => navigate("/me")}
       />
       <AgentWorkspaceHistoryDrawer

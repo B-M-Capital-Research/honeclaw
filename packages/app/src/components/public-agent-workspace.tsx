@@ -86,7 +86,11 @@ export function AgentWorkspaceSidebar(props: {
   userName: string;
   research: ResearchItem[];
   activeMode: "overview" | "conversation";
-  activeSection?: "agent" | "insights" | "me";
+  activeSection?: "agent" | "pushes" | "insights" | "me";
+  /** Optional so a surface that has not wired the section simply omits it
+      rather than failing to compile. */
+  onPushes?: () => void;
+  unreadPushCount?: number;
   communityUnread: boolean;
   hasOlder?: boolean;
   loadingOlder?: boolean;
@@ -119,6 +123,7 @@ export function AgentWorkspaceSidebar(props: {
       </button>
       <nav class="agent-workspace-nav">
         <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
+        <Show when={props.onPushes}>{(onPushes) => <button type="button" {...routePrefetchHandlers("pushes")} classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushes()} class="agent-workspace-nav-with-dot"><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={(props.unreadPushCount ?? 0) > 0}><i /></Show></button>}</Show>
         <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
         <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
       </nav>
@@ -526,15 +531,17 @@ export function AgentWorkspaceHistoryDrawer(props: {
 
 export function AgentWorkspaceMobileNav(props: {
   activeMode: "overview" | "conversation";
-  activeSection?: "agent" | "insights" | "me";
+  activeSection?: "agent" | "pushes" | "insights" | "me";
   communityUnread: boolean;
   onHome: () => void;
   onInsights: () => void;
   onAgent: () => void;
+  onPushesTab?: () => void;
   onAccount: () => void;
 }) {
   return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
     <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
+    <Show when={props.onPushesTab}>{(onPushesTab) => <button type="button" {...routePrefetchHandlers("pushes")} classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushesTab()}><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span></button>}</Show>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
     <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
   </nav>;

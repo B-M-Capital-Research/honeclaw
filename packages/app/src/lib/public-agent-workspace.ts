@@ -151,8 +151,12 @@ export function workspaceGreeting(hour: number, name: string) {
   return `晚上好，${normalizedName}`;
 }
 
-export function workspaceUserName(userId: string) {
-  const normalized = userId.trim();
+export function workspaceUserName(userId: string | null | undefined) {
+  // Every workspace surface passes a user through this to render its own
+  // header, so throwing here takes down the whole route rather than one
+  // label. A partially-loaded or unusual user object must degrade to the
+  // generic name.
+  const normalized = (userId ?? "").trim();
   if (!normalized || normalized.startsWith("web-user-")) return "HONE 用户";
   if (/^1\d{10}$/.test(normalized)) return `用户 ${normalized.slice(-4)}`;
   return compactText(normalized, 12);

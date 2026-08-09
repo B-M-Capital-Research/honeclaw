@@ -23,6 +23,7 @@ pub(crate) mod public_finance_calendar;
 pub(crate) mod public_portfolio;
 pub(crate) mod public_pushes;
 pub(crate) mod public_quotes;
+pub(crate) mod public_subscriptions;
 pub(crate) mod public_survey;
 pub(crate) mod research;
 pub(crate) mod schedule;
@@ -365,6 +366,20 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))
         .route("/pushes", get(public_pushes::handle_list_pushes))
+        // The caller's own schedules. Scoped to their actor: managing a push
+        // used to be admin-only, which is why nobody could turn theirs off.
+        .route(
+            "/subscriptions",
+            get(public_subscriptions::handle_list_subscriptions),
+        )
+        .route(
+            "/subscriptions/{job_id}",
+            axum::routing::put(public_subscriptions::handle_update_subscription),
+        )
+        .route(
+            "/subscriptions/{job_id}/unsubscribe",
+            post(public_subscriptions::handle_unsubscribe_subscription),
+        )
         .route(
             "/pushes/{push_id}/open",
             post(public_pushes::handle_open_push),

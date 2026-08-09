@@ -1,0 +1,230 @@
+/* The push section. Built from the shared token layer so it themes itself —
+   a surface written against literals is a surface that stops flipping with
+   the rest of the product. */
+.public-pushes-main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.public-pushes-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hone-ink-600);
+}
+
+.public-subscription-heading h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  color: var(--hone-ink-950);
+}
+
+.public-subscription-heading p {
+  margin: 0 0 1.5rem;
+  color: var(--hone-ink-600);
+  line-height: 1.6;
+}
+
+.public-subscription-subheading {
+  margin: 2rem 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--hone-ink-600);
+}
+
+.public-subscription-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.public-subscription-list li {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--hone-paper-200);
+  border-radius: 14px;
+  background: var(--hone-surface-raised);
+}
+
+/* Stopped subscriptions stay listed and stay legible — they are reversible,
+   and fading them into unreadability would read as "deleted". */
+.public-subscription-list li.is-stopped {
+  opacity: 0.72;
+}
+
+.public-subscription-main {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.public-subscription-main strong {
+  color: var(--hone-ink-950);
+  font-size: 0.98rem;
+}
+
+.public-subscription-main small {
+  color: var(--hone-coral-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.public-subscription-main em {
+  font-style: normal;
+  color: var(--hone-ink-600);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.public-subscription-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.public-subscription-actions button,
+.public-pushes-back {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--hone-paper-200);
+  background: transparent;
+  color: var(--hone-ink-800);
+  cursor: pointer;
+}
+
+.public-subscription-actions button:hover,
+.public-pushes-back:hover {
+  border-color: var(--hone-ink-600);
+}
+
+.public-subscription-actions button.is-danger {
+  color: var(--hone-error-600);
+}
+
+.public-subscription-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.public-subscription-empty {
+  color: var(--hone-ink-600);
+  line-height: 1.7;
+  padding: 2rem 0;
+}
+
+.public-subscription-error {
+  color: var(--hone-error-600);
+  margin: 0 0 1rem;
+}
+
+.public-pushes-back {
+  margin-top: 2rem;
+}
+
+.public-subscription-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 60;
+}
+
+.public-subscription-dialog {
+  width: min(34rem, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--hone-surface-raised);
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.public-subscription-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.public-subscription-dialog h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--hone-ink-950);
+}
+
+.public-subscription-dialog header button {
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 0;
+  background: transparent;
+  color: var(--hone-ink-600);
+  cursor: pointer;
+}
+
+.public-subscription-dialog label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.public-subscription-dialog label span {
+  font-size: 0.82rem;
+  color: var(--hone-ink-600);
+}
+
+.public-subscription-dialog input,
+.public-subscription-dialog textarea {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--hone-paper-200);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  resize: vertical;
+}
+
+.public-subscription-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.public-subscription-dialog footer button {
+  font: inherit;
+  padding: 0.55rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid var(--hone-paper-200);
+  background: transparent;
+  color: var(--hone-ink-800);
+  cursor: pointer;
+}
+
+.public-subscription-dialog footer button.is-primary {
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  border-color: transparent;
+}
+
+.public-subscription-dialog footer button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .public-subscription-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

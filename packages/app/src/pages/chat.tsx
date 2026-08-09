@@ -2711,10 +2711,13 @@ export default function PublicChatPage() {
   };
 
   const openPushCenter = () => {
+    // The bell used to open a read-only modal, which is where the "I cannot
+    // manage these" feeling came from. It now goes to the section that can
+    // actually change them; the unread badge is still cleared here.
     const unreadBeforeOpen = pushUnreadCount();
-    setPushCenterOpen(true);
     setPushUnreadCount(0);
     void acknowledgePushCenter(unreadBeforeOpen);
+    navigate("/pushes");
   };
 
   const openScheduledPush = async (push: ScheduledPushCardData) => {
@@ -3764,6 +3767,8 @@ export default function PublicChatPage() {
                   onSelectResearch={openWorkspaceResearch}
                   onHome={startNewConversation}
                   onInsights={() => navigate("/community")}
+                  onPushes={() => navigate("/pushes")}
+                  unreadPushCount={pushUnreadCount()}
                   onAccount={() => navigate("/me")}
                   onLogout={logoutPublicChat}
                 />
@@ -3904,6 +3909,7 @@ export default function PublicChatPage() {
                   onHome={startNewConversation}
                   onInsights={() => navigate("/community")}
                   onAgent={startNewConversation}
+                  onPushesTab={() => navigate("/pushes")}
                   onAccount={() => navigate("/me")}
                 />
                 <AgentWorkspaceHistoryDrawer
