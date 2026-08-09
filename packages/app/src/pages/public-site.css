@@ -2825,8 +2825,19 @@ html {
   .public-push-list-copy strong { font-size: 14.5px; line-height: 1.25; }
   .public-push-list-copy > span:last-child { font-size: 12px; line-height: 1.4; -webkit-line-clamp: 2; }
   .public-push-list-arrow { padding-top: 2px; font-size: 16px; }
-  .public-push-detail-backdrop { align-items: flex-end; padding: 0; }
-  .public-push-detail { position: fixed; right: 0; bottom: 0; left: 0; width: auto; max-width: none; max-height: 88dvh; margin: 0; border-radius: 20px 20px 0 0; }
+  .public-push-detail-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .public-push-detail {
+    position: relative;
+    width: 100%;
+    max-width: 680px;
+    max-height: calc(88dvh - 12px);
+    margin: 0;
+    border-radius: 20px;
+  }
   .public-push-detail > header { grid-template-columns: 36px minmax(0, 1fr); gap: 11px; padding: 16px 52px 14px 16px; }
   .public-push-detail > header h2 { margin: 2px 0 3px; font-size: 19px; }
   .public-push-detail > header > button { top: 13px; right: 13px; width: 32px; height: 32px; }

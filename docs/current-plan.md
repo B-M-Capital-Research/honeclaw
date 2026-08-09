@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-09
-状态：有 12 个活跃任务
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public 推送缺口审计与移动详情弹窗修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-push-gap-and-mobile-detail.md`
+  - 摘要：审计指定 Web 账号“英伟达每日消息”在 2026-07-25 后两周的任务执行、生成、投递与 public push 入库闭环，并修复 iPhone Safari 推送详情弹窗横向贴边和动态视口布局
 
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`
