@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
+
+## 2026-08-09
+
+### Public Push Inbox And Unread State Closure
+
+- Status: done; frontend deployed to Cloudflare Pages; no backend restart, formal release, or tag
+- Date: 2026-08-09
+- Plan: `docs/archive/plans/public-push-inbox-state-closure.md`
+- Handoff: `docs/handoffs/2026-08-09-public-push-inbox-state-closure.md`
+- Decision / ADR: no new decision; the implementation reuses the existing public push list/open and server read-through contracts
+- Related PRs / commits: direct `main` commit `e451dd3b9a20f98777f888bf6b0e040c7fcdc386`; no PR, release, or tag
+- Related runbooks / regressions: Web 407 tests; TypeScript typecheck; `tests/regression/ci/test_navigation_responsiveness_contract.sh`; public production build; authenticated production mobile browser acceptance
+- Current conclusion: `/pushes` defaults to real push messages with summary, full Markdown detail and stable per-job categories, while subscription management remains a second view. Top, sidebar and bottom entries share one route-stable unread value, never clear it optimistically, and accept only server-returned `unread_count`; read failures retain the badge and retry. Cloudflare Pages serves the new message/manage views and the mobile workspace still has four primary tabs.
+- Next entry point: `docs/handoffs/2026-08-09-public-push-inbox-state-closure.md`; production acceptance account had no historical pushes, so use a real push-bearing actor for any future visual review of category chips and full detail while retaining the automated model/API contracts.
 
 ## 2026-08-08
 
