@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-10 06:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-10 02:01-06:01 CST 近窗统计 `run_start=98`、`run_finish=105`、`deliver=55`、`duplicate_suppressed=33`。
+    - 近窗仍有 6 条 `failure_kind=execution_failed` / `execution_failed` 相关信号，另有 2 条 OpenAI-compatible `provider_http_error`，错误继续集中在 heartbeat 非结构化输出、provider 协议错误和跳过发送。
+    - parse / raw 信号继续分裂：`PlainTextTriggered=110`、`JsonNoop=33`、`PlainTextSuppressed=5`、`PlainTextNoop=4`、`JsonEmptyStatus=2`、`JsonMalformed=2`、`JsonTriggered=1`；同窗 raw preview 以 `<think>` 开头的信号有 101 条。
+    - 代表样本：03:00 CST `AAPL + NVDA + BE 关键事件提醒` 因 `provider_http_error` / `tool call result does not follow tool call (2013)` 跳过发送；03:00 CST `持仓重大事件心跳提醒` 以 `JsonMalformed` 落成 `heartbeat 输出不是合法 JSON`；03:30 / 04:00 / 05:30 多个 heartbeat 以 `PlainTextSuppressed` / `heartbeat 输出不是结构化 JSON` 失败跳过发送。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-09 22:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-09 18:03-22:03 CST 近窗统计 `run_start=96`、`run_finish=96`、`deliver=55`、`duplicate_suppressed=31`。

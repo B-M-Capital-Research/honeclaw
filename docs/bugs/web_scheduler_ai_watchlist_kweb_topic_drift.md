@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-10 02:01-06:01 CST（UTC 2026-08-09 18:01-22:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 03:00 CST 该 job 因 OpenAI-compatible provider 协议错误跳过发送；04:00 / 05:00 CST deliver preview 又转为“本轮监控范围 / 当前推送配置状态”说明，06:00 CST 写成“本轮监控状态：正常，无新触发事件”与监控范围表格，仍未稳定执行 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 06:01 CST deliver preview 在工具调用上限后转为 NVIDIA–Synopsys 深度绑定对 SNDK 的间接叙事分析，而不是存储板块关键事件监控收口。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` 与 `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒`。
+  - 02:30 CST `光模块板块` deliver preview 转成 NVIDIA Newsroom / Synopsys 合作归档；06:00 CST `AI与科技持仓观察` deliver preview 明说工具配额受限、先用 earnings_calendar 覆盖，未完成 watchlist 全目标核验。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-09 18:03-22:03 CST（UTC 2026-08-09 10:03-14:03）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 19:00 CST deliver preview 主体转为“你的推送日程 / 即时推阈值 / 最低严重度”等配置说明；21:30 CST deliver preview 转为通用“选股框架”；22:00 CST deliver preview 转为 DeepSeek 与 Nvidia 叙事分析。该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是配置查询、选股教程或单一叙事问答。
