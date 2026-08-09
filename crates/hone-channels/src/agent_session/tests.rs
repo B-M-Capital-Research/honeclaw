@@ -6156,6 +6156,72 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
 }
 
 #[test]
+fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_confirmation() {
+    let root = make_temp_dir("hone_channels_restore_recent_followup_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let actor = ActorIdentity::new("feishu", "followup-entity", None::<String>).expect("actor");
+    let session_id = storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            "META、MSFT、STX、BE 的财报日期和盘前盘后分别是什么？",
+            None,
+        )
+        .expect("add explicit ticker user");
+    storage
+        .add_message(
+            &session_id,
+            "assistant",
+            "你上面提到的是 META、MSFT、STX、BE 这四家公司。",
+            None,
+        )
+        .expect("add assistant entity confirmation");
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            "上面四家公司最近一次财报分别是什么时间？",
+            None,
+        )
+        .expect("add current followup");
+
+    let snapshot = storage
+        .load_session(&session_id)
+        .expect("load session")
+        .expect("session");
+    let restored = restore_recent_interactive_user_references(
+        &snapshot,
+        "上面四家公司最近一次财报分别是什么时间？",
+        None,
+    );
+    let transcript = restored
+        .messages
+        .iter()
+        .map(|message| {
+            format!(
+                "{}:{}",
+                message.role,
+                message.content.clone().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        transcript,
+        vec![
+            "user:META、MSFT、STX、BE 的财报日期和盘前盘后分别是什么？",
+            "assistant:你上面提到的是 META、MSFT、STX、BE 这四家公司。"
+        ]
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
     let root = make_temp_dir("hone_channels_restore_skill_after_boundary");
     std::fs::create_dir_all(&root).expect("create root");

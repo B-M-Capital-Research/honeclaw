@@ -3,8 +3,21 @@
 - 发现时间：2026-07-29 02:01 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
+
+## 最新进展
+
+- 2026-08-09 `bug-2` 代码级修复：
+  - `crates/hone-channels/src/agent_session/restore.rs` 的轻量 follow-up 恢复链路原先只回放最近 durable user 文本，不回放同组里上一轮 assistant 对实体集合的明确确认；这会让 strict interactive research 首轮在处理“上面四家公司”这类指代时，只看到当前 user 追问和旧 user 原话，缺少最近一轮 assistant 的锚定确认。
+  - 本轮把 `restore_recent_interactive_user_references(...)` 扩成“最近 follow-up group 恢复”：除最近 eligible user 行外，也恢复同组里用户可见、已净化的 assistant 确认文本；仍不恢复 tool payload、compact summary 或失败 / automation 轮，保持轻量上下文边界不变。
+  - 新增回归 `restore_recent_interactive_user_references_keeps_recent_assistant_entity_confirmation`，覆盖 `META/MSFT/STX/BE` 上一轮确认后，下一轮“上面四家公司” follow-up 仍能看到 assistant 实体确认锚点。
+  - 验证：
+    - `cargo test -p hone-channels restore_recent_interactive_user_references_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 结论：
+    - 本轮完成代码级闭环，因此状态更新为 `Fixed`。
+    - 按任务约束，本轮没有重启现有 Feishu live runtime，也没有制造新的真实线上 follow-up 样本；后续如 2026-08-09 之后的自然运行窗再次出现同类“当前消息没有公司名称”澄清，再据新证据回退为 `New`。
 
 ## 证据来源
 
@@ -49,8 +62,7 @@
 - 该问题不同于 `web_direct_consecutive_user_turn_drops_previous_request.md`：本轮 user turn 之间有 assistant 收口，症状不是上一条 user 静默悬空，而是当前 follow-up 无法解析上一轮已确认实体。
 - 该问题也不同于 `feishu_direct_partial_reply_before_tool_completion.md`：本轮 `ordinal=22` 是完整澄清回复，但业务判断错误；后续 `ordinal=24` 的半成品工具进度另归入该既有缺陷。
 
-## 下一步建议
+## 后续观察
 
-1. 为 Feishu direct 增加最近实体 / 最近答复摘要的回归：上一轮确认 ticker 后，下一轮“上面几家 / 这几只”必须解析到相同实体集合。
-2. 检查自动 compact、skill snapshot 和 scheduler 注入消息是否会稀释最近普通对话 turn。
-3. 对无法解析指代的澄清文案增加防御：先列出最近候选实体并让用户确认，避免直接否认上下文。
+1. 后续巡检继续关注 Feishu direct 是否还会把“上面几家 / 这几只 / 上面四家公司”误判成无实体 follow-up。
+2. 如果自然运行窗仍复发，再继续排查 compact summary、skill snapshot 或其它历史裁剪路径是否还会覆盖最近 assistant 确认锚点。

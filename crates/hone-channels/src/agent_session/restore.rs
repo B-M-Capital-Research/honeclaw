@@ -217,11 +217,48 @@ fn reference_user_is_eligible(message: &SessionMessage) -> bool {
     session_message_first_text(message).is_some_and(|text| !text.trim_start().starts_with('/'))
 }
 
-/// Restore only the durable user wording needed to resolve follow-up
-/// references for an initial strict Interactive research turn. The current
-/// turn is identified by the final durable user-row position and excluded by
-/// index, so an older row with identical bytes cannot be mistaken for it.
-/// Compact boundaries do not truncate this bounded user-only view.
+fn restore_recent_interactive_group(context: &mut AgentContext, group: &[SessionMessage]) {
+    for message in group {
+        match message.role.as_str() {
+            "user" => {
+                let content = session_message_text(message);
+                if content.trim().is_empty() {
+                    continue;
+                }
+                context.messages.push(AgentMessage {
+                    role: "user".to_string(),
+                    content: Some(content),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    metadata: message.metadata.clone(),
+                });
+            }
+            "assistant" => {
+                let content = sanitize_assistant_context_content(&session_message_text(message));
+                if content.trim().is_empty() {
+                    continue;
+                }
+                context.messages.push(AgentMessage {
+                    role: "assistant".to_string(),
+                    content: Some(content),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    metadata: message.metadata.clone(),
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Restore the recent durable user wording plus user-visible assistant
+/// confirmations needed to resolve follow-up references for an initial strict
+/// Interactive research turn. The current turn is identified by the final
+/// durable user-row position and excluded by index, so an older row with
+/// identical bytes cannot be mistaken for it. Compact boundaries do not
+/// truncate this bounded group view, and tool payloads stay excluded.
 pub(super) fn restore_recent_interactive_user_references(
     session: &Session,
     current_user_input: &str,
@@ -249,7 +286,7 @@ pub(super) fn restore_recent_interactive_user_references(
     }
 
     let history = &session.messages[..current_user_index];
-    let mut eligible_user_indices = Vec::new();
+    let mut eligible_groups = Vec::new();
     let mut group_start = None;
     for (index, message) in history.iter().enumerate() {
         if message.role != "user" {
@@ -259,7 +296,7 @@ pub(super) fn restore_recent_interactive_user_references(
             let group = &history[start..index];
             if !group_is_operational_or_failed(group) && reference_user_is_eligible(&history[start])
             {
-                eligible_user_indices.push(start);
+                eligible_groups.push(group);
             }
         }
         group_start = Some(index);
@@ -267,23 +304,15 @@ pub(super) fn restore_recent_interactive_user_references(
     if let Some(start) = group_start {
         let group = &history[start..];
         if !group_is_operational_or_failed(group) && reference_user_is_eligible(&history[start]) {
-            eligible_user_indices.push(start);
+            eligible_groups.push(group);
         }
     }
 
-    let selected_start = eligible_user_indices
+    let selected_start = eligible_groups
         .len()
         .saturating_sub(RECENT_INTERACTIVE_USER_REFERENCE_LIMIT);
-    for index in eligible_user_indices.into_iter().skip(selected_start) {
-        let message = &history[index];
-        context.messages.push(AgentMessage {
-            role: "user".to_string(),
-            content: Some(session_message_text(message)),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-            metadata: message.metadata.clone(),
-        });
+    for group in eligible_groups.into_iter().skip(selected_start) {
+        restore_recent_interactive_group(&mut context, group);
     }
 
     context
