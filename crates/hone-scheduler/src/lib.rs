@@ -4,6 +4,7 @@
 
 use chrono::{Datelike, FixedOffset, Timelike, Utc};
 use hone_core::ActorIdentity;
+use hone_core::config::HoneConfig;
 use hone_memory::{
     CronJobStorage,
     cron_job::{CronJobExecutionInput, ExecutionFilter},
@@ -62,6 +63,28 @@ pub fn scheduler_event_is_active(storage: &CronJobStorage, event: &SchedulerEven
 /// often a domain-specific object and may not carry that key, so channel
 /// handlers should wrap every terminal detail through this helper before
 /// recording it.
+/// Appends the login-free unsubscribe footer to a push about to be delivered.
+///
+/// Every channel builds its outgoing text the same way, so this lives here
+/// rather than in each binary: a channel that forgets the footer is a channel
+/// whose recipients have no way to stop a push, and that is exactly the kind
+/// of omission nobody notices until someone complains.
+///
+/// Returns the text unchanged when no signing secret is configured. A link
+/// that cannot work is worse than no link — it reads as an offer the product
+/// then fails to honour.
+pub fn with_unsubscribe_footer(response: String, config: &HoneConfig, job_id: &str) -> String {
+    let secret = config.email.resolved_unsubscribe_secret();
+    let Some(token) = hone_core::unsubscribe_token::issue_unsubscribe_token(&secret, job_id) else {
+        return response;
+    };
+    let link =
+        hone_core::unsubscribe_token::unsubscribe_link(&config.agent.hone_cloud.base_url, &token);
+    // A failing job is precisely when someone wants out, so the footer is
+    // attached to error notices too.
+    format!("{}\n\n———\n不想再收到这条推送？{link}", response.trim_end())
+}
+
 pub fn execution_detail_with_delivery_key(detail: Value, delivery_key: &str) -> Value {
     let mut object = match detail {
         Value::Object(map) => map,
@@ -651,5 +674,57 @@ mod tests {
         assert!(scheduler_event_is_active(&storage, &event));
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod unsubscribe_footer_tests {
+    use super::with_unsubscribe_footer;
+    use hone_core::config::HoneConfig;
+
+    fn config_with_secret(env_name: &str) -> HoneConfig {
+        let mut config = HoneConfig::default();
+        config.email.unsubscribe_secret_env = env_name.to_string();
+        config.agent.hone_cloud.base_url = "https://hone-claw.com".to_string();
+        config
+    }
+
+    #[test]
+    fn a_delivered_push_carries_its_own_way_out() {
+        unsafe { std::env::set_var("HONE_TEST_FOOTER_SECRET", "s3cret") };
+        let config = config_with_secret("HONE_TEST_FOOTER_SECRET");
+        let out = with_unsubscribe_footer("今日复盘。".to_string(), &config, "job-7");
+
+        assert!(out.starts_with("今日复盘。"));
+        assert!(out.contains("不想再收到这条推送"));
+        assert!(out.contains("https://hone-claw.com/unsubscribe/job-7."));
+        unsafe { std::env::remove_var("HONE_TEST_FOOTER_SECRET") };
+    }
+
+    #[test]
+    fn no_secret_means_no_link_rather_than_a_broken_one() {
+        // Offering a link the product then cannot honour is worse than not
+        // offering one.
+        let config = config_with_secret("HONE_TEST_FOOTER_ABSENT");
+        let out = with_unsubscribe_footer("今日复盘。".to_string(), &config, "job-7");
+        assert_eq!(out, "今日复盘。");
+    }
+
+    #[test]
+    fn a_failing_job_is_exactly_when_someone_wants_out() {
+        unsafe { std::env::set_var("HONE_TEST_FOOTER_SECRET2", "s3cret") };
+        let config = config_with_secret("HONE_TEST_FOOTER_SECRET2");
+        let out = with_unsubscribe_footer("执行失败：上游超时".to_string(), &config, "job-9");
+        assert!(out.contains("/unsubscribe/job-9."));
+        unsafe { std::env::remove_var("HONE_TEST_FOOTER_SECRET2") };
+    }
+
+    #[test]
+    fn trailing_whitespace_does_not_stack_up_blank_lines() {
+        unsafe { std::env::set_var("HONE_TEST_FOOTER_SECRET3", "s3cret") };
+        let config = config_with_secret("HONE_TEST_FOOTER_SECRET3");
+        let out = with_unsubscribe_footer("正文\n\n\n".to_string(), &config, "job-1");
+        assert!(out.starts_with("正文\n\n———"));
+        unsafe { std::env::remove_var("HONE_TEST_FOOTER_SECRET3") };
     }
 }

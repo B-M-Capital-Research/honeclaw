@@ -14,6 +14,7 @@ use hone_memory::cron_job::CronJobExecutionInput;
 use hone_memory::session_message_text;
 use hone_scheduler::{
     SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+    with_unsubscribe_footer,
 };
 use serde_json::json;
 use tracing::{error, info, warn};
@@ -130,6 +131,11 @@ pub(crate) async fn handle_scheduler_events(
                 .error
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
+            // Every delivered push carries its own way out. Doing this in the
+            // shared helper rather than per channel is what keeps a new
+            // channel from silently shipping pushes nobody can stop.
+            let response =
+                with_unsubscribe_footer(response, &state_clone.core.config, &event.job_id);
             let receive_id = if let Some(overridden) =
                 scheduler_receive_id_for_target(&event.actor, &event.channel_target)
             {

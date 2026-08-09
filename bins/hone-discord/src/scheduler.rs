@@ -6,6 +6,7 @@ use hone_channels::scheduler as channel_scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::{
     SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+    with_unsubscribe_footer,
 };
 use serde_json::{Value, json};
 use serenity::all::ChannelId;
@@ -86,6 +87,10 @@ pub(crate) async fn handle_scheduler_events(
                 .error
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
+            // Every delivered push carries its own way out. Doing this in the
+            // shared helper rather than per channel is what keeps a new
+            // channel from silently shipping pushes nobody can stop.
+            let response = with_unsubscribe_footer(response, &core_clone.config, &event.job_id);
 
             let channel_id = match parse_channel_id_from_target(&event.channel_target) {
                 Some(id) => id,

@@ -107,7 +107,25 @@ contains "steps: (activeRun.steps ?? [])" "$PUBLIC_CHAT" ||
 contains "return Err(active.clone())" "$STATE" ||
   fail "a session can start a second concurrent run"
 
+# 7. Every delivered push carries a way to stop it, on every channel.
+for channel in feishu discord telegram; do
+  contains "with_unsubscribe_footer(response" "bins/hone-$channel/src/scheduler.rs" ||
+    fail "$channel ships pushes with no way to unsubscribe"
+done
+contains "pub fn with_unsubscribe_footer" "crates/hone-scheduler/src/lib.rs" ||
+  fail "the shared footer helper is gone, so each channel must remember on its own"
+contains "fn verify_unsubscribe_token" "crates/hone-core/src/unsubscribe_token.rs" ||
+  fail "unsubscribe links are no longer signed"
+contains "handle_unsubscribe_submit" "crates/hone-web-api/src/routes/mod.rs" ||
+  fail "the unsubscribe landing page is unrouted"
+# GET must stay non-mutating: chat clients fetch links to build previews.
+contains "get(unsubscribe::handle_unsubscribe_page).post(unsubscribe::handle_unsubscribe_submit)" \
+  "crates/hone-web-api/src/routes/mod.rs" ||
+  fail "a link preview can now unsubscribe someone who never clicked"
+
 cargo test -p hone-web-api routes::chat::tests --quiet
+cargo test -p hone-scheduler --quiet
+cargo test -p hone-core unsubscribe --quiet
 cargo test -p hone-web-api state::tests --quiet
 if command -v bun >/dev/null 2>&1; then
   bun test --preload ./packages/app/happydom.ts \

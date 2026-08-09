@@ -8,6 +8,7 @@ use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::{
     SchedulerEvent, execution_detail_with_delivery_key, scheduler_event_is_active,
+    with_unsubscribe_footer,
 };
 use serde_json::json;
 use teloxide::prelude::{Bot, ChatId};
@@ -77,6 +78,10 @@ pub(crate) async fn handle_scheduler_events(
                 .error
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
+            // Every delivered push carries its own way out. Doing this in the
+            // shared helper rather than per channel is what keeps a new
+            // channel from silently shipping pushes nobody can stop.
+            let response = with_unsubscribe_footer(response, &core_clone.config, &event.job_id);
             let response = scheduler_public_response_text(&response);
             let chat_id: i64 = match event.channel_target.parse() {
                 Ok(id) => id,
