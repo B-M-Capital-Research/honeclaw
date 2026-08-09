@@ -7037,3 +7037,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败、误送达和去重之间漂移；没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达、漏送或被 duplicate suppression；普通 direct 主链路本窗无新增可审计 final，未见错投、敏感泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-09 18:03 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-09 14:02-18:03 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=102`、`JsonNoop=31`、`PlainTextSuppressed=7`、`PlainTextNoop=4`、`JsonUnknownStatus=2`、`JsonTriggered=1`、`JsonEmptyStatus=1`。
+  - 同窗还有 `run_start=96`、`run_finish=96`、`deliver=51`、`duplicate_suppressed=29`、`execution_failed=8`、raw `<think>` preview 97 条。
+  - 代表失败样本包括 15:00 / 15:30 / 16:00 / 16:30 / 17:30 / 18:00 CST 多条 heartbeat 因“输出不是结构化 JSON”或“输出包含未知状态”落成 `failure_kind=execution_failed` 并跳过发送。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：同一窗口内自然语言、JSON noop、未知状态、空状态、失败跳过和用户可见 deliver 并存。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 18:00 Web scheduler 仍有 assistant 收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

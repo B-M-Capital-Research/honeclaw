@@ -203,3 +203,13 @@ New
 1. 在 heartbeat prompt / answer 阶段加入当前 job target whitelist，要求任何主体标的必须来自配置或明确说明关联关系。
 2. 对工具调用 planner 增加校验：当 `data_fetch quote` 请求了不在 job target / user prompt 的 ticker，记录候选降级并避免将其作为主结论。
 3. 增加 Web heartbeat 回归样本：目标列表不含 KWEB 时，输出不得以 KWEB ETF 解释、估值或重仓建议作为主体。
+
+## 最新运行态复核（2026-08-09 18:03 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-09 14:02-18:03 CST。
+  - 15:00 CST `AAPL + NVDA + BE 关键事件提醒` 的 `deliver_preview` 变成“你当前的推送配置如下”，列出定时推送、即时推、阈值与静音配置；该 heartbeat job 名义目标是 AAPL / NVDA / BE 关键事件，不是配置查询。
+  - 14:30 / 17:00 / 18:00 CST `闪迪关键事件心跳提醒` 多次转向 NBIS 或 WDC / SK hynix 关系分析；15:00 CST `存储板块关键事件心跳提醒` 转向 SNDK 下跌归因和财报展望；这些输出均不是严格的关键事件监控收口。
+- 本轮判断
+  - 最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。
+  - 为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。

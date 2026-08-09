@@ -233,3 +233,13 @@
 - 后续巡检继续统计 FMP price/news poller；若连续一个完整巡检窗口恢复为 `ok` 且无下游新鲜度投诉，再考虑从 `New` 调整为 `Closed`。
 - 检查失败期间是否仍有其它行情源或缓存被下游使用；若没有，应在 digest / alert 生成前显式注入数据新鲜度缺口。
 - 对比 FMP quote/news 与 extended-hours 的请求域名、batch 大小、timeout、key 使用路径，定位为何 extended-hours 仍 ok 而 quote/news 持续失败。
+
+## 最新运行态复核（2026-08-09 18:03 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-09 14:02-18:03 CST。
+  - `poller.fmp.news` / `stock_news` 继续每约 30 分钟请求发送失败，共 8 条 `poll failed: FMP 请求失败: error sending request`。
+  - 同窗 `poller.fmp.price` 与 `poller.fmp.extended_hours` 仍有 `poller ok` 样本，且 heartbeat / scheduler 继续运行，说明不是 event-engine 整体停摆。
+- 本轮判断
+  - 最新证据仍落在 FMP news 数据摄取链路持续退化的既有 P2 范围内，不是新的独立根因。
+  - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。
