@@ -2304,3 +2304,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; core email/unsubscribe, scheduler and Web API focused tests; Web public subscription model tests; complete local/GitHub CI; immutable GHCR manifest and production public probes
 - Current conclusion: push management and login-free unsubscribe are live on the public API/Pages path, with Monday-first schedule semantics and provider failures that do not expose response PII. Exact GCE revision `9eff909a` is active from digest `sha256:1335325fb6075c98a85ee585bbfc12a3e1073a2b90d3ad860e3fcafec13ba758`, Cloudflare email and unsubscribe secret names are configured in the protected runtime environment, PostgreSQL/S3 authority is healthy, and active chats are zero. Scheduled email pushes remain a follow-up because the scheduler does not yet call `EmailSender` or resolve verified recipient emails.
 - Next entry point: `docs/handoffs/2026-08-09-push-subscription-email-production-rollout.md`; preserve the signing secret across normal deploys, rotate the chat-exposed provider token, and implement scheduler-to-email delivery before advertising email pushes.
+
+### Mobile Bottom Navigation Four Tabs
+
+- Status: done
+- Date: 2026-08-09
+- Plan: `docs/archive/plans/mobile-bottom-nav-four-tabs.md`
+- Handoff: `docs/handoffs/2026-08-09-mobile-bottom-nav-four-tabs.md`
+- Decision / ADR: none; this repairs the existing four-tab mobile UI contract
+- Related PRs / commits: direct `main` implementation commit `959fca1600af5791118a17912cc944b6b9ca3464`; no PR, release, tag, or backend deployment
+- Related runbooks / regressions: public chat/workspace style contracts; full Web suite; public production build; navigation responsiveness regression; real `390 × 844` production viewport acceptance
+- Current conclusion: the component already rendered `Agent / 推送 / 洞察 / 我的`, but a stale three-column CSS grid wrapped `我的` below the fixed-height navigation and clipped it. Production now uses four equal columns, all four tabs remain inside the viewport, and `我的` navigates to `/me`.
+- Next entry point: `docs/handoffs/2026-08-09-mobile-bottom-nav-four-tabs.md`; keep rendered tab count and CSS grid tracks synchronized.
