@@ -176,7 +176,9 @@ export function PublicHoldingsPanel() {
 
   const ask = (row: HoldingRow, kind: HoldingAskKind) => {
     setOpenMenu(undefined);
-    navigate(`/chat?q=${encodeURIComponent(holdingAskPrompt(row, kind))}`);
+    // Send it. Landing on the composer with the question already typed made
+    // the user press send a second time for something they had just chosen.
+    navigate(`/chat?q=${encodeURIComponent(holdingAskPrompt(row, kind))}&send=1`);
   };
 
   const submit = async (input: { symbol: string; name: string; weight: string; avgCost: string }) => {

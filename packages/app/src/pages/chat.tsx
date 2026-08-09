@@ -2920,11 +2920,22 @@ export default function PublicChatPage() {
   /* 从「我的 · 持仓」等入口跳来时用 ?q= 预填提问，填好后立即从地址栏擦掉，
      免得刷新或分享链接又把同一句问题灌回输入框。 */
   const [searchParams, setSearchParams] = useSearchParams();
+  /** A question an entry point already decided, waiting only for a ready session. */
+  const [pendingAutoSend, setPendingAutoSend] = createSignal<string | undefined>();
   createEffect(() => {
     const prefill = searchParams.q;
     if (typeof prefill !== "string" || !prefill.trim()) return;
+    const autoSend = searchParams.send === "1";
+    setSearchParams({ q: undefined, send: undefined }, { replace: true });
+    if (autoSend) {
+      // An entry point that already knows the question must not hand back a
+      // filled box and ask the user to press send again. Sending cannot happen
+      // here: the session may still be loading, so it is queued and dispatched
+      // once the turn can actually start.
+      setPendingAutoSend(prefill);
+      return;
+    }
     setDraft(prefill);
-    setSearchParams({ q: undefined }, { replace: true });
     focusWorkspaceComposer();
   });
 
@@ -3626,6 +3637,18 @@ export default function PublicChatPage() {
   const handleSend = () => {
     void sendChatTurn();
   };
+
+  // Dispatch a queued question the moment the session can accept one. Guarding
+  // here rather than at the call site keeps a question from being dropped
+  // silently while auth or a previous turn is still settling.
+  createEffect(() => {
+    const text = pendingAutoSend();
+    if (!text) return;
+    if (authState() !== "ready" || isSendingOrStreaming() || uploading()) return;
+    setPendingAutoSend(undefined);
+    setDraft("");
+    void sendChatTurn({ text, attachments: [] });
+  });
 
   const startEarningsWorkflow = async (input: EarningsWorkflowStart) => {
     if (
