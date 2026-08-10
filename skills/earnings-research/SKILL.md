@@ -52,6 +52,7 @@ Use the original query-generation prompt for step 3, replacing the placeholders 
 - Never use `example.com`, placeholder names, or generic labels such as `Anonymous Institution` as evidence.
 - Preserve the source name, date, and real URL near every material current number, rating, quotation, management transaction, financing, contract, capacity claim, or company event. Links may be inline or collected as Markdown source notes; there is no prescribed source-section layout. A report with no real source URL is incomplete.
 - Immediately before rendering, check every material number, named institution, dated event, and causal statement against the current-turn tool results. Search any uncovered claim or remove it. Do not use an internally remembered fact merely because a later independent check might confirm it.
+- Build an `evidence_manifest` only from the current turn's successful `hone_data_fetch` and `hone_web_search` results. For every material report line, copy the exact complete Markdown line into `claim_text`, use a real `source_url` that is visible somewhere in the report, and copy a short verbatim `source_excerpt` from that same URL's tool result. Do not paraphrase or reconstruct the excerpt. The runtime checks the URL/excerpt pair against this turn's evidence and checks that all reported numbers are present in the mapped excerpts before it starts the renderer.
 
 ## Preview — original V2 prompt
 
@@ -311,15 +312,19 @@ Do not fabricate a quotation, consensus comparison, market reaction, valuation i
 
 ## PDF delivery
 
-After the report is complete, call `skill_tool` exactly once unless the renderer reports a technical failure:
+After the report is complete, call `skill_tool` exactly once unless the pre-render evidence gate or renderer reports a failure that requires a corrected retry:
 
 ```text
 skill_name="earnings-research"
 execute_script=true
 script="scripts/render_report_pdf.py"
-script_payload={"company":"...","mode":"preview|analysis","report_markdown":"...","output_name":"..."}
+script_payload={"company":"...","mode":"preview|analysis","report_markdown":"...","output_name":"...","evidence_manifest":[{"claim_text":"报告中逐字相同的一条重大断言","source_url":"本轮工具结果里的真实 URL，且必须出现在可见报告中","source_excerpt":"从该 URL 对应的本轮工具结果逐字复制的短摘录"}]}
 ```
 
 Do not send `preview_audit`. The renderer owns layout only; it must not rewrite the report or demand fixed headings, counts, fields, page numbers, or prose shapes.
 
-Require `success=true`, `render_success=true`, and one `application/pdf` document artifact. Return the exact validated report plus its PDF attachment. If the renderer rejects a missing/placeholder source or technical failure, search for the real source, remove the unsupported claim, or fix only the technical call, then render once more. This evidence gate does not impose a PDF layout or report-section format.
+The manifest is a machine-checkable provenance sidecar, not a required PDF section. Source links may remain inline or in any Markdown source notes, so this does not prescribe headings, page count, paragraph count, or report layout. Do not add a manifest entry for a claim unless its exact URL/excerpt pair exists in this turn's tool output. If one report line needs multiple sources, repeat its exact `claim_text` with separate URL/excerpt entries.
+
+Require `success=true`, `render_success=true`, and one `application/pdf` document artifact. Return the exact validated report plus its PDF attachment. If the pre-render evidence gate rejects a missing mapping, unseen URL, mismatched excerpt, or uncovered number, run a targeted search for the exact gap or remove/rewrite the unsupported claim before retrying. If the renderer reports a technical failure, fix only the technical call. This evidence gate does not impose a PDF layout or report-section format.
+
+Any short final summary must use only facts already present in the validated report. Do not introduce a new number, event, institution view, or causal claim after the evidence gate has passed.
