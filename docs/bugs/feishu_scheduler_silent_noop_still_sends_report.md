@@ -22,6 +22,14 @@ New
 
 ## 最新进展
 
+- 2026-08-10 14:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 10:02-14:02 CST。
+    - 近窗 `HeartbeatDiag run_start=96`、`run_finish=96`、`deliver=49`、`duplicate_suppressed=23`、raw `<think>` preview 96 条，parse_kind 分布 `PlainTextTriggered=98`、`JsonNoop=34`、`PlainTextSuppressed=6`、`PlainTextNoop=6`、`JsonTriggered=1`。
+    - 21 条用户可见 deliver 候选继续明写 `noop`、`无新增`、`无新触发`、`未命中` 或 `无触发`。
+    - 代表样本：10:30 `NVDA 关键事件心跳提醒` 写 `NVDA 本轮无新触发` 仍进入 deliver；10:30 / 11:00 / 13:00 / 14:00 `AI与科技持仓观察关键事件心跳提醒` 多次写 `状态：noop` 仍进入 deliver；12:30 `NBIS`、`光迅科技`、`光模块板块`、`闪迪` 等明写 `本轮无新增高权重触发（noop）` 仍进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
+
 - 2026-08-10 10:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-10 06:00-10:02 CST。
