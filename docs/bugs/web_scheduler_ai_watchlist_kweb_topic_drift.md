@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-10 18:00-22:02 CST（UTC 2026-08-10 10:00-14:02）。
+  - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 19:00 / 20:00 CST deliver preview 继续转为 NVIDIA 与 SK Hynix 战略供应绑定关系；21:00 / 22:00 CST 又围绕 SNDK 财报文章归档和历史行情锚展开，未稳定围绕存储板块关键事件触发条件收口。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒`。
+  - 21:30 CST deliver preview 转为 NVIDIA 与 SK Hynix 是 HBM 内存供应客户关系；22:00 CST 又在“本轮无新报价核验”语境下带出旧 AAOI / COHR / LITE 行情锚。
+  - `job_id=j_348d0f87` / `job=中际旭创关键事件心跳提醒` 与 `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒`。
+  - 22:00 CST `中际旭创` 转为 AAOI 扩产公告对竞品的竞争边际变化，且行情口径错配到 `300308.SZ ¥178.30`；21:30 CST `AI与科技持仓观察` 转为 AI Agent 概念股框架长文，未完成原持仓观察列表的关键事件核验。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-10 14:02-18:02 CST（UTC 2026-08-10 06:02-10:02）。
   - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
   - 15:00 CST deliver preview 在 quote / web_search 工具上限语境下转为 NVIDIA 与 SK Hynix 战略供应绑定关系；16:30 / 17:30 CST 又输出 NAND Flash 市场价格趋势与市场动态长文，不再稳定围绕存储板块关键事件触发条件收口。
