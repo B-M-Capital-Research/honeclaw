@@ -152,6 +152,7 @@ fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
 /// explicitly happened before any file write. At least one such renderer
 /// rejection must be present, so unrelated read-only failures do not acquire
 /// a new automatic retry path.
+#[cfg(test)]
 pub(crate) fn earnings_pdf_validation_failed_without_side_effects(
     tool_calls: &[ToolCallMade],
 ) -> bool {
@@ -201,32 +202,53 @@ pub(crate) fn response_has_only_known_read_only_calls(tool_calls: &[ToolCallMade
 pub(crate) fn response_has_only_retry_safe_earnings_opencode_calls(
     tool_calls: &[ToolCallMade],
 ) -> bool {
-    tool_calls.iter().all(|call| {
-        if is_known_read_only_call(call) {
-            return true;
-        }
+    tool_calls.iter().all(is_retry_safe_earnings_opencode_call)
+}
 
-        match call.name.trim().to_ascii_lowercase().as_str() {
-            "read" | "grep" | "glob" => true,
-            "invalid" => {
-                let requested_tool = call
-                    .arguments
-                    .get("tool")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty());
-                let error = call
-                    .arguments
-                    .get("error")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::trim);
-                requested_tool.zip(error).is_some_and(|(tool, error)| {
-                    error.starts_with(&format!("Model tried to call unavailable tool '{tool}'."))
-                })
-            }
-            _ => false,
+fn is_retry_safe_earnings_opencode_call(call: &ToolCallMade) -> bool {
+    if is_known_read_only_call(call) {
+        return true;
+    }
+
+    match call.name.trim().to_ascii_lowercase().as_str() {
+        "read" | "grep" | "glob" => true,
+        "invalid" => {
+            let requested_tool = call
+                .arguments
+                .get("tool")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let error = call
+                .arguments
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim);
+            requested_tool.zip(error).is_some_and(|(tool, error)| {
+                error.starts_with(&format!("Model tried to call unavailable tool '{tool}'."))
+            })
         }
-    })
+        _ => false,
+    }
+}
+
+/// OpenCode-specific variant of the safe earnings renderer rejection check.
+///
+/// The renderer still must prove that it rejected the report before any write.
+/// The only difference from the generic check is that OpenCode's exact built-in
+/// read records are accepted alongside Hone's canonical read-only tools.
+pub(crate) fn earnings_opencode_pdf_validation_failed_without_side_effects(
+    tool_calls: &[ToolCallMade],
+) -> bool {
+    let mut saw_safe_renderer_failure = false;
+    for call in tool_calls {
+        if is_safe_failed_earnings_renderer(call) {
+            saw_safe_renderer_failure = true;
+        } else if !is_retry_safe_earnings_opencode_call(call) {
+            return false;
+        }
+    }
+    saw_safe_renderer_failure && completed_earnings_pdf_artifact(tool_calls).is_none()
 }
 
 fn result_is_uncertain(result: &serde_json::Value) -> bool {
@@ -369,6 +391,56 @@ mod tests {
             safe_rejection,
             call("external/create_order", None, json!({"success":true}))
         ]));
+    }
+
+    #[test]
+    fn opencode_earnings_validation_retry_accepts_builtin_reads_but_not_real_shell() {
+        let read_only = ToolCallMade {
+            name: "glob".to_string(),
+            arguments: json!({"pattern":"**/SKILL.md"}),
+            result: json!({"status":"failed","isError":true,"error":"No files found"}),
+            tool_call_id: Some("glob-read".to_string()),
+        };
+        let safe_rejection = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 14 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+
+        assert!(!earnings_pdf_validation_failed_without_side_effects(&[
+            read_only.clone(),
+            safe_rejection.clone()
+        ]));
+        assert!(
+            earnings_opencode_pdf_validation_failed_without_side_effects(&[
+                read_only.clone(),
+                safe_rejection.clone()
+            ])
+        );
+
+        let shell = ToolCallMade {
+            name: "bash".to_string(),
+            arguments: json!({"command":"render-report"}),
+            result: json!({"status":"completed"}),
+            tool_call_id: Some("shell".to_string()),
+        };
+        assert!(
+            !earnings_opencode_pdf_validation_failed_without_side_effects(&[
+                read_only,
+                safe_rejection,
+                shell
+            ])
+        );
     }
 
     #[test]

@@ -16,10 +16,10 @@
 
 ## 活跃任务
 
-- **Earnings OpenCode signature 恢复安全分类修复**
+- **Earnings OpenCode 结构结果恢复修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-opencode-signature-recovery.md`
-  - 摘要：修复财报前瞻在 OpenCode 内置只读工具和明确未执行的 unavailable-tool 记录之后遭遇 Gemini `Corrupted thought signature` 时，被未知副作用门错误阻断一次性 fresh-session recovery 的问题；保持真实 shell、未知工具和所有持久写入严格禁止自动重放
+  - 摘要：首轮 signature 安全重试修复已上线；真实 RKLB canary 进一步暴露 safe PDF validation 判断仍使用通用只读白名单，因 OpenCode 内置 `glob` 被排除而把 renderer 明确 `side_effect_status=not_started` 的轨迹误判为状态不确定，正在修复并重新完成 PDF 闭环
 
 - **Public 推送缺口审计与移动详情弹窗修复**
   - 状态：`in_progress`

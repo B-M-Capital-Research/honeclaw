@@ -1776,6 +1776,54 @@ fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite()
         Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
     );
 
+    let renderer_error = "earnings workflow ended without a successful referenced PDF artifact";
+    let mut safe_renderer_failure = AgentRunnerResult {
+        response: AgentResponse {
+            content: String::new(),
+            tool_calls_made: vec![
+                ToolCallMade {
+                    name: "glob".to_string(),
+                    arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                    result: serde_json::json!({
+                        "status":"failed",
+                        "isError":true,
+                        "error":"No files found"
+                    }),
+                    tool_call_id: Some("safe_glob".to_string()),
+                },
+                ToolCallMade {
+                    name: "hone_skill_tool".to_string(),
+                    arguments: serde_json::json!({
+                        "skill_name":"earnings-research",
+                        "execute_script":true
+                    }),
+                    result: serde_json::json!({
+                        "success":false,
+                        "render_success":false,
+                        "side_effect_status":"not_started",
+                        "render_error":"preview preflight found 14 issues",
+                        "artifacts":[]
+                    }),
+                    tool_call_id: Some("safe_renderer".to_string()),
+                },
+            ],
+            iterations: 1,
+            success: false,
+            error: Some(renderer_error.to_string()),
+        },
+        streamed_output: false,
+        committed_visible_prefix: None,
+        terminal_error_emitted: false,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    };
+
+    normalize_persistent_trace_failure(&mut safe_renderer_failure);
+    assert_eq!(
+        safe_renderer_failure.response.error.as_deref(),
+        Some(renderer_error)
+    );
+
     let original_content = "must remain the runner-owned draft";
     let mut committed_draft = AgentRunnerResult {
         response: AgentResponse {
@@ -4598,6 +4646,16 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
                 content: String::new(),
                 tool_calls_made: vec![
                     ToolCallMade {
+                        name: "glob".to_string(),
+                        arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                        result: serde_json::json!({
+                            "status":"failed",
+                            "isError":true,
+                            "error":"No files found"
+                        }),
+                        tool_call_id: Some("call_opencode_glob".to_string()),
+                    },
+                    ToolCallMade {
                         name: "hone_data_fetch".to_string(),
                         arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
                         result: serde_json::json!({"success":true,"data":[]}),
@@ -4743,6 +4801,16 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
             response: AgentResponse {
                 content: String::new(),
                 tool_calls_made: vec![
+                    ToolCallMade {
+                        name: "glob".to_string(),
+                        arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                        result: serde_json::json!({
+                            "status":"failed",
+                            "isError":true,
+                            "error":"No files found"
+                        }),
+                        tool_call_id: Some("call_opencode_glob".to_string()),
+                    },
                     ToolCallMade {
                         name: "hone_data_fetch".to_string(),
                         arguments: serde_json::json!({

@@ -48,9 +48,9 @@ use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
     UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf_artifact,
-    earnings_pdf_validation_failed_without_side_effects, persistent_side_effect_state_is_uncertain,
-    response_has_only_known_read_only_calls, response_has_only_retry_safe_earnings_opencode_calls,
-    response_has_persistent_side_effect,
+    earnings_opencode_pdf_validation_failed_without_side_effects,
+    persistent_side_effect_state_is_uncertain, response_has_only_known_read_only_calls,
+    response_has_only_retry_safe_earnings_opencode_calls, response_has_persistent_side_effect,
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -484,6 +484,9 @@ fn normalize_execute_once_failure(
 pub(super) fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
     if result.response.success
         || !response_has_persistent_side_effect(&result.response.tool_calls_made)
+        || earnings_opencode_pdf_validation_failed_without_side_effects(
+            &result.response.tool_calls_made,
+        )
     {
         return;
     }
@@ -2556,7 +2559,9 @@ impl AgentSession {
                     Some(AgentRunRunnerOverride::OpencodeAcp)
                 )
                 && completed_earnings_pdf_artifact(&response.tool_calls_made).is_none()
-                && earnings_pdf_validation_failed_without_side_effects(&response.tool_calls_made);
+                && earnings_opencode_pdf_validation_failed_without_side_effects(
+                    &response.tool_calls_made,
+                );
             let recovery_limit = if corrupted_thought_signature {
                 EARNINGS_CORRUPTED_THOUGHT_SIGNATURE_RETRY_LIMIT
             } else if upstream_idle_timeout {
