@@ -36,6 +36,9 @@
 - CI 回归证明：无需 `preview_audit`；少量真实新闻和明确证据缺口可生成；匿名机构、`example.com` 和未替换模板被拒绝；Markdown 表格与任意原 prompt 标题被保真渲染。
 - Rust 测试证明：专用财报轮次清除历史消息；原 prompt 系统覆盖取代普通投研模板；renderer 恢复提示只处理占位/虚假来源或技术错误，不要求为版式改写报告。
 - 运行 changed rustfmt、相关 crate tests、CI-safe regression 和 `git diff --check`。
+- `bd2eb2f99e7ff62ed856902f8771b0314887d10c` 已推送 `main`；Runtime Image、CI、Secret Scan、Code Quality 与 Release Cache Warm 均通过，精确 GHCR runtime digest 为 `sha256:f44be080c43625d3ae80fee58792a8d0e6f7c14f67ce3f72c9683ddc169b6668`。
+- 生产已切到该精确 revision，技能从 system 目录加载且正文包含原流程契约；服务 `active/running`、`NRestarts=0`、云存储权威、PostgreSQL/OSS 健康、切换后 warning/error 为 0。
+- 已以生产 service user 调用新 renderer 生成 CRWV smoke PDF；回传文件哈希一致、A4 两页，并逐页确认中文、表格、水印、免责声明和分享页无歪斜或截断。该 smoke 只证明 renderer/宿主环境，不替代真实 LLM 内容 canary。
 - 部署精确 revision 与技能后，用一个生产前瞻 canary 验证：无旧会话污染、无 compact、搜索后无占位来源、renderer 调用接近一次、PDF 可下载且刷新后仍存在；记录 token、cost 和耗时。
 
 ## Documentation Sync

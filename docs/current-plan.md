@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已定位 CRWV 劣化来自后来叠加的 `preview_audit`、固定 8–10 条新闻和 renderer 内容裁判，而非原 BamangResearch Workflow。当前按原 query/main/news/analysis prompts 直接迁移，renderer 收缩为 layout-only；重要事实缺失或冲突时先搜索，仍不可核验就披露/省略，严禁编造。下一步完成 Rust/CI 验证并部署生产 canary，检查无历史上下文/compact、无占位来源、低 renderer 调用数和 PDF 持久化
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除后来叠加的 `preview_audit`、固定新闻数量和 renderer 内容裁判；重要事实缺失或冲突时先搜索，仍不可核验就披露/省略，严禁编造。精确 `bd2eb2f9` 已完成 Rust/CI/线上 layout-only PDF 验证并部署生产，服务健康且无 warning/error；当前只待真实财报 canary 检查无历史上下文/compact、接近一次 renderer 调用、无占位来源和附件持久化
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

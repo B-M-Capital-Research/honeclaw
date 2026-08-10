@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`
 - related_docs: `docs/current-plans/earnings-opencode-signature-recovery.md`, `docs/runbooks/opencode-setup.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: direct `main` commits `4dd76971d7b9985e281c3632db17b2936e0f91ce`, `185504bc03d8be32bfcc1f851200e411ed8a8238`, and `2a6aecf33936e85c7b34130fc2f8f2a8ab3eb9c6`; no PR, release, or tag
+- related_prs: direct `main` commits `4dd76971d7b9985e281c3632db17b2936e0f91ce`, `185504bc03d8be32bfcc1f851200e411ed8a8238`, `2a6aecf33936e85c7b34130fc2f8f2a8ab3eb9c6`, and `bd2eb2f99e7ff62ed856902f8771b0314887d10c`; no PR, release, or tag
 
 ## Summary
 
@@ -56,3 +56,15 @@ After the OpenRouter account was recharged, the RKLB earnings-preview request pr
 ## Next Entry Point
 
 Use message `7762a98e-b1e9-4e48-b20a-8f5175535346` and the two native session IDs above as the production recovery baseline. For the next change, enter through `docs/current-plans/earnings-workflow-content-parity.md`: reject placeholder/untraceable evidence before rendering and reduce serial validator churn without weakening the PDF terminal contract. A second exhausted preflight or repeated provider signature remains a real failure and must not broaden the allowlist without structured proof that the specific tool never executed or is inherently read-only.
+
+## Original BamangResearch Workflow Direct Migration
+
+- The source of truth was recovered from the local Codex conversation titled “查找本地 bamangresearch 项目”. The migrated skill now follows the original simple Dify flow: entity/current data, the original 5–8-query prompt, targeted search aggregation, the original preview or two-stage analysis prompt, and the original recent-news prompt for previews.
+- Removed the later `preview_audit`, fixed 8–10 news count, fixed sentence/page/heading requirements, institution schema and renderer content state machine. The renderer now preserves arbitrary Markdown and only rejects technical failures or obvious placeholders/fake sources; it does not rewrite research to satisfy layout.
+- Dedicated earnings runs still exclude prior conversation messages and compact summaries. Their completed report remains persisted in the same conversation so later ordinary follow-up turns can use it.
+- Truthfulness is enforced in research: missing or contradictory material claims require a targeted search; if no verifiable source is found, the report must disclose that or omit the claim. Sources, URLs, institutions, quotes, numbers, events and causal links must never be invented.
+- `bd2eb2f99e7ff62ed856902f8771b0314887d10c` passed skill validation, Python compile, the rewritten renderer regression, actual local PDF visual QA, `hone-channels` (793 passed, one ignored), the chat-route suite, targeted structured-payload coverage, rustfmt, the full CI-safe regression suite and diff checks. The pushed commit passed Runtime Image, CI, Secret Scan, Code Quality and Release Cache Warm; its exact runtime digest is `sha256:f44be080c43625d3ae80fee58792a8d0e6f7c14f67ce3f72c9683ddc169b6668`.
+- Production was atomically cut over to the exact revision after two zero-active-chat reads and the protected runtime/environment gates. The service is active/running with `NRestarts=0`; `/api/meta` reports the exact SHA, `ghcr_linux_oci`, cloud-authoritative storage and healthy PostgreSQL/OSS. The post-cutover warning/error journal is empty and the public user auth boundary returns the expected JSON `401`.
+- The new renderer was executed on production as the actual service user and generated a 294,667-byte, two-page A4 CRWV smoke PDF. Its copied checksum matched `38a688b47d95d84648c62529b4e5ce60f6da805093b1fb9710c68dd1ac221780`; first/last-page visual inspection confirmed Chinese text, table, watermark, disclaimer and share page without skew, clipping or forced content padding.
+- Two automatically rolled-back staging attempts exposed no user traffic: the first used an incorrect nested checksum working directory; the second revealed that a root-owned `0700` temporary skill root prevented runtime discovery. The skill backup was restored automatically both times, the staging root was corrected to `0775`, live skill discovery was proven on the old runtime, and only then was the final runtime cutover repeated.
+- No post-migration real LLM canary had entered at the time of this entry; active chats remained zero. Keep `docs/current-plans/earnings-workflow-content-parity.md` in progress until a user-triggered preview proves zero compact events, no prior-history contamination, no placeholder evidence, approximately one renderer call, and persisted/downloadable PDF closure with recorded duration, tokens and cost.
