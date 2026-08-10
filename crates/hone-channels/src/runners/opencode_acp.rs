@@ -39,10 +39,10 @@ use super::types::{
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
-// OpenCode can turn a post-compaction continuation into a zero-token no-op.
-// A safely rejected renderer is retried by AgentSession in a fresh isolated
-// ACP process instead of repeatedly prompting this exhausted native session.
-const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 0;
+// Preserve a complete draft and the exact renderer diagnostics while the
+// native session is still healthy. Once OpenCode compacts, AgentSession starts
+// a fresh isolated process and carries the rejected draft forward instead.
+const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 2;
 
 fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
     request
@@ -80,6 +80,19 @@ fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
          render_success=true、一个 application/pdf artifact，并在最终完整报告中引用该 PDF\
          文件名后才能结束。"
     ))
+}
+
+fn should_continue_earnings_pdf_recovery(
+    stopped_successfully: bool,
+    recovery_prompt_exists: bool,
+    recovery_count: u32,
+    state: &AcpPromptState,
+) -> bool {
+    stopped_successfully
+        && recovery_prompt_exists
+        && recovery_count < MAX_EARNINGS_PDF_RECOVERY_PROMPTS
+        && !state.compact_detected
+        && !persistent_side_effect_state_is_uncertain(&state.finished_tool_calls)
 }
 
 fn normalize_completed_earnings_pdf_reply(state: &mut AcpPromptState) {
@@ -368,6 +381,7 @@ pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
             "webfetch": "deny",
             "websearch": "deny",
             "skill": "deny",
+            "task": "deny",
             "external_directory": {
                 "*": "deny"
             }
@@ -742,11 +756,12 @@ async fn run_opencode_acp(
                 .then(|| earnings_pdf_recovery_prompt(&opencode_state))
                 .flatten();
             let recovery_count = prompt_count.saturating_sub(1);
-            if !stopped_successfully
-                || recovery_prompt.is_none()
-                || recovery_count >= MAX_EARNINGS_PDF_RECOVERY_PROMPTS
-                || persistent_side_effect_state_is_uncertain(&opencode_state.finished_tool_calls)
-            {
+            if !should_continue_earnings_pdf_recovery(
+                stopped_successfully,
+                recovery_prompt.is_some(),
+                recovery_count,
+                &opencode_state,
+            ) {
                 metadata_updates.insert(
                     "opencode_prompt_attempts".to_string(),
                     Value::from(prompt_count),
@@ -1782,6 +1797,34 @@ mod earnings_pdf_completion_tests {
         let prompt = earnings_pdf_recovery_prompt(&state).expect("recovery prompt");
         assert!(prompt.contains("preview news item 1 is conference chatter"));
         assert!(prompt.contains("不得发布文字降级答案"));
+        assert!(should_continue_earnings_pdf_recovery(true, true, 0, &state));
+        assert!(should_continue_earnings_pdf_recovery(true, true, 1, &state));
+        assert!(!should_continue_earnings_pdf_recovery(
+            true,
+            true,
+            MAX_EARNINGS_PDF_RECOVERY_PROMPTS,
+            &state
+        ));
+    }
+
+    #[test]
+    fn compacted_earnings_session_is_not_prompted_again() {
+        let mut state = AcpPromptState {
+            compact_detected: true,
+            ..AcpPromptState::default()
+        };
+        state.finished_tool_calls.push(renderer_call(json!({
+            "success": false,
+            "render_success": false,
+            "side_effect_status": "not_started",
+            "render_error": "preview preflight found 7 issues",
+            "artifacts": []
+        })));
+
+        assert!(earnings_pdf_recovery_prompt(&state).is_some());
+        assert!(!should_continue_earnings_pdf_recovery(
+            true, true, 0, &state
+        ));
     }
 
     #[test]

@@ -25,6 +25,17 @@ pub(crate) struct CompletedEarningsPdf {
     pub(crate) report_markdown: String,
 }
 
+/// The latest complete report draft rejected by the repository-owned
+/// earnings renderer before any artifact write.
+///
+/// This is safe to carry into one fresh isolated recovery session. It is not
+/// a completed deliverable and must still pass the renderer unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FailedEarningsReportDraft {
+    pub(crate) report_markdown: String,
+    pub(crate) render_error: String,
+}
+
 pub(crate) fn completed_earnings_pdf(tool_calls: &[ToolCallMade]) -> Option<CompletedEarningsPdf> {
     tool_calls.iter().rev().find_map(|call| {
         if canonical_hone_tool_name(&call.name) != Some("skill_tool")
@@ -142,6 +153,36 @@ fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
             .get("render_error")
             .and_then(serde_json::Value::as_str)
             .is_some_and(|value| !value.trim().is_empty())
+}
+
+pub(crate) fn latest_safe_failed_earnings_report_draft(
+    tool_calls: &[ToolCallMade],
+) -> Option<FailedEarningsReportDraft> {
+    tool_calls.iter().rev().find_map(|call| {
+        if !is_safe_failed_earnings_renderer(call) {
+            return None;
+        }
+        let report_markdown = call
+            .arguments
+            .get("report_markdown")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?
+            .to_string();
+        let render_error = call
+            .result
+            .get("render_error")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?
+            .chars()
+            .take(4_000)
+            .collect();
+        Some(FailedEarningsReportDraft {
+            report_markdown,
+            render_error,
+        })
+    })
 }
 
 /// Whether an incomplete earnings attempt is safe to run again in a fresh
@@ -337,6 +378,50 @@ mod tests {
         assert_eq!(
             completed_earnings_pdf_artifact(&[completed]).as_deref(),
             Some("/sandbox/AAOI_Earnings_Preview.pdf")
+        );
+    }
+
+    #[test]
+    fn safe_failed_earnings_draft_comes_from_the_latest_pre_write_rejection() {
+        let older = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true,
+                "report_markdown":"# 旧草稿"
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 20 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("older-render".to_string()),
+        };
+        let latest = ToolCallMade {
+            name: "mcp__hone__skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true,
+                "report_markdown":"# 完整新草稿\n\n正文"
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 7 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("latest-render".to_string()),
+        };
+
+        assert_eq!(
+            latest_safe_failed_earnings_report_draft(&[older, latest]),
+            Some(FailedEarningsReportDraft {
+                report_markdown: "# 完整新草稿\n\n正文".to_string(),
+                render_error: "preview preflight found 7 issues".to_string(),
+            })
         );
     }
 

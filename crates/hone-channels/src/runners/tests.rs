@@ -225,7 +225,7 @@ fn opencode_effective_args_replace_existing_cwd() {
 }
 
 #[test]
-fn isolated_opencode_config_denies_external_directory_and_bash() {
+fn isolated_opencode_config_denies_external_directory_bash_and_task() {
     let config = OpencodeAcpConfig {
         model: "openrouter/google/gemini-3.1-pro-preview".to_string(),
         ..OpencodeAcpConfig::default()
@@ -233,6 +233,7 @@ fn isolated_opencode_config_denies_external_directory_and_bash() {
     let payload: Value =
         serde_json::from_str(&isolated_opencode_config(&config)).expect("valid opencode json");
     assert_eq!(payload["permission"]["bash"], "deny");
+    assert_eq!(payload["permission"]["task"], "deny");
     assert_eq!(payload["permission"]["external_directory"]["*"], "deny");
     assert_eq!(payload["model"], "openrouter/google/gemini-3.1-pro-preview");
 }
@@ -245,6 +246,7 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
     assert!(payload.get("provider").is_none());
     assert!(payload.get("model").is_none());
     assert_eq!(payload["permission"]["bash"], "deny");
+    assert_eq!(payload["permission"]["task"], "deny");
 }
 
 #[test]

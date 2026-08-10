@@ -4825,7 +4825,8 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
                         arguments: serde_json::json!({
                             "skill_name":"earnings-research",
                             "execute_script":true,
-                            "script":"scripts/render_report_pdf.py"
+                            "script":"scripts/render_report_pdf.py",
+                            "report_markdown":"# AAOI公司财报前瞻分析\n\n待修正的完整报告"
                         }),
                         result: serde_json::json!({
                             "success":false,
@@ -4923,6 +4924,15 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
             .all(Vec::is_empty),
         "the recovery must remain isolated from prior chat history"
     );
+    let runtime_inputs = recorded_runtime_inputs
+        .lock()
+        .expect("recorded runtime inputs lock");
+    assert_eq!(runtime_inputs.len(), 2);
+    assert!(runtime_inputs[0].contains("【本轮用户输入】\n请为 AAOI 生成财报前瞻"));
+    assert!(runtime_inputs[1].contains("【本轮用户输入】\n请为 AAOI 生成财报前瞻"));
+    assert!(runtime_inputs[1].contains("【HONE 服务端隔离恢复材料】"));
+    assert!(runtime_inputs[1].contains("preview preflight found 20 issues"));
+    assert!(runtime_inputs[1].contains("# AAOI公司财报前瞻分析\n\n待修正的完整报告"));
     assert!(
         queued_results
             .lock()
