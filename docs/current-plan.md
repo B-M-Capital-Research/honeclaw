@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-09
-状态：有 13 个活跃任务
+最后更新：2026-08-10
+状态：有 14 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Earnings OpenCode signature 恢复安全分类修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/earnings-opencode-signature-recovery.md`
+  - 摘要：修复财报前瞻在 OpenCode 内置只读工具和明确未执行的 unavailable-tool 记录之后遭遇 Gemini `Corrupted thought signature` 时，被未知副作用门错误阻断一次性 fresh-session recovery 的问题；保持真实 shell、未知工具和所有持久写入严格禁止自动重放
 
 - **Public 推送缺口审计与移动详情弹窗修复**
   - 状态：`in_progress`

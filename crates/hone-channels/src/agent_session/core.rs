@@ -49,7 +49,8 @@ use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
     UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf_artifact,
     earnings_pdf_validation_failed_without_side_effects, persistent_side_effect_state_is_uncertain,
-    response_has_only_known_read_only_calls, response_has_persistent_side_effect,
+    response_has_only_known_read_only_calls, response_has_only_retry_safe_earnings_opencode_calls,
+    response_has_persistent_side_effect,
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -2565,6 +2566,15 @@ impl AgentSession {
             } else {
                 CONTEXT_OVERFLOW_RECOVERY_LIMIT
             };
+            let recovery_trace_is_known_read_only = if options.dedicated_earnings_workflow
+                && matches!(
+                    options.runner_override,
+                    Some(AgentRunRunnerOverride::OpencodeAcp)
+                ) {
+                response_has_only_retry_safe_earnings_opencode_calls(&response.tool_calls_made)
+            } else {
+                response_has_only_known_read_only_calls(&response.tool_calls_made)
+            };
             let should_try_recovery = !response.success
                 && (context_overflow
                     || corrupted_thought_signature
@@ -2579,7 +2589,7 @@ impl AgentSession {
                     .retains_native_history()
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
                 && (safe_earnings_pdf_validation_failure
-                    || (response_has_only_known_read_only_calls(&response.tool_calls_made)
+                    || (recovery_trace_is_known_read_only
                         && !response_has_persistent_side_effect(&response.tool_calls_made)))
                 && committed_visible_prefix.is_none()
                 && recovery_idx < recovery_limit;

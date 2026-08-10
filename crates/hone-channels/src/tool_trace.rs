@@ -189,6 +189,46 @@ pub(crate) fn response_has_only_known_read_only_calls(tool_calls: &[ToolCallMade
     tool_calls.iter().all(is_known_read_only_call)
 }
 
+/// Whether every call is safe to replay for the dedicated earnings workflow
+/// when the verified runner is OpenCode.
+///
+/// OpenCode exposes a small set of built-in filesystem readers outside Hone's
+/// MCP namespace. It also records an unavailable tool attempt as its own
+/// `invalid` tool: that record proves the requested tool was rejected before
+/// dispatch, so it has no side effect. Keep this allowance local to the
+/// dedicated OpenCode recovery boundary; arbitrary runner tools with the same
+/// short names must remain unknown elsewhere.
+pub(crate) fn response_has_only_retry_safe_earnings_opencode_calls(
+    tool_calls: &[ToolCallMade],
+) -> bool {
+    tool_calls.iter().all(|call| {
+        if is_known_read_only_call(call) {
+            return true;
+        }
+
+        match call.name.trim().to_ascii_lowercase().as_str() {
+            "read" | "grep" | "glob" => true,
+            "invalid" => {
+                let requested_tool = call
+                    .arguments
+                    .get("tool")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let error = call
+                    .arguments
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim);
+                requested_tool.zip(error).is_some_and(|(tool, error)| {
+                    error.starts_with(&format!("Model tried to call unavailable tool '{tool}'."))
+                })
+            }
+            _ => false,
+        }
+    })
+}
+
 fn result_is_uncertain(result: &serde_json::Value) -> bool {
     if result
         .get("side_effect_status")
@@ -495,5 +535,42 @@ mod tests {
             call("data_fetch", None, json!({})),
             call("mcp__filesystem__write_file", None, json!({})),
         ]));
+    }
+
+    #[test]
+    fn earnings_opencode_retry_accepts_only_builtin_reads_and_rejected_unavailable_tools() {
+        let safe_calls = vec![
+            call("hone_data_fetch", None, json!({"success":true})),
+            call("read", None, json!({"status":"completed"})),
+            call("grep", None, json!({"status":"completed"})),
+            call("glob", None, json!({"status":"completed"})),
+            ToolCallMade {
+                name: "invalid".to_string(),
+                arguments: json!({
+                    "tool":"bash",
+                    "error":"Model tried to call unavailable tool 'bash'. Available tools: read, grep."
+                }),
+                result: json!({"status":"completed"}),
+                tool_call_id: Some("call_invalid".to_string()),
+            },
+        ];
+        assert!(response_has_only_retry_safe_earnings_opencode_calls(
+            &safe_calls
+        ));
+
+        for unsafe_call in [
+            call("bash", None, json!({"status":"completed"})),
+            call("task", None, json!({"status":"completed"})),
+            ToolCallMade {
+                name: "invalid".to_string(),
+                arguments: json!({"tool":"bash","error":"arguments were malformed"}),
+                result: json!({"status":"completed"}),
+                tool_call_id: Some("call_ambiguous_invalid".to_string()),
+            },
+        ] {
+            assert!(!response_has_only_retry_safe_earnings_opencode_calls(&[
+                unsafe_call
+            ]));
+        }
     }
 }

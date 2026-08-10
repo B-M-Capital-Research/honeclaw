@@ -4596,12 +4596,35 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
         AgentRunnerResult {
             response: AgentResponse {
                 content: String::new(),
-                tool_calls_made: vec![ToolCallMade {
-                    name: "hone_data_fetch".to_string(),
-                    arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
-                    result: serde_json::json!({"success":true,"data":[]}),
-                    tool_call_id: Some("call_read_only".to_string()),
-                }],
+                tool_calls_made: vec![
+                    ToolCallMade {
+                        name: "hone_data_fetch".to_string(),
+                        arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
+                        result: serde_json::json!({"success":true,"data":[]}),
+                        tool_call_id: Some("call_read_only".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "read".to_string(),
+                        arguments: serde_json::json!({"filePath":"/tmp/tool-output"}),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_opencode_read".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "grep".to_string(),
+                        arguments: serde_json::json!({"pattern":"2026-06-30"}),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_opencode_grep".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "invalid".to_string(),
+                        arguments: serde_json::json!({
+                            "tool":"bash",
+                            "error":"Model tried to call unavailable tool 'bash'. Available tools: read, grep."
+                        }),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_unavailable_bash".to_string()),
+                    },
+                ],
                 iterations: 1,
                 success: false,
                 error: Some(
