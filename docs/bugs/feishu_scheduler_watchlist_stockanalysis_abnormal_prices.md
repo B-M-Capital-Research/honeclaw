@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 2026-08-10 18:02 CST 缺陷巡检复核：14:02-18:02 CST live source 继续复发，状态维持 `New / P0`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 14:02-18:02 CST（UTC 2026-08-10 06:02-10:02）。
+    - 14:30 CST `存储板块关键事件心跳提醒` deliver preview 写 `SNDK $1,212.21`，并标注为“最新可得、非逐笔”；同轮 raw preview 还明写 web_search limit reached 后继续引用 cached prices。
+    - 15:00 / 17:00 CST `持仓财报与重大新闻心跳提醒` 继续引用上下文存档价格 `SNDK $1,212.21 / AAOI $135.63`；17:00 CST `闪迪关键事件心跳提醒` 继续以 `SNDK $1,212.21 / WDC $434.30` 组织 NAND Flash 市场正文。
+    - 18:00 CST `光模块板块关键事件心跳提醒` 明写“本轮无新报价核验”，但仍输出 `AAOI $135.63 / COHR $379.13 / LITE $890.17` 精确价格锚并标注旧 `hone_quote_time`。
+  - 判断：
+    - 最新样本仍落在同一“工具预算受限 / 上下文存档 / 旧 `hone_quote_time` + 精确价格锚”链路；不新建重复文档。
+    - 严重等级维持 `P0`：未充分核验的精确行情锚会污染投资监控、持仓风险判断和交易决策。本轮未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - 2026-08-10 14:02 CST 缺陷巡检复核：10:02-14:02 CST live source 继续复发，状态维持 `New / P0`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-10 10:02-14:02 CST（UTC 2026-08-10 02:02-06:02）。

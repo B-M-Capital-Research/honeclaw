@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-10 18:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-10 14:02-18:02 CST 近窗统计 `HeartbeatDiag` 相关行 359 条、raw/run-start 类 184 条、`deliver=51`、`duplicate_suppressed=20`。
+    - 近窗仍有 `failure_kind=provider_http_error=14`、`execution_failed=11`、`runner_error=2`，错误集中在 OpenAI-compatible provider HTTP 529、persistent tool reconciliation 与 heartbeat 非结构化输出后跳过发送。
+    - parse / raw 信号继续分裂：`PlainTextTriggered=102`、`JsonNoop=21`、`PlainTextSuppressed=11`、`PlainTextNoop=4`、`JsonTriggered=1`。
+    - 代表样本：16:30 `NVDA 关键事件心跳提醒` 因 OpenAI-compatible HTTP 529 provider 错误跳过发送；17:30 `持仓重大事件心跳提醒` 因 `persistent_tool_failure: read-after-write reconciliation failed` 跳过发送；同窗仍有大量 `PlainTextTriggered` 发送 `noop / 无新增 / 无新触发` 正文。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-10 14:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-10 10:02-14:02 CST 近窗统计 `run_start=96`、`run_finish=96`、`deliver=49`、`duplicate_suppressed=23`。
