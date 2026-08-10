@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-10 22:01-2026-08-11 02:02 CST（UTC 2026-08-10 14:01-18:02）。
+  - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 02:00 CST deliver preview 主体转为 NVIDIA 与 SK Hynix 价值 `$500B+` 的 AI 基础设施与 HBM 内存供应关系说明，不再稳定围绕光模块板块关键事件触发条件收口。
+  - `job_id=j_3c52d213` / `job=持仓财报与重大新闻心跳提醒`。
+  - 02:00 CST deliver preview 转为 NVIDIA 与 SK Hynix HBM 供应关系说明，并明写行情核验受限、引用旧上下文报价；未完成持仓财报与重大新闻列表式核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 02:00 CST deliver preview 转为 `NBIS = Nebius Group N.V.` 的单标的说明和行情表，偏离 AAPL / NVDA / BE 关键事件监控目标。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-10 18:00-22:02 CST（UTC 2026-08-10 10:00-14:02）。
   - `job_id=j_75af226e` / `job=存储板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
   - 19:00 / 20:00 CST deliver preview 继续转为 NVIDIA 与 SK Hynix 战略供应绑定关系；21:00 / 22:00 CST 又围绕 SNDK 财报文章归档和历史行情锚展开，未稳定围绕存储板块关键事件触发条件收口。
