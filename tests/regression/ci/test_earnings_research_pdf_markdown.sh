@@ -28,7 +28,8 @@ report = (
     "| 指标 | 当前判断 |\n|---|---|\n| 收入 | 以公司指引为锚 |\n\n"
     "# 附录：近期新闻时间线分析\n\n"
     "## 新闻解读\n\n"
-    "近期只保留了一条可由公司公告核验的重大事件，没有为凑数量补写新闻。\n"
+    "近期只保留了一条可由公司公告核验的重大事件，没有为凑数量补写新闻。\n\n"
+    "来源：[CoreWeave Investor Relations](https://investors.coreweave.com/)\n"
 )
 module.validate_report(report)
 
@@ -47,12 +48,14 @@ assert "@top-left" in workflow_html
 analysis = (
     "# CRWV公司财报分析总结\n\n"
     "# 1. 财报摘要\n\n本季度收入高于公司此前指引。\n\n"
-    "# 10. 结论\n\n结论只基于已取得的财报与电话会材料。\n"
+    "# 10. 结论\n\n结论只基于已取得的财报与电话会材料。\n\n"
+    "来源：[SEC filing](https://www.sec.gov/Archives/edgar/data/1769628/)\n"
 )
 module.validate_report(analysis)
 assert "<h1>10. 结论</h1>" in module.markdown_to_html(analysis)
 
 for invalid, expected in [
+    ("# 无来源报告\n\n只有模型记忆中的数字。", "no verifiable source URL"),
     (report + "\nAnonymous Institution gave a buy rating.", "anonymous source"),
     (report + "\n来源：https://example.com/fake", "placeholder URL"),
     (report + "\n{financial_information}", "unresolved placeholder"),

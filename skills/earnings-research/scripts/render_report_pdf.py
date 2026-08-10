@@ -90,7 +90,14 @@ def validate_report(report: str) -> None:
             "report contains an unresolved placeholder or anonymous source: " + ", ".join(found[:5])
         )
 
-    for url in re.findall(r"https?://[^\s)\]>]+", report, flags=re.IGNORECASE):
+    urls = re.findall(r"https?://[^\s)\]>]+", report, flags=re.IGNORECASE)
+    if not urls:
+        raise ValueError(
+            "report contains no verifiable source URL; search the exact unsupported claims "
+            "or remove them before rendering"
+        )
+
+    for url in urls:
         host = (urlparse(url.rstrip(".,;，。；")).hostname or "").lower().rstrip(".")
         if host in PLACEHOLDER_HOSTS or host.endswith(".example") or host.startswith("127."):
             raise ValueError(f"report contains a placeholder URL: {url}")

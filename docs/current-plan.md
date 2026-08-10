@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除后来叠加的 `preview_audit`、固定新闻数量和 renderer 内容裁判；重要事实缺失或冲突时先搜索，仍不可核验就披露/省略，严禁编造。精确 `bd2eb2f9` 已完成 Rust/CI/线上 layout-only PDF 验证并部署生产，服务健康且无 warning/error；当前只待真实财报 canary 检查无历史上下文/compact、接近一次 renderer 调用、无占位来源和附件持久化
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除 `preview_audit`、固定新闻数量和 renderer 内容裁判。首轮生产 CRWV canary 在 109 秒内完成 2 次取数、5 次搜索和 1 次渲染，但暴露两个闭环缺陷：最终文本覆盖宿主附件引用，以及独立任务继承上一轮 usage peak 后误判 compact；报告还使用了本轮工具未覆盖且未显示来源的事实。当前窄修复已通过完整相关测试：财报终稿强制持久化 renderer 验证正文和 artifact、清除跨轮 usage peak、模型记忆不算证据、至少保留真实来源 URL，同时不恢复固定格式审计；下一步推送、部署并跑第二次真实 canary
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

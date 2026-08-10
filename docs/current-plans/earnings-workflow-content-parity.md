@@ -27,7 +27,7 @@
 - 保留原流程：实体确认 → 当前财务/财报数据 → 原 query prompt 生成 5–8 个查询 → 搜索聚合 → 原前瞻或分析 prompt → 前瞻追加原新闻 prompt → PDF。
 - 原 BamangResearch prompt 是报告内容与结构的真相源；不再增加第二套预审 schema、机构字段、新闻数量、自然段句数或页数要求。
 - 真实性约束留在研究阶段：重要事实缺失或矛盾时先做针对性搜索；仍不可核验时明确写“未找到可核验来源”或省略。不得编造来源、URL、机构、引语、数字、事件或因果关系。
-- renderer 只保真排版任意 Markdown，并加水印、免责声明和知识星球分享页；只拒绝技术错误和显然的占位/匿名来源，不改写内容。
+- renderer 只保真排版任意 Markdown，并加水印、免责声明和知识星球分享页；只拒绝技术错误、显然的占位/匿名来源及“整份报告没有任何真实来源 URL”的证据缺口，不改写内容，也不规定来源章节的格式。
 - 保留宿主 PDF terminal closure：只有官方 renderer 成功且 PDF 被当前 actor 持久化，专用轮次才算成功。
 
 ## Verification
@@ -39,6 +39,8 @@
 - `bd2eb2f99e7ff62ed856902f8771b0314887d10c` 已推送 `main`；Runtime Image、CI、Secret Scan、Code Quality 与 Release Cache Warm 均通过，精确 GHCR runtime digest 为 `sha256:f44be080c43625d3ae80fee58792a8d0e6f7c14f67ce3f72c9683ddc169b6668`。
 - 生产已切到该精确 revision，技能从 system 目录加载且正文包含原流程契约；服务 `active/running`、`NRestarts=0`、云存储权威、PostgreSQL/OSS 健康、切换后 warning/error 为 0。
 - 已以生产 service user 调用新 renderer 生成 CRWV smoke PDF；回传文件哈希一致、A4 两页，并逐页确认中文、表格、水印、免责声明和分享页无歪斜或截断。该 smoke 只证明 renderer/宿主环境，不替代真实 LLM 内容 canary。
+- 第一轮真实 CRWV canary `1e382729-3f4f-4952-b2bd-68f667a58873` 在精确 `bd2eb2f9` 上完成 2 次结构化取数、5 次搜索和 1 次 renderer，109.220 秒内生成 551,210 字节/3 页 PDF，用量 41,165 tokens、费用 `$0.227074`；但宿主最终优先取模型的无附件文本 chunk，导致 PDF 没有挂载/持久化。独立任务还错误继承上一轮 `121,759` token 峰值并把 41,165 误判为 compact。报告包含若干本轮工具结果未覆盖且没有显示来源 URL 的事实，即使事后能从官方资料核实，也违反“只能使用本轮证据”的契约，因此本次 canary 判定失败。
+- 后续窄修复让财报终稿始终使用 renderer 返回的 `validated_report_markdown + artifact`，普通 ACP 回复仍保持原终稿选择；财报任务不再读取或续存历史 usage peak。技能和系统覆盖明确禁止模型记忆补事实，要求对未覆盖断言定向搜索/删除；renderer 只新增“至少一个真实来源 URL”的最小证据门禁，不恢复固定结构审计。针对性回归、`hone-channels` 794/1 ignored、Web chat 15/15 和完整 CI-safe 回归通过，待推送部署后二次 canary。
 - 部署精确 revision 与技能后，用一个生产前瞻 canary 验证：无旧会话污染、无 compact、搜索后无占位来源、renderer 调用接近一次、PDF 可下载且刷新后仍存在；记录 token、cost 和耗时。
 
 ## Documentation Sync
@@ -50,4 +52,4 @@
 
 - 搜索结果可能不足以填满原 prompt 的全部字段；必须暴露缺口或省略，不得用模型记忆补齐。
 - 原 prompt 包含对预测、估值和机构观点的高要求；这些要求触发更多搜索，但不构成伪造某个数值的理由。
-- renderer 不再判断研究结论是否正确；内容验收依赖当前工具证据、生产 canary 和人工抽查，而不是把研究判断硬编码进排版器。
+- renderer 不判断研究结论是否正确，只阻断完全无真实来源 URL 的报告；逐项内容验收仍依赖当前工具证据、生产 canary 和人工抽查，而不是把研究判断硬编码进排版器。
