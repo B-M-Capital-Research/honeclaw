@@ -1,4 +1,4 @@
 interface:
   display_name: "财报研究"
-  short_description: "严格执行财报前瞻或财报分析，并生成可分享的 PDF 报告"
-  default_prompt: "Use $earnings-research to run the requested earnings workflow and generate the final shareable PDF."
+  short_description: "按原 BamangResearch 流程生成可核验的财报研究与 PDF"
+  default_prompt: "Use $earnings-research to run the original BamangResearch earnings workflow with current evidence and generate the final shareable PDF."

@@ -4546,7 +4546,9 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(runtime_input.contains(user_task));
     assert!(runtime_input.contains("【Session 上下文】"));
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
-    assert!(system_prompt.contains("不得输出数据时间或行情口径"));
+    assert!(system_prompt.contains("BamangResearch 原 Workflow 和原 prompt"));
+    assert!(system_prompt.contains("重要事实缺少或相互矛盾时"));
+    assert!(system_prompt.contains("不要求 preview_audit、固定新闻条数"));
     assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
     assert_eq!(
         execution

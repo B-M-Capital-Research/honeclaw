@@ -31,10 +31,10 @@
   - 计划：`docs/current-plans/institutional-company-coverage.md`
   - 摘要：前五个切口已推送，覆盖结构化财报卡、actor 主线隔离、同文档去重、Grok 4.5、A/B/C 订阅、24 个 SEC 样本连续四季对账、季度材料身份和 SQLite 可恢复任务。第六切口也已完成并通过全仓门禁：8 份 AMD/MSFT/QCOM/CAT 官方 transcript 两轮全量 Grok 回放均 8/8，电话会共享事实与 actor 问题/承诺对账分层，FMP 错绑 ticker 被拒绝，未来承诺只有 `fulfilled + evidence` 才能关闭；第六切口成本约 `$0.850`。后续仍需人工盲评、专业投资者 UI、真实 A 级画像、合法可持续的自动全文来源与一个完整前瞻财报季
 
-- **Earnings Workflow 内容一致性与新闻深度修复**
+- **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：以线上 Dify `V2-财报前瞻` 主 prompt 与“公司近期新闻时间线分析模块”为直接基线，修复中性带浮点边界、恢复核心结论开头、加强机构逐家比较和每条新闻的短期/长期/产品竞争力传导；2026-08-10 CRWV canary 已证明 runtime/PDF 闭环恢复，但暴露 `example.com`、匿名机构、未绑定工具证据的公司事件和 22 次串行 renderer 修正，下一步先补 provenance 硬门禁和效率回归再做生产内容验收
+  - 摘要：已定位 CRWV 劣化来自后来叠加的 `preview_audit`、固定 8–10 条新闻和 renderer 内容裁判，而非原 BamangResearch Workflow。当前按原 query/main/news/analysis prompts 直接迁移，renderer 收缩为 layout-only；重要事实缺失或冲突时先搜索，仍不可核验就披露/省略，严禁编造。下一步完成 Rust/CI 验证并部署生产 canary，检查无历史上下文/compact、无占位来源、低 renderer 调用数和 PDF 持久化
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

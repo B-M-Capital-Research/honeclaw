@@ -1335,12 +1335,15 @@ impl AgentSession {
             }
             system_prompt.push_str(
                 "\n\n【管理员财报工作流系统覆盖】\n\
-                 当前轮是独立的财报前瞻或财报分析工作流。earnings-research 技能拥有最终报告格式；\
+                 当前轮是独立的财报前瞻或财报分析工作流，不得把此前会话事实或股票带入本轮研究。\
+                 earnings-research 技能中的 BamangResearch 原 Workflow 和原 prompt 拥有报告内容与结构；\
                  它取代普通交互式投研的首行时间、行情口径、九段式分析和其它通用回答模板。\
-                 不得输出数据时间或行情口径，不得套用普通问答格式。必须自行完成技能规定的\
-                 实体核验、证据收集、八至十条近期新闻（财报前瞻）和官方 PDF 渲染。\
-                 只有 skill_tool 返回 success=true 且 PDF artifact 已生成后才能结束；若渲染器\
-                 返回校验错误，必须按错误修正报告或 audit 并再次调用，禁止用文字失败说明收尾。",
+                 必须完成实体核验、当前财务数据获取和针对性网页搜索。重要事实缺少或相互矛盾时\
+                 必须继续搜索；仍无法核验就明确说明或省略，严禁编造来源、链接、机构、引语、\
+                 数字、事件或因果关系。不得为凑新闻数量或满足 PDF 版式虚构内容。renderer 只负责\
+                 将最终 Markdown 排版成 PDF，不要求 preview_audit、固定新闻条数、固定页数或额外\
+                 报告结构。只有 skill_tool 返回 success=true 且 PDF artifact 已生成后才能结束；\
+                 若 renderer 报告技术错误或显然占位符，修复对应问题后再调用，禁止用文字失败说明收尾。",
             );
         }
         let investment_context = if options.dedicated_earnings_workflow {

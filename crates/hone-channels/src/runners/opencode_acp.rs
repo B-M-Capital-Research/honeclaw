@@ -74,8 +74,10 @@ fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
     Some(format!(
         "【HONE 财报工作流仍未完成，必须继续】\n上一段输出不能作为终稿，因为没有成功的\
          earnings-research PDF artifact。最近一次 renderer 校验为：\n{latest_error}\n\n\
-         继续使用本会话已经取得的证据；缺证据时先继续调用数据或网页搜索工具。按原\
-         Workflow 一次修正列出的全部问题，再调用 skill_tool。不得向用户解释格式限制，\
+         继续使用本轮已经取得的证据；缺证据时先继续调用数据或网页搜索工具。若错误指出\
+         占位符或虚假来源，找到真实来源或删除无依据内容；若是技术渲染错误，只修复渲染调用。\
+         保持 BamangResearch 原 Workflow 的正文，不得为了 PDF 版式改写结构或凑新闻数量。然后\
+         再调用 skill_tool。不得向用户解释内部渲染错误，\
          不得发布文字降级答案，也不得停止；只有 skill_tool 返回 success=true、\
          render_success=true、一个 application/pdf artifact，并在最终完整报告中引用该 PDF\
          文件名后才能结束。"
@@ -1783,19 +1785,21 @@ mod earnings_pdf_completion_tests {
     #[test]
     fn failed_renderer_and_text_fallback_require_a_continuation_prompt() {
         let mut state = AcpPromptState {
-            full_reply: "PDF 渲染暂时遇到格式和证据链完整性限制，无法成功生成。".to_string(),
+            full_reply: "PDF 渲染暂时失败，无法成功生成。".to_string(),
             ..AcpPromptState::default()
         };
         state.finished_tool_calls.push(renderer_call(json!({
             "success": false,
             "render_success": false,
             "side_effect_status": "not_started",
-            "render_error": "preview news item 1 is conference chatter",
+            "render_error": "report contains a placeholder URL: https://example.com/item",
             "artifacts": []
         })));
 
         let prompt = earnings_pdf_recovery_prompt(&state).expect("recovery prompt");
-        assert!(prompt.contains("preview news item 1 is conference chatter"));
+        assert!(prompt.contains("report contains a placeholder URL"));
+        assert!(prompt.contains("找到真实来源或删除无依据内容"));
+        assert!(prompt.contains("不得为了 PDF 版式改写结构或凑新闻数量"));
         assert!(prompt.contains("不得发布文字降级答案"));
         assert!(should_continue_earnings_pdf_recovery(true, true, 0, &state));
         assert!(should_continue_earnings_pdf_recovery(true, true, 1, &state));
