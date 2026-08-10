@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除 `preview_audit` 与固定报告格式。精确 `5a432729` 已修复终稿附件持久化、跨轮 usage peak 和上下文隔离；随后真实 CRWV/LITE canary 都无 compact 且 PDF 闭环，但逐项审计发现真实 URL 旁仍可混入未取证事实，并实际把 `$960M–$1.01B` 错写为“9.6亿–1.01亿”。专用 MCP child 的当前轮 URL/逐字摘录/数值一致性门禁及完整本地门禁均已通过，作为隐藏 provenance sidecar 且不规定 PDF 标题、段落、页数或来源章节；待精确生产部署和新真实 canary
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。真实 CRWV/LITE canary 已证明上下文/PDF 闭环，但暴露真实 URL 旁可混入未取证事实及 `$960M–$1.01B` 被错写为“9.6亿–1.01亿”。精确 `66f86ddb` 现已在生产启用专用 MCP child 的当前轮 URL/逐字摘录/数值一致性门禁，隐藏 provenance sidecar 不规定 PDF 标题、段落、页数或来源章节；本地/CI/不可变镜像/生产健康与 pre-render 零副作用 MCP 冒烟均通过，只待新真实 canary 逐主张内容验收
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
