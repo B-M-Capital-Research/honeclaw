@@ -7117,3 +7117,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：同一窗口内自然语言、JSON noop、未知状态、空状态、失败跳过和用户可见 deliver 并存。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 18:00 Web scheduler 仍有 assistant 收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-11 06:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 02:02-06:02 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=112`、`JsonNoop=18`、`PlainTextSuppressed=7`、`PlainTextNoop=8`、`JsonTriggered=8`、`Empty=1`。
+  - 同窗还有 `HeartbeatDiag=365`、`run_start=97`、`run_finish=98`、`deliver=57`、`duplicate_suppressed=15`、`execution_failed=8`、raw `<think>` preview 97 条。
+  - 代表样本包括 06:00 CST `闪迪关键事件心跳提醒` 因 `PlainTextSuppressed` 落成“heartbeat 输出不是结构化 JSON”并跳过发送；同一批次另有多条 `PlainTextTriggered` deliver 正文仍明写 `noop / 无新触发`。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：同一窗口内自然语言、JSON noop、空输出、非结构化失败跳过和用户可见 deliver 并存。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

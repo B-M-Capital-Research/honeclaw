@@ -269,6 +269,16 @@
   - 最新证据仍落在 FMP news 数据摄取链路持续退化的既有 P2 范围内，不是新的独立根因。
   - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。
 
+## 最新运行态复核（2026-08-11 06:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 02:02-06:02 CST。
+  - 同窗仍检出 17 条 `poller.fmp` 失败信号，集中在 FMP price/news/extended-hours 相关批量请求；未见对应 event-engine 整体停摆。
+  - 同窗 heartbeat 仍有 `run_start=97`、`run_finish=98`、`deliver=57`，说明 scheduler 与 event-engine 其它链路仍在推进。
+- 本轮判断
+  - FMP poller 仍存在持续请求失败，行情与新闻增量可能退化；但运行态不是全链路不可用。
+  - 严重等级维持功能性 `P2 / New`，非 P1。
+
 ## 最新运行态复核（2026-08-10 02:02 CST）
 
 - `data/logs/hone-console-page-source.log`
