@@ -9,6 +9,14 @@
 
 ## 最新进展
 
+- `2026-08-10 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-10 06:00-10:02 CST`。
+    - 08:31 CST event-engine digest 出站记录 13 条 `web push broadcast failed: channel closed channel=web user=...`，随后进入 25 条 `[dryrun sink]` fallback；代表样本覆盖多个 Web actor 的盘前摘要。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，06:00 CST 后 `web_push_messages` 增量为 0。
+  - 判断：这是既有 Web push channel closed 后 fallback / 台账语义不可靠问题的持续复发。它影响 Web push 投递可观测性和真实触达，但 source runtime 仍运行、其它 sink 有 fallback，暂不升 P1。
+
 - `2026-08-09 22:03 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：`2026-08-09 18:03-22:03 CST`。

@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-10 06:00-10:02 CST。
+  - 08:00 CST `光模块板块关键事件心跳提醒` 与 08:30 CST `光迅科技关键事件心跳提醒` 均落成 `persistent_tool_failure: read-after-write reconciliation failed`，随后 Web events 只记录 `failure_kind=runner_error` 并跳过发送。
+  - 09:32 CST `AI与科技持仓观察关键事件心跳提醒` 又因 OpenAI-compatible stream body decode runner error 跳过发送；同窗 source runtime 仍有 `run_start=96`、`run_finish=105`、`deliver=57`，说明不是 Web scheduler / event-engine 全链路不可用。
+  - 判断：这些样本仍属于“实时核验 / persistent-tool / runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-05 02:00-06:00 CST。
   - 05:05 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 记录 `[MsgFlow/web] failed ... error="数据时间：北京时间 2026-08-05 05:05；行情口径：报价源时间：北京时间 2026-08-05 04:58 至 2026-08-05 04:59...`；错误字段是一段 SOXX / SMH 投研正文开头，而不是结构化失败分类。
   - 随后仅记录 `step=session.persist_assistant ... detail=failed` 与 `recovered read-only failure answer ... failure_kind=internal_error_suppressed chars=447`；同窗 source runtime 仍有 `run_start=110`、`run_finish=110`、`deliver=57`，说明不是 Web scheduler / event-engine 全链路不可用。
