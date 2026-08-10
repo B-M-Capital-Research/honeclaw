@@ -19,7 +19,7 @@
 - **Earnings OpenCode 结构结果恢复修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-opencode-signature-recovery.md`
-  - 摘要：首轮 signature 安全重试修复已上线；真实 RKLB canary 进一步暴露 safe PDF validation 判断仍使用通用只读白名单，因 OpenCode 内置 `glob` 被排除而把 renderer 明确 `side_effect_status=not_started` 的轨迹误判为状态不确定，正在修复并重新完成 PDF 闭环
+  - 摘要：前两轮 signature / safe renderer recovery 已上线；后续 NBIS 与 CRWV 证明 OpenCode `task` 子代理同时污染安全重放轨迹并诱发新的 Gemini signature 损坏，且 fresh retry 丢失已收敛报告。`2a6aecf3` 已显式禁用 `task`，为未 compact 会话增加同 session 续改，并让 fresh recovery 携带完整旧草稿和精确 renderer 错误；精确 GHCR/GCE 切换已完成，待一次获授权的 CRWV/NBIS 真实 PDF canary 后闭环
 
 - **Public 推送缺口审计与移动详情弹窗修复**
   - 状态：`in_progress`
