@@ -1,7 +1,7 @@
 # Earnings OpenCode signature 与结构结果恢复修复
 
 - title: Earnings OpenCode signature 与结构结果恢复修复
-- status: in_progress
+- status: done
 - created_at: 2026-08-10
 - updated_at: 2026-08-10
 - owner: Codex
@@ -53,3 +53,10 @@
 - OpenCode 内置文件读取名字只在 dedicated earnings + OpenCode 边界使用，不能升级为所有 runner 的全局安全断言。
 - OpenCode safe PDF validation 例外只参与 dedicated earnings + OpenCode 的一次 fresh-session recovery；不得把 `read` / `grep` / `glob` 提升为其它 runner 的通用安全工具。
 - 再次生产验证会产生 Gemini/OpenRouter 费用；部署与余额门均通过后，只由用户从已登录页面触发一次。
+
+## Production Closure
+
+- 2026-08-10 CRWV 消息 `7762a98e-b1e9-4e48-b20a-8f5175535346` 在首个原生会话收到精确 `400 Corrupted thought signature` 后，按设计进入 `fresh_session_after_corrupted_thought_signature`，随后在全新原生会话完成报告和 PDF。
+- 当前 canary 没有执行 `task` 或 `bash`，也没有发生 compact；一次被模型提出的 `bash` 只停留在 `pending`，没有 `in_progress` / `completed`。隔离配置的禁用边界已在真实生产请求中生效。
+- 最终 renderer 返回 `success=true`、`render_success=true`、`side_effect_status=completed` 和一个 `application/pdf` artifact；宿主收集一个附件，持久化 assistant 成功，active chat 回到 0，服务保持 `NRestarts=0`。
+- 成品 `CRWV_Q2_Earnings_Preview-1109374d.pdf` 为 PDF 1.4、4 页、612,805 bytes。功能恢复任务至此完成；样片里的占位来源、弱证据和 22 次 renderer 调用暴露的是内容真实性/效率缺口，已移交仍活跃的 `docs/current-plans/earnings-workflow-content-parity.md`，不延长本恢复计划。

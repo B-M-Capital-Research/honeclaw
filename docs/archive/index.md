@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
+
+## 2026-08-10
+
+### Earnings OpenCode Signature And Renderer Recovery
+
+- Status: done; exact GHCR/GCE deployment and authenticated production CRWV canary complete; no formal release or tag
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/earnings-opencode-signature-recovery.md`
+- Handoff: `docs/handoffs/2026-08-10-earnings-opencode-signature-recovery.md`
+- Decision / ADR: no new decision; this restores the existing isolated earnings replay, safe-side-effect and PDF terminal contracts
+- Related PRs / commits: direct `main` commits `4dd76971d7b9985e281c3632db17b2936e0f91ce`, `185504bc03d8be32bfcc1f851200e411ed8a8238`, and deployed `2a6aecf33936e85c7b34130fc2f8f2a8ab3eb9c6`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; `docs/runbooks/backend-deployment.md`; hone-channels/web-api suites; earnings PDF regression; full CI-safe regression; timestamp-bounded ACP and GCE artifact inspection
+- Current conclusion: dedicated earnings turns recover once from the exact OpenRouter/Gemini corrupted-signature failure in a fresh isolated session, deny executed `task`/`bash`, retain safe renderer recovery material, and require a persisted PDF. Production CRWV message `7762a98e-b1e9-4e48-b20a-8f5175535346` exercised the real signature recovery and produced the four-page, 612,805-byte `CRWV_Q2_Earnings_Preview-1109374d.pdf`; attachment collection/persistence succeeded, active chats returned to zero, and the service stayed at `NRestarts=0`.
+- Next entry point: `docs/current-plans/earnings-workflow-content-parity.md`; the runtime incident is closed, but the CRWV sample is not content-approved because it contains placeholder/untraceable evidence and required 22 renderer attempts.
 
 ## 2026-08-09
 
