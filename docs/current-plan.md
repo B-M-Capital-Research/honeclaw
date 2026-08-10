@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-10
+最后更新：2026-08-11
 状态：有 13 个活跃任务
 
 ## 说明
@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除 `preview_audit`、固定新闻数量和 renderer 内容裁判。首轮生产 CRWV canary 在 109 秒内完成 2 次取数、5 次搜索和 1 次渲染，但暴露两个闭环缺陷：最终文本覆盖宿主附件引用，以及独立任务继承上一轮 usage peak 后误判 compact；报告还使用了本轮工具未覆盖且未显示来源的事实。当前窄修复已通过完整相关测试：财报终稿强制持久化 renderer 验证正文和 artifact、清除跨轮 usage peak、模型记忆不算证据、至少保留真实来源 URL，同时不恢复固定格式审计；下一步推送、部署并跑第二次真实 canary
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 query/main/news/analysis prompts，并删除 `preview_audit`、固定新闻数量和 renderer 内容裁判。首轮生产 CRWV canary 在 109 秒内完成 2 次取数、5 次搜索和 1 次渲染，但暴露最终文本覆盖宿主附件引用、跨轮 usage peak 误判 compact 及模型记忆冒充本轮证据。窄修复已通过完整相关测试并以精确 `5a432729` 部署：终稿强制持久化 renderer 正文和 artifact、清除跨轮 usage peak、模型记忆不算证据、至少保留真实来源 URL，同时不恢复固定格式审计；生产 exact-SHA、云健康、技能读回、公开鉴权、日志和 PDF 可视冒烟均通过，下一步只跑第二次真实 canary
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

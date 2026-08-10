@@ -3,7 +3,7 @@
 - title: Earnings Workflow 原流程直接迁移
 - status: in_progress
 - created_at: 2026-08-05
-- updated_at: 2026-08-10
+- updated_at: 2026-08-11
 - owner: Codex
 - related_files:
   - `skills/earnings-research/SKILL.md`
@@ -40,7 +40,8 @@
 - 生产已切到该精确 revision，技能从 system 目录加载且正文包含原流程契约；服务 `active/running`、`NRestarts=0`、云存储权威、PostgreSQL/OSS 健康、切换后 warning/error 为 0。
 - 已以生产 service user 调用新 renderer 生成 CRWV smoke PDF；回传文件哈希一致、A4 两页，并逐页确认中文、表格、水印、免责声明和分享页无歪斜或截断。该 smoke 只证明 renderer/宿主环境，不替代真实 LLM 内容 canary。
 - 第一轮真实 CRWV canary `1e382729-3f4f-4952-b2bd-68f667a58873` 在精确 `bd2eb2f9` 上完成 2 次结构化取数、5 次搜索和 1 次 renderer，109.220 秒内生成 551,210 字节/3 页 PDF，用量 41,165 tokens、费用 `$0.227074`；但宿主最终优先取模型的无附件文本 chunk，导致 PDF 没有挂载/持久化。独立任务还错误继承上一轮 `121,759` token 峰值并把 41,165 误判为 compact。报告包含若干本轮工具结果未覆盖且没有显示来源 URL 的事实，即使事后能从官方资料核实，也违反“只能使用本轮证据”的契约，因此本次 canary 判定失败。
-- 后续窄修复让财报终稿始终使用 renderer 返回的 `validated_report_markdown + artifact`，普通 ACP 回复仍保持原终稿选择；财报任务不再读取或续存历史 usage peak。技能和系统覆盖明确禁止模型记忆补事实，要求对未覆盖断言定向搜索/删除；renderer 只新增“至少一个真实来源 URL”的最小证据门禁，不恢复固定结构审计。针对性回归、`hone-channels` 794/1 ignored、Web chat 15/15 和完整 CI-safe 回归通过，待推送部署后二次 canary。
+- 后续窄修复让财报终稿始终使用 renderer 返回的 `validated_report_markdown + artifact`，普通 ACP 回复仍保持原终稿选择；财报任务不再读取或续存历史 usage peak。技能和系统覆盖明确禁止模型记忆补事实，要求对未覆盖断言定向搜索/删除；renderer 只新增“至少一个真实来源 URL”的最小证据门禁，不恢复固定结构审计。针对性回归、`hone-channels` 794/1 ignored、Web chat 15/15 和完整 CI-safe 回归通过。
+- 修复提交 `5a43272946d99d96006b5e663e17aca3ab8dbc85` 已推送并以精确 GHCR digest `sha256:5daff66b8bce5b338b3bded180058ff0b2d35b53072425f266a2395aa0be4c84` 部署。最终生产读回证明 exact SHA、`ghcr_linux_oci`、云存储权威、PostgreSQL/OSS 健康、system skill enabled、公开鉴权 JSON `401`、`NRestarts=0` 和切换后 warning/error 为 0。生产 service user 的最小证据渲染冒烟生成 210,378 字节、两页 A4 PDF，逐页确认中文、水印、免责声明和星球分享页正常。当前只待第二次真实 LLM canary。
 - 部署精确 revision 与技能后，用一个生产前瞻 canary 验证：无旧会话污染、无 compact、搜索后无占位来源、renderer 调用接近一次、PDF 可下载且刷新后仍存在；记录 token、cost 和耗时。
 
 ## Documentation Sync
