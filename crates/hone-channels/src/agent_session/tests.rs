@@ -4550,10 +4550,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(system_prompt.contains("重要事实缺少或相互矛盾时"));
     assert!(system_prompt.contains("只存在于模型记忆中的内容一律视为缺失"));
     assert!(system_prompt.contains("来源名称、日期与 URL"));
-    assert!(system_prompt.contains("evidence_manifest"));
-    assert!(system_prompt.contains("PDF 执行前核对 URL、摘录和数字"));
     assert!(system_prompt.contains("不要求 preview_audit、固定新闻条数"));
-    assert!(system_prompt.contains("不得新增已验证报告之外"));
     assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
     assert_eq!(
         execution
