@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-08-06
+Last updated: 2026-08-12
 
 ## Source of Truth and Document Priority
 
@@ -15,6 +15,14 @@ Last updated: 2026-08-06
 - Any affected context documents must be updated before a task is closed
 - Cross-module long-lived behavior changes or architecture decisions must be recorded in `docs/decisions.md`, with ADRs added when needed
 - At the end of a medium-or-greater task, if the task needs handoff, pause-and-resume support, or explicit retention of follow-up risk, a handoff must be left behind
+
+## Generative and Intellectual Workflow Boundaries
+
+- Open-ended creation, research, analysis, judgment, synthesis, and expression are not transactional forms whose quality can be reduced to field completeness. A deterministic validator observes a proxy, not the work itself; making that proxy a blocking objective causes the model to optimize for passing the validator instead of serving the user.
+- Do not default to per-claim mappings, report-wide number/URL coverage, fixed sections/counts/lengths, keyword checks, source-count checks, placeholder checks, or validator-driven rewrite loops for generative quality. Their predictable failure modes include pasted evidence, rigid structure, semantic degradation, repeated tool/render calls, higher token/cost/latency, context compression, and no deliverable at all.
+- Improve generative quality through authoritative inputs, retrieval and targeted search, prompts, model choice, examples and context design. Evaluate with real canaries, explicit review dimensions, human/model review, and observed quality/cost/latency; keep evaluation diagnostic unless the property is objectively decidable and blocking is demonstrably safer than disclosure or review.
+- Keep deterministic enforcement for identity and authorization, actor/tenant isolation, workflow selection, input/path/process safety, protocol completion, idempotency and side-effect state, artifact type/ownership/persistence, and required legal or safety constraints. These boundaries prove that the system acted safely and completed the selected operation; they must not expand into a second judge of whether generated content is intelligent, complete, persuasive, or publishable.
+- A proposed blocking gate in a generative workflow must document the objectively decidable property, false-positive cost, likely proxy-optimization failure mode, why non-blocking observability/canaries are insufficient, and real-sample evidence of net benefit. Without that case, it remains an evaluation signal rather than a production rejection condition.
 
 ## Planning and Handoff Constraints
 
