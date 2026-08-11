@@ -14,13 +14,27 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-11 运行 `bug-2` 代码级补强：补齐 plain-text noop 句式漏判，先记 `Fixed`，待自然运行窗口复核。
+  - 根因：
+    - `crates/hone-channels/src/scheduler.rs` 的 `heartbeat_plain_text_indicates_noop(...)` 之前仍漏掉多类真实 live 文案，导致包含静默语义的 heartbeat/scheduler 正文继续被判成 `PlainTextTriggered` 并进入 deliver。
+    - 本轮重点覆盖此前运行态仍反复出现的 `本轮监控状态：正常，无新触发事件`、`无全新报价时间戳`、`报价无变化`、`无实质新催化`、`无新增量事件`、`无新成交价` 等句式。
+  - 修改：
+    - 扩展 plain-text noop marker 和显式 noop 状态 marker，新增对“监控状态正常/无新触发”“报价无变化/无全新报价时间戳”“无实质新催化/无新增量事件”等静默摘要的识别。
+    - 保留既有 material-update override，避免“虽未命中阈值但有新事实值得告知”的正文被误压成 noop。
+  - 自动化验证：
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_ --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_rich_plain_text_noop_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 备注：
+    - 本轮未重启任何运行中服务；因此这是代码级 `Fixed`，仍需后续自然运行窗口确认 `PlainTextTriggered` 中的静默 deliver 样本是否明显收敛，再决定是否推进 `Closed`。
 
 - 2026-08-11 02:03 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
   - `data/logs/hone-console-page-source.log`

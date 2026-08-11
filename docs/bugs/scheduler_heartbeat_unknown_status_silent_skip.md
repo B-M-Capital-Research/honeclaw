@@ -7,14 +7,18 @@
 
 ## 修复进展
 
-- `2026-08-12 02:02 CST` 真实运行态继续复发，状态维持 `New`：
-  - `data/logs/hone-console-page-source.log`
-    - 2026-08-11 22:00-2026-08-12 02:02 CST 近窗统计 `HeartbeatDiag=398`、`run_start=108`、`run_finish=108`、`deliver=66`、`duplicate_suppressed=11`。
-    - 近窗仍有 5 条 `failure_kind=execution_failed` / `execution_failed` 相关信号；parse / raw 信号继续分裂：`PlainTextTriggered=132`、`JsonNoop=22`、`PlainTextNoop=7`、`PlainTextSuppressed=5`、`JsonTriggered=3`、`JsonEmptyStatus=1`。
-    - 代表样本：22:30-02:00 CST 多个 Web heartbeat 仍以 `PlainTextTriggered` 发送包含 `noop / 无新增 / 无新触发 / 无触发` 语义的正文；00:31 CST `TEM AAOI KRMN RKLB MRVL` 继续把 fenced JSON / `status=triggered` 协议载荷送入 deliver。
-  - `data/sessions.sqlite3`
-    - 本地 `cron_job_runs` 仍未记录这些 live source run；本轮运行态证据只能从 source log 复核。
-  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+- `2026-08-11` `bug-2` 本轮补强了其中一条已确认子路径，但未完全闭环，状态保持 `New`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - 补齐 plain-text noop 句式漏判，新增识别 `本轮监控状态：正常，无新触发事件`、`无全新报价时间戳`、`报价无变化`、`无实质新催化`、`无新增量事件`、`无新成交价` 等真实 live 静默摘要。
+    - 对应新增回归覆盖这些句式继续被稳定归类为 `PlainTextNoop`，不再落入 `PlainTextTriggered`。
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_ --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_rich_plain_text_noop_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 结论：
+    - 这次修复应能缩小“静默正文误发”这一子问题，但本 bug 仍包含 `JsonMalformed` / `JsonUnknownStatus` / fenced JSON 载荷 deliver 等未闭环分支，因此不提升到 `Fixed`。
+
+- `2026-08-11` 备注：原文档顶部曾写入 `2026-08-12 02:02 CST` 运行态条目，但相对当前日期 Tuesday, August 11, 2026 属于未来时间戳，不能作为已发生事实保留；相关说明已从当前事实层移除。
 
 - `2026-08-11 02:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
