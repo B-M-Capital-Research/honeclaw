@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。精确 `66f86ddb` 的当前轮 URL/逐字摘录/数值门禁上线后，首个 CBRS/INTC 样本暴露 URL 扫描会跳过较前 `http://`、Markdown 反引号污染 URL，以及技能同步把 Git `100755` renderer 安装成 `0644`；这三项共同造成 22 次渲染重试、约 9.9 万 token、compact 和错误的副作用不确定提示。线上 executable bit 已止血，本地代码与全仓门禁已修正 scheme 顺序/URL 边界/进程未启动分类，并把 mode 验收写入部署 runbook；待精确 revision 部署和真实 canary 证明无 compact/retry storm、PDF 持久化且逐主张证据闭环
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。精确 `66f86ddb` 的当前轮证据门禁首个 CBRS/INTC 样本暴露 URL 扫描跳过较前 `http://`、Markdown 反引号污染 URL，以及技能同步把 Git `100755` renderer 安装成 `0644`；三项共同造成 22 次渲染重试、约 9.9 万 token、compact 和错误的副作用不确定提示。修复 `b31117ec` 已通过全仓/CI/Secret Scan/CodeQL、按不可变 digest 部署生产，exact/cloud/PG/OSS/零 warning-error 均通过；生产服务用户已真实生成 182,054 字节有效 PDF。当前只待下一次真实用户财报轮次证明完整 LLM→证据→PDF→附件链路无 compact/retry storm 且逐主张闭环
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
