@@ -5,27 +5,42 @@ import {
   formatScheduleTime,
   parseScheduleTime,
 } from "./public-subscription-model";
+import { setLocale, useLocale, type Locale } from "./i18n";
+
+function withLocale<T>(locale: Locale, run: () => T): T {
+  const previous = useLocale();
+  setLocale(locale);
+  try {
+    return run();
+  } finally {
+    setLocale(previous);
+  }
+}
 
 describe("public subscription schedule labels", () => {
   it("uses the scheduler's Monday-first weekday numbering", () => {
-    expect(
-      formatScheduleSummary({ hour: 7, minute: 5, repeat: "weekly", weekday: 0 }),
-    ).toContain("Mon 07:05");
-    expect(
-      formatScheduleSummary({ hour: 7, minute: 5, repeat: "weekly", weekday: 6 }),
-    ).toContain("Sun 07:05");
+    withLocale("en", () => {
+      expect(
+        formatScheduleSummary({ hour: 7, minute: 5, repeat: "weekly", weekday: 0 }),
+      ).toContain("Mon 07:05");
+      expect(
+        formatScheduleSummary({ hour: 7, minute: 5, repeat: "weekly", weekday: 6 }),
+      ).toContain("Sun 07:05");
+    });
   });
 
   it("does not describe special schedules as daily", () => {
-    expect(formatScheduleSummary({ hour: 7, minute: 5, repeat: "workday" })).toContain(
-      "Weekdays",
-    );
-    expect(formatScheduleSummary({ hour: 7, minute: 5, repeat: "trading_day" })).toContain(
-      "US trading days",
-    );
-    expect(formatScheduleSummary({ hour: 0, minute: 0, repeat: "heartbeat" })).toBe(
-      "Continuous monitoring",
-    );
+    withLocale("en", () => {
+      expect(formatScheduleSummary({ hour: 7, minute: 5, repeat: "workday" })).toContain(
+        "Weekdays",
+      );
+      expect(formatScheduleSummary({ hour: 7, minute: 5, repeat: "trading_day" })).toContain(
+        "US trading days",
+      );
+      expect(formatScheduleSummary({ hour: 0, minute: 0, repeat: "heartbeat" })).toBe(
+        "Continuous monitoring",
+      );
+    });
   });
 });
 
