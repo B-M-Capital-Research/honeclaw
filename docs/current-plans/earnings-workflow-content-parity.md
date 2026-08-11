@@ -58,7 +58,7 @@
 
 ## Documentation Sync
 
-- 更新 `docs/invariants.md`、`docs/decisions.md`、`docs/repo-map.md` 和 `docs/current-plan.md`，将“原 prompt + 搜索真实性 + layout-only renderer”设为长期约束。
+- 更新 `AGENTS.md`、`docs/invariants.md`、`docs/decisions.md`、`docs/repo-map.md` 和 `docs/current-plan.md`，将“原 prompt + 搜索真实性 + layout-only renderer + 禁止机械内容门禁”设为长期约束。
 - 部署验收后追加当天已有 earnings handoff；计划完成后移入 `docs/archive/plans/`，更新 `docs/archive/index.md` 并从 `docs/current-plan.md` 移除。
 
 ## Risks
@@ -66,3 +66,4 @@
 - 搜索结果可能不足以填满原 prompt 的全部字段；必须暴露缺口或省略，不得用模型记忆补齐。
 - 原 prompt 包含对预测、估值和机构观点的高要求；这些要求触发更多搜索，但不构成伪造某个数值的理由。
 - 去掉机械门禁后，数量级与语义错误不能依赖排版器阻断；真实性由针对性搜索、明确缺口和真实 canary 人工审查负责。不要再次把复杂研究判断硬编码进 MCP 或 PDF 排版器。
+- 仓库级规则已明确：未来财报内容修复不得恢复 manifest、逐行来源/摘录、全报告 URL/数字覆盖、固定内容 schema/count 或 validator 重写循环；必要的授权、上下文隔离、工具/路径/进程安全和 PDF artifact 持久化不属于被禁止的内容门禁。

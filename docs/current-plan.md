@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。生产 CBRS 证明机械 `evidence_manifest` / 逐字摘录 / 全报告数字覆盖门禁会诱导模型把英文搜索片段和 URL 当正文；该门禁现已完整撤销，renderer 只负责排版，只保留“缺事实就搜索、仍不可核验就说明或省略、不得编造”的原工作流规则。精确 `7516be88` 已连同 system skill 部署生产，exact/cloud/PG/OSS/鉴权/零重启告警和无 URL 中文 PDF 冒烟均通过；当前只待一单新版本真实用户任务检查中文综合分析、近单次 renderer、PDF 持久化和无 compact
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。生产 CBRS 证明机械 `evidence_manifest` / 逐字摘录 / 全报告数字覆盖门禁会诱导模型把英文搜索片段和 URL 当正文；该门禁现已完整撤销，renderer 只负责排版，只保留“缺事实就搜索、仍不可核验就说明或省略、不得编造”的原工作流规则。`AGENTS.md`、invariants、decision 与 repo map 已共同禁止未来恢复任何机械内容门禁，同时保留授权/隔离/进程安全/PDF 持久化技术边界。精确 `7516be88` 已连同 system skill 部署生产，exact/cloud/PG/OSS/鉴权/零重启告警和无 URL 中文 PDF 冒烟均通过；当前只待一单新版本真实用户任务检查中文综合分析、近单次 renderer、PDF 持久化和无 compact
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`
