@@ -2,19 +2,26 @@ pub(crate) mod auth;
 pub(crate) mod billing;
 pub(crate) mod channel_settings;
 pub(crate) mod chat;
+pub(crate) mod community_forum;
 pub(crate) mod company_profiles;
+pub(crate) mod company_ratings;
 pub(crate) mod cron;
+pub(crate) mod daily_signals;
 pub(crate) mod event_engine_admin;
 pub(crate) mod events;
 pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod imessage;
+pub(crate) mod influencer_digest;
+pub(crate) mod key_event_chain;
 pub(crate) mod llm_audit;
 pub(crate) mod logs;
 pub(crate) mod meta;
 pub(crate) mod notification_prefs;
 pub(crate) mod notifications;
 pub(crate) mod portfolio;
+pub(crate) mod portfolio_news;
+pub(crate) mod position_management;
 pub(crate) mod public;
 pub(crate) mod public_admin;
 pub(crate) mod public_community;
@@ -26,22 +33,26 @@ pub(crate) mod public_quotes;
 pub(crate) mod public_subscriptions;
 pub(crate) mod public_survey;
 pub(crate) mod research;
+pub(crate) mod research_library;
 pub(crate) mod schedule;
 pub(crate) mod skills;
 pub(crate) mod stripe;
 pub(crate) mod task_runs;
 pub(crate) mod unsubscribe;
 pub(crate) mod users;
+pub(crate) mod valuation_lab;
 pub(crate) mod web_users;
+pub(crate) mod weekly_brief;
 
 mod common;
 
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use axum::response::IntoResponse;
-use axum::routing::{get, patch, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{
     http::{HeaderValue, Method, StatusCode},
     response::Response,
@@ -286,6 +297,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
 
     let public_api = Router::new()
         .route("/auth/captcha/config", get(public::handle_captcha_config))
+        .route(
+            "/auth/dev-login/config",
+            get(public::handle_dev_login_config),
+        )
+        .route("/auth/dev-login", post(public::handle_dev_login))
         .route("/auth/sms/send", post(public::handle_sms_send_code))
         .route("/auth/sms/login", post(public::handle_sms_login))
         .route("/auth/email/send", post(public::handle_email_send_code))
@@ -340,12 +356,66 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/community/resources/{resource_id}",
             get(public_community::handle_community_resource_preview),
         )
+        .route("/community/forum", get(community_forum::handle_list))
+        .route(
+            "/community/forum/posts",
+            post(community_forum::handle_create_post)
+                .layer(DefaultBodyLimit::max(11 * 1024 * 1024)),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/like",
+            post(community_forum::handle_toggle_like),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/comments",
+            post(community_forum::handle_comment),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/report",
+            post(community_forum::handle_report),
+        )
+        .route(
+            "/community/forum/posts/{post_id}",
+            delete(community_forum::handle_delete_post),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/comments/{comment_id}",
+            delete(community_forum::handle_delete_comment),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/moderation",
+            post(community_forum::handle_moderate),
+        )
+        .route(
+            "/community/forum/posts/{post_id}/attachments/{attachment_id}",
+            get(community_forum::handle_attachment),
+        )
         .route("/chat", post(public::handle_chat))
         .route(
             "/v1/chat/completions",
             post(public::handle_openai_chat_completions),
         )
         .route("/upload", post(public::handle_upload))
+        .route(
+            "/research-library",
+            get(research_library::handle_list).post(research_library::handle_upload),
+        )
+        .route(
+            "/research-library/{id}",
+            put(research_library::handle_update).delete(research_library::handle_delete),
+        )
+        .route(
+            "/research-library/{id}/file",
+            get(research_library::handle_download),
+        )
+        .route(
+            "/research-library/{id}/submit",
+            post(research_library::handle_submit_candidate),
+        )
+        .route(
+            "/research-library/{id}/review",
+            post(research_library::handle_review_candidate),
+        )
         .route(
             "/finance-calendar",
             get(public_finance_calendar::handle_get_finance_calendar),
@@ -385,6 +455,39 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             post(public_pushes::handle_open_push),
         )
         .route("/quotes", get(public_quotes::handle_get_quotes))
+        .route(
+            "/company-ratings",
+            get(company_ratings::handle_get_company_ratings),
+        )
+        .route(
+            "/valuation-lab",
+            get(valuation_lab::handle_get_valuation_lab),
+        )
+        .route(
+            "/portfolio-news",
+            get(portfolio_news::handle_get_portfolio_news),
+        )
+        .route(
+            "/position-management",
+            get(position_management::handle_get_position_management),
+        )
+        .route(
+            "/influencer-digest",
+            get(influencer_digest::handle_get_influencer_digest),
+        )
+        .route(
+            "/key-event-chains",
+            get(key_event_chain::handle_get_key_event_chains),
+        )
+        .route("/weekly-brief", get(weekly_brief::handle_get_weekly_brief))
+        .route(
+            "/daily-signals/{kind}",
+            get(daily_signals::handle_get_daily_signal),
+        )
+        .route(
+            "/daily-signals/{kind}/history",
+            get(daily_signals::handle_get_daily_signal_history),
+        )
         .route("/portfolio", get(public_portfolio::handle_get_portfolio))
         .route(
             "/portfolio/holdings",

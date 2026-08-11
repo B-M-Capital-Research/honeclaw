@@ -152,7 +152,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                 display: "inline-block",
               }}
             />
-            HONE / FINANCE CALENDAR
+            HONE / 财经日历
           </div>
           <div style={{ display: "flex", "align-items": "flex-end", gap: "24px" }}>
             <strong

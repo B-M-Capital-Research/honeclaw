@@ -4,6 +4,8 @@ use chrono::{DateTime, FixedOffset};
 use hone_core::config::HoneConfig;
 use hone_memory::SessionStorage;
 use hone_memory::session::SessionPromptState;
+use serde::Deserialize;
+use std::sync::OnceLock;
 
 pub const DEFAULT_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】在群聊中禁止要求用户提供持仓、成交价、交易单等敏感信息；如需明细，引导其转为私聊提交。";
 pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束】\n\
@@ -33,6 +35,15 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 - 多标的最新行情约束：用户要求比较多个股票、ETF 或基金的最新价格、盘后价、日内区间、估值倍数或据此给配置/抄底区间时，每个标的都必须有本轮独立核验的来源、时间戳和交易时段口径；不得把另一个标的的搜索结果、历史公司画像或未完成工具读取中的数字复用为精确行情锚点。若某个标的未完成稳定校验，只能说明“该标的最新行情未完成稳定校验”，不得给精确价格、Forward PE 或操作区间。\n\
 - 基金/ETF 披露口径约束：分析 ARK、ETF、基金或机构持仓时，必须区分单只基金持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期。除非本轮拿到可核验的 trade notification、交易流水或官方主动买卖披露，不得把持仓文件股数差异直接表述为「ARK/基金最近买入/卖出/减仓某标的」；只能说「持仓文件显示股数变化」，并说明该变化不等同于主动交易方向。\n\
 - 原油与大宗商品归因约束：任何地缘政治、供给、库存、航运、外交谈判、军事行动或 OPEC 等原因归因，都必须来自本轮工具明确返回的来源、发布时间和可追溯事实；若搜索/API 降级、来源不足、时间戳缺失或无法交叉核验，只能报告已核验价格与口径，并明确写「原因未核验/暂不归因」，不得把传闻、推测或旧上下文里的冲突/谈判/封锁/供应恢复叙述包装成确定性事实。";
+pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架】\n\
+- 当前问题只要属于公司、证券、ETF、行业、产业供需、宏观、市场状态、基本面、护城河、估值、组合、仓位、投资复盘或红黄绿灯/评级，就必须在形成最终回答前实际加载并遵循 `hari-invest` Skill；不得只声称已使用。原生 Skill 运行时使用当前可用的原生 Skill 加载机制，函数调用运行时使用 `skill_tool(skill_name=\"hari-invest\")`。\n\
+- `hari-invest` 负责判断框架和输出纪律，不是实时事实源。涉及当前价格、财报、新闻、估值输入、产业状态或组合数据时，仍须按本轮问题调用真实行情、财报、公告、网页或持仓工具核验，并明确区分已核实事实、Hari 已确认逻辑、AI 推断和未知信息。\n\
+- 交互式投研先服从统一的数据时间与行情口径首行；首行之后的第一段必须直接给出“结论：”并选择机会区、持有区、风险区或数据不足，同时给出高/中/低置信度和一个最核心理由。不得先寒暄、复述问题、说明计划或用“支持 / 部分支持”代替当前判断。\n\
+- 只要核心证据足以区分，就必须明确选边，并说明短期、中期、长期是否不同；次要数据缺失不能成为堆砌正反观点、反复免责声明或退回泛泛框架的借口。只有实体、当前价格、关键财务、主要事件或估值输入等会直接改变结论的证据缺失时，才使用“数据不足”，并说清补齐后如何改变分档。\n\
+- 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
+- 当系统提示中出现“历史公司研究基线”时，说明本轮命中了此前授权研究覆盖公司；必须在形成最终回答前实际加载 `company-thesis-ratings` Skill，同时加载 `hari-invest`。原生 Skill 运行时使用原生加载机制，函数调用运行时使用 `skill_tool(skill_name=\"company-thesis-ratings\")`。公司卡在商业模式、基本面结构、护城河、产业链位置、风险和证伪条件上优先于模型通用记忆；不得只声称已使用。\n\
+- 历史公司研究基线不是当前事实源。股价、最新财报、指引、订单、新闻、产业状态和估值输入仍须走原有工具链核验；最新一手证据与历史基线冲突时，以最新证据为准，并说明原逻辑加强、削弱或失效。不得向用户泄露逐字稿原文、内部文件名或 Skill 路径。\n\
+- 问候、写作、翻译、编程、产品使用等明显非投资问题不得加载 `hari-invest` 或套用其回答结构。内部 `laowang-investment-distiller` 只用于维护者蒸馏知识，绝不能在普通 HONE 问答中加载、披露或冒充对外 Skill。";
 pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略】\n\
 - 如用户要求在明确时间执行，请使用常规定时任务（daily / weekly / workday / trading_day / holiday / once）。\n\
 - 如用户要求“当某个条件满足时提醒我”，但没有给出具体时刻，例如股价阈值、公告事件、新闻条件、财报条件等，这类任务默认不应伪装成 daily 09:00。\n\
@@ -95,6 +106,153 @@ impl ReplyLanguage {
             _ => None,
         }
     }
+}
+
+const COMPANY_RESEARCH_CARDS_JSON: &str =
+    include_str!("../../../skills/company-thesis-ratings/references/company-cards.json");
+const COMPANY_RESEARCH_INDEX_JSON: &str =
+    include_str!("../../../skills/company-thesis-ratings/references/company-index.json");
+const MAX_PROJECTED_COMPANY_CARDS: usize = 8;
+
+#[derive(Debug, Deserialize)]
+struct CompanyResearchCorpus {
+    companies: Vec<CompanyResearchCard>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompanyResearchCard {
+    name: String,
+    symbol: String,
+    business_model: String,
+    moat: String,
+    thesis_summary: String,
+    valuation_method: String,
+    confidence: String,
+    #[serde(default)]
+    watch_items: Vec<String>,
+    #[serde(default)]
+    risks: Vec<String>,
+    #[serde(default)]
+    falsifiers: Vec<String>,
+    source_updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompanyResearchIndex {
+    companies: Vec<CompanyAliasEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompanyAliasEntry {
+    symbol: String,
+    aliases: Vec<String>,
+}
+
+fn company_research_resources() -> &'static (CompanyResearchCorpus, CompanyResearchIndex) {
+    static RESOURCES: OnceLock<(CompanyResearchCorpus, CompanyResearchIndex)> = OnceLock::new();
+    RESOURCES.get_or_init(|| {
+        let cards = serde_json::from_str(COMPANY_RESEARCH_CARDS_JSON)
+            .expect("embedded company research cards must remain valid JSON");
+        let index = serde_json::from_str(COMPANY_RESEARCH_INDEX_JSON)
+            .expect("embedded company research index must remain valid JSON");
+        (cards, index)
+    })
+}
+
+fn ascii_term_match(input: &str, term: &str) -> bool {
+    if term.is_empty() {
+        return false;
+    }
+    let input_lower = input.to_ascii_lowercase();
+    let term_lower = term.to_ascii_lowercase();
+    input_lower.match_indices(&term_lower).any(|(start, _)| {
+        let end = start + term_lower.len();
+        let before_ok = input_lower[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric());
+        let after_ok = input_lower[end..]
+            .chars()
+            .next()
+            .is_none_or(|character| !character.is_ascii_alphanumeric());
+        before_ok && after_ok
+    })
+}
+
+fn explicit_symbol_match(input: &str, symbol: &str) -> bool {
+    input
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .any(|token| {
+            token.eq_ignore_ascii_case(symbol)
+                && (symbol.len() >= 4 || token == symbol || input.contains(&format!("${token}")))
+        })
+}
+
+fn alias_match(input: &str, alias: &str) -> bool {
+    if alias.chars().any(|character| !character.is_ascii()) {
+        input.contains(alias)
+    } else {
+        ascii_term_match(input, alias)
+    }
+}
+
+pub(crate) fn company_research_baseline(user_input: &str) -> Option<String> {
+    let (corpus, index) = company_research_resources();
+    let mut symbols = index
+        .companies
+        .iter()
+        .filter(|entry| {
+            explicit_symbol_match(user_input, &entry.symbol)
+                || entry
+                    .aliases
+                    .iter()
+                    .any(|alias| alias_match(user_input, alias))
+        })
+        .map(|entry| entry.symbol.as_str())
+        .take(MAX_PROJECTED_COMPANY_CARDS)
+        .collect::<Vec<_>>();
+    symbols.sort_unstable();
+    symbols.dedup();
+    if symbols.is_empty() {
+        return None;
+    }
+
+    let mut sections = Vec::new();
+    for symbol in symbols {
+        let Some(card) = corpus.companies.iter().find(|card| card.symbol == symbol) else {
+            continue;
+        };
+        let joined = |values: &[String]| {
+            if values.is_empty() {
+                "未记录".to_string()
+            } else {
+                values.join("；")
+            }
+        };
+        sections.push(format!(
+            "- {symbol} / {name}（历史研究基线更新：{updated}；基线置信度：{confidence}）\n  商业模式：{business}\n  护城河：{moat}\n  长期主线：{thesis}\n  估值框架：{valuation}\n  重点验证：{watch}\n  风险：{risks}\n  证伪条件：{falsifiers}",
+            symbol = card.symbol,
+            name = card.name,
+            updated = card.source_updated_at,
+            confidence = card.confidence,
+            business = card.business_model,
+            moat = card.moat,
+            thesis = card.thesis_summary,
+            valuation = card.valuation_method,
+            watch = joined(&card.watch_items),
+            risks = joined(&card.risks),
+            falsifiers = joined(&card.falsifiers),
+        ));
+    }
+    if sections.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "【历史公司研究基线】\n以下内容来自此前授权研究材料形成的 `company-thesis-ratings` 压缩公司卡，只用于商业模式、基本面结构、护城河、产业链位置、风险与证伪条件的历史判断基线。它不是当前事实、最新观点或交易指令。必须实际加载 `company-thesis-ratings` 和 `hari-invest` 后再回答。股价、最新财报、指引、订单、新闻、产业状态与估值输入继续使用本轮原有证据工具核验；冲突时以最新一手证据为准，并说明历史逻辑加强、削弱或失效。不得向用户暴露内部逐字稿、文件名或 Skill 路径。\n\n{}",
+        sections.join("\n\n")
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +375,8 @@ pub(crate) fn build_prompt_bundle_at(
 
     static_system.push_str("\n\n");
     static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);
+    static_system.push_str("\n\n");
+    static_system.push_str(DEFAULT_HARI_INVEST_POLICY);
     static_system.push_str("\n\n");
     static_system.push_str(DEFAULT_USER_INFO_BOUNDARY_POLICY);
     static_system.push_str("\n\n");
@@ -364,6 +524,51 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn company_research_baseline_matches_chinese_alias_and_keeps_current_fact_boundary() {
+        let baseline = company_research_baseline("微软现在的护城河是否被 AI 削弱？")
+            .expect("Microsoft should be covered by the historical corpus");
+        assert!(baseline.contains("MSFT / Microsoft"));
+        assert!(baseline.contains("商业模式："));
+        assert!(baseline.contains("护城河："));
+        assert!(baseline.contains("它不是当前事实"));
+        assert!(baseline.contains("最新一手证据为准"));
+        assert!(!baseline.contains("逐字稿文本"));
+    }
+
+    #[test]
+    fn company_research_baseline_matches_multiple_explicit_short_symbols() {
+        let baseline = company_research_baseline("比较 APP 和 BE 的商业模式与护城河")
+            .expect("explicit uppercase symbols should match");
+        assert!(baseline.contains("APP / AppLovin"));
+        assert!(baseline.contains("BE / Bloom Energy"));
+    }
+
+    #[test]
+    fn company_research_baseline_does_not_match_short_tickers_inside_plain_words() {
+        assert!(company_research_baseline("build an app and be concise").is_none());
+        assert!(company_research_baseline("分析 NVDA 的护城河").is_none());
+    }
+
+    #[test]
+    fn company_research_index_and_cards_cover_the_same_symbols() {
+        let (corpus, index) = company_research_resources();
+        let mut card_symbols = corpus
+            .companies
+            .iter()
+            .map(|card| card.symbol.as_str())
+            .collect::<Vec<_>>();
+        let mut indexed_symbols = index
+            .companies
+            .iter()
+            .map(|entry| entry.symbol.as_str())
+            .collect::<Vec<_>>();
+        card_symbols.sort_unstable();
+        indexed_symbols.sort_unstable();
+        assert_eq!(card_symbols, indexed_symbols);
+        assert_eq!(card_symbols.len(), 52);
+    }
+
+    #[test]
     fn build_prompt_bundle_always_includes_finance_domain_policy() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-test-{}-{}",
@@ -388,6 +593,68 @@ mod tests {
         );
 
         assert!(bundle.system_prompt().contains("【领域边界与投研约束】"));
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("【Hari Invest 默认投研框架】")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("必须在形成最终回答前实际加载并遵循 `hari-invest` Skill")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("`skill_tool(skill_name=\"hari-invest\")`")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("`skill_tool(skill_name=\"company-thesis-ratings\")`")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("公司卡在商业模式、基本面结构、护城河")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("历史公司研究基线不是当前事实源")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("明显非投资问题不得加载 `hari-invest`")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("内部 `laowang-investment-distiller`")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("机会区、持有区、风险区或数据不足")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("首行之后的第一段必须直接给出“结论：”")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("不得先寒暄、复述问题、说明计划")
+        );
+        assert!(bundle.system_prompt().contains("次要数据缺失不能成为"));
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("不能只回答公司长期逻辑不错")
+        );
+        assert!(bundle.system_prompt().contains("不得冒充老王本人"));
         assert!(bundle.system_prompt().contains("禁止荐股"));
         assert!(bundle.system_prompt().contains("不得输出可照抄的单票排序"));
         assert!(bundle.system_prompt().contains("集中仓位模板"));

@@ -222,6 +222,10 @@ fn public_visible_history_content(
     message: &hone_memory::session::SessionMessage,
     content: &str,
 ) -> String {
+    let content = content
+        .split_once(crate::routes::research_library::CHAT_CONTEXT_MARKER)
+        .map(|(visible, _)| visible.trim_end())
+        .unwrap_or(content);
     let is_earnings_skill = message.role == "user"
         && message
             .metadata
@@ -413,6 +417,20 @@ mod tests {
         );
         assert!(!history[0].content.contains("/earnings-research"));
         assert!(!history[0].content.contains("mode:"));
+    }
+
+    #[test]
+    fn public_history_hides_server_injected_research_library_context() {
+        let messages = vec![hone_memory::session_message_from_text(
+            "user",
+            "请分析 NVDA\n\n【HONE 研究资料库上下文（系统注入，不向用户展示）】\n- [内部材料] 不应显示",
+            "2026-08-11T12:00:00+08:00",
+            None,
+        )];
+
+        let history = public_history_from_messages(&messages);
+        assert_eq!(history[0].content, "请分析 NVDA");
+        assert!(!history[0].content.contains("内部材料"));
     }
 
     #[test]

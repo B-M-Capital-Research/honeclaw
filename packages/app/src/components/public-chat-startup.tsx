@@ -22,7 +22,7 @@ export function PublicChatStartup(props: PublicChatStartupProps) {
       </aside>
       <main class="public-chat-startup-main">
         <div class="public-chat-startup-copy">
-          <span class="public-chat-startup-kicker">HONE AGENT</span>
+          <span class="public-chat-startup-kicker">HONE 投资助手</span>
           <strong>{props.title ?? CONTENT.chat_page.misc.startup_title}</strong>
           <p>{props.description ?? CONTENT.chat_page.misc.startup_detail}</p>
           <Show when={props.failed}>

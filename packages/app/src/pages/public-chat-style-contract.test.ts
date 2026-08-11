@@ -19,14 +19,42 @@ const shareCard = readFileSync(
   new URL("../components/chat-share-card.tsx", import.meta.url),
   "utf8",
 );
+const ratingDashboard = readFileSync(
+  new URL("../components/company-rating-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const ratingCss = readFileSync(
+  new URL("../components/company-rating-dashboard.css", import.meta.url),
+  "utf8",
+);
+const portfolioNewsDashboard = readFileSync(
+  new URL("../components/portfolio-news-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const positionManagementDashboard = readFileSync(
+  new URL("../components/position-management-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const influencerDigestDashboard = readFileSync(
+  new URL("../components/influencer-digest-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const keyEventChainDashboard = readFileSync(
+  new URL("../components/key-event-chain-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const weeklyBriefDashboard = readFileSync(
+  new URL("../components/weekly-brief-dashboard.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("public chat visual contract", () => {
   it("uses one responsive Agent workspace with real product destinations", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
     expect(chat).toContain('onInsights={() => navigate("/community")}');
-    // 四项导航：Agent / 推送 / 洞察 / 我的
-    expect(workspace).toContain("<span>Agent</span>");
+    // 四项导航：投资助手 / 推送 / 洞察 / 我的
+    expect(workspace).toContain("<span>投资助手</span>");
     expect(workspace).toContain("CONTENT.chat_page.workspace.pushes_tab");
     expect(workspace).toContain("CONTENT.chat_page.workspace.insights");
     expect(workspace).toContain("CONTENT.chat_page.workspace.me");
@@ -194,5 +222,53 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain(
       ".agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }",
     );
+  });
+
+  it("puts an explainable daily rating dashboard above authenticated chat", () => {
+    expect(chat).toContain("<CompanyRatingDashboard />");
+    expect(chat).toContain('<Show when={authState() === "ready"}>');
+    expect(ratingDashboard).toContain("每日公司评级");
+    expect(ratingDashboard).toContain("filterRatings");
+    expect(ratingDashboard).toContain("item.valuation_method");
+    expect(ratingDashboard).toContain("今日不计估值分");
+    expect(ratingDashboard).toContain("valuation().bear_case");
+    expect(ratingDashboard).toContain("valuation().base_case");
+    expect(ratingDashboard).toContain("valuation().bull_case");
+    expect(ratingDashboard).toContain("valuation().current_position");
+    expect(ratingDashboard).toContain("valuation().probability_weighted_value");
+    expect(ratingDashboard).toContain("valuation().expected_upside_percent");
+    expect(ratingDashboard).toContain("valuation().method_count");
+    expect(ratingDashboard).toContain("valuation().generated_at_beijing");
+    expect(ratingDashboard).toContain("评分标准与估值同步");
+    expect(ratingDashboard).toContain("25 / 45 / 60 / 75 / 90");
+    expect(ratingDashboard).toContain("没有生成或沿用旧目标价");
+    expect(ratingDashboard).toContain("scoreBasisLabel(item)");
+    expect(ratingDashboard).toContain("item.falsifiers");
+    expect(ratingCss).toContain(".company-rating-launcher");
+    expect(ratingCss).toContain("@media (max-width: 768px)");
+    expect(ratingCss).toContain('[data-theme="dark"]');
+  });
+
+  it("puts actor-scoped portfolio news after the three shared dashboards", () => {
+    expect(chat).toContain("<PortfolioNewsDashboard onAsk={setPendingAutoSend} />");
+    expect(portfolioNewsDashboard).toContain("持仓重点新闻分析");
+    expect(portfolioNewsDashboard).toContain("HONE_SAVED_PORTFOLIO_NEWS_REPORT");
+    expect(portfolioNewsDashboard).toContain("不要自动修改仓位");
+  });
+
+  it("puts the fifth actor-scoped position report after portfolio news", () => {
+    expect(chat).toContain("<PositionManagementDashboard onAsk={setPendingAutoSend} />");
+    expect(chat.indexOf("<PositionManagementDashboard")).toBeGreaterThan(chat.indexOf("<PortfolioNewsDashboard"));
+    expect(positionManagementDashboard).toContain("HONE_SAVED_POSITION_MANAGEMENT_REPORT");
+    expect(chat).toContain("<InfluencerDigestDashboard onAsk={setPendingAutoSend} />");
+    expect(chat.indexOf("<InfluencerDigestDashboard")).toBeGreaterThan(chat.indexOf("<PositionManagementDashboard"));
+    expect(influencerDigestDashboard).toContain("HONE_SAVED_INFLUENCER_DIGEST");
+    expect(chat).toContain("<WeeklyBriefDashboard onAsk={setPendingAutoSend} />");
+    expect(chat.indexOf("<WeeklyBriefDashboard")).toBeGreaterThan(chat.indexOf("<InfluencerDigestDashboard"));
+    expect(weeklyBriefDashboard).toContain("HONE_SAVED_WEEKLY_BRIEF");
+    expect(chat).toContain("<KeyEventChainDashboard onAsk={setPendingAutoSend} />");
+    expect(chat.indexOf("<KeyEventChainDashboard")).toBeGreaterThan(chat.indexOf("<WeeklyBriefDashboard"));
+    expect(keyEventChainDashboard).toContain("HONE_SAVED_KEY_EVENT_CHAIN");
+    expect(positionManagementDashboard).toContain("不得自动修改持仓或声称已经下单");
   });
 });

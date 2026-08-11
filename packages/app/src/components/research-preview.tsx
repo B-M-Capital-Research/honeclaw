@@ -333,7 +333,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
               <div class="rp-page" data-page={i + 1}>
                 {/* 水印 */}
                 <div class="rp-watermark">
-                  <span class="rp-watermark-text">HONE RESEARCH</span>
+                  <span class="rp-watermark-text">HONE 投研</span>
                 </div>
                 {/* 页眉 */}
                 <div class="rp-header">

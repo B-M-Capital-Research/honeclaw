@@ -1,0 +1,7 @@
+interface:
+  display_name: "演讲公司投资逻辑与每日评级"
+  short_description: "优先用历史公司研究卡判断基本面与护城河，并用最新证据更新结论"
+  default_prompt: "使用 $company-thesis-ratings 定位覆盖公司研究卡，先分析基本面、商业模式、护城河和证伪条件，再用最新公开事实核验变化、估值与当前判断。"
+
+policy:
+  allow_implicit_invocation: true

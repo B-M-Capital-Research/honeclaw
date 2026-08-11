@@ -428,7 +428,7 @@ fn assert_config_example_event_engine_defaults(config: &HoneConfig, raw: &str) {
         config.event_engine.news_importance_prompt,
         "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
     );
-    assert_eq!(config.event_engine.sources.rss_feeds.len(), 3);
+    assert_eq!(config.event_engine.sources.rss_feeds.len(), 6);
 }
 
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {

@@ -11,6 +11,8 @@ import {
 import { PublicCheckbox } from "./public-checkbox";
 import {
   getPublicCaptchaConfig,
+  getPublicDevLoginConfig,
+  publicDevLogin,
   publicSendSmsCode,
   publicSmsLogin,
 } from "@/lib/api";
@@ -43,6 +45,8 @@ export function PublicLoginForm(props: Props) {
   const [cooldown, setCooldown] = createSignal(0);
   const [error, setError] = createSignal("");
   const [notice, setNotice] = createSignal("");
+  const [devLoginEnabled, setDevLoginEnabled] = createSignal(false);
+  const [devLoginLoading, setDevLoginLoading] = createSignal(false);
   const captchaElementId = `public-login-captcha-${++captchaIdSeed}`;
   const captchaButtonId = `public-login-captcha-button-${captchaIdSeed}`;
   let captchaConfigPromise: Promise<PublicCaptchaConfig> | undefined;
@@ -71,6 +75,9 @@ export function PublicLoginForm(props: Props) {
   });
   onMount(() => {
     void preloadCaptcha();
+    void getPublicDevLoginConfig()
+      .then((config) => setDevLoginEnabled(config.enabled))
+      .catch(() => setDevLoginEnabled(false));
   });
 
   const startCooldown = () => {
@@ -153,6 +160,20 @@ export function PublicLoginForm(props: Props) {
     }
   };
 
+  const submitDevLogin = async () => {
+    if (!devLoginEnabled() || devLoginLoading()) return;
+    setDevLoginLoading(true);
+    clearFeedback();
+    try {
+      const user = await publicDevLogin();
+      await props.onLogin(user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDevLoginLoading(false);
+    }
+  };
+
   return (
     <div
       class="public-login-screen"
@@ -220,6 +241,24 @@ export function PublicLoginForm(props: Props) {
             "box-shadow": "var(--hone-login-shadow)",
           }}
         >
+          <Show when={devLoginEnabled()}>
+            <button
+              type="button"
+              class="public-login-dev-button"
+              disabled={devLoginLoading()}
+              onClick={submitDevLogin}
+            >
+              {devLoginLoading()
+                ? CONTENT.auth.login.dev_login_loading
+                : CONTENT.auth.login.dev_login}
+            </button>
+            <p class="public-login-dev-hint">
+              {CONTENT.auth.login.dev_login_hint}
+            </p>
+            <div class="public-login-divider">
+              <span>{CONTENT.auth.login.or_sms}</span>
+            </div>
+          </Show>
           <p
             style={{
               margin: "0 0 16px",

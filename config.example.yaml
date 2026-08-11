@@ -362,6 +362,20 @@ event_engine:
       - handle: stat_news
         url: https://www.statnews.com/feed/
         interval_secs: 3600
+      # 大V速报：白毛使用用户确认的 aichainmap 公共整理 feed，条目仍以 X 原链
+      # 为内容来源；SemiAnalysis 使用官方 RSS。Jukan 仍需部署方配置合法 bridge。
+      - handle: influencer_serenity
+        url: https://serenity-webhook.pages.dev/feed
+        interval_secs: 900
+      - handle: influencer_semianalysis
+        url: https://semianalysis.com/feed
+        interval_secs: 3600
+      # 关键事件链一手来源：只有注册的 key_event_* handle 且 feed 与条目均在
+      # 对应官方域名时，才可标为“一手确认”。没有稳定官方 RSS 的公司应通过
+      # 管理员研究资料库导入官方原文，不能用搜索摘要或自媒体替代。
+      - handle: key_event_openai
+        url: https://openai.com/news/rss.xml
+        interval_secs: 3600
     # Telegram 公开频道监听(web preview `t.me/s/<handle>`),产出 social_post。
     # 空数组表示不启用;开启时每条配置会启动一个独立 poller loop。
     telegram_channels: []

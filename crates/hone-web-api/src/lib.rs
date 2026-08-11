@@ -1073,6 +1073,36 @@ pub async fn start_server(
 
     // ── 调度器 ─────────────────────────────────────────────────────
     if runtime_role.runs_worker_tasks() {
+        let valuation_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::valuation_lab::valuation_lab_worker(valuation_state).await
+        }));
+
+        let rating_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::company_ratings::company_rating_worker(rating_state).await
+        }));
+
+        let daily_signal_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::daily_signals::daily_signal_worker(daily_signal_state).await
+        }));
+
+        let portfolio_news_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::portfolio_news::portfolio_news_worker(portfolio_news_state).await
+        }));
+
+        let influencer_digest_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::influencer_digest::influencer_digest_worker(influencer_digest_state).await
+        }));
+
+        let key_event_chain_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::key_event_chain::key_event_chain_worker(key_event_chain_state).await
+        }));
+
         let mut scheduler_channels = vec!["web".to_string()];
         if state.core.config.imessage.enabled {
             scheduler_channels.insert(0, "imessage".to_string());

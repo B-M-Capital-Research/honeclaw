@@ -41,10 +41,7 @@ export type HistoryMsg = {
   /** RFC3339 时间戳，用于聊天记录分组与日期分隔。 */
   at?: string;
   subtype?:
-    | "compact_boundary"
-    | "compact_summary"
-    | "compact_skill_snapshot"
-    | string;
+    "compact_boundary" | "compact_summary" | "compact_skill_snapshot" | string;
   synthetic?: boolean;
   transcript_only?: boolean;
   attachments: HistoryAttachment[];
@@ -142,6 +139,52 @@ export type PublicCommunityPage = {
   next_before?: number | null;
   unread: boolean;
   latest_content_id?: number | null;
+};
+
+export type CommunityForumAttachment = {
+  id: string;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+};
+
+export type CommunityForumComment = {
+  id: string;
+  author_label: string;
+  body: string;
+  created_at: string;
+  moderation_status: "visible" | "deleted" | string;
+  can_delete: boolean;
+};
+
+export type CommunityForumPost = {
+  id: string;
+  author_label: string;
+  title: string;
+  body: string;
+  tickers: string[];
+  topics: string[];
+  source_url?: string | null;
+  created_at: string;
+  updated_at: string;
+  moderation_status: "visible" | "pending_review" | "hidden" | "deleted" | string;
+  attachment?: CommunityForumAttachment | null;
+  like_count: number;
+  liked_by_me: boolean;
+  report_count?: number | null;
+  can_delete: boolean;
+  comments: CommunityForumComment[];
+};
+
+export type CommunityForumPage = {
+  items: CommunityForumPost[];
+  is_admin: boolean;
+  policy: {
+    forum_content_is_research: false;
+    attachment_max_bytes: number;
+    auto_hide_report_count: number;
+  };
 };
 
 export type HistoryAttachment = {
@@ -338,10 +381,7 @@ export type MetaInfo = {
     git_sha?: string | null;
     build_timestamp?: string | null;
     profile: "debug" | "release" | string;
-    source?:
-      | "workspace"
-      | "direct_source_runtime"
-      | "unknown";
+    source?: "workspace" | "direct_source_runtime" | "unknown";
     binary_sha256?: string | null;
   };
   acp_profiles?: Array<{
@@ -871,9 +911,7 @@ export type CompanyProfileSpaceSummary = {
 export type CompanyProfileConflictDecision = "skip" | "replace";
 
 export type CompanyProfileImportMode =
-  | "keep_existing"
-  | "replace_all"
-  | "interactive";
+  "keep_existing" | "replace_all" | "interactive";
 
 export type CompanyProfileImportProfileSummary = {
   profile_id: string;
@@ -947,3 +985,676 @@ export type PublicSubscription = {
   created_at?: string | null;
   last_run_at?: string | null;
 };
+
+// ── Daily company ratings ──────────────────────────────────────────────────
+
+export type CompanyRatingLight = "green" | "yellow" | "red" | "unknown";
+export type CompanyRatingDataStatus =
+  "live" | "partial" | "transcript_only" | "stale" | "simulation";
+
+export type CompanyRatingDimensions = {
+  moat: number;
+  scarcity: number;
+  fundamentals: number;
+  visibility: number;
+  growth_quality?: number | null;
+  pricing_power?: number | null;
+  financial_quality?: number | null;
+  valuation?: number | null;
+  market_confirmation: number;
+  timing?: number | null;
+};
+
+export type CompanyRatingMetrics = {
+  revenue_growth_percent?: number | null;
+  forward_revenue_growth_percent?: number | null;
+  gross_margin_percent?: number | null;
+  gross_margin_change_pp?: number | null;
+  ebit_margin_percent?: number | null;
+  fcf_margin_percent?: number | null;
+  net_cash_to_revenue_percent?: number | null;
+  financial_as_of?: string | null;
+  forward_metric_label?: string | null;
+  forward_metric_value?: string | null;
+  forward_metric_growth_percent?: number | null;
+  forward_metric_as_of?: string | null;
+  forward_metric_source_url?: string | null;
+};
+
+export type CompanyDailyValuation = {
+  as_of: string;
+  generated_at_beijing: string;
+  currency: string;
+  bear_case: number;
+  base_case: number;
+  bull_case: number;
+  current_price: number;
+  probability_weighted_value: number;
+  expected_upside_percent: number;
+  method_count: number;
+  confidence: "high" | "medium" | "low" | string;
+  current_position: string;
+  position_percent: number;
+  method: string;
+  assumptions: string[];
+  sources: string[];
+};
+
+export type CompanyRating = {
+  name: string;
+  symbol: string;
+  market_scope: string;
+  theme: string;
+  value_chain: string;
+  score: number;
+  light: CompanyRatingLight;
+  confidence: "high" | "medium" | "low";
+  data_status: CompanyRatingDataStatus;
+  price?: number | null;
+  change_percent?: number | null;
+  market_as_of?: string | null;
+  financial_as_of?: string | null;
+  thesis_summary: string;
+  business_model: string;
+  moat: string;
+  valuation_method: string;
+  valuation?: CompanyDailyValuation | null;
+  valuation_unavailable_reason: string;
+  dimensions: CompanyRatingDimensions;
+  metrics?: CompanyRatingMetrics;
+  score_cap_reason?: string;
+  factor_coverage?: number;
+  watch_items: string[];
+  risks: string[];
+  falsifiers: string[];
+  research_updated_at: string;
+  data_sources: string[];
+};
+
+export type CompanyRatingSnapshot = {
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: "Asia/Shanghai" | string;
+  data_status: CompanyRatingDataStatus;
+  methodology_version: string;
+  simulation_note?: string;
+  coverage: {
+    companies: number;
+    quotes: number;
+    financials: number;
+    valuations: number;
+  };
+  disclaimer: string;
+  items: CompanyRating[];
+};
+
+// ── Daily valuation lab ──────────────────────────────────────────────────
+
+export type ValuationEvidence = {
+  label: string;
+  display_value: string;
+  as_of: string;
+  source: string;
+  source_url: string;
+};
+
+export type ValuationScenario = {
+  id: "bear" | "base" | "bull" | string;
+  label: string;
+  probability: number;
+  initial_growth_rate: number;
+  discount_rate: number;
+  terminal_growth_rate: number;
+  dcf_value?: number | null;
+  multiple_value?: number | null;
+  methods: Array<{
+    id: string;
+    label: string;
+    value: number;
+    weight: number;
+    metric: string;
+    assumption: string;
+  }>;
+  fair_value: number;
+};
+
+export type ValuationLabItem = {
+  symbol: string;
+  name: string;
+  market_scope: string;
+  theme: string;
+  status: "ready" | "review_required" | "unavailable" | "stale" | string;
+  confidence: "high" | "medium" | "low" | string;
+  eligible_for_rating: boolean;
+  unavailable_reason: string;
+  currency: string;
+  current_price?: number | null;
+  market_as_of?: string | null;
+  financial_as_of?: string | null;
+  normalized_fcf?: number | null;
+  normalized_fcf_per_share?: number | null;
+  net_cash_per_share?: number | null;
+  historical_fcf_growth_rate?: number | null;
+  current_position: string;
+  position_percent?: number | null;
+  method: string;
+  valuation_profile: string;
+  company_method_hint: string;
+  scenarios: ValuationScenario[];
+  probability_weighted_value?: number | null;
+  expected_upside_percent?: number | null;
+  reverse_dcf?: {
+    status: string;
+    implied_growth_rate?: number | null;
+    implied_forward_eps?: number | null;
+    implied_forward_pe?: number | null;
+    explanation: string;
+  } | null;
+  cross_check?: {
+    status: string;
+    method_count: number;
+    dispersion_percent?: number | null;
+    forward_eps?: number | null;
+    forward_pe?: number | null;
+    pe_value?: number | null;
+    dcf_value?: number | null;
+    gap_percent?: number | null;
+    explanation: string;
+  } | null;
+  assumptions: string[];
+  evidence: ValuationEvidence[];
+};
+
+export type ValuationLabSnapshot = {
+  report_date: string;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: string;
+  methodology_version: string;
+  status: "live" | "partial" | "data_unavailable" | "stale" | string;
+  coverage: {
+    companies: number;
+    calculated: number;
+    cross_checked: number;
+    eligible_for_rating: number;
+  };
+  summary: string;
+  methodology_note: string;
+  items: ValuationLabItem[];
+  disclaimer: string;
+};
+
+// ── Daily actor-scoped portfolio news ─────────────────────────────────────
+
+export type PortfolioNewsImpact =
+  "positive" | "neutral" | "negative" | "unassessed";
+
+export type PortfolioNewsItem = {
+  id: string;
+  symbol: string;
+  title: string;
+  published_at: string;
+  published_at_beijing: string;
+  source: string;
+  source_url: string;
+  source_summary: string;
+  severity: "high" | "medium" | "low";
+  impact: PortfolioNewsImpact;
+  horizon: "short" | "medium" | "long" | "unknown";
+  thesis_effect: "strengthens" | "unchanged" | "weakens" | "unassessed";
+  summary: string;
+  why_it_matters: string;
+  attention: "立即复核" | "持续观察" | "无需动作";
+  confidence: "high" | "medium" | "low";
+  analysis_status: "model_analyzed" | "source_only";
+  priority_score: number;
+};
+
+export type PortfolioNewsSnapshot = {
+  report_date: string;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: "Asia/Shanghai" | string;
+  model_version: string;
+  status:
+    | "live"
+    | "partial"
+    | "source_only"
+    | "no_material_news"
+    | "data_unavailable"
+    | "no_portfolio"
+    | "waiting_refresh"
+    | "portfolio_changed"
+    | "stale"
+    | string;
+  source_status: string;
+  model_status: string;
+  portfolio_updated_at: string;
+  holdings_count: number;
+  lookback_hours: number;
+  covered_symbols: string[];
+  missing_symbols: string[];
+  summary: string;
+  counts: {
+    total: number;
+    positive: number;
+    neutral: number;
+    negative: number;
+    immediate_review: number;
+  };
+  items: PortfolioNewsItem[];
+  disclaimer: string;
+};
+
+// ── Daily actor-scoped position management ───────────────────────────────
+
+export type PositionManagementAction =
+  "increase_candidate" | "hold" | "reduce" | "review" | "insufficient_data";
+
+export type PositionAdviceItem = {
+  symbol: string;
+  name: string;
+  theme: string;
+  weight: number;
+  current_price?: number | null;
+  avg_cost?: number | null;
+  unrealized_return_percent?: number | null;
+  rating_score?: number | null;
+  rating_light: "green" | "yellow" | "red" | "unknown" | string;
+  rating_status: string;
+  valuation_position: string;
+  news_impact: string;
+  news_attention: string;
+  action: PositionManagementAction;
+  action_label: string;
+  confidence: "high" | "medium" | "low" | string;
+  rationale: string[];
+  risks: string[];
+  falsifiers: string[];
+  framework_logic: string[];
+  evidence_as_of: string[];
+  evidence_sources: string[];
+  priority_score: number;
+};
+
+export type PositionManagementSnapshot = {
+  report_date: string;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: "Asia/Shanghai" | string;
+  model_version: string;
+  framework_version: string;
+  status: string;
+  portfolio_updated_at: string;
+  holdings_count: number;
+  total_weight: number;
+  unallocated_weight: number;
+  concentration: {
+    level: "balanced" | "elevated" | "high" | "unknown" | string;
+    largest_symbol: string;
+    largest_weight: number;
+    top_three_weight: number;
+    theme_exposures: Array<{ theme: string; weight: number }>;
+  };
+  macro_context: {
+    signal: string;
+    score?: number | null;
+    phase: string;
+    report_date: string;
+    status: string;
+  };
+  counts: Record<PositionManagementAction, number>;
+  summary: string;
+  items: PositionAdviceItem[];
+  methodology_note: string;
+  disclaimer: string;
+};
+
+export type InfluencerDigestSnapshot = {
+  report_date: string;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: string;
+  lookback_hours: number;
+  model_version: string;
+  status: string;
+  summary: string;
+  coverage: {
+    authors: number;
+    configured: number;
+    succeeded: number;
+    items: number;
+    analyzed: number;
+  };
+  authors: Array<{
+    id: string;
+    name: string;
+    public_handle: string;
+    focus: string;
+    configured: boolean;
+    source_status: string;
+    item_count: number;
+    last_published_at?: string | null;
+  }>;
+  items: Array<{
+    id: string;
+    author_id: string;
+    author_name: string;
+    public_handle: string;
+    title: string;
+    published_at: string;
+    published_at_beijing: string;
+    source_url: string;
+    aggregation_source?: string | null;
+    aggregation_url?: string | null;
+    post_kind: string;
+    source_excerpt: string;
+    summary: string;
+    stance: string;
+    horizon: string;
+    content_type: string;
+    topics: string[];
+    tickers: string[];
+    counterpoint: string;
+    analysis_status: string;
+  }>;
+  disclaimer: string;
+};
+
+export type KeyEventChainSnapshot = {
+  report_date: string;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  timezone: string;
+  lookback_days: number;
+  model_version: string;
+  status: string;
+  summary: string;
+  topics: Array<{
+    id: string;
+    name: string;
+    layer: string;
+    description: string;
+    first_principle: string;
+    priority: number;
+    status: string;
+    event_count: number;
+    confirmed_count: number;
+    clue_count: number;
+    last_event_at?: string | null;
+    latest_change: string;
+    events: Array<{
+      id: string;
+      topic_id: string;
+      published_at: string;
+      published_at_beijing: string;
+      source_name: string;
+      source_url: string;
+      source_tier: string;
+      verification_status: string;
+      verification_note: string;
+      title: string;
+      excerpt: string;
+      change_type: string;
+      direction: string;
+      impact: string;
+      next_watch: string;
+      tickers: string[];
+      analysis_status: string;
+    }>;
+  }>;
+  /** Legacy storage-only payload; no longer exposed by the public dashboard API. */
+  ten_day_brief?: {
+    review_start: string;
+    review_end: string;
+    outlook_start: string;
+    outlook_end: string;
+    previous_generated_at_beijing?: string | null;
+    status: string;
+    summary: string;
+    version_summary: string;
+    review: Array<{
+      topic_id: string;
+      topic_name: string;
+      event_count: number;
+      confirmed_count: number;
+      clue_count: number;
+      new_since_previous: number;
+      direction_summary: string;
+      latest_change: string;
+      evidence_event_ids: string[];
+    }>;
+    questions: Array<{
+      id: string;
+      topic_id: string;
+      topic_name: string;
+      question: string;
+      why_it_matters: string;
+      status: string;
+      review_by: string;
+      evidence_event_ids: string[];
+    }>;
+    methodology_note: string;
+  };
+  disclaimer: string;
+};
+
+export type WeeklyBriefItem = {
+  id: string;
+  date: string;
+  weekday: string;
+  phase: "last_week" | "next_week" | "ai_outlook" | string;
+  category:
+    | "policy"
+    | "inflation"
+    | "labor"
+    | "growth"
+    | "macro"
+    | "earnings"
+    | "industry"
+    | "ai_conference"
+    | string;
+  importance: "high" | "medium" | string;
+  title: string;
+  subtitle: string;
+  ticker?: string | null;
+  source_name: string;
+  source_url?: string | null;
+  evidence_status:
+    | "confirmed"
+    | "schedule_passed"
+    | "scheduled"
+    | "official_schedule"
+    | string;
+  evidence_note: string;
+  analysis: string;
+  attention: string;
+};
+
+export type WeeklyBriefPayload = {
+  report_date: string;
+  generated_at_beijing: string;
+  timezone: string;
+  status: "live" | "partial" | "empty" | string;
+  summary: string;
+  previous_week: { start: string; end: string; label: string };
+  next_week: { start: string; end: string; label: string };
+  ai_outlook: { start: string; end: string; label: string };
+  last_week_items: WeeklyBriefItem[];
+  next_week_items: WeeklyBriefItem[];
+  ai_outlook_items: WeeklyBriefItem[];
+  earnings_status: string;
+  earnings_scope_count: number;
+  holdings: string[];
+  errors: string[];
+  methodology_note: string;
+  disclaimer: string;
+};
+
+// ── Unified research library ──────────────────────────────────────────────
+
+export type ResearchLibraryUse = "chat" | "key_event_chain" | "portfolio_news";
+export type ResearchLibraryScope =
+  "personal" | "community_candidate" | "hone_global";
+export type ResearchLibraryReviewStatus =
+  "not_required" | "pending" | "approved" | "rejected";
+export type ResearchLibrarySourceType =
+  "manual_upload" | "zsxq_export" | "ima_export" | "authorized_connector";
+
+export type ResearchLibraryItem = {
+  id: string;
+  scope: ResearchLibraryScope;
+  submitted_by?: string | null;
+  title: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  source_type: ResearchLibrarySourceType;
+  source_name: string;
+  source_url?: string | null;
+  source_date: string;
+  uploaded_at: string;
+  updated_at: string;
+  parse_status: "ready" | "stored" | "error" | string;
+  excerpt: string;
+  tickers: string[];
+  topics: string[];
+  uses: ResearchLibraryUse[];
+  review_status: ResearchLibraryReviewStatus;
+  review_note?: string | null;
+  reviewed_at?: string | null;
+  download_url: string;
+};
+
+export type ResearchConnectorStatus = {
+  status: "available_via_import" | string;
+  mode: "official_skill_export" | "file_export" | string;
+  read_only: boolean;
+  automatic_sync: boolean;
+  guide_url?: string;
+  note: string;
+};
+
+export type ResearchLibraryBundle = {
+  items: ResearchLibraryItem[];
+  is_admin: boolean;
+  connector_status: {
+    zsxq: ResearchConnectorStatus;
+    ima: ResearchConnectorStatus;
+  };
+};
+
+// ── Daily macro / AI signals ──────────────────────────────────────────────
+
+export type DailySignalKind = "macro" | "ai";
+export type DailySignalLight =
+  "green" | "yellow" | "orange" | "red" | "unknown";
+export type DailySignalStatus =
+  "live" | "partial" | "framework_only" | "stale" | string;
+
+export type DailySignalTrendPoint = { period: string; value: number };
+export type DailySignalEvidence = {
+  label: string;
+  value?: number | null;
+  display_value: string;
+  unit: string;
+  period?: string | null;
+  released_at?: string | null;
+  fetched_at: string;
+  source: string;
+  source_url: string;
+  provenance: "reported_fact" | "model_inference" | "unavailable" | string;
+};
+
+export type DailySignalDimension = {
+  id: string;
+  label: string;
+  role: string;
+  score?: number | null;
+  signal: DailySignalLight;
+  trend_label: string;
+  reason: string;
+  threshold: string;
+  trend: DailySignalTrendPoint[];
+  evidence: DailySignalEvidence[];
+};
+
+export type DailySignalMetric = {
+  id: string;
+  label: string;
+  score?: number | null;
+  display_value: string;
+  reason: string;
+};
+
+export type DailySignalCompanyScore = {
+  symbol: string;
+  name: string;
+  score?: number | null;
+  signal: DailySignalLight;
+  capex?: number | null;
+  capex_growth?: number | null;
+  capex_peak_status: string;
+  coverage: number;
+  metric_total: number;
+  metrics: DailySignalMetric[];
+};
+
+export type DailyHardwareSignal = {
+  symbol: string;
+  segment: string;
+  signal: DailySignalLight;
+  score?: number | null;
+  price?: number | null;
+  change_percent?: number | null;
+  reason: string;
+};
+
+export type DailySignalReport = {
+  kind: DailySignalKind;
+  title: string;
+  report_date: string;
+  market_date?: string | null;
+  data_cutoff?: string | null;
+  generated_at: string;
+  generated_at_beijing: string;
+  next_refresh_at: string;
+  model_version: string;
+  status: DailySignalStatus;
+  score?: number | null;
+  raw_score?: number | null;
+  signal: DailySignalLight;
+  phase: string;
+  summary: string;
+  comparison_yesterday?: number | null;
+  comparison_week?: number | null;
+  changes: { label: string; direction: string; detail: string }[];
+  dimensions: DailySignalDimension[];
+  company_scores: DailySignalCompanyScore[];
+  hardware_signals: DailyHardwareSignal[];
+  alerts: string[];
+  evidence: DailySignalEvidence[];
+  sources: { label: string; url: string; source_type: string }[];
+  full_report: string;
+  stale: boolean;
+  disclaimer: string;
+};
+
+export type DailySignalHistoryItem = Pick<
+  DailySignalReport,
+  | "report_date"
+  | "generated_at_beijing"
+  | "status"
+  | "score"
+  | "raw_score"
+  | "signal"
+  | "phase"
+  | "summary"
+>;

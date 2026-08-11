@@ -118,11 +118,11 @@ export function AgentWorkspaceSidebar(props: {
   });
   return (
     <aside class="agent-workspace-sidebar" aria-label={CONTENT.chat_page.workspace.brand_aria}>
-      <button type="button" class="agent-workspace-brand" onClick={props.onNewResearch} aria-label="HONE Agent">
+      <button type="button" class="agent-workspace-brand" onClick={props.onNewResearch} aria-label={CONTENT.chat_page.workspace.brand_aria}>
         <HoneBrand />
       </button>
       <nav class="agent-workspace-nav">
-        <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
+        <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>{CONTENT.chat_page.workspace.assistant_nav}</span></button>
         <Show when={props.onPushes}>{(onPushes) => <button type="button" {...routePrefetchHandlers("pushes")} classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushes()} class="agent-workspace-nav-with-dot"><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={(props.unreadPushCount ?? 0) > 0}><i /></Show></button>}</Show>
         <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
         <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
@@ -278,7 +278,7 @@ export function AgentWorkspaceOverview(props: {
   return (
     <main class="agent-workspace-overview">
       <div class="agent-workspace-title-row">
-        <div><h1>Agent</h1><div class="agent-workspace-context">{CONTENT.chat_page.workspace.context_prefix}<span>{CONTENT.chat_page.workspace.context_portfolio}</span><span>{CONTENT.chat_page.workspace.context_events}</span></div></div>
+        <div><h1>投资助手</h1><div class="agent-workspace-context">{CONTENT.chat_page.workspace.context_prefix}<span>{CONTENT.chat_page.workspace.context_portfolio}</span><span>{CONTENT.chat_page.workspace.context_events}</span></div></div>
       </div>
       <section class="agent-workspace-greeting">
         <span class="agent-workspace-agent-mark"><AgentWorkspaceIcon name="agent" size={25} /></span>
@@ -541,7 +541,7 @@ export function AgentWorkspaceMobileNav(props: {
   onAccount: () => void;
 }) {
   return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
-    <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>Agent</span></button>
+    <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>投资助手</span></button>
     <Show when={props.onPushesTab}>{(onPushesTab) => <button type="button" {...routePrefetchHandlers("pushes")} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushesTab()}><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={props.unreadPushCount > 0}><i /></Show></button>}</Show>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
     <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>

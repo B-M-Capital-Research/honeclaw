@@ -18,6 +18,7 @@ import { Portal } from "solid-js/web";
 
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
+import { CommunityForum } from "@/components/community-forum";
 import {
   getPublicCommunity,
   getPublicCommunityResourceBlob,
@@ -40,6 +41,7 @@ import "./public-polish.css";
 import "./public-community.css";
 
 type ViewState = "loading" | "ready" | "login" | "error";
+type CommunityView = "official" | "forum";
 
 const SAFE_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -553,6 +555,7 @@ export default function PublicCommunityPage() {
   const [downloadingResourceId, setDownloadingResourceId] = createSignal<number | null>(null);
   const [downloadError, setDownloadError] = createSignal("");
   const [query, setQuery] = createSignal("");
+  const [communityView, setCommunityView] = createSignal<CommunityView>("official");
   const filteredItems = createMemo(() => {
     const normalized = query().trim().toLowerCase();
     if (!normalized) return items();
@@ -644,6 +647,12 @@ export default function PublicCommunityPage() {
             </header>
             <main class="public-community-shell">
 
+          <nav class="public-community-view-tabs" aria-label="社区内容分类">
+            <button type="button" classList={{ active: communityView() === "official" }} onClick={() => setCommunityView("official")}><strong>官方动态</strong><span>经过 HONE 发布的只读资料</span></button>
+            <button type="button" classList={{ active: communityView() === "forum" }} onClick={() => setCommunityView("forum")}><strong>讨论区</strong><span>用户观点 · 未经官方核验</span></button>
+          </nav>
+
+          <Show when={communityView() === "official"}>
           <Switch>
             <Match when={state() === "loading"}>
               <div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.loading}</div>
@@ -781,6 +790,10 @@ export default function PublicCommunityPage() {
               </section>
             </Match>
           </Switch>
+          </Show>
+          <Show when={communityView() === "forum"}>
+            <CommunityForum query={query()} />
+          </Show>
             </main>
             <p class="public-workspace-disclaimer">{CONTENT.chat_page.community_page.disclaimer}</p>
           </div>

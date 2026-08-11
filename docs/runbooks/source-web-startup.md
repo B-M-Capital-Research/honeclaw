@@ -76,6 +76,16 @@ env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
 env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
 ```
 
+### Local user UI without SMS
+
+The public user UI keeps real SMS/email authentication by default. For a local source checkout where those providers are intentionally unconfigured, opt in to the local test account when starting the backend:
+
+```bash
+HONE_PUBLIC_DEV_LOGIN=true cargo run -p hone-cli -- start --build
+```
+
+When and only when deployment mode and cloud mode are both `local`, the login card shows **Enter local test account / 进入本地测试账号**. The backend creates or reuses a non-production test identity and issues the normal HttpOnly session cookie; the frontend does not fabricate authentication. The route returns `404` when the flag is absent, deployment mode is not local, or cloud mode is not local. Never add this variable to production service environments.
+
 ## Deploy One Reviewed Source Revision
 
 Use the revision-bound deployment state machine when replacing a long-running source Web/Discord runtime. This is different from an ordinary foreground development start:

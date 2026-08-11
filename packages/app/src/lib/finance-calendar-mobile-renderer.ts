@@ -159,7 +159,7 @@ function drawCover(
   context.fillRect(0, 0, 750, 236);
   context.fillStyle = "#a7b1ad";
   setFont(context, 13, 700, MONO);
-  context.fillText("HONE / SIGNAL CALENDAR", 34, 44);
+  context.fillText("HONE / 财经日历", 34, 44);
   context.fillStyle = "#ff7a5d";
   context.textAlign = "right";
   context.fillText(`${CONTENT.chat_page.calendar.beijing_time} · ${year}`, 716, 44);

@@ -103,7 +103,7 @@ export function PublicPushCenter(props: {
         >
           <header>
             <div>
-              <span class="public-push-center-kicker">HONE Dispatch</span>
+              <span class="public-push-center-kicker">HONE 快报</span>
               <h2>{copy().centerTitle}</h2>
               <p>{copy().centerIntro}</p>
             </div>

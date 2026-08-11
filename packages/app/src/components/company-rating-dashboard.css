@@ -1,0 +1,598 @@
+.company-rating-launcher {
+  flex: 0 0 auto;
+  padding: 8px 24px 0;
+  background: linear-gradient(180deg, rgba(250, 249, 246, 0.96), rgba(250, 249, 246, 0));
+}
+
+.company-rating-launcher__button {
+  width: min(852px, 100%);
+  min-height: 58px;
+  margin: 0 auto;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(35, 48, 45, 0.11);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--hone-ink-950, #17201f);
+  box-shadow: 0 9px 26px rgba(23, 32, 31, 0.07);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.company-rating-launcher__button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(240, 100, 73, 0.28);
+  box-shadow: 0 12px 30px rgba(23, 32, 31, 0.1);
+}
+
+.company-rating-launcher__button:focus-visible,
+.company-rating-dialog button:focus-visible,
+.company-rating-dialog input:focus-visible,
+.company-rating-row summary:focus-visible {
+  outline: 3px solid rgba(240, 100, 73, 0.22);
+  outline-offset: 2px;
+}
+
+.company-rating-launcher__icon {
+  width: 37px;
+  height: 37px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: #f4f3ef;
+}
+
+.company-rating-launcher__icon i,
+.company-rating-light {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.company-rating-launcher .is-green,
+.company-rating-dialog .is-green { --rating-color: #23845a; }
+.company-rating-launcher .is-yellow,
+.company-rating-dialog .is-yellow { --rating-color: #d69c18; }
+.company-rating-launcher .is-red,
+.company-rating-dialog .is-red { --rating-color: #d3544a; }
+.company-rating-launcher .is-unknown,
+.company-rating-dialog .is-unknown { --rating-color: #7b8782; }
+.company-rating-launcher__icon i,
+.company-rating-light { background: var(--rating-color); }
+
+.company-rating-launcher__copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.company-rating-launcher__copy strong {
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.company-rating-launcher__copy small {
+  color: #68736f;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.company-rating-launcher__counts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.company-rating-launcher__counts b {
+  min-width: 26px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rating-color) 11%, white);
+  color: var(--rating-color);
+  font-size: 11px;
+  text-align: center;
+}
+
+.company-rating-launcher__button > svg,
+.company-rating-dialog__header button svg,
+.company-rating-toolbar label svg,
+.company-rating-chevron {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.company-rating-launcher__button > svg { color: #84908b; }
+
+.company-rating-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 25, 23, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.company-rating-dialog {
+  width: min(1040px, 100%);
+  height: min(820px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 24px;
+  background: #fbfaf7;
+  color: #17201f;
+  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
+}
+
+.company-rating-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.09);
+}
+
+.company-rating-eyebrow {
+  margin: 0 0 5px;
+  color: #d35f49;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.company-rating-dialog__header h2 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.035em;
+}
+
+.company-rating-dialog__header p:not(.company-rating-eyebrow) {
+  margin: 6px 0 0;
+  color: #67716e;
+  font-size: 13px;
+}
+
+.company-rating-dialog__header > button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(35, 48, 45, 0.1);
+  border-radius: 11px;
+  background: white;
+  color: #52605b;
+  cursor: pointer;
+}
+
+.company-rating-meta {
+  min-height: 40px;
+  padding: 8px 26px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.07);
+  color: #6b7672;
+  font-size: 11px;
+}
+
+.company-rating-meta > span:first-child {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #edf1ee;
+  color: #45534f;
+  font-weight: 700;
+}
+
+.company-rating-meta > span.is-live { background: #e7f5ed; color: #1e7650; }
+.company-rating-meta > span.is-partial { background: #fff4d8; color: #8c6610; }
+.company-rating-meta > span.is-stale,
+.company-rating-meta > span.is-transcript_only { background: #f5e8e3; color: #985044; }
+
+.company-rating-meta button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #c65440;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.company-rating-methodology {
+  margin: 10px 26px 0;
+  border: 1px solid rgba(35, 48, 45, 0.1);
+  border-radius: 12px;
+  background: #f7f6f2;
+  overflow: hidden;
+}
+
+.company-rating-methodology summary {
+  min-height: 42px;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto 16px;
+  align-items: center;
+  gap: 10px;
+  color: #34413d;
+  cursor: pointer;
+  list-style: none;
+}
+
+.company-rating-methodology summary::-webkit-details-marker { display: none; }
+.company-rating-methodology summary span { font-size: 12px; font-weight: 800; }
+.company-rating-methodology summary strong { color: #985044; font-size: 11px; }
+.company-rating-methodology summary i { color: #84908b; font-style: normal; transition: transform 160ms ease; }
+.company-rating-methodology[open] summary i { transform: rotate(180deg); }
+
+.company-rating-methodology > div {
+  padding: 0 12px 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.company-rating-methodology section {
+  padding: 10px;
+  border-radius: 9px;
+  background: white;
+}
+
+.company-rating-methodology h3 { margin: 0 0 5px; color: #34413d; font-size: 11px; }
+.company-rating-methodology p { margin: 0; color: #69736f; font-size: 10.5px; line-height: 1.55; }
+
+.company-rating-toolbar {
+  padding: 12px 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+}
+
+.company-rating-toolbar > label {
+  min-width: 220px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid rgba(35, 48, 45, 0.11);
+  border-radius: 11px;
+  background: white;
+  color: #8b9591;
+}
+
+.company-rating-toolbar label svg { width: 16px; height: 16px; }
+.company-rating-toolbar input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #17201f;
+  font: inherit;
+  font-size: 13px;
+}
+
+.company-rating-filters { display: flex; gap: 5px; }
+.company-rating-filters button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #68736f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.company-rating-filters button span {
+  margin-left: 5px;
+  color: var(--rating-color);
+}
+
+.company-rating-filters button.is-active {
+  border-color: rgba(35, 48, 45, 0.1);
+  background: white;
+  color: #17201f;
+  box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
+}
+
+.company-rating-dialog__body {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 0 26px 20px;
+}
+
+.company-rating-list__head,
+.company-rating-row summary {
+  display: grid;
+  grid-template-columns: minmax(270px, 1fr) 165px 80px 24px;
+  align-items: center;
+}
+
+.company-rating-list__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 11px 32px 9px 30px;
+  background: rgba(251, 250, 247, 0.95);
+  color: #8a9490;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.company-rating-list__head span:nth-child(3) { text-align: right; }
+
+.company-rating-row {
+  margin-bottom: 7px;
+  border: 1px solid rgba(35, 48, 45, 0.09);
+  border-left: 3px solid var(--rating-color);
+  border-radius: 14px;
+  background: white;
+  overflow: clip;
+}
+
+.company-rating-row summary {
+  min-height: 66px;
+  position: relative;
+  padding: 8px 14px 8px 27px;
+  cursor: pointer;
+  list-style: none;
+}
+.company-rating-row summary::-webkit-details-marker { display: none; }
+.company-rating-row summary:hover { background: #fdfcf9; }
+.company-rating-row .company-rating-light {
+  position: absolute;
+  left: 11px;
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--rating-color) 12%, transparent);
+}
+
+.company-rating-company,
+.company-rating-market { min-width: 0; display: grid; gap: 3px; }
+.company-rating-company strong { font-size: 15px; letter-spacing: -0.015em; }
+.company-rating-company small,
+.company-rating-market small { overflow: hidden; color: #76817d; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.company-rating-market strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.company-rating-market small.is-up { color: #23845a; }
+.company-rating-market small.is-down { color: #d3544a; }
+.company-rating-score {
+  justify-self: end;
+  min-width: 66px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 1px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--rating-color) 12%, white);
+  color: var(--rating-color);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.company-rating-score strong { font-size: 15px; font-weight: 850; }
+.company-rating-score small { color: color-mix(in srgb, var(--rating-color) 75%, #68736f); font-size: 8px; white-space: nowrap; }
+.company-rating-chevron { justify-self: end; color: #929b98; transition: transform 160ms ease; }
+.company-rating-row[open] .company-rating-chevron { transform: rotate(90deg); }
+
+.company-rating-detail {
+  padding: 0 20px 20px 27px;
+  border-top: 1px solid rgba(35, 48, 45, 0.07);
+}
+
+.company-rating-thesis {
+  margin: 16px 0;
+  color: #34413d;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.company-rating-dimensions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px 18px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f7f6f2;
+}
+
+.company-rating-dimensions > div {
+  display: grid;
+  grid-template-columns: 58px 1fr 26px;
+  align-items: center;
+  gap: 7px;
+  color: #68736f;
+  font-size: 10px;
+}
+.company-rating-cap {
+  margin: -5px 0 14px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, #d3544a 28%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, #d3544a 8%, transparent);
+  color: #834940;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.company-rating-dimensions i { height: 4px; border-radius: 99px; background: #e0e3df; overflow: hidden; }
+.company-rating-dimensions i b { height: 100%; display: block; border-radius: inherit; background: var(--rating-color); }
+.company-rating-dimensions i.is-unavailable { background: repeating-linear-gradient(90deg, #d7dcda 0 4px, transparent 4px 7px); }
+.company-rating-dimensions strong { color: #35423e; text-align: right; font-variant-numeric: tabular-nums; }
+
+.company-rating-detail__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+  margin-top: 18px;
+}
+.company-rating-detail__grid h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.03em; }
+.company-rating-detail__grid p,
+.company-rating-detail__grid ul { margin: 0; color: #65706c; font-size: 11px; line-height: 1.65; }
+.company-rating-detail__grid ul { padding-left: 17px; }
+.company-rating-valuation {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(35, 48, 45, 0.09);
+  border-radius: 12px;
+  background: #faf9f5;
+}
+.company-rating-valuation__cases {
+  margin: 0 0 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.company-rating-valuation__cases div { min-width: 0; }
+.company-rating-valuation__cases dt { color: #8a9490; font-size: 9px; }
+.company-rating-valuation__cases dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.company-rating-valuation__range { position: relative; height: 8px; margin: 8px 3px; }
+.company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: 999px; background: linear-gradient(90deg, #23845a, #d69c18 52%, #d3544a); }
+.company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid white; border-radius: 999px; background: #17201f; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
+.company-rating-valuation__position { color: #34413d !important; font-weight: 750; }
+.company-rating-valuation > small { display: block; margin-top: 6px; color: #8a9490; font-size: 9px; }
+.company-rating-valuation__empty { padding: 10px; border-radius: 9px; background: #f2f1ed; }
+.company-rating-valuation__empty strong { color: #985044; font-size: 11px; }
+.company-rating-valuation__empty p { margin: 5px 0 !important; }
+.company-rating-valuation__empty small { color: #8a9490; font-size: 9px; line-height: 1.5; }
+.company-rating-fundamentals {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(35, 48, 45, 0.09);
+  border-radius: 12px;
+  background: #faf9f5;
+}
+.company-rating-fundamentals dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.company-rating-fundamentals dt { color: #8a9490; font-size: 9px; }
+.company-rating-fundamentals dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.company-rating-fundamentals small { display: block; margin-top: 9px; color: #8a9490; font-size: 9px; line-height: 1.5; }
+.company-rating-source { margin: 16px 0 0; color: #929a97; font-size: 10px; }
+
+.company-rating-state {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  color: #78827f;
+  font-size: 13px;
+}
+.company-rating-state.is-error { color: #b34d41; }
+.company-rating-state button { margin-left: 8px; border: 0; background: transparent; color: inherit; font-weight: 800; cursor: pointer; }
+
+.company-rating-simulation-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 8px 26px 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(214, 156, 24, 0.28);
+  border-radius: 10px;
+  background: rgba(214, 156, 24, 0.09);
+  color: #6f5a26;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.company-rating-simulation-note strong { color: #9a7111; white-space: nowrap; }
+
+.company-rating-dialog footer {
+  padding: 11px 26px;
+  border-top: 1px solid rgba(35, 48, 45, 0.08);
+  color: #858f8b;
+  font-size: 10px;
+  text-align: center;
+}
+
+[data-theme="dark"] .company-rating-launcher { background: linear-gradient(180deg, rgba(15, 22, 35, 0.96), rgba(15, 22, 35, 0)); }
+[data-theme="dark"] .company-rating-launcher__button,
+[data-theme="dark"] .company-rating-dialog,
+[data-theme="dark"] .company-rating-row,
+[data-theme="dark"] .company-rating-toolbar > label,
+[data-theme="dark"] .company-rating-dialog__header > button,
+[data-theme="dark"] .company-rating-filters button.is-active { background: #111a28; color: #ecf2ef; border-color: #263347; }
+[data-theme="dark"] .company-rating-dialog__header,
+[data-theme="dark"] .company-rating-meta,
+[data-theme="dark"] .company-rating-toolbar,
+[data-theme="dark"] .company-rating-detail { border-color: #263347; }
+[data-theme="dark"] .company-rating-list__head { background: rgba(15, 22, 35, 0.96); }
+[data-theme="dark"] .company-rating-row summary:hover,
+[data-theme="dark"] .company-rating-dimensions,
+[data-theme="dark"] .company-rating-valuation,
+[data-theme="dark"] .company-rating-fundamentals,
+[data-theme="dark"] .company-rating-valuation__empty,
+[data-theme="dark"] .company-rating-methodology { background: #172231; }
+[data-theme="dark"] .company-rating-methodology,
+[data-theme="dark"] .company-rating-methodology section { border-color: #263347; }
+[data-theme="dark"] .company-rating-methodology section { background: #111a28; }
+[data-theme="dark"] .company-rating-methodology :is(summary, h3) { color: #e9f0ed; }
+[data-theme="dark"] .company-rating-simulation-note { color: #d9c998; background: rgba(214, 156, 24, 0.11); }
+[data-theme="dark"] .company-rating-valuation { border-color: #263347; }
+[data-theme="dark"] .company-rating-valuation__cases dd,
+[data-theme="dark"] .company-rating-fundamentals dd,
+[data-theme="dark"] .company-rating-valuation__position { color: #e9f0ed !important; }
+[data-theme="dark"] .company-rating-thesis,
+[data-theme="dark"] .company-rating-company strong,
+[data-theme="dark"] .company-rating-market strong,
+[data-theme="dark"] .company-rating-toolbar input { color: #e9f0ed; }
+
+@media (max-width: 768px) {
+  .company-rating-launcher { padding: 8px 12px 0; }
+  .company-rating-launcher__button { min-height: 52px; border-radius: 15px; }
+  .company-rating-launcher__icon { width: 34px; height: 34px; }
+  .company-rating-launcher__counts { display: none; }
+  .company-rating-backdrop { padding: 0; place-items: end center; }
+  .company-rating-dialog {
+    width: 100%;
+    height: min(92dvh, 860px);
+    border-radius: 22px 22px 0 0;
+  }
+  .company-rating-dialog__header { padding: 19px 16px 14px; }
+  .company-rating-dialog__header h2 { font-size: 22px; }
+  .company-rating-dialog__header p:not(.company-rating-eyebrow) { max-width: 300px; font-size: 11px; }
+  .company-rating-meta { padding: 8px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
+  .company-rating-meta span:nth-child(2) { display: none; }
+  .company-rating-methodology { margin: 8px 16px 0; }
+  .company-rating-methodology > div { grid-template-columns: 1fr; }
+  .company-rating-methodology summary strong { display: none; }
+  .company-rating-methodology summary { grid-template-columns: 1fr 16px; }
+  .company-rating-toolbar { padding: 10px 16px; display: grid; }
+  .company-rating-toolbar > label { min-width: 0; }
+  .company-rating-filters { overflow-x: auto; }
+  .company-rating-dialog__body { padding: 0 12px 16px; }
+  .company-rating-list__head { display: none; }
+  .company-rating-row:first-child { margin-top: 10px; }
+  .company-rating-row summary {
+    grid-template-columns: minmax(0, 1fr) 66px 20px;
+    padding: 9px 11px 9px 27px;
+  }
+  .company-rating-market { display: none; }
+  .company-rating-detail { padding: 0 13px 16px 22px; }
+  .company-rating-dimensions { grid-template-columns: 1fr; }
+  .company-rating-detail__grid { grid-template-columns: 1fr; gap: 13px; }
+  .company-rating-dialog footer { padding: 9px 14px; }
+}
