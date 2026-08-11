@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。真实 CRWV/LITE canary 已证明上下文/PDF 闭环，但暴露真实 URL 旁可混入未取证事实及 `$960M–$1.01B` 被错写为“9.6亿–1.01亿”。精确 `66f86ddb` 现已在生产启用专用 MCP child 的当前轮 URL/逐字摘录/数值一致性门禁，隐藏 provenance sidecar 不规定 PDF 标题、段落、页数或来源章节；本地/CI/不可变镜像/生产健康与 pre-render 零副作用 MCP 冒烟均通过，只待新真实 canary 逐主张内容验收
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。精确 `66f86ddb` 的当前轮 URL/逐字摘录/数值门禁上线后，首个 CBRS/INTC 样本暴露 URL 扫描会跳过较前 `http://`、Markdown 反引号污染 URL，以及技能同步把 Git `100755` renderer 安装成 `0644`；这三项共同造成 22 次渲染重试、约 9.9 万 token、compact 和错误的副作用不确定提示。线上 executable bit 已止血，本地代码与全仓门禁已修正 scheme 顺序/URL 边界/进程未启动分类，并把 mode 验收写入部署 runbook；待精确 revision 部署和真实 canary 证明无 compact/retry storm、PDF 持久化且逐主张证据闭环
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

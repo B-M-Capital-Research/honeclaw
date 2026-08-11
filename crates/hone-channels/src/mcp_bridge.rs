@@ -801,18 +801,24 @@ fn is_real_http_source_url(value: &str) -> bool {
         )
 }
 
+fn next_http_scheme_index(text: &str) -> Option<usize> {
+    match (text.find("https://"), text.find("http://")) {
+        (Some(https), Some(http)) => Some(https.min(http)),
+        (Some(index), None) | (None, Some(index)) => Some(index),
+        (None, None) => None,
+    }
+}
+
 fn report_http_urls(text: &str) -> HashSet<String> {
     let mut urls = HashSet::new();
     let mut remaining = text;
-    while let Some(index) = remaining
-        .find("https://")
-        .or_else(|| remaining.find("http://"))
-    {
+    while let Some(index) = next_http_scheme_index(remaining) {
         let candidate = &remaining[index..];
         let end = candidate
             .char_indices()
             .find_map(|(offset, ch)| {
-                (ch.is_whitespace() || matches!(ch, ')' | ']' | '>' | '"' | '\'')).then_some(offset)
+                (ch.is_whitespace() || matches!(ch, ')' | ']' | '>' | '"' | '\'' | '`'))
+                    .then_some(offset)
             })
             .unwrap_or(candidate.len());
         let url = candidate[..end]
@@ -829,16 +835,14 @@ fn report_http_urls(text: &str) -> HashSet<String> {
 fn strip_http_urls(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut remaining = text;
-    while let Some(index) = remaining
-        .find("https://")
-        .or_else(|| remaining.find("http://"))
-    {
+    while let Some(index) = next_http_scheme_index(remaining) {
         output.push_str(&remaining[..index]);
         let candidate = &remaining[index..];
         let end = candidate
             .char_indices()
             .find_map(|(offset, ch)| {
-                (ch.is_whitespace() || matches!(ch, ')' | ']' | '>' | '"' | '\'')).then_some(offset)
+                (ch.is_whitespace() || matches!(ch, ')' | ']' | '>' | '"' | '\'' | '`'))
+                    .then_some(offset)
             })
             .unwrap_or(candidate.len());
         remaining = &candidate[end.max(1)..];
@@ -2099,6 +2103,70 @@ cloud:
 
         if let Err(error) = validate_earnings_renderer_evidence(&arguments, &evidence_ledger()) {
             panic!("expected valid evidence manifest: {error}");
+        }
+    }
+
+    #[test]
+    fn report_urls_keep_earlier_http_and_stop_before_markdown_code_ticks() {
+        let report = concat!(
+            "来源：[HTTP](http://first.example.test/report)\n",
+            "来源：`https://second.example.test/report`\n",
+            "来源：[HTTPS](https://third.example.test/report)"
+        );
+
+        assert_eq!(
+            report_http_urls(report),
+            HashSet::from([
+                "http://first.example.test/report".to_string(),
+                "https://second.example.test/report".to_string(),
+                "https://third.example.test/report".to_string(),
+            ])
+        );
+        let without_urls = strip_http_urls(report);
+        assert!(!without_urls.contains("http://"));
+        assert!(!without_urls.contains("https://"));
+    }
+
+    #[test]
+    fn earnings_evidence_gate_accepts_http_source_before_https_source() {
+        let http_url = "http://first.example.test/report";
+        let https_url = "https://second.example.test/report";
+        let mut ledger = EarningsEvidenceLedger::default();
+        ledger.record_tool_result(
+            "web_search",
+            &json!({
+                "results": [
+                    {"url": http_url, "content": "Revenue reached $16.1 billion."},
+                    {"url": https_url, "content": "The average price target is $150."}
+                ]
+            }),
+        );
+        let first_claim = "本季度营收为161亿美元。";
+        let second_claim = "分析师平均目标价为150美元。";
+        let arguments = json!({
+            "skill_name": "earnings-research",
+            "execute_script": true,
+            "script_payload": {
+                "report_markdown": format!(
+                    "# INTC 财报前瞻\n\n{first_claim}\n\n[{http_url}]({http_url})\n\n{second_claim}\n\n`{https_url}`"
+                ),
+                "evidence_manifest": [
+                    {
+                        "claim_text": first_claim,
+                        "source_url": http_url,
+                        "source_excerpt": "Revenue reached $16.1 billion."
+                    },
+                    {
+                        "claim_text": second_claim,
+                        "source_url": https_url,
+                        "source_excerpt": "The average price target is $150."
+                    }
+                ]
+            }
+        });
+
+        if let Err(error) = validate_earnings_renderer_evidence(&arguments, &ledger) {
+            panic!("mixed HTTP/HTTPS sources should pass: {error}");
         }
     }
 

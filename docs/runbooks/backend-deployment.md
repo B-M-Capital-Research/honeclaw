@@ -188,6 +188,10 @@ because the new binary image is active. Before cutover:
    reject symlinks, compare every file to a recorded SHA-256 manifest, and move
    the verified directory into place atomically. Never run `git pull` over a
    dirty host checkout or overwrite an existing modified skill directory.
+   Preserve the revision's file modes as part of that manifest. Before cutover,
+   require every frontmatter-declared script to match the Git executable bit and
+   verify it with `test -x` as the service user; a byte-identical renderer with
+   mode `0644` is not a valid skill deployment.
 3. Query loopback `GET /api/skills` and require the target skill to be present,
    enabled, and loaded from the system root. This readback is the runtime proof;
    finding a `SKILL.md` on disk is insufficient.
