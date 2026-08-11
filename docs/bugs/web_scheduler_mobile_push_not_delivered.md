@@ -256,3 +256,13 @@ Web 用户创建持仓新闻晚报 -> 用户询问如何在手机收到提醒 ->
 
 1. 若保持仅会话内消息：后续 UI 可继续补显式说明，但当前 prompt 与台账已先阻断错误承诺。
 2. 若要支持手机提醒：新增 Web Push/App Push capability、订阅状态检查与投递台账字段，区分 `session_persisted`、`sse_event_sent`、`system_push_sent`、`system_push_failed`。
+
+## 最新运行态复核（2026-08-11 10:00 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 06:00-10:00 CST。
+  - 同窗检出 8 条 `web push broadcast failed: channel closed`，随后 17 条 `[dryrun sink]` fallback 仍写出 digest / body preview。
+  - `data/sessions.sqlite3` 同窗 `web_push_messages.created_at` 增量为 0，`web_push_messages.max(created_at)` 仍停在 `2026-07-19T13:30:44.965959+08:00`。
+- 本轮判断
+  - 这不是 2026-05 原始问题中的“assistant 承诺手机系统通知”复发；旧能力边界提示仍可视为已修。
+  - 但 Web 投递链路仍出现 channel closed 后 dryrun fallback，且本地 Web push 台账不追入，会误导送达审计和补发判断；维持功能性 `P2 / New`，非 P1。

@@ -2212,3 +2212,15 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失、持仓主体核验漂移和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或影响持仓复盘质量；但会话正常收口、未见投递失败、错对象或数据写入破坏。当前 README 已按 P0 能力治理跟踪该风险，本轮未发现需要额外创建 P1 issue 的条件。
+
+## 最新运行态复核（2026-08-11 10:00 CST）
+
+- `git log`
+  - 最近四小时无非文档代码提交；未见 runtime 重启、revision 切换或确认加载 `37043d01 fix: block stale scheduler price-anchor fallbacks` 的日志证据。
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 06:00-10:00 CST。
+  - 同窗 source log 仍有旧 `hone_quote_time` / 上下文报价锚进入 heartbeat deliver：例如 06:00 CST `持仓财报与重大新闻心跳提醒` 引用 `SNDK $1,253.49 / AAOI $132.81` 的 04:00 CST 上下文报价，`NBIS关键事件心跳提醒` 使用 `NBIS $184.11` 的 `hone_quote_time` 04:00 北京报价，`中际旭创关键事件心跳提醒` 使用 `300308.SZ ¥864.58` 的 2026-08-10 15:04:49 北京报价。
+  - 同窗 70 条 heartbeat deliver 中 34 条命中旧报价 / 上下文报价 / 无新报价等降级行情锚语义。
+- 本轮判断
+  - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
+  - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
