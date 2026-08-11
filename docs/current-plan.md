@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。生产 CBRS 证明机械证据门禁会诱导模型粘贴英文片段，现已完整撤销且 renderer 只负责排版。生产 INTC 又证明完整 skill 注入会让 preview 与 analysis 同时执行；本地已改为宿主按唯一结构化 `mode` 在 runner 前只保留一套原 Prompt，preview 与 analysis 互斥，缺失/冲突 mode 在研究前失败，不新增内容门禁。真实 skill 展开、两条入口、相关 crate、workspace check、renderer 和完整 CI-safe 回归已通过；当前待部署后分别用 preview/analysis canary 验证 PDF 不串入另一模式，并继续检查中文综合分析、单次 renderer、持久化和无 compact
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，完整撤销机械证据门禁且 renderer 只负责排版。生产 INTC 证明完整 skill 注入会让 preview 与 analysis 同时执行；现由宿主按唯一结构化 `mode` 在 runner 前只保留一套原 Prompt，preview 与 analysis 互斥，缺失/冲突 mode 在研究前失败，不新增内容门禁。精确 `0c6d0328` 已同步部署 runtime+skill，CI/镜像/secret、exact SHA/skill hash、PG/OSS/cloud、鉴权、零 active/restart/warning 全部通过，`7516be88` runtime/skill 保留回滚；当前待分别跑一单 preview/analysis canary 验证 PDF 不串模式，并继续检查中文综合分析、单次 renderer、持久化和无 compact
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

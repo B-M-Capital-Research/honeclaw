@@ -3,7 +3,7 @@
 - title: Earnings Workflow 原流程直接迁移
 - status: in_progress
 - created_at: 2026-08-05
-- updated_at: 2026-08-11
+- updated_at: 2026-08-12
 - owner: Codex
 - related_files:
   - `skills/earnings-research/SKILL.md`
@@ -58,6 +58,7 @@
 - 当前 CBRS PDF 证明机械门禁虽能最终放行文件，却把报告诱导成中文标题下粘贴英文搜索片段和 URL；该样本内容验收失败。新版本须在部署后验证：无旧会话污染、无 compact、近单次 renderer、正文为原 prompt 组织的中文综合分析、缺口按需搜索而非凭空补齐，PDF 可下载且刷新后仍存在，并记录 token、cost 和耗时。
 - 门禁撤销提交 `4852c9f6` 与原工作流收口提交 `7516be8857c412bdb371e961b4a34874bb76070b` 已推送；技能校验、Python 编译、renderer regression、`hone-channels` 794 passed/1 ignored、workspace check 与完整 CI-safe regression 通过。CI、Secret Scan、Release Cache Warm 和 Linux runtime-image job 通过，精确镜像 digest `sha256:d83aa93d8c344bd24e472fd96a6121498e7f2999dd32b6966ee49359538b4156` 与三项 skill 哈希均在生产校验后同步切换。生产 readback 为 exact `7516be88` / `ghcr_linux_oci`、PG/OSS healthy、cloud-authoritative、零本地持久依赖、`NRestarts=0`、公开/回环鉴权 `401`、切换后零 warning/error、active=0；service user 已用无 URL 中文正文生成 210,023 字节有效 PDF。旧 `b31117ec` runtime 与 skill 作为即时回滚保留。
 - 生产 INTC 前瞻暴露了模式糅合：六页 PDF 的第一页是前瞻，随后三页却是独立财报分析；持久化 Markdown 本身已经包含两份报告，renderer 只是如实排版。根因是宿主把同时包含 preview/analysis 两组原 Prompt 的完整 `SKILL.md` 注入 runner，公开指令又要求“执行技能中的所有阶段”。本地修复在受信宿主边界解析唯一结构化 `mode`，并在 runner 启动前移除非当前模式 Prompt：preview 只保留前瞻+近期新闻，analysis 只保留分析，两者都保留公共流程和 PDF 交付。缺失、重复、冲突或未知 mode 在研究前失败；这只是互斥输入路由，不检查或改写报告内容，也没有恢复机械门禁。真实 `SKILL.md` 展开回归、两条 skill 入口、专用 system/public 指令、renderer regression、`hone-channels` 795/1 ignored、`hone-web-api` 209/2 ignored、workspace check 和完整 CI-safe regression 均通过；待部署后分别跑一单 preview/analysis canary 验证 PDF 不再串入另一模式。
+- 互斥路由提交 `0c6d0328a04c31eb07839bf6a3b91baa65fb821f` 已推送；GitHub CI、Secret Scan、Runtime Image、Release Cache Warm 均通过，镜像 digest 为 `sha256:0c2160f65c0ee07118bda0ed502c457296037a05094d10367eadf01e2e8c52d9`。生产在完整 bundle/hash/mode、service-user skill 权限、runtime env 和连续两次 active=0 验证后同步切换 runtime 与 skill。两次操作脚本验收缺陷（不可遍历目录的非特权 `test`、固定 `/tmp` 探针文件权限）都触发完整自动回滚并恢复旧 SHA/skill/健康；修正后最终读回 exact revision、skill SHA `9302d623…`、renderer `0755`、PG/OSS healthy、cloud authoritative、零本地持久依赖、system skill enabled、`NRestarts=0`、active=0、loopback/public JSON `401` 和切换后 warning=0。旧 `7516be88` runtime/skill 保留为即时回滚；仍待各一单真实 preview/analysis canary 验证不串模式。
 
 ## Documentation Sync
 
