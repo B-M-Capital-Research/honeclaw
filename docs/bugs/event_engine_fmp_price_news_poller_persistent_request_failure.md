@@ -299,6 +299,17 @@
   - FMP poller 仍存在持续请求失败，行情、新闻或公司行动增量可能退化；但运行态不是全链路不可用。
   - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。
 
+## 最新运行态复核（2026-08-11 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 18:01-22:02 CST。
+  - 同窗检出 15,322 条 `FMP 请求失败` / `poller.fmp` 失败信号，集中在 extended-hours `prev_close` 批量请求、`poller.fmp.news` / `stock_news` 与若干 FMP 事件源请求失败。
+  - 日志中的 FMP URL 仍写成 `apikey=<redacted>`，未见用户可见原始 key 外泄。
+  - 同窗 heartbeat 继续运行：`run_start=109`、`run_finish=109`、`deliver=66`，说明不是 event-engine / scheduler 整体停摆。
+- 本轮判断
+  - FMP poller 仍存在持续请求失败，行情、新闻或公司行动增量可能退化；但运行态不是全链路不可用。
+  - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。
+
 ## 最新运行态复核（2026-08-11 14:01 CST）
 
 - `data/logs/hone-console-page-source.log`

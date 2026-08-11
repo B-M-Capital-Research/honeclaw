@@ -7151,6 +7151,17 @@
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、空状态、非结构化失败跳过、静默语义 deliver 与 duplicate suppression 并存。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
 
+## 最新运行态复核（2026-08-11 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 18:01-22:02 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=130`、`JsonNoop=25`、`PlainTextNoop=8`、`PlainTextSuppressed=5`、`JsonTriggered=4`、`JsonEmptyStatus=1`。
+  - 同窗还有 `HeartbeatDiag=413`、`run_start=109`、`run_finish=109`、`deliver=66`、`duplicate_suppressed=20`、`execution_failed=7`、raw `<think>` preview 107 条。
+  - 代表样本包括 18:00-22:00 CST 多条 `PlainTextTriggered` deliver 正文明写 `noop / 无新增 / 无新触发 / 未命中 / 无触发`，以及 1 条 `JsonEmptyStatus` 和 5 条 `PlainTextSuppressed` 在同一窗口内出现。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、空状态、非结构化失败跳过、静默语义 deliver 与 duplicate suppression 并存。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
 ## 最新运行态复核（2026-08-11 18:02 CST）
 
 - `data/logs/hone-console-page-source.log`
