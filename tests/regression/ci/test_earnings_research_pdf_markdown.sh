@@ -16,8 +16,8 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 # Content ownership belongs to the migrated BamangResearch prompt, not the
-# renderer. Arbitrary useful headings, a short news appendix, and an explicit
-# evidence gap must all remain valid without preview_audit.
+# renderer. Arbitrary useful headings and prose must remain valid without a
+# source schema, evidence manifest, or preview_audit.
 report = (
     "# CRWV公司财报前瞻分析\n\n"
     "# 1. 整体分析\n\n"
@@ -54,18 +54,16 @@ analysis = (
 module.validate_report(analysis)
 assert "<h1>10. 结论</h1>" in module.markdown_to_html(analysis)
 
-for invalid, expected in [
-    ("# 无来源报告\n\n只有模型记忆中的数字。", "no verifiable source URL"),
-    (report + "\nAnonymous Institution gave a buy rating.", "anonymous source"),
-    (report + "\n来源：https://example.com/fake", "placeholder URL"),
-    (report + "\n{financial_information}", "unresolved placeholder"),
-]:
+module.validate_report("# 原工作流报告\n\n这是无需证据清单即可排版的完整正文。")
+module.validate_report(report + "\n{financial_information}")
+
+for invalid, expected in [("", "required"), ("x" * 240_001, "exceeds")]:
     try:
         module.validate_report(invalid)
     except ValueError as exc:
         assert expected in str(exc)
     else:
-        raise AssertionError(f"expected rejection containing {expected}")
+        raise AssertionError(f"expected technical rejection containing {expected}")
 
 # Keep the technical Chromium retry deterministic without requiring a browser
 # in the CI-safe contract test.

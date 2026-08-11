@@ -14,30 +14,9 @@ import tempfile
 import uuid
 from datetime import date
 from pathlib import Path
-from urllib.parse import urlparse
 
 
 MAX_REPORT_CHARS = 240_000
-PLACEHOLDER_TEXT = (
-    "anonymous institution",
-    "unknown institution",
-    "unnamed institution",
-    "example source",
-    "匿名机构",
-    "来源待补",
-    "[待补充]",
-    "{{company}}",
-    "{company}",
-    "{search_results}",
-    "{recent_news_search_results}",
-    "{financial_information}",
-    "{current_date}",
-    "{latest_filing_or_uploaded_report}",
-    "{earnings_call}",
-)
-PLACEHOLDER_HOSTS = {"example.com", "example.net", "example.org", "localhost", "0.0.0.0"}
-
-
 def emit(payload: dict) -> int:
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -82,25 +61,6 @@ def validate_report(report: str) -> None:
         raise ValueError("report_markdown is required")
     if len(report) > MAX_REPORT_CHARS:
         raise ValueError(f"report_markdown exceeds {MAX_REPORT_CHARS} characters")
-
-    lowered = report.lower()
-    found = [token for token in PLACEHOLDER_TEXT if token.lower() in lowered]
-    if found:
-        raise ValueError(
-            "report contains an unresolved placeholder or anonymous source: " + ", ".join(found[:5])
-        )
-
-    urls = re.findall(r"https?://[^\s)\]>]+", report, flags=re.IGNORECASE)
-    if not urls:
-        raise ValueError(
-            "report contains no verifiable source URL; search the exact unsupported claims "
-            "or remove them before rendering"
-        )
-
-    for url in urls:
-        host = (urlparse(url.rstrip(".,;，。；")).hostname or "").lower().rstrip(".")
-        if host in PLACEHOLDER_HOSTS or host.endswith(".example") or host.startswith("127."):
-            raise ValueError(f"report contains a placeholder URL: {url}")
 
 
 def inline_markup(value: str) -> str:

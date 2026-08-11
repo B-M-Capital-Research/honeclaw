@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。精确 `66f86ddb` 的当前轮证据门禁首个 CBRS/INTC 样本暴露 URL 扫描跳过较前 `http://`、Markdown 反引号污染 URL，以及技能同步把 Git `100755` renderer 安装成 `0644`；三项共同造成 22 次渲染重试、约 9.9 万 token、compact 和错误的副作用不确定提示。修复 `b31117ec` 已通过全仓/CI/Secret Scan/CodeQL、按不可变 digest 部署生产，exact/cloud/PG/OSS/零 warning-error 均通过；生产服务用户已真实生成 182,054 字节有效 PDF。当前只待下一次真实用户财报轮次证明完整 LLM→证据→PDF→附件链路无 compact/retry storm 且逐主张闭环
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，并删除 `preview_audit` 与固定报告格式。生产 CBRS 虽最终生成 PDF，但机械 `evidence_manifest` / 逐字摘录 / 全报告数字覆盖门禁诱导模型把英文搜索片段和 URL 当正文，报告质量、成本和重试次数均明显劣化。当前变更完整撤销该门禁并把 renderer 收回为纯排版边界，只保留“缺事实就搜索、仍不可核验就说明或省略、不得编造”的原工作流规则；验证后等待零 active-chat 窗口部署，再以真实用户任务检查中文综合分析、近单次 renderer、PDF 持久化和无 compact
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

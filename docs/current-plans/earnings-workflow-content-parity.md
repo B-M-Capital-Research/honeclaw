@@ -28,14 +28,14 @@
 - 保留原流程：实体确认 → 当前财务/财报数据 → 原 query prompt 生成 5–8 个查询 → 搜索聚合 → 原前瞻或分析 prompt → 前瞻追加原新闻 prompt → PDF。
 - 原 BamangResearch prompt 是报告内容与结构的真相源；不再增加第二套预审 schema、机构字段、新闻数量、自然段句数或页数要求。
 - 真实性约束留在研究阶段：重要事实缺失或矛盾时先做针对性搜索；仍不可核验时明确写“未找到可核验来源”或省略。不得编造来源、URL、机构、引语、数字、事件或因果关系。
-- renderer 只保真排版任意 Markdown，并加水印、免责声明和知识星球分享页；不改写内容，也不规定来源章节的格式。renderer 启动前，专用 MCP child 用本轮成功的 DataFetch/Web Search 结果建立短生命周期证据账本，并要求隐藏的 `evidence_manifest` 将每条重大断言映射到可见 URL 和同一结果中的逐字摘录；URL、摘录或数字不闭环时不产生文件。
+- renderer 只保真排版任意非空、长度有界的 Markdown，并加水印、免责声明和知识星球分享页；不改写内容，也不裁判来源、断言或数字。专用 MCP child 不再建立证据账本，也不再要求 `evidence_manifest`、逐句 URL 或数字覆盖映射。
 - 保留宿主 PDF terminal closure：只有官方 renderer 成功且 PDF 被当前 actor 持久化，专用轮次才算成功。
 
 ## Verification
 
 - 技能结构校验与 Python 编译通过。
-- CI 回归证明：无需 `preview_audit`；少量真实新闻和明确证据缺口可生成；匿名机构、`example.com` 和未替换模板被拒绝；Markdown 表格与任意原 prompt 标题被保真渲染。
-- Rust 测试证明：专用财报轮次清除历史消息；原 prompt 系统覆盖取代普通投研模板；renderer 恢复提示只处理占位/虚假来源或技术错误，不要求为版式改写报告。
+- CI 回归证明：无需 `preview_audit`、source schema 或 evidence manifest；任意原 prompt 标题、Markdown 表格和无强制 URL 的完整正文都可保真渲染，只有空输入、超限输入与技术渲染失败被拒绝。
+- Rust 测试证明：专用财报轮次清除历史消息；原 prompt 系统覆盖取代普通投研模板；系统明确要求中文综合分析并禁止把英文搜索片段/逐句 URL 映射当正文。
 - 运行 changed rustfmt、相关 crate tests、CI-safe regression 和 `git diff --check`。
 - `bd2eb2f99e7ff62ed856902f8771b0314887d10c` 已推送 `main`；Runtime Image、CI、Secret Scan、Code Quality 与 Release Cache Warm 均通过，精确 GHCR runtime digest 为 `sha256:f44be080c43625d3ae80fee58792a8d0e6f7c14f67ce3f72c9683ddc169b6668`。
 - 生产已切到该精确 revision，技能从 system 目录加载且正文包含原流程契约；服务 `active/running`、`NRestarts=0`、云存储权威、PostgreSQL/OSS 健康、切换后 warning/error 为 0。
@@ -53,7 +53,7 @@
 - 本轮本地验证：`hone-tools` 185 passed/1 ignored，`hone-channels` 802 passed/1 ignored；完整 workspace check/test 通过；Web 408/408、Public Community Edge 45/45 和全套 CI-safe regression 通过。`docs/repo-map.md` / `docs/invariants.md` / `docs/decisions.md` 无需更新：没有模块边界、长期真实性约束或架构取舍变化；运维 mode 验收已落到 `docs/runbooks/backend-deployment.md`。下一步是推送精确 revision、不可变构建/零活跃会话部署，再跑真实 canary，要求一次闭环、无 compact、PDF 可下载且内容逐主张通过。
 - 修复提交 `b31117eccb67a981075873c86f4b8165c45e43c8` 已推送，Runtime Image run `31501533401` 发布并验证 digest `sha256:e720295b0482d16cc5b0991b8ccbaa93d231a3bfb334bc1c5a34f51f85a65dd2`；同 revision 的 CI、Secret Scan 和一条 CodeQL 均通过。生产 staging 后只剩 1.5 GiB，因此先对旧 `185504bc` bundle 做完整校验并证明它不是当前、新版本、即时回滚或 service 引用后删除；该 runtime 可从 GHCR 重建，未触碰用户数据、技能回滚或 `5a432729` / `66f86ddb`。
 - 生产在连续零 active-chat、环境门禁、renderer service-user executable bit 与 2.8 GiB 磁盘门禁后原子切到精确 `b31117ec`；失败 trap 未触发，`66f86ddb` 保留为即时回滚。`/api/meta` 读回 exact SHA / `ghcr_linux_oci`、cloud-authoritative、PG/OSS healthy、零本地持久依赖，服务 active、`NRestarts=0`、公开 API JSON `401`、切换后 warning/error 为 0。生产 `hone` 用户随后真实执行 renderer，成功生成 182,054 字节且 `%PDF-` 头有效的 smoke PDF，验证完成后只清理该临时产物。当前只待下一次真实用户财报轮次确认完整 LLM→evidence→PDF→attachment 链路无 compact/retry storm。
-- 在已部署的精确 revision 与技能上，用一个生产前瞻 canary 验证：无旧会话污染、无 compact；若首次证据门禁失败，模型只定向搜索/删改并在同一 session 有界重试；成功报告的每条 manifest 摘录与本轮工具结果逐字闭环，数字口径一致，PDF 可下载且刷新后仍存在；记录 renderer 次数、token、cost 和耗时。
+- 当前 CBRS PDF 证明机械门禁虽能最终放行文件，却把报告诱导成中文标题下粘贴英文搜索片段和 URL；该样本内容验收失败。新版本须在部署后验证：无旧会话污染、无 compact、近单次 renderer、正文为原 prompt 组织的中文综合分析、缺口按需搜索而非凭空补齐，PDF 可下载且刷新后仍存在，并记录 token、cost 和耗时。
 
 ## Documentation Sync
 
@@ -64,4 +64,4 @@
 
 - 搜索结果可能不足以填满原 prompt 的全部字段；必须暴露缺口或省略，不得用模型记忆补齐。
 - 原 prompt 包含对预测、估值和机构观点的高要求；这些要求触发更多搜索，但不构成伪造某个数值的理由。
-- 逐字摘录与数值门禁能阻止未见 URL、虚构摘录和数量级漂移，但不替代语义判断：同一真实摘录仍可能被错误解释。生产 canary 仍需人工审查因果关系、时间归属和来源是否真正支持对应断言；不要把复杂研究判断硬编码进排版器。
+- 去掉机械门禁后，数量级与语义错误不能依赖排版器阻断；真实性由针对性搜索、明确缺口和真实 canary 人工审查负责。不要再次把复杂研究判断硬编码进 MCP 或 PDF 排版器。

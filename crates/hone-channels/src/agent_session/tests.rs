@@ -4548,8 +4548,9 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
     assert!(system_prompt.contains("BamangResearch 原 Workflow 和原 prompt"));
     assert!(system_prompt.contains("重要事实缺少或相互矛盾时"));
-    assert!(system_prompt.contains("只存在于模型记忆中的内容一律视为缺失"));
-    assert!(system_prompt.contains("来源名称、日期与 URL"));
+    assert!(system_prompt.contains("不得为了证明出处而把英文"));
+    assert!(system_prompt.contains("来源可自然内联或集中列在文末"));
+    assert!(!system_prompt.contains("evidence_manifest"));
     assert!(system_prompt.contains("不要求 preview_audit、固定新闻条数"));
     assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
     assert_eq!(
