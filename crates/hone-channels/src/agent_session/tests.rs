@@ -4547,6 +4547,10 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(runtime_input.contains("【Session 上下文】"));
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
     assert!(system_prompt.contains("BamangResearch 原 Workflow 和原 prompt"));
+    assert!(system_prompt.contains("mode 是唯一工作流分支"));
+    assert!(system_prompt.contains("preview 只执行财报前瞻与近期新闻"));
+    assert!(system_prompt.contains("analysis 只执行财报分析"));
+    assert!(system_prompt.contains("不得读取、执行或拼接另一模式"));
     assert!(system_prompt.contains("重要事实缺少或相互矛盾时"));
     assert!(system_prompt.contains("不得为了证明出处而把英文"));
     assert!(system_prompt.contains("来源可自然内联或集中列在文末"));
@@ -5040,7 +5044,13 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
             "description: earnings preview workflow\n",
             "user-invocable: true\n",
             "---\n\n",
-            "WRITE files, RUN commands, then NEXT step.\n"
+            "WRITE files, RUN commands, then NEXT step.\n",
+            "\n## Preview — original V2 prompt\n",
+            "PREVIEW PROMPT ONLY\n",
+            "\n## Analysis — original V2 prompt\n",
+            "ANALYSIS PROMPT ONLY\n",
+            "\n## PDF delivery\n",
+            "RENDER SELECTED REPORT\n"
         ),
     )
     .expect("write skill");
@@ -5052,27 +5062,64 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
         );
     });
     let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
-    let task = "请为 SNDK（闪迪）执行财报前瞻";
-    let expansion = crate::turn_builder::PromptTurnBuilder::new(
+    let preview_task =
+        "请为 SNDK（闪迪）执行财报前瞻\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: SNDK";
+    let builder = crate::turn_builder::PromptTurnBuilder::new(
         &core,
         &actor,
         "slash-skill-boundary",
         PromptOptions::default(),
         true,
         None,
-    )
-    .expand_slash_skill_input(&format!("/earnings-research\n{task}"))
-    .expect("expand slash skill")
-    .expect("resolved slash skill");
+    );
+    let expansion = builder
+        .expand_slash_skill_input(&format!("/earnings-research\n{preview_task}"))
+        .expect("expand slash skill")
+        .expect("resolved slash skill");
 
-    assert_eq!(expansion.user_task_input.as_deref(), Some(task));
+    assert_eq!(expansion.user_task_input.as_deref(), Some(preview_task));
     assert!(
         expansion
             .runtime_input
             .contains("WRITE files, RUN commands")
     );
-    assert!(expansion.runtime_input.ends_with(task));
+    assert!(expansion.runtime_input.contains("mode: preview"));
+    assert!(expansion.runtime_input.contains("PREVIEW PROMPT ONLY"));
+    assert!(!expansion.runtime_input.contains("ANALYSIS PROMPT ONLY"));
+    assert!(expansion.runtime_input.contains("RENDER SELECTED REPORT"));
+    assert!(expansion.runtime_input.ends_with(preview_task));
     assert!(!expansion.user_task_input.unwrap().contains("WRITE files"));
+
+    let analysis_task =
+        "请分析 SNDK 最新财报\n\n【HONE 财报工作流参数】\nmode: analysis\ncompany: SNDK";
+    let analysis = builder
+        .expand_slash_skill_input(&format!("/earnings-research\n{analysis_task}"))
+        .expect("expand analysis skill")
+        .expect("resolved analysis skill");
+    assert!(analysis.runtime_input.contains("mode: analysis"));
+    assert!(analysis.runtime_input.contains("ANALYSIS PROMPT ONLY"));
+    assert!(!analysis.runtime_input.contains("PREVIEW PROMPT ONLY"));
+    assert!(analysis.runtime_input.contains("RENDER SELECTED REPORT"));
+    assert!(analysis.runtime_input.ends_with(analysis_task));
+
+    let missing_mode =
+        builder.expand_slash_skill_input("/earnings-research\n请为 SNDK 执行财报前瞻");
+    assert!(
+        missing_mode
+            .expect_err("missing mode must not guess a workflow")
+            .to_string()
+            .contains("必须由结构化入口提供唯一 mode")
+    );
+
+    let conflicting_mode = builder.expand_slash_skill_input(
+        "/earnings-research\nmode: preview\nmode: analysis\ncompany: SNDK",
+    );
+    assert!(
+        conflicting_mode
+            .expect_err("conflicting modes must not be combined")
+            .to_string()
+            .contains("拒绝混合财报前瞻与财报分析")
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

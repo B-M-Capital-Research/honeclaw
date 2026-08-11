@@ -7,6 +7,14 @@ description: Run the administrator-only HONE 财报前瞻 or 财报分析 workfl
 
 Run one self-contained workflow for the current request. Ignore prior chat facts and prior tickers while researching, but let the finished report remain available to later conversation turns.
 
+The server-selected `mode` is an exclusive workflow branch, not a request to run every prompt in this file:
+
+- `preview`: run only the Preview V2 prompt and Preview news subworkflow. Never run or append the Analysis V2 prompt or its sections 1–10.
+- `analysis`: run only the Analysis V2 prompt. Never run or append the Preview V2 prompt or the Preview news appendix.
+- If `mode` is missing, duplicated, unsupported, or contradictory, stop before research instead of guessing or combining modes.
+
+The host removes the inactive mode prompt before this skill reaches the model. Do not attempt to recover, read, or reconstruct the removed branch.
+
 Do not call Dify or BamangResearch. Reproduce their simple workflow locally:
 
 1. Resolve the company and listing.

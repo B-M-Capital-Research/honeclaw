@@ -9,8 +9,10 @@
   - `skills/earnings-research/SKILL.md`
   - `skills/earnings-research/scripts/render_report_pdf.py`
   - `crates/hone-channels/src/agent_session/core.rs`
+  - `crates/hone-channels/src/turn_builder.rs`
   - `crates/hone-channels/src/mcp_bridge.rs`
   - `crates/hone-channels/src/runners/opencode_acp.rs`
+  - `crates/hone-web-api/src/routes/public.rs`
   - `tests/regression/ci/test_earnings_research_pdf_markdown.sh`
 - related_docs:
   - `docs/current-plan.md`
@@ -55,6 +57,7 @@
 - 生产在连续零 active-chat、环境门禁、renderer service-user executable bit 与 2.8 GiB 磁盘门禁后原子切到精确 `b31117ec`；失败 trap 未触发，`66f86ddb` 保留为即时回滚。`/api/meta` 读回 exact SHA / `ghcr_linux_oci`、cloud-authoritative、PG/OSS healthy、零本地持久依赖，服务 active、`NRestarts=0`、公开 API JSON `401`、切换后 warning/error 为 0。生产 `hone` 用户随后真实执行 renderer，成功生成 182,054 字节且 `%PDF-` 头有效的 smoke PDF，验证完成后只清理该临时产物。当前只待下一次真实用户财报轮次确认完整 LLM→evidence→PDF→attachment 链路无 compact/retry storm。
 - 当前 CBRS PDF 证明机械门禁虽能最终放行文件，却把报告诱导成中文标题下粘贴英文搜索片段和 URL；该样本内容验收失败。新版本须在部署后验证：无旧会话污染、无 compact、近单次 renderer、正文为原 prompt 组织的中文综合分析、缺口按需搜索而非凭空补齐，PDF 可下载且刷新后仍存在，并记录 token、cost 和耗时。
 - 门禁撤销提交 `4852c9f6` 与原工作流收口提交 `7516be8857c412bdb371e961b4a34874bb76070b` 已推送；技能校验、Python 编译、renderer regression、`hone-channels` 794 passed/1 ignored、workspace check 与完整 CI-safe regression 通过。CI、Secret Scan、Release Cache Warm 和 Linux runtime-image job 通过，精确镜像 digest `sha256:d83aa93d8c344bd24e472fd96a6121498e7f2999dd32b6966ee49359538b4156` 与三项 skill 哈希均在生产校验后同步切换。生产 readback 为 exact `7516be88` / `ghcr_linux_oci`、PG/OSS healthy、cloud-authoritative、零本地持久依赖、`NRestarts=0`、公开/回环鉴权 `401`、切换后零 warning/error、active=0；service user 已用无 URL 中文正文生成 210,023 字节有效 PDF。旧 `b31117ec` runtime 与 skill 作为即时回滚保留。
+- 生产 INTC 前瞻暴露了模式糅合：六页 PDF 的第一页是前瞻，随后三页却是独立财报分析；持久化 Markdown 本身已经包含两份报告，renderer 只是如实排版。根因是宿主把同时包含 preview/analysis 两组原 Prompt 的完整 `SKILL.md` 注入 runner，公开指令又要求“执行技能中的所有阶段”。本地修复在受信宿主边界解析唯一结构化 `mode`，并在 runner 启动前移除非当前模式 Prompt：preview 只保留前瞻+近期新闻，analysis 只保留分析，两者都保留公共流程和 PDF 交付。缺失、重复、冲突或未知 mode 在研究前失败；这只是互斥输入路由，不检查或改写报告内容，也没有恢复机械门禁。真实 `SKILL.md` 展开回归、两条 skill 入口、专用 system/public 指令、renderer regression、`hone-channels` 795/1 ignored、`hone-web-api` 209/2 ignored、workspace check 和完整 CI-safe regression 均通过；待部署后分别跑一单 preview/analysis canary 验证 PDF 不再串入另一模式。
 
 ## Documentation Sync
 
