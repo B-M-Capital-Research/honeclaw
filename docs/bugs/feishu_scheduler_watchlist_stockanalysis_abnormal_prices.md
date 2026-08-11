@@ -2224,3 +2224,15 @@
 - 本轮判断
   - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
   - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
+
+## 最新运行态复核（2026-08-11 14:01 CST）
+
+- `git log`
+  - 最近四小时无非文档代码提交；未见 runtime 重启、revision 切换或确认加载 `37043d01 fix: block stale scheduler price-anchor fallbacks` 的日志证据。
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 10:00-14:01 CST。
+  - 同窗 source log 仍有旧 `hone_quote_time` / 上下文报价锚进入 heartbeat deliver：`deliver` 共 65 条，其中 28 条含 `hone_quote_time`，10 条含 `沿用近期上下文`，15 条含 `NVDA $223.96`，18 条含 `SKHY $58.15`，10 条含 `SNDK $1,237.92`。
+  - 代表样本包括 10:00 CST `持仓财报与重大新闻心跳提醒` 沿用 `NVDA $223.96 / SKHY $58.15` 的 2026-08-08 上下文报价，10:30-14:00 CST 多条 `光模块板块关键事件心跳提醒` 继续以 `NVDA $223.96 / SKHY $58.15` 或 `hone_quote_time` 报价锚组织正文。
+- 本轮判断
+  - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
+  - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
