@@ -19,6 +19,11 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-12 02:02 CST 运行态继续复发，状态维持 `New/P2`。
+  - 2026-08-11 22:00-2026-08-12 02:02 CST 同窗检出 238 条 `FMP 请求失败` / `poller.fmp` / `FMP quote batch failed` 失败信号，集中在 `poller.fmp.price` quote batch、`poller.fmp.news` / `stock_news` 请求发送失败；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 `HeartbeatDiag run_start=108`、`run_finish=108`、`deliver=66`，说明 event-engine / scheduler 未整体停摆；失败集中在 FMP 行情和新闻增量抓取。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在行情 / 新闻事件增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
   - 2026-08-11 02:03 CST 运行态继续复发，状态维持 `New/P2`。
   - 2026-08-10 22:01-2026-08-11 02:02 CST 同窗 `FMP 请求失败` / `poll failed` 约 230 条，集中在 `poller.fmp.price`、`poller.fmp.news` / `stock_news`、extended-hours prev_close 等请求发送失败；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
   - 同窗仍有 `HeartbeatDiag run_start=110`、`run_finish=110`、`deliver=60`，说明 event-engine / scheduler 未整体停摆；失败集中在 FMP 行情、新闻和盘前盘后增量抓取。

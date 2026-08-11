@@ -22,6 +22,11 @@ New
 
 ## 最新进展
 
+- 2026-08-11 22:00-2026-08-12 02:02 CST 运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
+  - source log 同窗有 3 条用户可见候选继续外露内部行情工具口径：02:00 CST `AI与科技持仓观察关键事件心跳提醒` 写出 `报价来自本轮 data_fetch quote`；00:30 CST 同任务写出 `quote_short 最新可得`；01:30 CST 同任务再次写出 `报价来自本轮 data_fetch quote`。
+  - 这些 heartbeat 消息业务主体已执行并进入送达候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-31 10:00-14:02 CST 运行态继续复发，状态维持 `New`：
   - 10:00-14:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 条 user / 10 条 assistant / 4 条 system compact，覆盖 6 个更新 Feishu session；近期 direct / scheduler 会话均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误、raw tool JSON、错投或敏感信息；本轮命中的是 heartbeat 用户可见内部工具名 / 工具限额口径。
