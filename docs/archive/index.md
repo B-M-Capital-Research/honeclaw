@@ -2344,3 +2344,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: public chat/workspace style contracts; full Web suite; public production build; navigation responsiveness regression; real `390 × 844` production viewport acceptance
 - Current conclusion: the component already rendered `Agent / 推送 / 洞察 / 我的`, but a stale three-column CSS grid wrapped `我的` below the fixed-height navigation and clipped it. Production now uses four equal columns, all four tabs remain inside the viewport, and `我的` navigates to `/me`.
 - Next entry point: `docs/handoffs/2026-08-09-mobile-bottom-nav-four-tabs.md`; keep rendered tab count and CSS grid tracks synchronized.
+
+### Daily Production Deployment Blocked By Origin And Failed Main CI
+
+- Status: done; not deployed
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/daily-production-deployment-2026-08-12.md`
+- Handoff: `docs/handoffs/2026-08-12-daily-production-deployment-blocked.md`
+- Decision / ADR: none; no production or long-term behavior change
+- Related PRs / commits: frozen target `08547811ebeaf6e7a1c078b7516535f4d8d9477d`; test repair `6b82b519` on remote branch `automation/fix-public-subscription-locale-20260812`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; focused Web `4/4`; full Web `408/408`; GitHub CI `31512369953`
+- Current conclusion: Production stayed on exact `0c6d0328` with healthy cloud-authoritative PostgreSQL/R2, active Web, zero restarts and repeated zero active chats. The direct origin still returned stale Sunny-Ngrok `307 Tunnel not found`, so no image, staging, cutover, browser, canary, or rollback occurred. Frozen main also failed two locale-dependent Web tests; the proven isolation repair is pushed only to its review branch. Enabled Feishu was already inactive after a graceful stop and remains a separate production recovery risk.
+- Next entry point: repair/accept the direct origin and enabled Feishu service, merge the Web test repair, require green main CI, then freeze a fresh exact remote revision for the next deployment.
