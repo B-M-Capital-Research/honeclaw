@@ -22,6 +22,16 @@ Fixed
 
 ## 最新进展
 
+- 2026-08-12 06:02 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 02:01-06:02 CST。
+    - 近窗 `HeartbeatDiag=237`、`run_start=64`、`run_finish=64`、`deliver=43`、`duplicate_suppressed=1`；43 条 heartbeat deliver 中 18 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发` 静默语义。
+    - 03:06 CST 非文档提交 `72f5c39f fix: suppress more heartbeat noop deliveries` 已继续补强 noop 送达抑制，但 source log 未见 runtime 重启 / revision 切换证据。
+    - 03:06 后仍可见 05:00 `AI与科技持仓观察关键事件心跳提醒` 写 ``状态：noop`` 进入 deliver，06:00 `存储板块关键事件心跳提醒` 写 `状态：noop — 本轮未核验到 ... 新增重大事件` 进入 deliver，06:00 `光模块板块关键事件心跳提醒` 写 `状态：noop — 无新增独立触发事件` 进入 deliver。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
 - 2026-08-11 运行 `bug-2` 代码级补强：补齐 plain-text noop 句式漏判，先记 `Fixed`，待自然运行窗口复核。
   - 根因：
     - `crates/hone-channels/src/scheduler.rs` 的 `heartbeat_plain_text_indicates_noop(...)` 之前仍漏掉多类真实 live 文案，导致包含静默语义的 heartbeat/scheduler 正文继续被判成 `PlainTextTriggered` 并进入 deliver。
