@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-12
-状态：有 13 个活跃任务
+状态：有 12 个活跃任务
 
 ## 说明
 
@@ -30,11 +30,6 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/institutional-company-coverage.md`
   - 摘要：前五个切口已推送，覆盖结构化财报卡、actor 主线隔离、同文档去重、Grok 4.5、A/B/C 订阅、24 个 SEC 样本连续四季对账、季度材料身份和 SQLite 可恢复任务。第六切口也已完成并通过全仓门禁：8 份 AMD/MSFT/QCOM/CAT 官方 transcript 两轮全量 Grok 回放均 8/8，电话会共享事实与 actor 问题/承诺对账分层，FMP 错绑 ticker 被拒绝，未来承诺只有 `fulfilled + evidence` 才能关闭；第六切口成本约 `$0.850`。后续仍需人工盲评、专业投资者 UI、真实 A 级画像、合法可持续的自动全文来源与一个完整前瞻财报季
-
-- **Earnings Workflow 原流程直接迁移**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，撤销机械内容门禁并让 renderer 只负责排版。宿主按唯一 `mode` 只注入 preview 或 analysis 原 Prompt，财报 prompt 仅当前轮生效、不持久化/compact/恢复；精确 `7beb53e9` 已部署且 Web/飞书健康。首条 CRWV preview 已证明路由独立，但 renderer 完成后遇到 Gemini `Corrupted thought signature`，旧失败边界丢弃了已完成 artifact；当前窄修复只依据 exact 签名错误、已完成 PDF/Markdown 和无其它写操作闭环，不做任何报告内容检查。待发布后各跑一单 preview/analysis 验证不串模式、附件持久化和无 compact
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

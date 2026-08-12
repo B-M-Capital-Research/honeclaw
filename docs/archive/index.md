@@ -2344,3 +2344,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: public chat/workspace style contracts; full Web suite; public production build; navigation responsiveness regression; real `390 × 844` production viewport acceptance
 - Current conclusion: the component already rendered `Agent / 推送 / 洞察 / 我的`, but a stale three-column CSS grid wrapped `我的` below the fixed-height navigation and clipped it. Production now uses four equal columns, all four tabs remain inside the viewport, and `我的` navigates to `/me`.
 - Next entry point: `docs/handoffs/2026-08-09-mobile-bottom-nav-four-tabs.md`; keep rendered tab count and CSS grid tracks synchronized.
+
+### Earnings Original-workflow Migration And Mode Isolation
+
+- Status: done
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/earnings-workflow-content-parity.md`
+- Handoff: `docs/handoffs/2026-08-10-earnings-opencode-signature-recovery.md`
+- Decision / ADR: `docs/decisions.md`; repository generative-workflow rules in `AGENTS.md` and `docs/invariants.md`
+- Related PRs / commits: direct `main` sequence through `bd2eb2f9`, `7516be88`, `0c6d0328`, `7beb53e9`, and final deployed `521c0787064d4bfbe18822c3cbc613b5d0390886`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; 49 finance automation contracts; production ACP prompt audit; real CRWV preview/analysis browser canaries
+- Current conclusion: HONE directly follows the recovered BamangResearch/Dify earnings prompts without mechanical evidence/content gates. Preview and analysis are separate host-selected products, their prompts exist only in the current turn and never persist/compact/restore, and the renderer only owns technical PDF completion. Exact production `521c0787` is healthy; one CRWV preview and one CRWV analysis each received only its own prompt, used one renderer, emitted no compact, persisted a distinct PDF, and remained downloadable after refresh. A completed renderer artifact can survive an exact subsequent Gemini signature failure only when the trace proves no unrelated write.
+- Next entry point: continue content improvement through retrieval, targeted search, original prompts/model choices and real-sample review; do not restore report schemas, source/number coverage gates or validator-driven rewrite loops. Immediate runtime rollback is retained `7beb53e9`.

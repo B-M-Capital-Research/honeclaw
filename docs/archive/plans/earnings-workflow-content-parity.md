@@ -1,7 +1,7 @@
 # Earnings Workflow 原流程直接迁移
 
 - title: Earnings Workflow 原流程直接迁移
-- status: in_progress
+- status: done
 - created_at: 2026-08-05
 - updated_at: 2026-08-12
 - owner: Codex
@@ -62,6 +62,8 @@
 - 生产 AMAT preview 证明 `0c6d0328` 的当前轮裁剪已经生效：持久化 prompt 只含 Preview，最终 Markdown/PDF 只有前瞻与新闻。但进一步审计发现老管理员会话 metadata 仍保留部署前同时含 Preview/Analysis 的完整 `earnings-research` prompt，compact snapshot 也可能把它重新带入普通后续对话。修复把 earnings prompt 明确定义为 current-turn-only：当前轮继续注入 mode 选中的原 prompt，完成报告继续作为普通历史供后续追问，但 prompt 本身不再持久化、compact 或恢复；下一次专用任务还会移除 legacy metadata。该变化只改上下文生命周期，不扫描或裁判报告内容。`hone-channels` 797/1 ignored、public route 23/23、renderer regression、finance automation contracts 和 diff check 已通过；待发布后清理生产 legacy snapshot，并分别验收 preview/analysis。
 - current-turn-only 提交 `7beb53e9e44ec9daabb47a561a2c9be4e37b6e80` 已推送并以不可变 digest `sha256:2d0438c66cf974cc6b6560101b38fe5d164ee025508da42be3b56521da4f4362` 部署。生产读回 exact revision，Web/Feishu 均 active、`NRestarts=0`，飞书 stream 已重连，active chat 为 0。第一次切换因冷启动 `/api/meta` 超过旧 15 秒探针而自动回滚；旧版本无错误且服务健康，放宽为最长 60 秒的有界 readiness 后第二次切换成功。
 - 新版首条 CRWV preview canary 确认入口只加载 preview prompt、没有历史 compact，但官方 renderer 完成后 OpenRouter/Google 以 `400 Corrupted thought signature` 拒绝最终文本。ACP trace 证明 PDF renderer 已返回明确 `success=true` / `render_success=true` / `side_effect_status=completed`，随后只有签名错误；旧失败归一化把任何已执行工具都当成“不确定”，因此丢弃了本可交付的 PDF。窄修复只在 exact 签名错误、无 pending tool、PDF+Markdown 已完成且同 trace 没有其它写操作时，从 renderer 结果完成附件闭环；它不重跑研究、不重复写文件，也不检查标题、数字、来源、章节或页数。`hone-channels` 798/1 ignored、Web chat 15/15、renderer regression、49 项 finance contracts、crate check、format 和 diff check 已通过；待不可变发布后重跑 preview，并单独跑 analysis canary。
+- 窄修复提交 `521c0787064d4bfbe18822c3cbc613b5d0390886` 已推送；CI、Runtime Image、Secret Scan 和 Code Quality 通过，不可变 digest 为 `sha256:6a789c574f71f41908171051a0b380e30d9a8ba73a2794331a37a9e0378a4ec8`。生产在 bundle SHA、环境、连续零 active-chat、Web/Feishu reverse dependency 与鉴权检查后切换成功；读回 exact SHA / `ghcr_linux_oci`、PG/OSS healthy、cloud-authoritative、零本地持久依赖、Web/Feishu active、`NRestarts=0`、飞书 stream connected、active=0 且切换后无 error。
+- 最终同 actor 真实 canary 已分别通过。Preview 消息 `5074f666-863d-4e27-93cd-55f513bb39cc` 的 ACP prompt 只有 `mode: preview` 与 Preview 原 Prompt，无 Analysis 原 Prompt或 restored transcript；76.973 秒内完成 9 次工具记录和一次 renderer，持久化 `CRWV_Earnings_Preview-6c843cb5.pdf`。Analysis 消息 `05501022-d043-442c-b1de-f03f6aa70b03` 只有 `mode: analysis` 与 Analysis 原 Prompt，无 Preview 原 Prompt或 restored transcript；187.234 秒内完成 9 次工具记录和一次 renderer，持久化 `CoreWeave_CRWV_Q2_2026_Analysis-c9759399.pdf`。两条 trace compact update 均为 0，刷新页面后两份附件仍可下载。互斥路由、turn-scoped prompt 和 PDF 持久化目标已完成，计划归档。
 
 ## Documentation Sync
 
