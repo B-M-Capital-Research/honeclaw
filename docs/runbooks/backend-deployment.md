@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-05
+Last updated: 2026-08-12
 
 ## When to Use
 
@@ -935,6 +935,40 @@ curl -fsS http://127.0.0.1:8077/api/runtime/active-chat-runs
 ```
 
 An unexpected process death cannot finish the old turn. Public bootstrap must report that persisted unanswered turn as interrupted; it must not recreate a local “thinking” timer.
+
+## Preserve Enabled Channel Workers Across Web Restarts
+
+Managed channel workers such as `hone-channel@feishu.service` are separate
+processes from `hone-web.service`. A template instance may use
+`PartOf=hone-web.service` so a Web stop or restart also stops the worker, but
+`PartOf` does not start that worker again. `systemctl enable` only joins the
+worker to its normal boot target and is not, by itself, a reverse dependency
+from Web.
+
+For every channel worker that production is expected to keep online, install an
+explicit reverse dependency once on the host:
+
+```bash
+sudo systemctl add-wants hone-web.service hone-channel@feishu.service
+sudo systemctl daemon-reload
+```
+
+Substitute only channel instances that are enabled in the reviewed production
+configuration; do not turn this example into an unconditional list of every
+compiled channel. After every controlled Web cutover, verify the expected
+workers independently of Web health:
+
+```bash
+sudo systemctl is-enabled hone-channel@feishu.service
+sudo systemctl is-active hone-channel@feishu.service
+sudo systemctl show hone-channel@feishu.service -p NRestarts --value
+sudo journalctl -u hone-channel@feishu.service --since "10 minutes ago" --no-pager
+```
+
+Acceptance requires the expected worker to be active, its transport to have
+reconnected, and a recent real message to complete the receive/send path without
+channel errors. A healthy `/api/meta` response proves only the Web process; it
+does not prove that any sidecar channel is receiving events.
 
 ## Audit Codex ACP Bindings After Rollout-State Changes
 
