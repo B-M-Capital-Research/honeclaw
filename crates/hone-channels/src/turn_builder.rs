@@ -43,6 +43,13 @@ const EARNINGS_PREVIEW_PROMPT_HEADING: &str = "\n## Preview — original V2 prom
 const EARNINGS_ANALYSIS_PROMPT_HEADING: &str = "\n## Analysis — original V2 prompt\n";
 const EARNINGS_PDF_DELIVERY_HEADING: &str = "\n## PDF delivery\n";
 
+/// Dedicated earnings prompts define one self-contained turn. The finished
+/// report remains in ordinary conversation history, but the workflow prompt
+/// must never become durable follow-up context for this or another mode.
+pub(crate) fn skill_prompt_is_turn_scoped(skill_id: &str) -> bool {
+    skill_id == "earnings-research"
+}
+
 fn parse_earnings_workflow_mode(user_input: &str) -> HoneResult<EarningsWorkflowMode> {
     let modes = user_input
         .lines()
@@ -418,6 +425,8 @@ mod tests {
         assert!(!analysis.contains("# 附录：近期新闻时间线分析"));
         assert!(analysis.contains("# 10. 结论"));
         assert!(analysis.contains(EARNINGS_PDF_DELIVERY_HEADING));
+        assert!(skill_prompt_is_turn_scoped("earnings-research"));
+        assert!(!skill_prompt_is_turn_scoped("stock_research"));
     }
 
     #[test]

@@ -6105,6 +6105,138 @@ fn restore_context_injects_invoked_skills_before_message_window() {
 }
 
 #[test]
+fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
+    let root = make_temp_dir("hone_channels_restore_turn_scoped_earnings");
+    std::fs::create_dir_all(&root).expect("create root");
+    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
+    let session_id = storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+        serde_json::json!([
+            {
+                "skill_name": "earnings-research",
+                "display_name": "Earnings Research",
+                "path": "slash:earnings-research",
+                "prompt": "PREVIEW PROMPT\nANALYSIS PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            },
+            {
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "slash:alpha",
+                "prompt": "DURABLE_ALPHA_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }
+        ]),
+    );
+    storage
+        .update_metadata(&session_id, metadata)
+        .expect("metadata");
+    storage
+        .add_message(
+            &session_id,
+            "system",
+            "Conversation compacted",
+            Some(hone_memory::build_compact_boundary_metadata("auto", 2, 4)),
+        )
+        .expect("boundary");
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            "LEGACY_MIXED_EARNINGS_PROMPT",
+            Some(hone_memory::build_compact_skill_snapshot_metadata(
+                "earnings-research",
+            )),
+        )
+        .expect("earnings snapshot");
+
+    let restored = restore_context(&storage, &session_id, Some(10), None);
+    let contents = restored
+        .messages
+        .iter()
+        .filter_map(|message| message.content.as_deref())
+        .collect::<Vec<_>>();
+
+    assert_eq!(contents, vec!["DURABLE_ALPHA_PROMPT"]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
+    let root = make_temp_dir("hone_channels_forget_legacy_earnings_prompt");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core(&root, llm);
+    let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    let records = ["earnings-research", "alpha"]
+        .into_iter()
+        .map(|skill_name| {
+            serde_json::json!({
+                "skill_name": skill_name,
+                "display_name": skill_name,
+                "path": format!("slash:{skill_name}"),
+                "prompt": format!("{skill_name} prompt"),
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            })
+        })
+        .collect::<Vec<_>>();
+    core.session_storage
+        .update_metadata(
+            &actor.session_id(),
+            HashMap::from([(
+                hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+                Value::Array(records),
+            )]),
+        )
+        .expect("metadata");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+
+    session
+        .forget_turn_scoped_skill_prompt(&actor.session_id(), "earnings-research")
+        .expect("forget earnings prompt");
+
+    let stored = core
+        .session_storage
+        .load_session(&actor.session_id())
+        .expect("load session")
+        .expect("session");
+    let skills = hone_memory::invoked_skills_from_metadata(&stored.metadata);
+    assert_eq!(
+        skills
+            .iter()
+            .map(|skill| skill.skill_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["alpha"]
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     let root = make_temp_dir("hone_channels_restore_disabled_skill");
     std::fs::create_dir_all(root.join("system/alpha")).expect("skill dir");

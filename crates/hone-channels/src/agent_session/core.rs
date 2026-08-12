@@ -2033,6 +2033,39 @@ impl AgentSession {
         Ok(())
     }
 
+    pub(super) fn forget_turn_scoped_skill_prompt(
+        &self,
+        session_id: &str,
+        skill_id: &str,
+    ) -> hone_core::HoneResult<()> {
+        let existing = self
+            .core
+            .session_storage
+            .load_session(session_id)?
+            .map(|session| session.metadata)
+            .unwrap_or_default();
+        let invoked = hone_memory::invoked_skills_from_metadata(&existing);
+        let retained = invoked
+            .iter()
+            .filter(|skill| skill.skill_name != skill_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        if retained.len() == invoked.len() {
+            return Ok(());
+        }
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::to_value(retained)
+                .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?,
+        );
+        let _ = self
+            .core
+            .session_storage
+            .update_metadata(session_id, metadata)?;
+        Ok(())
+    }
+
     async fn run_manual_compact(
         &self,
         session_id: String,
@@ -2395,11 +2428,17 @@ impl AgentSession {
             user_metadata,
         );
         if let Some(skill) = &slash_skill {
-            let _ = self.persist_invoked_skill_prompt(
-                &session_id,
-                &skill.skill_id,
-                &skill.invoked_prompt,
-            );
+            if crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_id) {
+                // This also removes legacy earnings prompts that older builds
+                // persisted with both mode branches in one session snapshot.
+                let _ = self.forget_turn_scoped_skill_prompt(&session_id, &skill.skill_id);
+            } else {
+                let _ = self.persist_invoked_skill_prompt(
+                    &session_id,
+                    &skill.skill_id,
+                    &skill.invoked_prompt,
+                );
+            }
         }
         self.emit(AgentSessionEvent::UserMessage {
             content: persisted_user_input.to_string(),

@@ -363,6 +363,7 @@ impl<'a> SessionCompactor<'a> {
         ));
         for skill in invoked_skills_from_metadata(&session.metadata)
             .into_iter()
+            .filter(|skill| !crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_name))
             .take(POST_COMPACT_MAX_SKILL_SNAPSHOTS)
         {
             let snapshot = truncate_chars(&skill.prompt, POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS);
