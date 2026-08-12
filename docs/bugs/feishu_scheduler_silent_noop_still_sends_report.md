@@ -22,6 +22,16 @@ Fixed
 
 ## 最新进展
 
+- 2026-08-13 02:01 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 22:00-2026-08-13 02:01 CST。
+    - 近窗 `HeartbeatDiag=238`、`run_start=64`、`run_finish=67`、`deliver=37`、`duplicate_suppressed=3`；37 条 heartbeat deliver 中 7 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发 / 无需新动作 / 状态：noop` 静默语义。
+    - 00:00 CST `持仓重大事件心跳提醒` 写入降级行情口径并仍进入 deliver，00:30 CST `AI与科技持仓观察关键事件心跳提醒` 写 `本轮无需新动作` 进入 deliver，02:00 CST `持仓重大事件心跳提醒` 写出未完成核验清单后仍进入 deliver。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 `72f5c39f fix: suppress more heartbeat noop deliveries` 的证据。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
 - 2026-08-12 22:01 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-12 18:01-22:01 CST。
