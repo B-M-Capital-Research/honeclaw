@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-11
+最后更新：2026-08-12
 状态：有 13 个活跃任务
 
 ## 说明
@@ -34,7 +34,7 @@
 - **Earnings Workflow 原流程直接迁移**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，完整撤销机械证据门禁且 renderer 只负责排版。生产 INTC 证明完整 skill 注入会让 preview 与 analysis 同时执行；现由宿主按唯一结构化 `mode` 在 runner 前只保留一套原 Prompt，preview 与 analysis 互斥，缺失/冲突 mode 在研究前失败，不新增内容门禁。精确 `0c6d0328` 已同步部署 runtime+skill，CI/镜像/secret、exact SHA/skill hash、PG/OSS/cloud、鉴权、零 active/restart/warning 全部通过，`7516be88` runtime/skill 保留回滚；当前待分别跑一单 preview/analysis canary 验证 PDF 不串模式，并继续检查中文综合分析、单次 renderer、持久化和无 compact
+  - 摘要：已按本地 Codex 会话“查找本地 bamangresearch 项目”还原原 prompts，撤销机械内容门禁并让 renderer 只负责排版。宿主按唯一 `mode` 只注入 preview 或 analysis 原 Prompt，财报 prompt 仅当前轮生效、不持久化/compact/恢复；精确 `7beb53e9` 已部署且 Web/飞书健康。首条 CRWV preview 已证明路由独立，但 renderer 完成后遇到 Gemini `Corrupted thought signature`，旧失败边界丢弃了已完成 artifact；当前窄修复只依据 exact 签名错误、已完成 PDF/Markdown 和无其它写操作闭环，不做任何报告内容检查。待发布后各跑一单 preview/analysis 验证不串模式、附件持久化和无 compact
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

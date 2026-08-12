@@ -17,8 +17,8 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf,
-    completed_earnings_pdf_artifact, latest_earnings_render_error,
-    persistent_side_effect_state_is_uncertain,
+    completed_earnings_pdf_after_safe_opencode_trace, completed_earnings_pdf_artifact,
+    latest_earnings_render_error, persistent_side_effect_state_is_uncertain,
 };
 
 use super::acp_common::{
@@ -43,6 +43,18 @@ const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
 // native session is still healthy. Once OpenCode compacts, AgentSession starts
 // a fresh isolated process and carries the rejected draft forward instead.
 const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 2;
+
+pub(crate) fn is_opencode_corrupted_thought_signature_error_text(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    compact.contains("opencode")
+        && compact.contains("corruptedthoughtsignature")
+        && compact.contains("\"code\":400")
+        && compact.contains("\"error_type\":\"invalid_request\"")
+}
 
 fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
     request
@@ -840,6 +852,37 @@ async fn run_opencode_acp(
                     opencode_state.current_prompt_peak_used,
                 )),
             );
+            if require_earnings_pdf
+                && is_opencode_corrupted_thought_signature_error_text(&error.message)
+                && opencode_state.pending_tool_calls.is_empty()
+                && let Some(completed) = completed_earnings_pdf_after_safe_opencode_trace(
+                    &opencode_state.finished_tool_calls,
+                )
+            {
+                let content = format!(
+                    "{}\n\n[附件: {}]",
+                    completed.report_markdown, completed.path
+                );
+                opencode_state.full_reply = content.clone();
+                let context_messages = finalize_opencode_context_messages(&mut opencode_state);
+                let tool_calls_made = opencode_state.finished_tool_calls.clone();
+                tracing::warn!(
+                    session = %request.session_id,
+                    artifact = %completed.path,
+                    "OpenCode final confirmation had a corrupted thought signature after the earnings PDF completed; closing from the completed renderer result"
+                );
+                return Ok((
+                    AgentResponse {
+                        content,
+                        tool_calls_made,
+                        iterations: 1,
+                        success: true,
+                        error: None,
+                    },
+                    metadata_updates,
+                    Some(context_messages),
+                ));
+            }
             return Err(AcpRunFailure {
                 error,
                 state: opencode_state,

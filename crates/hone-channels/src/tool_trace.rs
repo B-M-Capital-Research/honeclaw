@@ -246,6 +246,26 @@ pub(crate) fn response_has_only_retry_safe_earnings_opencode_calls(
     tool_calls.iter().all(is_retry_safe_earnings_opencode_call)
 }
 
+/// Return the completed earnings PDF only when every other observed OpenCode
+/// call is proven read-only (or an explicit renderer rejection before write).
+///
+/// This is the narrow terminal-recovery boundary for a provider failure that
+/// happens after the repository-owned renderer has already completed. It does
+/// not inspect report structure or content quality; it only proves that the
+/// requested artifact is complete and that no unrelated mutation is hidden in
+/// the same interrupted trace.
+pub(crate) fn completed_earnings_pdf_after_safe_opencode_trace(
+    tool_calls: &[ToolCallMade],
+) -> Option<CompletedEarningsPdf> {
+    let completed = completed_earnings_pdf(tool_calls)?;
+    let trace_is_safe = tool_calls.iter().all(|call| {
+        completed_earnings_pdf(std::slice::from_ref(call)).is_some()
+            || is_safe_failed_earnings_renderer(call)
+            || is_retry_safe_earnings_opencode_call(call)
+    });
+    trace_is_safe.then_some(completed)
+}
+
 fn is_retry_safe_earnings_opencode_call(call: &ToolCallMade) -> bool {
     if is_known_read_only_call(call) {
         return true;
@@ -378,6 +398,51 @@ mod tests {
         assert_eq!(
             completed_earnings_pdf_artifact(&[completed]).as_deref(),
             Some("/sandbox/AAOI_Earnings_Preview.pdf")
+        );
+    }
+
+    #[test]
+    fn completed_earnings_pdf_can_close_only_a_safe_opencode_trace() {
+        let completed = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true
+            }),
+            result: json!({
+                "success":true,
+                "render_success":true,
+                "side_effect_status":"completed",
+                "validated_report_markdown":"# CRWV 财报前瞻\n\n正文",
+                "artifacts":[{
+                    "kind":"document",
+                    "path":"/sandbox/CRWV-preview.pdf",
+                    "mime":"application/pdf"
+                }]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+        let read = ToolCallMade {
+            name: "hone_web_search".to_string(),
+            arguments: json!({"query":"CRWV earnings"}),
+            result: json!({"success":true,"results":[]}),
+            tool_call_id: Some("search".to_string()),
+        };
+        assert_eq!(
+            completed_earnings_pdf_after_safe_opencode_trace(&[read.clone(), completed.clone()])
+                .map(|pdf| pdf.path),
+            Some("/sandbox/CRWV-preview.pdf".to_string())
+        );
+
+        let unrelated_write = ToolCallMade {
+            name: "hone_portfolio".to_string(),
+            arguments: json!({"action":"add","symbol":"CRWV"}),
+            result: json!({"success":true,"side_effect_status":"completed"}),
+            tool_call_id: Some("portfolio-write".to_string()),
+        };
+        assert!(
+            completed_earnings_pdf_after_safe_opencode_trace(&[read, unrelated_write, completed])
+                .is_none()
         );
     }
 

@@ -207,15 +207,7 @@ pub(super) fn is_context_overflow_error_text(text: &str) -> bool {
 }
 
 pub(super) fn is_opencode_corrupted_thought_signature_error_text(text: &str) -> bool {
-    let compact = text
-        .chars()
-        .filter(|ch| !ch.is_ascii_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    compact.contains("opencode")
-        && compact.contains("corruptedthoughtsignature")
-        && compact.contains("\"code\":400")
-        && compact.contains("\"error_type\":\"invalid_request\"")
+    crate::runners::is_opencode_corrupted_thought_signature_error_text(text)
 }
 
 pub(super) fn is_opencode_upstream_idle_timeout_error_text(text: &str) -> bool {
