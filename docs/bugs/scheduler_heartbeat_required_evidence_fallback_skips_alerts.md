@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-12 10:01-14:01 CST。
+  - 13:00 CST `持仓重大事件心跳提醒` 与 `AAPL + NVDA + BE 关键事件提醒` 均落成 `heartbeat 输出不是结构化 JSON，任务已标记失败`，随后 Web events 记录 `failure_kind=execution_failed` 并跳过发送。
+  - 同窗 source runtime 仍有 `HeartbeatDiag=238`、`run_start=64`、`run_finish=65`、`deliver=35`，说明不是 Web scheduler / event-engine 全链路不可用；本轮未见 `persistent_tool_failure` 复发。
+  - 判断：这些样本仍属于“实时核验 / 输出契约 / runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-12 06:01-10:02 CST。
   - 06:30 CST `持仓财报与重大新闻心跳提醒` 与 09:00 CST `光模块板块关键事件心跳提醒` 均落成 `persistent_tool_failure: read-after-write reconciliation failed`，随后 Web events 记录 `failure_kind=runner_error` 或执行失败并跳过发送。
   - 同窗 06:30 / 08:30 / 09:30 / 10:00 CST 另有 4 轮 heartbeat 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送；source runtime 仍有 `HeartbeatDiag=239`、`run_start=64`、`run_finish=65`、`deliver=38`，说明不是 Web scheduler / event-engine 全链路不可用。
