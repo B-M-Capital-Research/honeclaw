@@ -1,4 +1,4 @@
-# Bug: Heartbeat 已创建监控任务仍反复输出“无法创建定时任务”
+# Bug: Heartbeat 已创建监控任务仍被旧直聊 / 管理上下文污染
 
 ## 发现时间
 
@@ -14,9 +14,22 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## 修复进展
+
+- `2026-08-13 06:02 CST` 运行态回退为 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 02:00-06:02 CST（UTC `2026-08-12T18:00:26Z` 之后）。
+    - 02:30 / 03:00 / 03:30 / 04:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为既有 heartbeat job 触发，但 deliver preview 多次退化成“跌 20%：机会还是陷阱？”的通用投资方法论回答，而不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+    - 06:01 CST `AAPL + NVDA + BE 关键事件提醒` 又输出“你当前的推送配置如下 / 定时推送已激活 / 每 30 分钟心跳检查”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=255`、`run_start=64`、`run_finish=71`、`deliver=43`、`duplicate_suppressed=4`、`execution_failed=6`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 2026-08-12 23:40 的代码级补强只覆盖部分“无法创建 / 已存在 / 替代方案”管理漂移文案；本轮新增的“跌 20% 方法论”复发说明同根问题未完全闭环，因此从代码级 `Fixed` 回退为运行态 `New/P2`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
 
 - `2026-08-12 23:40 CST` 代码级修复并补回归，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`
