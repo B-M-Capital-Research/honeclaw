@@ -949,8 +949,12 @@ fn heartbeat_management_drift_message(text: &str) -> bool {
         "自动循环",
         "自动推送",
         "推送流水线",
+        "每30分钟",
+        "每30分钟检查",
+        "notification_prefs",
         "cron_job",
         "set_immediate_kinds",
+        "heartbeat_monitor",
     ]
     .iter()
     .any(|marker| compact.contains(marker));
@@ -967,6 +971,14 @@ fn heartbeat_management_drift_message(text: &str) -> bool {
         "第三次提出",
         "已配置",
         "将创建",
+        "无法直接创建",
+        "不具备创建",
+        "没有独立工具",
+        "未暴露定时任务",
+        "技能不存在",
+        "任务已存在",
+        "无需重复配置",
+        "替代方案",
     ]
     .iter()
     .any(|marker| compact.contains(marker));
@@ -2713,10 +2725,46 @@ fn text_has_direct_trade_instruction(text: &str) -> bool {
         return true;
     }
 
-    (compact.contains("建议动作") || compact.contains("操作建议"))
-        && ["止损", "清仓", "卖出", "买入", "抄底", "持有等待反弹"]
-            .iter()
-            .any(|term| compact.contains(term))
+    let has_action_heading = compact.contains("建议动作") || compact.contains("操作建议");
+    let has_heading_trade_term = has_action_heading
+        && [
+            "止损",
+            "清仓",
+            "卖出",
+            "买入",
+            "抄底",
+            "持有等待反弹",
+            "减仓",
+            "加仓",
+            "补仓",
+            "止盈",
+        ]
+        .iter()
+        .any(|term| compact.contains(term));
+    if has_heading_trade_term {
+        return true;
+    }
+
+    [
+        "认真考虑仓位",
+        "考虑仓位",
+        "减仓锁定部分盈利",
+        "减仓锁定盈利",
+        "锁定部分盈利",
+        "锁定盈利",
+        "不是基本面型买入窗口",
+        "不是补仓好时机",
+        "值得认真评估的价位",
+        "值得认真考虑的价位",
+        "值得认真考虑的平均成本区间",
+        "是否值得买",
+        "是否买取决于",
+        "可考虑小幅加仓",
+        "不是简单的便宜价格",
+        "高赔率机会",
+    ]
+    .iter()
+    .any(|term| compact.contains(term))
 }
 
 fn update_heartbeat_delivery_preview_metadata(metadata: &mut Value, content: &str) {
@@ -5715,6 +5763,70 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_direct_trade_instruction_detects_position_management_copy() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("web", "user_be", None::<String>).expect("actor"),
+            job_id: "job-be".to_string(),
+            job_name: "BE关键事件提醒".to_string(),
+            task_prompt: "BE 关键事件提醒".to_string(),
+            channel: "web".to_string(),
+            channel_scope: None,
+            channel_target: "user_be".to_string(),
+            delivery_key: "delivery-be".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 16,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_direct_trade_instruction_for_event(
+            "【BE关键事件提醒】BE 当前价格 34.5，距你买入价约 5.5x，已到必须认真考虑仓位的节点。",
+            &event,
+        )
+        .expect("position-management copy should be guarded");
+
+        assert!(guarded.contains("不构成买卖、止损、加仓或清仓指令"));
+        assert!(!guarded.contains("认真考虑仓位的节点"));
+    }
+
+    #[test]
+    fn heartbeat_direct_trade_instruction_detects_buy_window_copy() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("web", "user_aaoi", None::<String>).expect("actor"),
+            job_id: "job-aaoi".to_string(),
+            job_name: "AAOI全面心跳检测".to_string(),
+            task_prompt: "AAOI 全面心跳检测".to_string(),
+            channel: "web".to_string(),
+            channel_scope: None,
+            channel_target: "user_aaoi".to_string(),
+            delivery_key: "delivery-aaoi".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 10,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_direct_trade_instruction_for_event(
+            "【AAOI全面心跳检测】AAOI 当前不是基本面型买入窗口，更适合等下一轮财报确认。",
+            &event,
+        )
+        .expect("buy-window copy should be guarded");
+
+        assert!(guarded.contains("不构成买卖、止损、加仓或清仓指令"));
+        assert!(!guarded.contains("不是基本面型买入窗口"));
+    }
+
+    #[test]
     fn heartbeat_prefixed_json_triggered_delivers_message_only() {
         assert_eq!(
             inspect_heartbeat_result(
@@ -5779,6 +5891,32 @@ mod tests {
     #[test]
     fn heartbeat_management_drift_message_with_unable_to_establish_copy_is_suppressed() {
         let content = r#"{"status":"triggered","message":"当前系统无法建立“每30分钟自动循环”的自动监控任务。"}"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_management_drift_tool_capability_copy_is_suppressed() {
+        let content = r#"{"status":"triggered","message":"当前运行环境中未暴露定时任务（cron_job）工具，无法直接创建每30分钟自动检查任务；建议改走 notification_prefs 替代方案。"}"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_management_drift_existing_job_copy_is_suppressed() {
+        let content = r#"{"status":"triggered","message":"当前心跳监控任务已存在，本轮无需重复配置或再次创建。"}"#;
         let execution = heartbeat_execution_from_content(content, "model-x");
         assert!(!execution.should_deliver);
         assert!(execution.error.is_none());

@@ -14,9 +14,22 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 修复进展
+
+- `2026-08-12 23:40 CST` 代码级修复并补回归，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - 扩展 `heartbeat_management_drift_message(...)` 的管理漂移识别，新增覆盖 `未暴露定时任务/cron_job 工具`、`notification_prefs` 替代方案、`heartbeat_monitor 技能不存在`、`任务已存在`、`无需重复配置`、`替代方案` 等 2026-08-08 / 2026-08-09 真实复发措辞。
+    - 保持 heartbeat prompt 中“创建措辞只视为既有 heartbeat 执行说明”的约束不变，并让运行期 deliver guard 对这批漏网文案直接抑制，不再把创建/配置说明误发给用户。
+  - 新增回归：
+    - `heartbeat_management_drift_tool_capability_copy_is_suppressed`
+    - `heartbeat_management_drift_existing_job_copy_is_suppressed`
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_management_drift --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮没有重启当前运行中服务，先记代码级 `Fixed`；后续若在明确运行 `2026-08-12` 之后新代码的自然窗口里仍看到同类“无法创建 / 已存在 / 替代方案”文案，再按新证据重新打开。
 
 - `2026-08-09 22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`

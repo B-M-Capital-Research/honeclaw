@@ -3,9 +3,22 @@
 - **发现时间**: 2026-05-10 07:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 最新进展
+
+- `2026-08-12 23:40 CST` 代码级补强并补回归，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - 扩展 `text_has_direct_trade_instruction(...)` 的交易动作边界识别，新增覆盖 `认真考虑仓位`、`减仓锁定部分盈利`、`不是基本面型买入窗口`、`不是补仓好时机`、`值得认真评估的价位`、`可考虑小幅加仓`、`是否值得买` 等 2026-07-25 到 2026-08-08 真实复发的 softer action 文案。
+    - 继续复用 heartbeat 风险提示重写路径，在自动 heartbeat 出站前把这类仓位/买卖动作判断改写为只保留触发事实与风险提示的用户可见文案。
+  - 新增回归：
+    - `heartbeat_direct_trade_instruction_detects_position_management_copy`
+    - `heartbeat_direct_trade_instruction_detects_buy_window_copy`
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮没有重启当前运行中服务，先记代码级 `Fixed`；后续若在明确运行 `2026-08-12` 之后新代码的自然窗口里仍出现自动 heartbeat 买卖/仓位动作判断，再按新证据重新打开。
 
 - `2026-08-08 14:02-18:01 CST` 真实运行态继续确认同一自动 heartbeat 出站交易动作边界活跃，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
