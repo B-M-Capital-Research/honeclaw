@@ -2287,3 +2287,15 @@
 - 本轮判断
   - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
   - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `git log`
+  - 最近四小时无非文档代码提交；未见 runtime 重启、revision 切换或确认加载 `37043d01 fix: block stale scheduler price-anchor fallbacks` 的日志证据。
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 22:01 CST `存储板块关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,408.06`、`WDC $476.02`、`SNDK 50 日均线 $1,663.20` 等异常数量级或高风险行情锚，并据此描述存储板块异动。
+  - 同窗多条 heartbeat deliver / duplicate suppression 候选仍携带工具限额、旧报价锚或未能完整复核行情的语义；source log 未见当前 runtime 已加载行情锚 fail-closed 修复的证据。
+- 本轮判断
+  - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
+  - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。

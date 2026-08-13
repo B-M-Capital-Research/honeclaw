@@ -649,3 +649,14 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被旧短问、产品能力说明或非当前监控上下文污染；不是新的独立根因。
   - 因已有 heartbeat job 会发送无关内容并污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 21:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，但 raw preview 进入配置更新 / 工具调用路径，写出要更新 `immediate_kinds` 并拼入 `<minimax:tool_call><invoke name="cron_job">`；本轮被 `PlainTextSuppressed` 路径跳过，未进入 deliver。
+  - 22:01 CST `AI与科技持仓观察关键事件心跳提醒` 作为关键事件 heartbeat 触发，却输出“跌 20% 不是买入信号”的通用投资方法论，未围绕持仓关键事件执行监控。
+  - 22:01 CST `AAPL + NVDA + BE 关键事件提醒` 又在 deliver / duplicate suppression 候选中混入“当前配置状态 / immediate_kinds”管理语义，与本轮关键事件检查边界混杂。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置或管理工具路径污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。

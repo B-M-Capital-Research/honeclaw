@@ -1000,3 +1000,13 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 同窗 2 条 heartbeat `deliver_preview` 以 fenced `json` 或协议字段载荷开头，且 parse 分布仍有 `JsonTriggered=2`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered` 并存。
+  - 21:30 CST `AAPL + NVDA + BE 关键事件提醒` raw preview 出现 `<minimax:tool_call>/<invoke name="cron_job">`，但本轮被 `PlainTextSuppressed` 路径跳过，未进入 deliver；该样本说明上游仍会生成协议标签，但本单仅记录用户可见 JSON / 协议载荷外泄。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
