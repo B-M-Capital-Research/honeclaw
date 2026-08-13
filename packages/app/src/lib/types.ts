@@ -255,6 +255,11 @@ export type PublicBillingOfferConfig = {
   currency: string;
   term_months: number;
   auto_renews: boolean;
+  advertised_payment_methods: {
+    card: boolean;
+    alipay: boolean;
+    wechat_pay: boolean;
+  };
 };
 
 export type PublicBillingStatus = {

@@ -1509,7 +1509,7 @@ fn env_or(key: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn env_flag(key: &str, fallback: bool) -> bool {
+pub(crate) fn env_flag(key: &str, fallback: bool) -> bool {
     match std::env::var(key) {
         Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => true,

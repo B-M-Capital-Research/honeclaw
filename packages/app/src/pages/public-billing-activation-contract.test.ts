@@ -28,6 +28,9 @@ describe("Stripe-only billing activation contract", () => {
     expect(activation).toContain("configReady()");
     expect(activation).toContain("CONTENT.chat_page.activate_page.confirming");
     expect(activation).toContain("CONTENT.chat_page.activate_page.checkout_down");
+    expect(activation).toContain("advertised_payment_methods");
+    expect(activation).toContain('advertisedPaymentMethods("fixed_term")');
+    expect(activation).not.toContain("fixed_term_methods");
   });
 
   it("creates Checkout only after HONE email verification", () => {
