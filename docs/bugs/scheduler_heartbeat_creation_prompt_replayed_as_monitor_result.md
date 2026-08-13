@@ -660,3 +660,14 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置或管理工具路径污染；不是新的独立根因。
   - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-14 02:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 22:00-2026-08-14 02:02 CST。
+  - 22:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，但 deliver preview 继续输出“配置核验完成 / immediate_kinds / 按你的要求执行更新”等管理语义，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 02:00 CST `AI与科技持仓观察关键事件心跳提醒` 作为关键事件 heartbeat 触发，却继续退化成“跌 20% 不是买入信号”的通用投资方法论；本轮被 `PlainTextSuppressed` 路径标记为非结构化失败并跳过发送。
+  - 同窗多条 heartbeat raw preview 还出现“tool call limits / global budget”叙事，说明执行期任务语义仍会被工具预算与管理路径说明污染。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、工具预算或管理路径污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
