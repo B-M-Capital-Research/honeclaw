@@ -14,12 +14,29 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，当前不是 P1。
 
+## 修复记录
+
+### 2026-08-13 代码级修复
+
+- `agents/function_calling/src/lib.rs`
+  - 为 function-calling 初始工具流新增已知 OpenAI-compatible 协议/收口错误识别：`tool call result does not follow tool call`、`stream ended before Done`、`stream transport error: error decoding response body`。
+  - 当当前轮已持有只读工具证据，且下一轮命中上述协议错误时，不再直接返回通用失败，而是进入一次受控 `tools-disabled` 同轮收口，复用当前轮证据完成终稿，避免 heartbeat / scheduler 因单次 stream decode / Done 缺失异常整轮漏发。
+  - 该恢复仍要求：`agent_owned_finance_loop=true`、已有工具结果、且全部工具调用都是已知只读调用；不会放宽到写工具或任意 provider 错误。
+- 新增回归：
+  - `initial_protocol_mismatch_recovers_with_a_tools_disabled_answer`
+  - `initial_stream_decode_failure_recovers_with_a_tools_disabled_answer`
+- 验证通过：
+  - `cargo test -p hone-agent initial_protocol_mismatch_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `cargo test -p hone-agent initial_stream_decode_failure_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `cargo test -p hone-agent active_provider_error_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `rustfmt --edition 2024 --config skip_children=true --check agents/function_calling/src/lib.rs`
+- 当前未重启 live runtime，先按代码级 `Fixed` 记录；后续若真实运行态再出现同类 `stream ended before Done` / `error decoding response body` 样本，再据证据决定是否回退。
 ## 证据来源
 
 - 运行态复核（2026-08-09 14:02 CST）

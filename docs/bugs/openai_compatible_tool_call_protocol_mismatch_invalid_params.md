@@ -14,13 +14,26 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，当前复发证据不是 P1。
 
 ## 修复记录
+
+### 2026-08-13 代码级修复
+
+- `agents/function_calling/src/lib.rs`
+  - 为 function-calling 初始工具流补上已知 OpenAI-compatible 协议错位恢复：当当前轮已拿到只读工具证据，而下一轮命中 `invalid params, tool call result does not follow tool call (2013)` 时，不再直接把整轮压成通用失败，而是切到一次受控 `tools-disabled` 同轮收口。
+  - 同一恢复分支与 stream decode / missing Done 异常共用，只在 `agent_owned_finance_loop=true`、已有工具结果、且全部调用为已知只读调用时生效；不会放宽到写工具或一般 provider 错误。
+- 新增回归：
+  - `initial_protocol_mismatch_recovers_with_a_tools_disabled_answer`
+- 验证通过：
+  - `cargo test -p hone-agent initial_protocol_mismatch_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `cargo test -p hone-agent active_provider_error_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `rustfmt --edition 2024 --config skip_children=true --check agents/function_calling/src/lib.rs`
+- 当前未重启 live runtime，先按代码级 `Fixed` 记录；若 2026-08-13 之后的真实运行窗口仍复现同类 `tool call result does not follow tool call (2013)`，再回退为活跃缺陷。
 
 ### 2026-08-13 22:02 CST 运行态复核
 
