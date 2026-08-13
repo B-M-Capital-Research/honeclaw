@@ -109,4 +109,10 @@ webhook 写入固定期限权益。
   `available=false`. Revision `b905130158e12138fc1170c7de7e1adb54f0f08d`
   makes the public offer copy server-authoritative and fail-closed: both offers
   advertise card only unless an operator separately enables a proven wallet.
-  Deployment and external-Chrome evidence for this correction are in progress.
+- Exact revision `e4e1e3e9df4296c25b5a8561f303c19efd5ae867` is live from
+  immutable GHCR digest
+  `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351`.
+  Production config reports card true and both wallets false for both offers;
+  external Chrome showed exactly two card-only claims and no wallet claim.
+  Evidence is retained outside Git as
+  `30-live-card-only-offer-copy-20260813.png`.

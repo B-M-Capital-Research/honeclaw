@@ -24,7 +24,7 @@
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`
   - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
-  - 摘要：双 entitlement、单次 Checkout、退款语义和测试模式钱包付款均已完成；2026-08-13 再次读取生产 Stripe API，支付宝与微信仍为 `available=false`，因此 `/activate` 已改为只按服务端保守声明展示当前可用方式，默认只写银行卡，不再把待审批钱包宣传成已支持；本次修正正在部署验收，最终钱包可见性仍待外部审批
+  - 摘要：双 entitlement、单次 Checkout、退款语义和测试模式钱包付款均已完成；2026-08-13 再次读取生产 Stripe API，支付宝与微信仍为 `available=false`，因此生产 `/activate` 已改为只按服务端保守声明展示当前可用方式，两个产品均只写银行卡；精确 GHCR/GCE 和外部 Chrome 截图验收通过，最终钱包可见性仍待外部审批
 
 - **机构化公司长期覆盖与财报研究闭环**
   - 状态：`in_progress`

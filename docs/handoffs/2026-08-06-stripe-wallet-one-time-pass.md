@@ -39,6 +39,10 @@ live Checkout correctly exposes card only.
 - Revision `c99babc1e1ea3c54db41256331eb65dcefa7bd1d` was built by Runtime Image
   run `31082512757` and deployed from immutable digest
   `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`.
+- The public-copy correction is deployed as exact revision
+  `e4e1e3e9df4296c25b5a8561f303c19efd5ae867` from Runtime Image run
+  `31675804261` and immutable digest
+  `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351`.
 
 ## Verification
 
@@ -59,6 +63,15 @@ live Checkout correctly exposes card only.
   retained outside Git as `25-test-checkout-alipay-wechat.png`,
   `27-live-dual-offer-activate.png`, `28-live-fixed-checkout-summary.png`, and
   `29-live-fixed-checkout-payment-methods.png`.
+- The 2026-08-13 correction passed Rust workspace check/tests, Web typecheck and
+  408 tests, Worker typecheck and 45 tests, all CI-safe regressions, GitHub CI,
+  Secret Scan and Code Quality. Production retained healthy PostgreSQL/R2 cloud
+  authority, zero local durable dependencies, two zero-active-chat reads and
+  `NRestarts=0` after the exact GHCR switch.
+- Public Billing config reports `card=true`, `alipay=false`,
+  `wechat_pay=false` for both offers. External Chrome showed the same two
+  card-only claims, no Alipay/WeChat claim, and retained redacted evidence as
+  `30-live-card-only-offer-copy-20260813.png`. No form was submitted.
 
 ## Risks / Follow-ups
 

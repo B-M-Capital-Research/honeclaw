@@ -330,7 +330,13 @@ hosted confirmation surfaces cannot be proven by a fabricated webhook.
 - Public-copy correction `b905130158e12138fc1170c7de7e1adb54f0f08d`
   separates Stripe's dynamic Checkout methods from HONE's public claims. Both
   public offers default to `card=true`, `alipay=false`, `wechat_pay=false`;
-  deployment and external-Chrome acceptance for this correction are pending.
+  exact revision `e4e1e3e9df4296c25b5a8561f303c19efd5ae867` is deployed from
+  Runtime Image run `31675804261` and immutable digest
+  `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351`.
+  Production config, Cloudflare Pages chunk inspection and external Chrome all
+  proved two card-only claims and no wallet claim. Redacted evidence is retained
+  outside Git as `30-live-card-only-offer-copy-20260813.png`; no form or payment
+  was submitted.
 
 ## Rollback
 
