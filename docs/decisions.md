@@ -1261,7 +1261,7 @@ Last updated: 2026-08-12
 - title: Offer recurring and fixed-term Stripe memberships as separate products
 - status: `deployed`; live wallet availability blocked on Stripe approval
 - created_at: `2026-08-06`
-- updated_at: `2026-08-06`
+- updated_at: `2026-08-13`
 - owner: `Codex + owner`
 - related_files: `memory/src/billing.rs`, `crates/hone-core/src/cloud_runtime.rs`, `crates/hone-web-api/src/routes/{billing,stripe}.rs`, `packages/app/src/pages/{public-activate,public-me}.tsx`
 - related_docs: `docs/current-plans/stripe-wallet-one-time-pass.md`, `docs/runbooks/stripe-billing.md`
@@ -1305,6 +1305,14 @@ kind and server-derived access state. `/activate` presents two independently
 priced offers; `/me` shows a fixed validity date and never sends a fixed-term
 buyer to Customer Portal. Both kinds may coexist, and access is the OR of their
 independent valid rows.
+
+Stripe's dynamic Checkout configuration and HONE's public availability claim
+are separate contracts. The public Billing config exposes explicit
+`advertised_payment_methods` per offer, and `/activate` renders only that list.
+Card fails closed on; Alipay and WeChat Pay fail closed off. The corresponding
+`HONE_STRIPE_ADVERTISE_*` flag may be enabled only after the live Stripe API and
+a new hosted live Checkout both prove that individual method is available.
+The flag changes copy only; Stripe still owns the actual Checkout form.
 
 ### Verification / Adoption
 

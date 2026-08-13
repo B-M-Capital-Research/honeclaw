@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Source of Truth and Document Priority
 
@@ -54,6 +54,7 @@ Last updated: 2026-08-12
 - A Stripe `checkout.session.completed` row is provisional and orders from the Checkout Session creation time, because the authoritative invoice/subscription events can have slightly earlier envelope timestamps and asynchronous wallet methods can complete Checkout before payment. First recurring access requires a paid Invoice; first fixed-term access requires a paid Checkout completion or async success for the exact configured one-time Price. Completed-but-unpaid, async failure, expiration, catalog/mode mismatch, and forged signatures grant nothing. A full Charge refund revokes only the matching fixed-term PaymentIntent entitlement; partial refunds do not mutate access. The inbox still preserves the real envelope time. Local CLI, registered test, and registered live webhook destinations each use their own signing secret; one runtime accepts only its configured mode/secret pair.
 - Disabling new Checkout must not disable webhook ingestion or existing subscription management. Billing migrations are forward-only: the Stripe-only migration deletes retired-provider rows, replaces provider constraints, and keeps no dual-read or runtime compatibility layer.
 - `/activate` follows the server's Stripe Checkout availability. When enabled it performs HONE email verification before server-created Checkout and permits only the server-owned `subscription` or `fixed_term` offer selector; the browser never supplies a Price, amount, currency, duration, or provider object ID. Alipay and WeChat Pay are one-time `mode=payment` methods only and must never be presented as subscription renewal methods. When Checkout is disabled or restore-only, the page permits login/restoration but offers no purchase action. Provider query parameters never select an alternate adapter.
+- Public payment-method claims fail closed and are independent from Stripe's dynamic Checkout configuration. `/api/public/billing/config` is the only source for what `/activate` may describe as currently available. Card is the default; `HONE_STRIPE_ADVERTISE_ALIPAY` and `HONE_STRIPE_ADVERTISE_WECHAT_PAY` default false and may become true only after the corresponding live Stripe API reports `available=true` and a fresh hosted live fixed-term Checkout visibly renders that method. These flags change copy only and never grant access or enable a Stripe rail.
 - Stripe API key mode validation accepts same-mode standard (`sk_test_`/`sk_live_`) and restricted (`rk_test_`/`rk_live_`) keys and rejects every test/live mismatch. Production should use the least-privilege restricted key required by Checkout and Portal.
 - Browser Checkout and Portal creation require an authenticated, same-origin request and server-owned catalog IDs. HONE iOS clients may log in and restore existing access but must not expose price or external digital-purchase calls to action.
 

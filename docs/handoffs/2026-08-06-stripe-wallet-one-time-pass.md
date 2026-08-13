@@ -3,11 +3,11 @@
 - title: Stripe Wallet Fixed-term Pass Deployment
 - status: `blocked`
 - created_at: `2026-08-06`
-- updated_at: `2026-08-06`
+- updated_at: `2026-08-13`
 - owner: `Codex + owner`
 - related_files: `memory/src/billing.rs`, `crates/hone-core/src/cloud_runtime.rs`, `crates/hone-web-api/src/routes/{billing,stripe}.rs`, `packages/app/src/pages/{public-activate,public-me}.tsx`, `tests/regression/{ci,manual}/test_stripe_billing_*.sh`
 - related_docs: `docs/current-plans/stripe-wallet-one-time-pass.md`, `docs/runbooks/stripe-billing.md`, `docs/decisions.md#d-2026-08-06-02-offer-recurring-and-fixed-term-stripe-memberships-as-separate-products`
-- related_prs: direct `main` implementation commit `c99babc1e1ea3c54db41256331eb65dcefa7bd1d`; no PR, release, or tag
+- related_prs: direct `main` implementation commits `c99babc1e1ea3c54db41256331eb65dcefa7bd1d` and payment-copy correction `b905130158e12138fc1170c7de7e1adb54f0f08d`; no PR, release, or tag
 - verification: complete repository gates; official Stripe test-mode Alipay and WeChat Pay payments; exact GHCR/GCE deployment; public config and auth probes; external-Chrome production offer and Checkout acceptance without live payment
 - risks: live Alipay and WeChat Pay are externally blocked on Stripe approval; no production wallet claim is valid while Stripe reports `available=false`
 
@@ -30,6 +30,9 @@ live Checkout correctly exposes card only.
   forged events fail closed. A matching full refund revokes only that pass.
 - `/activate` presents both offers; `/me` shows fixed validity without a
   Customer Portal cancellation action.
+- `/api/public/billing/config` now returns `advertised_payment_methods` for each
+  offer. `/activate` renders only that server-owned list; both wallet flags
+  fail closed to `false` and card remains the only default claim.
 - The live fixed-term Price is `price_1U1M0rEK7h1dD4JHbKBpIkZ2`. The live
   webhook destination `we_1U0c0XEK7h1dD4JHrvQ9CRaH` listens to the exact
   ten-event contract in `docs/runbooks/stripe-billing.md`.
@@ -62,9 +65,9 @@ live Checkout correctly exposes card only.
 - Alipay and WeChat Pay are `display_preference=on` but `available=false` and
   `pending approval`. This is Stripe-controlled and cannot be fixed by another
   code or deployment change.
-- Until approval, UI copy states the intended fixed-term wallet support, while
-  the authoritative live Checkout displays only card. Do not advertise the
-  production wallets as active yet.
+- Until approval, both offers must say only that card is currently available.
+  `HONE_STRIPE_ADVERTISE_ALIPAY` and `HONE_STRIPE_ADVERTISE_WECHAT_PAY` affect
+  copy only and must remain false; they do not enable Stripe payment methods.
 - No live-money acceptance is necessary. After approval, a zero-charge browser
   inspection of hosted Checkout is sufficient to close the remaining gate.
 

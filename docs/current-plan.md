@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-12
+最后更新：2026-08-13
 状态：有 12 个活跃任务
 
 ## 说明
@@ -24,7 +24,7 @@
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`
   - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
-  - 摘要：双 entitlement、单次 Checkout、退款语义、全仓验证、官方测试模式支付宝/微信付款、精确 GHCR/GCE 部署和生产 USD 229.99 Checkout 验收均已完成；生产 Checkout 当前只有银行卡，Stripe Dashboard/API 仍将支付宝与微信标为 `pending approval` / `available=false`，待外部审批通过后做最后一次无付款页面验收并归档
+  - 摘要：双 entitlement、单次 Checkout、退款语义和测试模式钱包付款均已完成；2026-08-13 再次读取生产 Stripe API，支付宝与微信仍为 `available=false`，因此 `/activate` 已改为只按服务端保守声明展示当前可用方式，默认只写银行卡，不再把待审批钱包宣传成已支持；本次修正正在部署验收，最终钱包可见性仍待外部审批
 
 - **机构化公司长期覆盖与财报研究闭环**
   - 状态：`in_progress`
