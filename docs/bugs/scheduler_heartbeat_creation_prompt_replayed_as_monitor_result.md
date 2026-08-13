@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-08-14 06:05 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 02:01-06:05 CST（UTC `2026-08-13T18:01:31Z` 之后）。
+    - 02:30 / 03:00 / 04:00 / 04:30 / 05:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为既有 heartbeat job 触发，但 deliver preview 多次退化成“跌 20% 不是买入信号 / 机会还是陷阱”的通用投资方法论，不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+    - 06:00 CST `AAPL + NVDA + BE 关键事件提醒` 又输出“当前配置已核验 / immediate_kinds 当前为 null / 只需一步配置”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=263`、`run_start=72`、`run_finish=72`、`deliver=39`、`duplicate_suppressed=8`、`execution_failed=5`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-13 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-13 14:01-18:02 CST（UTC `2026-08-13T06:01:58Z` 之后）。

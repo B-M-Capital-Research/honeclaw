@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 2026-08-14 06:05 CST 运行态复核：代码级修复继续保留 `Fixed / P0`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 02:01-06:05 CST。
+    - 近窗多条 heartbeat deliver 仍携带 `hone_quote_time`、历史缓存、配额耗尽或异常数量级精确行情锚：02:00-05:30 CST 多轮 `持仓财报与重大新闻心跳提醒` / `存储板块关键事件心跳提醒` 引用 `SNDK $1,559.00`、`SNDK $1,528.11`、`WDC $489` 等精确行情锚；06:00 CST `AI与科技持仓观察关键事件心跳提醒` 明写其余 15 只标的因工具调用额度耗尽未完成校验。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 2026-08-10 `stale_market_data_fallback` 补强修复的证据。
+  - 判断：
+    - 最新样本仍可作为“旧 live runtime 尚需自然部署复核”的候选，但本轮没有同轮独立 quote 冲突、公司行动口径冲突或 provider 解析错位证据，也不能证明修复后的代码仍失效。
+    - 因此本缺陷继续保持代码级 `Fixed / P0`，不回退；后续若确认 live 已加载修复 revision 后仍外发“降级文案 + 精确价格锚”，再改回运行态 `New/P0`。
+
 - 2026-08-13 18:02 CST 运行态复核：代码级修复继续保留 `Fixed / P0`，等待自然部署复核。
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-13 14:01-18:02 CST。
