@@ -71,3 +71,13 @@ New
 1. 在 heartbeat delivery 出站净化层增加 raw tool-call tag guard，覆盖 `<minimax:tool_call>`、`<function_calls>`、`<invoke name=...>` 和占位路径片段。
 2. 对 heartbeat 执行 prompt 增加“周期执行不得输出任务创建 / 更新 / tool call 协议”的硬约束。
 3. 增加回归：当 heartbeat result 含 raw tool-call tag 时，不得作为 `PlainTextTriggered` 正常送达；应改写或失败收口。
+
+## 最新运行态复核（2026-08-14 14:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 10:02-14:02 CST。
+  - 11:00 CST `AAPL + NVDA + BE 关键事件提醒` 进入 `HeartbeatDiag deliver`，`parse_kind=PlainTextTriggered`，`deliver_preview` 直接包含 `<minimax:tool_call>`、`<invoke name="cron_job">`、`<invoke name="notification_prefs">` 与 `<absolute-path>` 占位片段。
+  - 同窗仅检出 1 条 raw tool-call tag deliver；没有全渠道停摆、错投对象、数据破坏或凭据外泄证据。
+- 本轮判断
+  - 最新样本仍是 Web heartbeat deliver 出站净化没有拦住 MiniMax 原始工具调用标签；不是新的独立根因。
+  - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，主问题是单条用户可见格式和内部协议边界受损；未见错投、漏投、系统级失败或敏感凭据泄露。状态维持质量性 `P3 / New`，非 P1。
