@@ -22,6 +22,11 @@ New
 
 ## 最新进展
 
+- 2026-08-14 14:02-18:02 CST 运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
+  - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：`hone_quote_time` 命中 18 条、`data_fetch` 命中 11 条；代表样本包括 16:00 / 16:30 / 17:30 / 18:00 CST 多条 heartbeat 写出 `data_fetch 单轮已达上限`、`hone_quote_time.beijing`、`工具调用已达本轮上限` 或“本轮行情核验因工具限流未能完成”。
+  - 这些 heartbeat 消息业务主体已执行并进入送达候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-08-12 06:01-10:02 CST 运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
   - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：06:30 / 07:00 / 07:30 / 08:00 / 08:30 / 09:00 / 09:30 / 10:00 CST 多轮 heartbeat 写出 `hone_quote_time`、``quote``、历史缓存或报价源最新可得等内部行情字段 / 工具口径。

@@ -23,6 +23,10 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 14:02-18:02 CST。
+  - 14:30 CST `AAPL + NVDA + BE 关键事件提醒` 进入 `HeartbeatDiag deliver`，`parse_kind=PlainTextTriggered`，`deliver_preview` 直接包含 `<minimax:tool_call>`、`<invoke name="cron_job">` 与 `<absolute-path>` 占位片段。
+  - 同窗仅检出 1 条 raw tool-call tag deliver；没有全渠道停摆、错投对象、数据破坏或凭据外泄证据。
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-08 10:01-14:02 CST（UTC 2026-08-08 02:01-06:02）。
   - 本轮未再检出 `<minimax:tool_call>`、`<invoke name=` 或 `<absolute-path>` 进入 heartbeat `deliver_preview`。
   - 状态仍维持 `New/P3`：10:00 CST 样本仍是未修复的最近真实证据，且本轮没有对应代码修复或清理层闭环；需后续自然窗口继续观察。
@@ -78,6 +82,16 @@ New
   - 巡检窗口：2026-08-14 10:02-14:02 CST。
   - 11:00 CST `AAPL + NVDA + BE 关键事件提醒` 进入 `HeartbeatDiag deliver`，`parse_kind=PlainTextTriggered`，`deliver_preview` 直接包含 `<minimax:tool_call>`、`<invoke name="cron_job">`、`<invoke name="notification_prefs">` 与 `<absolute-path>` 占位片段。
   - 同窗仅检出 1 条 raw tool-call tag deliver；没有全渠道停摆、错投对象、数据破坏或凭据外泄证据。
+- 本轮判断
+  - 最新样本仍是 Web heartbeat deliver 出站净化没有拦住 MiniMax 原始工具调用标签；不是新的独立根因。
+  - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，主问题是单条用户可见格式和内部协议边界受损；未见错投、漏投、系统级失败或敏感凭据泄露。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-14 18:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 14:02-18:02 CST。
+  - 14:30 CST `AAPL + NVDA + BE 关键事件提醒` 进入 `HeartbeatDiag deliver`，`parse_kind=PlainTextTriggered`，`deliver_preview` 直接包含 `<minimax:tool_call>`、`<invoke name="cron_job">` 与 `<absolute-path>` 占位片段。
+  - 同窗 raw tool-call tag 关键词命中 2 次，其中进入用户可见 deliver 的代表样本为 14:30 CST；没有全渠道停摆、错投对象、数据破坏或凭据外泄证据。
 - 本轮判断
   - 最新样本仍是 Web heartbeat deliver 出站净化没有拦住 MiniMax 原始工具调用标签；不是新的独立根因。
   - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，主问题是单条用户可见格式和内部协议边界受损；未见错投、漏投、系统级失败或敏感凭据泄露。状态维持质量性 `P3 / New`，非 P1。

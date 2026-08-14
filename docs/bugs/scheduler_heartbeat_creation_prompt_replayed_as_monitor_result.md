@@ -18,6 +18,19 @@
 
 ## 修复进展
 
+- `2026-08-14 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 14:02-18:02 CST（UTC `2026-08-14T06:01:33Z` 之后）。
+    - 17:00 / 17:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却继续退化成“跌20%不是买入信号”的通用投资方法论和用户追问提示，未围绕配置标的做关键事件监控。
+    - 18:00 CST `存储板块关键事件心跳提醒` 作为板块 heartbeat 触发，却输出“你好！我是 Hone，很高兴为你服务”以及产品能力介绍，未执行存储板块关键事件检查。
+    - 18:00 CST `NVDA 关键事件心跳提醒` 又输出“能进，但要区分你在问什么”的持仓建议结构，偏离关键事件 heartbeat 的触发 / noop 收口边界。
+  - 同窗统计：
+    - `HeartbeatDiag=233`、`run_start=64`、`run_finish=64`、`deliver=30`、`duplicate_suppressed=10`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、产品能力说明或投资建议上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-14 06:05 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-14 02:01-06:05 CST（UTC `2026-08-13T18:01:31Z` 之后）。
