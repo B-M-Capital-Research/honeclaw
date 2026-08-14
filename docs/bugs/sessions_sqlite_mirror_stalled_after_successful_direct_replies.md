@@ -1772,3 +1772,16 @@
 - 本轮判断
   - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像完全停滞”；这会继续误导巡检、补发判断和调度排障。
   - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-14 22:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-08-14 18:02-22:02 CST。
+  - 本窗 `sessions.updated_at`、`sessions.last_message_at`、`session_messages.timestamp`、`session_messages.imported_at`、`cron_job_runs.executed_at`、`web_push_messages.created_at` 增量均为 0。
+  - SQLite 最近可见上界仍停在 2026-08-01 / 2026-08-02 / 2026-07-19：`sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`、`sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`、`session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`、`session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`、`cron_job_runs.max(executed_at)=2026-08-01T14:00:52.724451+08:00`、`web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`。
+- `data/logs/hone-console-page-source.log`
+  - 同窗 source runtime 继续推进到 22:02 CST：`HeartbeatDiag=244`、`run_start=65`、`run_finish=65`、`deliver=35`、`duplicate_suppressed=12`。
+  - 22:00-22:02 CST 仍有 Web heartbeat run / deliver 与 event-engine daily report / unified digest scheduler 信号，说明真实运行没有随 SQLite 镜像一起停止。
+- 本轮判断
+  - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像完全停滞”；这会继续误导巡检、补发判断和调度排障。
+  - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
