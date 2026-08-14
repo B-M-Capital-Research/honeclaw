@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 16:12 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed（代码级，待部署复核）
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
@@ -269,6 +269,20 @@
 - `cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`
 - `rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs`
 - `cargo check -p hone-feishu --tests`
+
+## 修复情况（2026-08-14）
+
+- 本轮把共享 ACP runner 的“名义成功但仍缺 terminal tool result”边界补到 [`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/tool_trace.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/tool_trace.rs)、[`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/runners/codex_acp.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/runners/codex_acp.rs) 与 [`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/runners/opencode_acp.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/runners/opencode_acp.rs)：
+  - 新增 `missing_acp_terminal_tool_result(...)`，专门识别 `unknown_after_missing_acp_result`。
+  - `codex_acp` / `opencode_acp` 在 `stopReason=end_turn` 后若仍存在这类工具记录，不再把整轮当成功，也不再保留半成品正文，而是统一落为失败边界。
+  - 这样维持了仓库既有约束：不在 Interactive Agent finalizer 层追加语义裁判，只在协议完成性层阻止“工具尚未真正结束，过程句先被记成 final”。
+- 当前状态更新为代码级 `Fixed`；本任务没有重启运行时，真实 Feishu live 仍需后续只读巡检确认后再决定是否 `Closed`。
+
+## 2026-08-14 验证
+
+- `cargo test -p hone-channels recognizes_missing_terminal_tool_result_for_read_only_calls --lib -- --nocapture`
+- `cargo test -p hone-channels acp_prompt_success_requires_explicit_non_cancelled_stop_reason --lib -- --nocapture`
+- `rustfmt --edition 2024 crates/hone-channels/src/tool_trace.rs crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/opencode_acp.rs`
 
 ## 下一步建议
 

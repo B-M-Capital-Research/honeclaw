@@ -340,6 +340,13 @@ pub(crate) fn persistent_side_effect_state_is_uncertain(tool_calls: &[ToolCallMa
         .any(|call| is_persistent_side_effect_call(call) && result_is_uncertain(&call.result))
 }
 
+pub(crate) fn missing_acp_terminal_tool_result(tool_calls: &[ToolCallMade]) -> bool {
+    tool_calls.iter().any(|call| {
+        call.result.get("status").and_then(|value| value.as_str())
+            == Some("unknown_after_missing_acp_result")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -656,6 +663,17 @@ mod tests {
         )];
         assert!(response_has_persistent_side_effect(&calls));
         assert!(persistent_side_effect_state_is_uncertain(&calls));
+    }
+
+    #[test]
+    fn recognizes_missing_terminal_tool_result_for_read_only_calls() {
+        let calls = vec![call(
+            "data_fetch",
+            None,
+            json!({"status":"unknown_after_missing_acp_result", "isError":true}),
+        )];
+        assert!(missing_acp_terminal_tool_result(&calls));
+        assert!(!persistent_side_effect_state_is_uncertain(&calls));
     }
 
     #[test]

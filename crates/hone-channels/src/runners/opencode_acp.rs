@@ -18,7 +18,8 @@ use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf,
     completed_earnings_pdf_after_safe_opencode_trace, completed_earnings_pdf_artifact,
-    latest_earnings_render_error, persistent_side_effect_state_is_uncertain,
+    latest_earnings_render_error, missing_acp_terminal_tool_result,
+    persistent_side_effect_state_is_uncertain,
 };
 
 use super::acp_common::{
@@ -957,15 +958,16 @@ async fn run_opencode_acp(
         tracing::warn!("{warning}");
     }
 
+    let missing_terminal_result = missing_acp_terminal_tool_result(&tool_calls_made);
     let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
-    let success = success && !state_uncertain;
+    let success = success && !state_uncertain && !missing_terminal_result;
     let prompt_attempts = metadata_updates
         .get("opencode_prompt_attempts")
         .and_then(Value::as_u64)
         .unwrap_or(1) as u32;
     Ok((
         AgentResponse {
-            content: if state_uncertain {
+            content: if state_uncertain || missing_terminal_result {
                 String::new()
             } else {
                 content
@@ -975,6 +977,8 @@ async fn run_opencode_acp(
             success,
             error: if state_uncertain {
                 Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if missing_terminal_result {
+                Some("opencode acp prompt ended before tool completion".to_string())
             } else if !earnings_pdf_complete {
                 Some(
                     "earnings workflow ended without a successful referenced PDF artifact"

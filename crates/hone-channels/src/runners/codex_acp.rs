@@ -11,7 +11,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
-    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, persistent_side_effect_state_is_uncertain,
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, missing_acp_terminal_tool_result,
+    persistent_side_effect_state_is_uncertain,
 };
 
 use super::acp_common::{
@@ -857,11 +858,12 @@ async fn run_codex_acp(
     );
     let tool_calls_made = codex_state.finished_tool_calls.clone();
 
+    let missing_terminal_result = missing_acp_terminal_tool_result(&tool_calls_made);
     let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
-    let success = success && !state_uncertain;
+    let success = success && !state_uncertain && !missing_terminal_result;
     Ok((
         AgentResponse {
-            content: if state_uncertain {
+            content: if state_uncertain || missing_terminal_result {
                 String::new()
             } else {
                 content
@@ -871,6 +873,8 @@ async fn run_codex_acp(
             success,
             error: if state_uncertain {
                 Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if missing_terminal_result {
+                Some("codex acp prompt ended before tool completion".to_string())
             } else if success {
                 None
             } else {
