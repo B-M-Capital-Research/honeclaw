@@ -19,6 +19,12 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-15 02:02 CST 运行态继续复发，状态维持 `New/P2`。
+  - 2026-08-14 22:00-2026-08-15 02:02 CST 同窗继续出现 FMP 请求发送失败；`data/runtime/task_runs.2026-08-14.jsonl` 从 UTC `2026-08-14T14:02:28Z` 后记录 `poller.fmp.price failed=16`、`poller.fmp.news failed=8`，同时 `poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，失败集中在 FMP price/news 增量链路。
+  - 失败样本覆盖 `poller.fmp.price` 的 quote batch 请求和 `poller.fmp.news` 的 `stock_news` 请求；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 `HeartbeatDiag=225`、`run_start=65`、`run_finish=63`、`deliver=24`，说明 scheduler 其它链路仍在推进。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在行情 / 新闻事件增量、digest 候选和监控触发新鲜度，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
   - 2026-08-14 10:04 CST 运行态继续复发，状态维持 `New/P2`。
   - 2026-08-14 06:00-10:04 CST 同窗检出 12,496 条 `FMP 请求失败`，集中在 extended-hours `prev_close` 批量请求、`poller.fmp.news` 的 `stock_news` 请求发送失败，以及 `poller.fmp.earnings` / `poller.fmp.macro` 请求发送失败；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
   - `data/runtime/task_runs.2026-08-13.jsonl` / `data/runtime/task_runs.2026-08-14.jsonl` 从 UTC `2026-08-13T22:00:32Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.macro failed=2`、`poller.fmp.earnings failed=2`，同时 `poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`、`poller.fmp.sec_filings ok=2`、`poller.fmp.corp_action ok=2`、`poller.fmp.analyst_grade ok=2`，说明 event-engine runtime 未整体停摆，失败集中在 FMP news / macro / earnings 和 extended-hours 请求链路。
