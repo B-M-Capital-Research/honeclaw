@@ -22,6 +22,11 @@ New
 
 ## 最新进展
 
+- 2026-08-15 14:02-18:03 CST 运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
+  - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：`hone_quote_time` 命中 11 条、`data_fetch` 命中 259 条；代表样本包括 15:00 / 15:30 / 16:30 / 18:00 CST 多条 heartbeat 写出 `data_fetch 工具额度已耗尽`、`本轮 data_fetch quote`、`hone_quote_time.beijing`、`工具调用已达上限` 或“本轮行情未完成核验”。
+  - 这些 heartbeat 消息业务主体已执行并进入送达候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-08-15 02:00-06:02 CST 运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
   - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：`hone_quote_time`、`data_fetch 单轮调用上限`、`工具调用已达本轮上限`、`本轮行情数据未完成核验` 等反复进入 deliver preview；代表样本包括 02:30 / 03:30 / 05:30 / 06:00 CST 多条 `持仓重大事件心跳提醒`、`NVDA 关键事件心跳提醒`、`AAPL + NVDA + BE 关键事件提醒`。

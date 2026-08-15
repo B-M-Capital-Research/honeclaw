@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-15 14:02-18:03 CST（UTC 2026-08-15 06:02-10:03）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 15:00 CST deliver preview 在工具额度耗尽语境下转为 AI 数据中心与核能 5-10 年框架；16:00 / 17:00 CST 又退化为“系统配置文本 / 无新提问 / 如果你想继续”的通用继续提示，未完成原持仓观察列表关键事件核验。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒`。
+  - 17:30 CST deliver preview 转为 DeepSeek V4-Flash 定价结构，18:00 CST 又转为 VRT / ANET 与 AI 基础设施配置主题；该 job 名义目标是 NVDA 关键事件心跳，不应被相邻 AI 基础设施或模型定价研究长期抢占。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 15:00 CST deliver preview 主体是即时推配置状态表，后续又多次只围绕 NVDA 单项新闻，不稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-10 22:01-2026-08-11 02:02 CST（UTC 2026-08-10 14:01-18:02）。
   - `job_id=j_5b3cb604` / `job=光模块板块关键事件心跳提醒` / `target=web-user-499a1c6331c4`。
   - 02:00 CST deliver preview 主体转为 NVIDIA 与 SK Hynix 价值 `$500B+` 的 AI 基础设施与 HBM 内存供应关系说明，不再稳定围绕光模块板块关键事件触发条件收口。
