@@ -884,23 +884,17 @@ impl PrefsProvider for FilePrefsStorage {
     }
 }
 
+/// 通知偏好读写是推送链路的热路径,和 memory/ 那七个模块用同一个共享长驻 runtime。
+///
+/// 此前这里是「每次调用 `std::thread::spawn` + 内部再 `Runtime::new()`」的反模式,
+/// 与 `62d0c889` 修掉的 cloud cron 完全同形——生产实测那个写法让进程 26 分钟烧掉
+/// 47 CPU 分钟。多 agent 审计只扫了 `memory/`,漏掉了 event-engine 这一处。
 fn run_cloud_notification_prefs<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
     F: Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud notification prefs worker panicked".to_string()))?;
-    }
-    let runtime =
-        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    hone_core::cloud_sync::run_cloud_sync(future, None, "cloud notification prefs operation")
 }
 
 fn actor_slug(a: &ActorIdentity) -> String {
