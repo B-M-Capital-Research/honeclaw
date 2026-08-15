@@ -1049,6 +1049,17 @@
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
 
+## 最新运行态复核（2026-08-16 02:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-15 22:00-2026-08-16 02:02 CST。
+  - 22:31 CST `持仓财报与重大新闻心跳提醒` 进入 `HeartbeatDiag deliver`，`deliver_preview` 直接以 fenced `json` 开头，包含 `"status": "triggered"`、`"triggered"`、`"ticker"`、`"event"`、`"detail"` 等协议字段。
+  - 23:31 CST `光模块板块关键事件心跳提醒` 再次进入 `HeartbeatDiag deliver`，`deliver_preview` 以 fenced `json` 开头，包含 `"status": "triggered"`、`"triggered"` 等结构化载荷。
+  - 同窗 parse 分布仍有 `JsonMalformed=2` 与大量 `PlainTextTriggered=70` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
 ## 最新运行态复核（2026-08-10 02:02 CST）
 
 - `data/logs/hone-console-page-source.log`
