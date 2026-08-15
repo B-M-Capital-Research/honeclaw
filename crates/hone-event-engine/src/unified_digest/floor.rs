@@ -11,7 +11,7 @@
 //! `MacroFloor` 不在此处分类,由 curator Pass 2 personalize 输出
 //! `PickCategory::MacroFloor` 时由 scheduler 直接打 floor 标签。
 
-use crate::event::{MarketEvent, Severity, is_noop_analyst_grade};
+use crate::event::{MarketEvent, Severity, is_analyst_roundup_summary, is_noop_analyst_grade};
 use crate::prefs::{NotificationPrefs, kind_tag};
 use crate::unified_digest::FloorTag;
 
@@ -24,7 +24,7 @@ pub fn classify_floor(event: &MarketEvent, prefs: &NotificationPrefs) -> Option<
     }
     if let Some(immediates) = &prefs.immediate_kinds {
         let tag = kind_tag(&event.kind);
-        if is_noop_analyst_grade(event) {
+        if is_noop_analyst_grade(event) || is_analyst_roundup_summary(event) {
             return None;
         }
         if immediates.iter().any(|t| t == tag) {

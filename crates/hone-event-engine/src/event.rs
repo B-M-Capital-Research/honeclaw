@@ -208,6 +208,19 @@ fn is_known_unstable_user_url(url: &str) -> bool {
     is_thefly && matches!(path, "/ajax/news_get.php" | "/news.php")
 }
 
+/// 是否是评级汇总文坍缩出的 Medium 汇总事件（`pollers::analyst_grade::
+/// collapse_roundup_fanout` 产出，payload 带 `hone_analyst_roundup: true`）。
+/// 这类事件本质是「存在跨股错配风险的信息聚合」，不允许被 `immediate_kinds`
+/// 提升为即时推送，也不进 floor prepend —— 只作为普通 digest 内容。
+pub fn is_analyst_roundup_summary(event: &MarketEvent) -> bool {
+    matches!(event.kind, EventKind::AnalystGrade)
+        && event
+            .payload
+            .get("hone_analyst_roundup")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+}
+
 pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
     if !matches!(event.kind, EventKind::AnalystGrade) {
         return false;

@@ -14,7 +14,9 @@
 
 use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Utc};
 
-use crate::event::{EventKind, MarketEvent, Severity, is_noop_analyst_grade};
+use crate::event::{
+    EventKind, MarketEvent, Severity, is_analyst_roundup_summary, is_noop_analyst_grade,
+};
 use crate::prefs::{EffectivePriceAlertPolicy, NotificationPrefs, kind_tag};
 
 use super::config::NotificationRouter;
@@ -114,6 +116,15 @@ impl NotificationRouter {
                         kind = %tag,
                         source = %event.source,
                         "immediate_kinds override skipped for no-op analyst grade"
+                    );
+                    return sev;
+                }
+                if is_analyst_roundup_summary(event) {
+                    tracing::info!(
+                        event_id = %event.id,
+                        kind = %tag,
+                        source = %event.source,
+                        "immediate_kinds override skipped for analyst roundup summary"
                     );
                     return sev;
                 }

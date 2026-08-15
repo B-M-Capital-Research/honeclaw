@@ -11,6 +11,16 @@
 //!
 //! id 稳定：`grade:{SYMBOL}:{publishedDate}:{gradingCompany}`。FMP 同一条评级
 //! 记录在后续拉取中 `publishedDate`+`gradingCompany` 基本不变，去重安全。
+//!
+//! ## 汇总文扇出防御（2026-08 MU 事故）
+//!
+//! FMP 会把 TheFly「多股汇总文」（如 "Buy/Sell: Wall Street's top 10 stock
+//! calls" / "Micron upgraded, Cisco downgraded"）里提到的**每一家券商动作**全部
+//! 挂到标题第一只票的 symbol 下，产生成组的假 downgrade/upgrade（其他公司的
+//! 评级动作被错配到本 ticker）。2026-08-14 MU 因此收到 6 条假 High 下调。
+//! `collapse_roundup_fanout` 在源头识别这类组（标题命中汇总模式，或同一
+//! `newsURL` 扇出 ≥3 条），坍缩成**一条 Medium 汇总事件**，原始 rows 保留在
+//! payload 供核查；不整组丢弃是为了保留「真的被集体下调」时的信号。
 
 use std::cmp::Reverse;
 use std::sync::Arc;
@@ -81,7 +91,11 @@ impl EventSource for AnalystGradePoller {
     }
 }
 
-fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<MarketEvent> {
+pub(crate) fn events_from_grades(
+    raw: &Value,
+    ticker: &str,
+    cutoff: DateTime<Utc>,
+) -> Vec<MarketEvent> {
     let grade_items = match raw.as_array() {
         Some(items) => items,
         None => return vec![],
@@ -142,7 +156,214 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
             })
         })
         .collect();
+    let events = collapse_roundup_fanout(events, ticker);
     order_analyst_fanout_groups(events)
+}
+
+/// 同一 `newsURL` 扇出到本 ticker 的评级 rows 达到该值时，即使标题不像
+/// 汇总文也按污染组处理——正规单公司报道极少在一篇文章里产出 ≥3 条评级记录。
+const ROUNDUP_FANOUT_MIN_ROWS: usize = 3;
+
+/// 标题是否是「多股汇总文」。命中即认为该文章下所有 rows 存在跨股错配风险。
+fn is_roundup_news_title(title: &str) -> bool {
+    let lower = title.to_ascii_lowercase();
+    lower.contains("top analyst calls")
+        || lower.contains("stock calls")
+        || lower.contains("buy/sell:")
+        || lower.contains("wall street's top")
+        || lower.contains("opening bell")
+        || (lower.contains(" upgraded") && lower.contains(" downgraded"))
+}
+
+/// 把汇总文扇出组坍缩成一条 Medium 汇总事件；非污染组原样保留。
+fn collapse_roundup_fanout(events: Vec<MarketEvent>, ticker: &str) -> Vec<MarketEvent> {
+    use std::collections::HashMap;
+
+    let mut group_sizes: HashMap<String, usize> = HashMap::new();
+    for event in &events {
+        if let Some(url) = payload_news_url(event) {
+            *group_sizes.entry(url.to_string()).or_default() += 1;
+        }
+    }
+
+    let mut collapsed: HashMap<String, Vec<MarketEvent>> = HashMap::new();
+    let mut ordered_urls: Vec<String> = Vec::new();
+    let mut out: Vec<MarketEvent> = Vec::new();
+    for event in events {
+        let contaminated = payload_news_url(&event).is_some_and(|url| {
+            let news_title = event
+                .payload
+                .get("newsTitle")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            is_roundup_news_title(news_title)
+                || group_sizes.get(url).copied().unwrap_or(0) >= ROUNDUP_FANOUT_MIN_ROWS
+        });
+        if contaminated {
+            let url = payload_news_url(&event).unwrap_or_default().to_string();
+            if !collapsed.contains_key(&url) {
+                ordered_urls.push(url.clone());
+                // 占位保持文章在原序列中的相对位置。
+                out.push(placeholder_event(&url));
+            }
+            collapsed.entry(url).or_default().push(event);
+        } else {
+            out.push(event);
+        }
+    }
+    out.into_iter()
+        .map(|event| {
+            if event.source == ROUNDUP_PLACEHOLDER_SOURCE {
+                let rows = collapsed.remove(&event.id).unwrap_or_default();
+                roundup_summary_event(ticker, rows)
+            } else {
+                event
+            }
+        })
+        .collect()
+}
+
+const ROUNDUP_PLACEHOLDER_SOURCE: &str = "__roundup_placeholder__";
+
+fn placeholder_event(url: &str) -> MarketEvent {
+    MarketEvent {
+        id: url.to_string(),
+        kind: EventKind::AnalystGrade,
+        severity: Severity::Low,
+        symbols: vec![],
+        occurred_at: Utc::now(),
+        title: String::new(),
+        summary: String::new(),
+        url: None,
+        source: ROUNDUP_PLACEHOLDER_SOURCE.into(),
+        payload: Value::Null,
+    }
+}
+
+fn payload_news_url(event: &MarketEvent) -> Option<&str> {
+    event
+        .payload
+        .get("newsURL")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+}
+
+/// 一组污染 rows → 一条 Medium 汇总事件。
+///
+/// 计数规则：downgrade/upgrade 只有评级**真的变化**才计入下调/上调；
+/// prev==new 的「脏 upgrade/downgrade」计为重申；initiated/initialise 计首评。
+fn roundup_summary_event(ticker: &str, rows: Vec<MarketEvent>) -> MarketEvent {
+    let mut downgrades: Vec<String> = Vec::new();
+    let mut upgrades: Vec<String> = Vec::new();
+    let mut initiations: Vec<String> = Vec::new();
+    let mut reiterations: Vec<String> = Vec::new();
+    for row in &rows {
+        let firm = row
+            .payload
+            .get("gradingCompany")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let action = row
+            .payload
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let prev = row
+            .payload
+            .get("previousGrade")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let new = row
+            .payload
+            .get("newGrade")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let changed = !prev.is_empty() && !new.is_empty() && !prev.eq_ignore_ascii_case(new);
+        match action.as_str() {
+            "downgrade" if changed => downgrades.push(format!("{firm} {prev}→{new}")),
+            "upgrade" if changed => upgrades.push(format!("{firm} {prev}→{new}")),
+            "initiated" | "initialise" => initiations.push(firm),
+            _ => reiterations.push(firm),
+        }
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !downgrades.is_empty() {
+        parts.push(format!("{} 下调", downgrades.len()));
+    }
+    if !upgrades.is_empty() {
+        parts.push(format!("{} 上调", upgrades.len()));
+    }
+    if !initiations.is_empty() {
+        parts.push(format!("{} 首评", initiations.len()));
+    }
+    if !reiterations.is_empty() {
+        parts.push(format!("{} 重申", reiterations.len()));
+    }
+    let news_title = rows
+        .first()
+        .and_then(|r| r.payload.get("newsTitle"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let news_url = rows.first().and_then(payload_news_url).unwrap_or_default();
+    let occurred_at = rows
+        .iter()
+        .map(|r| r.occurred_at)
+        .max()
+        .unwrap_or_else(Utc::now);
+    let published_key = occurred_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    let mut summary_lines: Vec<String> = Vec::new();
+    if !downgrades.is_empty() {
+        summary_lines.push(format!("下调: {}", downgrades.join("、")));
+    }
+    if !upgrades.is_empty() {
+        summary_lines.push(format!("上调: {}", upgrades.join("、")));
+    }
+    if !initiations.is_empty() {
+        summary_lines.push(format!("首评: {}", initiations.join("、")));
+    }
+    if !reiterations.is_empty() {
+        summary_lines.push(format!("重申: {}", reiterations.join("、")));
+    }
+    summary_lines.push(format!(
+        "来源《{news_title}》为多股汇总文，评级归属存在跨股错配可能，请以券商原文核实。"
+    ));
+
+    let url = rows.iter().find_map(|r| r.url.clone());
+    let rows_payload: Vec<Value> = rows.iter().map(|r| r.payload.clone()).collect();
+    MarketEvent {
+        id: format!("grade_roundup:{ticker}:{published_key}"),
+        kind: EventKind::AnalystGrade,
+        severity: Severity::Medium,
+        symbols: vec![ticker.to_string()],
+        occurred_at,
+        title: format!(
+            "{ticker} · 券商动作汇总 {}（多股汇总文，谨慎核实）",
+            parts.join(" / ")
+        ),
+        summary: summary_lines.join("\n"),
+        url,
+        source: "fmp.upgrades_downgrades".into(),
+        payload: serde_json::json!({
+            "hone_analyst_roundup": true,
+            "newsTitle": news_title,
+            "newsURL": news_url,
+            "counts": {
+                "downgrade": downgrades.len(),
+                "upgrade": upgrades.len(),
+                "initiated": initiations.len(),
+                "reiterated": reiterations.len(),
+            },
+            "rows": rows_payload,
+        }),
+    }
 }
 
 fn order_analyst_fanout_groups(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
@@ -448,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn same_news_url_fanout_is_ordered_by_signal_strength() {
+    fn same_news_url_roundup_fanout_collapses_to_one_medium_summary() {
         let published = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
         let row = |firm: &str, action: &str, previous: Option<&str>, new: &str| {
             serde_json::json!({
@@ -472,17 +693,268 @@ mod tests {
 
         let events = events_from_grades(&raw, "AMD", Utc::now() - chrono::Duration::days(7));
 
-        assert_eq!(events.len(), 5);
+        assert_eq!(events.len(), 1, "roundup fanout must collapse to one event");
+        let summary_event = &events[0];
+        assert_eq!(summary_event.severity, Severity::Medium);
+        assert!(summary_event.id.starts_with("grade_roundup:AMD:"));
         assert!(
-            events[0].id.ends_with(":Jefferies"),
-            "changed downgrade should be the representative sent first, got {}",
-            events[0].id
+            summary_event.title.contains("1 下调"),
+            "title = {}",
+            summary_event.title
+        );
+        assert!(summary_event.summary.contains("Jefferies Buy→Hold"));
+        assert!(summary_event.summary.contains("跨股错配"));
+        assert_eq!(
+            summary_event.payload.get("hone_analyst_roundup"),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(
+            summary_event.payload["rows"].as_array().map(|r| r.len()),
+            Some(5)
+        );
+    }
+
+    /// 2026-08-14 MU 生产事故回归：FMP 把两篇 TheFly 汇总文里其他公司的评级
+    /// 动作错配到 MU，产出 6 条假 High 下调。修复后必须是 0 条 High、每篇
+    /// 汇总文一条 Medium 汇总。
+    #[test]
+    fn mu_2026_08_14_roundup_incident_produces_no_high_events() {
+        let d1 = (Utc::now() - chrono::Duration::hours(20))
+            .format("%Y-%m-%dT%H:%M:%S.000Z")
+            .to_string();
+        let d2 = (Utc::now() - chrono::Duration::hours(18))
+            .format("%Y-%m-%dT%H:%M:%S.000Z")
+            .to_string();
+        let row = |published: &str,
+                   url: &str,
+                   news_title: &str,
+                   firm: &str,
+                   action: &str,
+                   previous: Option<&str>,
+                   new: &str| {
+            serde_json::json!({
+                "symbol": "MU",
+                "publishedDate": published,
+                "newsURL": url,
+                "newsTitle": news_title,
+                "newGrade": new,
+                "previousGrade": previous,
+                "gradingCompany": firm,
+                "action": action,
+            })
+        };
+        let u1 = "https://thefly.com/ajax/news_get.php?id=4411792";
+        let t1 = "Micron upgraded, Cisco downgraded: Wall Street's top analyst calls";
+        let u2 = "https://thefly.com/ajax/news_get.php?id=4411877";
+        let t2 = "Buy/Sell: Wall Street's top 10 stock calls this week";
+        let raw = serde_json::json!([
+            row(
+                &d2,
+                u2,
+                t2,
+                "HSBC",
+                "downgrade",
+                Some("Hold"),
+                "Underperform"
+            ),
+            row(
+                &d2,
+                u2,
+                t2,
+                "Wells Fargo",
+                "downgrade",
+                Some("Overweight"),
+                "Underweight"
+            ),
+            row(
+                &d2,
+                u2,
+                t2,
+                "Morgan Stanley",
+                "upgrade",
+                Some("Overweight"),
+                "Overweight"
+            ),
+            row(
+                &d2,
+                u2,
+                t2,
+                "Jefferies",
+                "downgrade",
+                Some("Buy"),
+                "Underperform"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Wedbush",
+                "downgrade",
+                Some("Outperform"),
+                "Neutral"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Wolfe Research",
+                "downgrade",
+                Some("Outperform"),
+                "Peer Perform"
+            ),
+            row(&d1, u1, t1, "HSBC", "downgrade", Some("Buy"), "Hold"),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Bernstein",
+                "upgrade",
+                Some("Outperform"),
+                "Outperform"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Wells Fargo",
+                "upgrade",
+                Some("Overweight"),
+                "Overweight"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Seaport Global",
+                "initialise",
+                Some("Buy"),
+                "Buy"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "RBC Capital",
+                "initialise",
+                Some("Outperform"),
+                "Outperform"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "BMO Capital",
+                "initialise",
+                Some("Outperform"),
+                "Outperform"
+            ),
+            row(
+                &d1,
+                u1,
+                t1,
+                "Jefferies",
+                "initialise",
+                Value::Null.as_str(),
+                "Buy"
+            ),
+        ]);
+
+        let events = events_from_grades(&raw, "MU", Utc::now() - chrono::Duration::days(3));
+
+        assert_eq!(events.len(), 2, "two roundup articles → two summary events");
+        assert!(
+            events.iter().all(|e| e.severity != Severity::High),
+            "no High events may survive roundup collapse"
+        );
+        assert!(events.iter().all(|e| e.id.starts_with("grade_roundup:MU:")));
+        let article_one = events
+            .iter()
+            .find(|e| e.payload["newsURL"].as_str() == Some(u1))
+            .expect("summary for article 4411792");
+        assert!(
+            article_one.title.contains("3 下调"),
+            "title = {}",
+            article_one.title
         );
         assert!(
-            events.last().unwrap().id.ends_with(":Citigroup")
-                || events.last().unwrap().id.ends_with(":Oppenheimer"),
-            "same-grade rows should sort to the end"
+            article_one.title.contains("4 首评"),
+            "title = {}",
+            article_one.title
         );
+        // 脏 upgrade（Overweight→Overweight）必须计入重申而不是上调。
+        assert!(
+            article_one.title.contains("2 重申"),
+            "title = {}",
+            article_one.title
+        );
+        assert!(
+            !article_one.title.contains("上调"),
+            "title = {}",
+            article_one.title
+        );
+    }
+
+    /// 单公司正规标题、单行记录：不允许被坍缩或降级。
+    #[test]
+    fn genuine_single_stock_actions_are_untouched() {
+        let published = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
+        let raw = serde_json::json!([
+            {
+                "symbol": "MU",
+                "publishedDate": published,
+                "newsURL": "https://thefly.com/ajax/news_get.php?id=4411598",
+                "newsTitle": "Micron upgraded to Buy from Neutral at New Street",
+                "newGrade": "Buy",
+                "previousGrade": "Neutral",
+                "gradingCompany": "New Street",
+                "action": "upgrade",
+            },
+            {
+                "symbol": "GEV",
+                "publishedDate": published,
+                "newsURL": "https://www.streetinsider.com/ec_earnings/william-blair-adds-gev",
+                "newsTitle": "William Blair Adds GE Vernova (GEV) to Conviction List",
+                "newGrade": "Outperform",
+                "previousGrade": "Buy",
+                "gradingCompany": "William Blair",
+                "action": "downgrade",
+            },
+        ]);
+
+        let events = events_from_grades(&raw, "MU", Utc::now() - chrono::Duration::days(7));
+
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| e.id.starts_with("grade:MU:")));
+        assert_eq!(
+            events[1].severity,
+            Severity::High,
+            "real downgrade stays High"
+        );
+    }
+
+    /// 非汇总标题但同 URL 扇出 ≥3 条：按污染组坍缩（阈值规则兜底）。
+    #[test]
+    fn non_roundup_title_with_heavy_fanout_still_collapses() {
+        let published = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
+        let row = |firm: &str| {
+            serde_json::json!({
+                "symbol": "NVDA",
+                "publishedDate": published,
+                "newsURL": "https://example.com/analysts-react",
+                "newsTitle": "Analysts react to results",
+                "newGrade": "Sell",
+                "previousGrade": "Buy",
+                "gradingCompany": firm,
+                "action": "downgrade",
+            })
+        };
+        let raw = serde_json::json!([row("A"), row("B"), row("C")]);
+
+        let events = events_from_grades(&raw, "NVDA", Utc::now() - chrono::Duration::days(7));
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].severity, Severity::Medium);
+        assert!(events[0].title.contains("3 下调"));
     }
 
     #[test]
