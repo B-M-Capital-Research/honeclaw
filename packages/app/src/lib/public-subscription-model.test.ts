@@ -1,5 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 
+import { setLocale } from "@/lib/i18n";
 import {
   formatScheduleSummary,
   formatScheduleTime,
@@ -7,6 +8,13 @@ import {
 } from "./public-subscription-model";
 
 describe("public subscription schedule labels", () => {
+  // 这些断言的是英文标签，而 `locale` 是模块级 signal、整个 bun test 进程共用一份。
+  // 其它测试文件会 `setLocale("zh")`，谁先跑取决于文件顺序 —— 本地和 CI 不一致，
+  // 于是出现「本地全绿、CI 挂 2 个」。测试必须自己声明所需 locale，不能靠环境。
+  beforeEach(() => {
+    setLocale("en");
+  });
+
   it("uses the scheduler's Monday-first weekday numbering", () => {
     expect(
       formatScheduleSummary({ hour: 7, minute: 5, repeat: "weekly", weekday: 0 }),

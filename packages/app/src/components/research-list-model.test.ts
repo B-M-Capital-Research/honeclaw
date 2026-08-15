@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { afterAll, describe, expect, it } from "bun:test";
 
 import {
   confirmableResearchName,
@@ -55,3 +55,9 @@ describe("research-list-model", () => {
     )
   })
 })
+
+// `locale` 是模块级 signal，整个 bun test 进程共用；不还原会泄漏到之后运行的
+// 测试文件（本地/CI 文件顺序不同，表现为随机的跨文件失败）。
+afterAll(() => {
+  setLocale("en");
+});
