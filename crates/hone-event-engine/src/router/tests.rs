@@ -3010,11 +3010,9 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
     assert_eq!(sent, 1);
     let calls = sink.calls.lock().unwrap();
     let body = &calls[0].1;
-    // 历史 1+3 下调 + 2 重申;40 天前的不计入(否则会是 5 下调)
-    assert!(
-        body.contains("🗓 近30日评级：4 下调 · 2 重申"),
-        "body={body}"
-    );
+    // 只信干净单行:窗口内 1 条真实下调;汇总摘要 counts 不计入(跨股错配
+    // 嫌疑数据),40 天前的也不计入
+    assert!(body.contains("🗓 近30日评级：1 下调"), "body={body}");
 }
 
 /// Item 4 端到端:store 里有 3 天后的 earnings_upcoming 时,价格警报带

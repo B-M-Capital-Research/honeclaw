@@ -128,15 +128,29 @@ pub(crate) fn events_from_grades(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let target_change = target_change_from_news_title(
-                item.get("newsTitle").and_then(|v| v.as_str()).unwrap_or(""),
-            );
-            let severity = severity_from_action(&action, target_change.as_ref());
+            let news_title = item
+                .get("newsTitle")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let target_change = target_change_from_news_title(&news_title);
+            let mut severity = severity_from_action(&action, target_change.as_ref());
+            // 单行归属矛盾防御(2026-08-15 GEV 事故):action=downgrade 但所附
+            // 文章标题根本没提署名券商(或标题只有正面动作)时,这行 FMP 数据
+            // 的 action 与证据互相矛盾 —— 不配 High 即时,降 Medium 并标注存疑。
+            let attribution_suspect = action == "downgrade"
+                && is_title_attribution_suspect(&grading_company, &news_title, &action);
+            if attribution_suspect && matches!(severity, Severity::High) {
+                severity = Severity::Medium;
+            }
             let title = format!(
                 "{ticker} · {grading_company} {}",
                 summarize_action(&action, &new_grade, &prev_grade, target_change.as_ref())
             );
             let mut summary = summarize_payload(&new_grade, &prev_grade, target_change.as_ref());
+            if attribution_suspect {
+                summary.push_str("（署名券商未见于原文标题，归属存疑，请以原文核实）");
+            }
             // 目标价锚点:目标价数值 + 发布时现价都在时,标注方向差。
             // 「下调目标价至 $1150 但仍高于现价 961(+19.7%)」和「低于现价」是
             // 完全不同的信号,裸的目标价转变无法区分。
@@ -164,10 +178,17 @@ pub(crate) fn events_from_grades(
                 .filter(|url| is_user_visible_url(url))
                 .map(|s| s.to_string());
             let mut payload = item.clone();
-            if let (Some((target, vs_pct)), Some(obj)) = (target_vs_price, payload.as_object_mut())
-            {
-                obj.insert("hone_target_price".into(), serde_json::json!(target));
-                obj.insert("hone_target_vs_price_pct".into(), serde_json::json!(vs_pct));
+            if let Some(obj) = payload.as_object_mut() {
+                if let Some((target, vs_pct)) = target_vs_price {
+                    obj.insert("hone_target_price".into(), serde_json::json!(target));
+                    obj.insert("hone_target_vs_price_pct".into(), serde_json::json!(vs_pct));
+                }
+                if attribution_suspect {
+                    obj.insert(
+                        "hone_grade_attribution_suspect".into(),
+                        serde_json::json!(true),
+                    );
+                }
             }
             Some(MarketEvent {
                 id: format!("grade:{ticker}:{published}:{grading_company}"),
@@ -593,8 +614,85 @@ fn target_change_from_news_title(title: &str) -> Option<TargetChange> {
     })
 }
 
+/// 单行评级的「归属矛盾」判定:所附文章标题没提到署名券商(考虑常见缩写),
+/// 或(仅当 action=downgrade)标题只有正面动作词。命中 = FMP 该行的 action
+/// 与其证据互相矛盾,不可作为 High 即时依据、不可计入共识统计。
+/// 空标题不判(无证据不算矛盾)。
+fn is_title_attribution_suspect(grading_company: &str, news_title: &str, action: &str) -> bool {
+    let title_lower = news_title.trim().to_lowercase();
+    if title_lower.is_empty() {
+        return false;
+    }
+    let firm_lower = grading_company.trim().to_lowercase();
+    if firm_lower.is_empty() || firm_lower == "unknown" {
+        return false;
+    }
+    // 署名券商的可识别 token:去掉通用后缀词,加常见缩写别名。
+    let mut firm_tokens: Vec<String> = firm_lower
+        .split_whitespace()
+        .filter(|token| {
+            token.len() >= 4
+                && !matches!(
+                    *token,
+                    "securities"
+                        | "capital"
+                        | "research"
+                        | "group"
+                        | "global"
+                        | "partners"
+                        | "markets"
+                        | "management"
+                        | "advisors"
+                        | "company"
+                        | "international"
+                        | "bank"
+                )
+        })
+        .map(String::from)
+        .collect();
+    if firm_lower.contains("bank of america") {
+        firm_tokens.push("bofa".into());
+    }
+    if firm_lower.contains("jpmorgan") || firm_lower.contains("jp morgan") {
+        firm_tokens.extend(["jpmorgan".into(), "jp morgan".into(), "j.p. morgan".into()]);
+    }
+    if firm_lower.contains("royal bank of canada") {
+        firm_tokens.push("rbc".into());
+    }
+    if firm_tokens.is_empty() {
+        return false;
+    }
+    let firm_named_in_title = firm_tokens.iter().any(|token| title_lower.contains(token));
+    if !firm_named_in_title {
+        return true;
+    }
+    // 署名在场但 action=downgrade 而标题只有正面动作、毫无下调词 → 同样矛盾。
+    // 正面标题配 upgrade / hold 是自洽的,不判。
+    if action != "downgrade" {
+        return false;
+    }
+    [
+        "conviction list",
+        "price target raised",
+        "pt raised",
+        "top pick",
+    ]
+    .iter()
+    .any(|pattern| title_lower.contains(pattern))
+        && !["downgrad", "cut", "lower", "reduc", "trim"]
+            .iter()
+            .any(|pattern| title_lower.contains(pattern))
+}
+
 /// 30 日评级共识计数(item 3 锚点)。分类规则与 [`roundup_summary_event`]
 /// 完全一致:下调/上调只在评级**真的变化**时计入,initiated 计首评,其余重申。
+///
+/// **只信干净单行**(2026-08-15 起):
+/// - 标题命中汇总文模式的单行跳过 —— store 历史里 2026-08-14 前的污染行
+///   (MU 事故)会虚高下调数;
+/// - 归属存疑行(见 [`is_title_attribution_suspect`])跳过;
+/// - 汇总摘要事件的 `counts` **不计入** —— 那些动作本就有跨股错配嫌疑,
+///   摘要事件自身已标注「谨慎核实」,不能再进统计口径。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ConsensusCounts {
     pub down: usize,
@@ -619,25 +717,33 @@ pub(crate) fn consensus_counts_from_payloads(payloads: &[Value]) -> ConsensusCou
             .and_then(|v| v.as_bool())
             == Some(true)
         {
-            let roundup = payload.get("counts");
-            let get = |key: &str| {
-                roundup
-                    .and_then(|c| c.get(key))
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize
-            };
-            counts.down += get("downgrade");
-            counts.up += get("upgrade");
-            counts.init += get("initiated");
-            counts.reiter += get("reiterated");
             continue;
         }
+        let news_title = payload
+            .get("newsTitle")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if is_roundup_news_title(news_title) {
+            continue;
+        }
+        let grading_company = payload
+            .get("gradingCompany")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let action = payload
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .trim()
             .to_ascii_lowercase();
+        if payload
+            .get("hone_grade_attribution_suspect")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+            || is_title_attribution_suspect(grading_company, news_title, &action)
+        {
+            continue;
+        }
         let prev = payload
             .get("previousGrade")
             .and_then(|v| v.as_str())
@@ -714,7 +820,7 @@ mod tests {
             "symbol": "AAPL",
             "publishedDate": d,
             "newsURL": "https://example.com/r",
-            "newsTitle": "Title",
+            "newsTitle": "Apple downgraded to Hold at Goldman Sachs",
             "newGrade": "Buy",
             "previousGrade": "Hold",
             "gradingCompany": "Goldman Sachs",
@@ -1027,10 +1133,16 @@ mod tests {
 
         assert_eq!(events.len(), 2);
         assert!(events.iter().all(|e| e.id.starts_with("grade:MU:")));
+        // 2026-08-15 起:William Blair 行虽是单公司文章,但 action=downgrade
+        // 配「Adds to Conviction List」看多标题属于单行归属矛盾 → Medium+存疑,
+        // 不再作为 High 即时(这正是 GEV 8-03 误推的形态)。
+        assert_eq!(events[1].severity, Severity::Medium);
         assert_eq!(
-            events[1].severity,
-            Severity::High,
-            "real downgrade stays High"
+            events[1]
+                .payload
+                .get("hone_grade_attribution_suspect")
+                .and_then(|v| v.as_bool()),
+            Some(true)
         );
     }
 
@@ -1212,27 +1324,114 @@ mod tests {
         assert!(events[0].payload.get("hone_target_price").is_none());
     }
 
-    /// Item 3 共识聚合:单事件 + 汇总摘要 counts 合并,分类规则与 roundup 一致。
+    /// Item 3 共识聚合(2026-08-15 起只信干净单行):汇总摘要 counts 不计入,
+    /// 汇总文标题的历史污染单行与归属存疑行跳过。
     #[test]
-    fn consensus_counts_merge_singles_and_roundups() {
+    fn consensus_counts_trust_only_clean_single_rows() {
         let payloads = vec![
-            // 真实下调(评级变化)
-            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Hold"}),
+            // 干净下调:标题署名与行一致
+            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Hold",
+                "gradingCompany": "Cleveland Research",
+                "newsTitle": "Micron downgraded to Hold at Cleveland Research"}),
             // 脏 upgrade(prev==new)→ 重申
-            serde_json::json!({"action": "upgrade", "previousGrade": "Buy", "newGrade": "Buy"}),
+            serde_json::json!({"action": "upgrade", "previousGrade": "Buy", "newGrade": "Buy",
+                "gradingCompany": "Jefferies", "newsTitle": "Micron reiterated at Jefferies"}),
             // 首评
-            serde_json::json!({"action": "initiated", "previousGrade": "", "newGrade": "Overweight"}),
-            // 汇总摘要
+            serde_json::json!({"action": "initiated", "previousGrade": "", "newGrade": "Overweight",
+                "gradingCompany": "Piper Sandler",
+                "newsTitle": "Piper Sandler initiates Micron at Overweight"}),
+            // 汇总摘要 counts:跨股错配嫌疑,不计入
             serde_json::json!({
                 "hone_analyst_roundup": true,
                 "counts": {"downgrade": 3, "upgrade": 1, "initiated": 4, "reiterated": 2}
             }),
+            // 历史污染单行:汇总文标题 → 跳过
+            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Sell",
+                "gradingCompany": "Wedbush",
+                "newsTitle": "Buy/Sell: Wall Street's top 10 stock calls this week"}),
+            // 归属矛盾单行(GEV 事故形态)→ 跳过
+            serde_json::json!({"action": "downgrade", "previousGrade": "Overweight", "newGrade": "Underweight",
+                "gradingCompany": "Morgan Stanley",
+                "newsTitle": "William Blair Adds GE Vernova (GEV) to Conviction List"}),
         ];
         let counts = consensus_counts_from_payloads(&payloads);
         assert_eq!(
             (counts.down, counts.up, counts.init, counts.reiter),
-            (4, 1, 5, 3)
+            (1, 0, 1, 1)
         );
-        assert_eq!(counts.total(), 13);
+    }
+
+    /// 2026-08-15 GEV 事故:action=downgrade 但所附文章是 William Blair 看多文。
+    /// 单行归属矛盾 → 不再 High 即时,降 Medium 并标注存疑。
+    #[test]
+    fn contradictory_single_row_downgrade_is_demoted_with_caveat() {
+        let raw = serde_json::json!([{
+            "symbol": "GEV",
+            "publishedDate": "2026-08-03T09:44:00.000Z",
+            "newsURL": "https://www.streetinsider.com/x",
+            "newsTitle": "William Blair Adds GE Vernova (GEV) to Conviction List",
+            "newGrade": "Underweight",
+            "previousGrade": "Overweight",
+            "gradingCompany": "Morgan Stanley",
+            "action": "downgrade",
+        }]);
+        let events = events_from_grades(
+            &raw,
+            "GEV",
+            chrono::DateTime::parse_from_rfc3339("2026-08-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.severity, Severity::Medium, "归属矛盾不配 High");
+        assert!(
+            event.summary.contains("归属存疑"),
+            "summary={}",
+            event.summary
+        );
+        assert_eq!(
+            event
+                .payload
+                .get("hone_grade_attribution_suspect")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    /// 署名券商见于标题的真实下调不受影响;BofA 缩写别名不误伤。
+    #[test]
+    fn genuine_downgrades_with_firm_in_title_stay_high() {
+        let raw = serde_json::json!([{
+            "symbol": "MU",
+            "publishedDate": "2026-08-03T10:00:00.000Z",
+            "newsURL": "https://thefly.com/y",
+            "newsTitle": "Micron downgraded to Sell at Cleveland Research",
+            "newGrade": "Sell",
+            "previousGrade": "Buy",
+            "gradingCompany": "Cleveland Research",
+            "action": "downgrade",
+        }, {
+            "symbol": "MU",
+            "publishedDate": "2026-08-03T11:00:00.000Z",
+            "newsURL": "https://thefly.com/z",
+            "newsTitle": "Micron (MU) PT Lowered at BofA Securities amid cuts",
+            "newGrade": "Underperform",
+            "previousGrade": "Buy",
+            "gradingCompany": "Bank of America Securities",
+            "action": "downgrade",
+        }]);
+        let events = events_from_grades(
+            &raw,
+            "MU",
+            chrono::DateTime::parse_from_rfc3339("2026-08-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        assert_eq!(events.len(), 2);
+        for event in &events {
+            assert_eq!(event.severity, Severity::High, "title={}", event.title);
+            assert!(!event.summary.contains("存疑"));
+        }
     }
 }
