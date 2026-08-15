@@ -66,3 +66,22 @@
 - skill_runtime 反向短语匹配的泛词误触发（`行业`/`估值`等 2 字词命中即加载投研 Skill）。
 - 大 payload 端点（company-ratings / valuation-lab / forum 全量评论内联、50 帖硬顶无分页）
   的分页与 ETag。
+
+## 生产部署记录（2026-08-15 20:0x 北京时间）
+
+- 后端 origin（GCE `instance-20260731-081043`，us-central1-c）已切换到精确
+  revision `e996fc875e0a9dcfbedf96ecaa020164572fec09`（GHCR digest
+  `sha256:4baaf9125480248d32ca3ccae26a51db35634142f6205564761dc46f7b4c174a`，
+  Runtime Image run #74）。流程：raw 脚本按本地同 revision SHA-256 比对 →
+  `stage_ghcr_runtime.sh` 按 digest 暂存 `[PASS]` → 环境校验 OK → 两次
+  active-chat-runs 空闲读数 `{"count":0}` → 原子符号链接切换 + systemd 重启 →
+  loopback `/api/meta` 精确 sha、重启后日志零 error/panic。
+- 保留回滚：`e0d53464`（上一版，含研究台整合）与 `e4e1e3e9`。
+- 边缘验收：`hone-claw.com` 200；`/api/public/auth/dev-login/config` 返回
+  `{"enabled":false}`（本地测试账号在生产关闭）；`/api/public/research-overview`
+  401（鉴权门生效，端点已上线）。
+- **注意：该实例 `HONE_RUNTIME_ROLE=web`，主机上没有任何进程承担研究
+  worker——生产研究台目前无快照数据，所有卡片将显示等待态。**是否把该实例
+  改为 `all`（或另起 worker 角色进程）属运营决策：worker 启动即做冷启动刷新，
+  会消耗 FMP/搜索/模型配额，且 PM 的 QA 记录显示这些 provider 凭证配置状态
+  待确认。等待产品负责人拍板后执行。
