@@ -319,6 +319,13 @@ pub enum HeartbeatParseKind {
 struct HeartbeatJsonResponse {
     status: Option<String>,
     message: Option<String>,
+    detail: Option<String>,
+    event: Option<String>,
+    headline: Option<String>,
+    reason: Option<String>,
+    symbol: Option<String>,
+    ticker: Option<String>,
+    triggered_tickers: Option<Vec<String>>,
     triggered: Option<bool>,
     noop: Option<bool>,
     push: Option<bool>,
@@ -506,12 +513,11 @@ fn heartbeat_json_bool_indicates_triggered(parsed: &HeartbeatJsonResponse) -> bo
 }
 
 fn heartbeat_json_deliver_or_noop(
-    message: Option<String>,
+    parsed: HeartbeatJsonResponse,
 ) -> (HeartbeatOutcome, HeartbeatParseKind) {
-    let raw_message = message.unwrap_or_default();
-    let message = unwrap_nested_json_message(raw_message.trim())
-        .trim()
-        .to_string();
+    let Some(message) = heartbeat_json_public_message(&parsed) else {
+        return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
+    };
     if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
     }
@@ -519,6 +525,71 @@ fn heartbeat_json_deliver_or_noop(
         HeartbeatOutcome::Deliver(message),
         HeartbeatParseKind::JsonTriggered,
     )
+}
+
+fn heartbeat_json_public_message(parsed: &HeartbeatJsonResponse) -> Option<String> {
+    let direct = parsed
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(unwrap_nested_json_message)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if direct.is_some() {
+        return direct;
+    }
+
+    let entity = parsed
+        .symbol
+        .as_deref()
+        .or(parsed.ticker.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            parsed.triggered_tickers.as_ref().and_then(|tickers| {
+                let picked = tickers
+                    .iter()
+                    .map(|ticker| ticker.trim())
+                    .filter(|ticker| !ticker.is_empty())
+                    .take(3)
+                    .collect::<Vec<_>>();
+                (!picked.is_empty()).then(|| picked.join("、"))
+            })
+        });
+
+    let mut fragments = Vec::new();
+    for candidate in [
+        parsed.event.as_deref(),
+        parsed.headline.as_deref(),
+        parsed.detail.as_deref(),
+        parsed.reason.as_deref(),
+    ] {
+        let Some(value) = candidate
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(unwrap_nested_json_message)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if !fragments.iter().any(|existing| existing == &value) {
+            fragments.push(value);
+        }
+    }
+
+    let body = fragments.join("；");
+    if body.is_empty() {
+        return entity.map(|entity| format!("【{entity}】本轮心跳监控已触发。"));
+    }
+    if let Some(entity) = entity
+        && !body.contains(&entity)
+    {
+        return Some(format!("【{entity}】{body}"));
+    }
+    Some(body)
 }
 
 fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
@@ -847,6 +918,13 @@ fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
         return None;
     }
 
+    if let Some(message) = recover_structured_heartbeat_message(trimmed) {
+        let sanitized = sanitize_scheduler_delivery_text(&message);
+        if !sanitized.trim().is_empty() {
+            return Some(sanitized);
+        }
+    }
+
     let compact = trimmed
         .chars()
         .filter(|ch| !ch.is_whitespace())
@@ -922,6 +1000,39 @@ fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
     } else {
         Some(message)
     }
+}
+
+fn recover_structured_heartbeat_message(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if let Some(parsed) = parse_heartbeat_json_payload(trimmed) {
+        return heartbeat_json_public_message(&parsed);
+    }
+    if let Some(message) = recover_malformed_triggered_heartbeat_message(trimmed) {
+        return Some(message);
+    }
+
+    let mut search_from = 0usize;
+    while let Some(relative_start) = trimmed[search_from..].find("```") {
+        let start = search_from + relative_start + 3;
+        let rest = &trimmed[start..];
+        let body_start = rest.find('\n').map(|idx| start + idx + 1).unwrap_or(start);
+        let Some(relative_end) = trimmed[body_start..].find("```") else {
+            break;
+        };
+        let end = body_start + relative_end;
+        if let Some(message) =
+            recover_malformed_triggered_heartbeat_message(trimmed[body_start..end].trim())
+        {
+            return Some(message);
+        }
+        search_from = end + 3;
+    }
+
+    trimmed
+        .strip_prefix('`')
+        .and_then(|value| value.strip_suffix('`'))
+        .map(str::trim)
+        .and_then(recover_malformed_triggered_heartbeat_message)
 }
 
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
@@ -1848,12 +1959,12 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
                 return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
             }
             if heartbeat_json_bool_indicates_triggered(&parsed) {
-                return heartbeat_json_deliver_or_noop(parsed.message);
+                return heartbeat_json_deliver_or_noop(parsed);
             }
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
         if heartbeat_status_indicates_triggered(&status) {
-            return heartbeat_json_deliver_or_noop(parsed.message);
+            return heartbeat_json_deliver_or_noop(parsed);
         }
         return (
             HeartbeatOutcome::Noop,
@@ -6045,6 +6156,18 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_structured_json_without_message_uses_fallback_fields() {
+        let content = "```json\n{\"status\":\"triggered\",\"symbol\":\"TEM\",\"event\":\"Q2 财报超预期\",\"detail\":\"订单指引上修。\"}\n```";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (
+                HeartbeatOutcome::Deliver("【TEM】Q2 财报超预期；订单指引上修。".to_string()),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
     fn heartbeat_malformed_json_is_detected() {
         let (outcome, parse_kind) = inspect_heartbeat_result(r#"{"status":"noop"#);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonMalformed);
@@ -6112,6 +6235,15 @@ mod tests {
             "本轮价格与财报日期已完成校验；该口径未返回逐笔时间戳和盘前/盘后字段。"
         );
         assert!(!sanitized.contains("data_fetch"));
+    }
+
+    #[test]
+    fn scheduler_delivery_text_strips_minimax_tool_call_and_invoke_tags() {
+        let raw = "监控结论如下：\n<minimax:tool_call name=\"cron_job\">{\"job\":\"watch\"}</minimax:tool_call>\n<invoke name=\"notification_prefs\">{\"action\":\"get\"}</invoke>\nNVDA 本轮出现新增催化。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(sanitized, "监控结论如下：\n\nNVDA 本轮出现新增催化。");
+        assert!(!sanitized.contains("minimax:tool_call"));
+        assert!(!sanitized.contains("<invoke"));
     }
 
     #[test]

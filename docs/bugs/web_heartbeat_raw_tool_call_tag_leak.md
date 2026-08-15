@@ -14,11 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
+
+## 最新进展
+
+- `2026-08-15 23:40 CST` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/runtime.rs` 的共享净化层新增覆盖 `<minimax:tool_call>...</minimax:tool_call>`、`<invoke name="...">...</invoke>`，同时 `is_tool_call_content(...)` 与 protocol line 识别也把这两类 tag 视为内部协议，不再进入 heartbeat deliver 正文。
+  - `crates/hone-channels/src/scheduler.rs` 的 scheduler 出站净化复用同一规则，Web heartbeat deliver 不再把 raw tool-call tag 留在用户可见文本里。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_strips_minimax_tool_call_and_invoke_blocks --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_strips_minimax_tool_call_and_invoke_tags --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 当前未重启 live runtime，先按代码级 `Fixed` 记录；待自然运行窗口复核后再决定是否关闭。
 
 ## 证据来源
 

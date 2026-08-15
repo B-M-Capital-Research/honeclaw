@@ -3,9 +3,15 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 最新进展
+
+- `2026-08-15 23:40 CST` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 现在会在 heartbeat 结构化结果缺少 `message` 时，从 `symbol/ticker/triggered_tickers` 与 `event/detail/headline/reason` 组合出用户可读正文；plain-text trigger 路径也会优先回收 fenced / inline JSON 的结构化内容，不再把整段协议体原样送入 deliver。
+  - `crates/hone-channels/src/runtime.rs` / `scheduler.rs` 同轮补齐 raw tool tag 与内部行情口径净化，避免结构化 heartbeat 退化为 PlainTextTriggered 时再把协议噪音带出。
+  - 验证通过：`cargo test -p hone-channels heartbeat_structured_json_without_message_uses_fallback_fields --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_strips_minimax_tool_call_and_invoke_tags --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 当前未重启 live runtime，先按代码级 `Fixed` 记录；待后续自然窗口确认 fenced JSON / `status=triggered` 不再进入 deliver preview 后再考虑关闭。
 
 - `2026-08-15 22:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`

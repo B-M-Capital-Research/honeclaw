@@ -195,7 +195,7 @@ static RE_NL: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
 static RE_INTERNAL_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r"(?is)<think\b[^>]*>.*?</think>|<tool_code\b[^>]*>.*?</tool_code>|<tool_call\b[^>]*>.*?</tool_call>|<tool_result\b[^>]*>.*?</tool_result>|<tool_use\b[^>]*>.*?</tool_use>|</?(tool_call|tool_result|tool_use)\b[^>]*>",
+        r"(?is)<think\b[^>]*>.*?</think>|<tool_code\b[^>]*>.*?</tool_code>|<tool_call\b[^>]*>.*?</tool_call>|<tool_result\b[^>]*>.*?</tool_result>|<tool_use\b[^>]*>.*?</tool_use>|<minimax:tool_call\b[^>]*>.*?</minimax:tool_call>|<invoke\b[^>]*>.*?</invoke>|</?(tool_call|tool_result|tool_use)\b[^>]*>",
     )
     .expect("valid regex")
 });
@@ -213,6 +213,14 @@ static RE_INTERNAL_PROTOCOL_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
             <(?:tool_call|tool_result|tool_use|parameter)\b
             |
             </(?:tool_call|tool_result|tool_use|parameter)>
+            |
+            <minimax:tool_call\b
+            |
+            </minimax:tool_call>
+            |
+            <invoke\b
+            |
+            </invoke>
             |
             \[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]
         )
@@ -367,6 +375,18 @@ static RE_MARKET_DATA_VERIFIED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 static RE_MARKET_DATA_SOURCE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?i)(?:[^\n。；]*本轮\s*data_fetch\s+quote(?:_short|/news|/quote|/quote_short)?\s*口径[^\n。；]*|[^\n。；]*StockAnalysis\s*口径(?:显示)?[^\n。；]*)"#,
+    )
+    .expect("valid regex")
+});
+static RE_MARKET_DATA_TIME_FIELD_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)(?:[^\n。；]*(?:hone?_quote_time(?:\.beijing)?|provider\s+timestamp)[^\n。；]*)"#,
+    )
+    .expect("valid regex")
+});
+static RE_MARKET_DATA_LIMIT_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)(?:[^\n。；]*(?:data_fetch|quote(?:_short)?|工具调用|工具额度)[^\n。；]*(?:已达(?:本轮|单轮)?上限|已用尽|额度已耗尽|调用受限|未完成核验|核验受限)[^\n。；]*)"#,
     )
     .expect("valid regex")
 });
@@ -709,6 +729,20 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         }
     }
 
+    for (re, replacement) in [
+        (
+            &RE_MARKET_DATA_TIME_FIELD_COPY,
+            "以下价格按最新可得公开行情整理",
+        ),
+        (&RE_MARKET_DATA_LIMIT_COPY, "本轮行情核验受限"),
+    ] {
+        let next = re.replace_all(&rewritten, replacement);
+        if next != rewritten {
+            removed = true;
+            rewritten = next.into_owned();
+        }
+    }
+
     let public_market_label = RE_STOCKANALYSIS_LABEL.replace_all(&rewritten, "公开行情页");
     if public_market_label != rewritten {
         removed = true;
@@ -1033,6 +1067,10 @@ pub fn is_tool_call_content(text: &str) -> bool {
         "</tool_result>",
         "<tool_use",
         "</tool_use>",
+        "<minimax:tool_call",
+        "</minimax:tool_call>",
+        "<invoke name=",
+        "</invoke>",
         "<parameter",
         "</parameter>",
         "[TOOL_CALL]",
@@ -1667,6 +1705,27 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_rewrites_market_time_field_and_limit_copy() {
+        for (raw, expected) in [
+            (
+                "数据来自 hone_quote_time.beijing 04:00-04:02，以下继续看核心观察池。",
+                "以下价格按最新可得公开行情整理。",
+            ),
+            (
+                "本轮 data_fetch quote 工具调用已达上限，其余标的行情未完成核验。",
+                "本轮行情核验受限。",
+            ),
+        ] {
+            let sanitized = sanitize_user_visible_output(raw);
+            assert!(sanitized.removed_internal, "raw={raw}");
+            assert_eq!(sanitized.content, expected);
+            assert!(!sanitized.content.contains("hone_quote_time"));
+            assert!(!sanitized.content.contains("data_fetch"));
+            assert!(!sanitized.content.contains("工具调用"));
+        }
+    }
+
+    #[test]
     fn sanitize_user_visible_output_rewrites_market_data_verified_copy() {
         let raw = "本轮 25 支价格和下一次财报日期均由 data_fetch quote 返回，价格口径统一到最新可得行情。";
         let sanitized = sanitize_user_visible_output(raw);
@@ -1709,6 +1768,19 @@ mod tests {
         );
         assert!(!sanitized.content.contains("python3"));
         assert!(!sanitized.content.contains("实时检索工具"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_minimax_tool_call_and_invoke_blocks() {
+        let raw = "先看结论。\n<minimax:tool_call name=\"cron_job\">{\"job\":\"watch\"}</minimax:tool_call>\n<invoke name=\"notification_prefs\">{\"action\":\"get\"}</invoke>\n正式提醒：NVDA 本轮出现新增催化。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "先看结论。\n\n正式提醒：NVDA 本轮出现新增催化。"
+        );
+        assert!(!sanitized.content.contains("minimax:tool_call"));
+        assert!(!sanitized.content.contains("<invoke"));
     }
 
     #[test]
