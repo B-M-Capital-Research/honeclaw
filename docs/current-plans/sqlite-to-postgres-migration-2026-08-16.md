@@ -254,7 +254,56 @@ event-engine 侧一律用它，不要用 `connect_client`。
 
 ---
 
-## 6. 阶段 4：清理
+## 6. 阶段 4：清理（用户 2026-08-16 要求：一次搞干净，不留任何 SQLite 配置残留）
+
+**验收标准是"全仓搜不到 SQLite 痕迹"，`bins/hone-imessage` 除外。**
+下面每一项都要逐条核过，不允许"改完代码就算"：
+
+### 6.1 依赖
+
+- workspace `Cargo.toml:73` 的 `rusqlite`：从 `crates/hone-event-engine`、`memory`、
+  `bins/hone-cli` 三处移除。**`bins/hone-imessage` 保留**（见 1.2）。
+  若 `cloud migrate` 要长期支持从旧 SQLite 导入，`bins/hone-cli` 也保留，
+  但必须在 Cargo.toml 里加注释说明"仅供历史数据导入"。
+- 相应地更新 `Cargo.lock`。
+
+### 6.2 配置字段与环境变量（容易漏，逐个查）
+
+- `config.example.yaml` / `.env.example` 里所有 sqlite 相关键。
+- `storage.session_sqlite_db_path`、`storage.session_sqlite_shadow_write_enabled`、
+  `storage.llm_audit_db_path`，以及 `crates/hone-core/src/config/` 下对应的
+  struct 字段、`default_*` 函数和校验分支。
+- 环境变量 `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW`
+  （`cloud_runtime.rs` 的 `keep_cloud_session_sqlite_shadow()`）。
+- `SessionRuntimeBackend` 的 `"sqlite"` / `"json"` 字符串解析分支
+  （`memory/src/session.rs:99` 一带）。
+- **GCE 侧 `/etc/hone/runtime.env` 里的 `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false`
+  也要删**，否则运维文件里留着一个已不存在的开关。
+  同理检查 systemd drop-in 与部署脚本。
+
+### 6.3 代码与文档
+
+- 更新 `local_durable_dependencies()`（`cloud_runtime.rs`），删掉所有 sqlite 路径项。
+- 删掉 `docs/session-sqlite-migration-plan.md`（2026-03-25 旧提案）→ 移入
+  `docs/archive/plans/`，并在本文件注明取代关系。
+- `docs/conventions/`、`docs/runbooks/backend-deployment.md`、`docs/repo-map.md`、
+  `docs/technical-spec.md` 里凡提到 sqlite 作为存储后端的段落全部改写。
+- `scripts/` 下任何 backfill / diagnose 影子库脚本一并删除。
+
+### 6.4 收口检查（交接时必须贴出这条命令的输出）
+
+```bash
+grep -rn -i "sqlite\|rusqlite" --include="*.rs" --include="*.toml" --include="*.yaml" \
+  --include="*.yml" --include="*.sh" --include="*.md" \
+  . | grep -v "^./target" | grep -v "bins/hone-imessage" | grep -v "docs/archive"
+```
+
+预期只剩下：`bins/hone-imessage`（macOS chat.db）、`docs/archive/` 下的历史文档、
+以及本计划自身。任何其它命中都要么修掉、要么在交接里写明为什么必须留。
+
+---
+
+## 6.5 阶段 4 附：旧版清理
 
 - workspace `Cargo.toml:73` 的 `rusqlite`：从 `crates/hone-event-engine`、`memory`、
   `bins/hone-cli` 移除依赖；**`bins/hone-imessage` 保留**（见 1.2）。
