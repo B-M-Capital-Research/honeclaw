@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 use chrono::Utc;
 use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::{CloudCompanyProfileFileRecord, CloudPgRuntime};
+use hone_core::cloud_sync::run_cloud_sync;
 
 use super::markdown::{
     build_initial_sections, create_profile_body, extract_title_from_markdown,
@@ -1271,18 +1271,9 @@ fn cloud_company_profile_storage() -> Option<CloudPgRuntime> {
 fn run_cloud_company_profile<T, F>(future: F) -> Result<T, String>
 where
     T: Send + 'static,
-    F: Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
-            runtime.block_on(future).map_err(|err| err.to_string())
-        })
-        .join()
-        .map_err(|_| "cloud company profile worker panicked".to_string())?;
-    }
-    let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
-    runtime.block_on(future).map_err(|err| err.to_string())
+    run_cloud_sync(future, None, "cloud company profile operation").map_err(|err| err.to_string())
 }
 
 fn event_counts_by_profile(files: &[CloudCompanyProfileFileRecord]) -> HashMap<String, usize> {
