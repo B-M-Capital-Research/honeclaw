@@ -1,10 +1,10 @@
 //! 持仓存储 — local 模式使用 JSON 文件，cloud 模式使用 PG（按 actor 隔离）
 
 use hone_core::cloud_runtime::{CloudPgRuntime, CloudPortfolioRecord};
+use hone_core::cloud_sync::run_cloud_sync;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use serde::{Deserialize, Serialize};
 
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
@@ -498,20 +498,9 @@ impl PortfolioStorage {
 fn run_cloud_portfolio<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud portfolio worker panicked".to_string()))?;
-    }
-    let runtime =
-        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud portfolio operation")
 }
 
 #[cfg(test)]
