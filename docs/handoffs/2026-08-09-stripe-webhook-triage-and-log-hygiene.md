@@ -80,6 +80,31 @@ and the function-calling agent logged tool-budget probes as rejections.
 - Caddy reloaded through the admin API with an unchanged MainPID; no restart and
   no dropped connections.
 
+## Deployment
+
+Deployed as revision `afdd83df7a9edb4311b59a7473aea6412f896496` from GHCR digest
+`sha256:b55271216b97fa71a38f5faf3261883ede227ecd4f7d628feb3b1ea56d30875c`,
+cut over 2026-08-09 15:45 UTC.
+
+Acceptance on the live process: `build.git_sha=afdd83df…`,
+`build.source=ghcr_linux_oci`, `cloud_mode=cloud`,
+`cloud_storage_authoritative=true`, `cloud_postgres_health.ok=true`,
+`cloud_oss_health.ok=true`, `local_durable_dependency_count=0`,
+`active-chat-runs={"count":0}`, supervisor cwd matches the unit's
+`WorkingDirectory`. Public surface returns `401` on `/api/public/auth/me`, `200`
+on the homepage, and `401 {"error":"Stripe webhook 签名无效"}` on the webhook. No
+`ERROR` lines since the restart.
+
+Two operational notes for the next operator:
+
+- `scripts/stage_ghcr_runtime.sh` is **not present** in the managed host's
+  `/srv/honeclaw` checkout, which sits at `47070ae5` (2026-08-01) and is dirty.
+  Do not `git pull` it. Copy the script from a clean clone at the target
+  revision, verify its SHA-256 on the host, run it, and delete it afterwards.
+- `hone-channel@feishu.service` follows `hone-web.service` through systemd, so it
+  picks up the new binary on the same restart; an explicit restart is a no-op but
+  harmless.
+
 ## Risks / Follow-ups
 
 - **Stripe test-mode destination still registered.** The failing endpoint belongs

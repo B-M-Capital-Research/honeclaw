@@ -822,3 +822,57 @@ Needs a decision: build the importer, or accept the loss and record it. Blocks d
 
 **OQ-8 — production PostgreSQL major version.**
 `docker-compose.dev.yml` pins `postgres:16-alpine`. I could not verify the GCE server version. Confirm before relying on any version-specific behaviour (`FOR UPDATE SKIP LOCKED` is ≥9.5, so §3.4 is safe regardless; the concern is `jsonb` function availability and planner behaviour).
+---
+
+## 8. Open questions resolved against production (2026-08-16, by Claude)
+
+### OQ-1 — ANSWERED: **GCE does hold event-engine SQLite data.** The plan doc's claim was wrong.
+
+```
+$ sudo find /srv /var/lib/hone -name '*.sqlite3'
+/srv/honeclaw/data/events.sqlite3
+/srv/honeclaw/data/sessions.sqlite3
+/srv/honeclaw/data/llm_audit.sqlite3
+
+$ sudo ls -la /srv/honeclaw/data/
+-rw-r--r--  hone  9,564,160  Aug 15 17:32  events.sqlite3
+-rw-------  hone 75,448,320  Aug 15 13:56  sessions.sqlite3
+-rw-------  hone  3,383,296  Aug  1 08:54  llm_audit.sqlite3
+-rw-r-----  hone  4,231,272  Aug  1 12:13  llm_audit.sqlite3-wal
+```
+
+**Why the earlier measurement said "zero sqlite files":** the probe was
+`sudo ls -la /srv/honeclaw/data/*.sqlite3`. The glob is expanded by the **non-root outer
+shell**, which cannot read that directory, so it never expanded and `ls` received the literal
+pattern. `sudo find` sees them. Any future "does the host have X" probe must put the glob
+*inside* the privileged command, or use `find`.
+
+Consequences:
+- `events.sqlite3` was last written **2026-08-15 17:32**, i.e. during the `role=all` window.
+  Phase 2's §3.5 data migration must run against GCE too, not just the developer Mac.
+- `sessions.sqlite3` is 75 MB and was written 2026-08-15 13:56 **even though**
+  `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false`. Either the shadow write path does not
+  consult that env var, or the file predates it. Establish which before Phase 3 deletes the
+  shadow path — a 75 MB actively-written file is not obviously dead weight.
+- `llm_audit.sqlite3` has a 4.2 MB WAL. Same rule as the local migration: checkpoint or use
+  the sqlite3 `.backup` online API; do not read the main file alone.
+- `sqlite3` is **not installed on the GCE host**, so row counts must be taken after copying
+  the files off, or by installing it.
+
+### OQ-8 — ANSWERED: production PostgreSQL is **17.11**, dev compose pins **16**.
+
+```
+PostgreSQL 17.11 (Debian 17.11-0+deb13u1) on x86_64-pc-linux-gnu
+```
+
+`docker-compose.dev.yml` must move to `postgres:17-alpine`. This requires a data-volume reset
+(v17 binaries refuse a v16 data directory), so it has to be sequenced when no agent is using
+the local database. Deferred to integration.
+
+### OQ-5 — DECIDED: OSS must stop being mandatory.
+
+`CloudConfig::validate` (`crates/hone-core/src/config/server.rs:655-663`) requires PG **and**
+OSS whenever mode is cloud. The user's requirement is that local development keeps working
+from source (`scripts/deploy_source_runtime.sh`), and local dev has no OSS. With `CloudMode::Local`
+deleted, that validation would make every local run fail. Phase 3 must decouple the two:
+PG required, OSS optional-with-degraded-object-storage.
