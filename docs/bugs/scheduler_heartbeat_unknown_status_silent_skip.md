@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-08-15 14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-15 10:00-14:02 CST 近窗统计 `HeartbeatDiag=236`、`run_start=64`、`run_finish=68`、`deliver=26`、`duplicate_suppressed=8`。
+    - 近窗仍有 `execution_failed=6`、`heartbeat 输出不是结构化 JSON=5`、function-calling 工具预算拒绝相关信号 118 条；parse / raw 信号继续分裂：`PlainTextTriggered=52`、`JsonNoop=28`、`PlainTextSuppressed=5`、`JsonTriggered=4`、`PlainTextNoop=3`、`JsonMalformed=2`、`JsonEmptyStatus=1`。
+    - 26 条 heartbeat deliver 中继续命中 `noop / 无新增 / 无触发 / hone_quote_time / 工具调用上限 / status=triggered / fenced JSON / 系统指令模板` 等静默、工具口径、上下文污染或协议外泄语义；10:00-14:00 CST 多条 `PlainTextTriggered` 仍发送 `noop`、工具限流或非监控正文。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-15 10:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-15 06:01-10:03 CST 近窗统计 `HeartbeatDiag=219`、`run_start=64`、`run_finish=64`、`deliver=21`、`duplicate_suppressed=6`。
