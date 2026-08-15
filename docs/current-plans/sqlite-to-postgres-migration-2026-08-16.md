@@ -1,6 +1,6 @@
 # SQLite 全量迁移到 PostgreSQL
 
-状态：`planned`
+状态：`in_progress`（阶段 0 / 1 / 2 / 3 / 3.5 已完成；阶段 4 未在本次执行）
 创建：2026-08-16
 执行方：Codex CLI（本文件即交接书，Codex 按阶段推进，每阶段独立可合并）
 协调方：Claude（本会话产出计划、验收标准与阶段评审）
@@ -190,6 +190,28 @@ event-engine 侧一律用它，不要用 `connect_client`。
 ---
 
 ## 5. 阶段 3：删除 memory/ 的 SQLite 分支
+
+阶段状态：`done`（2026-08-16，提交 `446c4d38`..`db655e3f`）
+
+实施结论：session / Web auth / billing / LLM audit / cron 的生产存储均已改为
+PostgreSQL；`CloudMode`、`cloud.mode` / `cloud.enabled`、会话 SQLite 影子写入和
+数据库本地降级分支已删除。PostgreSQL 配置改为必需，OSS 独立保持 optional，
+因此只有 Docker PostgreSQL 的本地开发配置可以启动；无 OSS 时仅保留生成文件的
+显式本地文件 fallback。会话 SQLite 配置路径等惯性字段和迁移脚本留给阶段 4，
+本阶段没有提前清理。
+
+运行时错误兜底审计：Web / channel / CLI 的 session 与 cron 本地数据库降级属于
+连接或构造失败后的错误兜底，已改为返回错误或 fail-fast，不再静默切换存储。
+response finalizer 与 attachment ingest 的 OSS 上传失败路径不是数据库配置模式，
+仍保留本地可用文件和告警；portfolio 的隐藏全局在生产构造时只注入必需 PG，
+test-only 路径继续用于隔离不属于本阶段的 JSON 模块测试。
+
+测试数量与验收（修改前 → 修改后）：workspace `2686 → 2686`，`hone-memory`
+`147 → 147`，本阶段目标模块 `99 → 99`。真实结果：workspace `2574 passed / 0 failed /
+112 ignored`；迁移后的 memory ignored PG 测试 `92 passed / 0 failed`；cloud doctor
+`exit 0`、`postgres_health.ok=true`、`schema_ensured=true`、`oss_configured=false`，
+仅报告 `data/gen_images` 这一项 optional OSS 本地 fallback。billing HTTP PostgreSQL
+回归与 public dev-login 前端源码契约也均通过。
 
 涉及的后端枚举：
 
