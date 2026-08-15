@@ -2,6 +2,19 @@
 
 Last updated: 2026-08-15
 
+## 2026-08-15
+
+### Oldwang Research Platform Integration
+
+- Status: done; merged to `main` (`b65a7cc1`) and pushed; no production deployment in this task
+- Date: 2026-08-15
+- Plan: `docs/archive/plans/oldwang-research-platform-integration.md`
+- Handoff: `docs/handoffs/2026-08-15-oldwang-research-platform-integration.md`
+- Related PRs / commits: merge `b65a7cc1` (integration branch `integrate/oldwang`)
+- Related runbooks / regressions: full workspace cargo test (excl. local hone-desktop); Web 483/483; `tests/regression/ci` 23/23; local authenticated browser acceptance of `/research`
+- Current conclusion: oldwang's ten research products now live on the `/research` research desk as URL-addressable panels fed by one `research-overview` aggregate call; navigation grew to five sections; dashboards became controlled panels sharing one modal shell/state/prompt envelope; CSS returned to `--hone-*` tokens with new traffic-light semantic tokens; backend gained `research_store` dedup, a weekly-brief pre-generation worker, the research-library body-limit fix, chat-path spawn_blocking, CORS DELETE, the email-token legacy-name fallback, and a defused date-pinned position-management test.
+- Next entry point: worker migration into hone-scheduler, forum deletion semantics/attachment GC, history retention, public-router auth middleware, new-surface i18n, and large-payload pagination/ETag remain follow-ups listed in the handoff.
+
 ## 2026-08-11
 
 ### Weekly Brief Readable Calendar

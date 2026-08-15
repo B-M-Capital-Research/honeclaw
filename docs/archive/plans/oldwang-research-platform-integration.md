@@ -1,6 +1,6 @@
 # oldwang 投研功能整合：信息架构与数据流收敛
 
-状态：`in_progress`
+状态：`done`（2026-08-15 合入 main：b65a7cc1）
 分支：`integrate/oldwang`（基于 `origin/oldwang`，其为 `main` 的严格超集）
 日期：2026-08-12
 
@@ -87,30 +87,6 @@
 - 新增研究台契约：路由存在、panel 状态进 URL、新 CSS 引用令牌、弹层可 ESC。
 - 门禁：`cargo test`（除本机缺资源的 hone-desktop）、`bun test --preload ./happydom.ts ./src`、
   `tests/regression/ci/` 契约脚本。
-
-## 断点与恢复清单（2026-08-12 中午，会话额度 15:20 重置）
-
-已完成并验证：
-- 前端全部落地：/research 研究台、5 区块导航、7 个仪表盘迁为受控面板（懒取数）、
-  聊天页轨道移除、CSS 令牌化与解压、行内确认替代 window.prompt/confirm、
-  契约测试重写。`bun test` 483 pass / `tsc` 干净（以当时快照为准，恢复后复跑）。
-- 后端（代理中断前已完成）：/api/public/research-overview 聚合端点 + 10 模块 overview_card、
-  CORS 补 DELETE、research-library POST 挂 21MB DefaultBodyLimit、weekly_brief_worker 预生成、
-  research_store.rs（data_root/write_json_atomic/next_beijing_refresh + 单测）。
-- hone-core 邮件令牌旧名回退、COHR 别名改"相干公司"。
-
-恢复后待办（按序）：
-1. 修 position_management 测试失败：`green_current_company_requires_verified_valuation_for_increase_candidate`
-   （position_management.rs:984，期望 increase_candidate 实得 hold）——代理中断在
-   company_ratings 迁移中途，先 `git diff main -- crates/hone-web-api/src/routes/position_management.rs`
-   查中断改动是否完整。
-2. research_store 迁移只覆盖 company_ratings/daily_signals/weekly_brief 3 个模块，
-   其余 5 个（valuation_lab/key_event_chain/influencer_digest/portfolio_news/position_management）
-   仍持有本地拷贝——继续迁移并删除重复单测。
-3. P5 未做：public.rs 三处 chat_context_for_user 调用仍是同步读盘，需 spawn_blocking。
-4. 清理 company_ratings.rs 等 unused import 警告。
-5. 全量门禁：cargo test（除 hone-desktop）、bun test、tests/regression/ci/、浏览器可视验证。
-6. docs 收尾（current-plan.md 索引、handoff）、合入 main。
 
 ## 明确不做（记为后续任务）
 
