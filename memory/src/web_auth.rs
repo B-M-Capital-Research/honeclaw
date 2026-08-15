@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
@@ -6,6 +5,7 @@ use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
     CloudWebUserExternalStateRecord,
 };
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -193,8 +193,7 @@ impl WebAuthStorage {
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        let schema_postgres = postgres.clone();
-        run_cloud_web_auth(async move { schema_postgres.ensure_schema().await })?;
+        ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self {
             backend: WebAuthBackend::Cloud { postgres },
         })
@@ -2190,20 +2189,9 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
 fn run_cloud_web_auth<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud web auth worker panicked".to_string()))?;
-    }
-    let runtime =
-        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud web auth operation")
 }
 
 fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<String> {

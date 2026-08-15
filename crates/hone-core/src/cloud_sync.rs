@@ -31,7 +31,7 @@ fn cloud_sync_runtime() -> HoneResult<&'static tokio::runtime::Runtime> {
 /// 在共享长驻 runtime 上执行一个 async cloud 操作，同时保持同步调用语义。
 pub fn run_cloud_sync<T, F>(
     future: F,
-    operation_timeout: Duration,
+    operation_timeout: Option<Duration>,
     operation_name: &'static str,
 ) -> HoneResult<T>
 where
@@ -40,12 +40,17 @@ where
 {
     let runtime = cloud_sync_runtime()?;
     let guarded = async move {
-        match tokio::time::timeout(operation_timeout, future).await {
-            Ok(result) => result,
-            Err(_) => Err(HoneError::Storage(format!(
-                "{operation_name} timed out after {}ms",
-                operation_timeout.as_millis()
-            ))),
+        match operation_timeout {
+            Some(operation_timeout) => {
+                match tokio::time::timeout(operation_timeout, future).await {
+                    Ok(result) => result,
+                    Err(_) => Err(HoneError::Storage(format!(
+                        "{operation_name} timed out after {}ms",
+                        operation_timeout.as_millis()
+                    ))),
+                }
+            }
+            None => future.await,
         }
     };
 
@@ -57,7 +62,13 @@ where
     runtime.spawn(async move {
         let _ = tx.send(guarded.await);
     });
-    match rx.recv_timeout(operation_timeout.saturating_add(Duration::from_secs(5))) {
+    let result = match operation_timeout {
+        Some(operation_timeout) => rx
+            .recv_timeout(operation_timeout.saturating_add(Duration::from_secs(5)))
+            .map_err(|err| err.to_string()),
+        None => rx.recv().map_err(|err| err.to_string()),
+    };
+    match result {
         Ok(result) => result,
         Err(err) => Err(HoneError::Storage(format!(
             "{operation_name} worker did not report a result: {err}"
@@ -71,7 +82,7 @@ where
 /// `CloudPgRuntime::ensure_schema`，因为每个临时会话都有独立的 `pg_temp` schema。
 pub fn ensure_cloud_schema_once(
     postgres: CloudPgRuntime,
-    operation_timeout: Duration,
+    operation_timeout: Option<Duration>,
 ) -> HoneResult<()> {
     if CLOUD_SCHEMA_READY.load(Ordering::Acquire) {
         return Ok(());
@@ -99,7 +110,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 Ok::<(), HoneError>(())
             },
-            Duration::from_millis(20),
+            Some(Duration::from_millis(20)),
             "test cloud operation",
         )
         .expect_err("operation should time out");
@@ -114,7 +125,7 @@ mod tests {
                 .map(|value| {
                     run_cloud_sync(
                         async move { Ok::<u32, HoneError>(value) },
-                        Duration::from_millis(500),
+                        Some(Duration::from_millis(500)),
                         "test cloud operation",
                     )
                 })
@@ -125,5 +136,17 @@ mod tests {
         .expect("bridge calls");
         assert_eq!(values.len(), 32);
         assert_eq!(values[31], 31);
+    }
+
+    #[tokio::test]
+    async fn bridge_without_timeout_works_directly_inside_a_tokio_context() {
+        let value = run_cloud_sync(
+            async { Ok::<u32, HoneError>(7) },
+            None,
+            "unbounded test cloud operation",
+        )
+        .expect("bridge should return from inside the tokio context");
+
+        assert_eq!(value, 7);
     }
 }
