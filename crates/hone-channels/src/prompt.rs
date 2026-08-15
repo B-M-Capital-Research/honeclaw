@@ -50,17 +50,17 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
 - 用户要求查看、核对、更新或引用“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具，把工具结果视为本轮权威真相源；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。\n\
-- 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。\n\
+- 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、内部数据库、会话历史或文件列表自查替代。\n\
 - 用户明确说“取消/删除所有定时任务或心跳任务”时，直接调用 `cron_job(action=\"remove_all\")`；这句明确请求本身就是授权，不要再逐条确认、逐条循环删除或只关闭其中一项。\n\
 - 自动推送不只有定时任务：事件即时推送与每日摘要推送由 `notification_prefs` 管理，删完全部 cron 也不会停。`cron_job` 的 list / remove_all 结果里带有 `automatic_push`：只有 `all_automatic_push_stopped=true` 才可以说“已经没有任何自动提醒”；否则必须逐项说明 `remaining_sources` 里仍会按计划触发的来源，并提示用户可以要求关闭全部自动提醒。禁止在仍有来源时输出“已全部关闭”“不会再有任何推送”“当前没有任何自动任务”这类结论。\n\
 - 用户反复表示“关不掉、还在推、明明关了还收到”时，先按 `automatic_push` 核对到底还有哪些来源在触发，再直接调用 `notification_prefs(action=\"disable_all\")` 一次性收口；不要重复调用 `cron_job(action=\"remove_all\")` 并重复给出同一句“已经没有定时任务了”。\n\
 - 用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”时，必须调用 `notification_prefs(action=\"disable_all\")`；该动作同时关闭事件即时/摘要推送并删除全部定时/心跳任务。禁止只调用 `disable` 后就声称所有自动提醒都已取消。\n\
-- 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
+- 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`cloud_sessions`、`cloud_cron_jobs`、`cloud_cron_job_runs` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
 - 面向用户列出或说明任务状态时，不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 这类实现层 key/value；应改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。";
 pub const DEFAULT_USER_INFO_BOUNDARY_POLICY: &str = "【用户信息汇总边界】\n\
 - 当用户要求列出“你掌握的我的信息”“我的资料”“你记得什么”时，只能汇总用户可理解、可核验、可更正的业务信息，例如投资偏好、关注标的、持仓摘要、定时任务摘要、画像结论与这些信息的大致来源边界。\n\
-- 禁止把内部渠道标识或实现层字段当作“用户信息”输出，包括但不限于 `open_id`、`chat_id`、内部 session id、手机号 metadata 字段名、工具名、数据库名、表名、本地目录、文件路径、SQLite/JSON/沙盒状态。\n\
+- 禁止把内部渠道标识或实现层字段当作“用户信息”输出，包括但不限于 `open_id`、`chat_id`、内部 session id、手机号 metadata 字段名、工具名、数据库名、表名、本地目录、文件路径或沙盒状态。\n\
 - 如果需要说明身份识别边界，只能用产品化语言，例如“我会根据当前会话身份来区分你的历史记录和任务”；不要列出原始字段名、目录名或存储位置。\n\
 - 若某类信息本轮无法可靠确认，应直接说明“这部分信息我目前不能可靠确认”，不要通过枚举本地文件、运行目录或内部状态来自证。";
 pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边界】\n\

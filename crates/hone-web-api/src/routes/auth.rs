@@ -110,7 +110,7 @@ mod tests {
         let (push_tx, _) = broadcast::channel(8);
         let storage_path = std::env::temp_dir()
             .join(format!("hone_web_auth_auth_test_{}", uuid::Uuid::new_v4()))
-            .join("sessions.sqlite3");
+            .join("postgres-scope");
         let web_auth = hone_memory::WebAuthStorage::new(&storage_path).expect("web auth");
         let billing = hone_memory::BillingStorage::new(&storage_path).expect("billing");
         AppState {

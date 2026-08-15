@@ -6,7 +6,7 @@
 //! - [`types`]  —— 纯数据结构、错误与常量
 //! - [`schedule`] —— 触发时间 / 日历 / 节假日计算
 //! - [`storage`] —— `CronJobStorage` 的 JSON CRUD 与 `get_due_jobs`
-//! - [`history`] —— `CronJobStorage` 的 SQLite 执行历史读写
+//! - [`history`] —— `CronJobStorage` 的 PostgreSQL 执行历史读写
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 

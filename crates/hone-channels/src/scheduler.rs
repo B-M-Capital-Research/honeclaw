@@ -8698,10 +8698,6 @@ mod tests {
         let root = prefs_dir.parent().unwrap();
         config.storage.notif_prefs_dir = prefs_dir.to_string_lossy().to_string();
         config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
-        config.storage.session_sqlite_db_path =
-            root.join("sessions.sqlite3").to_string_lossy().to_string();
-        config.storage.llm_audit_db_path =
-            root.join("llm_audit.sqlite3").to_string_lossy().to_string();
         config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();

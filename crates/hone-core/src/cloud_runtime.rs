@@ -6717,7 +6717,6 @@ mod tests {
         config.cloud.oss.bucket = "bucket".to_string();
         config.cloud.oss.endpoint = "https://example.com".to_string();
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
-        config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
         config.storage.cron_jobs_dir = "/tmp/hone/cron".to_string();
         config.storage.gen_images_dir = "/tmp/hone/gen_images".to_string();
@@ -6728,16 +6727,6 @@ mod tests {
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/cron"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/gen_images"));
-        assert!(
-            !deps
-                .iter()
-                .any(|dep| dep == &config.storage.session_sqlite_db_path)
-        );
-        assert!(
-            !deps
-                .iter()
-                .any(|dep| dep == &config.storage.llm_audit_db_path)
-        );
     }
 
     #[test]
@@ -6746,7 +6735,6 @@ mod tests {
         config.storage.gen_images_dir = "/tmp/hone/gen_images".to_string();
         let deps = local_durable_dependencies(&config);
         assert_eq!(deps, vec!["/tmp/hone/gen_images".to_string()]);
-        assert!(!deps.iter().any(|dependency| dependency.contains("sqlite")));
     }
 
     #[test]

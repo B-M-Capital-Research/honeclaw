@@ -396,17 +396,11 @@ fn default_tool_guard_patterns() -> Vec<String> {
 pub struct StorageConfig {
     #[serde(default = "default_sessions_dir")]
     pub sessions_dir: String,
-    #[serde(default = "default_session_sqlite_db_path")]
-    pub session_sqlite_db_path: String,
-    #[serde(default = "default_session_runtime_backend")]
-    pub session_runtime_backend: String,
     #[serde(
         default = "default_conversation_quota_dir",
         alias = "conversation_quota_db_path"
     )]
     pub conversation_quota_dir: String,
-    #[serde(default = "default_llm_audit_db_path")]
-    pub llm_audit_db_path: String,
     #[serde(default = "default_llm_audit_retention_days")]
     pub llm_audit_retention_days: u32,
     #[serde(default = "default_true")]
@@ -437,12 +431,10 @@ impl StorageConfig {
     pub fn apply_data_root(&mut self, root: impl AsRef<Path>) {
         let root = root.as_ref();
         self.sessions_dir = root.join("sessions").to_string_lossy().to_string();
-        self.session_sqlite_db_path = root.join("sessions.sqlite3").to_string_lossy().to_string();
         self.conversation_quota_dir = root
             .join("conversation_quota")
             .to_string_lossy()
             .to_string();
-        self.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
         self.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         self.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         self.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
@@ -456,12 +448,6 @@ impl StorageConfig {
         let _ = std::fs::create_dir_all(&self.gen_images_dir);
         let _ = std::fs::create_dir_all(&self.notif_prefs_dir);
         let _ = std::fs::create_dir_all(&self.conversation_quota_dir);
-        if let Some(parent) = PathBuf::from(&self.llm_audit_db_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Some(parent) = PathBuf::from(&self.session_sqlite_db_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
 
         let directories = [
             &self.sessions_dir,
@@ -477,25 +463,14 @@ impl StorageConfig {
         if let Some(data_root) = PathBuf::from(&self.sessions_dir).parent() {
             let _ = crate::harden_private_dir(data_root);
         }
-        let _ = crate::harden_private_file(&self.llm_audit_db_path);
-        let _ = crate::harden_private_file(&self.session_sqlite_db_path);
     }
 }
 
 fn default_sessions_dir() -> String {
     "./data/sessions".to_string()
 }
-fn default_session_sqlite_db_path() -> String {
-    "./data/sessions.sqlite3".to_string()
-}
-fn default_session_runtime_backend() -> String {
-    "json".to_string()
-}
 fn default_conversation_quota_dir() -> String {
     "./data/conversation_quota".to_string()
-}
-fn default_llm_audit_db_path() -> String {
-    "./data/llm_audit.sqlite3".to_string()
 }
 fn default_llm_audit_retention_days() -> u32 {
     30

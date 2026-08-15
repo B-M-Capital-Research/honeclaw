@@ -27,10 +27,7 @@ llm:
 storage:
   base_path: "./data"
   sessions_dir: "./data/sessions"
-  session_sqlite_db_path: "./data/sessions.sqlite3"
-  session_runtime_backend: "json"
   llm_audit_enabled: false
-  llm_audit_db_path: "./data/llm_audit.sqlite3"
   llm_audit_retention_days: 7
   portfolio_dir: "./data/portfolio"
   cron_jobs_dir: "./data/cron_jobs"

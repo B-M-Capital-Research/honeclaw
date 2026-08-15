@@ -2376,7 +2376,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中，并可按部署配置同步到服务端数据库。短信或邮箱验证码由相应发送服务交付；HONE 仅保存验证码摘要和有效期，不存储验证码明文。",
+                "您的账号与对话数据存储于本服务的 PostgreSQL 数据库中。短信或邮箱验证码由相应发送服务交付；HONE 仅保存验证码摘要和有效期，不存储验证码明文。",
               ],
             },
             {
@@ -5025,7 +5025,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Your account and conversation data are stored in the service's local SQLite database by default and may be synchronized to a server database when configured for the deployment. SMS or email codes are delivered by the applicable provider; HONE stores only a code digest and expiration, not the plaintext code.",
+                "Your account and conversation data are stored in the service's PostgreSQL database. SMS or email codes are delivered by the applicable provider; HONE stores only a code digest and expiration, not the plaintext code.",
               ],
             },
             {

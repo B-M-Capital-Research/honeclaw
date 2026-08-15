@@ -214,7 +214,7 @@
   - 前端单元测试（`bun run test:web`）
   - Public Community Edge Worker 类型检查与单元测试（`cd workers/public-community-edge && bun run typecheck && bun run test`）
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
-- **`cargo test` 现在需要一个活的 PostgreSQL。** 事件存储已从 SQLite 迁到 PG，`EventStore` 的测试用 `pg_temp` schema 做隔离，`bot_core` 在 `#[cfg(test)]` 下会直接 panic 而不是降级。跑测试前先：
+- **`cargo test` 现在需要一个活的 PostgreSQL。** `EventStore` 的测试用 `pg_temp` schema 做隔离，`bot_core` 在 `#[cfg(test)]` 下会直接 panic 而不是降级。跑测试前先：
 
   ```bash
   bash scripts/dev_pg.sh up

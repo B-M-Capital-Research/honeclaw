@@ -1,7 +1,7 @@
 //! 管理端"推送日志"路由 — `GET /api/admin/notifications`。
 //!
 //! 合并两类推送审计:
-//! - cron 定时任务执行记录(SQLite `cron_job_runs`)
+//! - cron 定时任务执行记录(PostgreSQL `cloud_cron_job_runs`)
 //! - event-engine 主动推送出口记录(PostgreSQL `delivery_log`)
 //!
 //! 这样管理端能同时排查自定义 cron 任务、Discord/Telegram/Feishu/iMessage

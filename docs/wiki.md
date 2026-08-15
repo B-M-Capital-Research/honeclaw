@@ -36,7 +36,7 @@ Hone is a multi-process local assistant stack:
 - `hone-imessage`, `hone-discord`, `hone-feishu`, `hone-telegram`: optional channel listeners.
 - `packages/app`: SolidJS Web UI for admin console, public chat, memory, settings, and runtime views.
 - `skills/`: built-in skill prompts and optional script-backed skill entrypoints.
-- `memory/`: persistence abstractions for sessions, cron jobs, portfolios, quotas, company profiles, and audit logs; local mode uses files/SQLite, while cloud mode routes supported stores through PG / OSS.
+- `memory/`: PostgreSQL persistence abstractions for sessions, cron jobs, portfolios, quotas, company profiles, Web auth, billing, and audit logs.
 
 At runtime, user messages enter through Web, desktop, or an IM channel. The channel builds a normalized request, `hone-channels` selects and runs the configured agent runner, `hone-tools` exposes tools and skills, `memory` persists state, and the final response is rendered back to the source channel.
 
@@ -111,7 +111,7 @@ Source checkout defaults:
 | `data/runtime/logs/` | Runtime log files. |
 | `data/runtime/*.pid` | Runtime supervisor pid files. |
 | `data/runtime/locks/` | Process lock files. |
-| `data/sessions.sqlite3` | Legacy migration input only; never a runtime store. |
+| `data/sessions/` | Data-root anchor and historical JSON import input; never the runtime session truth source. |
 | `agent-sandboxes/` | Actor-scoped workspaces and company profile docs. |
 
 Installed release defaults:
@@ -287,7 +287,7 @@ Important config areas:
 - `llm.*`: provider keys and OpenAI-compatible/OpenRouter routes.
 - `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
 - `web.*`: Web console auth token and workflow/research integration settings.
-- `storage.*`: file paths such as `sessions_dir`, `conversation_quota_dir`, `portfolio_dir`, `cron_jobs_dir`, `gen_images_dir`, and `notif_prefs_dir`, plus legacy migration compatibility fields. Runtime database authority is PostgreSQL; `session_sqlite_db_path`, `session_runtime_backend`, and `llm_audit_db_path` no longer select live backends and remain only until the separate config-cleanup phase.
+- `storage.*`: file paths such as `sessions_dir`, `conversation_quota_dir`, `portfolio_dir`, `cron_jobs_dir`, `gen_images_dir`, and `notif_prefs_dir`, plus `llm_audit_retention_days` and `llm_audit_enabled`. Runtime database authority is PostgreSQL.
 - `cloud.*`: `cloud.postgres` is the mandatory PostgreSQL runtime store; `cloud.oss` is optional object storage. `cloud.strict_no_local_storage` / `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` fail startup while optional local file fallbacks remain.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.

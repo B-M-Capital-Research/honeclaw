@@ -880,7 +880,6 @@ fn make_test_core_with_config(
         .to_string_lossy()
         .to_string();
     config.storage.llm_audit_enabled = false;
-    config.storage.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
     config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
     config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
@@ -913,7 +912,6 @@ fn make_strict_tool_loop_test_core_with_config(
         .to_string_lossy()
         .to_string();
     config.storage.llm_audit_enabled = false;
-    config.storage.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
     config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
     config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
@@ -5209,10 +5207,10 @@ fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
 
     assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
     assert!(system_prompt.contains("必须调用真实 `cron_job` 工具完成"));
-    assert!(system_prompt.contains("不能用沙盒目录、SQLite、会话历史或文件列表自查替代"));
+    assert!(system_prompt.contains("不能用沙盒目录、内部数据库、会话历史或文件列表自查替代"));
     assert!(system_prompt.contains("定时任务管理暂时不可用，请稍后再试"));
     assert!(system_prompt.contains("禁止向用户输出 `工具未暴露`"));
-    assert!(system_prompt.contains("`sessions.sqlite3`"));
+    assert!(system_prompt.contains("`cloud_cron_job_runs`"));
     assert!(system_prompt.contains("不要直接复述 `enabled=true`"));
     assert!(system_prompt.contains("已启用 / 已停用"));
     assert!(system_prompt.contains("豁免勿扰"));
@@ -6781,7 +6779,6 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
         .to_string_lossy()
         .to_string();
     config.storage.llm_audit_enabled = false;
-    config.storage.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
     config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
     config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();

@@ -128,7 +128,7 @@ impl EventStore {
     /// 真实 PostgreSQL 测试构造器。
     ///
     /// 路径只作为缓存连接的隔离 namespace；表建在该连接的 `pg_temp` schema，
-    /// 不会读写 SQLite，也不会污染生产 schema。同一路径的两个句柄复用连接，
+    /// 不会污染生产 schema。同一路径的两个句柄复用连接，
     /// 用于覆盖跨 `EventStore` 句柄可见性。
     #[doc(hidden)]
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {

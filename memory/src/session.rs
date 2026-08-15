@@ -24,12 +24,9 @@ pub struct InterruptedSessionInfo {
     pub actor_channel_scope: Option<String>,
 }
 
-/// Session 的「索引/加速」后端抽象。
+/// Session 的持久化后端抽象。
 ///
-/// JSON 文件永远是权威存储；实现者只负责按 session_id 索引、列出和回填。
-/// 设计成 trait 主要是两件事：
-/// - 允许测试或 runtime 层注入 mock/替代实现（例如把 SQLite 换成其它 KV）
-/// - 把 `SessionStorage` 对 SQLite 的硬依赖去掉，让它只依赖 trait
+/// PostgreSQL 是权威存储；这个 trait 允许测试注入同语义的内存实现。
 ///
 /// 语义约定：
 /// - `upsert`：必须幂等；`source_path` 是对应 JSON 文件的绝对路径，
@@ -891,10 +888,7 @@ impl SessionStorage {
         )
     }
 
-    /// 加载会话。
-    ///
-    /// Json 主后端直接读文件；Sqlite 主后端先查索引，未命中再读 JSON 并
-    /// 回填索引（保证 JSON→SQLite 的数据迁移过程中老 session 也能被索引）。
+    /// 从权威后端加载会话。
     pub fn load_session(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
         self.storage.load(session_id)
     }

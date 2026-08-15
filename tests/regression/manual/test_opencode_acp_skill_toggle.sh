@@ -236,10 +236,7 @@ agent:
   system_prompt_path: "$ROOT_DIR/soul.md"
 storage:
   sessions_dir: "$DATA_DIR/sessions"
-  session_sqlite_db_path: "$DATA_DIR/sessions.sqlite3"
-  session_runtime_backend: "json"
   conversation_quota_dir: "$DATA_DIR/conversation_quota"
-  llm_audit_db_path: "$DATA_DIR/llm_audit.sqlite3"
   llm_audit_enabled: false
   portfolio_dir: "$DATA_DIR/portfolio"
   cron_jobs_dir: "$DATA_DIR/cron_jobs"

@@ -275,7 +275,7 @@ static RE_INTERNAL_FRAMEWORK_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::n
 });
 static RE_INTERNAL_STORAGE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|sessions\.sqlite3|session_messages|session_metadata|当前沙盒|holdings\.json|空目录|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|data/cron_jobs|cloud_sessions|cloud_cron_jobs|cloud_cron_job_runs|cloud_llm_audit_records|session_messages|session_metadata|当前沙盒|holdings\.json|空目录|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -288,7 +288,7 @@ static RE_INTERNAL_USER_INFO_IDENTITY_COPY_SENTENCE: LazyLock<regex::Regex> = La
 static RE_INTERNAL_USER_INFO_STORAGE_ENUM_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(
     || {
         regex::Regex::new(
-            r#"[^\n。！？]*(?:当前工作区|当前目录|当前本地|本地可见|存在公司画像目录)[^\n。！？]*(?:company_profiles|data/notif_prefs|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|uploads|公司画像公司画像)[^\n。！？]*[。！？]?"#,
+            r#"[^\n。！？]*(?:当前工作区|当前目录|当前本地|本地可见|存在公司画像目录)[^\n。！？]*(?:company_profiles|data/notif_prefs|data/portfolio|data/cron_jobs|cloud_sessions|cloud_cron_jobs|cloud_cron_job_runs|cloud_llm_audit_records|uploads|公司画像公司画像)[^\n。！？]*[。！？]?"#,
         )
         .expect("valid regex")
     },
@@ -1533,14 +1533,14 @@ mod tests {
 
     #[test]
     fn sanitize_user_visible_output_strips_cron_storage_self_inspection_copy() {
-        let raw = "当前目录只看到 data/sessions.sqlite3，sessions.sqlite3 当前没有可查询的任务表，session_messages 和 session_metadata 也不能代表真实任务。请稍后再试。";
+        let raw = "当前目录只看到 cloud_sessions，cloud_cron_jobs 当前没有可查询的任务表，cloud_cron_job_runs 和 cloud_llm_audit_records 也不能代表真实任务。请稍后再试。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
         assert_eq!(sanitized.content, "请稍后再试。");
-        assert!(!sanitized.content.contains("data/sessions.sqlite3"));
-        assert!(!sanitized.content.contains("sessions.sqlite3"));
-        assert!(!sanitized.content.contains("session_messages"));
-        assert!(!sanitized.content.contains("session_metadata"));
+        assert!(!sanitized.content.contains("cloud_sessions"));
+        assert!(!sanitized.content.contains("cloud_cron_jobs"));
+        assert!(!sanitized.content.contains("cloud_cron_job_runs"));
+        assert!(!sanitized.content.contains("cloud_llm_audit_records"));
     }
 
     #[test]
@@ -1956,7 +1956,7 @@ mod tests {
 
     #[test]
     fn sanitize_user_visible_output_strips_user_info_metadata_and_storage_copy() {
-        let raw = "当前会话 ID：Actor_feishu__direct__ou_123。\n我能看到飞书 open_id、chat_id、手机号等元数据。\n当前工作区可见：data/sessions.sqlite3 / company_profiles 目录 / data/cron_jobs 目录 / data/portfolio 目录 / data/notif_prefs 目录 / uploads 目录。\n你当前让我长期跟踪的重点是美股 AI、半导体 和 黄金。";
+        let raw = "当前会话 ID：Actor_feishu__direct__ou_123。\n我能看到飞书 open_id、chat_id、手机号等元数据。\n当前工作区可见：cloud_sessions / company_profiles 目录 / data/cron_jobs 目录 / data/portfolio 目录 / data/notif_prefs 目录 / uploads 目录。\n你当前让我长期跟踪的重点是美股 AI、半导体 和 黄金。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
         assert_eq!(
@@ -1966,7 +1966,7 @@ mod tests {
         assert!(!sanitized.content.contains("会话 ID"));
         assert!(!sanitized.content.contains("open_id"));
         assert!(!sanitized.content.contains("chat_id"));
-        assert!(!sanitized.content.contains("data/sessions.sqlite3"));
+        assert!(!sanitized.content.contains("cloud_sessions"));
         assert!(!sanitized.content.contains("company_profiles"));
         assert!(!sanitized.content.contains("uploads"));
     }

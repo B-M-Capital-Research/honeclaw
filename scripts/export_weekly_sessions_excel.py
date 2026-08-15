@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -46,18 +45,6 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/sessions"),
         help="会话 JSON 目录，默认 data/sessions",
-    )
-    parser.add_argument(
-        "--sqlite-db",
-        type=Path,
-        default=Path("data/sessions.sqlite3"),
-        help="会话 SQLite 路径，默认 data/sessions.sqlite3",
-    )
-    parser.add_argument(
-        "--source",
-        choices=("auto", "json", "sqlite", "both"),
-        default="auto",
-        help="导出数据来源：auto/json/sqlite/both，默认 auto",
     )
     parser.add_argument(
         "--output",
@@ -142,21 +129,14 @@ def sender_label(role: str) -> str | None:
 
 def collect_rows(
     sessions_dir: Path,
-    sqlite_db: Path,
     start_date: date,
     end_date: date,
-    source: str,
 ) -> dict[str, list[ExportRow]]:
     rows_by_sheet: dict[str, list[ExportRow]] = defaultdict(list)
     dedupe_keys: set[tuple[str, str, str, str]] = set()
 
-    use_json = source in {"json", "both"} or (source == "auto" and sessions_dir.exists())
-    use_sqlite = source in {"sqlite", "both"} or (source == "auto" and sqlite_db.exists())
-
-    if not use_json and not use_sqlite:
-        raise FileNotFoundError(
-            f"No available data source. sessions_dir={sessions_dir} sqlite_db={sqlite_db}"
-        )
+    if not sessions_dir.exists():
+        raise FileNotFoundError(f"Sessions directory not found: {sessions_dir}")
 
     def append_row(row: ExportRow) -> None:
         dedupe_key = (
@@ -171,116 +151,42 @@ def collect_rows(
         sheet_name = row.timestamp.strftime("%Y%m%d")
         rows_by_sheet[sheet_name].append(row)
 
-    if use_json:
-        if not sessions_dir.exists():
-            raise FileNotFoundError(f"Sessions directory not found: {sessions_dir}")
-
-        for path in sorted(sessions_dir.glob("*.json")):
-            if path.name.startswith("."):
-                continue
-            try:
-                session = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-
-            messages = session.get("messages")
-            if not isinstance(messages, list):
-                continue
-
-            session_id = str(session.get("id") or path.stem)
-            for message in messages:
-                if not isinstance(message, dict):
-                    continue
-                sender = sender_label(str(message.get("role", "")))
-                if sender is None:
-                    continue
-
-                timestamp = parse_timestamp(message.get("timestamp"))
-                if timestamp is None:
-                    continue
-                current_date = timestamp.date()
-                if current_date < start_date or current_date > end_date:
-                    continue
-
-                append_row(
-                    ExportRow(
-                        session_id=session_id,
-                        user_identifier=choose_user_identifier(session, message),
-                        timestamp=timestamp,
-                        sender=sender,
-                        message=stringify_content(message.get("content")),
-                    )
-                )
-
-    if use_sqlite:
-        if not sqlite_db.exists():
-            raise FileNotFoundError(f"SQLite database not found: {sqlite_db}")
-
-        conn = sqlite3.connect(str(sqlite_db))
-        conn.row_factory = sqlite3.Row
+    for path in sorted(sessions_dir.glob("*.json")):
+        if path.name.startswith("."):
+            continue
         try:
-            query = """
-                SELECT
-                    sm.session_id,
-                    sm.role,
-                    sm.content,
-                    sm.timestamp,
-                    sm.mobile,
-                    sm.open_id,
-                    sm.chat_id,
-                    sm.channel,
-                    s.actor_channel,
-                    s.actor_user_id
-                FROM session_messages sm
-                LEFT JOIN sessions s ON s.session_id = sm.session_id
-                WHERE sm.role IN ('user', 'assistant')
-                  AND sm.timestamp IS NOT NULL
-            """
-            for record in conn.execute(query):
-                timestamp = parse_timestamp(record["timestamp"])
-                if timestamp is None:
-                    continue
-                current_date = timestamp.date()
-                if current_date < start_date or current_date > end_date:
-                    continue
+            session = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
 
-                sender = sender_label(str(record["role"]))
-                if sender is None:
-                    continue
+        messages = session.get("messages")
+        if not isinstance(messages, list):
+            continue
 
-                user_identifier = ""
-                for value in (
-                    record["mobile"],
-                    record["open_id"],
-                    record["chat_id"],
-                ):
-                    if isinstance(value, str) and value.strip():
-                        user_identifier = value.strip()
-                        break
-                if not user_identifier:
-                    actor_channel = record["actor_channel"]
-                    actor_user_id = record["actor_user_id"]
-                    if (
-                        isinstance(actor_channel, str)
-                        and actor_channel.strip()
-                        and isinstance(actor_user_id, str)
-                        and actor_user_id.strip()
-                    ):
-                        user_identifier = f"{actor_channel.strip()}:{actor_user_id.strip()}"
-                    else:
-                        user_identifier = str(record["session_id"])
+        session_id = str(session.get("id") or path.stem)
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            sender = sender_label(str(message.get("role", "")))
+            if sender is None:
+                continue
 
-                append_row(
-                    ExportRow(
-                        session_id=str(record["session_id"]),
-                        user_identifier=user_identifier,
-                        timestamp=timestamp,
-                        sender=sender,
-                        message=stringify_content(record["content"]),
-                    )
+            timestamp = parse_timestamp(message.get("timestamp"))
+            if timestamp is None:
+                continue
+            current_date = timestamp.date()
+            if current_date < start_date or current_date > end_date:
+                continue
+
+            append_row(
+                ExportRow(
+                    session_id=session_id,
+                    user_identifier=choose_user_identifier(session, message),
+                    timestamp=timestamp,
+                    sender=sender,
+                    message=stringify_content(message.get("content")),
                 )
-        finally:
-            conn.close()
+            )
 
     for rows in rows_by_sheet.values():
         rows.sort(key=lambda item: item.timestamp)
@@ -531,10 +437,8 @@ def main() -> int:
 
     rows_by_sheet = collect_rows(
         args.sessions_dir,
-        args.sqlite_db,
         start_date,
         end_date,
-        args.source,
     )
     write_workbook(output_path, ordered_days, rows_by_sheet)
 

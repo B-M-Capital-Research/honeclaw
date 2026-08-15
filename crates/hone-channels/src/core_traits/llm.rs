@@ -23,7 +23,7 @@ pub trait LlmProviderBundle: Send + Sync {
     /// 辅助 LLM（heartbeat / session compaction 等后台任务使用)。
     fn auxiliary_llm(&self) -> Option<Arc<dyn LlmProvider>>;
 
-    /// 审计落盘 sink（启用时把 LLM 请求 / 响应保存到 SQLite）。
+    /// 审计落盘 sink（启用时把 LLM 请求 / 响应保存到 PostgreSQL）。
     fn llm_audit_sink(&self) -> Option<Arc<dyn LlmAuditSink>>;
 
     /// 辅助 LLM 的显示用模型名称（profile -> direct auxiliary -> `openrouter.sub_model`）。

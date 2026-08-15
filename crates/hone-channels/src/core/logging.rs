@@ -163,8 +163,7 @@ impl HoneBotCore {
 
         if self.llm_audit.is_some() {
             tracing::info!(
-                "[Startup/{channel}] llm.audit.path={} retention_days={}",
-                self.config.storage.llm_audit_db_path,
+                "[Startup/{channel}] llm.audit.backend=postgresql retention_days={}",
                 self.config.storage.llm_audit_retention_days
             );
         } else {

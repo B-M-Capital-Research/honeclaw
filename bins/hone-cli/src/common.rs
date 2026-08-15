@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_effective_config_generation_preserves_runtime_config() {
+    fn cli_effective_config_generation_preserves_audit_retention() {
         let root = temp_dir("hone_cli_runtime_rollout");
         let runtime_dir = root.join("data/runtime");
         std::fs::create_dir_all(&runtime_dir).unwrap();
@@ -173,7 +173,7 @@ mod tests {
             &canonical,
             r#"
 storage:
-  session_runtime_backend: "json"
+  llm_audit_retention_days: 45
 "#,
         )
         .unwrap();
@@ -184,7 +184,7 @@ storage:
 
         assert!(!revision.is_empty());
         let effective_config = HoneConfig::from_file(&effective).unwrap();
-        assert_eq!(effective_config.storage.session_runtime_backend, "json");
+        assert_eq!(effective_config.storage.llm_audit_retention_days, 45);
 
         let _ = std::fs::remove_dir_all(root);
     }

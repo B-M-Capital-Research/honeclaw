@@ -347,11 +347,6 @@ fn assert_config_example_agent_defaults(config: &HoneConfig) {
 fn assert_config_example_storage_defaults(config: &HoneConfig) {
     assert_eq!(config.storage.sessions_dir, "./data/sessions");
     assert_eq!(
-        config.storage.session_sqlite_db_path,
-        "./data/sessions.sqlite3"
-    );
-    assert_eq!(config.storage.session_runtime_backend, "json");
-    assert_eq!(
         config.storage.conversation_quota_dir,
         "./data/conversation_quota"
     );
@@ -443,14 +438,10 @@ fn assert_config_example_event_engine_defaults(config: &HoneConfig, raw: &str) {
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
-    assert!(
-        !yaml_has_key(storage, "session_db_path"),
-        "storage.session_db_path was a draft name; use session_sqlite_db_path"
-    );
     assert!(yaml_has_key(storage, "sessions_dir"));
-    assert!(yaml_has_key(storage, "session_sqlite_db_path"));
-    assert!(yaml_has_key(storage, "session_runtime_backend"));
     assert!(yaml_has_key(storage, "conversation_quota_dir"));
+    assert!(yaml_has_key(storage, "llm_audit_retention_days"));
+    assert!(yaml_has_key(storage, "llm_audit_enabled"));
     assert!(yaml_has_key(storage, "gen_images_dir"));
     assert!(yaml_has_key(storage, "notif_prefs_dir"));
 
@@ -561,37 +552,6 @@ fn assert_public_auth_runbook_env_docs(runbook: &str) {
     );
 }
 
-fn assert_session_sqlite_runbook_runtime_docs(runbook: &str) {
-    assert!(
-        runbook.contains("`storage.session_runtime_backend` 决定"),
-        "session SQLite runbook should describe the runtime backend switch"
-    );
-    assert!(
-        runbook.contains("`json`：运行时读取 `data/sessions/*.json`"),
-        "session SQLite runbook should document the JSON runtime read path"
-    );
-    assert!(
-        runbook.contains("`sqlite`：运行时读取 `storage.session_sqlite_db_path`"),
-        "session SQLite runbook should document the SQLite runtime read path"
-    );
-    assert!(
-        !runbook.contains("SQLite 只是额外镜像，不参与线上请求"),
-        "session SQLite runbook should not claim SQLite is never in the online request path"
-    );
-    assert!(
-        !runbook.contains("Web/API 读路径改造"),
-        "session SQLite runbook should not claim Web/API read path work is still pending"
-    );
-    assert!(
-        runbook.contains("当 `session_runtime_backend: \"json\"` 时，SQLite 影子库不是线上真相源"),
-        "session SQLite runbook should scope shadow-store risk to JSON runtime"
-    );
-    assert!(
-        runbook.contains("当 `session_runtime_backend: \"sqlite\"` 时，SQLite 是运行时读路径"),
-        "session SQLite runbook should document SQLite runtime risk"
-    );
-}
-
 fn assert_opencode_runbook_config_file_docs(runbook: &str) {
     assert!(
         runbook.contains("~/.config/opencode/opencode.json"),
@@ -607,7 +567,7 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
     for expected in [
         "`daily_conversation_limit`",
         "`conversation_quota_dir`",
-        "`llm_audit_db_path`",
+        "`llm_audit_retention_days`",
         "`notif_prefs_dir`",
         "`event_engine.*`",
         "`cloud.strict_no_local_storage`",
@@ -709,13 +669,13 @@ fn assert_technical_spec_config_sections_match_roots(technical_spec: &str) {
 fn assert_technical_spec_storage_keys_match_schema(technical_spec: &str) {
     for expected in [
         "`sessions_dir`: `./data/sessions`",
-        "`session_sqlite_db_path`: `./data/sessions.sqlite3`",
         "`portfolio_dir`: `./data/portfolio`",
         "`cron_jobs_dir`: `./data/cron_jobs`",
         "`gen_images_dir`: `./data/gen_images`",
         "`notif_prefs_dir`: `./data/notif_prefs`",
         "`conversation_quota_dir`: `./data/conversation_quota`",
-        "`llm_audit_db_path`: `./data/llm_audit.sqlite3`",
+        "`llm_audit_retention_days`: `30`",
+        "`llm_audit_enabled`: `true`",
     ] {
         assert!(
             technical_spec.contains(expected),
@@ -2031,17 +1991,15 @@ agent:
 }
 
 #[test]
-fn storage_config_no_longer_serializes_a_session_shadow_switch() {
+fn storage_config_serializes_current_audit_settings() {
     let value = serde_yaml::to_value(HoneConfig::default()).expect("serialize config");
     let storage = value
         .as_mapping()
         .and_then(|root| yaml_key(root, "storage"))
         .and_then(serde_yaml::Value::as_mapping)
         .expect("storage mapping");
-    assert!(!yaml_has_key(
-        storage,
-        "session_sqlite_shadow_write_enabled"
-    ));
+    assert!(yaml_has_key(storage, "llm_audit_retention_days"));
+    assert!(yaml_has_key(storage, "llm_audit_enabled"));
 }
 
 #[test]
@@ -2177,11 +2135,6 @@ fn config_example_avoids_stale_config_knobs() {
     let backend_runbook =
         std::fs::read_to_string(repo_file("docs/runbooks/backend-deployment.md")).unwrap();
     assert_public_auth_runbook_env_docs(&backend_runbook);
-
-    let session_sqlite_runbook =
-        std::fs::read_to_string(repo_file("docs/runbooks/session-sqlite-shadow-backfill.md"))
-            .unwrap();
-    assert_session_sqlite_runbook_runtime_docs(&session_sqlite_runbook);
 
     let opencode_runbook =
         std::fs::read_to_string(repo_file("docs/runbooks/opencode-setup.md")).unwrap();

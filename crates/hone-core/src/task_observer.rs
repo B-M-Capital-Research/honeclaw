@@ -7,7 +7,7 @@
 //!
 //! 这是给"机器/管理端只读视图"准备的全局任务维度账,跟下列已存在的观测**正交**
 //! ——后者各有读者,合并会破坏各自优化:
-//! - `cron_job_runs` SQLite 表(memory crate):终端用户视角的 cron job 历史
+//! - `cloud_cron_job_runs` PostgreSQL 表(memory crate):终端用户视角的 cron job 历史
 //! - `data/daily_reports/*.md`:人类可读的当日叙事
 //! - `data/runtime/{channel}.heartbeat.{json,error}`:进程存活 sidecar
 //! - `delivery_log` 表(event-engine):router 出口侧账

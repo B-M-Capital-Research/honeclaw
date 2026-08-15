@@ -1,6 +1,6 @@
 # Hone-Financial Technical Specification
 
-Last updated: 2026-08-01
+Last updated: 2026-08-16
 Status: Aligned with the current implementation
 
 ## 1. Document Purpose
@@ -23,7 +23,7 @@ Current capabilities:
 
 - Multiple entrypoints: Web console, public Web API, CLI, iMessage, Discord, Feishu, Telegram, and Desktop
 - Agent execution modes: `codex_acp` (default), `hone_cloud`, `opencode_acp`, `gemini_cli`, and `codex_cli`; `gemini_acp` remains deserializable legacy config but is rejected at runtime
-- Local JSON file storage plus SQLite-backed session indexes/runtime reads, cron run history, Web auth sessions, and LLM audit records
+- PostgreSQL-authoritative runtime storage for sessions, cron jobs/history, Web auth, billing, LLM audit, quotas, preferences, portfolios, company profiles, and event-engine state
 - Multi-channel actor isolation by `channel + user_id + channel_scope`
 - A Claude Code-style skill system that injects only query-relevant summaries, uses `discover_skills` for misses, and loads full `SKILL.md` content only when invoked
 - Skills can optionally declare a default `script` entrypoint that `skill_tool` may execute explicitly inside the skill directory
@@ -43,7 +43,7 @@ Backend and runtime:
 - Tokio async runtime
 - Reqwest HTTP client
 - Tracing logs
-- Rusqlite for reading the macOS `chat.db` used by iMessage
+- Rusqlite for read-only legacy imports and the macOS `chat.db` used by iMessage
 
 Frontend:
 
@@ -135,8 +135,8 @@ Hone-Financial/
 
 #### `memory/`
 
-- JSON and SQLite storage layer
-- Stores sessions, portfolios, cron jobs, web auth, delivery logs, and related runtime indexes
+- PostgreSQL storage layer
+- Stores sessions, portfolios, cron jobs, Web auth, billing, LLM audit, quotas, preferences, company profiles, and related runtime indexes
 
 #### `bins/*`
 
@@ -340,18 +340,18 @@ Precedence is:
 
 ### 6.1 Storage Strategy
 
-PostgreSQL is the authoritative runtime store for sessions, cron definitions/history, Web auth, billing, LLM audit, quotas, notification preferences, portfolios, company profiles, and event-engine state. The legacy SQLite path/backend fields below remain parsed only for migration compatibility until the separate configuration-cleanup phase; they do not select a runtime backend.
+PostgreSQL is the authoritative runtime store for sessions, cron definitions/history, Web auth, billing, LLM audit, quotas, notification preferences, portfolios, company profiles, and event-engine state. Runtime configuration has no alternate database backend or shadow-store switch.
 
 Main directories come from `config.storage.*`:
 
 - `sessions_dir`: `./data/sessions`
-- `session_sqlite_db_path`: `./data/sessions.sqlite3`
 - `portfolio_dir`: `./data/portfolio`
 - `cron_jobs_dir`: `./data/cron_jobs`
 - `gen_images_dir`: `./data/gen_images`
 - `notif_prefs_dir`: `./data/notif_prefs`
 - `conversation_quota_dir`: `./data/conversation_quota`
-- `llm_audit_db_path`: `./data/llm_audit.sqlite3`
+- `llm_audit_retention_days`: `30`
+- `llm_audit_enabled`: `true`
 
 When `cloud.oss` is configured through runtime env, public Web uploads are stored in OSS under `cloud.oss.public_upload_prefix`, and `/api/public/image` / `/api/public/file` can proxy managed `oss://bucket/key` paths. Other generated files remain under `config.storage.*` until their cloud storage adapters land.
 
@@ -359,7 +359,7 @@ When `cloud.oss` is configured through runtime env, public Web uploads are store
 
 `memory/src/session.rs`
 
-- Runtime sessions always use PG `cloud_sessions`; legacy `session_runtime_backend` and SQLite path values are inert compatibility input pending removal
+- Runtime sessions always use PG `cloud_sessions`
 - The session structure contains `actor`, the message list, metadata, and summary
 - The Web UI, CLI, and every channel reuse the same persistence layer
 

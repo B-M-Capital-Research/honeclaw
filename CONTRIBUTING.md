@@ -7,7 +7,7 @@
 - 安装 Rust 1.87 或更高版本
 - 安装 Bun 1.3 或更高版本
 - 先复制 `config.example.yaml` 再创建本地配置
-- 不要提交任何真实 token、secret、cookie、session、SQLite 数据库或运行时日志
+- 不要提交任何真实 token、secret、cookie、session、数据库文件或运行时日志
 
 ## 建议流程
 

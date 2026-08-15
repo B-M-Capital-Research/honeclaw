@@ -418,8 +418,6 @@ mod tests {
             .to_string_lossy()
             .to_string();
         config.storage.llm_audit_enabled = false;
-        config.storage.llm_audit_db_path =
-            root.join("llm_audit.sqlite3").to_string_lossy().to_string();
         config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
