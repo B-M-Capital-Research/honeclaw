@@ -88,6 +88,16 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app
 
+      # SQLite→PostgreSQL 迁移把 91 个原本默认执行的 memory/ 测试改成了打真实 PG 的
+      # `#[ignore]` 集成测试。这个 job 上面就有 postgres service,再让它们默认不跑
+      # 等于白白丢掉覆盖面(AGENTS.md 第 7 条:纯重构不得削弱已有覆盖面)。
+      #
+      # 只跑 `-p hone-memory`,不要对整个 workspace 加 `--ignored`:其它 crate 的
+      # ignored 测试是既有的**外部依赖**用例(FMP poller、Apple Vision OCR 需要
+      # HONE_TEST_IMAGE_OCR_PATH、live LLM),按仓库惯例本就不进默认门禁。
+      - name: Rust PostgreSQL integration tests
+        run: cargo test -p hone-memory --all-targets -- --ignored
+
       - name: CI-safe regression scripts
         run: bash tests/regression/run_ci.sh
 
