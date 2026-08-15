@@ -3,6 +3,7 @@
 //! 通过 Agent 会话管理用户的定时任务。
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
@@ -20,6 +21,7 @@ pub struct CronJobTool {
     channel_target: String,
     admin_bypass: bool,
     postgres: Option<CloudPgRuntime>,
+    storage: OnceLock<hone_memory::CronJobStorage>,
     /// Where per-actor notification prefs live. Cron jobs are only one of the
     /// stores that can push on a schedule; without this the tool can report an
     /// empty job list while daily digests keep firing.
@@ -41,6 +43,7 @@ impl CronJobTool {
             channel_target: channel_target.to_string(),
             admin_bypass,
             postgres: None,
+            storage: OnceLock::new(),
             notif_prefs_dir: None,
             default_digest_slot_times: Vec::new(),
         }
@@ -59,6 +62,7 @@ impl CronJobTool {
             channel_target: channel_target.to_string(),
             admin_bypass,
             postgres: Some(postgres),
+            storage: OnceLock::new(),
             notif_prefs_dir: None,
             default_digest_slot_times: Vec::new(),
         }
@@ -133,11 +137,19 @@ impl CronJobTool {
             .ok_or_else(|| hone_core::HoneError::Tool("缺少 actor 身份，无法管理定时任务".into()))
     }
 
-    fn storage(&self) -> hone_core::HoneResult<hone_memory::CronJobStorage> {
-        if let Some(postgres) = self.postgres.clone() {
-            return hone_memory::CronJobStorage::new_cloud(postgres);
+    fn storage(&self) -> hone_core::HoneResult<&hone_memory::CronJobStorage> {
+        if let Some(storage) = self.storage.get() {
+            return Ok(storage);
         }
-        Ok(hone_memory::CronJobStorage::new(&self.data_dir))
+        let storage = if let Some(postgres) = self.postgres.clone() {
+            hone_memory::CronJobStorage::new_cloud(postgres)?
+        } else {
+            hone_memory::CronJobStorage::new(&self.data_dir)
+        };
+        let _ = self.storage.set(storage);
+        self.storage.get().ok_or_else(|| {
+            hone_core::HoneError::Storage("定时任务 PostgreSQL 存储初始化失败".to_string())
+        })
     }
 }
 
