@@ -876,3 +876,22 @@ OSS whenever mode is cloud. The user's requirement is that local development kee
 from source (`scripts/deploy_source_runtime.sh`), and local dev has no OSS. With `CloudMode::Local`
 deleted, that validation would make every local run fail. Phase 3 must decouple the two:
 PG required, OSS optional-with-degraded-object-storage.
+
+---
+
+## 9. 生产观测（2026-08-16 凌晨，部署 `1c56078e` 之后）
+
+| 指标 | 7 天基线 | 部署后 |
+|---|---|---|
+| 心跳失败率 | 12.6% | **2/33 = 6%** |
+| 失败构成 | 契约违规占 62% | **契约违规 0；两条都是 upstream HTTP 529（LLM 供应商集群过载）** |
+| `duration_ms` | 全 NULL（列不存在） | 真实数据，均值 32.5 秒 |
+| 后端负载 | role=all 下 ~1.8 / 2 核 | 0.05 |
+| `/api/meta` | 挂起 >120 秒 | 0.95 秒（冷启后 3.7 毫秒） |
+| `delivery_log` | SQLite 1397 行 | PG 1403 行且在增长 —— 证明生产已走 PG 路径 |
+
+失败模式从「我们自己的 bug」变成了「上游容量」，这是本轮整治最有意义的一个变化。
+样本量仍小，日度数据才算结论。
+
+**待复查**：流式重试目前是否把 `upstream HTTP 529` 归类为可重试。529 是「集群过载」，
+立即重试未必有帮助，可能需要更长的退避，或干脆记为供应商侧事件而不算任务失败。
