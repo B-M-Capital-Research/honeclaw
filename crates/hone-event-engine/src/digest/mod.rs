@@ -18,6 +18,7 @@
 //! `hone_event_engine::digest::*` 路径稳定。
 
 mod buffer;
+pub(crate) mod coalesce;
 pub(crate) mod curation;
 mod payload;
 pub(crate) mod render;

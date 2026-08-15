@@ -395,102 +395,33 @@ impl NotificationRouter {
             }
             match effective_sev {
                 Severity::High => {
-                    let fmt = self.sink.format_for(&actor);
-                    let mainline = actor_mainline_for_event(event, &user_prefs);
-                    let default_body =
-                        renderer::render_immediate_with_mainline(event, fmt, mainline);
-                    let body = if matches!(fmt, RenderFormat::Plain)
-                        && !is_structured_earnings_review(event)
-                    {
-                        match self.polisher.polish(event, &default_body).await {
-                            Some(polished) => polished,
-                            None => default_body,
-                        }
-                    } else {
-                        default_body
-                    };
-                    if let Err(e) = self.sink.send(&actor, &body).await {
-                        tracing::warn!(
-                            actor = %actor_key(&actor),
-                            event_id = %event.id,
-                            kind = %kind_tag(&event.kind),
-                            source = %event.source,
-                            symbols = ?event.symbols,
-                            body_len = body.chars().count(),
-                            body_preview = %body_preview(&body),
-                            "sink send failed: {e:#}"
-                        );
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            &actor_key(&actor),
-                            "sink",
-                            sev,
-                            "failed",
-                            Some(&body),
-                        );
-                        continue;
-                    }
-                    let success_status = self.sink.success_status_for(&actor);
-                    let delivery_result = if success_status == "sent" {
-                        self.store
-                            .log_confirmed_delivery(&event.id, &actor, "sink", sev, &body, None)
-                    } else {
-                        self.store.log_delivery(
-                            &event.id,
-                            &actor_key(&actor),
-                            "sink",
-                            sev,
-                            success_status,
-                            Some(&body),
-                        )
-                    };
-                    if let Err(error) = delivery_result {
-                        tracing::warn!(
-                            actor = %actor_key(&actor),
-                            event_id = %event.id,
-                            "confirmed delivery audit failed: {error:#}"
-                        );
-                    }
-                    tracing::info!(
-                        actor = %actor_key(&actor),
-                        event_id = %event.id,
-                        kind = %kind_tag(&event.kind),
-                        source = %event.source,
-                        symbols = ?event.symbols,
-                        severity = ?sev,
-                        status = %success_status,
-                        body_len = body.chars().count(),
-                        body_preview = %body_preview(&body),
-                        "sink delivered"
-                    );
-                    if is_structured_earnings_review(event)
-                        && let Some(document_url) = event.url.as_deref()
-                    {
-                        match self
-                            .digest
-                            .remove_earnings_release_documents(&actor, document_url)
-                        {
-                            Ok(removed) => {
-                                for superseded in removed {
-                                    let _ = self.store.log_delivery(
-                                        &superseded.id,
-                                        &actor_key(&actor),
-                                        "router",
-                                        superseded.severity,
-                                        "superseded",
-                                        None,
-                                    );
-                                }
+                    // 批模式下,盘中 band High 先进合流缓冲,批尾统一决定
+                    // 「逐条发」还是「合并成一条集体异动」——防止开盘集体跳空
+                    // 时 10 秒内连发 N 条 DM(见 config::PRICE_BURST_MIN_MERGE)。
+                    if is_intraday_price_band_alert(event) {
+                        let stashed = {
+                            let mut burst =
+                                self.price_burst.lock().expect("price burst lock poisoned");
+                            if let Some(map) = burst.as_mut() {
+                                map.entry(actor_key(&actor))
+                                    .or_insert_with(|| (actor.clone(), Vec::new()))
+                                    .1
+                                    .push((event.clone(), sev));
+                                true
+                            } else {
+                                false
                             }
-                            Err(error) => tracing::warn!(
-                                actor = %actor_key(&actor),
-                                event_id = %event.id,
-                                degraded = true,
-                                "failed to remove superseded earnings-release SEC digest item: {error:#}"
-                            ),
+                        };
+                        if stashed {
+                            continue;
                         }
                     }
-                    sent += 1;
+                    if self
+                        .deliver_high_immediate(&actor, event, sev, &user_prefs)
+                        .await
+                    {
+                        sent += 1;
+                    }
                 }
                 Severity::Medium | Severity::Low => {
                     match self.digest.enqueue(&actor, event) {
@@ -552,6 +483,223 @@ impl NotificationRouter {
         }
         Ok((sent, pending))
     }
+
+    /// High 即时推送的完整出站路径:render → polish → send → 审计日志 →
+    /// 财报卡 supersede。从 `dispatch` 的 High arm 原样抽出,行为不变;
+    /// `flush_dispatch_batch` 的「小于合并阈值逐条发」也复用这条路径。
+    /// 返回是否成功送达。
+    async fn deliver_high_immediate(
+        &self,
+        actor: &hone_core::ActorIdentity,
+        event: &MarketEvent,
+        sev: Severity,
+        user_prefs: &NotificationPrefs,
+    ) -> bool {
+        let fmt = self.sink.format_for(actor);
+        let mainline = actor_mainline_for_event(event, user_prefs);
+        let default_body = renderer::render_immediate_with_mainline(event, fmt, mainline);
+        let body = if matches!(fmt, RenderFormat::Plain) && !is_structured_earnings_review(event) {
+            match self.polisher.polish(event, &default_body).await {
+                Some(polished) => polished,
+                None => default_body,
+            }
+        } else {
+            default_body
+        };
+        if let Err(e) = self.sink.send(actor, &body).await {
+            tracing::warn!(
+                actor = %actor_key(actor),
+                event_id = %event.id,
+                kind = %kind_tag(&event.kind),
+                source = %event.source,
+                symbols = ?event.symbols,
+                body_len = body.chars().count(),
+                body_preview = %body_preview(&body),
+                "sink send failed: {e:#}"
+            );
+            let _ = self.store.log_delivery(
+                &event.id,
+                &actor_key(actor),
+                "sink",
+                sev,
+                "failed",
+                Some(&body),
+            );
+            return false;
+        }
+        let success_status = self.sink.success_status_for(actor);
+        let delivery_result = if success_status == "sent" {
+            self.store
+                .log_confirmed_delivery(&event.id, actor, "sink", sev, &body, None)
+        } else {
+            self.store.log_delivery(
+                &event.id,
+                &actor_key(actor),
+                "sink",
+                sev,
+                success_status,
+                Some(&body),
+            )
+        };
+        if let Err(error) = delivery_result {
+            tracing::warn!(
+                actor = %actor_key(actor),
+                event_id = %event.id,
+                "confirmed delivery audit failed: {error:#}"
+            );
+        }
+        tracing::info!(
+            actor = %actor_key(actor),
+            event_id = %event.id,
+            kind = %kind_tag(&event.kind),
+            source = %event.source,
+            symbols = ?event.symbols,
+            severity = ?sev,
+            status = %success_status,
+            body_len = body.chars().count(),
+            body_preview = %body_preview(&body),
+            "sink delivered"
+        );
+        if is_structured_earnings_review(event)
+            && let Some(document_url) = event.url.as_deref()
+        {
+            match self
+                .digest
+                .remove_earnings_release_documents(actor, document_url)
+            {
+                Ok(removed) => {
+                    for superseded in removed {
+                        let _ = self.store.log_delivery(
+                            &superseded.id,
+                            &actor_key(actor),
+                            "router",
+                            superseded.severity,
+                            "superseded",
+                            None,
+                        );
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    actor = %actor_key(actor),
+                    event_id = %event.id,
+                    degraded = true,
+                    "failed to remove superseded earnings-release SEC digest item: {error:#}"
+                ),
+            }
+        }
+        true
+    }
+
+    /// 激活批内合流。`process_events` 在每批 poll 入口调用;直接调 `dispatch`
+    /// 的调用方(测试/嵌入)不激活,维持逐条即时行为。
+    pub fn begin_dispatch_batch(&self) {
+        *self.price_burst.lock().expect("price burst lock poisoned") =
+            Some(std::collections::HashMap::new());
+    }
+
+    /// 批尾清算合流缓冲:同 actor ≥ `PRICE_BURST_MIN_MERGE` 条盘中 band High
+    /// 合成一条「集体异动」汇总消息;更少则复用 `deliver_high_immediate` 逐条发。
+    /// 返回实际出站的消息条数。
+    pub async fn flush_dispatch_batch(&self) -> u32 {
+        let stashed = self
+            .price_burst
+            .lock()
+            .expect("price burst lock poisoned")
+            .take();
+        let Some(map) = stashed else {
+            return 0;
+        };
+        let mut sent = 0u32;
+        for (_key, (actor, items)) in map {
+            if items.len() < super::config::PRICE_BURST_MIN_MERGE {
+                let user_prefs = self.prefs.load(&actor);
+                for (event, sev) in items {
+                    if self
+                        .deliver_high_immediate(&actor, &event, sev, &user_prefs)
+                        .await
+                    {
+                        sent += 1;
+                    }
+                }
+                continue;
+            }
+            let fmt = self.sink.format_for(&actor);
+            let body = render_price_burst(&items, fmt);
+            match self.sink.send(&actor, &body).await {
+                Ok(()) => {
+                    let success_status = self.sink.success_status_for(&actor);
+                    for (event, sev) in &items {
+                        let log_result = if success_status == "sent" {
+                            self.store.log_confirmed_delivery(
+                                &event.id, &actor, "sink", *sev, &body, None,
+                            )
+                        } else {
+                            self.store.log_delivery(
+                                &event.id,
+                                &actor_key(&actor),
+                                "sink",
+                                *sev,
+                                success_status,
+                                None,
+                            )
+                        };
+                        if let Err(error) = log_result {
+                            tracing::warn!(
+                                actor = %actor_key(&actor),
+                                event_id = %event.id,
+                                "burst delivery audit failed: {error:#}"
+                            );
+                        }
+                    }
+                    tracing::info!(
+                        actor = %actor_key(&actor),
+                        items = items.len(),
+                        status = %success_status,
+                        body_preview = %body_preview(&body),
+                        "price burst merged and delivered"
+                    );
+                    sent += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        actor = %actor_key(&actor),
+                        items = items.len(),
+                        body_preview = %body_preview(&body),
+                        "price burst sink send failed: {e:#}"
+                    );
+                    for (event, sev) in &items {
+                        let _ = self.store.log_delivery(
+                            &event.id,
+                            &actor_key(&actor),
+                            "sink",
+                            *sev,
+                            "failed",
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+        sent
+    }
+}
+
+/// 合并 N 条盘中 band High 为一条「集体异动」正文。
+fn render_price_burst(items: &[(MarketEvent, Severity)], fmt: RenderFormat) -> String {
+    let header = format!("⚡ 盘中集体异动 · {} 只", items.len());
+    let header = match fmt {
+        RenderFormat::DiscordMarkdown => format!("**{header}**"),
+        _ => header,
+    };
+    let mut lines = vec![header];
+    for (event, _) in items {
+        if event.summary.trim().is_empty() {
+            lines.push(format!("• {}", event.title));
+        } else {
+            lines.push(format!("• {} · {}", event.title, event.summary));
+        }
+    }
+    lines.join("\n")
 }
 
 impl NotificationRouter {

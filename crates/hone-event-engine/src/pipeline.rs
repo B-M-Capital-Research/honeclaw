@@ -36,6 +36,8 @@ pub(crate) async fn process_events(
     let total = events.len();
     // 按 tick 重置 per-symbol 升级计数,使新一批事件不会受到上一 tick 残留计数干扰。
     router.reset_tick_counters();
+    // 激活盘中 band High 的批内合流(开盘集体跳空防连环 DM),批尾统一清算。
+    router.begin_dispatch_batch();
     let (mut new_count, mut duplicate_count, mut sent_count, mut pending_digest_count) =
         (0u32, 0u32, 0u32, 0u32);
     for mut event in events {
@@ -66,6 +68,7 @@ pub(crate) async fn process_events(
             duplicate_count += 1;
         }
     }
+    sent_count += router.flush_dispatch_batch().await;
     info!(
         poller = name,
         total,

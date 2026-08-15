@@ -1171,3 +1171,139 @@ async fn live_social_engine_e2e() {
         "payload 应带 source_class=uncertain(LLM 仲裁开关)"
     );
 }
+
+/// 离线回放审计(验收工具,手动运行):把真实 `events.jsonl` 重放过
+/// 2026-08-15 加的两道防线,量化修复效果。
+///
+/// ```bash
+/// HONE_REPLAY_EVENTS_JSONL=$PWD/data/events.jsonl \
+///   cargo test -p hone-event-engine --lib replay_push_quality_audit -- --ignored --nocapture
+/// ```
+///
+/// 验收断言:
+/// 1. 评级:重放后不再产出任何来自「多股汇总文」的 High 事件;
+///    真实单公司 High(如 GEV conviction list)保留。
+/// 2. 价格:每个 (symbol, 交易日) 的 band 阶梯坍缩后只剩 1 行。
+#[test]
+#[ignore]
+fn replay_push_quality_audit() {
+    use crate::digest::coalesce::coalesce_price_alerts;
+    use crate::pollers::analyst_grade::events_from_grades;
+    use std::collections::HashMap;
+
+    let path = match std::env::var("HONE_REPLAY_EVENTS_JSONL") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!("HONE_REPLAY_EVENTS_JSONL 未设置,跳过");
+            return;
+        }
+    };
+    let raw = std::fs::read_to_string(&path).expect("读取 events.jsonl 失败");
+    let mut grade_rows_by_symbol: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    let mut original_grade_high = 0usize;
+    let mut price_by_day: HashMap<String, Vec<MarketEvent>> = HashMap::new();
+    let mut band_lines_before = 0usize;
+    for line in raw.lines() {
+        let Ok(event) = serde_json::from_str::<MarketEvent>(line) else {
+            continue;
+        };
+        match &event.kind {
+            EventKind::AnalystGrade => {
+                let Some(symbol) = event.symbols.first() else {
+                    continue;
+                };
+                if event.severity == Severity::High {
+                    original_grade_high += 1;
+                }
+                grade_rows_by_symbol
+                    .entry(symbol.clone())
+                    .or_default()
+                    .push(event.payload.clone());
+            }
+            EventKind::PriceAlert { .. } => {
+                if event.id.starts_with("price_band:") {
+                    band_lines_before += 1;
+                }
+                let day = event.occurred_at.date_naive().to_string();
+                price_by_day.entry(day).or_default().push(event);
+            }
+            _ => {}
+        }
+    }
+
+    // ── 评级防线回放 ────────────────────────────────────────────────
+    let cutoff = chrono::DateTime::<chrono::Utc>::MIN_UTC;
+    let mut replay_high = 0usize;
+    let mut replay_roundup_high = 0usize;
+    let mut roundup_summaries = 0usize;
+    for (symbol, rows) in &grade_rows_by_symbol {
+        let raw_rows = serde_json::Value::Array(rows.clone());
+        let events = events_from_grades(&raw_rows, symbol, cutoff);
+        for event in &events {
+            if crate::event::is_analyst_roundup_summary(event) {
+                roundup_summaries += 1;
+                assert_ne!(
+                    event.severity,
+                    Severity::High,
+                    "汇总事件不允许 High: {}",
+                    event.id
+                );
+            }
+            if event.severity == Severity::High {
+                replay_high += 1;
+                let title = event
+                    .payload
+                    .get("newsTitle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let lower = title.to_ascii_lowercase();
+                if lower.contains("top analyst calls")
+                    || lower.contains("stock calls")
+                    || lower.contains("buy/sell:")
+                {
+                    replay_roundup_high += 1;
+                    eprintln!("残留污染 High: {} | {}", event.id, title);
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[评级] 原始 High 事件: {original_grade_high} → 重放后 High: {replay_high}(其中汇总文残留 {replay_roundup_high}),汇总摘要事件: {roundup_summaries}"
+    );
+    assert_eq!(replay_roundup_high, 0, "汇总文 High 必须清零");
+    assert!(replay_high > 0, "真实单公司 High 不应被误杀(如 GEV)");
+    assert!(roundup_summaries > 0, "MU/GOOGL 案例应产出汇总摘要");
+
+    // ── 价格阶梯合流回放 ────────────────────────────────────────────
+    let mut lines_after = 0usize;
+    let mut close_annotated = 0usize;
+    let mut per_group_max = 0usize;
+    for (_day, events) in price_by_day {
+        let result = coalesce_price_alerts(events);
+        for kept in &result.kept {
+            if kept.id.starts_with("price_band:") || kept.id.starts_with("price_close:") {
+                lines_after += 1;
+            }
+            if kept.title.contains("盘中曾跨") {
+                close_annotated += 1;
+            }
+        }
+        // 合流后不允许同 (symbol, 日, 方向) 出现两条 band。
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for kept in &result.kept {
+            if let Some(rest) = kept.id.strip_prefix("price_band:") {
+                let key: Vec<&str> = rest.split(':').collect();
+                if key.len() >= 4 {
+                    let group = format!("{}:{}:{}", key[0], key[1], key[2]);
+                    let count = seen.entry(group.clone()).or_default();
+                    *count += 1;
+                    per_group_max = per_group_max.max(*count);
+                    assert_eq!(*count, 1, "阶梯残留: {group}");
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[价格] band 行: {band_lines_before} → 合流后 band+close 行: {lines_after},收盘注记行: {close_annotated}"
+    );
+}

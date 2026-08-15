@@ -2721,3 +2721,112 @@ async fn quiet_does_not_hold_medium_to_digest() {
     assert_eq!(pending, 1, "Medium event should still enqueue to digest");
     sink.assert_no_calls();
 }
+
+// ── 盘中 band High 批内合流(2026-08 开盘连环 DM 审计)──────────────────
+
+fn router_with_multi_symbol_actor(
+    symbols: &[&str],
+) -> (
+    NotificationRouter,
+    Arc<CapturingSink>,
+    Arc<EventStore>,
+    tempfile::TempDir,
+) {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        symbols
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>(),
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    (
+        NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store.clone(),
+            digest,
+        ),
+        sink,
+        store,
+        dir,
+    )
+}
+
+/// 2026-07-30 生产场景:开盘 7 只自选股集体跳空,同一批 poll 连发 7 条 DM。
+/// 批模式下必须合并成一条「集体异动」汇总。
+#[tokio::test]
+async fn batched_band_highs_merge_into_single_burst_message() {
+    let symbols = ["AAOI", "BE", "CRWV", "LITE", "MU", "NBIS", "SNDK"];
+    let (router, sink, store, _tmp) = router_with_multi_symbol_actor(&symbols);
+    router.begin_dispatch_batch();
+    let mut immediate = 0;
+    for sym in &symbols {
+        let (sent, _) = router
+            .dispatch(&price_band_event(sym, "up", 800, 8.0))
+            .await
+            .unwrap();
+        immediate += sent;
+    }
+    assert_eq!(immediate, 0, "batch mode must defer band sends to flush");
+    let flushed = router.flush_dispatch_batch().await;
+    assert_eq!(flushed, 1, "seven band highs merge into one message");
+    let calls = sink.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let body = &calls[0].1;
+    assert!(body.contains("盘中集体异动 · 7 只"), "body = {body}");
+    for sym in &symbols {
+        assert!(body.contains(sym), "missing {sym} in body = {body}");
+    }
+    drop(calls);
+    // 每条事件都有 sink=sent 审计记录。
+    for sym in &symbols {
+        let logs = store
+            .list_recent_delivery_logs(&crate::store::DeliveryLogFilter {
+                event_id: Some(format!("price_band:{sym}:2026-04-24:up:800")),
+                limit: 5,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            logs.iter()
+                .any(|l| l.channel == "sink" && l.status == "sent"),
+            "missing sent log for {sym}: {logs:?}"
+        );
+    }
+}
+
+/// 低于合并阈值(<3)时维持逐条即时推送,行为与旧版一致。
+#[tokio::test]
+async fn batched_band_highs_below_threshold_send_individually() {
+    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI", "BE"]);
+    router.begin_dispatch_batch();
+    for sym in ["AAOI", "BE"] {
+        router
+            .dispatch(&price_band_event(sym, "up", 800, 8.0))
+            .await
+            .unwrap();
+    }
+    let flushed = router.flush_dispatch_batch().await;
+    assert_eq!(flushed, 2);
+    let calls = sink.calls.lock().unwrap();
+    assert_eq!(calls.len(), 2, "below threshold keeps per-event messages");
+    assert!(!calls[0].1.contains("集体异动"));
+}
+
+/// 未激活批模式(直接调 dispatch)时,band High 仍然逐条即时出站。
+#[tokio::test]
+async fn unbatched_band_high_sends_immediately() {
+    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI"]);
+    let (sent, _) = router
+        .dispatch(&price_band_event("AAOI", "up", 800, 8.0))
+        .await
+        .unwrap();
+    assert_eq!(sent, 1);
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+    assert_eq!(router.flush_dispatch_batch().await, 0);
+}

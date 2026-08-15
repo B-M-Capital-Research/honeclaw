@@ -27,6 +27,7 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::digest::DigestBuffer;
+use crate::digest::coalesce::coalesce_price_alerts;
 use crate::digest::curation::{
     curate_digest_events_with_omitted_at, digest_score, suppress_recent_digest_topics_with_omitted,
 };
@@ -901,12 +902,18 @@ impl UnifiedDigestScheduler {
         if filtered.is_empty() {
             return Ok(false);
         }
+        let mut omitted_events = Vec::new();
+        // 阶梯合流:quiet_held 复活路径绕过 DigestBuffer 的同 symbol 同日
+        // latest-wins 去重,大涨日会把整串 band 事件(+8%/+10%/…)逐条复活。
+        // 这里把同一波行情坍缩成一行,收盘事件存在时并入收盘行注记。
+        let ladder = coalesce_price_alerts(filtered);
+        filtered = ladder.kept;
+        omitted_events.extend(ladder.omitted);
         filtered.sort_by(|a, b| {
             digest_score(b)
                 .cmp(&digest_score(a))
                 .then_with(|| b.occurred_at.cmp(&a.occurred_at))
         });
-        let mut omitted_events = Vec::new();
         let memory =
             suppress_recent_digest_topics_with_omitted(actor_key_str, filtered, &self.store, now);
         filtered = memory.kept;

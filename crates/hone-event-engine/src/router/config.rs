@@ -11,8 +11,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use hone_core::ActorIdentity;
+
 use crate::digest::DigestBuffer;
 use crate::earnings_continuity::EarningsContinuityReconciler;
+use crate::event::{MarketEvent, Severity};
 use crate::news_classifier::{DEFAULT_IMPORTANCE_PROMPT, NewsClassifier};
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::prefs::{AllowAllPrefs, PrefsProvider, PriceAlertPolicyDefaults};
@@ -68,7 +71,20 @@ pub struct NotificationRouter {
     pub(super) default_importance_prompt: String,
     /// 单 tick 内 window convergence 升级/跳过统计,供 poller 级汇总日志消费。
     pub(super) news_upgrade_tick_stats: Arc<Mutex<NewsUpgradeTickStats>>,
+    /// 盘中价格 band High 即时推的批内合流缓冲(2026-08 审计:开盘集体跳空
+    /// 曾 10 秒内连发 7 条 DM)。`begin_dispatch_batch()`(`process_events`
+    /// 入口)激活后,dispatch 遇到盘中 band High 不再逐条出站,而是按 actor
+    /// 暂存于此;`flush_dispatch_batch()` 在批尾合并:同 actor ≥
+    /// `PRICE_BURST_MIN_MERGE` 条合成一条汇总消息,更少则照旧逐条发送。
+    /// `None` = 批模式未激活(直接调 `dispatch` 的调用方维持逐条即时行为)。
+    pub(super) price_burst: Mutex<Option<PriceBurstBuffer>>,
 }
+
+/// actor_key → (actor, 本批暂存的盘中 band High 及其原始 severity)。
+pub(super) type PriceBurstBuffer = HashMap<String, (ActorIdentity, Vec<(MarketEvent, Severity)>)>;
+
+/// 同一批 poll 内、同一 actor 的盘中 band High 达到该条数时合并为一条汇总消息。
+pub(super) const PRICE_BURST_MIN_MERGE: usize = 3;
 
 impl NotificationRouter {
     pub fn new(
@@ -104,6 +120,7 @@ impl NotificationRouter {
             news_classifier: None,
             default_importance_prompt: DEFAULT_IMPORTANCE_PROMPT.to_string(),
             news_upgrade_tick_stats: Arc::new(Mutex::new(NewsUpgradeTickStats::default())),
+            price_burst: Mutex::new(None),
         }
     }
 
