@@ -1294,9 +1294,7 @@ mod tests {
         generate_invite_code, generate_session_token, hash_session_token, run_cloud_web_auth,
     };
     use hone_core::cloud_runtime::CloudPgRuntime;
-    use hone_core::config::{CloudConfig, PostgresConfig};
     use hone_core::{HoneError, HoneResult, beijing_now};
-    use tokio_postgres::NoTls;
 
     fn test_storage() -> WebAuthStorage {
         let namespace =
@@ -1304,24 +1302,19 @@ mod tests {
         WebAuthStorage::new(namespace).expect("storage")
     }
 
+    /// 和 `inspect_cloud_external_state` 同理:清理必须走测试自己那条隔离连接,
+    /// 新开连接看不到 `pg_temp` 里的表,DELETE 会静默失败(Drop 里错误被吞掉)。
     struct CloudWebAuthTestUser {
-        database_url: String,
+        postgres: CloudPgRuntime,
         user_id: String,
     }
 
     impl Drop for CloudWebAuthTestUser {
         fn drop(&mut self) {
-            let database_url = self.database_url.clone();
+            let postgres = self.postgres.clone();
             let user_id = self.user_id.clone();
             let _ = run_cloud_web_auth(async move {
-                let (client, connection) = tokio_postgres::connect(&database_url, NoTls)
-                    .await
-                    .map_err(|err| {
-                        HoneError::Config(format!("Postgres test cleanup 连接失败: {err}"))
-                    })?;
-                tokio::spawn(async move {
-                    let _ = connection.await;
-                });
+                let client = postgres.connect_cached_client().await?;
                 client
                     .execute(
                         "DELETE FROM cloud_web_invite_users WHERE user_id = $1",
@@ -1336,19 +1329,16 @@ mod tests {
         }
     }
 
+    /// 必须复用测试自己那条隔离连接。`pg_temp` schema 是**会话局部**的:
+    /// 另开一条 `tokio_postgres::connect` 会得到自己的空 `pg_temp`,`search_path`
+    /// 落回 `public`,于是查不到测试刚建的表。
+    /// 2026-08-16 CI 上就是这么挂的(本地空过是因为开发库的 `public` 里恰好有真实的表)。
     fn inspect_cloud_external_state(
-        database_url: String,
+        postgres: CloudPgRuntime,
         user_id: String,
     ) -> HoneResult<(Option<String>, Option<String>, Option<String>, bool)> {
         run_cloud_web_auth(async move {
-            let (client, connection) = tokio_postgres::connect(&database_url, NoTls)
-                .await
-                .map_err(|err| {
-                    HoneError::Config(format!("Postgres test inspect 连接失败: {err}"))
-                })?;
-            tokio::spawn(async move {
-                let _ = connection.await;
-            });
+            let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
                     r#"
@@ -2280,26 +2270,21 @@ WHERE s.user_id = $1
     #[test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn cloud_web_user_external_state_round_trip() {
-        let postgres_config = PostgresConfig::default();
-        let database_url = postgres_config.resolved_database_url();
-        assert!(
-            !database_url.is_empty(),
-            "HONE_POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE must be configured"
-        );
-        let cloud_config = CloudConfig {
-            postgres: postgres_config,
-            ..CloudConfig::default()
-        };
-        let postgres =
-            CloudPgRuntime::from_cloud_config(&cloud_config).expect("configured postgres runtime");
-        let storage = WebAuthStorage::new_cloud(postgres.clone()).expect("cloud web auth storage");
+        // 必须走和其它 91 个 PG 测试相同的 `pg_temp` 隔离脚手架,不能用
+        // `CloudPgRuntime::from_cloud_config` 直连 `public`。
+        // `ensure_cloud_schema_once` 是**进程级** AtomicBool:只要任何一个隔离测试
+        // 先跑并置位,直连 `public` 的测试就会跳过建表,然后在空库上查表失败。
+        // 表现是「单独跑过、和别人一起跑挂」——2026-08-16 在 CI 上就是这么红的
+        // (本地空过是因为开发库的 `public` 里恰好有真实的表)。
+        let storage = WebAuthStorage::new("web_auth_external_state_round_trip")
+            .expect("cloud web auth storage");
         let email = format!("pg-web-auth-{}@example.com", uuid::Uuid::new_v4().simple());
 
         let created = storage
             .ensure_international_email_user(&email)
             .expect("create international user");
         let _cleanup = CloudWebAuthTestUser {
-            database_url: database_url.clone(),
+            postgres: storage.postgres.clone(),
             user_id: created.user_id.clone(),
         };
         let same = storage
@@ -2335,7 +2320,7 @@ WHERE s.user_id = $1
         );
 
         let (stored_email, verified_at, challenge_json, invite_record_has_external_state) =
-            inspect_cloud_external_state(database_url, created.user_id.clone())
+            inspect_cloud_external_state(storage.postgres.clone(), created.user_id.clone())
                 .expect("inspect external state row");
         assert_eq!(stored_email.as_deref(), Some(email.as_str()));
         assert!(verified_at.is_some());
