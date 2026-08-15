@@ -5223,11 +5223,13 @@ fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
 #[test]
 fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
     let root = make_temp_dir("hone_channels_prompt_recv_extra_priority");
-    let storage = SessionStorage::new(root.join("sessions"));
     let actor = ActorIdentity::new("discord", "alice", Some("room-1".to_string())).expect("actor");
     let session_identity =
         SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
             .expect("group session");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core(&root, llm);
+    let storage = &core.session_storage;
     let session_id = storage
         .create_session(
             Some("session-demo"),
@@ -5252,8 +5254,6 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
         )
         .expect("add summary");
 
-    let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core(&root, llm);
     let session = AgentSession::new(core, actor, "target")
         .with_session_id("session-demo")
         .with_recv_extra(Some(
@@ -5833,12 +5833,17 @@ fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text()
         )
         .expect("append assistant");
 
-    std::fs::remove_file(root.join("sessions").join(format!("{session_id}.json")))
-        .expect("remove json fallback");
+    assert!(
+        !root
+            .join("sessions")
+            .join(format!("{session_id}.json"))
+            .exists(),
+        "PostgreSQL session writes must not create a JSON fallback"
+    );
     let session = storage
         .load_session(&session_id)
         .expect("load session")
-        .expect("session from sqlite");
+        .expect("session from PostgreSQL");
     let assistant = session
         .messages
         .iter()

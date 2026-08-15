@@ -43,6 +43,29 @@ use crate::session_compactor::SessionCompactor;
 
 use super::logging::printable_or_default;
 
+#[cfg(test)]
+fn isolated_test_postgres(postgres: CloudPgRuntime) -> CloudPgRuntime {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+    let namespace = format!(
+        "hone_memory_channels_{}_{}",
+        std::process::id(),
+        NEXT_NAMESPACE.fetch_add(1, Ordering::Relaxed)
+    );
+    let postgres = postgres
+        .with_isolated_test_connection(namespace)
+        .expect("PostgreSQL test namespace must be valid");
+    let schema_postgres = postgres.clone();
+    hone_core::cloud_sync::run_cloud_sync(
+        async move { schema_postgres.ensure_schema().await },
+        None,
+        "channels PostgreSQL test schema",
+    )
+    .expect("failed to initialize isolated PostgreSQL test schema");
+    postgres
+}
+
 pub(super) const STRICT_ACTOR_MAX_ITERATIONS: u32 = 18;
 
 #[derive(Debug, Clone)]
@@ -58,6 +81,7 @@ pub struct CompactSessionOutcome {
 /// sibling module,所以可见性收在 `core` module 内部。
 pub struct HoneBotCore {
     pub config: HoneConfig,
+    pub(crate) cloud_pg_runtime: CloudPgRuntime,
     pub llm: Option<Arc<dyn LlmProvider>>,
     pub auxiliary_llm: Option<Arc<dyn LlmProvider>>,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
@@ -71,54 +95,66 @@ pub struct HoneBotCore {
     pub(crate) test_runner_factory: Option<Arc<dyn Fn() -> Box<dyn AgentRunner> + Send + Sync>>,
 }
 
+#[cfg(test)]
+impl Drop for HoneBotCore {
+    fn drop(&mut self) {
+        let postgres = self.cloud_pg_runtime.clone();
+        let _ = hone_core::cloud_sync::run_cloud_sync(
+            async move { postgres.drop_isolated_memory_test_schema().await },
+            None,
+            "channels PostgreSQL test schema cleanup",
+        );
+        self.cloud_pg_runtime.evict_cached_test_client();
+    }
+}
+
 impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
-        let cloud_pg_runtime = Some(
-            CloudPgRuntime::from_cloud_config(&config.cloud)
-                .expect("PostgreSQL must be configured for the runtime"),
-        );
-        let session_storage = SessionStorage::new_cloud(
-            &config.storage.sessions_dir,
-            cloud_pg_runtime.clone().expect("cloud postgres configured"),
-        )
-        .expect("failed to initialize PostgreSQL session storage");
-        let conversation_quota_storage = ConversationQuotaStorage::new_cloud(
-            cloud_pg_runtime.clone().expect("cloud postgres configured"),
-        )
-        .expect("failed to initialize PostgreSQL conversation quota storage");
+        let cloud_pg_runtime = CloudPgRuntime::from_cloud_config(&config.cloud)
+            .expect("PostgreSQL must be configured for the runtime");
         #[cfg(test)]
-        let delivered_push_context_store = {
-            let event_store_namespace = configured_event_store_path(&config);
-            Some(
-                EventStore::open(&event_store_namespace).unwrap_or_else(|err| {
-                    panic!(
-                        "failed to open isolated PostgreSQL delivered push context store ({}): {err:#}",
-                        event_store_namespace.display()
-                    )
-                }),
-            )
+        let cloud_pg_runtime = isolated_test_postgres(cloud_pg_runtime);
+        let session_storage =
+            SessionStorage::new_cloud(&config.storage.sessions_dir, cloud_pg_runtime.clone())
+                .expect("failed to initialize PostgreSQL session storage");
+        let conversation_quota_storage =
+            ConversationQuotaStorage::new_cloud(cloud_pg_runtime.clone())
+                .expect("failed to initialize PostgreSQL conversation quota storage");
+        #[cfg(test)]
+        let delivered_push_context_store = Some(
+            EventStore::new(cloud_pg_runtime.clone()).unwrap_or_else(|err| {
+                panic!("failed to open isolated PostgreSQL delivered push context store: {err:#}")
+            }),
+        );
+        #[cfg(not(test))]
+        let delivered_push_context_store = match EventStore::new(cloud_pg_runtime.clone()) {
+            Ok(store) => Some(store),
+            Err(err) => {
+                tracing::warn!("failed to open PostgreSQL delivered push context store: {err:#}");
+                None
+            }
         };
         #[cfg(not(test))]
-        let delivered_push_context_store = CloudPgRuntime::from_cloud_config(&config.cloud)
-            .and_then(|postgres| match EventStore::new(postgres) {
-                Ok(store) => Some(store),
-                Err(err) => {
-                    tracing::warn!(
-                        "failed to open PostgreSQL delivered push context store: {err:#}"
-                    );
-                    None
-                }
-            });
-        configure_cloud_skill_registry(cloud_pg_runtime.clone());
-        configure_cloud_notification_prefs(cloud_pg_runtime.clone());
-        configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
-        hone_memory::configure_cloud_survey_storage(cloud_pg_runtime.clone());
-        configure_cloud_company_profile_storage(cloud_pg_runtime.clone());
+        {
+            configure_cloud_skill_registry(Some(cloud_pg_runtime.clone()));
+            configure_cloud_notification_prefs(Some(cloud_pg_runtime.clone()));
+            configure_cloud_portfolio_storage(Some(cloud_pg_runtime.clone()));
+            hone_memory::configure_cloud_survey_storage(Some(cloud_pg_runtime.clone()));
+            configure_cloud_company_profile_storage(Some(cloud_pg_runtime.clone()));
+        }
+        #[cfg(test)]
+        {
+            configure_cloud_skill_registry(None);
+            configure_cloud_notification_prefs(None);
+            configure_cloud_portfolio_storage(None);
+            hone_memory::configure_cloud_survey_storage(None);
+            configure_cloud_company_profile_storage(None);
+        }
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
-        let llm_audit = Self::create_llm_audit_sink(&config);
+        let llm_audit = Self::create_llm_audit_sink(&config, cloud_pg_runtime.clone());
         let workflow_runner_http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -129,6 +165,7 @@ impl HoneBotCore {
 
         Self {
             config,
+            cloud_pg_runtime,
             llm,
             auxiliary_llm,
             llm_audit,
@@ -222,15 +259,14 @@ impl HoneBotCore {
         }
     }
 
-    fn create_llm_audit_sink(config: &HoneConfig) -> Option<Arc<dyn LlmAuditSink>> {
+    fn create_llm_audit_sink(
+        config: &HoneConfig,
+        postgres: CloudPgRuntime,
+    ) -> Option<Arc<dyn LlmAuditSink>> {
         if !config.storage.llm_audit_enabled {
             return None;
         }
 
-        let Some(postgres) = CloudPgRuntime::from_cloud_config(&config.cloud) else {
-            tracing::warn!("Failed to create LLM audit storage: PostgreSQL is not configured");
-            return None;
-        };
         match LlmAuditStorage::new_cloud(postgres, config.storage.llm_audit_retention_days) {
             Ok(storage) => Some(Arc::new(storage)),
             Err(err) => {
@@ -336,8 +372,7 @@ impl HoneBotCore {
                 .iter()
                 .map(|slot| slot.time.clone())
                 .collect::<Vec<_>>();
-            let postgres = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-                .expect("PostgreSQL must be configured for cron tool storage");
+            let postgres = self.cloud_pg_runtime.clone();
             let cron_tool: Box<dyn hone_tools::Tool> = Box::new(
                 CronJobTool::new_cloud(
                     &self.config.storage.cron_jobs_dir,
@@ -397,8 +432,7 @@ impl HoneBotCore {
                 .thresholds
                 .same_symbol_cooldown_minutes,
         };
-        let postgres = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-            .expect("PostgreSQL must be configured for notification preferences");
+        let postgres = self.cloud_pg_runtime.clone();
         registry.register(Box::new(hone_tools::NotificationPrefsTool::new_cloud(
             &self.config.storage.notif_prefs_dir,
             actor.cloned(),
@@ -409,12 +443,10 @@ impl HoneBotCore {
 
         // 让用户通过 `/missed` 或自然语言查回 digest/router 主动筛掉的事件。
         // 与 event-engine 共用 PostgreSQL 权威表；actor 强制绑定调用方。
-        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud) {
-            registry.register(Box::new(hone_tools::MissedEventsTool::new(
-                postgres,
-                actor.cloned(),
-            )));
-        }
+        registry.register(Box::new(hone_tools::MissedEventsTool::new(
+            self.cloud_pg_runtime.clone(),
+            actor.cloned(),
+        )));
 
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
@@ -567,9 +599,7 @@ impl HoneBotCore {
 
     pub fn cron_job_storage(&self) -> CronJobStorage {
         let task_runs_dir = Some(self.configured_runtime_dir());
-        let postgres = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-            .expect("PostgreSQL must be configured for cron storage");
-        CronJobStorage::new_cloud(postgres)
+        CronJobStorage::new_cloud(self.cloud_pg_runtime.clone())
             .unwrap_or_else(|error| panic!("{}", cloud_cron_storage_failure(&error)))
             .with_task_runs_dir(task_runs_dir)
     }
