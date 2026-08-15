@@ -710,10 +710,22 @@ impl EventEngine {
         } else if fmp_available {
             info!("macro poller disabled by config.sources.macro_calendar=false");
         }
+        // σ-自适应价格阈值 provider:PricePoller 与 ExtendedHoursPoller 共享一个
+        // 实例(σ 按 ET 交易日缓存,两路阈值天然一致)。禁用时为 None,
+        // poller 内部回退固定阈值,行为与旧版完全一致。
+        let sigma_provider = (fmp_available
+            && self.engine_cfg.thresholds.price_sigma.enabled
+            && (sources.price || sources.extended_hours))
+            .then(|| {
+                Arc::new(crate::volatility::SigmaProvider::new(
+                    client.clone(),
+                    self.engine_cfg.thresholds.price_sigma.clone(),
+                ))
+            });
         // PricePoller 每 tick 从 SharedRegistry 读最新 watch pool;
         // 空则 EventSource::poll 直接返回 Ok(vec![]),用户新增持仓后下个 tick 就能生效。
         if fmp_available && sources.price {
-            let poller = PricePoller::new(
+            let mut poller = PricePoller::new(
                 client.clone(),
                 registry.clone(),
                 SourceSchedule::FixedInterval(Duration::from_secs(
@@ -725,6 +737,9 @@ impl EventEngine {
                 self.engine_cfg.thresholds.price_alert_high_pct,
             )
             .with_realert_step_pct(self.engine_cfg.thresholds.price_realert_step_pct);
+            if let Some(provider) = &sigma_provider {
+                poller = poller.with_sigma_provider(provider.clone());
+            }
             spawn_event_source(
                 Arc::new(poller),
                 store.clone(),
@@ -741,11 +756,14 @@ impl EventEngine {
         // per-actor 价格策略经 router 同样路径升级或降级 severity；盘前/盘后
         // 事件不属于 intraday band，因此只应用首次阈值，不应用盘中重复阶梯。
         if fmp_available && sources.extended_hours {
-            let poller = ExtendedHoursPoller::new(client.clone(), registry.clone())
+            let mut poller = ExtendedHoursPoller::new(client.clone(), registry.clone())
                 .with_thresholds(
                     self.engine_cfg.thresholds.price_alert_low_pct,
                     self.engine_cfg.thresholds.price_alert_high_pct,
                 );
+            if let Some(provider) = &sigma_provider {
+                poller = poller.with_sigma_provider(provider.clone());
+            }
             spawn_event_source(
                 Arc::new(poller),
                 store.clone(),

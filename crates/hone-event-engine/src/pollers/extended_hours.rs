@@ -45,6 +45,7 @@ use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
 use crate::source::{EventSource, SourceSchedule};
 use crate::subscription::SharedRegistry;
+use crate::volatility::SigmaProvider;
 
 /// 默认 30 分钟拉一次。窗口外 poll() 直接 no-op,所以非交易时段几乎零开销。
 const DEFAULT_INTERVAL_SECS: u64 = 30 * 60;
@@ -62,6 +63,8 @@ pub struct ExtendedHoursPoller {
     /// (symbol, et_date) → close。同一交易日内重复命中直接复用,避免 N 次
     /// historical-price-full 调用。每天首次 poll 该 ticker 时 miss,触发拉取。
     prev_close_cache: Arc<Mutex<HashMap<String, (NaiveDate, f64)>>>,
+    /// σ-自适应阈值提供者(与 PricePoller 共享实例)。None → 固定 low/high。
+    sigma: Option<Arc<SigmaProvider>>,
 }
 
 impl ExtendedHoursPoller {
@@ -73,12 +76,18 @@ impl ExtendedHoursPoller {
             low_pct: 2.5,
             high_pct: 6.0,
             prev_close_cache: Arc::new(Mutex::new(HashMap::new())),
+            sigma: None,
         }
     }
 
     pub fn with_thresholds(mut self, low_pct: f64, high_pct: f64) -> Self {
         self.low_pct = low_pct;
         self.high_pct = high_pct;
+        self
+    }
+
+    pub fn with_sigma_provider(mut self, provider: Arc<SigmaProvider>) -> Self {
+        self.sigma = Some(provider);
         self
     }
 
@@ -155,6 +164,16 @@ impl EventSource for ExtendedHoursPoller {
             return Ok(vec![]);
         }
 
+        // σ-自适应阈值(与 PricePoller 同一 provider,按 ET 交易日缓存)。
+        let per_symbol_thresholds = match &self.sigma {
+            Some(provider) => {
+                provider
+                    .thresholds_for(&symbols, et_date, self.low_pct, self.high_pct)
+                    .await
+            }
+            None => HashMap::new(),
+        };
+
         let mut events = Vec::new();
         for symbol in &symbols {
             let prev_close = match self.fetch_prev_close(symbol, et_date).await {
@@ -172,14 +191,19 @@ impl EventSource for ExtendedHoursPoller {
                 }
             };
             let recent = filter_recent_bars(&bars, now, WINDOW_LOOKBACK_MINS);
+            let symbol_thresholds = per_symbol_thresholds.get(symbol);
+            let (low_eff, high_eff) = symbol_thresholds
+                .map(|t| (t.low_pct, t.high_pct))
+                .unwrap_or((self.low_pct, self.high_pct));
             if let Some(event) = build_event_if_threshold_met(
                 symbol,
                 session,
                 et_date,
                 prev_close,
                 &recent,
-                self.low_pct,
-                self.high_pct,
+                low_eff,
+                high_eff,
+                symbol_thresholds.and_then(|t| t.sigma_pct),
                 now,
             ) {
                 events.push(event);
@@ -262,6 +286,7 @@ fn build_event_if_threshold_met(
     bars: &[Bar],
     low_pct: f64,
     high_pct: f64,
+    sigma_pct: Option<f64>,
     now: DateTime<Utc>,
 ) -> Option<MarketEvent> {
     if prev_close <= 0.0 || bars.is_empty() {
@@ -300,7 +325,7 @@ fn build_event_if_threshold_met(
         "30min 振幅 {amp_pct:.2}%(高 {max_high:.2} / 低 {min_low:.2})· 现价 {last_price:.2} · 较昨收 {dir_text}{net_chg_pct:.2}%"
     );
 
-    let payload = serde_json::json!({
+    let mut payload = serde_json::json!({
         // 字段名与 FMP /v3/quote 对齐 —— router 的 price_override_threshold
         // 直接读 changesPercentage 做 per-actor 升级判断。这里写 signed_amp_pct
         // (符号 = 净涨跌方向, 幅度 = 振幅)以保留方向感同时让用户阈值生效。
@@ -316,6 +341,18 @@ fn build_event_if_threshold_met(
         "session": session,
         "et_date": et_date.to_string(),
     });
+    // σ-自适应生效时记录 σ 与实际门槛;回退固定阈值时不写,payload 与旧行为一致。
+    if let (Some(sigma), Some(obj)) = (sigma_pct.filter(|s| *s > 0.0), payload.as_object_mut()) {
+        obj.insert("hone_price_sigma_pct".into(), serde_json::json!(sigma));
+        obj.insert(
+            "hone_price_low_threshold_pct".into(),
+            serde_json::json!(low_pct),
+        );
+        obj.insert(
+            "hone_price_high_threshold_pct".into(),
+            serde_json::json!(high_pct),
+        );
+    }
 
     let pct_change_bps = (signed_amp_pct * 100.0).round() as i64;
 
@@ -437,6 +474,7 @@ mod tests {
             &bars,
             2.5,
             6.0,
+            None,
             now,
         );
         assert!(event.is_none());
@@ -457,6 +495,7 @@ mod tests {
             &bars,
             2.5,
             6.0,
+            None,
             now,
         )
         .unwrap();
@@ -483,6 +522,7 @@ mod tests {
             &bars,
             2.5,
             6.0,
+            None,
             now,
         )
         .unwrap();
@@ -516,6 +556,7 @@ mod tests {
             &bars,
             2.5,
             6.0,
+            None,
             now,
         )
         .unwrap();
@@ -539,6 +580,7 @@ mod tests {
             &[],
             2.5,
             6.0,
+            None,
             Utc::now(),
         );
         assert!(event.is_none());
@@ -555,6 +597,7 @@ mod tests {
             &bars,
             2.5,
             6.0,
+            None,
             Utc::now(),
         );
         assert!(event.is_none());

@@ -33,9 +33,9 @@ pub use channels::{
 };
 pub use event_engine::{
     DigestConfig as EventEngineDigestConfig, EventEngineConfig, GlobalDigestConfig,
-    PollIntervals as EventEnginePollIntervals, RendererConfig as EventEngineRendererConfig,
-    RssFeedConfig, Sources as EventEngineSources, TelegramChannelConfig,
-    Thresholds as EventEngineThresholds, tz_offset_hours,
+    PollIntervals as EventEnginePollIntervals, PriceSigmaThresholds,
+    RendererConfig as EventEngineRendererConfig, RssFeedConfig, Sources as EventEngineSources,
+    TelegramChannelConfig, Thresholds as EventEngineThresholds, tz_offset_hours,
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,

@@ -1307,3 +1307,122 @@ fn replay_push_quality_audit() {
         "[价格] band 行: {band_lines_before} → 合流后 band+close 行: {lines_after},收盘注记行: {close_annotated}"
     );
 }
+
+/// σ-自适应价格阈值回归(特征固定测试,验收标准 A1–A7)。
+///
+/// 数据集:`testdata/daily_closes_2026-01-02_2026-08-14.json` —— 18 个 watch-pool
+/// 标的的真实 FMP 日线;评估窗口 2026-04-27 → 2026-08-14(真实推送期 76 个交易日),
+/// 更早数据仅做 σ 热身。σ 逐日无前视(只用 t 日之前的收盘价),走生产函数
+/// `sigma_pct_from_closes` + `effective_thresholds`。
+/// 设计与验收标准:`docs/proposals/sigma-adaptive-price-thresholds.md`。
+#[test]
+fn sigma_adaptive_thresholds_regression() {
+    use crate::volatility::{effective_thresholds, sigma_pct_from_closes};
+    use hone_core::config::PriceSigmaThresholds;
+
+    const EVAL_START: &str = "2026-04-27";
+    const BASE_LOW: f64 = 2.5;
+    const BASE_HIGH: f64 = 6.0;
+
+    let raw = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/testdata/daily_closes_2026-01-02_2026-08-14.json"
+    ))
+    .expect("读取回归数据集失败");
+    let fixture: serde_json::Value = serde_json::from_str(&raw).expect("回归数据集非法 JSON");
+    let closes_by_symbol = fixture
+        .get("closes")
+        .and_then(|v| v.as_object())
+        .expect("缺 closes");
+    assert_eq!(closes_by_symbol.len(), 18, "watch-pool 标的数");
+
+    let cfg = PriceSigmaThresholds::default();
+    let (mut fixed_alerts, mut fixed_high, mut sigma_alerts, mut sigma_high) =
+        (0u32, 0u32, 0u32, 0u32);
+    let mut rates_fixed = Vec::new();
+    let mut rates_sigma = Vec::new();
+    let mut sndk_rates = None;
+    let mut max_suppressed_z: f64 = 0.0;
+    let mut missed_extreme = 0u32;
+
+    for (symbol, rows) in closes_by_symbol {
+        let rows = rows.as_array().expect("closes 行");
+        let dates: Vec<&str> = rows.iter().map(|r| r[0].as_str().unwrap()).collect();
+        let closes: Vec<f64> = rows.iter().map(|r| r[1].as_f64().unwrap()).collect();
+        let (mut fa, mut sa, mut days) = (0u32, 0u32, 0u32);
+        for k in 1..closes.len() {
+            if dates[k] < EVAL_START {
+                continue;
+            }
+            days += 1;
+            let ret = (closes[k] - closes[k - 1]) / closes[k - 1] * 100.0;
+            let abs = ret.abs();
+            // σ 窗口:t 日之前最多 60 个 close-to-close 收益率(61 个收盘价),无前视。
+            let window = &closes[k.saturating_sub(61)..k];
+            let sigma = sigma_pct_from_closes(window, cfg.min_samples as usize);
+            let (low_eff, high_eff) = effective_thresholds(&cfg, sigma, BASE_LOW, BASE_HIGH);
+
+            let hit_fixed = abs >= BASE_LOW;
+            let hit_sigma = abs >= low_eff;
+            fa += u32::from(hit_fixed);
+            fixed_alerts += u32::from(hit_fixed);
+            fixed_high += u32::from(abs >= BASE_HIGH);
+            sa += u32::from(hit_sigma);
+            sigma_alerts += u32::from(hit_sigma);
+            sigma_high += u32::from(abs >= high_eff);
+            if let Some(sigma) = sigma {
+                let z = abs / sigma;
+                if hit_fixed && !hit_sigma {
+                    max_suppressed_z = max_suppressed_z.max(z);
+                }
+                if (z >= 3.0 || abs >= 10.0) && !hit_sigma {
+                    missed_extreme += 1;
+                }
+            }
+        }
+        assert_eq!(days, 77, "{symbol} 评估窗口交易日数");
+        rates_fixed.push(f64::from(fa) / f64::from(days));
+        rates_sigma.push(f64::from(sa) / f64::from(days));
+        if symbol == "SNDK" {
+            sndk_rates = Some((
+                f64::from(fa) / f64::from(days),
+                f64::from(sa) / f64::from(days),
+            ));
+        }
+    }
+
+    // 特征固定:与设计期模拟(proposal 文档)逐一相等,防未来悄悄漂移。
+    assert_eq!(
+        (fixed_alerts, fixed_high, sigma_alerts, sigma_high),
+        (841, 380, 255, 90),
+        "警报/High 总数偏离设计模拟"
+    );
+    // A1: 警报总数降幅 ≥ 60%
+    assert!(f64::from(sigma_alerts) <= f64::from(fixed_alerts) * 0.40);
+    // A2: High 总数降幅 ≥ 70%
+    assert!(f64::from(sigma_high) <= f64::from(fixed_high) * 0.30);
+    // A3: 零漏报(≥3σ 或 ≥10% 的极端日全部保留)
+    assert_eq!(missed_extreme, 0, "存在被静音的极端日");
+    // A4: 被抑制警报统计上寻常(z < 2.0)
+    assert!(
+        max_suppressed_z < 2.0,
+        "max_suppressed_z={max_suppressed_z}"
+    );
+    // A5: 跨标的警报率标准差严格下降
+    let stdev = |xs: &[f64]| {
+        let n = xs.len() as f64;
+        let mean = xs.iter().sum::<f64>() / n;
+        (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt()
+    };
+    assert!(stdev(&rates_sigma) < stdev(&rates_fixed));
+    // A6: 最吵标的警报率 ≤ 0.45(固定阈值下为 0.82)
+    let max_rate = rates_sigma.iter().cloned().fold(0.0f64, f64::max);
+    assert!(max_rate <= 0.45, "max_rate={max_rate}");
+    // A7: SNDK(原始投诉标的)警报率 ≤ 0.35
+    let (sndk_fixed, sndk_sigma) = sndk_rates.expect("SNDK 不在数据集");
+    assert!(
+        sndk_fixed > 0.80,
+        "基线偏离:SNDK 固定阈值警报率 {sndk_fixed}"
+    );
+    assert!(sndk_sigma <= 0.35, "SNDK σ 警报率 {sndk_sigma}");
+}

@@ -7,6 +7,7 @@
 //! - id 稳定：`price:{SYM}:{YYYY-MM-DD}` / `52h:{SYM}:{YYYY-MM-DD}` / `52l:{SYM}:{YYYY-MM-DD}`
 //!   每交易日最多一次，避免重复推送。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -18,6 +19,7 @@ use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
 use crate::source::{EventSource, SourceSchedule};
 use crate::subscription::SharedRegistry;
+use crate::volatility::{SigmaProvider, SymbolThresholds};
 
 const FRESH_QUOTE_MAX_AGE_SECS: i64 = 15 * 60;
 const CLOSING_QUOTE_MAX_AGE_SECS: i64 = 20 * 60 * 60;
@@ -37,6 +39,8 @@ pub struct PricePoller {
     realert_step_pct: f64,
     /// 52 周高/低的相对容差（0.001 = 触碰 0.1% 内算新高/新低）。
     near_hi_lo_tolerance: f64,
+    /// σ-自适应阈值提供者。None → 全部标的用固定 low/high（现状行为）。
+    sigma: Option<Arc<SigmaProvider>>,
 }
 
 impl PricePoller {
@@ -49,6 +53,7 @@ impl PricePoller {
             high_pct: 10.0,
             realert_step_pct: 2.0,
             near_hi_lo_tolerance: 0.001,
+            sigma: None,
         }
     }
 
@@ -63,6 +68,11 @@ impl PricePoller {
         self
     }
 
+    pub fn with_sigma_provider(mut self, provider: Arc<SigmaProvider>) -> Self {
+        self.sigma = Some(provider);
+        self
+    }
+
     /// 按指定 ticker 列表批量查 quote。`EventSource::poll` 内部从 registry
     /// 取 watch_pool 后调它;测试可以直接传任意 ticker。watch_pool 为空时
     /// 调用方应直接返回 Ok(vec![])(本函数会照样发请求,用于显式测试)。
@@ -74,6 +84,18 @@ impl PricePoller {
         if batches.is_empty() {
             return Ok(vec![]);
         }
+
+        // σ-自适应:按 ET 交易日缓存,同日内多次 poll 阈值稳定(band id 依赖)。
+        let per_symbol_thresholds = match &self.sigma {
+            Some(provider) => {
+                let flat: Vec<String> = batches.iter().flatten().cloned().collect();
+                let et_today = Utc::now().with_timezone(&Eastern).date_naive();
+                provider
+                    .thresholds_for(&flat, et_today, self.low_pct, self.high_pct)
+                    .await
+            }
+            None => HashMap::new(),
+        };
 
         let mut batch_results = Vec::new();
         for batch in &batches {
@@ -99,6 +121,7 @@ impl PricePoller {
             self.high_pct,
             self.realert_step_pct,
             self.near_hi_lo_tolerance,
+            &per_symbol_thresholds,
             Utc::now(),
         )
     }
@@ -143,12 +166,14 @@ fn is_fmp_quote_symbol(symbol: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '^'))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_quote_batch_events<I>(
     batch_results: I,
     low_pct: f64,
     high_pct: f64,
     realert_step_pct: f64,
     near_hi_lo_tolerance: f64,
+    per_symbol_thresholds: &HashMap<String, SymbolThresholds>,
     now: DateTime<Utc>,
 ) -> anyhow::Result<Vec<MarketEvent>>
 where
@@ -168,6 +193,7 @@ where
                     high_pct,
                     realert_step_pct,
                     near_hi_lo_tolerance,
+                    per_symbol_thresholds,
                     now,
                 ));
             }
@@ -210,7 +236,15 @@ impl EventSource for PricePoller {
 
 #[cfg(test)]
 fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -> Vec<MarketEvent> {
-    events_from_quotes_at(raw, low_pct, high_pct, 2.0, near_tol, Utc::now())
+    events_from_quotes_at(
+        raw,
+        low_pct,
+        high_pct,
+        2.0,
+        near_tol,
+        &HashMap::new(),
+        Utc::now(),
+    )
 }
 
 fn events_from_quotes_at(
@@ -219,6 +253,7 @@ fn events_from_quotes_at(
     high_pct: f64,
     realert_step_pct: f64,
     near_tol: f64,
+    per_symbol_thresholds: &HashMap<String, SymbolThresholds>,
     now: DateTime<Utc>,
 ) -> Vec<MarketEvent> {
     let quotes = match raw.as_array() {
@@ -244,21 +279,35 @@ fn events_from_quotes_at(
         let year_high = quote.get("yearHigh").and_then(|v| v.as_f64());
         let year_low = quote.get("yearLow").and_then(|v| v.as_f64());
 
+        // σ-自适应:本标的有当日 σ 阈值就用,否则回退全局固定阈值。
+        let symbol_thresholds = per_symbol_thresholds.get(&symbol);
+        let (low_eff, high_eff) = symbol_thresholds
+            .map(|t| (t.low_pct, t.high_pct))
+            .unwrap_or((low_pct, high_pct));
+        let sigma_pct = symbol_thresholds.and_then(|t| t.sigma_pct);
+
         if let Some(pct) = pct {
             let abs = pct.abs();
-            if abs >= low_pct {
+            if abs >= low_eff {
                 let step_pct = sanitize_realert_step_pct(realert_step_pct);
                 let severity = if window == PriceWindow::Close {
-                    closing_move_severity(abs, high_pct)
-                } else if abs >= high_pct {
+                    closing_move_severity(abs, high_eff)
+                } else if abs >= high_eff {
                     Severity::High
                 } else {
                     Severity::Low
                 };
                 let bps = (pct * 100.0).round() as i64;
                 let direction = if pct >= 0.0 { "+" } else { "" };
-                let lane = price_lane(pct, low_pct, high_pct, step_pct, window);
-                let payload = price_payload(quote, pct, price, &date_key, lane.as_ref());
+                let lane = price_lane(pct, low_eff, high_eff, step_pct, window);
+                let payload = price_payload(
+                    quote,
+                    pct,
+                    price,
+                    &date_key,
+                    lane.as_ref(),
+                    sigma_pct.map(|sigma| (sigma, low_eff, high_eff)),
+                );
                 events.push(MarketEvent {
                     id: lane
                         .as_ref()
@@ -274,7 +323,7 @@ fn events_from_quotes_at(
                     symbols: vec![symbol.clone()],
                     occurred_at: quote_time,
                     title: price_title(&symbol, pct, lane.as_ref(), direction),
-                    summary: price_summary(price, pct, lane.as_ref()),
+                    summary: price_summary(price, pct, lane.as_ref(), sigma_pct),
                     url: None,
                     source: "fmp.quote".into(),
                     payload,
@@ -460,6 +509,7 @@ fn price_payload(
     price: Option<f64>,
     date_key: &str,
     lane: Option<&PriceLane>,
+    sigma_thresholds: Option<(f64, f64, f64)>,
 ) -> Value {
     let mut payload = quote.clone();
     let Some(obj) = payload.as_object_mut() else {
@@ -472,6 +522,16 @@ fn price_payload(
     obj.insert("hone_price_pct".into(), json_number(pct));
     if let Some(price) = price {
         obj.insert("hone_price".into(), json_number(price));
+    }
+    // σ-自适应生效时记录当日 σ 与实际门槛,供 renderer / 周报 / 排障使用。
+    // σ 缺失回退固定阈值时不写,保持 payload 与旧行为逐字节一致。
+    if let Some((sigma, low_eff, high_eff)) = sigma_thresholds {
+        obj.insert("hone_price_sigma_pct".into(), json_number(sigma));
+        obj.insert("hone_price_low_threshold_pct".into(), json_number(low_eff));
+        obj.insert(
+            "hone_price_high_threshold_pct".into(),
+            json_number(high_eff),
+        );
     }
     match lane {
         Some(PriceLane::Low) => {
@@ -521,7 +581,12 @@ fn price_title(symbol: &str, pct: f64, lane: Option<&PriceLane>, direction_prefi
     }
 }
 
-fn price_summary(price: Option<f64>, pct: f64, lane: Option<&PriceLane>) -> String {
+fn price_summary(
+    price: Option<f64>,
+    pct: f64,
+    lane: Option<&PriceLane>,
+    sigma_pct: Option<f64>,
+) -> String {
     let price_text = price
         .map(|p| format!("当前 {p:.2}"))
         .unwrap_or_else(|| "当前价格未知".into());
@@ -530,6 +595,12 @@ fn price_summary(price: Option<f64>, pct: f64, lane: Option<&PriceLane>) -> Stri
     } else {
         format!("日跌 {pct:.2}%")
     };
+    // 「这次波动对该标的算几个 σ」比裸百分比更有信息量:SNDK 的 -8% ≈ 0.9σ
+    // 是寻常日,GOOGL 的 -8% ≈ 3.3σ 才是真异动。
+    let sigma_text = sigma_pct
+        .filter(|s| *s > 0.0)
+        .map(|s| format!("（≈{:.1}σ，60日σ {s:.1}%）", pct.abs() / s))
+        .unwrap_or_default();
     match lane {
         Some(PriceLane::Band {
             direction,
@@ -538,11 +609,11 @@ fn price_summary(price: Option<f64>, pct: f64, lane: Option<&PriceLane>) -> Stri
         }) => {
             let sign = if *direction == "up" { "+" } else { "-" };
             format!(
-                "{price_text}，{move_text}，下一档 {sign}{}%",
+                "{price_text}，{move_text}{sigma_text}，下一档 {sign}{}%",
                 format_bps(*next_band_bps)
             )
         }
-        _ => format!("{price_text}，{move_text}"),
+        _ => format!("{price_text}，{move_text}{sigma_text}"),
     }
 }
 
@@ -668,7 +739,7 @@ mod tests {
             {"symbol": "BE", "price": 229.75, "changesPercentage": 4.01,
              "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -692,7 +763,7 @@ mod tests {
             {"symbol": "AAOI", "price": 146.24, "changesPercentage": 6.18,
              "timestamp": quote_time.timestamp(), "yearHigh": 173.41, "yearLow": 11.86}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -716,7 +787,7 @@ mod tests {
             {"symbol": "AMD", "price": 342.53, "changesPercentage": 12.18,
              "timestamp": quote_time.timestamp(), "yearHigh": 360.0, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -732,7 +803,7 @@ mod tests {
             {"symbol": "BE", "price": 229.75, "changesPercentage": 8.0,
              "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         assert!(events.is_empty());
     }
 
@@ -744,7 +815,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
              "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -766,7 +837,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 3.5,
              "timestamp": close_time.timestamp(), "yearHigh": 500.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -783,7 +854,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
              "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
         assert!(events.is_empty());
     }
 
@@ -859,6 +930,7 @@ mod tests {
             10.0,
             2.0,
             0.001,
+            &HashMap::new(),
             now,
         )
         .expect("partial batch success should return events");
@@ -875,11 +947,85 @@ mod tests {
             10.0,
             2.0,
             0.001,
+            &HashMap::new(),
             Utc::now(),
         )
         .expect_err("all failed batches should fail the poller tick");
 
         assert!(err.to_string().contains("batch timeout"));
+    }
+
+    #[test]
+    fn sigma_thresholds_override_fixed_per_symbol() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 8, 14, 14, 30, 0).unwrap();
+        let now = quote_time + chrono::Duration::seconds(2);
+        // SNDK -5.5%:固定阈值(2.5/6.0)会警报;σ 阈值(8/12)应静音。
+        // GOOGL -5.5%:σ 阈值(4.2/5.0)下应直接 High(≥5.0)。
+        let raw = serde_json::json!([
+            {"symbol": "SNDK", "price": 380.0, "changesPercentage": -5.5,
+             "timestamp": quote_time.timestamp(), "yearHigh": 500.0, "yearLow": 200.0},
+            {"symbol": "GOOGL", "price": 180.0, "changesPercentage": -5.5,
+             "timestamp": quote_time.timestamp(), "yearHigh": 220.0, "yearLow": 140.0}
+        ]);
+        let mut per_symbol = HashMap::new();
+        per_symbol.insert(
+            "SNDK".to_string(),
+            SymbolThresholds {
+                low_pct: 8.0,
+                high_pct: 12.0,
+                sigma_pct: Some(8.9),
+            },
+        );
+        per_symbol.insert(
+            "GOOGL".to_string(),
+            SymbolThresholds {
+                low_pct: 4.2,
+                high_pct: 5.0,
+                sigma_pct: Some(2.4),
+            },
+        );
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &per_symbol, now);
+        assert!(
+            !events.iter().any(|e| e.symbols[0] == "SNDK"),
+            "SNDK -5.5% (<0.7σ) 应被 σ 阈值静音"
+        );
+        let googl = events
+            .iter()
+            .find(|e| e.symbols[0] == "GOOGL")
+            .expect("GOOGL -5.5% (≈2.3σ) 应触发");
+        assert_eq!(googl.severity, Severity::High);
+        assert_eq!(googl.id, "price_band:GOOGL:2026-08-14:down:500");
+        assert_eq!(
+            googl
+                .payload
+                .get("hone_price_sigma_pct")
+                .and_then(|v| v.as_f64()),
+            Some(2.4)
+        );
+        assert_eq!(
+            googl
+                .payload
+                .get("hone_price_high_threshold_pct")
+                .and_then(|v| v.as_f64()),
+            Some(5.0)
+        );
+        assert!(googl.summary.contains("≈2.3σ"), "summary={}", googl.summary);
+    }
+
+    #[test]
+    fn absent_sigma_entry_falls_back_to_fixed_thresholds_and_legacy_payload() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 8, 14, 14, 30, 0).unwrap();
+        let now = quote_time + chrono::Duration::seconds(2);
+        let raw = serde_json::json!([
+            {"symbol": "MU", "price": 950.0, "changesPercentage": 7.0,
+             "timestamp": quote_time.timestamp(), "yearHigh": 1200.0, "yearLow": 400.0}
+        ]);
+        let with_empty_map =
+            events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, &HashMap::new(), now);
+        let mu = &with_empty_map[0];
+        assert_eq!(mu.severity, Severity::High);
+        assert!(mu.payload.get("hone_price_sigma_pct").is_none());
+        assert!(!mu.summary.contains('σ'));
     }
 
     #[tokio::test]

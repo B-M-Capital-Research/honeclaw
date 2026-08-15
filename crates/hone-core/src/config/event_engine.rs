@@ -616,6 +616,56 @@ pub struct Thresholds {
     /// High 宏观事件发生后该小时数内仍允许即时推；更旧事件降级摘要。
     #[serde(default = "default_macro_immediate_grace_hours")]
     pub macro_immediate_grace_hours: i64,
+    /// 按标的波动率缩放价格警报阈值。见
+    /// `docs/proposals/sigma-adaptive-price-thresholds.md`。
+    #[serde(default)]
+    pub price_sigma: PriceSigmaThresholds,
+}
+
+/// σ-自适应价格阈值:`low_eff = clamp(low_mult·σ, low_floor, low_cap)`,
+/// `high_eff = clamp(high_mult·σ, high_floor, high_cap)`,σ 为过去
+/// `lookback_days` 个交易日 close-to-close 收益率的样本标准差(%)。
+/// σ 不可得(样本 < `min_samples`、数据源失败)时回退固定
+/// `price_alert_{low,high}_pct`。
+///
+/// `low_cap_pct` 不得高于任何 actor 的 `price_high_pct_override`(当前 8.0),
+/// 否则 poller 会静默吞掉 router 层用户覆盖本应命中的事件。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceSigmaThresholds {
+    #[serde(default = "default_price_sigma_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_price_sigma_lookback_days")]
+    pub lookback_days: u32,
+    #[serde(default = "default_price_sigma_min_samples")]
+    pub min_samples: u32,
+    #[serde(default = "default_price_sigma_low_mult")]
+    pub low_mult: f64,
+    #[serde(default = "default_price_sigma_high_mult")]
+    pub high_mult: f64,
+    #[serde(default = "default_price_sigma_low_floor_pct")]
+    pub low_floor_pct: f64,
+    #[serde(default = "default_price_sigma_low_cap_pct")]
+    pub low_cap_pct: f64,
+    #[serde(default = "default_price_sigma_high_floor_pct")]
+    pub high_floor_pct: f64,
+    #[serde(default = "default_price_sigma_high_cap_pct")]
+    pub high_cap_pct: f64,
+}
+
+impl Default for PriceSigmaThresholds {
+    fn default() -> Self {
+        Self {
+            enabled: default_price_sigma_enabled(),
+            lookback_days: default_price_sigma_lookback_days(),
+            min_samples: default_price_sigma_min_samples(),
+            low_mult: default_price_sigma_low_mult(),
+            high_mult: default_price_sigma_high_mult(),
+            low_floor_pct: default_price_sigma_low_floor_pct(),
+            low_cap_pct: default_price_sigma_low_cap_pct(),
+            high_floor_pct: default_price_sigma_high_floor_pct(),
+            high_cap_pct: default_price_sigma_high_cap_pct(),
+        }
+    }
 }
 
 impl Default for Thresholds {
@@ -635,6 +685,7 @@ impl Default for Thresholds {
             large_position_weight_pct: default_large_position_weight_pct(),
             macro_immediate_lookahead_hours: default_macro_immediate_lookahead_hours(),
             macro_immediate_grace_hours: default_macro_immediate_grace_hours(),
+            price_sigma: PriceSigmaThresholds::default(),
         }
     }
 }
@@ -689,6 +740,35 @@ fn default_macro_immediate_lookahead_hours() -> i64 {
 }
 fn default_macro_immediate_grace_hours() -> i64 {
     2
+}
+fn default_price_sigma_enabled() -> bool {
+    true
+}
+fn default_price_sigma_lookback_days() -> u32 {
+    60
+}
+fn default_price_sigma_min_samples() -> u32 {
+    20
+}
+// 乘数锚定:典型 σ≈1.4% 的市场股 low_eff≈2.45 / high_eff≈4.9,与固定默认
+// 2.5/6.0 基本重合;缩放效果集中在高波动标的。回归数据实测见 proposal 文档。
+fn default_price_sigma_low_mult() -> f64 {
+    1.75
+}
+fn default_price_sigma_high_mult() -> f64 {
+    3.5
+}
+fn default_price_sigma_low_floor_pct() -> f64 {
+    2.0
+}
+fn default_price_sigma_low_cap_pct() -> f64 {
+    8.0
+}
+fn default_price_sigma_high_floor_pct() -> f64 {
+    5.0
+}
+fn default_price_sigma_high_cap_pct() -> f64 {
+    12.0
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
