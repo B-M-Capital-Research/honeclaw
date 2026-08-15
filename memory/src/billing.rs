@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
-use std::future::Future;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use chrono::DateTime;
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{HoneError, HoneResult, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -143,8 +143,7 @@ impl BillingStorage {
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        let schema_postgres = postgres.clone();
-        run_cloud_billing(async move { schema_postgres.ensure_schema().await })?;
+        ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self {
             backend: BillingBackend::Cloud { postgres },
         })
@@ -1026,20 +1025,9 @@ fn webhook_from_value(value: serde_json::Value) -> HoneResult<BillingWebhookEven
 fn run_cloud_billing<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud billing worker panicked".to_string()))?;
-    }
-    let runtime =
-        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud billing operation")
 }
 
 fn lock_err<T>(error: std::sync::PoisonError<T>) -> HoneError {
