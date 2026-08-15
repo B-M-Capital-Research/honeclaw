@@ -13,13 +13,10 @@ use serde::Serialize;
 
 use crate::state::AppState;
 
-/// Root directory for durable research snapshots, derived from the session
-/// database location so every section lands next to the rest of the state.
+/// Root directory for durable research snapshots, shared with the rest of the
+/// file-backed state.
 pub(crate) fn data_root(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf()
+    state.core.config.storage.data_root()
 }
 
 /// Serialize `value` as pretty JSON and atomically replace `path`

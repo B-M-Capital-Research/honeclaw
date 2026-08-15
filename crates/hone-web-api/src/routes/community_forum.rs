@@ -838,9 +838,11 @@ fn hex_sha256(bytes: &[u8]) -> String {
 }
 
 fn forum_root(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
+    state
+        .core
+        .config
+        .storage
+        .data_root()
         .join("community-forum")
 }
 

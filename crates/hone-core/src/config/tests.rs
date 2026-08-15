@@ -9,6 +9,16 @@ fn temp_test_dir(prefix: &str) -> PathBuf {
     dir
 }
 
+#[test]
+fn storage_data_root_is_derived_from_sessions_dir() {
+    let mut storage: StorageConfig =
+        serde_yaml::from_str("{}").expect("deserialize storage defaults");
+    assert_eq!(storage.data_root(), PathBuf::from("./data"));
+
+    storage.sessions_dir = "/srv/hone/state/sessions".to_string();
+    assert_eq!(storage.data_root(), PathBuf::from("/srv/hone/state"));
+}
+
 fn yaml_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
     mapping.get(Value::String(key.to_string()))
 }

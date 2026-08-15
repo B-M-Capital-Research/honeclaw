@@ -427,6 +427,13 @@ pub struct StorageConfig {
 }
 
 impl StorageConfig {
+    pub fn data_root(&self) -> PathBuf {
+        Path::new(&self.sessions_dir)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf()
+    }
+
     pub fn apply_data_root(&mut self, root: impl AsRef<Path>) {
         let root = root.as_ref();
         self.sessions_dir = root.join("sessions").to_string_lossy().to_string();
