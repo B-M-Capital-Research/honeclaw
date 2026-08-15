@@ -39,9 +39,7 @@ pub use company_profile::{
     configure_cloud_company_profile_storage, research_item_id,
 };
 pub use cron_job::{ChannelTargetRecord, CronJobStorage};
-pub use llm_audit::{
-    AuditQueryFilter, AuditRecordSummary, LlmAuditStorage, configure_cloud_llm_audit_storage,
-};
+pub use llm_audit::{AuditQueryFilter, AuditRecordSummary, LlmAuditStorage};
 pub use portfolio::{PortfolioStorage, configure_cloud_portfolio_storage};
 pub use quota::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, ConversationQuotaSnapshot,

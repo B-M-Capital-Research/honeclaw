@@ -25,8 +25,7 @@ use hone_event_engine::EventStore;
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
-    SessionStorage, configure_cloud_company_profile_storage, configure_cloud_llm_audit_storage,
-    configure_cloud_portfolio_storage,
+    SessionStorage, configure_cloud_company_profile_storage, configure_cloud_portfolio_storage,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
@@ -122,7 +121,6 @@ impl HoneBotCore {
         configure_cloud_notification_prefs(cloud_pg_runtime.clone());
         configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
         hone_memory::configure_cloud_survey_storage(cloud_pg_runtime.clone());
-        configure_cloud_llm_audit_storage(cloud_pg_runtime.clone());
         configure_cloud_company_profile_storage(cloud_pg_runtime.clone());
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
@@ -236,10 +234,11 @@ impl HoneBotCore {
             return None;
         }
 
-        match LlmAuditStorage::new(
-            &config.storage.llm_audit_db_path,
-            config.storage.llm_audit_retention_days,
-        ) {
+        let Some(postgres) = CloudPgRuntime::from_cloud_config(&config.cloud) else {
+            tracing::warn!("Failed to create LLM audit storage: PostgreSQL is not configured");
+            return None;
+        };
+        match LlmAuditStorage::new_cloud(postgres, config.storage.llm_audit_retention_days) {
             Ok(storage) => Some(Arc::new(storage)),
             Err(err) => {
                 tracing::warn!("Failed to create LLM audit storage: {}", err);
