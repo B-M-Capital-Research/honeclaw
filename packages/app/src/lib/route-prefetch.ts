@@ -12,6 +12,7 @@ const loaders = {
   community: () => import("@/pages/public-community"),
   pushes: () => import("@/pages/public-pushes"),
   plan: () => import("@/pages/public-plan"),
+  research: () => import("@/pages/public-research"),
 } satisfies Record<string, () => Promise<unknown>>;
 
 export type PrefetchableRoute = keyof typeof loaders;

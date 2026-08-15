@@ -51,6 +51,7 @@ import type {
   DailySignalHistoryItem,
   DailySignalKind,
   DailySignalReport,
+  ResearchOverviewPayload,
 } from "./types";
 import type { ActorRef } from "./actors";
 import {
@@ -2028,4 +2029,11 @@ export async function getPublicDailySignalHistory(
     { signal },
   );
   return parseJson<{ items: DailySignalHistoryItem[] }>(response);
+}
+
+export async function getPublicResearchOverview(
+  signal?: AbortSignal,
+): Promise<ResearchOverviewPayload> {
+  const response = await apiFetch("/api/public/research-overview", { signal });
+  return parseJson<ResearchOverviewPayload>(response);
 }

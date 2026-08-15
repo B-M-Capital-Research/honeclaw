@@ -1,17 +1,18 @@
 import {
   For,
   Show,
-  createEffect,
   createMemo,
   createSignal,
   onCleanup,
   onMount,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 import {
   getPublicDailySignal,
   getPublicDailySignalHistory,
 } from "@/lib/api";
+import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchState } from "@/components/research/research-state";
+import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
   DailySignalHistoryItem,
   DailySignalKind,
@@ -21,7 +22,9 @@ import type {
 import "./daily-signal-dashboard.css";
 
 type Props = {
-  onAsk: (message: string) => void;
+  kind: DailySignalKind;
+  onClose: () => void;
+  onAsk?: (message: string) => void;
 };
 
 const KIND_COPY = {
@@ -142,6 +145,13 @@ function Gauge(props: { report: DailySignalReport }) {
 }
 
 function reportContext(report: DailySignalReport, question: string) {
+  const rules = [
+    "只使用上述已保存报告和当前对话",
+    "事实引用报告中的来源链接",
+    "明确区分事实、模型推断与情景",
+    "如果问题涉及数据截止时间之后的信息，先说明报告未覆盖，并询问是否另行查询最新资料",
+    "不要在回答中改写正式评分",
+  ];
   const compact = {
     kind: report.kind,
     reportDate: report.report_date,
@@ -166,33 +176,33 @@ function reportContext(report: DailySignalReport, question: string) {
     alerts: report.alerts,
     sources: report.sources,
   };
-  return `<!-- HONE_SAVED_DAILY_SIGNAL_REPORT\n${JSON.stringify(compact)}\nEND_HONE_SAVED_DAILY_SIGNAL_REPORT -->\n基于已保存的${report.title}（报告日 ${report.report_date}）回答：${question}\n要求：只使用上述已保存报告和当前对话；事实引用报告中的来源链接；明确区分事实、模型推断与情景。如果问题涉及数据截止时间之后的信息，先说明报告未覆盖，并询问是否另行查询最新资料。不要在回答中改写正式评分。`;
+  return buildSavedReportPrompt({
+    marker: "HONE_SAVED_DAILY_SIGNAL_REPORT",
+    payload: compact,
+    subject: `已保存的${report.title}（报告日 ${report.report_date}）`,
+    question,
+    rules,
+  });
 }
 
-export function DailySignalDashboard(props: Props) {
-  const [reports, setReports] = createSignal<Partial<Record<DailySignalKind, DailySignalReport>>>({});
-  const [histories, setHistories] = createSignal<Partial<Record<DailySignalKind, DailySignalHistoryItem[]>>>({});
-  const [openKind, setOpenKind] = createSignal<DailySignalKind>();
+export function DailySignalPanel(props: Props) {
+  const [report, setReport] = createSignal<DailySignalReport>();
+  const [history, setHistory] = createSignal<DailySignalHistoryItem[]>();
   const [tab, setTab] = createSignal<"overview" | "history" | "sources">("overview");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
   const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
+  // One request paints the panel; the 14-day history is a separate tab and
+  // loads the first time someone actually switches to it.
   const load = async () => {
     controller?.abort();
     controller = new AbortController();
     setLoading(true);
     setError("");
     try {
-      const [macro, ai, macroHistory, aiHistory] = await Promise.all([
-        getPublicDailySignal("macro", controller.signal),
-        getPublicDailySignal("ai", controller.signal),
-        getPublicDailySignalHistory("macro", 14, controller.signal),
-        getPublicDailySignalHistory("ai", 14, controller.signal),
-      ]);
-      setReports({ macro, ai });
-      setHistories({ macro: macroHistory.items, ai: aiHistory.items });
+      setReport(await getPublicDailySignal(props.kind, controller.signal));
     } catch (cause) {
       if (cause instanceof Error && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "每日信号暂时无法加载");
@@ -201,98 +211,67 @@ export function DailySignalDashboard(props: Props) {
     }
   };
 
+  const loadHistory = async () => {
+    if (history() !== undefined) return;
+    try {
+      const payload = await getPublicDailySignalHistory(props.kind, 14);
+      setHistory(payload.items);
+    } catch {
+      setHistory([]);
+    }
+  };
+
+  const openTab = (value: "overview" | "history" | "sources") => {
+    setTab(value);
+    if (value === "history") void loadHistory();
+  };
+
   onMount(() => void load());
   onCleanup(() => controller?.abort());
-  createEffect(() => {
-    if (!openKind()) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenKind(undefined);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => document.removeEventListener("keydown", onKeyDown));
-  });
 
-  const report = createMemo(() => {
-    const kind = openKind();
-    return kind ? reports()[kind] : undefined;
-  });
+  const kind = createMemo(() => props.kind);
 
   const ask = () => {
     const current = report();
     const text = question().trim();
-    if (!current || !text) return;
+    if (!current || !text || !props.onAsk) return;
     props.onAsk(reportContext(current, text));
     setQuestion("");
-    setOpenKind(undefined);
+    props.onClose();
   };
 
   return (
-    <>
-      <div class="daily-signal-launchers" aria-label="每日投资仪表盘">
-        <For each={["macro", "ai"] as DailySignalKind[]}>
-          {(kind) => {
-            const current = () => reports()[kind];
-            return (
-              <button
-                type="button"
-                class={`daily-signal-launcher is-${current()?.signal ?? "unknown"}`}
-                aria-haspopup="dialog"
-                onClick={() => {
-                  setTab("overview");
-                  setOpenKind(kind);
-                }}
-              >
-                <span class="daily-signal-launcher__light" aria-hidden="true" />
-                <span>
-                  <strong>{KIND_COPY[kind].title}</strong>
-                  <small>
-                    <Show when={current()} fallback={loading() ? "读取已保存报告…" : "等待报告"}>
-                      {(value) => `${signalLabel(value().signal)} · ${scoreLabel(value().score)} · ${value().phase}`}
-                    </Show>
-                  </small>
-                </span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
-              </button>
-            );
-          }}
-        </For>
-      </div>
-
-      <Show when={openKind()}>
-        {(kind) => (
-          <Portal>
-            <div class="daily-signal-backdrop" onClick={() => setOpenKind(undefined)}>
-              <section
-                class={`daily-signal-dialog is-${kind()}`}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="daily-signal-title"
-                onClick={(event) => event.stopPropagation()}
-              >
+    <ResearchPanel
+      onClose={props.onClose}
+      labelledBy="daily-signal-title"
+      backdropClass="daily-signal-backdrop"
+      dialogClass={`daily-signal-dialog is-${kind()}`}
+    >
+      <>
                 <header class="daily-signal-header">
                   <div>
                     <p>{KIND_COPY[kind()].kicker}</p>
                     <h2 id="daily-signal-title">{KIND_COPY[kind()].title}</h2>
                     <span>{KIND_COPY[kind()].description}</span>
                   </div>
-                  <button type="button" aria-label="关闭" onClick={() => setOpenKind(undefined)}>
+                  <button type="button" aria-label="关闭" onClick={() => props.onClose()}>
                     <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
                   </button>
                 </header>
 
                 <nav class="daily-signal-tabs" aria-label="报告视图">
                   <For each={[["overview", "概览"], ["history", "历史"], ["sources", "证据与口径"]] as const}>
-                    {([value, label]) => <button classList={{ active: tab() === value }} onClick={() => setTab(value)}>{label}</button>}
+                    {([value, label]) => <button classList={{ active: tab() === value }} onClick={() => openTab(value)}>{label}</button>}
                   </For>
                   <button class="daily-signal-reread" disabled={loading()} onClick={() => void load()}>{loading() ? "读取中…" : "重新读取快照"}</button>
                 </nav>
 
                 <div class="daily-signal-body">
                   <Show when={loading() && !report()}>
-                    <div class="daily-signal-state"><i /><p>正在读取已保存报告，不会触发重新计算。</p></div>
+                    <ResearchState kind="loading" message="正在读取已保存报告" detail="只读取当日快照，不会触发重新计算。" />
                   </Show>
                   <Show when={error() && !report()}>
-                    <div class="daily-signal-state is-error"><strong>报告读取失败</strong><p>{error()}</p><button onClick={() => void load()}>重试</button></div>
+                    <ResearchState kind="error" message="报告读取失败" detail={error()} onRetry={() => void load()} />
                   </Show>
                   <Show when={report()}>
                     {(current) => (
@@ -354,7 +333,9 @@ export function DailySignalDashboard(props: Props) {
                         </Show>
 
                         <Show when={tab() === "history"}>
-                          <section class="daily-signal-history"><h3>最近 14 个每日快照</h3><For each={histories()[kind()] ?? []} fallback={<p>还没有历史记录。</p>}>{(item) => <article class={`is-${item.signal}`}><i /><time>{item.report_date}</time><strong>{scoreLabel(item.score)}</strong><span>{item.phase}</span><small>{item.summary}</small></article>}</For></section>
+                          <Show when={history()} fallback={<ResearchState kind="loading" message="正在读取历史快照" />}>
+                            {(items) => <section class="daily-signal-history"><h3>最近 14 个每日快照</h3><For each={items()} fallback={<p>还没有历史记录。</p>}>{(item) => <article class={`is-${item.signal}`}><i /><time>{item.report_date}</time><strong>{scoreLabel(item.score)}</strong><span>{item.phase}</span><small>{item.summary}</small></article>}</For></section>}
+                          </Show>
                         </Show>
 
                         <Show when={tab() === "sources"}>
@@ -365,22 +346,18 @@ export function DailySignalDashboard(props: Props) {
                   </Show>
                 </div>
 
-                <Show when={report()}>
-                  {(current) => (
+                <Show when={props.onAsk && report()}>
+                  {(_) => (
                     <footer class="daily-signal-footer">
                       <form onSubmit={(event) => { event.preventDefault(); ask(); }}>
-                        <input value={question()} onInput={(event) => setQuestion(event.currentTarget.value)} placeholder={`基于这份${current().title}继续提问…`} aria-label="基于保存报告提问" />
+                        <input value={question()} onInput={(event) => setQuestion(event.currentTarget.value)} placeholder={`基于这份${report()!.title}继续提问…`} aria-label="基于保存报告提问" />
                         <button type="submit" disabled={!question().trim()}>发送到对话</button>
                       </form>
-                      <p>{current().disclaimer}</p>
+                      <p>{report()!.disclaimer}</p>
                     </footer>
                   )}
                 </Show>
-              </section>
-            </div>
-          </Portal>
-        )}
-      </Show>
-    </>
+      </>
+    </ResearchPanel>
   );
 }

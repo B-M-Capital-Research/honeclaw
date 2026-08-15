@@ -35,6 +35,7 @@ type IconName =
   | "menu"
   | "new"
   | "paper"
+  | "research"
   | "search"
   | "send"
   | "track";
@@ -74,6 +75,7 @@ export function AgentWorkspaceIcon(props: {
         <Match when={props.name === "menu"}><path d="M4 7h16M4 12h16M4 17h16" /></Match>
         <Match when={props.name === "new"}><path d="M12 5v14M5 12h14" /></Match>
         <Match when={props.name === "paper"}><path d="M6 2h9l4 4v16H6zM14 2v5h5M9 12h7M9 16h7" /></Match>
+        <Match when={props.name === "research"}><rect x="3" y="3" width="7.5" height="9.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.6" /><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.6" /><rect x="3" y="15.5" width="7.5" height="5.5" rx="1.6" /></Match>
         <Match when={props.name === "search"}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Match>
         <Match when={props.name === "send"}><path d="m3 11 18-8-8 18-2-8-8-2Z" /><path d="m11 13 5-5" /></Match>
         <Match when={props.name === "track"}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v3M22 12h-3" /></Match>
@@ -86,7 +88,7 @@ export function AgentWorkspaceSidebar(props: {
   userName: string;
   research: ResearchItem[];
   activeMode: "overview" | "conversation";
-  activeSection?: "agent" | "pushes" | "insights" | "me";
+  activeSection?: "agent" | "research" | "pushes" | "insights" | "me";
   /** Optional so a surface that has not wired the section simply omits it
       rather than failing to compile. */
   onPushes?: () => void;
@@ -99,6 +101,7 @@ export function AgentWorkspaceSidebar(props: {
   onNewResearch: () => void;
   onSelectResearch: (id: string) => void;
   onHome: () => void;
+  onResearchDesk?: () => void;
   onInsights: () => void;
   onAccount: () => void;
   onLogout: () => void;
@@ -123,6 +126,7 @@ export function AgentWorkspaceSidebar(props: {
       </button>
       <nav class="agent-workspace-nav">
         <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>{CONTENT.chat_page.workspace.assistant_nav}</span></button>
+        <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} classList={{ "is-active": props.activeSection === "research" }} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
         <Show when={props.onPushes}>{(onPushes) => <button type="button" {...routePrefetchHandlers("pushes")} classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushes()} class="agent-workspace-nav-with-dot"><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={(props.unreadPushCount ?? 0) > 0}><i /></Show></button>}</Show>
         <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
         <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
@@ -394,6 +398,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
   onLoadOlder: () => void;
   onNewResearch: () => void;
   onHome: () => void;
+  onResearchDesk?: () => void;
   onInsights: () => void;
   onAccount: () => void;
 }) {
@@ -481,6 +486,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
         </header>
         <nav class="agent-workspace-drawer-nav" aria-label={CONTENT.chat_page.workspace.main_menu}>
           <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span></button>
+          <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
           <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
           <button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
         </nav>
@@ -531,17 +537,19 @@ export function AgentWorkspaceHistoryDrawer(props: {
 
 export function AgentWorkspaceMobileNav(props: {
   activeMode: "overview" | "conversation";
-  activeSection?: "agent" | "pushes" | "insights" | "me";
+  activeSection?: "agent" | "research" | "pushes" | "insights" | "me";
   communityUnread: boolean;
   unreadPushCount: number;
   onHome: () => void;
   onInsights: () => void;
   onAgent: () => void;
+  onResearchDesk?: () => void;
   onPushesTab?: () => void;
   onAccount: () => void;
 }) {
   return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
     <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>投资助手</span></button>
+    <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} classList={{ "is-active": props.activeSection === "research" }} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
     <Show when={props.onPushesTab}>{(onPushesTab) => <button type="button" {...routePrefetchHandlers("pushes")} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushesTab()}><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={props.unreadPushCount > 0}><i /></Show></button>}</Show>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
     <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>

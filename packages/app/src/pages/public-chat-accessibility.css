@@ -7,161 +7,51 @@
   min-height: 180px !important;
 }
 
-/* Doubao-style tool shelf: always visible, one row, independently scrollable. */
-.chat-feature-rail {
+/* Slim research entry: pure navigation, no data fetching. The daily research
+   products live on /research; the conversation keeps a one-line doorway. */
+.chat-research-entry {
   position: relative;
   z-index: 6;
-  flex: 0 0 auto;
-  width: min(948px, 100%);
-  margin: 0 auto;
-  overflow: hidden;
-}
-
-.chat-feature-rail::after {
-  position: absolute;
-  top: 6px;
-  right: 0;
-  bottom: 8px;
-  width: 28px;
-  content: "";
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--agent-paper, #faf9f6));
-}
-
-.chat-feature-rail__track {
-  height: 66px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 12px 8px;
+  gap: 6px;
+  width: min(948px, 100%);
+  margin: 0 auto;
+  padding: 6px 12px 2px;
   overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(103, 115, 110, 0.32) transparent;
+  scrollbar-width: none;
 }
 
-.chat-feature-rail__track::-webkit-scrollbar { height: 4px; }
-.chat-feature-rail__track::-webkit-scrollbar-thumb {
+.chat-research-entry::-webkit-scrollbar { display: none; }
+
+.chat-research-entry button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--hone-line);
   border-radius: 999px;
-  background: rgba(103, 115, 110, 0.32);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
 }
 
-.chat-feature-rail__track :is(
-  .daily-signal-launchers,
-  .company-rating-launcher,
-  .portfolio-news-launcher,
-  .position-management-launcher,
-  .influencer-digest-launcher,
-  .weekly-brief-launcher,
-  .key-chain-launcher,
-  .research-library-chat-entry
-) {
-  display: contents !important;
+.chat-research-entry button:hover {
+  border-color: var(--hone-line-strong);
+  color: var(--hone-ink-950);
 }
 
-.chat-feature-rail__track :is(
-  .daily-signal-launcher,
-  .company-rating-launcher__button,
-  .portfolio-news-launcher > button,
-  .position-management-launcher > button,
-  .influencer-digest-launcher > button,
-  .weekly-brief-launcher > button,
-  .key-chain-launcher > button,
-  .research-library-chat-entry button
-) {
-  width: 144px !important;
-  min-width: 144px !important;
-  min-height: 52px !important;
-  height: 52px !important;
-  max-height: 52px !important;
-  margin: 0 !important;
-  padding: 7px 10px !important;
-  gap: 8px !important;
-  flex: 0 0 144px;
-  scroll-snap-align: start;
-  border-radius: 14px !important;
-  background: var(--hone-surface-raised, rgba(255, 255, 255, 0.94)) !important;
-  box-shadow: none !important;
+.chat-research-entry__primary {
+  color: var(--hone-ink-950) !important;
+  font-weight: 600;
 }
 
-.chat-feature-rail__track :is(
-  .daily-signal-launcher,
-  .company-rating-launcher,
-  .portfolio-news-launcher,
-  .position-management-launcher,
-  .influencer-digest-launcher,
-  .weekly-brief-launcher,
-  .key-chain-launcher,
-  .research-library-chat-entry
-) strong {
-  max-width: 88px;
-  display: -webkit-box;
-  font-size: 13.5px !important;
-  line-height: 1.18 !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.chat-feature-rail__track :is(
-  .company-rating-launcher__counts,
-  .portfolio-news-launcher__alert,
-  .position-management-launcher__alert,
-  .influencer-digest-launcher > button > b,
-  .weekly-brief-launcher > button > b,
-  .key-chain-launcher > button > b,
-  .daily-signal-launcher > svg,
-  .company-rating-launcher__button > svg,
-  .portfolio-news-chevron,
-  .position-management-chevron,
-  .influencer-digest-launcher > button > i,
-  .weekly-brief-launcher > button > i,
-  .key-chain-launcher > button > i,
-  .research-library-chat-entry button > i
-) {
-  display: none !important;
-}
-
-.chat-feature-rail__track :is(
-  .daily-signal-launcher,
-  .company-rating-launcher,
-  .portfolio-news-launcher,
-  .position-management-launcher,
-  .influencer-digest-launcher,
-  .weekly-brief-launcher,
-  .key-chain-launcher,
-  .research-library-chat-entry
-) small {
-  display: none !important;
-}
-
-.chat-feature-rail__track :is(
-  .company-rating-launcher__icon,
-  .portfolio-news-launcher__icon,
-  .position-management-launcher__icon,
-  .influencer-digest-icon,
-  .weekly-brief-icon,
-  .key-chain-icon,
-  .research-library-chat-entry span
-) {
-  width: 28px !important;
-  height: 28px !important;
-  min-width: 28px !important;
-  border-radius: 9px !important;
-}
-
-.chat-feature-rail__track .daily-signal-launcher__light {
-  width: 11px !important;
-  height: 11px !important;
-  min-width: 11px !important;
-}
-
-.chat-feature-rail__track .research-library-chat-entry span {
-  font-size: 15px !important;
+.chat-research-entry__primary i {
+  font-style: normal;
+  color: var(--hone-ink-400);
 }
 
 /* A new conversation is useful before the first keystroke. */
@@ -298,8 +188,6 @@
   font-size: 21px !important;
 }
 
-[data-chat-fs="l"] .chat-feature-rail__track strong { font-size: 14.5px !important; }
-[data-chat-fs="xl"] .chat-feature-rail__track strong { font-size: 15.5px !important; }
 [data-chat-fs="l"] .chat-empty-prompts button strong { font-size: 17.5px !important; }
 [data-chat-fs="xl"] .chat-empty-prompts button strong { font-size: 19px !important; }
 [data-chat-fs="l"] .chat-empty-prompts h2 { font-size: 32px !important; }
@@ -389,25 +277,6 @@
 .influencer-tags span,
 .influencer-digest-body article > a { font-size: 10.5px !important; }
 
-[data-theme="dark"] .chat-feature-rail__track :is(
-  .daily-signal-launcher,
-  .company-rating-launcher__button,
-  .portfolio-news-launcher > button,
-  .position-management-launcher > button,
-  .influencer-digest-launcher > button,
-  .weekly-brief-launcher > button,
-  .key-chain-launcher > button,
-  .research-library-chat-entry button
-) {
-  border-color: #2c3b4d;
-  background: #151e1c !important;
-  color: #edf2ef;
-}
-
-[data-theme="dark"] .chat-feature-rail::after {
-  background: linear-gradient(90deg, transparent, var(--agent-paper, #0f1514));
-}
-
 [data-theme="dark"] .chat-empty-prompts h2,
 [data-theme="dark"] .chat-empty-prompts button {
   color: #edf2ef;
@@ -440,36 +309,7 @@
 @media (max-width: 820px) {
   .public-chat-page--ready .public-chat-shell.is-conversation > .public-chat-messages {
     min-height: 0 !important;
-    padding-bottom: 218px !important;
-  }
-
-  .chat-feature-rail__track {
-    height: 64px;
-    gap: 6px;
-    padding: 6px 12px 8px;
-  }
-
-  .chat-feature-rail__track :is(
-    .daily-signal-launcher,
-    .company-rating-launcher__button,
-    .portfolio-news-launcher > button,
-    .position-management-launcher > button,
-    .influencer-digest-launcher > button,
-    .weekly-brief-launcher > button,
-    .key-chain-launcher > button,
-    .research-library-chat-entry button
-  ) {
-    width: 126px !important;
-    min-width: 126px !important;
-    min-height: 50px !important;
-    height: 50px !important;
-    max-height: 50px !important;
-    flex-basis: 126px;
-  }
-
-  .chat-feature-rail__track strong {
-    max-width: 78px !important;
-    font-size: 13px !important;
+    padding-bottom: 172px !important;
   }
 
   .chat-empty-prompts {

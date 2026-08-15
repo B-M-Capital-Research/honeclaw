@@ -22,8 +22,23 @@ describe("community forum contract", () => {
     expect(component).toContain("pending_review");
   });
 
+  it("confirms post deletion inline instead of a native dialog", () => {
+    expect(component).not.toContain("window.confirm");
+    expect(component).toContain("确认删除");
+    expect(component).toContain("取消");
+    expect(component).toContain("community-forum-delete-confirm");
+    expect(css).toContain("var(--hone-error-600)");
+  });
+
+  it("uses hone tokens for warning and error accents", () => {
+    expect(css).toContain("var(--hone-signal-yellow)");
+    expect(css).toContain("var(--hone-coral-600)");
+    expect(css).not.toContain("#d19a24");
+    expect(css).not.toContain("#b67d09");
+  });
+
   it("has mobile and dark layouts", () => {
-    expect(css).toContain("@media(max-width:768px)");
-    expect(css).toContain("[data-theme=dark]");
+    expect(css).toContain("@media (max-width: 768px)");
+    expect(css).toContain('[data-theme="dark"]');
   });
 });

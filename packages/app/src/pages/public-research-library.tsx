@@ -81,6 +81,13 @@ export default function PublicResearchLibraryPage() {
   const [workingItem, setWorkingItem] = createSignal("");
   const [notice, setNotice] = createSignal("");
   const [error, setError] = createSignal("");
+  const [confirmingRemove, setConfirmingRemove] = createSignal("");
+  const [confirmingSubmit, setConfirmingSubmit] = createSignal("");
+  const [reviewDraft, setReviewDraft] = createSignal<{
+    id: string;
+    decision: "approve" | "reject";
+  } | null>(null);
+  const [reviewNote, setReviewNote] = createSignal("");
   let fileInput: HTMLInputElement | undefined;
 
   const load = async () => {
@@ -100,6 +107,24 @@ export default function PublicResearchLibraryPage() {
   };
 
   onMount(() => void load());
+
+  /** In-place merge (same spirit as community-forum's mergePost): replace by
+      id when present, otherwise prepend, so成功操作不需要全量重拉。 */
+  const mergeItems = (
+    ...incoming: Array<ResearchLibraryItem | null | undefined>
+  ) => {
+    setBundle((current) => {
+      if (!current) return current;
+      let items = current.items;
+      for (const item of incoming) {
+        if (!item) continue;
+        items = items.some((value) => value.id === item.id)
+          ? items.map((value) => (value.id === item.id ? item : value))
+          : [item, ...items];
+      }
+      return { ...current, items };
+    });
+  };
 
   const filteredItems = createMemo(() => {
     const current = filter();
@@ -149,7 +174,7 @@ export default function PublicResearchLibraryPage() {
       setTickers("");
       setTopics("");
       if (fileInput) fileInput.value = "";
-      await load();
+      mergeItems(result.item);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -185,15 +210,10 @@ export default function PublicResearchLibraryPage() {
   };
 
   const remove = async (item: ResearchLibraryItem) => {
-    if (
-      !window.confirm(
-        `确认删除“${item.title}”？删除后下游产品将不再读取这份资料。`,
-      )
-    )
-      return;
     setError("");
     try {
       await deletePublicResearchLibrary(item.id);
+      setConfirmingRemove("");
       setBundle((current) =>
         current
           ? {
@@ -213,12 +233,6 @@ export default function PublicResearchLibraryPage() {
   };
 
   const submitCandidate = async (item: ResearchLibraryItem) => {
-    if (
-      !window.confirm(
-        `把“${item.title}”提交给 HONE 管理员审核？审核前不会影响其他用户或官方评级。`,
-      )
-    )
-      return;
     setWorkingItem(item.id);
     setError("");
     try {
@@ -228,7 +242,8 @@ export default function PublicResearchLibraryPage() {
           ? "这份资料已经在审核队列中。"
           : "已提交审核；批准前仍只属于候选资料。",
       );
-      await load();
+      setConfirmingSubmit("");
+      mergeItems(result.item);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -240,23 +255,23 @@ export default function PublicResearchLibraryPage() {
     item: ResearchLibraryItem,
     decision: "approve" | "reject",
   ) => {
-    const note = window.prompt(
-      decision === "approve"
-        ? "填写核验依据或采纳备注（可留空）"
-        : "填写驳回原因（建议填写）",
-      "",
-    );
-    if (note === null) return;
+    const note = reviewNote().trim();
     setWorkingItem(item.id);
     setError("");
     try {
-      await reviewPublicResearchLibraryCandidate(item.id, decision, note);
+      const result = await reviewPublicResearchLibraryCandidate(
+        item.id,
+        decision,
+        note,
+      );
       setNotice(
         decision === "approve"
           ? "已核验并采纳到 HONE 官方研究库。"
           : "已驳回；候选资料不会进入任何 Agent 或每日产品。 ",
       );
-      await load();
+      setReviewDraft(null);
+      setReviewNote("");
+      mergeItems(result.item, result.promoted_item);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -283,7 +298,7 @@ export default function PublicResearchLibraryPage() {
             />
           }
         >
-          <PublicWorkspaceShell active="me" topbarLabel="我的知识源">
+          <PublicWorkspaceShell active="research" topbarLabel="我的知识源">
             <div class="research-library-page">
               <header class="research-library-hero">
                 <div>
@@ -591,12 +606,40 @@ export default function PublicResearchLibraryPage() {
                                   </span>
                                 </Show>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => void remove(item)}
+                              <Show
+                                when={confirmingRemove() === item.id}
+                                fallback={
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setConfirmingRemove(item.id)
+                                    }
+                                  >
+                                    删除
+                                  </button>
+                                }
                               >
-                                删除
-                              </button>
+                                <div
+                                  class="research-library-confirm"
+                                  role="group"
+                                  aria-label={`确认删除“${item.title}”`}
+                                >
+                                  <span>删除后下游产品将不再读取这份资料</span>
+                                  <button
+                                    type="button"
+                                    class="is-danger"
+                                    onClick={() => void remove(item)}
+                                  >
+                                    确认删除
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmingRemove("")}
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              </Show>
                             </header>
                             <h3>{item.title}</h3>
                             <p class="research-library-item__meta">
@@ -650,17 +693,50 @@ export default function PublicResearchLibraryPage() {
                                   </For>
                                 </Show>
                                 <Show when={item.scope === "personal"}>
-                                  <button
-                                    type="button"
-                                    class="is-submit"
-                                    disabled={
-                                      workingItem() === item.id ||
-                                      item.parse_status !== "ready"
+                                  <Show
+                                    when={confirmingSubmit() === item.id}
+                                    fallback={
+                                      <button
+                                        type="button"
+                                        class="is-submit"
+                                        disabled={
+                                          workingItem() === item.id ||
+                                          item.parse_status !== "ready"
+                                        }
+                                        onClick={() =>
+                                          setConfirmingSubmit(item.id)
+                                        }
+                                      >
+                                        投稿给 HONE
+                                      </button>
                                     }
-                                    onClick={() => void submitCandidate(item)}
                                   >
-                                    投稿给 HONE
-                                  </button>
+                                    <div
+                                      class="research-library-confirm"
+                                      role="group"
+                                      aria-label={`确认把“${item.title}”提交给管理员审核`}
+                                    >
+                                      <span>
+                                        提交给管理员审核；审核前不会影响其他用户或官方评级
+                                      </span>
+                                      <button
+                                        type="button"
+                                        class="is-submit"
+                                        disabled={workingItem() === item.id}
+                                        onClick={() =>
+                                          void submitCandidate(item)
+                                        }
+                                      >
+                                        确认投稿
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmingSubmit("")}
+                                      >
+                                        取消
+                                      </button>
+                                    </div>
+                                  </Show>
                                 </Show>
                                 <Show
                                   when={
@@ -673,9 +749,18 @@ export default function PublicResearchLibraryPage() {
                                     type="button"
                                     class="is-approve"
                                     disabled={workingItem() === item.id}
-                                    onClick={() =>
-                                      void reviewCandidate(item, "approve")
-                                    }
+                                    classList={{
+                                      "is-active":
+                                        reviewDraft()?.id === item.id &&
+                                        reviewDraft()?.decision === "approve",
+                                    }}
+                                    onClick={() => {
+                                      setReviewNote("");
+                                      setReviewDraft({
+                                        id: item.id,
+                                        decision: "approve",
+                                      });
+                                    }}
                                   >
                                     核验并采纳
                                   </button>
@@ -683,9 +768,18 @@ export default function PublicResearchLibraryPage() {
                                     type="button"
                                     class="is-reject"
                                     disabled={workingItem() === item.id}
-                                    onClick={() =>
-                                      void reviewCandidate(item, "reject")
-                                    }
+                                    classList={{
+                                      "is-active":
+                                        reviewDraft()?.id === item.id &&
+                                        reviewDraft()?.decision === "reject",
+                                    }}
+                                    onClick={() => {
+                                      setReviewNote("");
+                                      setReviewDraft({
+                                        id: item.id,
+                                        decision: "reject",
+                                      });
+                                    }}
                                   >
                                     驳回
                                   </button>
@@ -698,6 +792,58 @@ export default function PublicResearchLibraryPage() {
                                 下载原文件
                               </a>
                             </footer>
+                            <Show when={reviewDraft()?.id === item.id}>
+                              <div class="research-library-review-form">
+                                <label>
+                                  {reviewDraft()?.decision === "approve"
+                                    ? "核验依据或采纳备注（可留空）"
+                                    : "驳回原因（建议填写）"}
+                                  <textarea
+                                    rows={3}
+                                    value={reviewNote()}
+                                    onInput={(event) =>
+                                      setReviewNote(event.currentTarget.value)
+                                    }
+                                    placeholder={
+                                      reviewDraft()?.decision === "approve"
+                                        ? "记录你核对过的来源、日期与事实…"
+                                        : "说明驳回原因，方便投稿人修订…"
+                                    }
+                                  />
+                                </label>
+                                <div class="research-library-review-form__actions">
+                                  <button
+                                    type="button"
+                                    classList={{
+                                      "is-danger":
+                                        reviewDraft()?.decision === "reject",
+                                      "is-primary":
+                                        reviewDraft()?.decision === "approve",
+                                    }}
+                                    disabled={workingItem() === item.id}
+                                    onClick={() =>
+                                      void reviewCandidate(
+                                        item,
+                                        reviewDraft()!.decision,
+                                      )
+                                    }
+                                  >
+                                    {reviewDraft()?.decision === "approve"
+                                      ? "确认采纳"
+                                      : "确认驳回"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReviewDraft(null);
+                                      setReviewNote("");
+                                    }}
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              </div>
+                            </Show>
                           </article>
                         )}
                       </For>

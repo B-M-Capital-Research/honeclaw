@@ -1369,6 +1369,7 @@ const CONTENT_ZH = {
       starter_title: "从你真正关心的投资问题开始",
       starter_desc: "结合持仓、宏观日历和关键产业事件，点击即可让 HONE 开始研究。",
       daily_tools_aria: "每日投资工具",
+      research_desk_entry: "今日研究台",
       valuation_lab_title: "每日估值实验室",
       valuation_lab_subtitle: "多方法估值 · 每日更新",
       research_library_title: "研究资料库",
@@ -1450,6 +1451,7 @@ const CONTENT_ZH = {
       main_nav: "主要导航",
       pushes_tab: "推送",
       insights: "洞察",
+      research: "研究",
       me: "我的",
     },
     me_page: {
@@ -3978,6 +3980,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       starter_title: "Start with the investment questions that matter to you",
       starter_desc: "Use your holdings, the macro calendar and key industry events to start a HONE research turn.",
       daily_tools_aria: "Daily investment tools",
+      research_desk_entry: "Research desk",
       valuation_lab_title: "Daily valuation lab",
       valuation_lab_subtitle: "Multiple methods · refreshed daily",
       research_library_title: "Research library",
@@ -4059,6 +4062,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       main_nav: "Main navigation",
       pushes_tab: "Pushes",
       insights: "Insights",
+      research: "Research",
       me: "Me",
     },
     me_page: {

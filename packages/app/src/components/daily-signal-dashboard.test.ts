@@ -11,12 +11,18 @@ const styles = readFileSync(
 );
 
 describe("daily signal dashboard contract", () => {
-  test("offers both cached report launchers and no generation action", () => {
-    expect(component).toContain('"macro", "ai"');
+  test("is a controlled panel that reads cached reports and never regenerates", () => {
+    expect(component).toContain("export function DailySignalPanel");
+    expect(component).toContain("kind: DailySignalKind");
     expect(component).toContain("宏观红绿灯");
     expect(component).toContain("AI 红绿灯");
     expect(component).toContain("重新读取快照");
     expect(component).not.toContain("重新生成");
+    // Shell behaviour (ESC, aria-modal, scroll lock) comes from the shared panel.
+    expect(component).toContain("ResearchPanel");
+    expect(component).not.toContain("<Portal>");
+    // History is its own tab and loads lazily on first switch.
+    expect(component).toContain("loadHistory");
   });
 
   test("preserves report context and cutoff rules when asking chat", () => {
@@ -35,9 +41,9 @@ describe("daily signal dashboard contract", () => {
     expect(component).not.toContain("company.coverage}/10");
   });
 
-  test("has desktop, mobile and dark-mode layouts", () => {
+  test("has responsive layouts styled from the shared token system", () => {
     expect(styles).toContain("@media (max-width: 700px)");
-    expect(styles).toContain('[data-theme="dark"]');
+    expect(styles).toContain("var(--hone-");
     expect(styles).toContain("daily-signal-gauge");
   });
 });

@@ -50,6 +50,7 @@ export function CommunityForum(props: { query: string }) {
   const [commentDrafts, setCommentDrafts] = createSignal<Record<string, string>>({});
   const [commentOpen, setCommentOpen] = createSignal<string | null>(null);
   const [reportOpen, setReportOpen] = createSignal<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = createSignal<string | null>(null);
   let controller: AbortController | undefined;
   let fileInput: HTMLInputElement | undefined;
 
@@ -194,7 +195,27 @@ export function CommunityForum(props: { query: string }) {
               <button type="button" classList={{ active: post.liked_by_me }} disabled={!!working()} onClick={() => void runPostAction(post.id, "like", () => toggleCommunityForumLike(post.id))}>♡ {post.like_count || "赞"}</button>
               <button type="button" onClick={() => setCommentOpen(commentOpen() === post.id ? null : post.id)}>评论 {post.comments.length || ""}</button>
               <Show when={!post.can_delete && post.moderation_status === "visible"}><button type="button" onClick={() => setReportOpen(reportOpen() === post.id ? null : post.id)}>举报</button></Show>
-              <Show when={post.can_delete}><button type="button" onClick={() => window.confirm("确认删除这篇帖子？") && void runPostAction(post.id, "delete", () => deleteCommunityForumPost(post.id))}>删除</button></Show>
+              <Show when={post.can_delete}>
+                <Show
+                  when={deleteConfirm() === post.id}
+                  fallback={<button type="button" onClick={() => setDeleteConfirm(post.id)}>删除</button>}
+                >
+                  <span class="community-forum-delete-confirm" role="group" aria-label="确认删除这篇帖子">
+                    <button
+                      type="button"
+                      class="is-danger"
+                      disabled={!!working()}
+                      onClick={() => {
+                        setDeleteConfirm(null);
+                        void runPostAction(post.id, "delete", () => deleteCommunityForumPost(post.id));
+                      }}
+                    >
+                      确认删除
+                    </button>
+                    <button type="button" onClick={() => setDeleteConfirm(null)}>取消</button>
+                  </span>
+                </Show>
+              </Show>
               <Show when={isAdmin()}><button type="button" onClick={() => void runPostAction(post.id, "moderate", () => moderateCommunityForumPost(post.id, post.moderation_status === "visible" ? "hide" : "restore"))}>{post.moderation_status === "visible" ? "管理员隐藏" : "管理员恢复"}{post.report_count ? ` · ${post.report_count} 举报` : ""}</button></Show>
             </div>
             <Show when={reportOpen() === post.id}><div class="community-forum-report"><span>请选择举报原因</span><For each={REPORT_REASONS}>{(reason) => <button type="button" onClick={() => { setReportOpen(null); void runPostAction(post.id, "report", () => reportCommunityForumPost(post.id, reason)); }}>{reason}</button>}</For></div></Show>

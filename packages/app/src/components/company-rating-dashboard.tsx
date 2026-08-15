@@ -1,13 +1,11 @@
 import {
   For,
   Show,
-  createEffect,
   createMemo,
   createSignal,
   onCleanup,
   onMount,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 import { getPublicCompanyRatings } from "@/lib/api";
 import {
   coverageLabel,
@@ -15,8 +13,15 @@ import {
   ratingCounts,
   type CompanyRatingFilter,
 } from "@/lib/company-rating-model";
+import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchState } from "@/components/research/research-state";
 import type { CompanyRating, CompanyRatingSnapshot } from "@/lib/types";
 import "./company-rating-dashboard.css";
+
+type Props = {
+  onClose: () => void;
+  onAsk?: (message: string) => void;
+};
 
 const FILTER_LABELS: Record<CompanyRatingFilter, string> = {
   all: "全部",
@@ -161,8 +166,7 @@ function ValuationPanel(props: { item: CompanyRating }) {
   );
 }
 
-export function CompanyRatingDashboard() {
-  const [open, setOpen] = createSignal(false);
+export function CompanyRatingPanel(props: Props) {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal("");
   const [snapshot, setSnapshot] = createSignal<CompanyRatingSnapshot>();
@@ -185,17 +189,10 @@ export function CompanyRatingDashboard() {
     }
   };
 
+  // Panel mounts only while open, so loading on mount means "fetch when the
+  // panel is opened" — one cached snapshot read, no recomputation.
   onMount(() => void load());
   onCleanup(() => controller?.abort());
-
-  createEffect(() => {
-    if (!open()) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => document.removeEventListener("keydown", onKeyDown));
-  });
 
   const counts = createMemo(() => ratingCounts(snapshot()?.items ?? []));
   const visible = createMemo(() =>
@@ -203,229 +200,206 @@ export function CompanyRatingDashboard() {
   );
 
   return (
-    <>
-      <div class="company-rating-launcher">
-        <button
-          type="button"
-          class="company-rating-launcher__button"
-          aria-haspopup="dialog"
-          onClick={() => setOpen(true)}
-        >
-          <span class="company-rating-launcher__icon" aria-hidden="true">
-            <i class="is-green" />
-            <i class="is-yellow" />
-            <i class="is-red" />
-          </span>
-          <span class="company-rating-launcher__copy">
-            <strong>每日公司评级</strong>
-            <small>
-              <Show when={snapshot()} fallback={loading() ? "正在读取…" : "查看研究评分"}>
-                {(value) => coverageLabel(value())}
-              </Show>
-            </small>
-          </span>
-          <Show when={snapshot()}>
-            <span class="company-rating-launcher__counts" aria-label="评级数量">
-              <Show
-                when={counts().unknown < (snapshot()?.items.length ?? 0)}
-                fallback={<b class="is-unknown">{counts().unknown} 基线</b>}
-              >
-                <b class="is-green">{counts().green}</b>
-                <b class="is-yellow">{counts().yellow}</b>
-                <b class="is-red">{counts().red}</b>
-              </Show>
-            </span>
-          </Show>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m9 18 6-6-6-6" />
-          </svg>
-        </button>
-      </div>
+    <ResearchPanel
+      onClose={props.onClose}
+      labelledBy="company-rating-title"
+      backdropClass="company-rating-backdrop"
+      dialogClass="company-rating-dialog"
+    >
+      <>
+        <header class="company-rating-dialog__header">
+          <div>
+            <p class="company-rating-eyebrow">HONE 研究信号</p>
+            <h2 id="company-rating-title">每日公司评级</h2>
+            <p>
+              结构质量、财务兑现、前瞻能见度、估值与时点确认的八因子研究分；缺失数据不填零，也不自动给中性分。
+            </p>
+          </div>
+          <button type="button" aria-label="关闭评级" onClick={() => props.onClose()}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
 
-      <Show when={open()}>
-        <Portal>
-          <div class="company-rating-backdrop" onClick={() => setOpen(false)}>
-            <section
-              class="company-rating-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="company-rating-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <header class="company-rating-dialog__header">
-                <div>
-                  <p class="company-rating-eyebrow">HONE 研究信号</p>
-                  <h2 id="company-rating-title">每日公司评级</h2>
-                  <p>
-                    结构质量、财务兑现、前瞻能见度、估值与时点确认的八因子研究分；缺失数据不填零，也不自动给中性分。
-                  </p>
-                </div>
-                <button type="button" aria-label="关闭评级" onClick={() => setOpen(false)}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
+        <Show when={snapshot()}>
+          {(value) => (
+            <div class="company-rating-meta">
+              <span class={`is-${value().data_status}`}>
+                {coverageLabel(value())}
+              </span>
+              <span>北京时间 {value().generated_at_beijing} 更新</span>
+              <button type="button" disabled={loading()} onClick={() => void load()}>
+                {loading() ? "刷新中…" : "重新读取"}
+              </button>
+            </div>
+          )}
+        </Show>
+
+        <Show when={snapshot()?.data_status === "simulation"}>
+          <div class="company-rating-simulation-note">
+            <strong>模拟预览</strong>
+            <span>{snapshot()?.simulation_note}</span>
+          </div>
+        </Show>
+
+        <Show when={snapshot()}>
+          {(value) => (
+            <details class="company-rating-methodology">
+              <summary>
+                <span>评分标准与估值同步</span>
+                <strong>
+                  {value().data_status === "simulation"
+                    ? `${value().coverage.valuations}/${value().coverage.companies} 家含模拟估值因子`
+                    : `${value().coverage.valuations}/${value().coverage.companies} 家含当日估值`}
+                </strong>
+                <i aria-hidden="true">⌄</i>
+              </summary>
+              <div>
+                <section>
+                  <h3>统一标尺</h3>
+                  <p>演讲研究材料中的 1–5 档依次映射为 25 / 45 / 60 / 75 / 90。5 档代表“现有证据中的最高档”，不是完美公司；研究基线不再直接显示 100 分。</p>
+                </section>
+                <section>
+                  <h3>综合分公式</h3>
+                  <p>商业模式与护城河 20% + 产品能力与市场地位 10% + 增长质量 15% + 定价权与毛利趋势 10% + 盈利和财务健康 15% + 前瞻能见度 10% + 当日估值 15% + 时点确认 5%。</p>
+                </section>
+                <section>
+                  <h3>可比与降档</h3>
+                  <p>财务因子采用“60% 绝对门槛 + 40% 同主题可比排名”；同主题样本不足 5 家时使用全覆盖公司。缺失因子移除权重并显示覆盖数；财务质量进入高风险区会封顶红灯，护城河、产品地位或估值严重不足会封顶黄灯。</p>
+                </section>
+                <section>
+                  <h3>当前同步状态</h3>
+                  <p>{valuationSyncMessage(value())}</p>
+                </section>
+              </div>
+            </details>
+          )}
+        </Show>
+
+        <div class="company-rating-toolbar">
+          <label>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.6-3.6" />
+            </svg>
+            <input
+              type="search"
+              value={query()}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+              placeholder="搜索公司、Ticker 或主题"
+              aria-label="搜索公司评级"
+            />
+          </label>
+          <div class="company-rating-filters" role="group" aria-label="按红绿灯筛选">
+            <For each={["all", "green", "yellow", "red", "unknown"] as CompanyRatingFilter[]}>
+              {(item) => (
+                <button
+                  type="button"
+                  classList={{ "is-active": filter() === item, [`is-${item}`]: item !== "all" }}
+                  aria-pressed={filter() === item}
+                  onClick={() => setFilter(item)}
+                >
+                  {FILTER_LABELS[item]}
+                  <Show when={item !== "all"}>
+                    <span>{counts()[item as keyof ReturnType<typeof counts>]}</span>
+                  </Show>
                 </button>
-              </header>
+              )}
+            </For>
+          </div>
+        </div>
 
-              <Show when={snapshot()}>
-                {(value) => (
-                  <div class="company-rating-meta">
-                    <span class={`is-${value().data_status}`}>
-                      {coverageLabel(value())}
-                    </span>
-                    <span>北京时间 {value().generated_at_beijing} 更新</span>
-                    <button type="button" disabled={loading()} onClick={() => void load()}>
-                      {loading() ? "刷新中…" : "重新读取"}
-                    </button>
+        <div class="company-rating-dialog__body">
+          <Show
+            when={!loading() || snapshot()}
+            fallback={
+              <ResearchState
+                kind="loading"
+                message="正在读取评级列表"
+                detail="只读取当日快照，不会触发重新计算。"
+              />
+            }
+          >
+            <Show
+              when={!error()}
+              fallback={
+                <ResearchState
+                  kind="error"
+                  message="评级读取失败"
+                  detail={error()}
+                  onRetry={() => void load()}
+                />
+              }
+            >
+              <Show
+                when={visible().length}
+                fallback={<ResearchState kind="empty" message="没有符合筛选条件的公司" />}
+              >
+                <div class="company-rating-list">
+                  <div class="company-rating-list__head" aria-hidden="true">
+                    <span>公司</span><span>当前数据</span><span>正式评级 / 研究分</span>
                   </div>
-                )}
-              </Show>
-
-              <Show when={snapshot()?.data_status === "simulation"}>
-                <div class="company-rating-simulation-note">
-                  <strong>模拟预览</strong>
-                  <span>{snapshot()?.simulation_note}</span>
-                </div>
-              </Show>
-
-              <Show when={snapshot()}>
-                {(value) => (
-                  <details class="company-rating-methodology">
-                    <summary>
-                      <span>评分标准与估值同步</span>
-                      <strong>
-                        {value().data_status === "simulation"
-                          ? `${value().coverage.valuations}/${value().coverage.companies} 家含模拟估值因子`
-                          : `${value().coverage.valuations}/${value().coverage.companies} 家含当日估值`}
-                      </strong>
-                      <i aria-hidden="true">⌄</i>
-                    </summary>
-                    <div>
-                      <section>
-                        <h3>统一标尺</h3>
-                        <p>演讲研究材料中的 1–5 档依次映射为 25 / 45 / 60 / 75 / 90。5 档代表“现有证据中的最高档”，不是完美公司；研究基线不再直接显示 100 分。</p>
-                      </section>
-                      <section>
-                        <h3>综合分公式</h3>
-                        <p>商业模式与护城河 20% + 产品能力与市场地位 10% + 增长质量 15% + 定价权与毛利趋势 10% + 盈利和财务健康 15% + 前瞻能见度 10% + 当日估值 15% + 时点确认 5%。</p>
-                      </section>
-                      <section>
-                        <h3>可比与降档</h3>
-                        <p>财务因子采用“60% 绝对门槛 + 40% 同主题可比排名”；同主题样本不足 5 家时使用全覆盖公司。缺失因子移除权重并显示覆盖数；财务质量进入高风险区会封顶红灯，护城河、产品地位或估值严重不足会封顶黄灯。</p>
-                      </section>
-                      <section>
-                        <h3>当前同步状态</h3>
-                        <p>{valuationSyncMessage(value())}</p>
-                      </section>
-                    </div>
-                  </details>
-                )}
-              </Show>
-
-              <div class="company-rating-toolbar">
-                <label>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="m20 20-3.6-3.6" />
-                  </svg>
-                  <input
-                    type="search"
-                    value={query()}
-                    onInput={(event) => setQuery(event.currentTarget.value)}
-                    placeholder="搜索公司、Ticker 或主题"
-                    aria-label="搜索公司评级"
-                  />
-                </label>
-                <div class="company-rating-filters" role="group" aria-label="按红绿灯筛选">
-                  <For each={["all", "green", "yellow", "red", "unknown"] as CompanyRatingFilter[]}>
+                  <For each={visible()}>
                     {(item) => (
-                      <button
-                        type="button"
-                        classList={{ "is-active": filter() === item, [`is-${item}`]: item !== "all" }}
-                        aria-pressed={filter() === item}
-                        onClick={() => setFilter(item)}
-                      >
-                        {FILTER_LABELS[item]}
-                        <Show when={item !== "all"}>
-                          <span>{counts()[item as keyof ReturnType<typeof counts>]}</span>
-                        </Show>
-                      </button>
+                      <details class={`company-rating-row is-${item.light}`}>
+                        <summary>
+                          <span class={`company-rating-light is-${item.light}`} aria-label={`${FILTER_LABELS[item.light]}`} />
+                          <span class="company-rating-company">
+                            <strong>{item.symbol}</strong>
+                            <small>{item.name} · {item.theme}</small>
+                          </span>
+                          <span class="company-rating-market">
+                            <strong>{formatPrice(item.price)}</strong>
+                            <small classList={{ "is-up": (item.change_percent ?? 0) > 0, "is-down": (item.change_percent ?? 0) < 0 }}>
+                              {item.change_percent == null ? statusLabel(item.data_status) : `${item.change_percent > 0 ? "+" : ""}${item.change_percent.toFixed(2)}%`}
+                            </small>
+                          </span>
+                          <span class="company-rating-score">
+                            <strong>{scoreDisplay(item).value}</strong>
+                            <small>{scoreDisplay(item).basis}</small>
+                          </span>
+                          <svg class="company-rating-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                        </summary>
+                        <div class="company-rating-detail">
+                          <p class="company-rating-thesis">{item.thesis_summary}</p>
+                          <Show when={item.score_cap_reason}>
+                            <p class="company-rating-cap"><strong>评级被降档：</strong>{item.score_cap_reason}</p>
+                          </Show>
+                          <div class="company-rating-dimensions">
+                            <For each={DIMENSIONS}>
+                              {([label, key]) => (
+                                <div>
+                                  <span>{label}</span>
+                                  <i classList={{ "is-unavailable": item.dimensions[key] == null }}><b style={{ width: `${item.dimensions[key] ?? 0}%` }} /></i>
+                                  <strong>{item.dimensions[key] == null ? "—" : Math.round(item.dimensions[key] ?? 0)}</strong>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                          <div class="company-rating-detail__grid">
+                            <section><h3>护城河</h3><p>{item.moat}</p></section>
+                            <ValuationPanel item={item} />
+                            <FundamentalMetrics item={item} />
+                            <section><h3>重点跟踪</h3><ul><For each={item.watch_items}>{(text) => <li>{text}</li>}</For></ul></section>
+                            <section><h3>风险与证伪</h3><ul><For each={[...item.risks, ...item.falsifiers].slice(0, 4)}>{(text) => <li>{text}</li>}</For></ul></section>
+                          </div>
+                          <p class="company-rating-source">
+                            {statusLabel(item.data_status)} · 置信度 {item.confidence === "low" ? "低" : item.confidence === "high" ? "高" : "中"}
+                            <Show when={item.financial_as_of}> · 财务截至 {item.financial_as_of}</Show>
+                            <Show when={item.market_as_of}> · 行情截至 {item.market_as_of}</Show>
+                          </p>
+                        </div>
+                      </details>
                     )}
                   </For>
                 </div>
-              </div>
-
-              <div class="company-rating-dialog__body">
-                <Show when={!loading() || snapshot()} fallback={<div class="company-rating-state">正在生成评级列表…</div>}>
-                  <Show when={!error()} fallback={<div class="company-rating-state is-error">{error()}<button type="button" onClick={() => void load()}>重试</button></div>}>
-                    <Show when={visible().length} fallback={<div class="company-rating-state">没有符合筛选条件的公司</div>}>
-                      <div class="company-rating-list">
-                        <div class="company-rating-list__head" aria-hidden="true">
-                          <span>公司</span><span>当前数据</span><span>正式评级 / 研究分</span>
-                        </div>
-                        <For each={visible()}>
-                          {(item) => (
-                            <details class={`company-rating-row is-${item.light}`}>
-                              <summary>
-                                <span class={`company-rating-light is-${item.light}`} aria-label={`${FILTER_LABELS[item.light]}`} />
-                                <span class="company-rating-company">
-                                  <strong>{item.symbol}</strong>
-                                  <small>{item.name} · {item.theme}</small>
-                                </span>
-                                <span class="company-rating-market">
-                                  <strong>{formatPrice(item.price)}</strong>
-                                  <small classList={{ "is-up": (item.change_percent ?? 0) > 0, "is-down": (item.change_percent ?? 0) < 0 }}>
-                                    {item.change_percent == null ? statusLabel(item.data_status) : `${item.change_percent > 0 ? "+" : ""}${item.change_percent.toFixed(2)}%`}
-                                  </small>
-                                </span>
-                                <span class="company-rating-score">
-                                  <strong>{scoreDisplay(item).value}</strong>
-                                  <small>{scoreDisplay(item).basis}</small>
-                                </span>
-                                <svg class="company-rating-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
-                              </summary>
-                              <div class="company-rating-detail">
-                                <p class="company-rating-thesis">{item.thesis_summary}</p>
-                                <Show when={item.score_cap_reason}>
-                                  <p class="company-rating-cap"><strong>评级被降档：</strong>{item.score_cap_reason}</p>
-                                </Show>
-                                <div class="company-rating-dimensions">
-                                  <For each={DIMENSIONS}>
-                                    {([label, key]) => (
-                                      <div>
-                                        <span>{label}</span>
-                                        <i classList={{ "is-unavailable": item.dimensions[key] == null }}><b style={{ width: `${item.dimensions[key] ?? 0}%` }} /></i>
-                                        <strong>{item.dimensions[key] == null ? "—" : Math.round(item.dimensions[key] ?? 0)}</strong>
-                                      </div>
-                                    )}
-                                  </For>
-                                </div>
-                                <div class="company-rating-detail__grid">
-                                  <section><h3>护城河</h3><p>{item.moat}</p></section>
-                                  <ValuationPanel item={item} />
-                                  <FundamentalMetrics item={item} />
-                                  <section><h3>重点跟踪</h3><ul><For each={item.watch_items}>{(text) => <li>{text}</li>}</For></ul></section>
-                                  <section><h3>风险与证伪</h3><ul><For each={[...item.risks, ...item.falsifiers].slice(0, 4)}>{(text) => <li>{text}</li>}</For></ul></section>
-                                </div>
-                                <p class="company-rating-source">
-                                  {statusLabel(item.data_status)} · 置信度 {item.confidence === "low" ? "低" : item.confidence === "high" ? "高" : "中"}
-                                  <Show when={item.financial_as_of}> · 财务截至 {item.financial_as_of}</Show>
-                                  <Show when={item.market_as_of}> · 行情截至 {item.market_as_of}</Show>
-                                </p>
-                              </div>
-                            </details>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </Show>
-                </Show>
-              </div>
-              <footer>{snapshot()?.disclaimer ?? "研究排序工具，不构成投资建议。"}</footer>
-            </section>
-          </div>
-        </Portal>
-      </Show>
-    </>
+              </Show>
+            </Show>
+          </Show>
+        </div>
+        <footer>{snapshot()?.disclaimer ?? "研究排序工具，不构成投资建议。"}</footer>
+      </>
+    </ResearchPanel>
   );
 }

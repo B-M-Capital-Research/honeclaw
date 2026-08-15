@@ -39,6 +39,33 @@ describe("unified research library", () => {
     expect(api).toContain("/review");
   });
 
+  test("replaces native dialogs with inline, cancellable confirmations", () => {
+    expect(page).not.toContain("window.prompt");
+    expect(page).not.toContain("window.confirm");
+    expect(page).toContain("确认删除");
+    expect(page).toContain("确认投稿");
+    expect(page).toContain("确认采纳");
+    expect(page).toContain("确认驳回");
+    expect(page).toContain("research-library-review-form");
+    expect(page).toContain("<textarea");
+    expect(page).toContain("取消");
+    expect(styles).toContain("var(--hone-error-600)");
+  });
+
+  test("updates the bundle in place instead of refetching everything", () => {
+    expect(page).toContain("mergeItems(");
+    expect(page).toContain("result.promoted_item");
+    expect(page.match(/await load\(\)/g)?.length ?? 0).toBe(0);
+  });
+
+  test("consumes hone design tokens for statuses and review notes", () => {
+    expect(styles).toContain("var(--hone-signal-green)");
+    expect(styles).toContain("var(--hone-signal-yellow-soft)");
+    expect(styles).toContain("var(--hone-coral-600)");
+    expect(styles).not.toContain("#d8a329");
+    expect(styles).not.toContain("#fff4d9");
+  });
+
   test("supports responsive and dark layouts", () => {
     expect(styles).toContain('[data-theme="dark"]');
     expect(styles).toContain("@media (max-width: 760px)");

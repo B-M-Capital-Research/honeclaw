@@ -1,0 +1,175 @@
+/* Research desk. Token-only styling — this page is the reference for how
+   research surfaces consume the --hone-* system. */
+
+.public-research-loading {
+  display: flex;
+  min-height: 60vh;
+  align-items: center;
+  justify-content: center;
+  color: var(--hone-ink-500);
+  font-size: 14px;
+}
+
+.public-research-main {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+}
+
+.public-research-header {
+  margin-bottom: 20px;
+}
+
+.public-research-header h1 {
+  margin: 0 0 6px;
+  font-family: var(--hone-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--hone-ink-950);
+}
+
+.public-research-header p {
+  margin: 0;
+  max-width: 46em;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--hone-ink-500);
+}
+
+.public-research-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 980px) {
+  .public-research-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .public-research-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.public-research-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  box-shadow: var(--hone-shadow-sm);
+  transition: border-color 0.16s var(--hone-ease), transform 0.16s var(--hone-ease);
+}
+
+.public-research-card:hover {
+  border-color: var(--hone-line-strong);
+  transform: translateY(-1px);
+}
+
+.public-research-card__kicker {
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hone-ink-500);
+}
+
+.public-research-card__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.public-research-card__title strong {
+  font-size: 16.5px;
+  font-weight: 700;
+}
+
+.public-research-card__title b {
+  margin-left: auto;
+  font-family: var(--hone-font-label);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hone-ink-800);
+}
+
+.public-research-card__light {
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--hone-signal-neutral);
+}
+
+.public-research-card.is-green .public-research-card__light { background: var(--hone-signal-green); }
+.public-research-card.is-yellow .public-research-card__light { background: var(--hone-signal-yellow); }
+.public-research-card.is-orange .public-research-card__light { background: var(--hone-signal-orange); }
+.public-research-card.is-red .public-research-card__light { background: var(--hone-signal-red); }
+
+.public-research-card__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 2.9em;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--hone-ink-600);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.public-research-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.public-research-card__meta em {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--hone-link);
+}
+
+.public-research-card__meta time {
+  margin-left: auto;
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  color: var(--hone-ink-400);
+}
+
+.public-research-card__chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--hone-paper-100);
+  font-size: 11.5px;
+  color: var(--hone-ink-600);
+}
+
+.public-research-card.is-green .public-research-card__chip.is-signal {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.public-research-card.is-yellow .public-research-card__chip.is-signal {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.public-research-card.is-orange .public-research-card__chip.is-signal {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange);
+}
+
+.public-research-card.is-red .public-research-card__chip.is-signal {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red);
+}

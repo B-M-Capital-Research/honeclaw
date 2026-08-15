@@ -1658,3 +1658,25 @@ export type DailySignalHistoryItem = Pick<
   | "phase"
   | "summary"
 >;
+
+/** One compact card on the research overview grid (`/api/public/research-overview`). */
+export type ResearchOverviewCard = {
+  /** Stable panel key, e.g. `daily-signal-macro`, `company-ratings`. */
+  key: string;
+  title: string;
+  kicker: string;
+  report_date?: string | null;
+  /** live | partial | stale | waiting | baseline — same vocabulary the panels use. */
+  status: string;
+  /** Traffic-light signal when the section has one. */
+  signal?: string | null;
+  score?: number | null;
+  /** Short headline metric, e.g. `52 家覆盖` or `3 条提醒`. */
+  metric?: string | null;
+  summary?: string | null;
+};
+
+export type ResearchOverviewPayload = {
+  generated_at?: string | null;
+  cards: ResearchOverviewCard[];
+};

@@ -27,18 +27,27 @@ const translatedSurfaces = [
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 describe("chat accessibility layout", () => {
-  it("keeps every feature in an always-visible horizontal shelf above the composer", () => {
-    expect(chat).toContain('class="chat-feature-rail"');
-    expect(chat).toContain('class="chat-feature-rail__track"');
-    expect(chat).not.toContain("featurePanelOpen");
-    expect(chat).not.toContain("展开 9 项工具");
-    expect(css).toContain(".chat-feature-rail__track");
-    expect(css).toContain("overflow-x: auto");
-    expect(css).toContain("scroll-snap-type: x proximity");
-    expect(css).toContain("width: 144px !important");
-    expect(css).toContain("height: 52px !important");
-    expect(css).toContain("min-height: 180px !important");
-    expect(css).toContain("padding-bottom: 218px !important");
+  it("keeps the conversation page a conversation: one slim research doorway, no data-fetching dashboards", () => {
+    // The daily research products live on /research. The chat page keeps a
+    // pure-navigation entry strip and must never re-grow eager-fetching
+    // dashboard mounts or the old launcher rail.
+    expect(chat).toContain('class="chat-research-entry"');
+    expect(chat).toContain('navigate("/research")');
+    expect(chat).not.toContain("chat-feature-rail");
+    expect(chat).not.toContain("Dashboard onAsk=");
+    expect(chat).not.toContain("<DailySignalDashboard");
+    expect(css).toContain(".chat-research-entry");
+    expect(css).not.toContain("chat-feature-rail");
+    // The entry strip is navigation chrome, not a component zoo: it styles
+    // with tokens and needs no !important overrides.
+    expect(css).toContain("var(--hone-line)");
+    expect(css).not.toContain("width: 144px !important");
+  });
+
+  it("hands a research panel question to the chat through the one-shot ask marker", () => {
+    expect(chat).toContain('searchParams.ask !== "research"');
+    expect(chat).toContain("takeResearchAsk");
+    expect(chat).toContain("setPendingAutoSend(message)");
   });
 
   it("shows five personalized research hooks in a blank conversation", () => {

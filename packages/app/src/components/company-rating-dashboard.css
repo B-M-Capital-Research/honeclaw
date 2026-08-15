@@ -1,34 +1,3 @@
-.company-rating-launcher {
-  flex: 0 0 auto;
-  padding: 8px 24px 0;
-  background: linear-gradient(180deg, rgba(250, 249, 246, 0.96), rgba(250, 249, 246, 0));
-}
-
-.company-rating-launcher__button {
-  width: min(852px, 100%);
-  min-height: 58px;
-  margin: 0 auto;
-  padding: 9px 13px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(35, 48, 45, 0.11);
-  border-radius: 17px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--hone-ink-950, #17201f);
-  box-shadow: 0 9px 26px rgba(23, 32, 31, 0.07);
-  cursor: pointer;
-  text-align: left;
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.company-rating-launcher__button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(240, 100, 73, 0.28);
-  box-shadow: 0 12px 30px rgba(23, 32, 31, 0.1);
-}
-
-.company-rating-launcher__button:focus-visible,
 .company-rating-dialog button:focus-visible,
 .company-rating-dialog input:focus-visible,
 .company-rating-row summary:focus-visible {
@@ -36,19 +5,6 @@
   outline-offset: 2px;
 }
 
-.company-rating-launcher__icon {
-  width: 37px;
-  height: 37px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  flex: 0 0 auto;
-  border-radius: 12px;
-  background: #f4f3ef;
-}
-
-.company-rating-launcher__icon i,
 .company-rating-light {
   width: 7px;
   height: 7px;
@@ -56,54 +12,12 @@
   display: inline-block;
 }
 
-.company-rating-launcher .is-green,
-.company-rating-dialog .is-green { --rating-color: #23845a; }
-.company-rating-launcher .is-yellow,
-.company-rating-dialog .is-yellow { --rating-color: #d69c18; }
-.company-rating-launcher .is-red,
-.company-rating-dialog .is-red { --rating-color: #d3544a; }
-.company-rating-launcher .is-unknown,
-.company-rating-dialog .is-unknown { --rating-color: #7b8782; }
-.company-rating-launcher__icon i,
+.company-rating-dialog .is-green { --rating-color: var(--hone-signal-green); }
+.company-rating-dialog .is-yellow { --rating-color: var(--hone-signal-yellow); }
+.company-rating-dialog .is-red { --rating-color: var(--hone-signal-red); }
+.company-rating-dialog .is-unknown { --rating-color: var(--hone-signal-neutral); }
 .company-rating-light { background: var(--rating-color); }
 
-.company-rating-launcher__copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.company-rating-launcher__copy strong {
-  font-size: 14px;
-  letter-spacing: -0.01em;
-}
-
-.company-rating-launcher__copy small {
-  color: #68736f;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.company-rating-launcher__counts {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.company-rating-launcher__counts b {
-  min-width: 26px;
-  padding: 4px 7px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--rating-color) 11%, white);
-  color: var(--rating-color);
-  font-size: 11px;
-  text-align: center;
-}
-
-.company-rating-launcher__button > svg,
 .company-rating-dialog__header button svg,
 .company-rating-toolbar label svg,
 .company-rating-chevron {
@@ -115,8 +29,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
-.company-rating-launcher__button > svg { color: #84908b; }
 
 .company-rating-backdrop {
   position: fixed;
@@ -139,7 +51,7 @@
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 24px;
   background: #fbfaf7;
-  color: #17201f;
+  color: var(--hone-ink-950);
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
@@ -154,7 +66,7 @@
 
 .company-rating-eyebrow {
   margin: 0 0 5px;
-  color: #d35f49;
+  color: var(--hone-coral-600);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -204,8 +116,8 @@
   font-weight: 700;
 }
 
-.company-rating-meta > span.is-live { background: #e7f5ed; color: #1e7650; }
-.company-rating-meta > span.is-partial { background: #fff4d8; color: #8c6610; }
+.company-rating-meta > span.is-live { background: var(--hone-signal-green-soft); color: var(--hone-signal-green); }
+.company-rating-meta > span.is-partial { background: var(--hone-signal-yellow-soft); color: var(--hone-signal-yellow); }
 .company-rating-meta > span.is-stale,
 .company-rating-meta > span.is-transcript_only { background: #f5e8e3; color: #985044; }
 
@@ -288,7 +200,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #17201f;
+  color: var(--hone-ink-950);
   font: inherit;
   font-size: 13px;
 }
@@ -300,7 +212,7 @@
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: #68736f;
+  color: var(--hone-ink-500);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -314,7 +226,7 @@
 .company-rating-filters button.is-active {
   border-color: rgba(35, 48, 45, 0.1);
   background: white;
-  color: #17201f;
+  color: var(--hone-ink-950);
   box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
 }
 
@@ -379,8 +291,8 @@
 .company-rating-company small,
 .company-rating-market small { overflow: hidden; color: #76817d; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .company-rating-market strong { font-size: 13px; font-variant-numeric: tabular-nums; }
-.company-rating-market small.is-up { color: #23845a; }
-.company-rating-market small.is-down { color: #d3544a; }
+.company-rating-market small.is-up { color: var(--hone-signal-green); }
+.company-rating-market small.is-down { color: var(--hone-signal-red); }
 .company-rating-score {
   justify-self: end;
   min-width: 66px;
@@ -394,7 +306,7 @@
   text-align: center;
 }
 .company-rating-score strong { font-size: 15px; font-weight: 850; }
-.company-rating-score small { color: color-mix(in srgb, var(--rating-color) 75%, #68736f); font-size: 8px; white-space: nowrap; }
+.company-rating-score small { color: color-mix(in srgb, var(--rating-color) 75%, var(--hone-ink-500)); font-size: 8px; white-space: nowrap; }
 .company-rating-chevron { justify-self: end; color: #929b98; transition: transform 160ms ease; }
 .company-rating-row[open] .company-rating-chevron { transform: rotate(90deg); }
 
@@ -424,15 +336,15 @@
   grid-template-columns: 58px 1fr 26px;
   align-items: center;
   gap: 7px;
-  color: #68736f;
+  color: var(--hone-ink-500);
   font-size: 10px;
 }
 .company-rating-cap {
   margin: -5px 0 14px;
   padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, #d3544a 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hone-signal-red) 28%, transparent);
   border-radius: 9px;
-  background: color-mix(in srgb, #d3544a 8%, transparent);
+  background: color-mix(in srgb, var(--hone-signal-red) 8%, transparent);
   color: #834940;
   font-size: 10px;
   line-height: 1.55;
@@ -469,8 +381,8 @@
 .company-rating-valuation__cases dt { color: #8a9490; font-size: 9px; }
 .company-rating-valuation__cases dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .company-rating-valuation__range { position: relative; height: 8px; margin: 8px 3px; }
-.company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: 999px; background: linear-gradient(90deg, #23845a, #d69c18 52%, #d3544a); }
-.company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid white; border-radius: 999px; background: #17201f; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
+.company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: 999px; background: linear-gradient(90deg, var(--hone-signal-green), var(--hone-signal-yellow) 52%, var(--hone-signal-red)); }
+.company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid white; border-radius: 999px; background: var(--hone-ink-950); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
 .company-rating-valuation__position { color: #34413d !important; font-weight: 750; }
 .company-rating-valuation > small { display: block; margin-top: 6px; color: #8a9490; font-size: 9px; }
 .company-rating-valuation__empty { padding: 10px; border-radius: 9px; background: #f2f1ed; }
@@ -495,30 +407,20 @@
 .company-rating-fundamentals small { display: block; margin-top: 9px; color: #8a9490; font-size: 9px; line-height: 1.5; }
 .company-rating-source { margin: 16px 0 0; color: #929a97; font-size: 10px; }
 
-.company-rating-state {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
-  color: #78827f;
-  font-size: 13px;
-}
-.company-rating-state.is-error { color: #b34d41; }
-.company-rating-state button { margin-left: 8px; border: 0; background: transparent; color: inherit; font-weight: 800; cursor: pointer; }
-
 .company-rating-simulation-note {
   display: flex;
   align-items: center;
   gap: 9px;
   margin: 8px 26px 0;
   padding: 9px 12px;
-  border: 1px solid rgba(214, 156, 24, 0.28);
+  border: 1px solid color-mix(in srgb, var(--hone-signal-yellow) 28%, transparent);
   border-radius: 10px;
-  background: rgba(214, 156, 24, 0.09);
+  background: var(--hone-signal-yellow-soft);
   color: #6f5a26;
   font-size: 10px;
   line-height: 1.5;
 }
-.company-rating-simulation-note strong { color: #9a7111; white-space: nowrap; }
+.company-rating-simulation-note strong { color: var(--hone-signal-yellow); white-space: nowrap; }
 
 .company-rating-dialog footer {
   padding: 11px 26px;
@@ -528,8 +430,6 @@
   text-align: center;
 }
 
-[data-theme="dark"] .company-rating-launcher { background: linear-gradient(180deg, rgba(15, 22, 35, 0.96), rgba(15, 22, 35, 0)); }
-[data-theme="dark"] .company-rating-launcher__button,
 [data-theme="dark"] .company-rating-dialog,
 [data-theme="dark"] .company-rating-row,
 [data-theme="dark"] .company-rating-toolbar > label,
@@ -550,7 +450,7 @@
 [data-theme="dark"] .company-rating-methodology section { border-color: #263347; }
 [data-theme="dark"] .company-rating-methodology section { background: #111a28; }
 [data-theme="dark"] .company-rating-methodology :is(summary, h3) { color: #e9f0ed; }
-[data-theme="dark"] .company-rating-simulation-note { color: #d9c998; background: rgba(214, 156, 24, 0.11); }
+[data-theme="dark"] .company-rating-simulation-note { color: #d9c998; }
 [data-theme="dark"] .company-rating-valuation { border-color: #263347; }
 [data-theme="dark"] .company-rating-valuation__cases dd,
 [data-theme="dark"] .company-rating-fundamentals dd,
@@ -561,10 +461,6 @@
 [data-theme="dark"] .company-rating-toolbar input { color: #e9f0ed; }
 
 @media (max-width: 768px) {
-  .company-rating-launcher { padding: 8px 12px 0; }
-  .company-rating-launcher__button { min-height: 52px; border-radius: 15px; }
-  .company-rating-launcher__icon { width: 34px; height: 34px; }
-  .company-rating-launcher__counts { display: none; }
   .company-rating-backdrop { padding: 0; place-items: end center; }
   .company-rating-dialog {
     width: 100%;

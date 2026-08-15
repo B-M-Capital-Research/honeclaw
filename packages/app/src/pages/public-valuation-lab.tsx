@@ -10,7 +10,6 @@ import "./public-foundation.css";
 import "./public-site.css";
 import "./public-polish.css";
 import "./public-valuation-lab.css";
-import "./public-valuation-lab-v2.css";
 
 type ViewState = "loading" | "ready" | "login" | "error";
 type Filter = "all" | "ready" | "review" | "unavailable";
@@ -93,7 +92,7 @@ export default function PublicValuationLabPage() {
           when={view() !== "login"}
           fallback={<PublicLoginForm title="登录后查看估值实验室" subtitle="估值区间只用于研究，不会自动执行交易。" onLogin={() => void load()} />}
         >
-          <PublicWorkspaceShell active="insights" topbarLabel="估值实验室">
+          <PublicWorkspaceShell active="research" topbarLabel="估值实验室">
             <main class="valuation-lab-page">
               <header class="valuation-lab-hero">
                 <div>

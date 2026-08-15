@@ -8,7 +8,7 @@
   width: min(1160px, 100%);
   margin: 0 auto;
   padding: 34px 30px 88px;
-  color: #17211f;
+  color: var(--hone-ink-950);
 }
 .valuation-lab-hero {
   display: flex;
@@ -25,7 +25,7 @@
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.17em;
-  color: #d65f4a;
+  color: var(--hone-coral-600);
 }
 .valuation-lab-hero h1 {
   margin: 9px 0 8px;
@@ -76,7 +76,7 @@
 }
 .valuation-lab-method strong {
   font-size: 11px;
-  color: #d65f4a;
+  color: var(--hone-coral-600);
 }
 .valuation-lab-method span {
   font-size: 14px;
@@ -168,17 +168,17 @@
   padding: 6px 9px;
   border-radius: 999px;
   background: #f1f2f0;
-  color: #68736f;
+  color: var(--hone-ink-500);
   font-size: 10px;
   font-weight: 800;
 }
 .valuation-lab-card.is-ready .valuation-lab-status {
-  background: #e5f3eb;
-  color: #1f7e59;
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
 }
 .valuation-lab-card.is-review_required .valuation-lab-status {
-  background: #fff2d8;
-  color: #a46d0e;
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
 }
 .valuation-lab-company,
 .valuation-lab-position {
@@ -256,8 +256,30 @@
   font-size: 11px;
 }
 .valuation-lab-scenarios .is-base {
-  border-color: #e2b879;
-  background: #fff9ed;
+  border-color: var(--hone-signal-yellow);
+  background: var(--hone-paper-100);
+}
+.valuation-lab-method-results {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.valuation-lab-method-results > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 8px;
+  border-radius: 9px;
+  background: rgba(31, 61, 52, 0.055);
+}
+.valuation-lab-method-results b,
+.valuation-lab-method-results span {
+  font-size: 11px;
+}
+.valuation-lab-method-results small {
+  grid-column: 1 / -1;
+  color: #7a8781;
+  font-size: 9px;
 }
 .valuation-lab-analysis-grid,
 .valuation-lab-audit-grid {
@@ -292,8 +314,8 @@
   margin-top: 14px;
   padding: 14px 16px;
   border-radius: 13px;
-  background: #fff3df;
-  color: #845d1b;
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
 }
 .valuation-lab-warning p {
   margin: 4px 0 0;
@@ -372,9 +394,6 @@
   margin: 0;
   text-align: right;
 }
-[data-theme="dark"] .valuation-lab-page {
-  color: #edf2ef;
-}
 [data-theme="dark"] .valuation-lab-hero,
 [data-theme="dark"] .valuation-lab-method > div,
 [data-theme="dark"] .valuation-lab-card,
@@ -392,8 +411,11 @@
   border-color: #304139;
 }
 [data-theme="dark"] .valuation-lab-scenarios .is-base {
-  background: #2a2417;
-  border-color: #66522d;
+  background: var(--hone-signal-yellow-soft);
+  border-color: var(--hone-signal-yellow);
+}
+[data-theme="dark"] .valuation-lab-method-results > div {
+  background: rgba(255, 255, 255, 0.045);
 }
 @media (max-width: 780px) {
   .valuation-lab-page {

@@ -1,0 +1,100 @@
+/* Shared chrome for research surfaces: the modal shell every detail panel
+   mounts into and the unified loading/error/empty state. Tokens only — no
+   literal colors in this layer. */
+
+.research-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(23, 32, 31, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.research-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: min(86vh, 920px);
+  overflow: hidden;
+  outline: none;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-lg);
+  background: var(--hone-paper-50);
+  color: var(--hone-ink-950);
+  box-shadow: var(--hone-shadow-md);
+}
+
+@media (max-width: 760px) {
+  .research-panel-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .research-panel {
+    width: 100%;
+    max-height: calc(100dvh - 40px);
+    border-radius: var(--hone-radius-lg) var(--hone-radius-lg) 0 0;
+  }
+}
+
+.research-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--hone-ink-500);
+}
+
+.research-state strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hone-ink-800);
+}
+
+.research-state.is-error strong {
+  color: var(--hone-error-600);
+}
+
+.research-state p {
+  margin: 0;
+  max-width: 42em;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.research-state button {
+  margin-top: 8px;
+  padding: 7px 18px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: 999px;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-800);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease);
+}
+
+.research-state button:hover {
+  border-color: var(--hone-ink-600);
+}
+
+.research-state__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--hone-line-strong);
+  border-top-color: var(--hone-coral-500);
+  border-radius: 50%;
+  animation: research-state-spin 0.8s linear infinite;
+}
+
+@keyframes research-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
