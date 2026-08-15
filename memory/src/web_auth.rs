@@ -1,13 +1,9 @@
-use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
-
 use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
     CloudWebUserExternalStateRecord,
 };
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -140,12 +136,8 @@ pub enum WebSessionAuthResult {
 }
 
 pub struct WebAuthStorage {
-    backend: WebAuthBackend,
-}
-
-enum WebAuthBackend {
-    Sqlite { conn: Mutex<Connection> },
-    Cloud { postgres: CloudPgRuntime },
+    postgres: CloudPgRuntime,
+    _test_postgres_lease: Option<std::sync::Arc<crate::test_postgres::TestPostgresLease>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,152 +160,21 @@ struct CloudWebAuthSessionRecord {
 }
 
 impl WebAuthStorage {
-    pub fn new(path: impl AsRef<Path>) -> HoneResult<Self> {
-        let path = path.as_ref().to_path_buf();
-        ensure_parent_dir(&path)?;
-
-        let conn = Connection::open(&path)
-            .map_err(|e| HoneError::Config(format!("打开 Web Auth SQLite 失败: {e}")))?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "busy_timeout", 5000)
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(sql_err)?;
-
-        let storage = Self {
-            backend: WebAuthBackend::Sqlite {
-                conn: Mutex::new(conn),
-            },
-        };
-        storage.init_schema()?;
+    /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
+    #[doc(hidden)]
+    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
+        let mut storage = Self::new_cloud(postgres)?;
+        storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
         ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self {
-            backend: WebAuthBackend::Cloud { postgres },
+            postgres,
+            _test_postgres_lease: None,
         })
-    }
-
-    fn init_schema(&self) -> HoneResult<()> {
-        let WebAuthBackend::Sqlite { conn } = &self.backend else {
-            return Ok(());
-        };
-        let conn = conn.lock().map_err(lock_err)?;
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS web_invite_users (
-                user_id TEXT PRIMARY KEY,
-                invite_code TEXT NOT NULL UNIQUE,
-                phone_number TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                last_login_at TEXT,
-                revoked_at TEXT
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_web_invite_users_created_at
-                ON web_invite_users(created_at DESC);
-
-            CREATE TABLE IF NOT EXISTS web_auth_sessions (
-                session_token TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                last_seen_at TEXT NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_web_auth_sessions_user_id
-                ON web_auth_sessions(user_id);
-            CREATE INDEX IF NOT EXISTS idx_web_auth_sessions_expires_at
-                ON web_auth_sessions(expires_at);
-
-            CREATE TABLE IF NOT EXISTS web_user_external_state (
-                user_id TEXT PRIMARY KEY,
-                email_address TEXT,
-                email_verified_at TEXT,
-                identity_kind TEXT NOT NULL DEFAULT 'domestic_invite',
-                email_challenge_json TEXT,
-                FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
-            );
-
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_web_user_external_email
-                ON web_user_external_state(email_address)
-                WHERE email_address IS NOT NULL;
-
-            CREATE TABLE IF NOT EXISTS web_admin_actions (
-                action_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admin_user_id TEXT NOT NULL,
-                target_user_id TEXT NOT NULL,
-                action TEXT NOT NULL CHECK (action IN ('create', 'disable')),
-                beijing_date TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(admin_user_id) REFERENCES web_invite_users(user_id),
-                FOREIGN KEY(target_user_id) REFERENCES web_invite_users(user_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_web_admin_actions_daily
-                ON web_admin_actions(admin_user_id, beijing_date, action);
-            ",
-        )
-        .map_err(sql_err)?;
-        ensure_column(&conn, "web_invite_users", "phone_number", "TEXT")?;
-        conn.execute(
-            "UPDATE web_invite_users SET phone_number = '' WHERE phone_number IS NULL",
-            [],
-        )
-        .map_err(sql_err)?;
-        ensure_column(&conn, "web_invite_users", "revoked_at", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "password_hash", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "password_set_at", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "tos_accepted_at", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "tos_version", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "api_key_hash", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "api_key_prefix", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "api_key_created_at", "TEXT")?;
-        ensure_column(&conn, "web_invite_users", "api_key_last_used_at", "TEXT")?;
-        ensure_column(
-            &conn,
-            "web_invite_users",
-            "is_admin",
-            "INTEGER NOT NULL DEFAULT 0",
-        )?;
-        ensure_column(
-            &conn,
-            "web_user_external_state",
-            "identity_kind",
-            "TEXT NOT NULL DEFAULT 'domestic_invite'",
-        )?;
-        conn.execute(
-            "
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_web_invite_users_api_key_hash
-                ON web_invite_users(api_key_hash)
-                WHERE api_key_hash IS NOT NULL
-            ",
-            [],
-        )
-        .map_err(sql_err)?;
-        Ok(())
-    }
-
-    fn sqlite_conn(&self) -> HoneResult<MutexGuard<'_, Connection>> {
-        match &self.backend {
-            WebAuthBackend::Sqlite { conn } => conn.lock().map_err(lock_err),
-            WebAuthBackend::Cloud { .. } => Err(HoneError::Storage(
-                "web auth sqlite connection requested in cloud mode".to_string(),
-            )),
-        }
-    }
-
-    fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
-        match &self.backend {
-            WebAuthBackend::Cloud { postgres } => Some(postgres.clone()),
-            WebAuthBackend::Sqlite { .. } => None,
-        }
     }
 
     fn cloud_upsert_invite(
@@ -334,9 +195,7 @@ impl WebAuthStorage {
         api_key_hash: Option<String>,
         external_state: WebUserExternalState,
     ) -> HoneResult<()> {
-        let Some(postgres) = self.cloud_postgres() else {
-            return Ok(());
-        };
+        let postgres = self.postgres.clone();
         let record = CloudWebInviteRecord {
             user: user.clone(),
             api_key_hash,
@@ -371,9 +230,7 @@ impl WebAuthStorage {
         field: &str,
         value: &str,
     ) -> HoneResult<Option<CloudWebInviteRecord>> {
-        let Some(postgres) = self.cloud_postgres() else {
-            return Ok(None);
-        };
+        let postgres = self.postgres.clone();
         let field = field.to_string();
         let value = value.to_string();
         run_cloud_web_auth(
@@ -394,29 +251,14 @@ impl WebAuthStorage {
     }
 
     fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let user_id = user_id.to_string();
-            return run_cloud_web_auth(async move {
-                postgres.find_web_user_external_state_record(&user_id).await
-            })?
-            .map(cloud_external_state_from_record)
-            .transpose()
-            .map(|state| state.unwrap_or_default());
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT email_address, email_verified_at, identity_kind,
-                   email_challenge_json
-            FROM web_user_external_state
-            WHERE user_id = ?1
-            ",
-            params![user_id],
-            external_state_from_row,
-        )
-        .optional()
-        .map(|state| state.unwrap_or_default())
-        .map_err(sql_err)
+        let postgres = self.postgres.clone();
+        let user_id = user_id.to_string();
+        return run_cloud_web_auth(async move {
+            postgres.find_web_user_external_state_record(&user_id).await
+        })?
+        .map(cloud_external_state_from_record)
+        .transpose()
+        .map(|state| state.unwrap_or_default());
     }
 
     fn save_external_state(
@@ -424,45 +266,13 @@ impl WebAuthStorage {
         user: &WebInviteUser,
         state: WebUserExternalState,
     ) -> HoneResult<()> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let external_state = cloud_external_state_record(&user.user_id, &state)?;
-            return run_cloud_web_auth(async move {
-                postgres
-                    .upsert_web_user_external_state_record(&external_state)
-                    .await
-            });
-        }
-        let challenge_json = state
-            .email_challenge
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let conn = self.sqlite_conn()?;
-        conn.execute(
-            "
-            INSERT INTO web_user_external_state(
-                user_id, email_address, email_verified_at, identity_kind,
-                email_challenge_json
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            ON CONFLICT(user_id)
-            DO UPDATE SET
-                email_address = excluded.email_address,
-                email_verified_at = excluded.email_verified_at,
-                identity_kind = excluded.identity_kind,
-                email_challenge_json = excluded.email_challenge_json
-            ",
-            params![
-                &user.user_id,
-                &state.profile.email_address,
-                &state.profile.email_verified_at,
-                &state.profile.identity_kind,
-                challenge_json,
-            ],
-        )
-        .map_err(sql_err)?;
-        Ok(())
+        let postgres = self.postgres.clone();
+        let external_state = cloud_external_state_record(&user.user_id, &state)?;
+        return run_cloud_web_auth(async move {
+            postgres
+                .upsert_web_user_external_state_record(&external_state)
+                .await
+        });
     }
 
     fn find_external_user_by_email(
@@ -470,42 +280,22 @@ impl WebAuthStorage {
         email_address: &str,
     ) -> HoneResult<Option<(WebInviteUser, WebUserExternalState)>> {
         let email = normalize_email_address(email_address)?;
-        if let Some(postgres) = self.cloud_postgres() {
-            return run_cloud_web_auth(async move {
-                postgres.find_web_invite_user_record_by_email(&email).await
-            })?
-            .map(|(record, external_state)| {
-                Ok((
-                    cloud_record_from_value(record)?.user,
-                    cloud_external_state_from_record(external_state)?,
-                ))
-            })
-            .transpose();
-        }
-        let user_id = {
-            let conn = self.sqlite_conn()?;
-            conn.query_row(
-                "SELECT user_id FROM web_user_external_state WHERE email_address = ?1",
-                params![email],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(sql_err)?
-        };
-        let Some(user_id) = user_id else {
-            return Ok(None);
-        };
-        let Some(user) = self.find_invite_user(&user_id)? else {
-            return Ok(None);
-        };
-        let state = self.load_external_state(&user_id)?;
-        Ok(Some((user, state)))
+
+        let postgres = self.postgres.clone();
+        return run_cloud_web_auth(async move {
+            postgres.find_web_invite_user_record_by_email(&email).await
+        })?
+        .map(|(record, external_state)| {
+            Ok((
+                cloud_record_from_value(record)?.user,
+                cloud_external_state_from_record(external_state)?,
+            ))
+        })
+        .transpose();
     }
 
     fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
-        let Some(postgres) = self.cloud_postgres() else {
-            return Ok(());
-        };
+        let postgres = self.postgres.clone();
         let record = serde_json::to_value(session)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let session_hash = session.session_hash.clone();
@@ -519,9 +309,7 @@ impl WebAuthStorage {
     }
 
     fn cloud_purge_expired_sessions(&self, now: &str) -> HoneResult<()> {
-        let Some(postgres) = self.cloud_postgres() else {
-            return Ok(());
-        };
+        let postgres = self.postgres.clone();
         let now = now.to_string();
         run_cloud_web_auth(async move {
             postgres.purge_expired_web_auth_sessions(&now).await?;
@@ -530,21 +318,11 @@ impl WebAuthStorage {
     }
 
     pub fn is_web_admin(&self, user_id: &str) -> HoneResult<bool> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let user_id = user_id.to_string();
-            return run_cloud_web_auth(
-                async move { postgres.web_invite_user_is_admin(&user_id).await },
-            );
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "SELECT is_admin FROM web_invite_users WHERE user_id = ?1",
-            params![user_id],
-            |row| row.get::<_, bool>(0),
-        )
-        .optional()
-        .map(|value| value.unwrap_or(false))
-        .map_err(sql_err)
+        let postgres = self.postgres.clone();
+        let user_id = user_id.to_string();
+        return run_cloud_web_auth(
+            async move { postgres.web_invite_user_is_admin(&user_id).await },
+        );
     }
 
     pub fn set_web_admin_by_phone(
@@ -553,63 +331,25 @@ impl WebAuthStorage {
         is_admin: bool,
     ) -> HoneResult<Option<String>> {
         let phone_number = validate_phone_number(phone_number)?;
-        if let Some(postgres) = self.cloud_postgres() {
-            return run_cloud_web_auth(async move {
-                postgres
-                    .set_web_invite_user_admin_by_phone(&phone_number, is_admin)
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        let user_ids = {
-            let mut statement = conn
-                .prepare("SELECT user_id FROM web_invite_users WHERE phone_number = ?1")
-                .map_err(sql_err)?;
-            statement
-                .query_map(params![&phone_number], |row| row.get::<_, String>(0))
-                .map_err(sql_err)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sql_err)?
-        };
-        match user_ids.as_slice() {
-            [] => Ok(None),
-            [user_id] => {
-                conn.execute(
-                    "UPDATE web_invite_users SET is_admin = ?2 WHERE user_id = ?1",
-                    params![user_id, is_admin],
-                )
-                .map_err(sql_err)?;
-                Ok(Some(user_id.clone()))
-            }
-            _ => Err(HoneError::Storage(format!(
-                "手机号 {phone_number} 对应多个 Web 用户，拒绝设置管理员"
-            ))),
-        }
+
+        let postgres = self.postgres.clone();
+        return run_cloud_web_auth(async move {
+            postgres
+                .set_web_invite_user_admin_by_phone(&phone_number, is_admin)
+                .await
+        });
     }
 
     pub fn web_admin_create_count_today(&self, admin_user_id: &str) -> HoneResult<u32> {
         let beijing_date = beijing_now().format("%F").to_string();
-        if let Some(postgres) = self.cloud_postgres() {
-            let admin_user_id = admin_user_id.to_string();
-            return run_cloud_web_auth(async move {
-                postgres
-                    .web_admin_create_count_for_date(&admin_user_id, &beijing_date)
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            r#"
-SELECT count(*)
-FROM web_admin_actions
-WHERE admin_user_id = ?1
-  AND beijing_date = ?2
-  AND action = 'create'
-"#,
-            params![admin_user_id, beijing_date],
-            |row| row.get::<_, u32>(0),
-        )
-        .map_err(sql_err)
+
+        let postgres = self.postgres.clone();
+        let admin_user_id = admin_user_id.to_string();
+        return run_cloud_web_auth(async move {
+            postgres
+                .web_admin_create_count_for_date(&admin_user_id, &beijing_date)
+                .await
+        });
     }
 
     pub fn create_invite_user_by_admin(
@@ -623,170 +363,62 @@ WHERE admin_user_id = ?1
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
 
-        if let Some(postgres) = self.cloud_postgres() {
-            let invite_code = generate_unique_invite_code_cloud(self)?;
-            let api_key = generate_unique_api_key_cloud(self)?;
-            let api_key_hash = hash_api_key(&api_key);
-            let api_key_prefix = api_key_prefix(&api_key);
-            let user = WebInviteUser {
-                user_id: user_id.clone(),
-                invite_code,
-                phone_number: phone_number.clone(),
-                created_at: created_at.clone(),
-                last_login_at: None,
-                revoked_at: None,
-                password_hash: None,
-                password_set_at: None,
-                tos_accepted_at: None,
-                tos_version: None,
-                api_key_prefix: Some(api_key_prefix),
-                api_key_created_at: Some(created_at),
-                api_key_last_used_at: None,
-                api_key_plaintext: Some(api_key),
-            };
-            let record = CloudWebInviteRecord {
-                user: user.clone(),
-                api_key_hash: Some(api_key_hash),
-                external_state: WebUserExternalState::default(),
-            };
-            let record = serde_json::to_value(record)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            let admin_user_id = admin_user_id.to_string();
-            let outcome = run_cloud_web_auth(async move {
-                postgres
-                    .create_web_invite_user_record_by_admin(
-                        &admin_user_id,
-                        &user_id,
-                        &phone_number,
-                        record,
-                        &beijing_date,
-                        WEB_ADMIN_DAILY_INVITE_LIMIT,
-                    )
-                    .await
-            })?;
-            return Ok(match outcome {
-                CloudWebAdminCreateOutcome::Created { used_today } => {
-                    WebAdminInviteCreateOutcome::Created {
-                        invite: user,
-                        used_today,
-                    }
-                }
-                CloudWebAdminCreateOutcome::NotAdmin => WebAdminInviteCreateOutcome::NotAdmin,
-                CloudWebAdminCreateOutcome::LimitReached { used_today } => {
-                    WebAdminInviteCreateOutcome::LimitReached { used_today }
-                }
-                CloudWebAdminCreateOutcome::DuplicatePhone => {
-                    WebAdminInviteCreateOutcome::DuplicatePhone
-                }
-            });
-        }
-
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let admin_allowed = tx
-            .query_row(
-                r#"
-SELECT 1
-FROM web_invite_users
-WHERE user_id = ?1
-  AND is_admin = 1
-  AND revoked_at IS NULL
-"#,
-                params![admin_user_id],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(sql_err)?
-            .is_some();
-        if !admin_allowed {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteCreateOutcome::NotAdmin);
-        }
-        let duplicate = tx
-            .query_row(
-                "SELECT 1 FROM web_invite_users WHERE phone_number = ?1 LIMIT 1",
-                params![&phone_number],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(sql_err)?
-            .is_some();
-        if duplicate {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteCreateOutcome::DuplicatePhone);
-        }
-        let used_today = tx
-            .query_row(
-                r#"
-SELECT count(*)
-FROM web_admin_actions
-WHERE admin_user_id = ?1
-  AND beijing_date = ?2
-  AND action = 'create'
-"#,
-                params![admin_user_id, &beijing_date],
-                |row| row.get::<_, u32>(0),
-            )
-            .map_err(sql_err)?;
-        if used_today >= WEB_ADMIN_DAILY_INVITE_LIMIT {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteCreateOutcome::LimitReached { used_today });
-        }
-
-        let invite_code = generate_unique_invite_code(&tx)?;
-        let api_key = generate_unique_api_key(&tx)?;
+        let postgres = self.postgres.clone();
+        let invite_code = generate_unique_invite_code_cloud(self)?;
+        let api_key = generate_unique_api_key_cloud(self)?;
         let api_key_hash = hash_api_key(&api_key);
         let api_key_prefix = api_key_prefix(&api_key);
-        tx.execute(
-            r#"
-INSERT INTO web_invite_users (
-  user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-  api_key_hash, api_key_prefix, api_key_created_at, api_key_last_used_at,
-  is_admin
-)
-VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, ?6, ?4, NULL, 0)
-"#,
-            params![
-                &user_id,
-                &invite_code,
-                &phone_number,
-                &created_at,
-                &api_key_hash,
-                &api_key_prefix,
-            ],
-        )
-        .map_err(sql_err)?;
-        tx.execute(
-            r#"
-INSERT INTO web_admin_actions(
-  admin_user_id, target_user_id, action, beijing_date, created_at
-)
-VALUES (?1, ?2, 'create', ?3, ?4)
-"#,
-            params![admin_user_id, &user_id, &beijing_date, &created_at],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-
-        Ok(WebAdminInviteCreateOutcome::Created {
-            used_today: used_today.saturating_add(1),
-            invite: WebInviteUser {
-                user_id,
-                invite_code,
-                phone_number,
-                created_at: created_at.clone(),
-                last_login_at: None,
-                revoked_at: None,
-                password_hash: None,
-                password_set_at: None,
-                tos_accepted_at: None,
-                tos_version: None,
-                api_key_prefix: Some(api_key_prefix),
-                api_key_created_at: Some(created_at),
-                api_key_last_used_at: None,
-                api_key_plaintext: Some(api_key),
-            },
-        })
+        let user = WebInviteUser {
+            user_id: user_id.clone(),
+            invite_code,
+            phone_number: phone_number.clone(),
+            created_at: created_at.clone(),
+            last_login_at: None,
+            revoked_at: None,
+            password_hash: None,
+            password_set_at: None,
+            tos_accepted_at: None,
+            tos_version: None,
+            api_key_prefix: Some(api_key_prefix),
+            api_key_created_at: Some(created_at),
+            api_key_last_used_at: None,
+            api_key_plaintext: Some(api_key),
+        };
+        let record = CloudWebInviteRecord {
+            user: user.clone(),
+            api_key_hash: Some(api_key_hash),
+            external_state: WebUserExternalState::default(),
+        };
+        let record = serde_json::to_value(record)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let admin_user_id = admin_user_id.to_string();
+        let outcome = run_cloud_web_auth(async move {
+            postgres
+                .create_web_invite_user_record_by_admin(
+                    &admin_user_id,
+                    &user_id,
+                    &phone_number,
+                    record,
+                    &beijing_date,
+                    WEB_ADMIN_DAILY_INVITE_LIMIT,
+                )
+                .await
+        })?;
+        return Ok(match outcome {
+            CloudWebAdminCreateOutcome::Created { used_today } => {
+                WebAdminInviteCreateOutcome::Created {
+                    invite: user,
+                    used_today,
+                }
+            }
+            CloudWebAdminCreateOutcome::NotAdmin => WebAdminInviteCreateOutcome::NotAdmin,
+            CloudWebAdminCreateOutcome::LimitReached { used_today } => {
+                WebAdminInviteCreateOutcome::LimitReached { used_today }
+            }
+            CloudWebAdminCreateOutcome::DuplicatePhone => {
+                WebAdminInviteCreateOutcome::DuplicatePhone
+            }
+        });
     }
 
     pub fn disable_invite_user_by_admin(
@@ -797,180 +429,53 @@ VALUES (?1, ?2, 'create', ?3, ?4)
         let now = beijing_now();
         let beijing_date = now.format("%F").to_string();
         let now = now.to_rfc3339();
-        if let Some(postgres) = self.cloud_postgres() {
-            let admin_user_id = admin_user_id.to_string();
-            let target_user_id = target_user_id.to_string();
-            let outcome = run_cloud_web_auth(async move {
-                postgres
-                    .disable_web_invite_user_by_admin(
-                        &admin_user_id,
-                        &target_user_id,
-                        &now,
-                        &beijing_date,
-                    )
-                    .await
-            })?;
-            return Ok(match outcome {
-                CloudWebAdminDisableOutcome::Disabled {
-                    record,
-                    cleared_session_count,
-                } => {
-                    let (invite, _) = Self::cloud_record_to_user(record)?;
-                    WebAdminInviteDisableOutcome::Disabled(WebInviteMutation {
-                        invite,
-                        cleared_session_count,
-                    })
-                }
-                CloudWebAdminDisableOutcome::AlreadyDisabled { record } => {
-                    let (invite, _) = Self::cloud_record_to_user(record)?;
-                    WebAdminInviteDisableOutcome::AlreadyDisabled(invite)
-                }
-                CloudWebAdminDisableOutcome::NotAdmin => WebAdminInviteDisableOutcome::NotAdmin,
-                CloudWebAdminDisableOutcome::NotFound => WebAdminInviteDisableOutcome::NotFound,
-                CloudWebAdminDisableOutcome::ProtectedAdmin => {
-                    WebAdminInviteDisableOutcome::ProtectedAdmin
-                }
-            });
-        }
 
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let admin_allowed = tx
-            .query_row(
-                r#"
-SELECT 1
-FROM web_invite_users
-WHERE user_id = ?1
-  AND is_admin = 1
-  AND revoked_at IS NULL
-"#,
-                params![admin_user_id],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(sql_err)?
-            .is_some();
-        if !admin_allowed {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteDisableOutcome::NotAdmin);
-        }
-        if admin_user_id == target_user_id {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteDisableOutcome::ProtectedAdmin);
-        }
-        let target = tx
-            .query_row(
-                r#"
-SELECT is_admin, revoked_at
-FROM web_invite_users
-WHERE user_id = ?1
-"#,
-                params![target_user_id],
-                |row| Ok((row.get::<_, bool>(0)?, row.get::<_, Option<String>>(1)?)),
-            )
-            .optional()
-            .map_err(sql_err)?;
-        let Some((target_is_admin, target_revoked_at)) = target else {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteDisableOutcome::NotFound);
-        };
-        if target_is_admin {
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteDisableOutcome::ProtectedAdmin);
-        }
-        if target_revoked_at.is_some() {
-            let invite = find_invite_user_tx(&tx, target_user_id)?.ok_or_else(|| {
-                HoneError::Storage("web invite disappeared during admin disable".to_string())
-            })?;
-            tx.rollback().map_err(sql_err)?;
-            return Ok(WebAdminInviteDisableOutcome::AlreadyDisabled(invite));
-        }
-
-        let cleared_session_count = delete_sessions_for_user_tx(&tx, target_user_id)? as u32;
-        tx.execute(
-            "UPDATE web_invite_users SET revoked_at = ?2 WHERE user_id = ?1",
-            params![target_user_id, &now],
-        )
-        .map_err(sql_err)?;
-        tx.execute(
-            r#"
-INSERT INTO web_admin_actions(
-  admin_user_id, target_user_id, action, beijing_date, created_at
-)
-VALUES (?1, ?2, 'disable', ?3, ?4)
-"#,
-            params![admin_user_id, target_user_id, &beijing_date, &now],
-        )
-        .map_err(sql_err)?;
-        let invite = find_invite_user_tx(&tx, target_user_id)?.ok_or_else(|| {
-            HoneError::Storage("web invite disappeared during admin disable".to_string())
+        let postgres = self.postgres.clone();
+        let admin_user_id = admin_user_id.to_string();
+        let target_user_id = target_user_id.to_string();
+        let outcome = run_cloud_web_auth(async move {
+            postgres
+                .disable_web_invite_user_by_admin(
+                    &admin_user_id,
+                    &target_user_id,
+                    &now,
+                    &beijing_date,
+                )
+                .await
         })?;
-        tx.commit().map_err(sql_err)?;
-        Ok(WebAdminInviteDisableOutcome::Disabled(WebInviteMutation {
-            invite,
-            cleared_session_count,
-        }))
+        return Ok(match outcome {
+            CloudWebAdminDisableOutcome::Disabled {
+                record,
+                cleared_session_count,
+            } => {
+                let (invite, _) = Self::cloud_record_to_user(record)?;
+                WebAdminInviteDisableOutcome::Disabled(WebInviteMutation {
+                    invite,
+                    cleared_session_count,
+                })
+            }
+            CloudWebAdminDisableOutcome::AlreadyDisabled { record } => {
+                let (invite, _) = Self::cloud_record_to_user(record)?;
+                WebAdminInviteDisableOutcome::AlreadyDisabled(invite)
+            }
+            CloudWebAdminDisableOutcome::NotAdmin => WebAdminInviteDisableOutcome::NotAdmin,
+            CloudWebAdminDisableOutcome::NotFound => WebAdminInviteDisableOutcome::NotFound,
+            CloudWebAdminDisableOutcome::ProtectedAdmin => {
+                WebAdminInviteDisableOutcome::ProtectedAdmin
+            }
+        });
     }
 
     pub fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
         let created_at = beijing_now_rfc3339();
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
-        if self.cloud_postgres().is_some() {
-            let invite_code = generate_unique_invite_code_cloud(self)?;
-            let api_key = generate_unique_api_key_cloud(self)?;
-            let api_key_hash = hash_api_key(&api_key);
-            let api_key_prefix = api_key_prefix(&api_key);
-            let user = WebInviteUser {
-                user_id,
-                invite_code,
-                phone_number,
-                created_at: created_at.clone(),
-                last_login_at: None,
-                revoked_at: None,
-                password_hash: None,
-                password_set_at: None,
-                tos_accepted_at: None,
-                tos_version: None,
-                api_key_prefix: Some(api_key_prefix),
-                api_key_created_at: Some(created_at),
-                api_key_last_used_at: None,
-                api_key_plaintext: Some(api_key),
-            };
-            self.cloud_upsert_invite(&user, Some(api_key_hash))?;
-            return Ok(user);
-        }
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let invite_code = generate_unique_invite_code(&tx)?;
-        let api_key = generate_unique_api_key(&tx)?;
+
+        let invite_code = generate_unique_invite_code_cloud(self)?;
+        let api_key = generate_unique_api_key_cloud(self)?;
         let api_key_hash = hash_api_key(&api_key);
         let api_key_prefix = api_key_prefix(&api_key);
-        tx.execute(
-            "
-            INSERT INTO web_invite_users (
-                user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                api_key_hash, api_key_prefix, api_key_created_at, api_key_last_used_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-            ",
-            params![
-                &user_id,
-                &invite_code,
-                &phone_number,
-                &created_at,
-                None::<String>,
-                None::<String>,
-                &api_key_hash,
-                &api_key_prefix,
-                &created_at,
-                None::<String>
-            ],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-
-        Ok(WebInviteUser {
+        let user = WebInviteUser {
             user_id,
             invite_code,
             phone_number,
@@ -985,7 +490,9 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             api_key_created_at: Some(created_at),
             api_key_last_used_at: None,
             api_key_plaintext: Some(api_key),
-        })
+        };
+        self.cloud_upsert_invite(&user, Some(api_key_hash))?;
+        return Ok(user);
     }
 
     pub fn external_profile(&self, user_id: &str) -> HoneResult<WebUserExternalProfile> {
@@ -1089,59 +596,10 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             },
             email_challenge: None,
         };
-        if self.cloud_postgres().is_some() {
-            let user = WebInviteUser {
-                user_id,
-                invite_code: generate_unique_invite_code_cloud(self)?,
-                phone_number: String::new(),
-                created_at,
-                last_login_at: None,
-                revoked_at: None,
-                password_hash: None,
-                password_set_at: None,
-                tos_accepted_at: None,
-                tos_version: None,
-                api_key_prefix: None,
-                api_key_created_at: None,
-                api_key_last_used_at: None,
-                api_key_plaintext: None,
-            };
-            self.cloud_upsert_invite_with_state(&user, None, external_state)?;
-            return Ok(user);
-        }
 
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let invite_code = generate_unique_invite_code(&tx)?;
-        tx.execute(
-            "
-            INSERT INTO web_invite_users(
-                user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
-            )
-            VALUES (?1, ?2, '', ?3, NULL, NULL)
-            ",
-            params![&user_id, &invite_code, &created_at],
-        )
-        .map_err(sql_err)?;
-        tx.execute(
-            "
-            INSERT INTO web_user_external_state(
-                user_id, email_address, email_verified_at, identity_kind,
-                email_challenge_json
-            )
-            VALUES (?1, ?2, NULL, ?3, NULL)
-            ",
-            params![
-                &user_id,
-                &external_state.profile.email_address,
-                WEB_IDENTITY_INTERNATIONAL_EMAIL,
-            ],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-        Ok(WebInviteUser {
+        let user = WebInviteUser {
             user_id,
-            invite_code,
+            invite_code: generate_unique_invite_code_cloud(self)?,
             phone_number: String::new(),
             created_at,
             last_login_at: None,
@@ -1154,106 +612,45 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             api_key_created_at: None,
             api_key_last_used_at: None,
             api_key_plaintext: None,
-        })
+        };
+        self.cloud_upsert_invite_with_state(&user, None, external_state)?;
+        return Ok(user);
     }
 
     pub fn list_invite_users(&self) -> HoneResult<Vec<WebInviteUser>> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let records =
-                run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
-            return records
-                .into_iter()
-                .map(Self::cloud_record_to_user)
-                .map(|result| result.map(|(user, _)| user))
-                .collect();
-        }
-        let conn = self.sqlite_conn()?;
-        let mut stmt = conn
-            .prepare(
-                "
-                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-                FROM web_invite_users
-                ORDER BY created_at DESC
-                ",
-            )
-            .map_err(sql_err)?;
-        let rows = stmt.query_map([], map_invite_user).map_err(sql_err)?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row.map_err(sql_err)?);
-        }
-        Ok(out)
+        let postgres = self.postgres.clone();
+        let records =
+            run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
+        return records
+            .into_iter()
+            .map(Self::cloud_record_to_user)
+            .map(|result| result.map(|(user, _)| user))
+            .collect();
     }
 
     pub fn list_web_admin_invite_summaries(&self) -> HoneResult<Vec<WebAdminInviteSummary>> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let records =
-                run_cloud_web_auth(
-                    async move { postgres.list_web_admin_invite_summaries().await },
-                )?;
-            return Ok(records
-                .into_iter()
-                .map(|record| WebAdminInviteSummary {
-                    user_id: record.user_id,
-                    phone_number: record.phone_number,
-                    created_at: record.created_at,
-                    last_login_at: record.last_login_at,
-                    revoked_at: record.revoked_at,
-                    is_admin: record.is_admin,
-                })
-                .collect());
-        }
-        let conn = self.sqlite_conn()?;
-        let mut stmt = conn
-            .prepare(
-                "
-                SELECT user_id, phone_number, created_at, last_login_at, revoked_at, is_admin
-                FROM web_invite_users
-                WHERE phone_number <> ''
-                ORDER BY created_at DESC, user_id
-                ",
-            )
-            .map_err(sql_err)?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(WebAdminInviteSummary {
-                    user_id: row.get(0)?,
-                    phone_number: row.get(1)?,
-                    created_at: row.get(2)?,
-                    last_login_at: row.get(3)?,
-                    revoked_at: row.get(4)?,
-                    is_admin: row.get(5)?,
-                })
+        let postgres = self.postgres.clone();
+        let records =
+            run_cloud_web_auth(async move { postgres.list_web_admin_invite_summaries().await })?;
+        return Ok(records
+            .into_iter()
+            .map(|record| WebAdminInviteSummary {
+                user_id: record.user_id,
+                phone_number: record.phone_number,
+                created_at: record.created_at,
+                last_login_at: record.last_login_at,
+                revoked_at: record.revoked_at,
+                is_admin: record.is_admin,
             })
-            .map_err(sql_err)?;
-
-        rows.collect::<Result<Vec<_>, _>>().map_err(sql_err)
+            .collect());
     }
 
     pub fn find_invite_user_by_code(&self, invite_code: &str) -> HoneResult<Option<WebInviteUser>> {
         let invite_code = normalize_invite_code(invite_code);
-        if self.cloud_postgres().is_some() {
-            return Ok(self
-                .cloud_find_invite_by("invite_code", &invite_code)?
-                .map(|(user, _)| user));
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-            FROM web_invite_users
-            WHERE invite_code = ?1
-            ",
-            params![invite_code],
-            map_invite_user,
-        )
-        .optional()
-        .map_err(sql_err)
+
+        return Ok(self
+            .cloud_find_invite_by("invite_code", &invite_code)?
+            .map(|(user, _)| user));
     }
 
     /// Public SMS login whitelist lookup. Admin-created invite users are the
@@ -1266,49 +663,18 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         if phone.is_empty() {
             return Ok(None);
         }
-        if self.cloud_postgres().is_some() {
-            let user = self
-                .cloud_find_invite_by("phone_number", &phone)?
-                .map(|(user, _)| user)
-                .filter(|user| user.revoked_at.is_none());
-            return Ok(user);
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                   password_hash, password_set_at, tos_accepted_at, tos_version,
-                   api_key_prefix, api_key_created_at, api_key_last_used_at
-            FROM web_invite_users
-            WHERE phone_number = ?1 AND revoked_at IS NULL
-            ",
-            params![phone],
-            map_invite_user,
-        )
-        .optional()
-        .map_err(sql_err)
+
+        let user = self
+            .cloud_find_invite_by("phone_number", &phone)?
+            .map(|(user, _)| user)
+            .filter(|user| user.revoked_at.is_none());
+        return Ok(user);
     }
 
     pub fn find_invite_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
-        if self.cloud_postgres().is_some() {
-            return Ok(self
-                .cloud_find_invite_by("user_id", user_id)?
-                .map(|(user, _)| user));
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-            FROM web_invite_users
-            WHERE user_id = ?1
-            ",
-            params![user_id],
-            map_invite_user,
-        )
-        .optional()
-        .map_err(sql_err)
+        return Ok(self
+            .cloud_find_invite_by("user_id", user_id)?
+            .map(|(user, _)| user));
     }
 
     pub fn find_invite_user_by_api_key(&self, api_key: &str) -> HoneResult<Option<WebInviteUser>> {
@@ -1318,155 +684,56 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         }
         let now = beijing_now_rfc3339();
         let api_key_hash = hash_api_key(api_key);
-        if self.cloud_postgres().is_some() {
-            let Some((mut user, stored_hash)) =
-                self.cloud_find_invite_by("api_key_hash", &api_key_hash)?
-            else {
-                return Ok(None);
-            };
-            if user.revoked_at.is_some() || stored_hash.as_deref() != Some(api_key_hash.as_str()) {
-                return Ok(None);
-            }
-            user.api_key_last_used_at = Some(now);
-            user.api_key_plaintext = None;
-            self.cloud_upsert_invite(&user, stored_hash)?;
-            return Ok(Some(user));
+
+        let Some((mut user, stored_hash)) =
+            self.cloud_find_invite_by("api_key_hash", &api_key_hash)?
+        else {
+            return Ok(None);
+        };
+        if user.revoked_at.is_some() || stored_hash.as_deref() != Some(api_key_hash.as_str()) {
+            return Ok(None);
         }
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let user = tx
-            .query_row(
-                "
-                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-                FROM web_invite_users
-                WHERE api_key_hash = ?1 AND revoked_at IS NULL
-                ",
-                params![&api_key_hash],
-                map_invite_user,
-            )
-            .optional()
-            .map_err(sql_err)?;
-        if let Some(user) = user {
-            tx.execute(
-                "
-                UPDATE web_invite_users
-                SET api_key_last_used_at = ?2
-                WHERE user_id = ?1
-                ",
-                params![&user.user_id, &now],
-            )
-            .map_err(sql_err)?;
-            let refreshed = find_invite_user_tx(&tx, &user.user_id)?.ok_or_else(|| {
-                HoneError::Storage("web invite disappeared during api key lookup".to_string())
-            })?;
-            tx.commit().map_err(sql_err)?;
-            Ok(Some(refreshed))
-        } else {
-            tx.commit().map_err(sql_err)?;
-            Ok(None)
-        }
+        user.api_key_last_used_at = Some(now);
+        user.api_key_plaintext = None;
+        self.cloud_upsert_invite(&user, stored_hash)?;
+        return Ok(Some(user));
     }
 
     pub fn ensure_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            let Some((mut existing, _existing_hash)) =
-                self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(None);
-            };
-            if existing.api_key_prefix.is_some() {
-                existing.api_key_plaintext = None;
-                return Ok(Some(existing));
-            }
-            let api_key = generate_unique_api_key_cloud(self)?;
-            let api_key_hash = hash_api_key(&api_key);
-            existing.api_key_prefix = Some(api_key_prefix(&api_key));
-            existing.api_key_created_at = Some(now);
-            existing.api_key_last_used_at = None;
-            existing.api_key_plaintext = Some(api_key);
-            self.cloud_upsert_invite(&existing, Some(api_key_hash))?;
-            return Ok(Some(existing));
-        }
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let Some(mut existing) = find_invite_user_tx(&tx, user_id)? else {
-            tx.rollback().map_err(sql_err)?;
+
+        let Some((mut existing, _existing_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+        else {
             return Ok(None);
         };
         if existing.api_key_prefix.is_some() {
-            tx.commit().map_err(sql_err)?;
             existing.api_key_plaintext = None;
             return Ok(Some(existing));
         }
-
-        let api_key = generate_unique_api_key(&tx)?;
+        let api_key = generate_unique_api_key_cloud(self)?;
         let api_key_hash = hash_api_key(&api_key);
-        let prefix = api_key_prefix(&api_key);
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET api_key_hash = ?2,
-                api_key_prefix = ?3,
-                api_key_created_at = ?4,
-                api_key_last_used_at = NULL
-            WHERE user_id = ?1
-            ",
-            params![user_id, &api_key_hash, &prefix, &now],
-        )
-        .map_err(sql_err)?;
-        let mut invite = find_invite_user_tx(&tx, user_id)?.ok_or_else(|| {
-            HoneError::Storage("web invite disappeared during api key generate".to_string())
-        })?;
-        tx.commit().map_err(sql_err)?;
-        invite.api_key_plaintext = Some(api_key);
-        Ok(Some(invite))
+        existing.api_key_prefix = Some(api_key_prefix(&api_key));
+        existing.api_key_created_at = Some(now);
+        existing.api_key_last_used_at = None;
+        existing.api_key_plaintext = Some(api_key);
+        self.cloud_upsert_invite(&existing, Some(api_key_hash))?;
+        return Ok(Some(existing));
     }
 
     pub fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id)? else {
-                return Ok(None);
-            };
-            let api_key = generate_unique_api_key_cloud(self)?;
-            let api_key_hash = hash_api_key(&api_key);
-            invite.api_key_prefix = Some(api_key_prefix(&api_key));
-            invite.api_key_created_at = Some(now);
-            invite.api_key_last_used_at = None;
-            invite.api_key_plaintext = Some(api_key);
-            self.cloud_upsert_invite(&invite, Some(api_key_hash))?;
-            return Ok(Some(invite));
-        }
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let Some(_) = find_invite_user_tx(&tx, user_id)? else {
-            tx.rollback().map_err(sql_err)?;
+
+        let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(None);
         };
-        let api_key = generate_unique_api_key(&tx)?;
+        let api_key = generate_unique_api_key_cloud(self)?;
         let api_key_hash = hash_api_key(&api_key);
-        let prefix = api_key_prefix(&api_key);
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET api_key_hash = ?2,
-                api_key_prefix = ?3,
-                api_key_created_at = ?4,
-                api_key_last_used_at = NULL
-            WHERE user_id = ?1
-            ",
-            params![user_id, &api_key_hash, &prefix, &now],
-        )
-        .map_err(sql_err)?;
-        let mut invite = find_invite_user_tx(&tx, user_id)?.ok_or_else(|| {
-            HoneError::Storage("web invite disappeared during api key reset".to_string())
-        })?;
-        tx.commit().map_err(sql_err)?;
+        invite.api_key_prefix = Some(api_key_prefix(&api_key));
+        invite.api_key_created_at = Some(now);
+        invite.api_key_last_used_at = None;
         invite.api_key_plaintext = Some(api_key);
-        Ok(Some(invite))
+        self.cloud_upsert_invite(&invite, Some(api_key_hash))?;
+        return Ok(Some(invite));
     }
 
     pub fn create_session_for_invite(
@@ -1481,89 +748,33 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
-        if self.cloud_postgres().is_some() {
-            self.cloud_purge_expired_sessions(&created_at)?;
-            let Some((mut user, api_key_hash)) =
-                self.cloud_find_invite_by("invite_code", &invite_code)?
-            else {
-                return Ok(None);
-            };
-            if user.phone_number != phone_number || user.revoked_at.is_some() {
-                return Ok(None);
-            }
-            user.last_login_at = Some(created_at.clone());
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            let session = CloudWebAuthSessionRecord {
-                session_hash: token_hash,
-                user_id: user.user_id.clone(),
-                created_at: created_at.clone(),
-                expires_at: expires_at.clone(),
-                last_seen_at: created_at.clone(),
-            };
-            self.cloud_upsert_session(&session)?;
-            return Ok(Some(WebInviteSession {
-                session_token: token,
-                user_id: user.user_id,
-                created_at: created_at.clone(),
-                expires_at,
-                last_seen_at: created_at,
-            }));
-        }
-        let conn = self.sqlite_conn()?;
-        purge_expired_sessions_inner(&conn, &created_at)?;
 
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let user = tx
-            .query_row(
-                "
-                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-                FROM web_invite_users
-                WHERE invite_code = ?1 AND phone_number = ?2 AND revoked_at IS NULL
-                ",
-                params![invite_code, phone_number],
-                map_invite_user,
-            )
-            .optional()
-            .map_err(sql_err)?;
-        let Some(user) = user else {
-            tx.rollback().map_err(sql_err)?;
+        self.cloud_purge_expired_sessions(&created_at)?;
+        let Some((mut user, api_key_hash)) =
+            self.cloud_find_invite_by("invite_code", &invite_code)?
+        else {
             return Ok(None);
         };
-
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET last_login_at = ?2
-            WHERE user_id = ?1
-            ",
-            params![&user.user_id, &created_at],
-        )
-        .map_err(sql_err)?;
-        tx.execute(
-            "
-            INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            ",
-            params![
-                &token_hash,
-                &user.user_id,
-                &created_at,
-                &expires_at,
-                &created_at
-            ],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-
-        Ok(Some(WebInviteSession {
+        if user.phone_number != phone_number || user.revoked_at.is_some() {
+            return Ok(None);
+        }
+        user.last_login_at = Some(created_at.clone());
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        let session = CloudWebAuthSessionRecord {
+            session_hash: token_hash,
+            user_id: user.user_id.clone(),
+            created_at: created_at.clone(),
+            expires_at: expires_at.clone(),
+            last_seen_at: created_at.clone(),
+        };
+        self.cloud_upsert_session(&session)?;
+        return Ok(Some(WebInviteSession {
             session_token: token,
             user_id: user.user_id,
             created_at: created_at.clone(),
             expires_at,
             last_seen_at: created_at,
-        }))
+        }));
     }
 
     pub fn authenticate_session(&self, session_token: &str) -> HoneResult<Option<WebInviteUser>> {
@@ -1582,154 +793,66 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
     ) -> HoneResult<WebSessionAuthResult> {
         let now = beijing_now_rfc3339();
         let token_hash = hash_session_token(session_token);
-        if let Some(postgres) = self.cloud_postgres() {
-            let value = run_cloud_web_auth({
-                let token_hash = token_hash.clone();
-                let session_token = session_token.to_string();
-                async move {
-                    postgres
-                        .find_web_auth_session_record(&token_hash, &session_token)
-                        .await
-                }
-            })?;
-            let Some(value) = value else {
-                return Ok(WebSessionAuthResult::Missing);
-            };
-            let mut session: CloudWebAuthSessionRecord = serde_json::from_value(value)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            if session.expires_at <= now {
-                self.delete_session(session_token)?;
-                return Ok(WebSessionAuthResult::Expired {
-                    user_id: session.user_id,
-                });
+
+        let postgres = self.postgres.clone();
+        let value = run_cloud_web_auth({
+            let token_hash = token_hash.clone();
+            let session_token = session_token.to_string();
+            async move {
+                postgres
+                    .find_web_auth_session_record(&token_hash, &session_token)
+                    .await
             }
-            let Some((user, _)) = self.cloud_find_invite_by("user_id", &session.user_id)? else {
-                return Ok(WebSessionAuthResult::UserMissing {
-                    user_id: session.user_id,
-                });
-            };
-            if user.revoked_at.is_some() {
-                return Ok(WebSessionAuthResult::UserRevoked {
-                    user_id: user.user_id,
-                });
-            }
-            session.last_seen_at = now;
-            self.cloud_upsert_session(&session)?;
-            return Ok(WebSessionAuthResult::Authenticated(user));
-        }
-        let conn = self.sqlite_conn()?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let session = tx
-            .query_row(
-                "
-                SELECT session_token, user_id, expires_at
-                FROM web_auth_sessions
-                WHERE session_token = ?1 OR session_token = ?2
-                ",
-                params![&token_hash, session_token],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(sql_err)?;
-        let Some((stored_token, user_id, expires_at)) = session else {
-            tx.commit().map_err(sql_err)?;
+        })?;
+        let Some(value) = value else {
             return Ok(WebSessionAuthResult::Missing);
         };
-        if expires_at <= now {
-            tx.execute(
-                "DELETE FROM web_auth_sessions WHERE session_token = ?1",
-                params![&stored_token],
-            )
-            .map_err(sql_err)?;
-            tx.commit().map_err(sql_err)?;
-            return Ok(WebSessionAuthResult::Expired { user_id });
+        let mut session: CloudWebAuthSessionRecord = serde_json::from_value(value)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        if session.expires_at <= now {
+            self.delete_session(session_token)?;
+            return Ok(WebSessionAuthResult::Expired {
+                user_id: session.user_id,
+            });
         }
-
-        let user = tx
-            .query_row(
-                "
-                SELECT u.user_id, u.invite_code, u.phone_number, u.created_at, u.last_login_at, u.revoked_at,
-                       u.password_hash, u.password_set_at, u.tos_accepted_at, u.tos_version,
-                       u.api_key_prefix, u.api_key_created_at, u.api_key_last_used_at
-                FROM web_invite_users u
-                WHERE u.user_id = ?1
-                ",
-                params![&user_id],
-                map_invite_user,
-            )
-            .optional()
-            .map_err(sql_err)?;
-        let Some(user) = user else {
-            tx.commit().map_err(sql_err)?;
-            return Ok(WebSessionAuthResult::UserMissing { user_id });
+        let Some((user, _)) = self.cloud_find_invite_by("user_id", &session.user_id)? else {
+            return Ok(WebSessionAuthResult::UserMissing {
+                user_id: session.user_id,
+            });
         };
         if user.revoked_at.is_some() {
-            tx.commit().map_err(sql_err)?;
-            return Ok(WebSessionAuthResult::UserRevoked { user_id });
+            return Ok(WebSessionAuthResult::UserRevoked {
+                user_id: user.user_id,
+            });
         }
-
-        // 不做 sliding expiry:`expires_at` 由 session 创建时选择的 TTL
-        // (1 天 / 30 天) 决定,访问只更新 `last_seen_at`。否则"不勾选保持登录"
-        // 的短 TTL 会被每次访问延到长 TTL,违背用户意图。
-        tx.execute(
-            "
-            UPDATE web_auth_sessions
-            SET last_seen_at = ?2
-            WHERE session_token = ?1
-            ",
-            params![&stored_token, now],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-        Ok(WebSessionAuthResult::Authenticated(user))
+        session.last_seen_at = now;
+        self.cloud_upsert_session(&session)?;
+        return Ok(WebSessionAuthResult::Authenticated(user));
     }
 
     pub fn delete_session(&self, session_token: &str) -> HoneResult<()> {
         let token_hash = hash_session_token(session_token);
-        if let Some(postgres) = self.cloud_postgres() {
-            let session_token = session_token.to_string();
-            return run_cloud_web_auth(async move {
-                postgres
-                    .delete_web_auth_session(&token_hash, &session_token)
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        conn.execute(
-            "DELETE FROM web_auth_sessions WHERE session_token = ?1 OR session_token = ?2",
-            params![&token_hash, session_token],
-        )
-        .map_err(sql_err)?;
-        Ok(())
+
+        let postgres = self.postgres.clone();
+        let session_token = session_token.to_string();
+        return run_cloud_web_auth(async move {
+            postgres
+                .delete_web_auth_session(&token_hash, &session_token)
+                .await
+        });
     }
 
     pub fn count_active_sessions_for_user(&self, user_id: &str) -> HoneResult<u32> {
         let now = beijing_now_rfc3339();
-        if let Some(postgres) = self.cloud_postgres() {
-            self.cloud_purge_expired_sessions(&now)?;
-            let user_id = user_id.to_string();
-            return run_cloud_web_auth(async move {
-                postgres
-                    .count_active_web_auth_sessions(&user_id, &now)
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        purge_expired_sessions_inner(&conn, &now)?;
-        let count = conn
-            .query_row(
-                "SELECT COUNT(*) FROM web_auth_sessions WHERE user_id = ?1 AND expires_at > ?2",
-                params![user_id, now],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(sql_err)?;
-        Ok(count.max(0) as u32)
+
+        let postgres = self.postgres.clone();
+        self.cloud_purge_expired_sessions(&now)?;
+        let user_id = user_id.to_string();
+        return run_cloud_web_auth(async move {
+            postgres
+                .count_active_web_auth_sessions(&user_id, &now)
+                .await
+        });
     }
 
     pub fn set_invite_revoked(
@@ -1738,113 +861,52 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         revoked: bool,
     ) -> HoneResult<Option<WebInviteMutation>> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            self.cloud_purge_expired_sessions(&now)?;
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(None);
-            };
-            let cleared_session_count = if revoked {
-                let postgres = self.cloud_postgres().expect("cloud postgres");
-                let user_id_owned = user_id.to_string();
-                run_cloud_web_auth(async move {
-                    postgres
-                        .delete_web_auth_sessions_for_user(&user_id_owned)
-                        .await
-                })? as u32
-            } else {
-                0
-            };
-            user.revoked_at = if revoked { Some(now) } else { None };
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            return Ok(Some(WebInviteMutation {
-                invite: user,
-                cleared_session_count,
-            }));
-        }
-        let conn = self.sqlite_conn()?;
-        purge_expired_sessions_inner(&conn, &now)?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let Some(_) = find_invite_user_tx(&tx, user_id)? else {
-            tx.rollback().map_err(sql_err)?;
+
+        self.cloud_purge_expired_sessions(&now)?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(None);
         };
-
         let cleared_session_count = if revoked {
-            delete_sessions_for_user_tx(&tx, user_id)? as u32
+            let postgres = self.postgres.clone();
+            let user_id_owned = user_id.to_string();
+            run_cloud_web_auth(async move {
+                postgres
+                    .delete_web_auth_sessions_for_user(&user_id_owned)
+                    .await
+            })? as u32
         } else {
             0
         };
-        let revoked_at = if revoked { Some(now.as_str()) } else { None };
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET revoked_at = ?2
-            WHERE user_id = ?1
-            ",
-            params![user_id, revoked_at],
-        )
-        .map_err(sql_err)?;
-        let invite = find_invite_user_tx(&tx, user_id)?.ok_or_else(|| {
-            HoneError::Storage("web invite disappeared during update".to_string())
-        })?;
-        tx.commit().map_err(sql_err)?;
-        Ok(Some(WebInviteMutation {
-            invite,
+        user.revoked_at = if revoked { Some(now) } else { None };
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        return Ok(Some(WebInviteMutation {
+            invite: user,
             cleared_session_count,
-        }))
+        }));
     }
 
     pub fn reset_invite_code(&self, user_id: &str) -> HoneResult<Option<WebInviteMutation>> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            self.cloud_purge_expired_sessions(&now)?;
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(None);
-            };
-            let invite_code = generate_unique_invite_code_cloud(self)?;
-            let postgres = self.cloud_postgres().expect("cloud postgres");
-            let user_id_owned = user_id.to_string();
-            let cleared_session_count = run_cloud_web_auth(async move {
-                postgres
-                    .delete_web_auth_sessions_for_user(&user_id_owned)
-                    .await
-            })? as u32;
-            user.invite_code = invite_code;
-            user.revoked_at = None;
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            return Ok(Some(WebInviteMutation {
-                invite: user,
-                cleared_session_count,
-            }));
-        }
-        let conn = self.sqlite_conn()?;
-        purge_expired_sessions_inner(&conn, &now)?;
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let Some(_) = find_invite_user_tx(&tx, user_id)? else {
-            tx.rollback().map_err(sql_err)?;
+
+        self.cloud_purge_expired_sessions(&now)?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(None);
         };
-
-        let invite_code = generate_unique_invite_code(&tx)?;
-        let cleared_session_count = delete_sessions_for_user_tx(&tx, user_id)? as u32;
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET invite_code = ?2, revoked_at = NULL
-            WHERE user_id = ?1
-            ",
-            params![user_id, &invite_code],
-        )
-        .map_err(sql_err)?;
-        let invite = find_invite_user_tx(&tx, user_id)?
-            .ok_or_else(|| HoneError::Storage("web invite disappeared during reset".to_string()))?;
-        tx.commit().map_err(sql_err)?;
-        Ok(Some(WebInviteMutation {
-            invite,
+        let invite_code = generate_unique_invite_code_cloud(self)?;
+        let postgres = self.postgres.clone();
+        let user_id_owned = user_id.to_string();
+        let cleared_session_count = run_cloud_web_auth(async move {
+            postgres
+                .delete_web_auth_sessions_for_user(&user_id_owned)
+                .await
+        })? as u32;
+        user.invite_code = invite_code;
+        user.revoked_at = None;
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        return Ok(Some(WebInviteMutation {
+            invite: user,
             cleared_session_count,
-        }))
+        }));
     }
 
     /// 查询已设置密码、未吊销的用户,用于手机号+密码登录校验。
@@ -1856,26 +918,11 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         if phone.is_empty() {
             return Ok(None);
         }
-        if self.cloud_postgres().is_some() {
-            return Ok(self
-                .cloud_find_invite_by("phone_number", &phone)?
-                .map(|(user, _)| user)
-                .filter(|user| user.revoked_at.is_none() && user.password_hash.is_some()));
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                   password_hash, password_set_at, tos_accepted_at, tos_version,
-                   api_key_prefix, api_key_created_at, api_key_last_used_at
-            FROM web_invite_users
-            WHERE phone_number = ?1 AND revoked_at IS NULL AND password_hash IS NOT NULL
-            ",
-            params![phone],
-            map_invite_user,
-        )
-        .optional()
-        .map_err(sql_err)
+
+        return Ok(self
+            .cloud_find_invite_by("phone_number", &phone)?
+            .map(|(user, _)| user)
+            .filter(|user| user.revoked_at.is_none() && user.password_hash.is_some()));
     }
 
     /// 首次设置密码 / 同时记录协议接受。用于"强制设密码" guard。
@@ -1889,96 +936,50 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         tos_version: &str,
     ) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(false);
-            };
-            if user.password_hash.is_some() {
-                return Ok(false);
-            }
-            user.password_hash = Some(password_hash.to_string());
-            user.password_set_at = Some(now.clone());
-            user.tos_accepted_at = Some(now);
-            user.tos_version = Some(tos_version.to_string());
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            return Ok(true);
+
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+            return Ok(false);
+        };
+        if user.password_hash.is_some() {
+            return Ok(false);
         }
-        let conn = self.sqlite_conn()?;
-        let updated = conn
-            .execute(
-                "
-                UPDATE web_invite_users
-                SET password_hash = ?2,
-                    password_set_at = ?3,
-                    tos_accepted_at = ?3,
-                    tos_version = ?4
-                WHERE user_id = ?1 AND password_hash IS NULL
-                ",
-                params![user_id, password_hash, now, tos_version],
-            )
-            .map_err(sql_err)?;
-        Ok(updated > 0)
+        user.password_hash = Some(password_hash.to_string());
+        user.password_set_at = Some(now.clone());
+        user.tos_accepted_at = Some(now);
+        user.tos_version = Some(tos_version.to_string());
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        return Ok(true);
     }
 
     /// 已设置密码后用于修改密码(/me 页)。不动 tos_accepted_at / tos_version。
     pub fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(false);
-            };
-            if user.password_hash.is_none() {
-                return Ok(false);
-            }
-            user.password_hash = Some(password_hash.to_string());
-            user.password_set_at = Some(now);
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            return Ok(true);
+
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+            return Ok(false);
+        };
+        if user.password_hash.is_none() {
+            return Ok(false);
         }
-        let conn = self.sqlite_conn()?;
-        let updated = conn
-            .execute(
-                "
-                UPDATE web_invite_users
-                SET password_hash = ?2, password_set_at = ?3
-                WHERE user_id = ?1 AND password_hash IS NOT NULL
-                ",
-                params![user_id, password_hash, now],
-            )
-            .map_err(sql_err)?;
-        Ok(updated > 0)
+        user.password_hash = Some(password_hash.to_string());
+        user.password_set_at = Some(now);
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        return Ok(true);
     }
 
     pub fn record_tos_acceptance(&self, user_id: &str, tos_version: &str) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        if self.cloud_postgres().is_some() {
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(false);
-            };
-            if user.revoked_at.is_some() {
-                return Ok(false);
-            }
-            user.tos_accepted_at = Some(now);
-            user.tos_version = Some(tos_version.to_string());
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            return Ok(true);
+
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+            return Ok(false);
+        };
+        if user.revoked_at.is_some() {
+            return Ok(false);
         }
-        let conn = self.sqlite_conn()?;
-        let updated = conn
-            .execute(
-                "
-                UPDATE web_invite_users
-                SET tos_accepted_at = ?2,
-                    tos_version = ?3
-                WHERE user_id = ?1 AND revoked_at IS NULL
-                ",
-                params![user_id, now, tos_version],
-            )
-            .map_err(sql_err)?;
-        Ok(updated > 0)
+        user.tos_accepted_at = Some(now);
+        user.tos_version = Some(tos_version.to_string());
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        return Ok(true);
     }
 
     /// 按 user_id 创建 session,TTL 由调用方指定(密码登录根据"保持登录"勾选
@@ -1995,194 +996,30 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
 
-        if self.cloud_postgres().is_some() {
-            self.cloud_purge_expired_sessions(&created_at)?;
-            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
-            else {
-                return Ok(None);
-            };
-            if user.revoked_at.is_some() {
-                return Ok(None);
-            }
-            user.last_login_at = Some(created_at.clone());
-            self.cloud_upsert_invite(&user, api_key_hash)?;
-            let session = CloudWebAuthSessionRecord {
-                session_hash: token_hash,
-                user_id: user.user_id.clone(),
-                created_at: created_at.clone(),
-                expires_at: expires_at.clone(),
-                last_seen_at: created_at.clone(),
-            };
-            self.cloud_upsert_session(&session)?;
-            return Ok(Some(WebInviteSession {
-                session_token: token,
-                user_id: user.user_id,
-                created_at: created_at.clone(),
-                expires_at,
-                last_seen_at: created_at,
-            }));
-        }
-
-        let conn = self.sqlite_conn()?;
-        purge_expired_sessions_inner(&conn, &created_at)?;
-
-        let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        let Some(user) = find_invite_user_tx(&tx, user_id)? else {
-            tx.rollback().map_err(sql_err)?;
+        self.cloud_purge_expired_sessions(&created_at)?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(None);
         };
         if user.revoked_at.is_some() {
-            tx.rollback().map_err(sql_err)?;
             return Ok(None);
         }
-
-        tx.execute(
-            "
-            UPDATE web_invite_users
-            SET last_login_at = ?2
-            WHERE user_id = ?1
-            ",
-            params![&user.user_id, &created_at],
-        )
-        .map_err(sql_err)?;
-        tx.execute(
-            "
-            INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            ",
-            params![
-                &token_hash,
-                &user.user_id,
-                &created_at,
-                &expires_at,
-                &created_at
-            ],
-        )
-        .map_err(sql_err)?;
-        tx.commit().map_err(sql_err)?;
-
-        Ok(Some(WebInviteSession {
+        user.last_login_at = Some(created_at.clone());
+        self.cloud_upsert_invite(&user, api_key_hash)?;
+        let session = CloudWebAuthSessionRecord {
+            session_hash: token_hash,
+            user_id: user.user_id.clone(),
+            created_at: created_at.clone(),
+            expires_at: expires_at.clone(),
+            last_seen_at: created_at.clone(),
+        };
+        self.cloud_upsert_session(&session)?;
+        return Ok(Some(WebInviteSession {
             session_token: token,
             user_id: user.user_id,
             created_at: created_at.clone(),
             expires_at,
             last_seen_at: created_at,
-        }))
-    }
-
-    pub fn export_cloud_records(
-        &self,
-    ) -> HoneResult<(
-        Vec<hone_core::cloud_runtime::CloudWebInviteUserRecord>,
-        Vec<hone_core::cloud_runtime::CloudWebAuthSessionRecord>,
-    )> {
-        let conn = self.sqlite_conn()?;
-        let mut users_stmt = conn
-            .prepare(
-                "
-                SELECT u.user_id, u.invite_code, u.phone_number, u.created_at,
-                       u.last_login_at, u.revoked_at, u.password_hash, u.password_set_at,
-                       u.tos_accepted_at, u.tos_version, u.api_key_prefix,
-                       u.api_key_created_at, u.api_key_last_used_at, u.api_key_hash,
-                       e.user_id, e.email_address, e.email_verified_at, e.identity_kind,
-                       e.email_challenge_json
-                FROM web_invite_users u
-                LEFT JOIN web_user_external_state e ON e.user_id = u.user_id
-                ORDER BY u.created_at DESC
-                ",
-            )
-            .map_err(sql_err)?;
-        let user_rows = users_stmt
-            .query_map([], |row| {
-                let user = WebInviteUser {
-                    user_id: row.get(0)?,
-                    invite_code: row.get(1)?,
-                    phone_number: row.get(2)?,
-                    created_at: row.get(3)?,
-                    last_login_at: row.get(4)?,
-                    revoked_at: row.get(5)?,
-                    password_hash: row.get(6)?,
-                    password_set_at: row.get(7)?,
-                    tos_accepted_at: row.get(8)?,
-                    tos_version: row.get(9)?,
-                    api_key_prefix: row.get(10)?,
-                    api_key_created_at: row.get(11)?,
-                    api_key_last_used_at: row.get(12)?,
-                    api_key_plaintext: None,
-                };
-                let api_key_hash: Option<String> = row.get(13)?;
-                let external_state = row
-                    .get::<_, Option<String>>(14)?
-                    .map(|external_user_id| {
-                        external_state_from_values(
-                            row.get(15)?,
-                            row.get(16)?,
-                            row.get(17)?,
-                            row.get(18)?,
-                        )
-                        .map(|state| (external_user_id, state))
-                    })
-                    .transpose()?;
-                Ok((user, api_key_hash, external_state))
-            })
-            .map_err(sql_err)?;
-        let mut users = Vec::new();
-        for row in user_rows {
-            let (user, api_key_hash, external_state) = row.map_err(sql_err)?;
-            let phone_number = user.phone_number.clone();
-            let user_id = user.user_id.clone();
-            let record = serde_json::to_value(CloudWebInviteRecord {
-                user,
-                api_key_hash,
-                external_state: WebUserExternalState::default(),
-            })
-            .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            let external_state = external_state
-                .map(|(external_user_id, state)| {
-                    cloud_external_state_record(&external_user_id, &state)
-                })
-                .transpose()?;
-            users.push(hone_core::cloud_runtime::CloudWebInviteUserRecord {
-                user_id,
-                phone_number,
-                record,
-                external_state,
-            });
-        }
-
-        let mut sessions_stmt = conn
-            .prepare(
-                "
-                SELECT session_token, user_id, created_at, expires_at, last_seen_at
-                FROM web_auth_sessions
-                ORDER BY created_at DESC
-                ",
-            )
-            .map_err(sql_err)?;
-        let session_rows = sessions_stmt
-            .query_map([], |row| {
-                Ok(CloudWebAuthSessionRecord {
-                    session_hash: row.get(0)?,
-                    user_id: row.get(1)?,
-                    created_at: row.get(2)?,
-                    expires_at: row.get(3)?,
-                    last_seen_at: row.get(4)?,
-                })
-            })
-            .map_err(sql_err)?;
-        let mut sessions = Vec::new();
-        for row in session_rows {
-            let session = row.map_err(sql_err)?;
-            let record = serde_json::to_value(&session)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            sessions.push(hone_core::cloud_runtime::CloudWebAuthSessionRecord {
-                session_hash: session.session_hash,
-                user_id: session.user_id,
-                expires_at: Some(session.expires_at),
-                record,
-            });
-        }
-        Ok((users, sessions))
+        }));
     }
 }
 
@@ -2223,15 +1060,6 @@ fn generate_unique_api_key_cloud(storage: &WebAuthStorage) -> HoneResult<String>
     Err(HoneError::Storage(
         "failed to generate unique cloud web api key".to_string(),
     ))
-}
-
-fn purge_expired_sessions_inner(conn: &Connection, now: &str) -> HoneResult<()> {
-    conn.execute(
-        "DELETE FROM web_auth_sessions WHERE expires_at <= ?1",
-        params![now],
-    )
-    .map_err(sql_err)?;
-    Ok(())
 }
 
 fn generate_user_id() -> String {
@@ -2317,58 +1145,6 @@ fn validate_phone_number(phone_number: &str) -> HoneResult<String> {
     } else {
         Err(HoneError::Config("手机号格式不合法".to_string()))
     }
-}
-
-fn generate_unique_invite_code(tx: &Transaction<'_>) -> HoneResult<String> {
-    for _ in 0..8 {
-        let invite_code = generate_invite_code();
-        let existing = tx
-            .query_row(
-                "SELECT invite_code FROM web_invite_users WHERE invite_code = ?1",
-                params![&invite_code],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(sql_err)?;
-        if existing.is_none() {
-            return Ok(invite_code);
-        }
-    }
-
-    Err(HoneError::Storage(
-        "failed to generate unique web invite code".to_string(),
-    ))
-}
-
-fn generate_unique_api_key(tx: &Transaction<'_>) -> HoneResult<String> {
-    for _ in 0..8 {
-        let api_key = generate_api_key();
-        let api_key_hash = hash_api_key(&api_key);
-        let existing = tx
-            .query_row(
-                "SELECT api_key_hash FROM web_invite_users WHERE api_key_hash = ?1",
-                params![&api_key_hash],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(sql_err)?;
-        if existing.is_none() {
-            return Ok(api_key);
-        }
-    }
-
-    Err(HoneError::Storage(
-        "failed to generate unique web api key".to_string(),
-    ))
-}
-
-fn ensure_parent_dir(path: &Path) -> HoneResult<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| HoneError::Config("Web Auth SQLite 缺少父目录".to_string()))?;
-    std::fs::create_dir_all(parent)
-        .map_err(|e| HoneError::Config(format!("创建 Web Auth SQLite 目录失败: {e}")))?;
-    Ok(())
 }
 
 fn external_state_is_default(state: &WebUserExternalState) -> bool {
@@ -2501,108 +1277,6 @@ fn hash_email_verification_code(user_id: &str, code: &str) -> String {
     ))
 }
 
-fn lock_err<E>(_: E) -> HoneError {
-    HoneError::Storage("web auth storage lock poisoned".to_string())
-}
-
-fn sql_err(err: rusqlite::Error) -> HoneError {
-    HoneError::Storage(format!("web auth sqlite error: {err}"))
-}
-
-fn external_state_from_row(row: &Row<'_>) -> rusqlite::Result<WebUserExternalState> {
-    external_state_from_values(row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)
-}
-
-fn external_state_from_values(
-    email_address: Option<String>,
-    email_verified_at: Option<String>,
-    identity_kind: Option<String>,
-    challenge_json: Option<String>,
-) -> rusqlite::Result<WebUserExternalState> {
-    let email_challenge = parse_json_column(challenge_json, 3)?;
-    Ok(WebUserExternalState {
-        profile: WebUserExternalProfile {
-            email_address,
-            email_verified_at,
-            identity_kind: identity_kind
-                .filter(|value| !value.trim().is_empty())
-                .map(|value| {
-                    canonical_identity_kind(&value)
-                        .map(str::to_string)
-                        .ok_or_else(|| {
-                            rusqlite::Error::FromSqlConversionFailure(
-                                2,
-                                rusqlite::types::Type::Text,
-                                format!("未知 Web 身份类型: {value}").into(),
-                            )
-                        })
-                })
-                .transpose()?
-                .unwrap_or_else(default_identity_kind),
-        },
-        email_challenge,
-    })
-}
-
-fn parse_json_column<T: for<'de> Deserialize<'de>>(
-    raw: Option<String>,
-    column: usize,
-) -> rusqlite::Result<Option<T>> {
-    raw.map(|value| {
-        serde_json::from_str(&value).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(
-                column,
-                rusqlite::types::Type::Text,
-                Box::new(error),
-            )
-        })
-    })
-    .transpose()
-}
-
-fn map_invite_user(row: &Row<'_>) -> rusqlite::Result<WebInviteUser> {
-    Ok(WebInviteUser {
-        user_id: row.get(0)?,
-        invite_code: row.get(1)?,
-        phone_number: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        created_at: row.get(3)?,
-        last_login_at: row.get(4)?,
-        revoked_at: row.get(5)?,
-        password_hash: row.get(6)?,
-        password_set_at: row.get(7)?,
-        tos_accepted_at: row.get(8)?,
-        tos_version: row.get(9)?,
-        api_key_prefix: row.get(10)?,
-        api_key_created_at: row.get(11)?,
-        api_key_last_used_at: row.get(12)?,
-        api_key_plaintext: None,
-    })
-}
-
-fn find_invite_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
-    tx.query_row(
-        "
-        SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version,
-                       api_key_prefix, api_key_created_at, api_key_last_used_at
-        FROM web_invite_users
-        WHERE user_id = ?1
-        ",
-        params![user_id],
-        map_invite_user,
-    )
-    .optional()
-    .map_err(sql_err)
-}
-
-fn delete_sessions_for_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResult<usize> {
-    tx.execute(
-        "DELETE FROM web_auth_sessions WHERE user_id = ?1",
-        params![user_id],
-    )
-    .map_err(sql_err)
-}
-
 /// Add a column to an existing table if it does not already exist.
 ///
 /// # Safety (SQL injection)
@@ -2610,26 +1284,6 @@ fn delete_sessions_for_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResul
 /// `table`, `column`, and `definition` are interpolated directly into DDL.
 /// **All arguments MUST be hard-coded string literals** — never pass values
 /// derived from user input or external configuration.
-fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> HoneResult<()> {
-    let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info({table})"))
-        .map_err(sql_err)?;
-    let columns = stmt
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(sql_err)?;
-    for item in columns {
-        if item.map_err(sql_err)? == column {
-            return Ok(());
-        }
-    }
-
-    conn.execute(
-        &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
-        [],
-    )
-    .map_err(sql_err)?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -2642,7 +1296,6 @@ mod tests {
     use hone_core::cloud_runtime::CloudPgRuntime;
     use hone_core::config::{CloudConfig, PostgresConfig};
     use hone_core::{HoneError, HoneResult, beijing_now};
-    use rusqlite::{Connection, params};
     use tokio_postgres::NoTls;
 
     fn test_storage() -> WebAuthStorage {
@@ -2770,6 +1423,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn create_and_list_invites_round_trip() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -2792,6 +1446,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn active_invite_user_by_phone_is_sms_login_whitelist() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -2814,6 +1469,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn web_admin_role_is_storage_authoritative() {
         let storage = test_storage();
         let user = storage.create_invite_user("13871396421").expect("create");
@@ -2838,6 +1494,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn web_admin_summary_list_uses_minimal_fields_and_excludes_non_phone_accounts() {
         let storage = test_storage();
         let admin = storage.create_invite_user("13871396421").expect("admin");
@@ -2851,14 +1508,20 @@ WHERE s.user_id = $1
         storage
             .set_invite_revoked(&member.user_id, true)
             .expect("disable member");
-        storage
-            .sqlite_conn()
-            .expect("sqlite")
-            .execute(
-                "UPDATE web_invite_users SET phone_number = '' WHERE user_id = ?1",
-                params![international.user_id],
-            )
-            .expect("clear international placeholder phone");
+        let postgres = storage.postgres.clone();
+        let international_user_id = international.user_id.clone();
+        run_cloud_web_auth(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE cloud_web_invite_users SET phone_number = '', record = jsonb_set(record, '{phone_number}', '\"\"'::jsonb) WHERE user_id = $1",
+                    &[&international_user_id],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(())
+        })
+        .expect("clear international placeholder phone");
 
         let summaries = storage
             .list_web_admin_invite_summaries()
@@ -2880,6 +1543,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn public_admin_create_limit_counts_only_successful_creates() {
         let storage = test_storage();
         let admin = storage.create_invite_user("13871396421").expect("admin");
@@ -2942,6 +1606,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn non_admin_cannot_create_or_disable_whitelist_users() {
         let storage = test_storage();
         let ordinary = storage.create_invite_user("13800138000").expect("ordinary");
@@ -2968,6 +1633,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn admin_disable_is_audited_clears_sessions_and_protects_admins() {
         let storage = test_storage();
         let admin = storage.create_invite_user("13871396421").expect("admin");
@@ -3009,18 +1675,25 @@ WHERE s.user_id = $1
             WebAdminInviteDisableOutcome::AlreadyDisabled(_)
         ));
 
-        let conn = storage.sqlite_conn().expect("conn");
-        let audit_count: u32 = conn
-            .query_row(
-                "SELECT count(*) FROM web_admin_actions WHERE admin_user_id = ?1 AND action = 'disable'",
-                params![&admin.user_id],
-                |row| row.get(0),
-            )
-            .expect("audit");
+        let postgres = storage.postgres.clone();
+        let admin_user_id = admin.user_id.clone();
+        let audit_count = run_cloud_web_auth(async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    "SELECT count(*) FROM cloud_web_admin_actions WHERE admin_user_id = $1 AND action = 'disable'",
+                    &[&admin_user_id],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(row.get::<_, i64>(0))
+        })
+        .expect("audit");
         assert_eq!(audit_count, 1);
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn record_tos_acceptance_updates_public_login_terms() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3039,6 +1712,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn api_key_lookup_updates_last_used_and_reset_invalidates_old_key() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3071,17 +1745,24 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn existing_user_can_generate_api_key_once_without_plaintext_replay() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
-        {
-            let conn = storage.sqlite_conn().expect("conn");
-            conn.execute(
-                "UPDATE web_invite_users SET api_key_hash = NULL, api_key_prefix = NULL, api_key_created_at = NULL WHERE user_id = ?1",
-                params![&created.user_id],
-            )
-            .expect("clear key");
-        }
+        let postgres = storage.postgres.clone();
+        let user_id = created.user_id.clone();
+        run_cloud_web_auth(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE cloud_web_invite_users SET record = jsonb_set(jsonb_set(jsonb_set(jsonb_set(record, '{api_key_hash}', 'null'::jsonb), '{api_key_prefix}', 'null'::jsonb), '{api_key_created_at}', 'null'::jsonb), '{api_key_last_used_at}', 'null'::jsonb) WHERE user_id = $1",
+                    &[&user_id],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(())
+        })
+        .expect("clear key");
         let generated = storage
             .ensure_api_key_for_user(&created.user_id)
             .expect("generate")
@@ -3096,6 +1777,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn invite_login_creates_session_and_authenticates() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3109,14 +1791,20 @@ WHERE s.user_id = $1
             .expect("user");
 
         assert_eq!(authed.user_id, created.user_id);
-        let conn = storage.sqlite_conn().expect("conn");
-        let stored_token: String = conn
-            .query_row(
-                "SELECT session_token FROM web_auth_sessions WHERE user_id = ?1",
-                params![&created.user_id],
-                |row| row.get(0),
-            )
-            .expect("stored token");
+        let postgres = storage.postgres.clone();
+        let user_id = created.user_id.clone();
+        let stored_token: String = run_cloud_web_auth(async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    "SELECT session_hash FROM cloud_web_auth_sessions WHERE user_id = $1",
+                    &[&user_id],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(row.get(0))
+        })
+        .expect("stored token");
         assert_eq!(stored_token, hash_session_token(&session.session_token));
         assert_ne!(stored_token, session.session_token);
         assert!(session.expires_at > session.created_at);
@@ -3129,6 +1817,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3136,23 +1825,26 @@ WHERE s.user_id = $1
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let legacy_token = "legacy-plaintext-session-token";
-        {
-            let conn = storage.sqlite_conn().expect("conn");
-            conn.execute(
-                "
-                INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                ",
-                params![
+        let record = super::CloudWebAuthSessionRecord {
+            session_hash: legacy_token.to_string(),
+            user_id: created.user_id.clone(),
+            created_at: created_at.clone(),
+            expires_at: expires_at.clone(),
+            last_seen_at: created_at.clone(),
+        };
+        let postgres = storage.postgres.clone();
+        let record_value = serde_json::to_value(&record).expect("record");
+        run_cloud_web_auth(async move {
+            postgres
+                .upsert_web_auth_session_record(
                     legacy_token,
-                    &created.user_id,
-                    &created_at,
-                    &expires_at,
-                    &created_at
-                ],
-            )
-            .expect("insert legacy session");
-        }
+                    &record.user_id,
+                    record_value,
+                    Some(&record.expires_at),
+                )
+                .await
+        })
+        .expect("insert legacy session");
 
         let authed = storage
             .authenticate_session(legacy_token)
@@ -3163,6 +1855,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn detailed_auth_reports_expired_and_missing_sessions() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3171,23 +1864,26 @@ WHERE s.user_id = $1
         let expires_at = (now - chrono::Duration::days(1)).to_rfc3339();
         let raw_token = "expired-session-token";
         let token_hash = hash_session_token(raw_token);
-        {
-            let conn = storage.sqlite_conn().expect("conn");
-            conn.execute(
-                "
-                INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                ",
-                params![
+        let record = super::CloudWebAuthSessionRecord {
+            session_hash: token_hash.clone(),
+            user_id: created.user_id.clone(),
+            created_at: created_at.clone(),
+            expires_at: expires_at.clone(),
+            last_seen_at: created_at.clone(),
+        };
+        let postgres = storage.postgres.clone();
+        let record_value = serde_json::to_value(&record).expect("record");
+        run_cloud_web_auth(async move {
+            postgres
+                .upsert_web_auth_session_record(
                     &token_hash,
-                    &created.user_id,
-                    &created_at,
-                    &expires_at,
-                    &created_at
-                ],
-            )
-            .expect("insert expired session");
-        }
+                    &record.user_id,
+                    record_value,
+                    Some(&record.expires_at),
+                )
+                .await
+        })
+        .expect("insert expired session");
 
         assert_eq!(
             storage
@@ -3206,6 +1902,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn repeated_invite_logins_keep_existing_sessions() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3239,6 +1936,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn deleting_session_invalidates_authentication() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3259,6 +1957,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn revoking_invite_invalidates_existing_session_and_blocks_future_login() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3289,6 +1988,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn reactivating_invite_allows_login_again() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3312,6 +2012,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn resetting_invite_rotates_code_and_invalidates_existing_session() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3348,6 +2049,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn invite_login_requires_matching_phone_number() {
         let storage = test_storage();
         let created = storage
@@ -3369,6 +2071,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn invalid_phone_number_is_rejected_when_creating_invite() {
         let storage = test_storage();
         let error = storage
@@ -3378,33 +2081,27 @@ WHERE s.user_id = $1
     }
 
     #[test]
-    fn new_storage_adds_phone_and_revoked_columns_for_existing_database() {
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_schema_keeps_invite_columns_and_defaults() {
         let root =
             std::env::temp_dir().join(format!("hone_web_auth_migrate_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).expect("root");
-        let path = root.join("sessions.sqlite3");
-        let conn = Connection::open(&path).expect("open");
-        conn.execute_batch(
-            "
-            CREATE TABLE web_invite_users (
-                user_id TEXT PRIMARY KEY,
-                invite_code TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL,
-                last_login_at TEXT
-            );
-            CREATE TABLE web_auth_sessions (
-                session_token TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                last_seen_at TEXT NOT NULL
-            );
-            ",
-        )
-        .expect("legacy schema");
-        drop(conn);
-
-        let storage = WebAuthStorage::new(&path).expect("migrate");
+        let storage = WebAuthStorage::new(&root).expect("postgres storage");
+        let postgres = storage.postgres.clone();
+        let columns = run_cloud_web_auth(async move {
+            let client = postgres.connect_cached_client().await?;
+            let rows = client
+                .query(
+                    "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'cloud_web_invite_users'",
+                    &[],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(rows.into_iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>())
+        })
+        .expect("columns");
+        assert!(columns.iter().any(|column| column == "phone_number"));
+        assert!(columns.iter().any(|column| column == "is_admin"));
+        assert!(columns.iter().any(|column| column == "record"));
         let created = storage.create_invite_user("13800138000").expect("create");
         let listed = storage.list_invite_users().expect("list");
 
@@ -3418,6 +2115,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn set_password_roundtrip_and_find_by_phone() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3470,6 +2168,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn create_session_for_user_respects_ttl_parameter() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3513,6 +2212,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn create_session_for_user_rejects_revoked() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -3528,6 +2228,7 @@ WHERE s.user_id = $1
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn international_email_identity_is_provider_neutral_and_verifiable() {
         let storage = test_storage();
         let created = storage
@@ -3642,44 +2343,6 @@ WHERE s.user_id = $1
         assert!(
             !invite_record_has_external_state,
             "new Cloud writes must keep external state in its dedicated table"
-        );
-
-        let sqlite = test_storage();
-        let imported_email = format!(
-            "pg-web-auth-import-{}@example.com",
-            uuid::Uuid::new_v4().simple()
-        );
-        let imported_source = sqlite
-            .ensure_international_email_user(&imported_email)
-            .expect("create SQLite import source");
-        let (users, sessions) = sqlite
-            .export_cloud_records()
-            .expect("export SQLite records");
-        assert_eq!(users.len(), 1);
-        assert!(users[0].external_state.is_some());
-        let import_postgres = postgres.clone();
-        let report = run_cloud_web_auth(async move {
-            import_postgres
-                .import_web_auth_records(&users, &sessions)
-                .await
-        })
-        .expect("import web auth records");
-        assert_eq!(report.changed_users, 1);
-        let _import_cleanup = CloudWebAuthTestUser {
-            database_url: cloud_config.postgres.resolved_database_url(),
-            user_id: imported_source.user_id.clone(),
-        };
-        let imported = storage
-            .find_user_by_email(&imported_email)
-            .expect("find imported user")
-            .expect("imported user");
-        assert_eq!(imported.user_id, imported_source.user_id);
-        assert_eq!(
-            storage
-                .external_profile(&imported.user_id)
-                .expect("load imported external profile")
-                .identity_kind,
-            WEB_IDENTITY_INTERNATIONAL_EMAIL
         );
     }
 }
