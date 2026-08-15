@@ -214,6 +214,16 @@
   - 前端单元测试（`bun run test:web`）
   - Public Community Edge Worker 类型检查与单元测试（`cd workers/public-community-edge && bun run typecheck && bun run test`）
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
+- **`cargo test` 现在需要一个活的 PostgreSQL。** 事件存储已从 SQLite 迁到 PG，`EventStore` 的测试用 `pg_temp` schema 做隔离，`bot_core` 在 `#[cfg(test)]` 下会直接 panic 而不是降级。跑测试前先：
+
+  ```bash
+  bash scripts/dev_pg.sh up
+  export HONE_POSTGRES_HOST=127.0.0.1 HONE_POSTGRES_PORT=5433 \
+         HONE_POSTGRES_USER=honeclaw HONE_POSTGRES_PASSWORD=honeclaw_dev \
+         HONE_POSTGRES_DATABASE=honeclaw
+  ```
+
+  注意 `.env` 只被应用运行时的 `load_dotenv_if_present()` 读取，`cargo test` **不会**读它——必须显式 export。详见 `docs/runbooks/local-postgres-development.md`。CI 侧由 `.github/workflows/ci.yml` 的 postgres service 提供。
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 - `hone-desktop` 依赖桌面 sidecar 资源与打包环境，`hone-user-app` 是 macOS 专用远程用户端；两者都不属于默认 Linux PR / push 逻辑门禁，相关检查保留在各自的桌面构建或 release 流程中处理
 - `apps/hone-ios` 与 `hone-user-app` 的 Apple 客户端改动由 `.github/workflows/apple-clients.yml` 在 macOS runner 上按路径触发，iOS Simulator 编译结果是打 Apple 客户端 release tag 前的必查项
