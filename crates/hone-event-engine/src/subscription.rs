@@ -8,11 +8,12 @@
 //! 未来的 `NaturalLanguageSubscription` 只需实现 `Subscription` trait 即可挂入
 //! 注册中心，事件引擎无须修改。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use hone_core::ActorIdentity;
+use hone_memory::portfolio::holdings_with_weights;
 use hone_memory::{CompanyProfileStorage, CoverageTier, PortfolioStorage};
 
 use crate::event::{MarketEvent, Severity};
@@ -204,18 +205,53 @@ impl Subscription for GlobalSubscription {
     }
 }
 
+/// actor 单标的持仓快照。registry 刷新时从 PortfolioStorage 折算,router
+/// 在分发阶段用它给事件注入仓位上下文(美元影响 / 距成本 / 仓位占比),
+/// 让 `large_position_weight_pct` 机制真正拿到 `portfolio_weight_pct`。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PositionSnapshot {
+    pub shares: f64,
+    pub avg_cost: f64,
+    /// 有效仓位占比(%),来自 [`hone_memory::portfolio::holdings_with_weights`]
+    /// (显式 weight 优先,否则按成本市值折算)。
+    pub weight_pct: Option<f64>,
+}
+
 /// 订阅注册中心。
 pub struct SubscriptionRegistry {
     subs: Vec<Box<dyn Subscription>>,
+    /// (actor, SYMBOL 大写) → 持仓快照。只含单聊 actor 的真实股票持仓
+    /// (跳过 tracking_only 与期权 —— 期权美元影响需要另算 Greeks,不冒充)。
+    positions: HashMap<ActorIdentity, HashMap<String, PositionSnapshot>>,
 }
 
 impl SubscriptionRegistry {
     pub fn new() -> Self {
-        Self { subs: Vec::new() }
+        Self {
+            subs: Vec::new(),
+            positions: HashMap::new(),
+        }
     }
 
     pub fn register(&mut self, sub: Box<dyn Subscription>) {
         self.subs.push(sub);
+    }
+
+    pub fn register_positions(
+        &mut self,
+        actor: ActorIdentity,
+        positions: HashMap<String, PositionSnapshot>,
+    ) {
+        if !positions.is_empty() {
+            self.positions.insert(actor, positions);
+        }
+    }
+
+    /// 该 actor 对该 symbol 的持仓快照(无持仓 / 仅自选 → None)。
+    pub fn position_for(&self, actor: &ActorIdentity, symbol: &str) -> Option<&PositionSnapshot> {
+        self.positions
+            .get(actor)?
+            .get(symbol.trim().to_ascii_uppercase().as_str())
     }
 
     pub fn len(&self) -> usize {
@@ -420,6 +456,7 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
         // 否则会被 registry.resolve 漏过、连 LLM 仲裁都走不到。
         if !symbols.is_empty() {
             reg.register(Box::new(PortfolioSubscription::new(actor.clone(), symbols)));
+            reg.register_positions(actor.clone(), position_snapshots(&portfolio.holdings));
         }
         direct_actors.push(actor);
     }
@@ -430,6 +467,33 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
         ));
     }
     reg
+}
+
+/// 从持仓列表折算 (SYMBOL → 快照)。仅真实股票持仓:跳过 tracking_only、
+/// 非正股(期权美元影响需要 Greeks,不冒充)与 shares ≤ 0 的行。
+fn position_snapshots(
+    holdings: &[hone_memory::portfolio::Holding],
+) -> HashMap<String, PositionSnapshot> {
+    let weights = holdings_with_weights(holdings);
+    holdings
+        .iter()
+        .zip(weights)
+        .filter(|(h, _)| {
+            !h.tracking_only.unwrap_or(false)
+                && h.asset_type.eq_ignore_ascii_case("stock")
+                && h.shares > 0.0
+        })
+        .map(|(h, weight)| {
+            (
+                h.symbol.trim().to_ascii_uppercase(),
+                PositionSnapshot {
+                    shares: h.shares,
+                    avg_cost: h.avg_cost,
+                    weight_pct: weight,
+                },
+            )
+        })
+        .collect()
 }
 
 pub fn registry_from_portfolios_and_profiles(
@@ -962,5 +1026,62 @@ mod tests {
         let mut pool = reg.watch_pool();
         pool.sort();
         assert_eq!(pool, vec!["AAPL", "NVDA", "TSLA"]);
+    }
+
+    /// Item 2:registry 折算持仓快照 —— 显式 weight 优先、成本市值折算兜底;
+    /// tracking_only 与期权不注入。
+    #[test]
+    fn registry_from_portfolios_builds_position_snapshots() {
+        use hone_memory::PortfolioStorage;
+        use hone_memory::portfolio::{Holding, Portfolio};
+        let dir = tempfile::tempdir().unwrap();
+        let storage = PortfolioStorage::new(dir.path());
+        let dm = actor("discord", "u1");
+        let stock = |symbol: &str, shares: f64, avg_cost: f64, weight: Option<f64>| Holding {
+            symbol: symbol.into(),
+            asset_type: "stock".into(),
+            shares,
+            avg_cost,
+            underlying: None,
+            option_type: None,
+            strike_price: None,
+            expiration_date: None,
+            contract_multiplier: None,
+            holding_horizon: None,
+            strategy_notes: None,
+            notes: None,
+            weight,
+            name: None,
+            tracking_only: None,
+        };
+        let mut watch_only = stock("CAI", 0.0, 0.0, None);
+        watch_only.tracking_only = Some(true);
+        let mut option_leg = stock("MU 2026-12 C 500", 1.0, 20.0, None);
+        option_leg.asset_type = "option".into();
+        let portfolio = Portfolio {
+            actor: Some(dm.clone()),
+            user_id: "u1".into(),
+            holdings: vec![
+                // 折算分母含期权腿成本(组合整体口径):3900/1300/20 → 74.71%/24.90%
+                stock("SNDK", 13.0, 300.0, None),
+                stock("MU", 13.0, 100.0, None),
+                watch_only,
+                option_leg,
+            ],
+            updated_at: "2026-08-15".into(),
+        };
+        storage.save(&dm, &portfolio).unwrap();
+
+        let reg = registry_from_portfolios(&storage);
+        let sndk = reg.position_for(&dm, "SNDK").expect("SNDK 应有快照");
+        assert_eq!(sndk.shares, 13.0);
+        assert!((sndk.weight_pct.unwrap() - 74.7126).abs() < 0.01);
+        let mu = reg.position_for(&dm, "mu ").expect("symbol 归一化应命中");
+        assert!((mu.weight_pct.unwrap() - 24.9042).abs() < 0.01);
+        assert!(reg.position_for(&dm, "CAI").is_none(), "自选不注入");
+        assert!(
+            reg.position_for(&dm, "MU 2026-12 C 500").is_none(),
+            "期权不注入"
+        );
     }
 }

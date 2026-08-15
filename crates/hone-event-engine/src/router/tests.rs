@@ -2830,3 +2830,111 @@ async fn unbatched_band_high_sends_immediately() {
     assert_eq!(sink.calls.lock().unwrap().len(), 1);
     assert_eq!(router.flush_dispatch_batch().await, 0);
 }
+
+/// Item 2 端到端:actor 持有事件标的时,dispatch 注入仓位上下文——
+/// (a) registry 折算的 portfolio_weight_pct 驱动大仓位敏感阈值(payload 无需
+///     上游手写权重);(b) sink 出站正文带 📌 持仓行(美元影响 / 距成本 / 仓位)。
+#[tokio::test]
+async fn position_context_is_injected_and_rendered_for_held_symbol() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+    use crate::subscription::PositionSnapshot;
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["SNDK".into()],
+    )));
+    let mut positions = std::collections::HashMap::new();
+    positions.insert(
+        "SNDK".to_string(),
+        PositionSnapshot {
+            shares: 13.0,
+            avg_cost: 404.1907692307692,
+            weight_pct: Some(25.0),
+        },
+    );
+    reg.register_positions(actor("u1"), positions);
+
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                price_high_pct_override: Some(4.0),
+                large_position_weight_pct: Some(20.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    )
+    .with_prefs(prefs_store)
+    .with_price_policy_defaults(PriceAlertPolicyDefaults {
+        min_direct_pct: 6.0,
+        ..Default::default()
+    });
+
+    let ev = MarketEvent {
+        id: "price_low:SNDK:2026-08-14".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 450,
+            window: "day".into(),
+        },
+        severity: Severity::Low,
+        symbols: vec!["SNDK".into()],
+        occurred_at: Utc::now(),
+        title: "SNDK +4.50%".into(),
+        summary: "当前 380.00，日涨 +4.50%".into(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({
+            "changesPercentage": 4.5,
+            "hone_price": 380.0,
+            "hone_price_pct": 4.5
+        }),
+    };
+    let (sent, pending) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1, "注入的 25% 权重应触发大仓位敏感阈值直推");
+    assert_eq!(pending, 0);
+    let calls = sink.calls.lock().unwrap();
+    let body = &calls[0].1;
+    assert!(body.contains("📌 持仓 13 股"), "body={body}");
+    assert!(body.contains("成本 404.19"), "body={body}");
+    // 距成本 = (380−404.19)/404.19 ≈ −6.0%;今日 = 13×380×(0.045/1.045) ≈ +$213
+    assert!(body.contains("距成本 -6.0%"), "body={body}");
+    assert!(body.contains("今日 +$213"), "body={body}");
+    assert!(body.contains("仓位 25.0%"), "body={body}");
+}
+
+/// 未持有标的的 actor(仅公司档案订阅等)推送正文不含持仓行。
+#[tokio::test]
+async fn no_position_line_for_actor_without_holding() {
+    let (router, sink, _store, _dir) = router_with_aapl_actor();
+    let ev = MarketEvent {
+        id: "price_band:AAPL:2026-08-14:up:800".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 800,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["AAPL".into()],
+        occurred_at: Utc::now(),
+        title: "AAPL +8.00%".into(),
+        summary: "当前 250.00，日涨 +8.00%".into(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({"changesPercentage": 8.0, "hone_price": 250.0}),
+    };
+    let (sent, _) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1);
+    let calls = sink.calls.lock().unwrap();
+    assert!(!calls[0].1.contains("📌 持仓"), "body={}", calls[0].1);
+}

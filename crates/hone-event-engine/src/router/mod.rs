@@ -18,6 +18,7 @@ mod classify;
 mod config;
 mod dispatch;
 mod policy;
+mod position;
 mod sink;
 mod stats;
 

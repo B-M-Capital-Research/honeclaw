@@ -87,6 +87,17 @@ impl NotificationRouter {
                 }
                 None => (event, sev),
             };
+            // 仓位上下文注入:actor 持有事件标的时,给 actor 级克隆写入
+            // 美元影响 / 距成本 / portfolio_weight_pct(供下方 price policy 的
+            // 大仓位判断与 renderer 的持仓行使用)。原始事件与 store 不动。
+            let actor_position_event;
+            let event = match self.position_annotated_event_for(event, &actor) {
+                Some(annotated) => {
+                    actor_position_event = annotated;
+                    &actor_position_event
+                }
+                None => event,
+            };
             // per-actor severity policy:用户可自定义
             //   (a) 首次价格阈值:达到时升 High,未达到时即使系统候选为 High 也降级;
             //   (b) immediate_kinds:某些 kind 无条件升 High 即时推(例如 52 周高/低、
@@ -482,6 +493,20 @@ impl NotificationRouter {
             }
         }
         Ok((sent, pending))
+    }
+
+    /// actor 持有事件任一标的时返回注入仓位上下文的克隆,否则 None。
+    fn position_annotated_event_for(
+        &self,
+        event: &MarketEvent,
+        actor: &hone_core::ActorIdentity,
+    ) -> Option<MarketEvent> {
+        let registry = self.registry.load();
+        let position = event
+            .symbols
+            .iter()
+            .find_map(|symbol| registry.position_for(actor, symbol))?;
+        super::position::position_annotated_event(event, position)
     }
 
     /// High 即时推送的完整出站路径:render → polish → send → 审计日志 →

@@ -69,11 +69,54 @@ pub fn render_immediate_with_mainline(
         out.push_str(&render_inline(body_trim, fmt));
     }
 
+    if let Some(position_line) = position_context_line(event) {
+        out.push_str("\n\n");
+        out.push_str(&render_inline(&position_line, fmt));
+    }
+
     if let Some(u) = event.user_visible_url() {
         out.push_str("\n\n");
         out.push_str(&render_link(u, fmt));
     }
     out
+}
+
+/// 持仓上下文行(router 在 actor 级克隆里注入的 `hone_position_*` 字段)。
+/// 无持仓字段(未持有 / 群聊 / 旧事件)→ None,输出与旧版逐字节一致。
+pub(crate) fn position_context_line(event: &MarketEvent) -> Option<String> {
+    let payload = event.payload.as_object()?;
+    let shares = payload.get("hone_position_shares")?.as_f64()?;
+    let avg_cost = payload.get("hone_position_avg_cost")?.as_f64()?;
+    let mut parts = vec![format!("持仓 {} 股", format_shares(shares))];
+    if avg_cost > 0.0 {
+        parts.push(format!("成本 {avg_cost:.2}"));
+    }
+    if let Some(distance) = payload
+        .get("hone_position_cost_distance_pct")
+        .and_then(|v| v.as_f64())
+    {
+        parts.push(format!("距成本 {distance:+.1}%"));
+    }
+    if let Some(pnl) = payload
+        .get("hone_position_day_pnl_usd")
+        .and_then(|v| v.as_f64())
+    {
+        let sign = if pnl >= 0.0 { "+" } else { "-" };
+        parts.push(format!("今日 {sign}${:.0}", pnl.abs()));
+    }
+    if let Some(weight) = payload.get("portfolio_weight_pct").and_then(|v| v.as_f64()) {
+        parts.push(format!("仓位 {weight:.1}%"));
+    }
+    Some(format!("📌 {}", parts.join(" · ")))
+}
+
+/// 13.0 → "13",135.5 → "135.5"(碎股保留小数)。
+fn format_shares(shares: f64) -> String {
+    if (shares - shares.round()).abs() < 1e-9 {
+        format!("{}", shares.round() as i64)
+    } else {
+        format!("{shares}")
+    }
 }
 
 /// 选事件正文渲染所用的字符串。
@@ -178,6 +221,10 @@ fn render_immediate_feishu_post(event: &MarketEvent, mainline: Option<&str>) -> 
     let body_trim = body.trim();
     if !body_trim.is_empty() {
         content.push(vec![feishu_text(body_trim)]);
+    }
+
+    if let Some(position_line) = position_context_line(event) {
+        content.push(vec![feishu_text(&position_line)]);
     }
 
     serde_json::json!({
