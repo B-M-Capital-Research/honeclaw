@@ -610,9 +610,11 @@ impl HoneBotCore {
         if self.config.cloud.effective_mode().is_cloud_authoritative()
             && self.config.cloud.postgres.is_configured()
             && let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-            && let Ok(storage) = CronJobStorage::new_cloud(postgres)
         {
-            return storage.with_task_runs_dir(task_runs_dir);
+            match CronJobStorage::new_cloud(postgres) {
+                Ok(storage) => return storage.with_task_runs_dir(task_runs_dir),
+                Err(error) => tracing::warn!("{}", cloud_cron_storage_fallback_warning(&error)),
+            }
         }
         CronJobStorage::with_sqlite(
             &self.config.storage.cron_jobs_dir,
@@ -885,6 +887,10 @@ impl HoneBotCore {
     }
 }
 
+fn cloud_cron_storage_fallback_warning(error: &impl std::fmt::Display) -> String {
+    format!("Cloud PG cron 存储初始化失败，已降级到本地存储: {error}")
+}
+
 fn configured_event_store_path(config: &HoneConfig) -> PathBuf {
     if let Ok(root) = std::env::var("HONE_DATA_DIR") {
         return PathBuf::from(root).join("events.sqlite3");
@@ -894,4 +900,19 @@ fn configured_event_store_path(config: &HoneConfig) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"))
         .join("events.sqlite3")
+}
+
+#[cfg(test)]
+mod cron_storage_tests {
+    use super::cloud_cron_storage_fallback_warning;
+
+    #[test]
+    fn fallback_warning_includes_pg_error_and_local_destination() {
+        let warning = cloud_cron_storage_fallback_warning(&"PG schema unavailable");
+
+        assert_eq!(
+            warning,
+            "Cloud PG cron 存储初始化失败，已降级到本地存储: PG schema unavailable"
+        );
+    }
 }

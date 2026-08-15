@@ -239,9 +239,11 @@ fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
         && config.cloud.postgres.is_configured()
         && let Some(postgres) =
             hone_core::cloud_runtime::CloudPgRuntime::from_cloud_config(&config.cloud)
-        && let Ok(storage) = CronJobStorage::new_cloud(postgres)
     {
-        return storage;
+        match CronJobStorage::new_cloud(postgres) {
+            Ok(storage) => return storage,
+            Err(error) => tracing::warn!("{}", cloud_cron_storage_fallback_warning(&error)),
+        }
     }
     if config.storage.session_sqlite_db_path.trim().is_empty() {
         CronJobStorage::new(&config.storage.cron_jobs_dir)
@@ -251,6 +253,10 @@ fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
             &config.storage.session_sqlite_db_path,
         )
     }
+}
+
+fn cloud_cron_storage_fallback_warning(error: &impl std::fmt::Display) -> String {
+    format!("Cloud PG cron 存储初始化失败，已降级到本地存储: {error}")
 }
 
 fn print_channel_targets_text(targets: &[ChannelTargetRecord]) {
@@ -625,6 +631,16 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloud_cron_fallback_warning_includes_pg_error_and_local_destination() {
+        let warning = cloud_cron_storage_fallback_warning(&"PG schema unavailable");
+
+        assert_eq!(
+            warning,
+            "Cloud PG cron 存储初始化失败，已降级到本地存储: PG schema unavailable"
+        );
+    }
 
     #[test]
     fn cli_parses_config_get_command() {
