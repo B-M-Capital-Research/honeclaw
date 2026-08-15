@@ -1103,6 +1103,11 @@ pub async fn start_server(
             routes::key_event_chain::key_event_chain_worker(key_event_chain_state).await
         }));
 
+        let weekly_brief_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::weekly_brief::weekly_brief_worker(weekly_brief_state).await
+        }));
+
         let mut scheduler_channels = vec!["web".to_string()];
         if state.core.config.imessage.enabled {
             scheduler_channels.insert(0, "imessage".to_string());

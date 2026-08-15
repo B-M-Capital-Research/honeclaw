@@ -477,6 +477,46 @@ pub(crate) async fn handle_download(
     response
 }
 
+/// Compact overview projection: how many items the current user can draw on
+/// (personal + approved global). Listing is synchronous disk IO, so it runs
+/// on the blocking pool. `None` degrades to a waiting card in the aggregator.
+pub(crate) async fn overview_card(
+    state: &Arc<AppState>,
+    user_id: &str,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let listing_state = state.clone();
+    let listing_user = user_id.to_string();
+    let count = tokio::task::spawn_blocking(move || {
+        list_retrievable(&listing_state, &listing_user).map(|items| items.len())
+    })
+    .await
+    .ok()?
+    .ok()?;
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        "research-library",
+        "研究文库",
+        "你的知识源",
+    );
+    card.status = "live".to_string();
+    card.metric = Some(format!("{count} 份资料"));
+    Some(card)
+}
+
+/// Async wrapper for the chat hot path: the lookup below walks manifest files
+/// with std::fs, which must not run on a request's executor thread.
+pub(crate) async fn chat_context_for_user_async(
+    state: &std::sync::Arc<AppState>,
+    user_id: &str,
+    query: &str,
+) -> Result<Option<String>, String> {
+    let state = state.clone();
+    let user_id = user_id.to_string();
+    let query = query.to_string();
+    tokio::task::spawn_blocking(move || chat_context_for_user(&state, &user_id, &query))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 pub(crate) fn chat_context_for_user(
     state: &AppState,
     user_id: &str,

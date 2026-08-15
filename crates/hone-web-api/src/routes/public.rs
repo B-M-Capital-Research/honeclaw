@@ -962,7 +962,9 @@ pub(crate) async fn handle_chat(
         combined_message = forced_earnings_skill_input(&workflow, &combined_message);
     }
 
-    match crate::routes::research_library::chat_context_for_user(&state, &user.user_id, &message) {
+    match crate::routes::research_library::chat_context_for_user_async(&state, &user.user_id, &message)
+        .await
+    {
         Ok(Some(context)) => combined_message.push_str(&context),
         Ok(None) => {}
         Err(error) => tracing::warn!(%error, "research library context unavailable"),
@@ -1860,7 +1862,8 @@ async fn run_public_api_chat_once(
     }
     let mut message = message;
     if let Ok(Some(context)) =
-        crate::routes::research_library::chat_context_for_user(&state, &actor.user_id, &message)
+        crate::routes::research_library::chat_context_for_user_async(&state, &actor.user_id, &message)
+            .await
     {
         message.push_str(&context);
     }
@@ -1927,7 +1930,12 @@ fn build_openai_chat_sse(
         }
         let mut message = message;
         if let Ok(Some(context)) =
-            crate::routes::research_library::chat_context_for_user(&state, &actor.user_id, &message)
+            crate::routes::research_library::chat_context_for_user_async(
+                &state,
+                &actor.user_id,
+                &message,
+            )
+            .await
         {
             message.push_str(&context);
         }

@@ -4,7 +4,7 @@
 //! only read durable snapshots; opening a dashboard never starts research.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
@@ -254,6 +254,35 @@ pub(crate) async fn handle_get_daily_signal_history(
     };
     let limit = query.limit.unwrap_or(14).clamp(1, 90);
     Json(json!({ "items": read_history(&state, kind, limit).await })).into_response()
+}
+
+/// Compact overview projection of the latest stored report. `None` when no
+/// snapshot exists yet; the aggregator renders a waiting card instead.
+pub(crate) async fn overview_card(
+    state: &AppState,
+    kind_slug: &str,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let kind = ReportKind::parse(kind_slug)?;
+    let report = read_latest(state, kind).await?;
+    let report = mark_stale(normalize_report_contract(report, kind));
+    let (title, kicker) = match kind {
+        ReportKind::Macro => ("宏观红绿灯", "领先周期判断"),
+        ReportKind::Ai => ("AI 红绿灯", "AI 增长可持续性"),
+    };
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        &format!("daily-signal-{}", kind.slug()),
+        title,
+        kicker,
+    );
+    card.report_date = Some(report.report_date.clone());
+    card.status = report.status.clone();
+    card.signal = Some(report.signal.clone());
+    card.score = report.score;
+    card.summary = Some(crate::routes::research_overview::short_summary(
+        &report.summary,
+    ));
+    card.generated_at = Some(report.generated_at);
+    Some(card)
 }
 
 /// Generate a missing startup snapshot, then refresh at exactly 20:00 BJT.
@@ -1887,24 +1916,7 @@ fn report_date(now: DateTime<Utc>) -> String {
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(
-            local.year(),
-            local.month(),
-            local.day(),
-            REFRESH_HOUR,
-            REFRESH_MINUTE,
-            0,
-        )
-        .single()
-        .expect("Shanghai time unambiguous");
-    (if local < today {
-        today
-    } else {
-        today + chrono::Duration::days(1)
-    })
-    .with_timezone(&Utc)
+    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn worker_wake_at(now: DateTime<Utc>, incomplete: bool) -> DateTime<Utc> {
@@ -1917,10 +1929,7 @@ fn worker_wake_at(now: DateTime<Utc>, incomplete: bool) -> DateTime<Utc> {
 }
 
 fn storage_root(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("daily_signals")
+    crate::routes::research_store::data_root(state).join("daily_signals")
 }
 fn latest_path(state: &AppState, kind: ReportKind) -> PathBuf {
     storage_root(state).join(kind.slug()).join("latest.json")
@@ -1954,19 +1963,8 @@ async fn write_report(
 ) -> Result<(), String> {
     let latest = latest_path(state, kind);
     let history = history_dir(state, kind).join(format!("{}.json", report.report_date));
-    let bytes = serde_json::to_vec_pretty(report).map_err(|error| error.to_string())?;
     for path in [&history, &latest] {
-        let parent = path
-            .parent()
-            .ok_or_else(|| "report path has no parent".to_string())?;
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|error| error.to_string())?;
-        let temp = path.with_extension("json.tmp");
-        tokio::fs::write(&temp, &bytes)
-            .await
-            .map_err(|error| error.to_string())?;
-        tokio::fs::rename(&temp, path)
+        crate::routes::research_store::write_json_atomic(path, report)
             .await
             .map_err(|error| error.to_string())?;
     }
@@ -2036,23 +2034,13 @@ fn stable_base_url(base_url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{NaiveDate, Timelike};
+    use chrono::{TimeZone, Timelike};
 
     #[test]
     fn thresholds_keep_macro_and_ai_semantics_separate() {
         assert_eq!(signal_for_health(Some(45.0)), "orange");
         assert_eq!(signal_for_ai(Some(59.9)), "red");
         assert_eq!(signal_for_ai(Some(80.0)), "green");
-    }
-    #[test]
-    fn next_refresh_is_2000_beijing_including_weekends() {
-        let now = Utc.with_ymd_and_hms(2026, 8, 8, 11, 0, 0).unwrap();
-        let next = next_refresh(now).with_timezone(&Shanghai);
-        assert_eq!((next.hour(), next.minute()), (20, 0));
-        assert_eq!(
-            next.date_naive(),
-            NaiveDate::from_ymd_opt(2026, 8, 8).unwrap()
-        );
     }
     #[test]
     fn missing_values_do_not_become_zero() {

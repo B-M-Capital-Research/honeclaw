@@ -34,6 +34,8 @@ pub(crate) mod public_subscriptions;
 pub(crate) mod public_survey;
 pub(crate) mod research;
 pub(crate) mod research_library;
+pub(crate) mod research_overview;
+pub(crate) mod research_store;
 pub(crate) mod schedule;
 pub(crate) mod skills;
 pub(crate) mod stripe;
@@ -291,7 +293,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .allow_origin(AllowOrigin::predicate(move |origin, _| {
             public_origin_allowed(origin, &configured_origins)
         }))
-        .allow_methods(AllowMethods::list([Method::GET, Method::POST, Method::PUT]))
+        .allow_methods(AllowMethods::list([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            // The forum registers DELETE routes (post/comment removal); without
+            // this the browser preflight rejects them cross-origin.
+            Method::DELETE,
+        ]))
         .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true);
 
@@ -398,7 +407,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/upload", post(public::handle_upload))
         .route(
             "/research-library",
-            get(research_library::handle_list).post(research_library::handle_upload),
+            get(research_library::handle_list)
+                .post(research_library::handle_upload)
+                // Uploads allow 20 MiB files (MAX_FILE_BYTES); axum's default
+                // 2 MB body limit would reject them before that check runs.
+                .layer(DefaultBodyLimit::max(21 * 1024 * 1024)),
         )
         .route(
             "/research-library/{id}",
@@ -480,6 +493,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             get(key_event_chain::handle_get_key_event_chains),
         )
         .route("/weekly-brief", get(weekly_brief::handle_get_weekly_brief))
+        .route(
+            "/research-overview",
+            get(research_overview::handle_get_research_overview),
+        )
         .route(
             "/daily-signals/{kind}",
             get(daily_signals::handle_get_daily_signal),

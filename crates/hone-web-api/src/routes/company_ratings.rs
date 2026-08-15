@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
@@ -299,6 +299,35 @@ pub(crate) async fn handle_get_company_ratings(
         None => baseline_snapshot(),
     };
     Json(snapshot).into_response()
+}
+
+/// Compact overview projection of the latest stored snapshot. `None` when no
+/// snapshot file exists yet; the aggregator renders a waiting card instead.
+pub(crate) async fn overview_card(
+    state: &AppState,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let snapshot = read_snapshot(state).await?;
+    let snapshot = mark_stale_if_needed(normalize_snapshot_contract(snapshot));
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        "company-ratings",
+        "公司评级",
+        "52 家研究基线",
+    );
+    card.report_date = Some(
+        snapshot
+            .generated_at
+            .with_timezone(&Shanghai)
+            .format("%Y-%m-%d")
+            .to_string(),
+    );
+    card.status = match snapshot.data_status.as_str() {
+        "live" | "partial" | "stale" => snapshot.data_status.clone(),
+        // simulation / transcript_only are research-baseline modes.
+        _ => "baseline".to_string(),
+    };
+    card.metric = Some(format!("{} 家覆盖", snapshot.coverage.companies));
+    card.generated_at = Some(snapshot.generated_at);
+    Some(card)
 }
 
 /// Start an immediate best-effort refresh, then wait for 19:30 Beijing each day.
@@ -1200,9 +1229,7 @@ fn quote_base_url(base_url: &str) -> String {
 }
 
 fn snapshot_path(state: &AppState) -> PathBuf {
-    std::path::Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
+    crate::routes::research_store::data_root(state)
         .join("company_ratings")
         .join("daily.json")
 }
@@ -1465,19 +1492,7 @@ pub(crate) async fn covered_symbols(state: &AppState) -> Vec<String> {
 }
 
 async fn write_snapshot(state: &AppState, snapshot: &CompanyRatingSnapshot) -> Result<(), String> {
-    let path = snapshot_path(state);
-    let parent = path
-        .parent()
-        .ok_or_else(|| "snapshot path has no parent".to_string())?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| error.to_string())?;
-    let temp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(snapshot).map_err(|error| error.to_string())?;
-    tokio::fs::write(&temp, bytes)
-        .await
-        .map_err(|error| error.to_string())?;
-    tokio::fs::rename(&temp, &path)
+    crate::routes::research_store::write_json_atomic(&snapshot_path(state), snapshot)
         .await
         .map_err(|error| error.to_string())
 }
@@ -1591,30 +1606,13 @@ fn mark_stale_if_needed(mut snapshot: CompanyRatingSnapshot) -> CompanyRatingSna
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(
-            local.year(),
-            local.month(),
-            local.day(),
-            REFRESH_HOUR,
-            REFRESH_MINUTE,
-            0,
-        )
-        .single()
-        .expect("Shanghai local time is unambiguous");
-    let target = if local < today {
-        today
-    } else {
-        today + chrono::Duration::days(1)
-    };
-    target.with_timezone(&Utc)
+    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Timelike;
+    use chrono::{Datelike, TimeZone, Timelike};
     use serde_json::json;
 
     #[test]

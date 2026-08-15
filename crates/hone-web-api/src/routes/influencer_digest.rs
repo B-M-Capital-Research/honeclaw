@@ -5,7 +5,7 @@
 //! to reposts, search snippets, or a similarly named account.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use chrono_tz::Asia::Shanghai;
 use hone_event_engine::pollers::RssNewsPoller;
 use hone_event_engine::{EventSource, MarketEvent};
@@ -210,6 +210,31 @@ pub(crate) async fn handle_get_influencer_digest(
             format!("上次成功快照已超过 {LOOKBACK_HOURS} 小时，请核对原文时间后使用。")
     }
     Json(snapshot).into_response()
+}
+
+/// Compact overview projection of the latest stored snapshot. `None` when no
+/// snapshot file exists yet; the aggregator renders a waiting card instead.
+pub(crate) async fn overview_card(
+    state: &AppState,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let snapshot = read_snapshot(state).await?;
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        "influencer-digest",
+        "大V速报",
+        "观点不等于事实",
+    );
+    card.report_date = Some(snapshot.report_date.clone());
+    card.status = if Utc::now() - snapshot.generated_at > chrono::Duration::hours(LOOKBACK_HOURS) {
+        "stale".to_string()
+    } else {
+        snapshot.status.clone()
+    };
+    card.metric = Some(format!("{} 条观点", snapshot.coverage.items));
+    card.summary = Some(crate::routes::research_overview::short_summary(
+        &snapshot.summary,
+    ));
+    card.generated_at = Some(snapshot.generated_at);
+    Some(card)
 }
 
 pub(crate) async fn influencer_digest_worker(state: Arc<AppState>) {
@@ -863,10 +888,7 @@ fn truncate_chars(value: &str, max: usize) -> String {
 }
 
 fn storage_root(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("influencer_digest")
+    crate::routes::research_store::data_root(state).join("influencer_digest")
 }
 
 async fn read_snapshot(state: &AppState) -> Option<InfluencerDigestSnapshot> {
@@ -881,45 +903,24 @@ async fn write_snapshot(
     snapshot: &InfluencerDigestSnapshot,
 ) -> anyhow::Result<()> {
     let root = storage_root(state);
-    let history = root.join("history");
-    tokio::fs::create_dir_all(&history).await?;
-    let bytes = serde_json::to_vec_pretty(snapshot)?;
     for path in [
         root.join("latest.json"),
-        history.join(format!("{}.json", snapshot.report_date)),
+        root.join("history")
+            .join(format!("{}.json", snapshot.report_date)),
     ] {
-        let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-        tokio::fs::write(&temp, &bytes).await?;
-        tokio::fs::rename(temp, path).await?;
+        crate::routes::research_store::write_json_atomic(&path, snapshot).await?;
     }
     Ok(())
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(
-            local.year(),
-            local.month(),
-            local.day(),
-            REFRESH_HOUR,
-            REFRESH_MINUTE,
-            0,
-        )
-        .single()
-        .expect("Shanghai time unambiguous");
-    (if local < today {
-        today
-    } else {
-        today + chrono::Duration::days(1)
-    })
-    .with_timezone(&Utc)
+    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Timelike;
+    use chrono::{TimeZone, Timelike};
 
     fn fetched(id: &str) -> FetchedItem {
         FetchedItem {

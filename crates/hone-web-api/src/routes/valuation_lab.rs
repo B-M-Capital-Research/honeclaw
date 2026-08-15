@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
@@ -313,6 +313,27 @@ pub(crate) async fn handle_get_valuation_lab(
         .map(mark_stale_if_needed)
         .unwrap_or_else(unavailable_snapshot);
     Json(snapshot).into_response()
+}
+
+/// Compact overview projection of the latest stored snapshot. `None` when no
+/// snapshot file exists yet; the aggregator renders a waiting card instead.
+pub(crate) async fn overview_card(
+    state: &AppState,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let snapshot = mark_stale_if_needed(read_snapshot(state).await?);
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        "valuation-lab",
+        "估值实验室",
+        "三情景估值",
+    );
+    card.report_date = Some(snapshot.report_date.clone());
+    card.status = snapshot.status.clone();
+    card.metric = Some(format!("{} 家覆盖", snapshot.coverage.companies));
+    card.summary = Some(crate::routes::research_overview::short_summary(
+        &snapshot.summary,
+    ));
+    card.generated_at = Some(snapshot.generated_at);
+    Some(card)
 }
 
 pub(crate) async fn valuation_lab_worker(state: Arc<AppState>) {
@@ -1754,26 +1775,20 @@ fn estimates_from_value(
 }
 
 fn snapshot_path(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
+    crate::routes::research_store::data_root(state)
         .join("valuation_lab")
         .join("daily.json")
 }
 
 fn rating_valuation_path(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
+    crate::routes::research_store::data_root(state)
         .join("company_ratings")
         .join("valuations")
         .join("latest.json")
 }
 
 fn rating_fundamental_path(state: &AppState) -> PathBuf {
-    Path::new(&state.core.config.storage.session_sqlite_db_path)
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
+    crate::routes::research_store::data_root(state)
         .join("company_ratings")
         .join("fundamentals")
         .join("latest.json")
@@ -1884,18 +1899,7 @@ async fn write_rating_fundamentals(
 }
 
 async fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "path has no parent".to_string())?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| error.to_string())?;
-    let temp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    tokio::fs::write(&temp, bytes)
-        .await
-        .map_err(|error| error.to_string())?;
-    tokio::fs::rename(&temp, path)
+    crate::routes::research_store::write_json_atomic(path, value)
         .await
         .map_err(|error| error.to_string())
 }
@@ -1926,24 +1930,7 @@ fn mark_stale_if_needed(mut snapshot: ValuationLabSnapshot) -> ValuationLabSnaps
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(
-            local.year(),
-            local.month(),
-            local.day(),
-            REFRESH_HOUR,
-            REFRESH_MINUTE,
-            0,
-        )
-        .single()
-        .expect("valid Shanghai valuation refresh time");
-    let next = if local < today {
-        today
-    } else {
-        today + chrono::Duration::days(1)
-    };
-    next.with_timezone(&Utc)
+    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn stable_base_url(base_url: &str) -> String {

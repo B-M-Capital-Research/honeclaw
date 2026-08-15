@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
 use hone_event_engine::{
@@ -167,6 +167,55 @@ pub(crate) async fn handle_get_portfolio_news(
         ))
         .into_response(),
     }
+}
+
+/// Compact overview projection for the current user. Mirrors the handler's
+/// no-portfolio / waiting / portfolio-changed states without recomputing.
+pub(crate) async fn overview_card(
+    state: &AppState,
+    actor: &ActorIdentity,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    use crate::routes::research_overview::{OverviewCard, short_summary};
+    let mut card = OverviewCard::waiting("portfolio-news", "持仓重点新闻", "按你的持仓筛选");
+    let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
+    let portfolio = storage.load(actor).ok().flatten();
+    let symbols = portfolio
+        .as_ref()
+        .map(portfolio_symbols)
+        .unwrap_or_default();
+    if symbols.is_empty() {
+        card.summary = Some(short_summary(
+            "请先在“我的”中添加真实持仓，系统才会生成持仓重点新闻。",
+        ));
+        return Some(card);
+    }
+    let Some(snapshot) = read_snapshot(state, actor).await else {
+        card.summary = Some(short_summary(
+            "持仓已读取，等待每日 20:00 任务生成第一份重点新闻分析。",
+        ));
+        return Some(card);
+    };
+    let portfolio_updated_at = portfolio
+        .as_ref()
+        .map(|value| value.updated_at.as_str())
+        .unwrap_or("");
+    if snapshot.portfolio_updated_at != portfolio_updated_at {
+        card.summary = Some(short_summary(
+            "持仓已在本次快照后发生变化，等待下一次每日任务重新生成。",
+        ));
+        return Some(card);
+    }
+    card.report_date = Some(snapshot.report_date.clone());
+    card.status = if Utc::now() - snapshot.generated_at > chrono::Duration::hours(STALE_AFTER_HOURS)
+    {
+        "stale".to_string()
+    } else {
+        snapshot.status.clone()
+    };
+    card.metric = Some(format!("{} 条分析", snapshot.counts.total));
+    card.summary = Some(short_summary(&snapshot.summary));
+    card.generated_at = Some(snapshot.generated_at);
+    Some(card)
 }
 
 pub(crate) async fn portfolio_news_worker(state: Arc<AppState>) {
@@ -850,9 +899,7 @@ fn empty_snapshot(
 }
 
 fn snapshot_dir(state: &AppState, actor: &ActorIdentity) -> PathBuf {
-    PathBuf::from(&state.core.config.storage.portfolio_dir)
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("./data"))
+    crate::routes::research_store::data_root(state)
         .join("portfolio_news")
         .join(actor.storage_key())
 }
@@ -870,44 +917,18 @@ async fn write_snapshot(
     snapshot: &PortfolioNewsSnapshot,
 ) -> anyhow::Result<()> {
     let dir = snapshot_dir(state, actor);
-    let history = dir.join("history");
-    tokio::fs::create_dir_all(&history).await?;
-    let bytes = serde_json::to_vec_pretty(snapshot)?;
-    atomic_write(dir.join("latest.json"), &bytes).await?;
-    atomic_write(
-        history.join(format!("{}.json", snapshot.report_date)),
-        &bytes,
-    )
-    .await?;
-    Ok(())
-}
-
-async fn atomic_write(path: PathBuf, bytes: &[u8]) -> anyhow::Result<()> {
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    tokio::fs::write(&temp, bytes).await?;
-    tokio::fs::rename(temp, path).await?;
+    for path in [
+        dir.join("latest.json"),
+        dir.join("history")
+            .join(format!("{}.json", snapshot.report_date)),
+    ] {
+        crate::routes::research_store::write_json_atomic(&path, snapshot).await?;
+    }
     Ok(())
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(
-            local.year(),
-            local.month(),
-            local.day(),
-            REFRESH_HOUR,
-            REFRESH_MINUTE,
-            0,
-        )
-        .single()
-        .expect("Shanghai local time is unambiguous");
-    let target = if local < today {
-        today
-    } else {
-        today + chrono::Duration::days(1)
-    };
-    target.with_timezone(&Utc)
+    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn truncate_chars(value: &str, max: usize) -> String {
@@ -921,7 +942,7 @@ fn truncate_chars(value: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Timelike;
+    use chrono::{Datelike, TimeZone, Timelike};
     use hone_memory::portfolio::Holding;
     use serde_json::json;
 

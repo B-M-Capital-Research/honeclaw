@@ -5,30 +5,41 @@
 //! attributed, confirmed key-event rows are allowed to describe what changed.
 
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{Datelike, Days, NaiveDate};
+use chrono::{Datelike, Days, NaiveDate, Utc};
 use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::routes::public_finance_calendar::{
     FinanceCalendarEvent, calendar_events_for_range, portfolio_calendar_symbols,
 };
 use crate::state::AppState;
 
-#[derive(Debug, Clone, Serialize)]
+/// Pre-generation runs at 19:10 Asia/Shanghai, before the 19:30+ rating and
+/// signal workers, so the first screen never triggers the FMP fan-out itself.
+const REFRESH_HOUR: u32 = 19;
+const REFRESH_MINUTE: u32 = 10;
+/// Synthetic actor used to pre-generate the shared (no-holdings) brief; its
+/// portfolio is always empty, so the scope is exactly the coverage universe.
+const PREGEN_USER_ID: &str = "weekly-brief-pregen";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WeeklyBriefWindow {
     pub start: String,
     pub end: String,
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WeeklyBriefItem {
     pub id: String,
     pub date: String,
@@ -47,7 +58,7 @@ pub(crate) struct WeeklyBriefItem {
     pub attention: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WeeklyBriefPayload {
     pub report_date: String,
     pub generated_at_beijing: String,
@@ -85,7 +96,109 @@ pub(crate) async fn handle_get_weekly_brief(
             );
         }
     };
+    // Prefer today's pre-generated snapshot: it already covers the rating
+    // universe, so it is exact for every user whose holdings stay inside that
+    // scope. Anything else (missing/stale snapshot, extra holdings) falls back
+    // to the existing live path so behaviour never degrades.
+    let holdings = portfolio_calendar_symbols(&state, &actor);
+    if let Some(mut snapshot) = read_snapshot(&state).await {
+        let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+        if snapshot.report_date == today && holdings_within_coverage(&state, &holdings).await {
+            snapshot.holdings = holdings;
+            return Json(snapshot).into_response();
+        }
+    }
     Json(build_weekly_brief(&state, &actor).await).into_response()
+}
+
+async fn holdings_within_coverage(state: &AppState, holdings: &[String]) -> bool {
+    if holdings.is_empty() {
+        return true;
+    }
+    let covered = super::company_ratings::covered_symbols(state)
+        .await
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    holdings.iter().all(|symbol| covered.contains(symbol))
+}
+
+/// Compact overview projection of the pre-generated snapshot. `None` (missing
+/// snapshot) degrades to a waiting card — the overview must never trigger the
+/// live FMP fan-out.
+pub(crate) async fn overview_card(
+    state: &AppState,
+) -> Option<crate::routes::research_overview::OverviewCard> {
+    let payload = read_snapshot(state).await?;
+    let mut card = crate::routes::research_overview::OverviewCard::waiting(
+        "weekly-brief",
+        "周度简报",
+        "回顾与前瞻",
+    );
+    card.report_date = Some(payload.report_date.clone());
+    card.status = payload.status.clone();
+    card.metric = Some(format!("{} 项下周日程", payload.next_week_items.len()));
+    card.summary = Some(crate::routes::research_overview::short_summary(
+        &payload.summary,
+    ));
+    Some(card)
+}
+
+/// Pre-generate the shared weekly brief at 19:10 Asia/Shanghai. On startup it
+/// first checks whether today's snapshot already exists (daily_signals'
+/// `latest_is_date` pattern) so a restart never burns the FMP quota again.
+pub(crate) async fn weekly_brief_worker(state: Arc<AppState>) {
+    if latest_is_today(&state) {
+        info!("weekly brief snapshot already generated today; skipping startup refresh");
+    } else {
+        refresh_and_store(&state).await;
+    }
+    loop {
+        let next = crate::routes::research_store::next_beijing_refresh(
+            Utc::now(),
+            REFRESH_HOUR,
+            REFRESH_MINUTE,
+        );
+        info!(next_refresh = %next, "weekly brief worker waiting");
+        let wait = (next - Utc::now())
+            .to_std()
+            .unwrap_or_else(|_| Duration::from_secs(60));
+        tokio::time::sleep(wait).await;
+        refresh_and_store(&state).await;
+    }
+}
+
+async fn refresh_and_store(state: &AppState) {
+    let actor = match ActorIdentity::new("web", PREGEN_USER_ID, Option::<String>::None) {
+        Ok(actor) => actor,
+        Err(error) => {
+            warn!(%error, "weekly brief pregen actor unavailable");
+            return;
+        }
+    };
+    let payload = build_weekly_brief(state, &actor).await;
+    match crate::routes::research_store::write_json_atomic(&snapshot_path(state), &payload).await {
+        Ok(()) => info!(status = %payload.status, "weekly brief snapshot refreshed"),
+        Err(error) => warn!(%error, "weekly brief snapshot write failed"),
+    }
+}
+
+fn snapshot_path(state: &AppState) -> PathBuf {
+    crate::routes::research_store::data_root(state)
+        .join("weekly_brief")
+        .join("latest.json")
+}
+
+async fn read_snapshot(state: &AppState) -> Option<WeeklyBriefPayload> {
+    let bytes = tokio::fs::read(snapshot_path(state)).await.ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn latest_is_today(state: &AppState) -> bool {
+    let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    std::fs::read(snapshot_path(state))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<WeeklyBriefPayload>(&bytes).ok())
+        .is_some_and(|payload| payload.report_date == today)
 }
 
 async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBriefPayload {
