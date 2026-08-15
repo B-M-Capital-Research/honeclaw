@@ -14,13 +14,112 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-08-13 14:02 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 10:00-14:02 CST。
+    - 近窗 `HeartbeatDiag=231`、`run_start=64`、`run_finish=64`、`deliver=33`、`duplicate_suppressed=6`；33 条 heartbeat deliver 中 8 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发 / 无需新动作 / 状态：noop` 静默语义。
+    - 11:00 CST `NVDA 关键事件心跳提醒` 写 `无触发` 进入 deliver；11:30 / 12:00 / 14:00 CST `持仓财报与重大新闻心跳提醒`、`光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒` 多次写 `状态：noop` 或未完成核验清单后仍进入 deliver / duplicate_suppressed 候选。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 `72f5c39f fix: suppress more heartbeat noop deliveries` 的证据。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
+- 2026-08-13 02:01 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 22:00-2026-08-13 02:01 CST。
+    - 近窗 `HeartbeatDiag=238`、`run_start=64`、`run_finish=67`、`deliver=37`、`duplicate_suppressed=3`；37 条 heartbeat deliver 中 7 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发 / 无需新动作 / 状态：noop` 静默语义。
+    - 00:00 CST `持仓重大事件心跳提醒` 写入降级行情口径并仍进入 deliver，00:30 CST `AI与科技持仓观察关键事件心跳提醒` 写 `本轮无需新动作` 进入 deliver，02:00 CST `持仓重大事件心跳提醒` 写出未完成核验清单后仍进入 deliver。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 `72f5c39f fix: suppress more heartbeat noop deliveries` 的证据。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
+- 2026-08-12 22:01 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 18:01-22:01 CST。
+    - 近窗 `HeartbeatDiag=258`、`run_start=64`、`run_finish=66`、`deliver=44`、`duplicate_suppressed=16`；44 条 heartbeat deliver 中 15 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发 / 无需新动作 / 状态：noop` 静默语义。
+    - 18:30 CST `光模块板块关键事件心跳提醒` 写 `状态：noop — 本轮无新增独立触发事件` 进入 deliver，19:30 CST `持仓财报与重大新闻心跳提醒` 写 `状态：noop — 本轮工具调用已达上限，无新核验数据` 进入 deliver，22:00 CST `AI与科技持仓观察关键事件心跳提醒` 写 `本轮无需新动作` 进入 deliver。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 `72f5c39f fix: suppress more heartbeat noop deliveries` 的证据。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
+- 2026-08-12 10:02 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 06:01-10:02 CST。
+    - 近窗 `HeartbeatDiag=239`、`run_start=64`、`run_finish=65`、`deliver=38`、`duplicate_suppressed=7`；38 条 heartbeat deliver 中 17 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发` 静默语义。
+    - 06:30 CST `AI与科技持仓观察关键事件心跳提醒` 写 ``状态：noop`` 进入 deliver，07:00 CST `持仓财报与重大新闻心跳提醒` 写 `状态：noop — 本轮报价与 ... 属同一批次` 进入 deliver，10:00 CST `NVDA 关键事件心跳提醒` 写 `无触发` 进入 deliver。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 `72f5c39f fix: suppress more heartbeat noop deliveries` 的证据。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
+- 2026-08-12 06:02 CST 运行态复核：代码级修复继续保留 `Fixed`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-12 02:01-06:02 CST。
+    - 近窗 `HeartbeatDiag=237`、`run_start=64`、`run_finish=64`、`deliver=43`、`duplicate_suppressed=1`；43 条 heartbeat deliver 中 18 条含 `noop / 无新增 / 无新触发 / 未命中 / 无触发` 静默语义。
+    - 03:06 CST 非文档提交 `72f5c39f fix: suppress more heartbeat noop deliveries` 已继续补强 noop 送达抑制，但 source log 未见 runtime 重启 / revision 切换证据。
+    - 03:06 后仍可见 05:00 `AI与科技持仓观察关键事件心跳提醒` 写 ``状态：noop`` 进入 deliver，06:00 `存储板块关键事件心跳提醒` 写 `状态：noop — 本轮未核验到 ... 新增重大事件` 进入 deliver，06:00 `光模块板块关键事件心跳提醒` 写 `状态：noop — 无新增独立触发事件` 进入 deliver。
+  - 判断：
+    - 这些样本说明 live runtime 仍需自然部署 / 重启后复核，并不能证明 `72f5c39f` 之后的代码仍失效。
+    - 本缺陷仍维持代码级 `Fixed`，不回退；若后续确认 live 已加载该 revision 后继续复发，再改回 `New/P2`。
+
+- 2026-08-11 运行 `bug-2` 代码级补强：补齐 plain-text noop 句式漏判，先记 `Fixed`，待自然运行窗口复核。
+  - 根因：
+    - `crates/hone-channels/src/scheduler.rs` 的 `heartbeat_plain_text_indicates_noop(...)` 之前仍漏掉多类真实 live 文案，导致包含静默语义的 heartbeat/scheduler 正文继续被判成 `PlainTextTriggered` 并进入 deliver。
+    - 本轮重点覆盖此前运行态仍反复出现的 `本轮监控状态：正常，无新触发事件`、`无全新报价时间戳`、`报价无变化`、`无实质新催化`、`无新增量事件`、`无新成交价` 等句式。
+  - 修改：
+    - 扩展 plain-text noop marker 和显式 noop 状态 marker，新增对“监控状态正常/无新触发”“报价无变化/无全新报价时间戳”“无实质新催化/无新增量事件”等静默摘要的识别。
+    - 保留既有 material-update override，避免“虽未命中阈值但有新事实值得告知”的正文被误压成 noop。
+  - 自动化验证：
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_ --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_rich_plain_text_noop_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 备注：
+    - 本轮未重启任何运行中服务；因此这是代码级 `Fixed`，仍需后续自然运行窗口确认 `PlainTextTriggered` 中的静默 deliver 样本是否明显收敛，再决定是否推进 `Closed`。
+
+- 2026-08-11 02:03 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 22:01-2026-08-11 02:02 CST。
+    - 近窗 `HeartbeatDiag run_start=110`、`run_finish=110`、`deliver=60`、`duplicate_suppressed=20`，且有 104 条 `noop / 无新增 / 无新触发 / 未命中` 语义相关日志。
+    - 02:00 CST `光迅科技关键事件心跳提醒` deliver preview 明写“本轮无新增高权重触发（noop）”，仍外发完整状态表格。
+    - 02:00 CST `NBIS关键事件心跳提醒` deliver preview 明写“本轮无新增高权重触发（noop）”，仍外发价格、成交量和财报节点表。
+    - 02:00 CST `闪迪关键事件心跳提醒` deliver preview 明写“本轮无新增高权重触发（noop）”，仍外发价格变化追踪。
+  - 判断：
+    - 最新样本仍是“语义上 noop / 无新触发，但出站层按 triggered 或 completed 报告送达”的同根问题，不新建重复文档。
+    - 该问题会导致监控任务错误投递噪音报告，影响提醒可信度和用户注意力分配，维持功能性 `P2`；同窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- 2026-08-10 22:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 18:00-22:02 CST。
+    - 近窗 `HeartbeatDiag run_start=97`、`run_finish=99`、`deliver=65`、`duplicate_suppressed=26`，parse_kind 分布 `PlainTextTriggered=132`、`JsonNoop=23`、`PlainTextSuppressed=8`、`PlainTextNoop=4`、`JsonTriggered=1`。
+    - 近窗仍有 96 条 `noop / 无新增 / 无新触发 / 无触发 / 未命中 / 无全新 / 无实质新催化` 语义相关日志，多条用户可见 deliver 候选继续明写这些静默语义。
+    - 代表样本：18:00 / 18:30 / 20:00 / 22:00 `光模块板块关键事件心跳提醒` 继续写 `状态：noop` 或 `本轮无实质新催化` 进入 deliver；18:30 / 20:00 / 21:00 `闪迪关键事件心跳提醒` 写 `本轮无新增高权重触发（noop）` 进入 deliver；19:30 / 20:30 `NBIS关键事件心跳提醒` 写 `本轮无新增高权重触发（noop）` 进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
+
+- 2026-08-10 18:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 14:02-18:02 CST。
+    - 近窗 `HeartbeatDiag` 相关行 359 条、raw/run-start 类 184 条、`deliver=51`、`duplicate_suppressed=20`，parse_kind 分布 `PlainTextTriggered=102`、`JsonNoop=21`、`PlainTextSuppressed=11`、`PlainTextNoop=4`、`JsonTriggered=1`。
+    - 多条用户可见 deliver 候选继续明写 `noop`、`无新增`、`无新触发`、`无新增高权重触发` 或 `无新增量事件`。
+    - 代表样本：14:30 `NBIS关键事件心跳提醒` 写 `本轮无新增高权重触发（noop）` 仍进入 deliver；14:30 `持仓重大事件心跳提醒` 写 `本轮心跳监控检查结论：noop` 仍进入 deliver；15:00 / 17:00 `持仓财报与重大新闻心跳提醒` 写 `状态：noop` 仍进入 deliver；17:30 / 18:00 `光迅科技关键事件心跳提醒` 写无新增触发 / 无新成交价仍进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
+
+- 2026-08-10 14:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-10 10:02-14:02 CST。
+    - 近窗 `HeartbeatDiag run_start=96`、`run_finish=96`、`deliver=49`、`duplicate_suppressed=23`、raw `<think>` preview 96 条，parse_kind 分布 `PlainTextTriggered=98`、`JsonNoop=34`、`PlainTextSuppressed=6`、`PlainTextNoop=6`、`JsonTriggered=1`。
+    - 21 条用户可见 deliver 候选继续明写 `noop`、`无新增`、`无新触发`、`未命中` 或 `无触发`。
+    - 代表样本：10:30 `NVDA 关键事件心跳提醒` 写 `NVDA 本轮无新触发` 仍进入 deliver；10:30 / 11:00 / 13:00 / 14:00 `AI与科技持仓观察关键事件心跳提醒` 多次写 `状态：noop` 仍进入 deliver；12:30 `NBIS`、`光迅科技`、`光模块板块`、`闪迪` 等明写 `本轮无新增高权重触发（noop）` 仍进入 deliver。
+  - 判断：这是同一静默 / noop 语义被送达链路归类为触发内容的问题。该问题影响用户通知噪音与监控可信度，维持功能性 `P2`；未见错投、敏感泄露或全渠道不可用，非 P1。
 
 - 2026-08-10 10:02 CST 运行态复核：live source heartbeat / scheduler 出站候选继续复发，状态维持 `New / P2`。
   - `data/logs/hone-console-page-source.log`
@@ -750,6 +849,26 @@ New
   - 2026-08-07 的代码级静默修复后，真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
   - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。
 
+## 最新运行态复核（2026-08-11 06:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 02:02-06:02 CST。
+  - 同窗 `HeartbeatDiag deliver=57`，其中 25 条 deliver preview 明确包含 `noop`、`无新增`、`无新触发`、`未命中` 或 `无触发` 等静默语义。
+  - 代表样本包括 06:00 CST `持仓财报与重大新闻心跳提醒` 明写 `状态：noop — 无新触发事件` 仍进入 deliver，`NBIS关键事件心跳提醒` 明写 `本轮无新增高权重触发（noop）` 仍进入 deliver，`中际旭创关键事件心跳提醒` 明写 `本轮无新增高权重触发（noop）` 仍进入 deliver。
+- 本轮判断
+  - 真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
+  - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。
+
+## 最新运行态复核（2026-08-11 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 18:01-22:02 CST。
+  - 同窗 66 条 heartbeat deliver 中有 33 条 deliver preview 明确包含 `noop`、`无新增`、`无新触发`、`未命中` 或 `无触发` 等静默语义。
+  - 代表样本包括 18:00-19:30 CST `闪迪关键事件心跳提醒`、`光迅科技关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 多轮明写 `本轮无新增高权重触发（noop）` 或 `状态：noop — 无新增独立触发事件` 仍进入 deliver；20:30-21:30 CST 同类静默语义继续出现在 `光迅科技`、`存储板块` 等任务送达候选中。
+- 本轮判断
+  - 真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
+  - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。
+
 ## 最新运行态复核（2026-08-10 02:02 CST）
 
 - `data/logs/hone-console-page-source.log`
@@ -758,4 +877,24 @@ New
   - 代表样本包括 22:30 CST `存储板块关键事件心跳提醒`、`NBIS关键事件心跳提醒`、`光迅科技关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`，以及 01:30-02:00 CST `持仓财报与重大新闻心跳提醒`、`光模块板块关键事件心跳提醒`、`闪迪关键事件心跳提醒` 进入 `HeartbeatDiag deliver`。
 - 本轮判断
   - 2026-08-07 的代码级静默修复后，真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
+  - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。
+
+## 最新运行态复核（2026-08-11 18:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 14:00-18:02 CST。
+  - 同窗 67 条 heartbeat deliver 中有 35 条 deliver preview 明确包含 `noop`、`无新增`、`无新触发`、`未命中` 或 `无触发` 等静默语义。
+  - 代表样本包括 14:30 CST `持仓财报与重大新闻心跳提醒` 明写 `状态：noop — 无新增独立重大触发事件` 仍进入 deliver，15:00-18:00 CST `闪迪关键事件心跳提醒`、`光迅科技关键事件心跳提醒` 多轮明写 `本轮无新增高权重触发（noop）` 仍进入 deliver，18:00 CST `存储板块关键事件心跳提醒` / `持仓财报与重大新闻心跳提醒` 明写 `状态：noop — 无新增独立触发事件` 仍进入 deliver。
+- 本轮判断
+  - 真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
+  - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 同窗 37 条 heartbeat deliver 中有 15 条 deliver preview 明确包含 `noop`、`无新增`、`无新触发`、`未命中`、`无触发`、`无需新动作` 或 `状态：noop` 等静默语义。
+  - 代表样本包括 22:01 CST `AI与科技持仓观察关键事件心跳提醒` 将“跌 20%”通用方法论作为 `PlainTextTriggered` 送达，20:30-22:01 CST 多条 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒` 在无新增 / noop 语义下仍进入 deliver 或 duplicate suppression 候选。
+- 本轮判断
+  - 真实运行窗口仍可见明确 noop / 无触发正文进入送达候选或送达路径；运行态尚未闭环，维持 `New`。
   - 问题主要造成用户收到本应静默的噪音提醒或依赖 duplicate suppression 兜底；本窗未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用，因此严重等级维持功能性 `P2`，非 P1。

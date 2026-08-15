@@ -1,4 +1,4 @@
-# Bug: Heartbeat 已创建监控任务仍反复输出“无法创建定时任务”
+# Bug: Heartbeat 已创建监控任务仍被旧直聊 / 管理上下文污染
 
 ## 发现时间
 
@@ -17,6 +17,119 @@
 - New
 
 ## 修复进展
+
+- `2026-08-15 06:03 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-15 02:00-06:02 CST（UTC `2026-08-14T18:00:06Z` 之后）。
+    - 02:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却回复“当前没有新的用户问题或操作请求”，并列出普通投研问答入口，未围绕配置标的做关键事件监控。
+    - 04:00 / 06:00 CST 同一 `AI与科技持仓观察关键事件心跳提醒` 继续退化为“系统配置文本和历史提醒片段重复展示”或“跌20%不是买入信号”的通用投资方法论，不是执行既定 AI / 科技持仓关键事件检查。
+    - 03:30 / 05:00 / 06:00 CST `AAPL + NVDA + BE 关键事件提醒` 与 `NVDA 关键事件心跳提醒` 多次转向关税、HBM、液冷散热等泛主题长文，或明写工具调用上限导致行情未完成核验，偏离既定关键事件 heartbeat 的触发 / noop 收口边界。
+  - 同窗统计：
+    - `HeartbeatDiag=271`、`run_start=72`、`run_finish=72`、`deliver=38`、`duplicate_suppressed=17`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、历史提醒、工具预算或投资方法论上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-15 02:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 22:00-2026-08-15 02:02 CST（UTC `2026-08-14T14:00:35Z` 之后）。
+    - 23:00 / 00:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却继续退化成“跌20%不是买入信号”的通用投资方法论和用户追问提示，未围绕配置标的做关键事件监控。
+    - 23:00 / 01:00 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，却输出“结构化系统配置文本 / 推送配置状态 / immediate_kinds 未设置”等配置或系统文本解读语义，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+    - 23:30 / 01:30 CST `NVDA 关键事件心跳提醒` 又转成 AI 数据中心液冷散热板块长文，并明写工具调用上限导致行情未完成核验，偏离 NVDA 关键事件 heartbeat 的触发 / noop 收口边界。
+  - 同窗统计：
+    - `HeartbeatDiag=225`、`run_start=65`、`run_finish=63`、`deliver=24`、`duplicate_suppressed=10`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、系统文本、工具预算或投资方法论上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-14 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 14:02-18:02 CST（UTC `2026-08-14T06:01:33Z` 之后）。
+    - 17:00 / 17:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却继续退化成“跌20%不是买入信号”的通用投资方法论和用户追问提示，未围绕配置标的做关键事件监控。
+    - 18:00 CST `存储板块关键事件心跳提醒` 作为板块 heartbeat 触发，却输出“你好！我是 Hone，很高兴为你服务”以及产品能力介绍，未执行存储板块关键事件检查。
+    - 18:00 CST `NVDA 关键事件心跳提醒` 又输出“能进，但要区分你在问什么”的持仓建议结构，偏离关键事件 heartbeat 的触发 / noop 收口边界。
+  - 同窗统计：
+    - `HeartbeatDiag=233`、`run_start=64`、`run_finish=64`、`deliver=30`、`duplicate_suppressed=10`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、产品能力说明或投资建议上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-14 06:05 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-14 02:01-06:05 CST（UTC `2026-08-13T18:01:31Z` 之后）。
+    - 02:30 / 03:00 / 04:00 / 04:30 / 05:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为既有 heartbeat job 触发，但 deliver preview 多次退化成“跌 20% 不是买入信号 / 机会还是陷阱”的通用投资方法论，不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+    - 06:00 CST `AAPL + NVDA + BE 关键事件提醒` 又输出“当前配置已核验 / immediate_kinds 当前为 null / 只需一步配置”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=263`、`run_start=72`、`run_finish=72`、`deliver=39`、`duplicate_suppressed=8`、`execution_failed=5`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-13 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 14:01-18:02 CST（UTC `2026-08-13T06:01:58Z` 之后）。
+    - 14:30 / 15:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为既有 heartbeat job 触发，但 raw / deliver preview 仍围绕“宏观事件 / update_delivery_controls / 当前配置是否加入心跳”等管理语义，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+    - 15:00 CST `持仓财报与重大新闻心跳提醒` 输出“你好，欢迎使用！我是一个以金融分析为核心能力的投研助理”产品能力介绍；15:00 CST `AI与科技持仓观察关键事件心跳提醒` 继续退化成“跌20%不是买入信号”的通用投资方法论，不是执行既定 AI / 科技持仓关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=230`、`run_start=64`、`run_finish=64`、`deliver=31`、`duplicate_suppressed=8`、`execution_failed=5`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-13 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 10:00-14:02 CST（UTC `2026-08-13T02:00:58Z` 之后）。
+    - 10:30 / 14:00 CST `AAPL + NVDA + BE 关键事件提醒` 已作为既有 heartbeat job 触发，但 deliver preview 继续输出“宏观事件不在当前心跳配置 / 是否加入心跳”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+    - 12:30 / 14:00 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 触发，却继续退化成“跌 20% 不是买入信号 / 如何判断机会还是陷阱”等通用投资方法论，不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=231`、`run_start=64`、`run_finish=64`、`deliver=33`、`duplicate_suppressed=6`、`structured_fail=9`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-13 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 06:01-10:02 CST（UTC `2026-08-12T22:01:27Z` 之后）。
+    - 06:30 / 09:00 CST `AI与科技持仓观察关键事件心跳提醒` 已作为既有 heartbeat job 触发，但 deliver preview 继续退化成“跌 20%”通用投资方法论，而不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+    - 06:30 / 09:01 CST `AAPL + NVDA + BE 关键事件提醒` 继续输出“当前推送配置 / 心跳每 30 分钟监控 / 即时推已启用”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=235`、`run_start=64`、`run_finish=64`、`deliver=32`、`duplicate_suppressed=10`、`failure_signals=3`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-13 06:02 CST` 运行态回退为 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-13 02:00-06:02 CST（UTC `2026-08-12T18:00:26Z` 之后）。
+    - 02:30 / 03:00 / 03:30 / 04:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为既有 heartbeat job 触发，但 deliver preview 多次退化成“跌 20%：机会还是陷阱？”的通用投资方法论回答，而不是执行 BE / TEM / STX / SATS / COHR / LITE / QCOM / DELL / AAOI / TSLA / PLTR / CRCL / HOOD / ORCL / INTC / FLY / META 的关键事件检查。
+    - 06:01 CST `AAPL + NVDA + BE 关键事件提醒` 又输出“你当前的推送配置如下 / 定时推送已激活 / 每 30 分钟心跳检查”等配置说明，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 同窗统计：
+    - `HeartbeatDiag=255`、`run_start=64`、`run_finish=71`、`deliver=43`、`duplicate_suppressed=4`、`execution_failed=6`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、产品/配置说明或管理上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 2026-08-12 23:40 的代码级补强只覆盖部分“无法创建 / 已存在 / 替代方案”管理漂移文案；本轮新增的“跌 20% 方法论”复发说明同根问题未完全闭环，因此从代码级 `Fixed` 回退为运行态 `New/P2`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-12 23:40 CST` 代码级修复并补回归，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - 扩展 `heartbeat_management_drift_message(...)` 的管理漂移识别，新增覆盖 `未暴露定时任务/cron_job 工具`、`notification_prefs` 替代方案、`heartbeat_monitor 技能不存在`、`任务已存在`、`无需重复配置`、`替代方案` 等 2026-08-08 / 2026-08-09 真实复发措辞。
+    - 保持 heartbeat prompt 中“创建措辞只视为既有 heartbeat 执行说明”的约束不变，并让运行期 deliver guard 对这批漏网文案直接抑制，不再把创建/配置说明误发给用户。
+  - 新增回归：
+    - `heartbeat_management_drift_tool_capability_copy_is_suppressed`
+    - `heartbeat_management_drift_existing_job_copy_is_suppressed`
+  - 验证：
+    - `cargo test -p hone-channels heartbeat_management_drift --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮没有重启当前运行中服务，先记代码级 `Fixed`；后续若在明确运行 `2026-08-12` 之后新代码的自然窗口里仍看到同类“无法创建 / 已存在 / 替代方案”文案，再按新证据重新打开。
 
 - `2026-08-09 22:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
@@ -587,3 +700,47 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被旧短问、产品能力说明或非当前监控上下文污染；不是新的独立根因。
   - 因已有 heartbeat job 会发送无关内容并污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 21:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，但 raw preview 进入配置更新 / 工具调用路径，写出要更新 `immediate_kinds` 并拼入 `<minimax:tool_call><invoke name="cron_job">`；本轮被 `PlainTextSuppressed` 路径跳过，未进入 deliver。
+  - 22:01 CST `AI与科技持仓观察关键事件心跳提醒` 作为关键事件 heartbeat 触发，却输出“跌 20% 不是买入信号”的通用投资方法论，未围绕持仓关键事件执行监控。
+  - 22:01 CST `AAPL + NVDA + BE 关键事件提醒` 又在 deliver / duplicate suppression 候选中混入“当前配置状态 / immediate_kinds”管理语义，与本轮关键事件检查边界混杂。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置或管理工具路径污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-14 02:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 22:00-2026-08-14 02:02 CST。
+  - 22:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，但 deliver preview 继续输出“配置核验完成 / immediate_kinds / 按你的要求执行更新”等管理语义，而不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+  - 02:00 CST `AI与科技持仓观察关键事件心跳提醒` 作为关键事件 heartbeat 触发，却继续退化成“跌 20% 不是买入信号”的通用投资方法论；本轮被 `PlainTextSuppressed` 路径标记为非结构化失败并跳过发送。
+  - 同窗多条 heartbeat raw preview 还出现“tool call limits / global budget”叙事，说明执行期任务语义仍会被工具预算与管理路径说明污染。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、工具预算或管理路径污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-14 14:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 10:02-14:02 CST。
+  - 10:30 / 11:00 / 11:30 / 13:30 / 14:00 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却多次退化成“跌20%不是买入信号”的通用投资方法论，未围绕配置标的做关键事件监控。
+  - 11:30 CST `NVDA 关键事件心跳提醒` 作为 NVDA heartbeat 触发，却输出“我是一个以金融分析为核心能力的投研助理”的产品能力介绍。
+  - 14:00 CST `AAPL + NVDA + BE 关键事件提醒` 又输出“当前可用配置一览 / immediate_kinds / 两件事可以做”等任务管理语义，而不是执行本轮关键事件检查。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置或产品能力说明污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-08-14 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 18:02-22:02 CST。
+  - 18:30 CST `AI与科技持仓观察关键事件心跳提醒` 作为关键事件 heartbeat 触发，却输出“没有新的市场问题 / 想聊什么”等直聊澄清语义，未执行持仓关键事件监控。
+  - 20:00 CST 同任务又退化成“跌20%不是买入信号”的通用投资方法论，正文还说明今日已有多次方法论推送，而不是围绕配置的 17 只股票做新增事件判断。
+  - 19:00-22:00 CST 多条板块 / 持仓 heartbeat 用户可见正文继续写出“工具调用已达本轮上限 / data_fetch 单轮已达上限”等执行期工具口径，说明监控正文仍会被工具预算或上下文说明污染。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被旧直聊、工具预算或方法论上下文污染；不是新的独立根因。
+  - 因已有 heartbeat job 会发送无关内容或污染后续去重基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。

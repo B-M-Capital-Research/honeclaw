@@ -1082,7 +1082,7 @@ fn forced_earnings_skill_input(
         PublicEarningsWorkflowKind::Analysis => "analysis",
     };
     format!(
-        "/earnings-research\n{user_message}\n\n【HONE 财报工作流参数】\nmode: {mode}\ncompany: {}\n此工作流由管理员专属入口触发；必须完整执行技能中的所有阶段，并在最终回答前生成 PDF。",
+        "/earnings-research\n{user_message}\n\n【HONE 财报工作流参数】\nmode: {mode}\ncompany: {}\n此工作流由管理员专属入口触发；只执行 mode 指定的独立工作流，并在最终回答前生成 PDF。preview 只执行财报前瞻和近期新闻，analysis 只执行财报分析；严禁拼接另一模式的 Prompt 或章节。",
         workflow.company.trim()
     )
 }
@@ -2296,6 +2296,9 @@ mod tests {
         assert!(forced.starts_with("/earnings-research\n"));
         assert!(forced.contains("\nmode: analysis\n"));
         assert!(forced.contains("company: NVIDIA\n"));
+        assert!(forced.contains("analysis 只执行财报分析"));
+        assert!(forced.contains("严禁拼接另一模式"));
+        assert!(!forced.contains("执行技能中的所有阶段"));
         assert!(is_earnings_research_skill_command(&forced));
         assert!(is_earnings_research_skill_command(
             "/skill earnings-research\nNVDA"

@@ -36,6 +36,35 @@ pub(crate) struct PublicBillingOfferConfig {
     pub currency: &'static str,
     pub term_months: u8,
     pub auto_renews: bool,
+    pub advertised_payment_methods: PublicBillingPaymentMethods,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PublicBillingPaymentMethods {
+    pub card: bool,
+    pub alipay: bool,
+    pub wechat_pay: bool,
+}
+
+impl PublicBillingPaymentMethods {
+    fn card_only() -> Self {
+        Self::with_wallets(false, false)
+    }
+
+    fn with_wallets(alipay: bool, wechat_pay: bool) -> Self {
+        Self {
+            card: true,
+            alipay,
+            wechat_pay,
+        }
+    }
+
+    fn fixed_term_from_env() -> Self {
+        Self::with_wallets(
+            crate::routes::stripe::env_flag("HONE_STRIPE_ADVERTISE_ALIPAY", false),
+            crate::routes::stripe::env_flag("HONE_STRIPE_ADVERTISE_WECHAT_PAY", false),
+        )
+    }
 }
 
 impl PublicBillingConfig {
@@ -50,6 +79,7 @@ impl PublicBillingConfig {
                     currency: "usd",
                     term_months: 12,
                     auto_renews: true,
+                    advertised_payment_methods: PublicBillingPaymentMethods::card_only(),
                 },
                 fixed_term: PublicBillingOfferConfig {
                     enabled: checkout_enabled,
@@ -57,6 +87,7 @@ impl PublicBillingConfig {
                     currency: "usd",
                     term_months: 12,
                     auto_renews: false,
+                    advertised_payment_methods: PublicBillingPaymentMethods::fixed_term_from_env(),
                 },
             },
             purchases_allowed_on_this_client: external_billing_allowed,
@@ -202,7 +233,7 @@ pub(crate) fn is_hone_ios(headers: &HeaderMap) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{PublicBillingConfig, is_hone_ios};
+    use super::{PublicBillingConfig, PublicBillingPaymentMethods, is_hone_ios};
     use axum::http::{HeaderMap, HeaderValue, header};
 
     #[test]
@@ -216,5 +247,26 @@ mod tests {
         let config = PublicBillingConfig::from_env(&headers);
         assert!(!config.purchases_allowed_on_this_client);
         assert!(!config.management_allowed_on_this_client);
+    }
+
+    #[test]
+    fn card_only_payment_method_copy_is_the_fail_closed_default() {
+        let methods = PublicBillingPaymentMethods::card_only();
+        assert!(methods.card);
+        assert!(!methods.alipay);
+        assert!(!methods.wechat_pay);
+    }
+
+    #[test]
+    fn fixed_term_payment_method_copy_advertises_only_proven_wallets() {
+        let alipay_only = PublicBillingPaymentMethods::with_wallets(true, false);
+        assert!(alipay_only.card);
+        assert!(alipay_only.alipay);
+        assert!(!alipay_only.wechat_pay);
+
+        let both = PublicBillingPaymentMethods::with_wallets(true, true);
+        assert!(both.card);
+        assert!(both.alipay);
+        assert!(both.wechat_pay);
     }
 }

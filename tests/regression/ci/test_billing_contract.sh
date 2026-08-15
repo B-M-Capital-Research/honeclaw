@@ -49,6 +49,9 @@ contains 'HONE_STRIPE_CHECKOUT_ENABLED=false' .env.example
 contains 'HONE_STRIPE_MODE=test' .env.example
 contains 'HONE_STRIPE_SUBSCRIPTION_PRICE_ID=' .env.example
 contains 'HONE_STRIPE_FIXED_TERM_PRICE_ID=' .env.example
+contains 'HONE_STRIPE_ADVERTISE_ALIPAY=false' .env.example
+contains 'HONE_STRIPE_ADVERTISE_WECHAT_PAY=false' .env.example
+contains 'advertised_payment_methods' crates/hone-web-api/src/routes/billing.rs
 contains '"payment"' crates/hone-web-api/src/routes/stripe.rs
 contains 'charge.refunded' crates/hone-web-api/src/routes/stripe.rs
 contains 'fixed_term_purchase' memory/src/billing.rs

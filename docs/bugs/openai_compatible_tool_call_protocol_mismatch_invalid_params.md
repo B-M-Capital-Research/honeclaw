@@ -14,13 +14,37 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，当前复发证据不是 P1。
 
 ## 修复记录
+
+### 2026-08-13 代码级修复
+
+- `agents/function_calling/src/lib.rs`
+  - 为 function-calling 初始工具流补上已知 OpenAI-compatible 协议错位恢复：当当前轮已拿到只读工具证据，而下一轮命中 `invalid params, tool call result does not follow tool call (2013)` 时，不再直接把整轮压成通用失败，而是切到一次受控 `tools-disabled` 同轮收口。
+  - 同一恢复分支与 stream decode / missing Done 异常共用，只在 `agent_owned_finance_loop=true`、已有工具结果、且全部调用为已知只读调用时生效；不会放宽到写工具或一般 provider 错误。
+- 新增回归：
+  - `initial_protocol_mismatch_recovers_with_a_tools_disabled_answer`
+- 验证通过：
+  - `cargo test -p hone-agent initial_protocol_mismatch_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `cargo test -p hone-agent active_provider_error_recovers_with_a_tools_disabled_answer -- --nocapture`
+  - `rustfmt --edition 2024 --config skip_children=true --check agents/function_calling/src/lib.rs`
+- 当前未重启 live runtime，先按代码级 `Fixed` 记录；若 2026-08-13 之后的真实运行窗口仍复现同类 `tool call result does not follow tool call (2013)`，再回退为活跃缺陷。
+
+### 2026-08-13 22:02 CST 运行态复核
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 20:00 CST Web heartbeat `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d` 在 function-calling runner 中失败。
+  - 底层错误继续为 OpenAI-compatible `upstream HTTP 400: invalid params, tool call result does not follow tool call (2013)`，日志归类为 `failure_kind=provider_http_error`，随后 Web scheduler 记录“定时任务执行失败，跳过发送”。
+  - 同窗 `HeartbeatDiag run_start=72`、`run_finish=72`、`deliver=37`，说明不是 scheduler / source runtime 整体停摆；失败集中在单轮 provider tool-call transcript 协议错位。
+- 判断：
+  - 该样本与 2026-08-10 回退样本为同一 Web heartbeat / OpenAI-compatible tool-call 协议错位链路，不新建重复缺陷。
+  - 用户侧未见原始 provider 错误外泄，错误由调度层跳过发送承接；但该轮 heartbeat 没有生成用户期望的 AAPL / NVDA / BE 关键事件监控结果。维持 `P2 / New`，非 P1，不创建 GitHub Issue。
 
 ### 2026-08-10 06:01 CST 运行态回退
 

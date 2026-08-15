@@ -7,6 +7,99 @@
 
 ## 最新进展
 
+- `2026-08-15 10:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-15 06:01-10:03 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 09:30 CST `存储板块关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`ticker`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=3`，并存在 `PlainTextTriggered=42`、`JsonNoop=31` 的分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-15 06:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-15 02:00-06:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 02:00 CST `持仓财报与重大新闻心跳提醒`、04:00 / 04:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、05:30 CST `光模块板块关键事件心跳提醒`、05:30 CST `存储板块关键事件心跳提醒` deliver preview 继续以 fenced `json` 或 `status=triggered` 协议载荷开头，外露 `status`、`triggered`、`ticker`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，并存在 `PlainTextTriggered=75`、`JsonNoop=26` 的分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-15 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-14 22:00-2026-08-15 02:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 23:00、23:30、00:00、01:00、02:00 CST 多条 `TEM AAOI KRMN RKLB MRVL`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒` deliver preview 继续以 fenced `json` 或 `status=triggered` 协议载荷开头，外露 `status`、`triggered`、`ticker`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，并存在 `PlainTextTriggered=48`、`JsonNoop=24`、`JsonEmptyStatus=1` 的分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-14 18:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-14 14:02-18:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 14:31 与 17:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，并存在 `PlainTextTriggered=60`、`JsonNoop=22`、`JsonEmptyStatus=2` 的分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-14 10:04 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-14 06:00-10:04 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 07:30 与 09:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-14 06:05 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-14 02:01-06:05 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 02:30、03:30、04:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 04:00 CST `存储板块关键事件心跳提醒` deliver preview 也以 fenced `json` 开头，外露 `status`、`triggered_at`、`reason` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=3`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-13 14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-13 10:00-14:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 10:31 与 12:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，并存在大量 `PlainTextTriggered` 与 `JsonNoop` 分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-12 10:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-12 06:01-10:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 09:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 分布仍有大量 `PlainTextTriggered` 与 `JsonNoop` 分裂，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-12 06:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-12 02:01-06:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 05:01 与 05:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-12 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-11 22:00-2026-08-12 02:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 00:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=3`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-11 02:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-10 22:01-2026-08-11 02:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 02:02 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=5`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-10 22:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-10 18:00-22:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 19:00 CST `AAPL + NVDA + BE 关键事件提醒` deliver preview 以 fenced `json` 开头，并外露 `status: analysis`、`findings`、`category`、`details` 等协议 / 结构字段。
+    - 19:30、20:01、21:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-10 14:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-10 10:02-14:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 10:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 继续以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse_kind 仍有 `JsonTriggered=1`，说明清理层仍没有把协议对象稳定转换为用户可读正文。
+  - 判断：这是既有 heartbeat 协议载荷外泄复发。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-10 10:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-10 06:00-10:02 CST 近窗继续出现 fenced JSON / `status=triggered` 协议载荷相关信号。
@@ -947,6 +1040,37 @@
   - 巡检窗口：2026-08-09 22:03-2026-08-10 02:02 CST。
   - 同窗 4 条 heartbeat `deliver_preview` 以 fenced JSON 开头并包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"` 等协议字段。
   - 代表样本：23:01 / 23:31 / 02:01 CST `AI与科技持仓观察关键事件心跳提醒` 以及 00:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-13 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 18:01-22:02 CST。
+  - 同窗 2 条 heartbeat `deliver_preview` 以 fenced `json` 或协议字段载荷开头，且 parse 分布仍有 `JsonTriggered=2`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered` 并存。
+  - 21:30 CST `AAPL + NVDA + BE 关键事件提醒` raw preview 出现 `<minimax:tool_call>/<invoke name="cron_job">`，但本轮被 `PlainTextSuppressed` 路径跳过，未进入 deliver；该样本说明上游仍会生成协议标签，但本单仅记录用户可见 JSON / 协议载荷外泄。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-14 14:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 10:02-14:02 CST。
+  - 13:00 CST `NVDA 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`，`deliver_preview` 直接以 fenced `json` 开头，包含 `status: triggered`、`triggered_by`、`results`、`symbol`、`event_kind`、`headline`、`source` 等协议字段。
+  - 同窗 parse 分布仍有 `JsonTriggered=3`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered=62` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-14 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-14 18:02-22:02 CST。
+  - 18:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`，正文先写行情口径后直接接 fenced `json`，包含 `status: triggered`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+  - 19:00 CST 同任务再次以 fenced `json` 协议载荷开头；22:00 CST `持仓财报与重大新闻心跳提醒` 与 `AAPL + NVDA + BE 关键事件提醒` 也以 fenced JSON / `status=triggered` 载荷进入 deliver 候选。
+  - 同窗 parse 分布仍有 `JsonTriggered=3`、`JsonMalformed=2` 与大量 `PlainTextTriggered=33` 并存，说明结构化协议与用户可见正文边界仍不稳定。
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。

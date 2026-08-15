@@ -17,7 +17,8 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, completed_earnings_pdf,
-    completed_earnings_pdf_artifact, latest_earnings_render_error,
+    completed_earnings_pdf_after_safe_opencode_trace, completed_earnings_pdf_artifact,
+    latest_earnings_render_error, missing_acp_terminal_tool_result,
     persistent_side_effect_state_is_uncertain,
 };
 
@@ -39,10 +40,22 @@ use super::types::{
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
-// OpenCode can turn a post-compaction continuation into a zero-token no-op.
-// A safely rejected renderer is retried by AgentSession in a fresh isolated
-// ACP process instead of repeatedly prompting this exhausted native session.
-const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 0;
+// Preserve a complete draft and the exact renderer diagnostics while the
+// native session is still healthy. Once OpenCode compacts, AgentSession starts
+// a fresh isolated process and carries the rejected draft forward instead.
+const MAX_EARNINGS_PDF_RECOVERY_PROMPTS: u32 = 2;
+
+pub(crate) fn is_opencode_corrupted_thought_signature_error_text(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    compact.contains("opencode")
+        && compact.contains("corruptedthoughtsignature")
+        && compact.contains("\"code\":400")
+        && compact.contains("\"error_type\":\"invalid_request\"")
+}
 
 fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
     request
@@ -50,6 +63,26 @@ fn requires_earnings_pdf_completion(request: &AgentRunnerRequest) -> bool {
         .get(REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY)
         .and_then(Value::as_bool)
         .unwrap_or(false)
+}
+
+fn previous_prompt_peak_used(
+    session_metadata: &HashMap<String, Value>,
+    require_earnings_pdf: bool,
+) -> Option<u64> {
+    if require_earnings_pdf {
+        return None;
+    }
+    session_metadata
+        .get(ACP_PREV_PROMPT_PEAK_KEY)
+        .and_then(Value::as_u64)
+}
+
+fn prompt_peak_metadata_value(require_earnings_pdf: bool, current_peak: u64) -> u64 {
+    if require_earnings_pdf {
+        0
+    } else {
+        current_peak
+    }
 }
 
 fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
@@ -74,22 +107,60 @@ fn earnings_pdf_recovery_prompt(state: &AcpPromptState) -> Option<String> {
     Some(format!(
         "【HONE 财报工作流仍未完成，必须继续】\n上一段输出不能作为终稿，因为没有成功的\
          earnings-research PDF artifact。最近一次 renderer 校验为：\n{latest_error}\n\n\
-         继续使用本会话已经取得的证据；缺证据时先继续调用数据或网页搜索工具。按原\
-         Workflow 一次修正列出的全部问题，再调用 skill_tool。不得向用户解释格式限制，\
+         继续使用本轮已经取得的证据；缺证据时先继续调用数据或网页搜索工具。若错误指出\
+         占位符或虚假来源，找到真实来源或删除无依据内容；若是技术渲染错误，只修复渲染调用。\
+         保持 BamangResearch 原 Workflow 的正文，不得为了 PDF 版式改写结构或凑新闻数量。然后\
+         再调用 skill_tool。不得向用户解释内部渲染错误，\
          不得发布文字降级答案，也不得停止；只有 skill_tool 返回 success=true、\
          render_success=true、一个 application/pdf artifact，并在最终完整报告中引用该 PDF\
          文件名后才能结束。"
     ))
 }
 
-fn normalize_completed_earnings_pdf_reply(state: &mut AcpPromptState) {
-    let Some(completed) = completed_earnings_pdf(&state.finished_tool_calls) else {
-        return;
-    };
-    state.full_reply = format!(
+fn should_continue_earnings_pdf_recovery(
+    stopped_successfully: bool,
+    recovery_prompt_exists: bool,
+    recovery_count: u32,
+    state: &AcpPromptState,
+) -> bool {
+    stopped_successfully
+        && recovery_prompt_exists
+        && recovery_count < MAX_EARNINGS_PDF_RECOVERY_PROMPTS
+        && !state.compact_detected
+        && !persistent_side_effect_state_is_uncertain(&state.finished_tool_calls)
+}
+
+fn completed_earnings_pdf_reply(tool_calls: &[hone_core::agent::ToolCallMade]) -> Option<String> {
+    let completed = completed_earnings_pdf(tool_calls)?;
+    Some(format!(
         "{}\n\n[附件: {}]",
         completed.report_markdown, completed.path
-    );
+    ))
+}
+
+fn normalize_completed_earnings_pdf_reply(state: &mut AcpPromptState) {
+    if let Some(reply) = completed_earnings_pdf_reply(&state.finished_tool_calls) {
+        state.full_reply = reply;
+    }
+}
+
+fn finalized_opencode_reply(
+    context_messages: &[AgentMessage],
+    fallback: String,
+    require_earnings_pdf: bool,
+    tool_calls: &[hone_core::agent::ToolCallMade],
+) -> String {
+    let content = final_assistant_message_content(context_messages, fallback);
+    if require_earnings_pdf {
+        // `context_messages` intentionally wins for ordinary ACP replies, but
+        // it can contain the model's pre-normalized final chunk. A completed
+        // earnings turn is host-owned: persist the renderer-validated report
+        // and exact artifact reference even when the model omitted the file
+        // name from that last chunk.
+        completed_earnings_pdf_reply(tool_calls).unwrap_or(content)
+    } else {
+        content
+    }
 }
 
 pub(crate) struct OpencodeAcpRunner {
@@ -368,6 +439,7 @@ pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
             "webfetch": "deny",
             "websearch": "deny",
             "skill": "deny",
+            "task": "deny",
             "external_directory": {
                 "*": "deny"
             }
@@ -531,11 +603,12 @@ async fn run_opencode_acp(
     child_guard.set_stderr_task(stderr_task);
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
+    let require_earnings_pdf = requires_earnings_pdf_completion(&request);
     let mut opencode_state = AcpPromptState {
-        prev_prompt_peak_used: request
-            .session_metadata
-            .get(ACP_PREV_PROMPT_PEAK_KEY)
-            .and_then(|value| value.as_u64()),
+        prev_prompt_peak_used: previous_prompt_peak_used(
+            &request.session_metadata,
+            require_earnings_pdf,
+        ),
         ..AcpPromptState::default()
     };
     let run_result: Result<Value, AgentSessionError> = async {
@@ -674,7 +747,6 @@ async fn run_opencode_acp(
             next_id += 1;
         }
 
-        let require_earnings_pdf = requires_earnings_pdf_completion(&request);
         let prompt_deadline = Instant::now() + prompt_overall_timeout;
         let (system_prompt, current_user_turn, context) = request
             .conversation
@@ -742,11 +814,12 @@ async fn run_opencode_acp(
                 .then(|| earnings_pdf_recovery_prompt(&opencode_state))
                 .flatten();
             let recovery_count = prompt_count.saturating_sub(1);
-            if !stopped_successfully
-                || recovery_prompt.is_none()
-                || recovery_count >= MAX_EARNINGS_PDF_RECOVERY_PROMPTS
-                || persistent_side_effect_state_is_uncertain(&opencode_state.finished_tool_calls)
-            {
+            if !should_continue_earnings_pdf_recovery(
+                stopped_successfully,
+                recovery_prompt.is_some(),
+                recovery_count,
+                &opencode_state,
+            ) {
                 metadata_updates.insert(
                     "opencode_prompt_attempts".to_string(),
                     Value::from(prompt_count),
@@ -775,8 +848,42 @@ async fn run_opencode_acp(
         Err(error) => {
             metadata_updates.insert(
                 ACP_PREV_PROMPT_PEAK_KEY.to_string(),
-                Value::from(opencode_state.current_prompt_peak_used),
+                Value::from(prompt_peak_metadata_value(
+                    require_earnings_pdf,
+                    opencode_state.current_prompt_peak_used,
+                )),
             );
+            if require_earnings_pdf
+                && is_opencode_corrupted_thought_signature_error_text(&error.message)
+                && opencode_state.pending_tool_calls.is_empty()
+                && let Some(completed) = completed_earnings_pdf_after_safe_opencode_trace(
+                    &opencode_state.finished_tool_calls,
+                )
+            {
+                let content = format!(
+                    "{}\n\n[附件: {}]",
+                    completed.report_markdown, completed.path
+                );
+                opencode_state.full_reply = content.clone();
+                let context_messages = finalize_opencode_context_messages(&mut opencode_state);
+                let tool_calls_made = opencode_state.finished_tool_calls.clone();
+                tracing::warn!(
+                    session = %request.session_id,
+                    artifact = %completed.path,
+                    "OpenCode final confirmation had a corrupted thought signature after the earnings PDF completed; closing from the completed renderer result"
+                );
+                return Ok((
+                    AgentResponse {
+                        content,
+                        tool_calls_made,
+                        iterations: 1,
+                        success: true,
+                        error: None,
+                    },
+                    metadata_updates,
+                    Some(context_messages),
+                ));
+            }
             return Err(AcpRunFailure {
                 error,
                 state: opencode_state,
@@ -788,7 +895,6 @@ async fn run_opencode_acp(
     let stop_reason_value = prompt_result
         .get("stopReason")
         .and_then(|value| value.as_str());
-    let require_earnings_pdf = requires_earnings_pdf_completion(&request);
     let earnings_pdf_complete =
         !require_earnings_pdf || earnings_pdf_recovery_prompt(&opencode_state).is_none();
     let success = acp_prompt_succeeded(stop_reason_value) && earnings_pdf_complete;
@@ -809,7 +915,10 @@ async fn run_opencode_acp(
     // a fresh ACP session on the next Hone turn and receives a fresh replay.
     metadata_updates.insert(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),
-        Value::from(opencode_state.current_prompt_peak_used),
+        Value::from(prompt_peak_metadata_value(
+            require_earnings_pdf,
+            opencode_state.current_prompt_peak_used,
+        )),
     );
     if opencode_state.compact_detected {
         tracing::info!(
@@ -821,11 +930,13 @@ async fn run_opencode_acp(
 
     finalize_pending_tool_calls(&mut opencode_state, "unknown_after_missing_acp_result");
     let context_messages = finalize_opencode_context_messages(&mut opencode_state);
-    let content = final_assistant_message_content(
+    let tool_calls_made = opencode_state.finished_tool_calls.clone();
+    let content = finalized_opencode_reply(
         &context_messages,
         std::mem::take(&mut opencode_state.full_reply),
+        require_earnings_pdf,
+        &tool_calls_made,
     );
-    let tool_calls_made = opencode_state.finished_tool_calls.clone();
 
     let reply_chars = content.len();
     tracing::info!(
@@ -847,15 +958,16 @@ async fn run_opencode_acp(
         tracing::warn!("{warning}");
     }
 
+    let missing_terminal_result = missing_acp_terminal_tool_result(&tool_calls_made);
     let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
-    let success = success && !state_uncertain;
+    let success = success && !state_uncertain && !missing_terminal_result;
     let prompt_attempts = metadata_updates
         .get("opencode_prompt_attempts")
         .and_then(Value::as_u64)
         .unwrap_or(1) as u32;
     Ok((
         AgentResponse {
-            content: if state_uncertain {
+            content: if state_uncertain || missing_terminal_result {
                 String::new()
             } else {
                 content
@@ -865,6 +977,8 @@ async fn run_opencode_acp(
             success,
             error: if state_uncertain {
                 Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if missing_terminal_result {
+                Some("opencode acp prompt ended before tool completion".to_string())
             } else if !earnings_pdf_complete {
                 Some(
                     "earnings workflow ended without a successful referenced PDF artifact"
@@ -1766,22 +1880,65 @@ mod earnings_pdf_completion_tests {
     }
 
     #[test]
+    fn dedicated_earnings_does_not_inherit_or_persist_prior_usage_peak() {
+        let metadata = HashMap::from([(
+            ACP_PREV_PROMPT_PEAK_KEY.to_string(),
+            Value::from(121_759u64),
+        )]);
+
+        assert_eq!(previous_prompt_peak_used(&metadata, false), Some(121_759));
+        assert_eq!(previous_prompt_peak_used(&metadata, true), None);
+        assert_eq!(prompt_peak_metadata_value(false, 41_165), 41_165);
+        assert_eq!(prompt_peak_metadata_value(true, 41_165), 0);
+    }
+
+    #[test]
     fn failed_renderer_and_text_fallback_require_a_continuation_prompt() {
         let mut state = AcpPromptState {
-            full_reply: "PDF 渲染暂时遇到格式和证据链完整性限制，无法成功生成。".to_string(),
+            full_reply: "PDF 渲染暂时失败，无法成功生成。".to_string(),
             ..AcpPromptState::default()
         };
         state.finished_tool_calls.push(renderer_call(json!({
             "success": false,
             "render_success": false,
             "side_effect_status": "not_started",
-            "render_error": "preview news item 1 is conference chatter",
+            "render_error": "report contains a placeholder URL: https://example.com/item",
             "artifacts": []
         })));
 
         let prompt = earnings_pdf_recovery_prompt(&state).expect("recovery prompt");
-        assert!(prompt.contains("preview news item 1 is conference chatter"));
+        assert!(prompt.contains("report contains a placeholder URL"));
+        assert!(prompt.contains("找到真实来源或删除无依据内容"));
+        assert!(prompt.contains("不得为了 PDF 版式改写结构或凑新闻数量"));
         assert!(prompt.contains("不得发布文字降级答案"));
+        assert!(should_continue_earnings_pdf_recovery(true, true, 0, &state));
+        assert!(should_continue_earnings_pdf_recovery(true, true, 1, &state));
+        assert!(!should_continue_earnings_pdf_recovery(
+            true,
+            true,
+            MAX_EARNINGS_PDF_RECOVERY_PROMPTS,
+            &state
+        ));
+    }
+
+    #[test]
+    fn compacted_earnings_session_is_not_prompted_again() {
+        let mut state = AcpPromptState {
+            compact_detected: true,
+            ..AcpPromptState::default()
+        };
+        state.finished_tool_calls.push(renderer_call(json!({
+            "success": false,
+            "render_success": false,
+            "side_effect_status": "not_started",
+            "render_error": "preview preflight found 7 issues",
+            "artifacts": []
+        })));
+
+        assert!(earnings_pdf_recovery_prompt(&state).is_some());
+        assert!(!should_continue_earnings_pdf_recovery(
+            true, true, 0, &state
+        ));
     }
 
     #[test]
@@ -1815,5 +1972,40 @@ mod earnings_pdf_completion_tests {
                 .ends_with("[附件: /sandbox/AAOI_Earnings_Preview.pdf]")
         );
         assert!(earnings_pdf_recovery_prompt(&state).is_none());
+
+        let terminal_reply = completed_earnings_pdf_reply(&state.finished_tool_calls)
+            .expect("host-owned terminal reply");
+        assert_eq!(terminal_reply, state.full_reply);
+        assert!(terminal_reply.contains("完整且已通过 renderer 的报告正文"));
+        assert!(terminal_reply.contains("[附件: /sandbox/AAOI_Earnings_Preview.pdf]"));
+
+        let context_messages = vec![AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("模型最终 chunk 漏掉了附件名".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        }];
+        assert_eq!(
+            finalized_opencode_reply(
+                &context_messages,
+                "fallback".to_string(),
+                true,
+                &state.finished_tool_calls,
+            ),
+            terminal_reply,
+            "dedicated completion must prefer the renderer-validated report and artifact"
+        );
+        assert_eq!(
+            finalized_opencode_reply(
+                &context_messages,
+                "fallback".to_string(),
+                false,
+                &state.finished_tool_calls,
+            ),
+            "模型最终 chunk 漏掉了附件名",
+            "ordinary ACP replies must keep the model's final chunk"
+        );
     }
 }

@@ -25,6 +25,17 @@ pub(crate) struct CompletedEarningsPdf {
     pub(crate) report_markdown: String,
 }
 
+/// The latest complete report draft rejected by the repository-owned
+/// earnings renderer before any artifact write.
+///
+/// This is safe to carry into one fresh isolated recovery session. It is not
+/// a completed deliverable and must still pass the renderer unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FailedEarningsReportDraft {
+    pub(crate) report_markdown: String,
+    pub(crate) render_error: String,
+}
+
 pub(crate) fn completed_earnings_pdf(tool_calls: &[ToolCallMade]) -> Option<CompletedEarningsPdf> {
     tool_calls.iter().rev().find_map(|call| {
         if canonical_hone_tool_name(&call.name) != Some("skill_tool")
@@ -144,6 +155,36 @@ fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
             .is_some_and(|value| !value.trim().is_empty())
 }
 
+pub(crate) fn latest_safe_failed_earnings_report_draft(
+    tool_calls: &[ToolCallMade],
+) -> Option<FailedEarningsReportDraft> {
+    tool_calls.iter().rev().find_map(|call| {
+        if !is_safe_failed_earnings_renderer(call) {
+            return None;
+        }
+        let report_markdown = call
+            .arguments
+            .get("report_markdown")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?
+            .to_string();
+        let render_error = call
+            .result
+            .get("render_error")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?
+            .chars()
+            .take(4_000)
+            .collect();
+        Some(FailedEarningsReportDraft {
+            report_markdown,
+            render_error,
+        })
+    })
+}
+
 /// Whether an incomplete earnings attempt is safe to run again in a fresh
 /// isolated model session.
 ///
@@ -152,6 +193,7 @@ fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
 /// explicitly happened before any file write. At least one such renderer
 /// rejection must be present, so unrelated read-only failures do not acquire
 /// a new automatic retry path.
+#[cfg(test)]
 pub(crate) fn earnings_pdf_validation_failed_without_side_effects(
     tool_calls: &[ToolCallMade],
 ) -> bool {
@@ -189,6 +231,87 @@ pub(crate) fn response_has_only_known_read_only_calls(tool_calls: &[ToolCallMade
     tool_calls.iter().all(is_known_read_only_call)
 }
 
+/// Whether every call is safe to replay for the dedicated earnings workflow
+/// when the verified runner is OpenCode.
+///
+/// OpenCode exposes a small set of built-in filesystem readers outside Hone's
+/// MCP namespace. It also records an unavailable tool attempt as its own
+/// `invalid` tool: that record proves the requested tool was rejected before
+/// dispatch, so it has no side effect. Keep this allowance local to the
+/// dedicated OpenCode recovery boundary; arbitrary runner tools with the same
+/// short names must remain unknown elsewhere.
+pub(crate) fn response_has_only_retry_safe_earnings_opencode_calls(
+    tool_calls: &[ToolCallMade],
+) -> bool {
+    tool_calls.iter().all(is_retry_safe_earnings_opencode_call)
+}
+
+/// Return the completed earnings PDF only when every other observed OpenCode
+/// call is proven read-only (or an explicit renderer rejection before write).
+///
+/// This is the narrow terminal-recovery boundary for a provider failure that
+/// happens after the repository-owned renderer has already completed. It does
+/// not inspect report structure or content quality; it only proves that the
+/// requested artifact is complete and that no unrelated mutation is hidden in
+/// the same interrupted trace.
+pub(crate) fn completed_earnings_pdf_after_safe_opencode_trace(
+    tool_calls: &[ToolCallMade],
+) -> Option<CompletedEarningsPdf> {
+    let completed = completed_earnings_pdf(tool_calls)?;
+    let trace_is_safe = tool_calls.iter().all(|call| {
+        completed_earnings_pdf(std::slice::from_ref(call)).is_some()
+            || is_safe_failed_earnings_renderer(call)
+            || is_retry_safe_earnings_opencode_call(call)
+    });
+    trace_is_safe.then_some(completed)
+}
+
+fn is_retry_safe_earnings_opencode_call(call: &ToolCallMade) -> bool {
+    if is_known_read_only_call(call) {
+        return true;
+    }
+
+    match call.name.trim().to_ascii_lowercase().as_str() {
+        "read" | "grep" | "glob" => true,
+        "invalid" => {
+            let requested_tool = call
+                .arguments
+                .get("tool")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let error = call
+                .arguments
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim);
+            requested_tool.zip(error).is_some_and(|(tool, error)| {
+                error.starts_with(&format!("Model tried to call unavailable tool '{tool}'."))
+            })
+        }
+        _ => false,
+    }
+}
+
+/// OpenCode-specific variant of the safe earnings renderer rejection check.
+///
+/// The renderer still must prove that it rejected the report before any write.
+/// The only difference from the generic check is that OpenCode's exact built-in
+/// read records are accepted alongside Hone's canonical read-only tools.
+pub(crate) fn earnings_opencode_pdf_validation_failed_without_side_effects(
+    tool_calls: &[ToolCallMade],
+) -> bool {
+    let mut saw_safe_renderer_failure = false;
+    for call in tool_calls {
+        if is_safe_failed_earnings_renderer(call) {
+            saw_safe_renderer_failure = true;
+        } else if !is_retry_safe_earnings_opencode_call(call) {
+            return false;
+        }
+    }
+    saw_safe_renderer_failure && completed_earnings_pdf_artifact(tool_calls).is_none()
+}
+
 fn result_is_uncertain(result: &serde_json::Value) -> bool {
     if result
         .get("side_effect_status")
@@ -215,6 +338,13 @@ pub(crate) fn persistent_side_effect_state_is_uncertain(tool_calls: &[ToolCallMa
     tool_calls
         .iter()
         .any(|call| is_persistent_side_effect_call(call) && result_is_uncertain(&call.result))
+}
+
+pub(crate) fn missing_acp_terminal_tool_result(tool_calls: &[ToolCallMade]) -> bool {
+    tool_calls.iter().any(|call| {
+        call.result.get("status").and_then(|value| value.as_str())
+            == Some("unknown_after_missing_acp_result")
+    })
 }
 
 #[cfg(test)]
@@ -279,6 +409,95 @@ mod tests {
     }
 
     #[test]
+    fn completed_earnings_pdf_can_close_only_a_safe_opencode_trace() {
+        let completed = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true
+            }),
+            result: json!({
+                "success":true,
+                "render_success":true,
+                "side_effect_status":"completed",
+                "validated_report_markdown":"# CRWV 财报前瞻\n\n正文",
+                "artifacts":[{
+                    "kind":"document",
+                    "path":"/sandbox/CRWV-preview.pdf",
+                    "mime":"application/pdf"
+                }]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+        let read = ToolCallMade {
+            name: "hone_web_search".to_string(),
+            arguments: json!({"query":"CRWV earnings"}),
+            result: json!({"success":true,"results":[]}),
+            tool_call_id: Some("search".to_string()),
+        };
+        assert_eq!(
+            completed_earnings_pdf_after_safe_opencode_trace(&[read.clone(), completed.clone()])
+                .map(|pdf| pdf.path),
+            Some("/sandbox/CRWV-preview.pdf".to_string())
+        );
+
+        let unrelated_write = ToolCallMade {
+            name: "hone_portfolio".to_string(),
+            arguments: json!({"action":"add","symbol":"CRWV"}),
+            result: json!({"success":true,"side_effect_status":"completed"}),
+            tool_call_id: Some("portfolio-write".to_string()),
+        };
+        assert!(
+            completed_earnings_pdf_after_safe_opencode_trace(&[read, unrelated_write, completed])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn safe_failed_earnings_draft_comes_from_the_latest_pre_write_rejection() {
+        let older = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true,
+                "report_markdown":"# 旧草稿"
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 20 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("older-render".to_string()),
+        };
+        let latest = ToolCallMade {
+            name: "mcp__hone__skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true,
+                "report_markdown":"# 完整新草稿\n\n正文"
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 7 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("latest-render".to_string()),
+        };
+
+        assert_eq!(
+            latest_safe_failed_earnings_report_draft(&[older, latest]),
+            Some(FailedEarningsReportDraft {
+                report_markdown: "# 完整新草稿\n\n正文".to_string(),
+                render_error: "preview preflight found 7 issues".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn earnings_validation_retry_requires_an_explicit_pre_write_rejection() {
         let read_only = ToolCallMade {
             name: "hone_data_fetch".to_string(),
@@ -329,6 +548,56 @@ mod tests {
             safe_rejection,
             call("external/create_order", None, json!({"success":true}))
         ]));
+    }
+
+    #[test]
+    fn opencode_earnings_validation_retry_accepts_builtin_reads_but_not_real_shell() {
+        let read_only = ToolCallMade {
+            name: "glob".to_string(),
+            arguments: json!({"pattern":"**/SKILL.md"}),
+            result: json!({"status":"failed","isError":true,"error":"No files found"}),
+            tool_call_id: Some("glob-read".to_string()),
+        };
+        let safe_rejection = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true
+            }),
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"preview preflight found 14 issues",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+
+        assert!(!earnings_pdf_validation_failed_without_side_effects(&[
+            read_only.clone(),
+            safe_rejection.clone()
+        ]));
+        assert!(
+            earnings_opencode_pdf_validation_failed_without_side_effects(&[
+                read_only.clone(),
+                safe_rejection.clone()
+            ])
+        );
+
+        let shell = ToolCallMade {
+            name: "bash".to_string(),
+            arguments: json!({"command":"render-report"}),
+            result: json!({"status":"completed"}),
+            tool_call_id: Some("shell".to_string()),
+        };
+        assert!(
+            !earnings_opencode_pdf_validation_failed_without_side_effects(&[
+                read_only,
+                safe_rejection,
+                shell
+            ])
+        );
     }
 
     #[test]
@@ -394,6 +663,17 @@ mod tests {
         )];
         assert!(response_has_persistent_side_effect(&calls));
         assert!(persistent_side_effect_state_is_uncertain(&calls));
+    }
+
+    #[test]
+    fn recognizes_missing_terminal_tool_result_for_read_only_calls() {
+        let calls = vec![call(
+            "data_fetch",
+            None,
+            json!({"status":"unknown_after_missing_acp_result", "isError":true}),
+        )];
+        assert!(missing_acp_terminal_tool_result(&calls));
+        assert!(!persistent_side_effect_state_is_uncertain(&calls));
     }
 
     #[test]
@@ -495,5 +775,42 @@ mod tests {
             call("data_fetch", None, json!({})),
             call("mcp__filesystem__write_file", None, json!({})),
         ]));
+    }
+
+    #[test]
+    fn earnings_opencode_retry_accepts_only_builtin_reads_and_rejected_unavailable_tools() {
+        let safe_calls = vec![
+            call("hone_data_fetch", None, json!({"success":true})),
+            call("read", None, json!({"status":"completed"})),
+            call("grep", None, json!({"status":"completed"})),
+            call("glob", None, json!({"status":"completed"})),
+            ToolCallMade {
+                name: "invalid".to_string(),
+                arguments: json!({
+                    "tool":"bash",
+                    "error":"Model tried to call unavailable tool 'bash'. Available tools: read, grep."
+                }),
+                result: json!({"status":"completed"}),
+                tool_call_id: Some("call_invalid".to_string()),
+            },
+        ];
+        assert!(response_has_only_retry_safe_earnings_opencode_calls(
+            &safe_calls
+        ));
+
+        for unsafe_call in [
+            call("bash", None, json!({"status":"completed"})),
+            call("task", None, json!({"status":"completed"})),
+            ToolCallMade {
+                name: "invalid".to_string(),
+                arguments: json!({"tool":"bash","error":"arguments were malformed"}),
+                result: json!({"status":"completed"}),
+                tool_call_id: Some("call_ambiguous_invalid".to_string()),
+            },
+        ] {
+            assert!(!response_has_only_retry_safe_earnings_opencode_calls(&[
+                unsafe_call
+            ]));
+        }
     }
 }

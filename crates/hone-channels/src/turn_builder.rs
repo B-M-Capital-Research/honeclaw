@@ -1,4 +1,4 @@
-use hone_core::{ActorIdentity, HoneResult};
+use hone_core::{ActorIdentity, HoneError, HoneResult};
 
 use crate::HoneBotCore;
 use chrono::{DateTime, FixedOffset};
@@ -22,6 +22,110 @@ pub(crate) struct PromptTurnInput {
     pub(crate) system_prompt: String,
     pub(crate) runtime_input: String,
     pub(crate) answer_time_beijing: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EarningsWorkflowMode {
+    Preview,
+    Analysis,
+}
+
+impl EarningsWorkflowMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Preview => "preview",
+            Self::Analysis => "analysis",
+        }
+    }
+}
+
+const EARNINGS_PREVIEW_PROMPT_HEADING: &str = "\n## Preview — original V2 prompt\n";
+const EARNINGS_ANALYSIS_PROMPT_HEADING: &str = "\n## Analysis — original V2 prompt\n";
+const EARNINGS_PDF_DELIVERY_HEADING: &str = "\n## PDF delivery\n";
+
+/// Dedicated earnings prompts define one self-contained turn. The finished
+/// report remains in ordinary conversation history, but the workflow prompt
+/// must never become durable follow-up context for this or another mode.
+pub(crate) fn skill_prompt_is_turn_scoped(skill_id: &str) -> bool {
+    skill_id == "earnings-research"
+}
+
+fn parse_earnings_workflow_mode(user_input: &str) -> HoneResult<EarningsWorkflowMode> {
+    let modes = user_input
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("mode:"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    match modes.as_slice() {
+        ["preview"] => Ok(EarningsWorkflowMode::Preview),
+        ["analysis"] => Ok(EarningsWorkflowMode::Analysis),
+        [] => Err(HoneError::Config(
+            "earnings-research 必须由结构化入口提供唯一 mode: preview|analysis".to_string(),
+        )),
+        _ => Err(HoneError::Config(
+            "earnings-research mode 缺失、重复或冲突，拒绝混合财报前瞻与财报分析".to_string(),
+        )),
+    }
+}
+
+fn select_earnings_workflow_prompt(invoked_prompt: &str, user_input: &str) -> HoneResult<String> {
+    let mode = parse_earnings_workflow_mode(user_input)?;
+    let preview_start = invoked_prompt
+        .find(EARNINGS_PREVIEW_PROMPT_HEADING)
+        .ok_or_else(|| {
+            HoneError::Config("earnings-research 缺少 Preview prompt 边界".to_string())
+        })?;
+    let analysis_start = invoked_prompt
+        .find(EARNINGS_ANALYSIS_PROMPT_HEADING)
+        .ok_or_else(|| {
+            HoneError::Config("earnings-research 缺少 Analysis prompt 边界".to_string())
+        })?;
+    let pdf_start = invoked_prompt
+        .find(EARNINGS_PDF_DELIVERY_HEADING)
+        .ok_or_else(|| HoneError::Config("earnings-research 缺少 PDF delivery 边界".to_string()))?;
+    if !(preview_start < analysis_start && analysis_start < pdf_start) {
+        return Err(HoneError::Config(
+            "earnings-research mode prompt 边界顺序无效".to_string(),
+        ));
+    }
+
+    let (selected_prompt, excluded_mode) = match mode {
+        EarningsWorkflowMode::Preview => (
+            &invoked_prompt[preview_start..analysis_start],
+            EarningsWorkflowMode::Analysis,
+        ),
+        EarningsWorkflowMode::Analysis => (
+            &invoked_prompt[analysis_start..pdf_start],
+            EarningsWorkflowMode::Preview,
+        ),
+    };
+    Ok(format!(
+        "{}\n\n【Server-selected Earnings Workflow Mode】\n\
+         mode: {}\n\
+         只执行这一套独立工作流。不得读取、执行、补写或拼接 {} 模式的 Prompt 或章节。\n\
+         本段是工作流路由，不是报告内容门禁。\n{}{}",
+        &invoked_prompt[..preview_start],
+        mode.as_str(),
+        excluded_mode.as_str(),
+        selected_prompt,
+        &invoked_prompt[pdf_start..]
+    ))
+}
+
+fn render_selected_skill_prompt(
+    runtime: &hone_tools::SkillRuntime,
+    skill: &hone_tools::skill_runtime::SkillDefinition,
+    session_id: &str,
+    args: Option<&str>,
+    user_input: &str,
+) -> HoneResult<String> {
+    let invoked_prompt = runtime.render_invocation_prompt(skill, session_id, args);
+    if skill.id == "earnings-research" {
+        select_earnings_workflow_prompt(&invoked_prompt, user_input)
+    } else {
+        Ok(invoked_prompt)
+    }
 }
 
 pub(crate) struct PromptTurnBuilder<'a> {
@@ -167,8 +271,13 @@ impl<'a> PromptTurnBuilder<'a> {
                 &extract_possible_file_paths(user_input),
                 &stage_constraints,
             ) {
-                let invoked_prompt =
-                    runtime.render_invocation_prompt(&skill, self.session_id, None);
+                let invoked_prompt = render_selected_skill_prompt(
+                    &runtime,
+                    &skill,
+                    self.session_id,
+                    None,
+                    user_input,
+                )?;
                 let tail = lines.iter().skip(1).copied().collect::<Vec<_>>().join("\n");
                 let runtime_input =
                     compose_invoked_skill_runtime_input(&invoked_prompt, Some(tail.trim()));
@@ -193,7 +302,8 @@ impl<'a> PromptTurnBuilder<'a> {
         if let Some(skill) =
             runtime.resolve_user_invocable_direct_for_stage(skill_id, &stage_constraints)
         {
-            let invoked_prompt = runtime.render_invocation_prompt(&skill, self.session_id, args);
+            let invoked_prompt =
+                render_selected_skill_prompt(&runtime, &skill, self.session_id, args, user_input)?;
             return Ok(Some(SlashSkillExpansion {
                 raw_input: user_input.to_string(),
                 invoked_prompt: invoked_prompt.clone(),
@@ -298,6 +408,29 @@ pub(crate) fn compose_invoked_skill_runtime_input(
 mod tests {
     use super::*;
     use crate::prompt::PromptBundle;
+
+    #[test]
+    fn earnings_workflow_mode_selection_excludes_the_inactive_repository_prompt() {
+        let skill = include_str!("../../../skills/earnings-research/SKILL.md");
+
+        let preview = select_earnings_workflow_prompt(skill, "mode: preview\ncompany: INTC")
+            .expect("select preview prompt");
+        assert!(preview.contains(EARNINGS_PREVIEW_PROMPT_HEADING));
+        assert!(!preview.contains(EARNINGS_ANALYSIS_PROMPT_HEADING));
+        assert!(preview.contains("# 附录：近期新闻时间线分析"));
+        assert!(!preview.contains("# 10. 结论"));
+        assert!(preview.contains(EARNINGS_PDF_DELIVERY_HEADING));
+
+        let analysis = select_earnings_workflow_prompt(skill, "mode: analysis\ncompany: INTC")
+            .expect("select analysis prompt");
+        assert!(!analysis.contains(EARNINGS_PREVIEW_PROMPT_HEADING));
+        assert!(analysis.contains(EARNINGS_ANALYSIS_PROMPT_HEADING));
+        assert!(!analysis.contains("# 附录：近期新闻时间线分析"));
+        assert!(analysis.contains("# 10. 结论"));
+        assert!(analysis.contains(EARNINGS_PDF_DELIVERY_HEADING));
+        assert!(skill_prompt_is_turn_scoped("earnings-research"));
+        assert!(!skill_prompt_is_turn_scoped("stock_research"));
+    }
 
     #[test]
     fn runtime_input_with_recv_extra_keeps_current_turn_last() {

@@ -3,7 +3,7 @@
 - title: Stripe 支付宝 / 微信单次年费通道
 - status: `blocked`
 - created_at: `2026-08-06`
-- updated_at: `2026-08-06`
+- updated_at: `2026-08-13`
 - owner: `Codex + owner`
 - related_files:
   - `memory/src/billing.rs`
@@ -23,8 +23,9 @@
 ## Goal
 
 在不改变现有 USD 199.99/year 信用卡自动续费订阅的前提下，新增 USD
-229.99/12 个月的 Stripe 单次年费通道。该通道允许支付宝和微信支付，明确
-不自动续费，并由服务端验证的 paid webhook 写入固定期限权益。
+229.99/12 个月的 Stripe 单次年费通道。该通道在 Stripe 生产审批和实时页面
+证明通过后可开放支付宝和微信支付，明确不自动续费，并由服务端验证的 paid
+webhook 写入固定期限权益。
 
 ## Scope
 
@@ -78,6 +79,9 @@
   webhook 到达顺序累计。
 - 支付方式会受账户地区、币种、Payment Method Configuration 与买家地区动态
   过滤；必须用 Stripe API 对 Session 实际配置与官方页面双重验收。
+- 公开购买页不得从“期望开启”推导“当前支持”。服务端公开配置必须显式返回
+  每个 offer 可宣传的支付方式；支付宝、微信的宣传开关默认关闭，只有 live API
+  `available=true` 且新的 live hosted Checkout 实际显示后才能开启。
 - 不在未经 owner 再次明确授权的情况下提交 live USD 229.99 支付。
 
 ## Current External State
@@ -101,3 +105,14 @@
 - The live Checkout currently exposes card only. This correctly matches the
   Stripe API/Dashboard state while Alipay and WeChat Pay remain pending;
   wallet-visible live Checkout acceptance is the only remaining task.
+- On 2026-08-13 the live API was read again and both methods still returned
+  `available=false`. Revision `b905130158e12138fc1170c7de7e1adb54f0f08d`
+  makes the public offer copy server-authoritative and fail-closed: both offers
+  advertise card only unless an operator separately enables a proven wallet.
+- Exact revision `e4e1e3e9df4296c25b5a8561f303c19efd5ae867` is live from
+  immutable GHCR digest
+  `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351`.
+  Production config reports card true and both wallets false for both offers;
+  external Chrome showed exactly two card-only claims and no wallet claim.
+  Evidence is retained outside Git as
+  `30-live-card-only-offer-copy-20260813.png`.

@@ -1,7 +1,7 @@
 # Runbook: Stripe Billing
 
 - status: `in_progress`
-- last_updated: `2026-08-06`
+- last_updated: `2026-08-13`
 - owner: `Codex`
 
 ## Purpose
@@ -9,7 +9,8 @@
 Operate HONE's international membership as two server-owned Stripe offers:
 USD 199.99/year auto-renewing subscription and USD 229.99/12 months one-time
 annual pass. The one-time pass can use card, Alipay, or WeChat Pay and never
-auto-renews.
+auto-renews, but a wallet is advertised only after Stripe live approval and a
+fresh hosted live Checkout visibly proves it is available.
 `billing_entitlements` is the application-access truth source, while Stripe is
 the only external payment authority. A redirect, query parameter, email
 login, or frontend state never grants paid access.
@@ -49,6 +50,8 @@ HONE_STRIPE_PRODUCT_ID=prod_V0FIIUS22IGljn
 HONE_STRIPE_SUBSCRIPTION_PRICE_ID=price_1U0Eo6EK7h1dD4JHDrhlnPw8
 HONE_STRIPE_FIXED_TERM_PRICE_ID=price_1U1M0rEK7h1dD4JHbKBpIkZ2
 HONE_STRIPE_PUBLIC_BASE_URL=https://hone-claw.com/
+HONE_STRIPE_ADVERTISE_ALIPAY=false
+HONE_STRIPE_ADVERTISE_WECHAT_PAY=false
 HONE_BILLING_GRACE_DAYS=7
 ```
 
@@ -57,6 +60,15 @@ runtime rejects test keys. Both Price IDs are configured server-side and must
 be distinct. The subscription Price is recurring yearly at USD 199.99; the
 fixed-term Price is one-time at USD 229.99. The browser must never select or
 override catalog values.
+
+The two `HONE_STRIPE_ADVERTISE_*` variables control public offer copy only;
+they do not enable Stripe methods. Keep them false unless both of these checks
+pass for the individual method: the live Payment Method Configuration API says
+`available=true`, and a newly created hosted live fixed-term Checkout visibly
+renders it. Change only the proven method's flag, restart the service, read back
+`GET /api/public/billing/config`, and re-open `/activate`. If either proof later
+fails, set the corresponding flag false immediately; Checkout itself remains
+Stripe-authoritative throughout.
 
 ### Environment boundaries
 
@@ -100,7 +112,8 @@ Checkout. Never print the token, code, or recipient address during diagnosis.
 - Live wallet configuration: Alipay and WeChat Pay both have
   `display_preference=on`; Stripe currently reports `available=false` and the
   Dashboard shows `pending approval`, so live Checkout must not be described as
-  wallet-ready until Stripe changes both methods to available
+  wallet-ready until Stripe changes both methods to available. This was read
+  again from the live API on 2026-08-13; both public-copy flags remain false
 - Webhook destination: `we_1U0c0XEK7h1dD4JHrvQ9CRaH`
 - Webhook name: `HONE production billing`
 - API version: `2026-07-29.dahlia`
@@ -314,6 +327,16 @@ hosted confirmation surfaces cannot be proven by a fabricated webhook.
   `29-live-fixed-checkout-payment-methods.png` in the Stripe acceptance
   directory. The live screenshots exclude email, verification codes, payment
   credentials, Checkout identifiers, and secrets.
+- Public-copy correction `b905130158e12138fc1170c7de7e1adb54f0f08d`
+  separates Stripe's dynamic Checkout methods from HONE's public claims. Both
+  public offers default to `card=true`, `alipay=false`, `wechat_pay=false`;
+  exact revision `e4e1e3e9df4296c25b5a8561f303c19efd5ae867` is deployed from
+  Runtime Image run `31675804261` and immutable digest
+  `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351`.
+  Production config, Cloudflare Pages chunk inspection and external Chrome all
+  proved two card-only claims and no wallet claim. Redacted evidence is retained
+  outside Git as `30-live-card-only-offer-copy-20260813.png`; no form or payment
+  was submitted.
 
 ## Rollback
 

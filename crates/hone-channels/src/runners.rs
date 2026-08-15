@@ -15,7 +15,9 @@ pub(crate) use gemini_cli::GeminiCliRunner;
 #[cfg(test)]
 pub(crate) use gemini_cli::stream_gemini_prompt;
 pub(crate) use hone_cloud::HoneCloudRunner;
-pub(crate) use opencode_acp::OpencodeAcpRunner;
+pub(crate) use opencode_acp::{
+    OpencodeAcpRunner, is_opencode_corrupted_thought_signature_error_text,
+};
 pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,

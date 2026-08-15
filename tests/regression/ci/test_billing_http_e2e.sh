@@ -362,6 +362,11 @@ assert config == {
             "currency": "usd",
             "term_months": 12,
             "auto_renews": True,
+            "advertised_payment_methods": {
+                "card": True,
+                "alipay": False,
+                "wechat_pay": False,
+            },
         },
         "fixed_term": {
             "enabled": True,
@@ -369,6 +374,11 @@ assert config == {
             "currency": "usd",
             "term_months": 12,
             "auto_renews": False,
+            "advertised_payment_methods": {
+                "card": True,
+                "alipay": False,
+                "wechat_pay": False,
+            },
         },
     },
     "purchases_allowed_on_this_client": True,

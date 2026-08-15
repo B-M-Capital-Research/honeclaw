@@ -5485,6 +5485,16 @@ fn consume_active_business_retry(failures: &mut u32) -> bool {
     true
 }
 
+fn is_recoverable_openai_compatible_protocol_error_text(text: &str) -> bool {
+    let lowered = text.to_ascii_lowercase();
+    lowered.contains("tool call result does not follow tool call")
+        || lowered.contains("stream ended before done")
+        || (lowered.contains("stream transport error")
+            && (lowered.contains("error decoding response body")
+                || lowered.contains("response body decode")
+                || lowered.contains("decode failure")))
+}
+
 fn failed_agent_response(
     tool_calls_made: Vec<ToolCallMade>,
     iterations: u32,
@@ -6402,6 +6412,14 @@ impl Agent for FunctionCallingAgent {
                                 && tool_calls_made.iter().all(|call| {
                                     tool_call_is_known_read_only(&call.name, &call.arguments)
                                 });
+                            let tools_disabled_recovery =
+                                is_recoverable_openai_compatible_protocol_error_text(&error_text)
+                                    && self.agent_owned_finance_loop
+                                    && blocked_tool_finalization.is_none()
+                                    && !tool_calls_made.is_empty()
+                                    && tool_calls_made.iter().all(|call| {
+                                        tool_call_is_known_read_only(&call.name, &call.arguments)
+                                    });
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
@@ -6412,8 +6430,9 @@ impl Agent for FunctionCallingAgent {
                                 serde_json::json!({
                                     "iteration": iterations,
                                     "has_tools": true,
-                                    "retrying": context_overflow_recovery,
+                                    "retrying": context_overflow_recovery || tools_disabled_recovery,
                                     "context_overflow_bounded_recovery": context_overflow_recovery,
+                                    "tools_disabled_recovery": tools_disabled_recovery,
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -6422,6 +6441,10 @@ impl Agent for FunctionCallingAgent {
                             );
                             if context_overflow_recovery {
                                 context_overflow_finalization = true;
+                                continue;
+                            }
+                            if tools_disabled_recovery {
+                                blocked_tool_finalization = Some(error_text);
                                 continue;
                             }
                             return AgentResponse {
@@ -17387,6 +17410,135 @@ mod tests {
             Some(true)
         );
         assert_eq!(error.metadata["terminal_authorized"].as_bool(), Some(false));
+    }
+
+    #[tokio::test]
+    async fn initial_protocol_mismatch_recovers_with_a_tools_disabled_answer() {
+        let answer = "数据时间：北京时间 2026-08-13 20:00；行情口径：已取得资料\n\n根据已完成的身份检索继续收口。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ])
+        .failing_on_stream_call_with_error(
+            2,
+            "LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)",
+        );
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("initial-protocol-mismatch-recovery".to_string());
+
+        let response = agent.run("分析 CRWV", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 0]
+        );
+        let records = audit.records.lock().expect("audit records lock");
+        let error = records
+            .iter()
+            .find(|record| {
+                record.error.as_deref().is_some_and(|message| {
+                    message.contains("tool call result does not follow tool call")
+                })
+            })
+            .expect("protocol mismatch audit");
+        assert_eq!(error.metadata["retrying"].as_bool(), Some(true));
+        assert_eq!(
+            error.metadata["tools_disabled_recovery"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            error.metadata["context_overflow_bounded_recovery"].as_bool(),
+            Some(false)
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_stream_decode_failure_recovers_with_a_tools_disabled_answer() {
+        let answer = "数据时间：北京时间 2026-08-13 20:30；行情口径：已取得资料\n\n已基于当前轮只读证据完成收口。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_nvda".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NVDA","entity_route":"nvda","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ])
+        .failing_on_stream_call_with_error(
+            2,
+            "LLM 错误: stream transport error: error decoding response body",
+        );
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("initial-stream-decode-recovery".to_string());
+
+        let response = agent.run("分析 NVDA", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 0]
+        );
+        let records = audit.records.lock().expect("audit records lock");
+        let error = records
+            .iter()
+            .find(|record| {
+                record
+                    .error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("error decoding response body"))
+            })
+            .expect("decode failure audit");
+        assert_eq!(error.metadata["retrying"].as_bool(), Some(true));
+        assert_eq!(
+            error.metadata["tools_disabled_recovery"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            error.metadata["context_overflow_bounded_recovery"].as_bool(),
+            Some(false)
+        );
     }
 
     #[tokio::test]

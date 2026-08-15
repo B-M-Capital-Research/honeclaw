@@ -9,6 +9,46 @@
 
 ## 最新进展
 
+- `2026-08-15 10:03 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-15 06:01-10:03 CST`。
+    - 08:30 CST event-engine digest sink 记录 2 条 `web push broadcast failed: channel closed`，随后进入 2 条 `[dryrun sink]` fallback；代表样本为 Web actor 的盘前摘要。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，06:01 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮规模较小，但仍证明 Web push channel closed 后会退到 dryrun sink，且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
+- `2026-08-14 10:04 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-14 06:00-10:04 CST`。
+    - 08:31 CST event-engine digest sink 记录 1 条 `web push broadcast failed: channel closed`，随后进入 1 条 `[dryrun sink]` fallback；代表样本为 Web actor 的盘前摘要。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，06:00 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮规模较小，但仍证明 Web push channel closed 后会退到 dryrun sink，且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
+- `2026-08-12 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-12 06:01-10:02 CST`。
+    - 08:30-08:31 CST event-engine digest sink 记录 4 条 `web push broadcast failed: channel closed`，随后进入 6 条 `[dryrun sink]` fallback；代表样本为多个 Web actor 的盘前摘要。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，06:01 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮继续证明 Web push channel closed 后会退到 dryrun sink，且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
+- `2026-08-11 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-11 18:01-22:02 CST`。
+    - 20:31 CST event-engine digest sink 记录 1 条 `web push broadcast failed: channel closed`，随后进入 1 条 `[dryrun sink]` fallback；代表样本为 Web actor 的盘前摘要。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，18:01 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮规模较小，但仍证明 Web push channel closed 后会退到 dryrun sink，且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
+- `2026-08-10 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：`2026-08-10 18:00-22:02 CST`。
+    - 近窗有 1 条 `web push broadcast failed: channel closed`，随后出现 1 条 `[dryrun sink]` fallback；代表样本为 20:31 CST event-engine digest sink 对 Web push channel closed 后退到 dryrun sink。
+  - `data/sessions.sqlite3`
+    - `web_push_messages.max(created_at)=2026-07-19T13:30:44.965959+08:00`，18:00 CST 后 `web_push_messages` 增量为 0。
+  - 判断：本轮规模较小，但仍证明 Web push channel closed 后会退到 dryrun sink，且本地 Web push 台账不推进；维持功能性 `P2 / New`，非 P1。
+
 - `2026-08-10 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：`2026-08-10 06:00-10:02 CST`。
@@ -248,3 +288,13 @@ Web 用户创建持仓新闻晚报 -> 用户询问如何在手机收到提醒 ->
 
 1. 若保持仅会话内消息：后续 UI 可继续补显式说明，但当前 prompt 与台账已先阻断错误承诺。
 2. 若要支持手机提醒：新增 Web Push/App Push capability、订阅状态检查与投递台账字段，区分 `session_persisted`、`sse_event_sent`、`system_push_sent`、`system_push_failed`。
+
+## 最新运行态复核（2026-08-11 10:00 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-11 06:00-10:00 CST。
+  - 同窗检出 8 条 `web push broadcast failed: channel closed`，随后 17 条 `[dryrun sink]` fallback 仍写出 digest / body preview。
+  - `data/sessions.sqlite3` 同窗 `web_push_messages.created_at` 增量为 0，`web_push_messages.max(created_at)` 仍停在 `2026-07-19T13:30:44.965959+08:00`。
+- 本轮判断
+  - 这不是 2026-05 原始问题中的“assistant 承诺手机系统通知”复发；旧能力边界提示仍可视为已修。
+  - 但 Web 投递链路仍出现 channel closed 后 dryrun fallback，且本地 Web push 台账不追入，会误导送达审计和补发判断；维持功能性 `P2 / New`，非 P1。

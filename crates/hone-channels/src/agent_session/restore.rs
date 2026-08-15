@@ -19,8 +19,8 @@
 use hone_core::agent::{AgentContext, AgentMessage, RESTORED_INVOKED_SKILL_PROMPT_METADATA_KEY};
 use hone_memory::session::{Session, SessionMessage};
 use hone_memory::{
-    SessionStorage, assistant_tool_calls_from_metadata, has_compact_skill_snapshot,
-    invoked_skills_from_metadata, message_is_compact_boundary, message_is_compact_summary,
+    SessionStorage, assistant_tool_calls_from_metadata, invoked_skills_from_metadata,
+    message_is_compact_boundary, message_is_compact_skill_snapshot, message_is_compact_summary,
     message_is_slash_skill, restore_tool_message, select_messages_after_compact_boundary,
     session_message_text, session_message_to_agent_messages,
 };
@@ -32,6 +32,16 @@ use super::helpers::{
 
 const RECENT_INTERACTIVE_USER_REFERENCE_LIMIT: usize = 4;
 
+fn message_is_turn_scoped_skill_snapshot(message: &SessionMessage) -> bool {
+    message_is_compact_skill_snapshot(message.metadata.as_ref())
+        && message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("skill_name"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(crate::turn_builder::skill_prompt_is_turn_scoped)
+}
+
 fn restore_invoked_skill_prompts(
     context: &mut AgentContext,
     session: &Session,
@@ -40,6 +50,7 @@ fn restore_invoked_skill_prompts(
     for skill in invoked_skills_from_metadata(&session.metadata)
         .into_iter()
         .filter(|skill| !skill.prompt.trim().is_empty())
+        .filter(|skill| !crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_name))
         .filter(|skill| {
             skill_runtime
                 .map(|runtime| {
@@ -90,7 +101,10 @@ pub(super) fn restore_context_from_snapshot(
     }
 
     let messages = select_messages_after_compact_boundary(&session.messages, max_messages);
-    let has_skill_snapshots = has_compact_skill_snapshot(&messages);
+    let has_skill_snapshots = messages.iter().any(|message| {
+        message_is_compact_skill_snapshot(message.metadata.as_ref())
+            && !message_is_turn_scoped_skill_snapshot(message)
+    });
     if !has_skill_snapshots {
         restore_invoked_skill_prompts(&mut restored_context, session, skill_runtime);
     }
@@ -98,7 +112,8 @@ pub(super) fn restore_context_from_snapshot(
     for message in messages {
         match message.role.as_str() {
             "user" => {
-                if !message_is_slash_skill(message.metadata.as_ref())
+                if !message_is_turn_scoped_skill_snapshot(message)
+                    && !message_is_slash_skill(message.metadata.as_ref())
                     && !message_is_compact_summary(message.metadata.as_ref())
                 {
                     let content = session_message_text(message);

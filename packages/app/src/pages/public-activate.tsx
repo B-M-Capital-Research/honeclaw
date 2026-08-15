@@ -59,6 +59,18 @@ export default function PublicActivatePage() {
       ? stripe?.subscription.enabled === true
       : stripe?.fixed_term.enabled === true;
   });
+  const advertisedPaymentMethods = (offer: StripeCheckoutOffer) => {
+    const methods = config()?.stripe[offer].advertised_payment_methods;
+    if (!methods) return "";
+    const labels = [
+      methods.card ? CONTENT.chat_page.activate_page.payment_method_card : "",
+      methods.alipay ? CONTENT.chat_page.activate_page.payment_method_alipay : "",
+      methods.wechat_pay ? CONTENT.chat_page.activate_page.payment_method_wechat_pay : "",
+    ].filter(Boolean);
+    return `${CONTENT.chat_page.activate_page.payment_methods_prefix}${labels.join(
+      CONTENT.chat_page.activate_page.payment_methods_separator,
+    )}`;
+  };
   const activationSteps = createMemo(() => {
     if (!purchaseAvailable()) return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_login, CONTENT.chat_page.activate_page.step_restore];
     return [CONTENT.chat_page.activate_page.step_verify, CONTENT.chat_page.activate_page.step_pay, CONTENT.chat_page.activate_page.step_confirm];
@@ -218,7 +230,7 @@ export default function PublicActivatePage() {
                     formatAmount(config()?.stripe.subscription.amount_minor),
                   )}
                   description={CONTENT.chat_page.activate_page.subscription_desc}
-                  methods={CONTENT.chat_page.activate_page.subscription_methods}
+                  methods={advertisedPaymentMethods("subscription")}
                   onSelect={setSelectedOffer}
                 />
                 <OfferOption
@@ -231,7 +243,7 @@ export default function PublicActivatePage() {
                     formatAmount(config()?.stripe.fixed_term.amount_minor),
                   )}
                   description={CONTENT.chat_page.activate_page.fixed_term_desc}
-                  methods={CONTENT.chat_page.activate_page.fixed_term_methods}
+                  methods={advertisedPaymentMethods("fixed_term")}
                   onSelect={setSelectedOffer}
                 />
               </fieldset>

@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-11
-状态：有 14 个活跃任务
+最后更新：2026-08-15
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -38,17 +38,12 @@
 - **Stripe 支付宝 / 微信单次年费通道**
   - 状态：`blocked`
   - 计划：`docs/current-plans/stripe-wallet-one-time-pass.md`
-  - 摘要：双 entitlement、单次 Checkout、退款语义、全仓验证、官方测试模式支付宝/微信付款、精确 GHCR/GCE 部署和生产 USD 229.99 Checkout 验收均已完成；生产 Checkout 当前只有银行卡，Stripe Dashboard/API 仍将支付宝与微信标为 `pending approval` / `available=false`，待外部审批通过后做最后一次无付款页面验收并归档
+  - 摘要：双 entitlement、单次 Checkout、退款语义和测试模式钱包付款均已完成；2026-08-13 再次读取生产 Stripe API，支付宝与微信仍为 `available=false`，因此生产 `/activate` 已改为只按服务端保守声明展示当前可用方式，两个产品均只写银行卡；精确 GHCR/GCE 和外部 Chrome 截图验收通过，最终钱包可见性仍待外部审批
 
 - **机构化公司长期覆盖与财报研究闭环**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/institutional-company-coverage.md`
   - 摘要：前五个切口已推送，覆盖结构化财报卡、actor 主线隔离、同文档去重、Grok 4.5、A/B/C 订阅、24 个 SEC 样本连续四季对账、季度材料身份和 SQLite 可恢复任务。第六切口也已完成并通过全仓门禁：8 份 AMD/MSFT/QCOM/CAT 官方 transcript 两轮全量 Grok 回放均 8/8，电话会共享事实与 actor 问题/承诺对账分层，FMP 错绑 ticker 被拒绝，未来承诺只有 `fulfilled + evidence` 才能关闭；第六切口成本约 `$0.850`。后续仍需人工盲评、专业投资者 UI、真实 A 级画像、合法可持续的自动全文来源与一个完整前瞻财报季
-
-- **Earnings Workflow 内容一致性与新闻深度修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/earnings-workflow-content-parity.md`
-  - 摘要：以线上 Dify `V2-财报前瞻` 主 prompt 与“公司近期新闻时间线分析模块”为直接基线，修复中性带浮点边界、恢复核心结论开头、加强机构逐家比较和每条新闻的短期/长期/产品竞争力传导，并重新完成 AAOI 生产内容/PDF 验收
 
 - **Public Admin Usage 数据探索与统一上线**
   - 状态：`in_progress`

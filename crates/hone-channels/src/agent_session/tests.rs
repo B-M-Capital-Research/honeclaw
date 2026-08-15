@@ -1776,6 +1776,54 @@ fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite()
         Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
     );
 
+    let renderer_error = "earnings workflow ended without a successful referenced PDF artifact";
+    let mut safe_renderer_failure = AgentRunnerResult {
+        response: AgentResponse {
+            content: String::new(),
+            tool_calls_made: vec![
+                ToolCallMade {
+                    name: "glob".to_string(),
+                    arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                    result: serde_json::json!({
+                        "status":"failed",
+                        "isError":true,
+                        "error":"No files found"
+                    }),
+                    tool_call_id: Some("safe_glob".to_string()),
+                },
+                ToolCallMade {
+                    name: "hone_skill_tool".to_string(),
+                    arguments: serde_json::json!({
+                        "skill_name":"earnings-research",
+                        "execute_script":true
+                    }),
+                    result: serde_json::json!({
+                        "success":false,
+                        "render_success":false,
+                        "side_effect_status":"not_started",
+                        "render_error":"preview preflight found 14 issues",
+                        "artifacts":[]
+                    }),
+                    tool_call_id: Some("safe_renderer".to_string()),
+                },
+            ],
+            iterations: 1,
+            success: false,
+            error: Some(renderer_error.to_string()),
+        },
+        streamed_output: false,
+        committed_visible_prefix: None,
+        terminal_error_emitted: false,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    };
+
+    normalize_persistent_trace_failure(&mut safe_renderer_failure);
+    assert_eq!(
+        safe_renderer_failure.response.error.as_deref(),
+        Some(renderer_error)
+    );
+
     let original_content = "must remain the runner-owned draft";
     let mut committed_draft = AgentRunnerResult {
         response: AgentResponse {
@@ -4498,7 +4546,16 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     assert!(runtime_input.contains(user_task));
     assert!(runtime_input.contains("【Session 上下文】"));
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
-    assert!(system_prompt.contains("不得输出数据时间或行情口径"));
+    assert!(system_prompt.contains("BamangResearch 原 Workflow 和原 prompt"));
+    assert!(system_prompt.contains("mode 是唯一工作流分支"));
+    assert!(system_prompt.contains("preview 只执行财报前瞻与近期新闻"));
+    assert!(system_prompt.contains("analysis 只执行财报分析"));
+    assert!(system_prompt.contains("不得读取、执行或拼接另一模式"));
+    assert!(system_prompt.contains("重要事实缺少或相互矛盾时"));
+    assert!(system_prompt.contains("不得为了证明出处而把英文"));
+    assert!(system_prompt.contains("来源可自然内联或集中列在文末"));
+    assert!(!system_prompt.contains("evidence_manifest"));
+    assert!(system_prompt.contains("不要求 preview_audit、固定新闻条数"));
     assert_eq!(execution.runner_request.preloaded_evidence_calls, 0);
     assert_eq!(
         execution
@@ -4596,12 +4653,45 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
         AgentRunnerResult {
             response: AgentResponse {
                 content: String::new(),
-                tool_calls_made: vec![ToolCallMade {
-                    name: "hone_data_fetch".to_string(),
-                    arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
-                    result: serde_json::json!({"success":true,"data":[]}),
-                    tool_call_id: Some("call_read_only".to_string()),
-                }],
+                tool_calls_made: vec![
+                    ToolCallMade {
+                        name: "glob".to_string(),
+                        arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                        result: serde_json::json!({
+                            "status":"failed",
+                            "isError":true,
+                            "error":"No files found"
+                        }),
+                        tool_call_id: Some("call_opencode_glob".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "hone_data_fetch".to_string(),
+                        arguments: serde_json::json!({"data_type":"earnings","symbol":"AAOI"}),
+                        result: serde_json::json!({"success":true,"data":[]}),
+                        tool_call_id: Some("call_read_only".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "read".to_string(),
+                        arguments: serde_json::json!({"filePath":"/tmp/tool-output"}),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_opencode_read".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "grep".to_string(),
+                        arguments: serde_json::json!({"pattern":"2026-06-30"}),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_opencode_grep".to_string()),
+                    },
+                    ToolCallMade {
+                        name: "invalid".to_string(),
+                        arguments: serde_json::json!({
+                            "tool":"bash",
+                            "error":"Model tried to call unavailable tool 'bash'. Available tools: read, grep."
+                        }),
+                        result: serde_json::json!({"status":"completed"}),
+                        tool_call_id: Some("call_unavailable_bash".to_string()),
+                    },
+                ],
                 iterations: 1,
                 success: false,
                 error: Some(
@@ -4721,6 +4811,16 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
                 content: String::new(),
                 tool_calls_made: vec![
                     ToolCallMade {
+                        name: "glob".to_string(),
+                        arguments: serde_json::json!({"pattern":"**/SKILL.md"}),
+                        result: serde_json::json!({
+                            "status":"failed",
+                            "isError":true,
+                            "error":"No files found"
+                        }),
+                        tool_call_id: Some("call_opencode_glob".to_string()),
+                    },
+                    ToolCallMade {
                         name: "hone_data_fetch".to_string(),
                         arguments: serde_json::json!({
                             "data_type":"earnings",
@@ -4734,7 +4834,8 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
                         arguments: serde_json::json!({
                             "skill_name":"earnings-research",
                             "execute_script":true,
-                            "script":"scripts/render_report_pdf.py"
+                            "script":"scripts/render_report_pdf.py",
+                            "report_markdown":"# AAOI公司财报前瞻分析\n\n待修正的完整报告"
                         }),
                         result: serde_json::json!({
                             "success":false,
@@ -4832,6 +4933,15 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
             .all(Vec::is_empty),
         "the recovery must remain isolated from prior chat history"
     );
+    let runtime_inputs = recorded_runtime_inputs
+        .lock()
+        .expect("recorded runtime inputs lock");
+    assert_eq!(runtime_inputs.len(), 2);
+    assert!(runtime_inputs[0].contains("【本轮用户输入】\n请为 AAOI 生成财报前瞻"));
+    assert!(runtime_inputs[1].contains("【本轮用户输入】\n请为 AAOI 生成财报前瞻"));
+    assert!(runtime_inputs[1].contains("【HONE 服务端隔离恢复材料】"));
+    assert!(runtime_inputs[1].contains("preview preflight found 20 issues"));
+    assert!(runtime_inputs[1].contains("# AAOI公司财报前瞻分析\n\n待修正的完整报告"));
     assert!(
         queued_results
             .lock()
@@ -4934,7 +5044,13 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
             "description: earnings preview workflow\n",
             "user-invocable: true\n",
             "---\n\n",
-            "WRITE files, RUN commands, then NEXT step.\n"
+            "WRITE files, RUN commands, then NEXT step.\n",
+            "\n## Preview — original V2 prompt\n",
+            "PREVIEW PROMPT ONLY\n",
+            "\n## Analysis — original V2 prompt\n",
+            "ANALYSIS PROMPT ONLY\n",
+            "\n## PDF delivery\n",
+            "RENDER SELECTED REPORT\n"
         ),
     )
     .expect("write skill");
@@ -4946,27 +5062,64 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
         );
     });
     let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
-    let task = "请为 SNDK（闪迪）执行财报前瞻";
-    let expansion = crate::turn_builder::PromptTurnBuilder::new(
+    let preview_task =
+        "请为 SNDK（闪迪）执行财报前瞻\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: SNDK";
+    let builder = crate::turn_builder::PromptTurnBuilder::new(
         &core,
         &actor,
         "slash-skill-boundary",
         PromptOptions::default(),
         true,
         None,
-    )
-    .expand_slash_skill_input(&format!("/earnings-research\n{task}"))
-    .expect("expand slash skill")
-    .expect("resolved slash skill");
+    );
+    let expansion = builder
+        .expand_slash_skill_input(&format!("/earnings-research\n{preview_task}"))
+        .expect("expand slash skill")
+        .expect("resolved slash skill");
 
-    assert_eq!(expansion.user_task_input.as_deref(), Some(task));
+    assert_eq!(expansion.user_task_input.as_deref(), Some(preview_task));
     assert!(
         expansion
             .runtime_input
             .contains("WRITE files, RUN commands")
     );
-    assert!(expansion.runtime_input.ends_with(task));
+    assert!(expansion.runtime_input.contains("mode: preview"));
+    assert!(expansion.runtime_input.contains("PREVIEW PROMPT ONLY"));
+    assert!(!expansion.runtime_input.contains("ANALYSIS PROMPT ONLY"));
+    assert!(expansion.runtime_input.contains("RENDER SELECTED REPORT"));
+    assert!(expansion.runtime_input.ends_with(preview_task));
     assert!(!expansion.user_task_input.unwrap().contains("WRITE files"));
+
+    let analysis_task =
+        "请分析 SNDK 最新财报\n\n【HONE 财报工作流参数】\nmode: analysis\ncompany: SNDK";
+    let analysis = builder
+        .expand_slash_skill_input(&format!("/earnings-research\n{analysis_task}"))
+        .expect("expand analysis skill")
+        .expect("resolved analysis skill");
+    assert!(analysis.runtime_input.contains("mode: analysis"));
+    assert!(analysis.runtime_input.contains("ANALYSIS PROMPT ONLY"));
+    assert!(!analysis.runtime_input.contains("PREVIEW PROMPT ONLY"));
+    assert!(analysis.runtime_input.contains("RENDER SELECTED REPORT"));
+    assert!(analysis.runtime_input.ends_with(analysis_task));
+
+    let missing_mode =
+        builder.expand_slash_skill_input("/earnings-research\n请为 SNDK 执行财报前瞻");
+    assert!(
+        missing_mode
+            .expect_err("missing mode must not guess a workflow")
+            .to_string()
+            .contains("必须由结构化入口提供唯一 mode")
+    );
+
+    let conflicting_mode = builder.expand_slash_skill_input(
+        "/earnings-research\nmode: preview\nmode: analysis\ncompany: SNDK",
+    );
+    assert!(
+        conflicting_mode
+            .expect_err("conflicting modes must not be combined")
+            .to_string()
+            .contains("拒绝混合财报前瞻与财报分析")
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5949,6 +6102,138 @@ fn restore_context_injects_invoked_skills_before_message_window() {
         .filter_map(|m| m.content.as_deref())
         .collect();
     assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT", "hello", "world"]);
+}
+
+#[test]
+fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
+    let root = make_temp_dir("hone_channels_restore_turn_scoped_earnings");
+    std::fs::create_dir_all(&root).expect("create root");
+    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
+    let session_id = storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+        serde_json::json!([
+            {
+                "skill_name": "earnings-research",
+                "display_name": "Earnings Research",
+                "path": "slash:earnings-research",
+                "prompt": "PREVIEW PROMPT\nANALYSIS PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            },
+            {
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "slash:alpha",
+                "prompt": "DURABLE_ALPHA_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }
+        ]),
+    );
+    storage
+        .update_metadata(&session_id, metadata)
+        .expect("metadata");
+    storage
+        .add_message(
+            &session_id,
+            "system",
+            "Conversation compacted",
+            Some(hone_memory::build_compact_boundary_metadata("auto", 2, 4)),
+        )
+        .expect("boundary");
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            "LEGACY_MIXED_EARNINGS_PROMPT",
+            Some(hone_memory::build_compact_skill_snapshot_metadata(
+                "earnings-research",
+            )),
+        )
+        .expect("earnings snapshot");
+
+    let restored = restore_context(&storage, &session_id, Some(10), None);
+    let contents = restored
+        .messages
+        .iter()
+        .filter_map(|message| message.content.as_deref())
+        .collect::<Vec<_>>();
+
+    assert_eq!(contents, vec!["DURABLE_ALPHA_PROMPT"]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
+    let root = make_temp_dir("hone_channels_forget_legacy_earnings_prompt");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core(&root, llm);
+    let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    let records = ["earnings-research", "alpha"]
+        .into_iter()
+        .map(|skill_name| {
+            serde_json::json!({
+                "skill_name": skill_name,
+                "display_name": skill_name,
+                "path": format!("slash:{skill_name}"),
+                "prompt": format!("{skill_name} prompt"),
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            })
+        })
+        .collect::<Vec<_>>();
+    core.session_storage
+        .update_metadata(
+            &actor.session_id(),
+            HashMap::from([(
+                hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+                Value::Array(records),
+            )]),
+        )
+        .expect("metadata");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+
+    session
+        .forget_turn_scoped_skill_prompt(&actor.session_id(), "earnings-research")
+        .expect("forget earnings prompt");
+
+    let stored = core
+        .session_storage
+        .load_session(&actor.session_id())
+        .expect("load session")
+        .expect("session");
+    let skills = hone_memory::invoked_skills_from_metadata(&stored.metadata);
+    assert_eq!(
+        skills
+            .iter()
+            .map(|skill| skill.skill_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["alpha"]
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

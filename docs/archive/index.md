@@ -1,6 +1,6 @@
 # Archive Index
 
-Last updated: 2026-08-11
+Last updated: 2026-08-15
 
 ## 2026-08-11
 
@@ -198,6 +198,20 @@ Last updated: 2026-08-11
 - Current conclusion: 51 private transcripts now resolve to 52 US-traded company research cards plus four cross-company evidence notes. Authenticated users get a searchable, filterable red/yellow/green dashboard above chat, backed by a 19:30 Beijing snapshot worker and explicit live/partial/stale/transcript-only provenance. No FMP key exists locally, so the current runtime correctly labels all 52 rows as research baselines rather than current-market ratings.
 - Next entry point: configure the existing FMP key pool, restart the backend, and perform authenticated desktop/mobile acceptance from `http://127.0.0.1:3001/chat`; unsupported new listings and OTC rows must remain partial/low-confidence instead of receiving invented values.
 
+## 2026-08-10
+
+### Earnings OpenCode Signature And Renderer Recovery
+
+- Status: done; exact GHCR/GCE deployment and authenticated production CRWV canary complete; no formal release or tag
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/earnings-opencode-signature-recovery.md`
+- Handoff: `docs/handoffs/2026-08-10-earnings-opencode-signature-recovery.md`
+- Decision / ADR: no new decision; this restores the existing isolated earnings replay, safe-side-effect and PDF terminal contracts
+- Related PRs / commits: direct `main` commits `4dd76971d7b9985e281c3632db17b2936e0f91ce`, `185504bc03d8be32bfcc1f851200e411ed8a8238`, and deployed `2a6aecf33936e85c7b34130fc2f8f2a8ab3eb9c6`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/opencode-setup.md`; `docs/runbooks/backend-deployment.md`; hone-channels/web-api suites; earnings PDF regression; full CI-safe regression; timestamp-bounded ACP and GCE artifact inspection
+- Current conclusion: dedicated earnings turns recover once from the exact OpenRouter/Gemini corrupted-signature failure in a fresh isolated session, deny executed `task`/`bash`, retain safe renderer recovery material, and require a persisted PDF. Production CRWV message `7762a98e-b1e9-4e48-b20a-8f5175535346` exercised the real signature recovery and produced the four-page, 612,805-byte `CRWV_Q2_Earnings_Preview-1109374d.pdf`; attachment collection/persistence succeeded, active chats returned to zero, and the service stayed at `NRestarts=0`.
+- Next entry point: `docs/current-plans/earnings-workflow-content-parity.md`; the runtime incident is closed, but the CRWV sample is not content-approved because it contains placeholder/untraceable evidence and required 22 renderer attempts.
+
 ## 2026-08-09
 
 ### Public Push Inbox And Unread State Closure
@@ -235,9 +249,9 @@ Last updated: 2026-08-11
 - Plan: `docs/current-plans/stripe-wallet-one-time-pass.md` (kept active until both live wallets are available)
 - Handoff: `docs/handoffs/2026-08-06-stripe-wallet-one-time-pass.md`
 - Decision / ADR: `docs/decisions.md#d-2026-08-06-02-offer-recurring-and-fixed-term-stripe-memberships-as-separate-products`
-- Related PRs / commits: direct `main` implementation `c99babc1e1ea3c54db41256331eb65dcefa7bd1d`; no PR, formal release, or tag
-- Related runbooks / regressions: `docs/runbooks/stripe-billing.md`; complete repository gates; signed Billing HTTP E2E; official Stripe test-mode Alipay and WeChat Pay payment lifecycles; Runtime Image run `31082512757`
-- Current conclusion: HONE production runs the exact implementation from GHCR digest `sha256:dadf8fcf340cf8fa4971605c3f085f7e097efc7cc2c9a8e1ff4a61d757ca90cb`, exposes the existing USD 199.99/year subscription and the USD 229.99/12-month non-renewing pass, and creates a correct authenticated live fixed-term Checkout. No live payment was submitted. Stripe still reports both wallets `pending approval` / `available=false`, so the authoritative live form currently exposes card only.
+- Related PRs / commits: direct `main` implementation `c99babc1e1ea3c54db41256331eb65dcefa7bd1d`; public-payment-copy correction `b905130158e12138fc1170c7de7e1adb54f0f08d`; no PR, formal release, or tag
+- Related runbooks / regressions: `docs/runbooks/stripe-billing.md`; complete repository gates; signed Billing HTTP E2E; official Stripe test-mode Alipay and WeChat Pay payment lifecycles; Runtime Image runs `31082512757` and `31675804261`
+- Current conclusion: HONE exposes the existing USD 199.99/year subscription and the USD 229.99/12-month non-renewing pass, and creates a correct authenticated live fixed-term Checkout. No live payment was submitted. On 2026-08-13 Stripe still reported both wallets `available=false`; exact correction runtime `e4e1e3e9` at digest `sha256:7d43450c4559fbf2a9dcf7d41faaa475627b9dc330f653f8fc18a1651deff351` therefore makes the production offer list server-authoritative and card-only by default. Production config and external Chrome both showed two card-only claims and no wallet claim; the external approval blocker remains unchanged.
 - Next entry point: after Stripe approval, require both methods `available=true`, create one fresh no-payment live fixed-term Checkout, verify card plus Alipay plus WeChat Pay, retain a redacted screenshot, then archive the active plan.
 
 ## 2026-08-05
@@ -2562,3 +2576,14 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: forum Rust 7/7; Web API 286/2 ignored; focused Web 10/10; full Web 451/451; TypeScript; Rust formatting; public production build; `tests/regression/ci/test_community_forum_research_boundary.sh`; authenticated desktop/mobile acceptance
 - Current conclusion: `/community` now separates the existing read-only HONE archive from an authenticated member discussion forum. Members can post, comment, like, report and attach one bounded safe file under a pseudonymous identity; owners and administrators retain deletion/moderation controls. Forum material never enters Agent or investment evidence paths, and the UI sends curation candidates through “我的知识源”.
 - Next entry point: migrate the forum to PostgreSQL/object storage with retention, moderation audit and abuse observability before any production enablement. Do not add ranking, DMs or investment retrieval to the local filesystem version.
+### Earnings Original-workflow Migration And Mode Isolation
+
+- Status: done
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/earnings-workflow-content-parity.md`
+- Handoff: `docs/handoffs/2026-08-10-earnings-opencode-signature-recovery.md`
+- Decision / ADR: `docs/decisions.md`; repository generative-workflow rules in `AGENTS.md` and `docs/invariants.md`
+- Related PRs / commits: direct `main` sequence through `bd2eb2f9`, `7516be88`, `0c6d0328`, `7beb53e9`, and final deployed `521c0787064d4bfbe18822c3cbc613b5d0390886`; no PR, release, or tag
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; 49 finance automation contracts; production ACP prompt audit; real CRWV preview/analysis browser canaries
+- Current conclusion: HONE directly follows the recovered BamangResearch/Dify earnings prompts without mechanical evidence/content gates. Preview and analysis are separate host-selected products, their prompts exist only in the current turn and never persist/compact/restore, and the renderer only owns technical PDF completion. Exact production `521c0787` is healthy; one CRWV preview and one CRWV analysis each received only its own prompt, used one renderer, emitted no compact, persisted a distinct PDF, and remained downloadable after refresh. A completed renderer artifact can survive an exact subsequent Gemini signature failure only when the trace proves no unrelated write.
+- Next entry point: continue content improvement through retrieval, targeted search, original prompts/model choices and real-sample review; do not restore report schemas, source/number coverage gates or validator-driven rewrite loops. Immediate runtime rollback is retained `7beb53e9`.

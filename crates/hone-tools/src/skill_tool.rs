@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
@@ -183,7 +184,13 @@ impl SkillTool {
                 ))
             })?
             .map_err(|err| {
-                SkillScriptExecutionError::StateUncertain(format!("执行 skill script 失败: {err}"))
+                let message = format!("执行 skill script 失败: {err}");
+                match err.kind() {
+                    ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidInput => {
+                        SkillScriptExecutionError::NotStarted(message)
+                    }
+                    _ => SkillScriptExecutionError::StateUncertain(message),
+                }
             })?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -925,6 +932,53 @@ mod tests {
             result["error"]
                 .as_str()
                 .is_some_and(|error| error.contains("arguments 顺序"))
+        );
+        clear_test_env();
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn execute_marks_non_executable_skill_script_as_not_started() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_non_executable");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: Alpha\ndescription: validates executable mode\nscript: scripts/run.sh\n---\n\nbody",
+        )
+        .expect("skill");
+        let script = scripts_dir.join("run.sh");
+        fs::write(&script, "#!/usr/bin/env bash\nexit 0\n").expect("script");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o644)).expect("permissions");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true
+            }))
+            .await
+            .expect("spawn failure should be structured");
+
+        assert_eq!(result["success"], Value::Bool(false));
+        assert_eq!(result["side_effect_status"], "not_started");
+        assert!(
+            result["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("Permission denied"))
         );
         clear_test_env();
         std::fs::remove_dir_all(root).ok();

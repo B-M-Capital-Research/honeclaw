@@ -23,6 +23,42 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 06:01-10:02 CST。
+  - 同窗仍有 3 条 `execution_failed / skipped_error / 任务已标记失败` 类信号，覆盖 heartbeat 非结构化 / 空状态输出后跳过发送；近窗 parse 分布仍含 `PlainTextSuppressed=2`、`JsonUnknownStatus=2`、`JsonEmptyStatus=1`。
+  - 同窗 source runtime 仍有 `run_start=64`、`run_finish=64`、`deliver=32`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message/cron 增量。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-13 02:00-06:02 CST。
+  - 02:00 / 02:30 / 04:30 / 05:30 CST 多条 heartbeat 记录 `定时任务执行失败，跳过发送`，错误为 `heartbeat 输出不是结构化 JSON，任务已标记失败`；覆盖 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`AAPL + NVDA + BE 关键事件提醒`、`AI与科技持仓观察关键事件心跳提醒` 等任务。
+  - 同窗 source runtime 仍有 `run_start=64`、`run_finish=71`、`deliver=43`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message/cron 增量。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-12 14:00-18:02 CST。
+  - 同窗有 3 条 heartbeat 轮次因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 或同类 `failure_kind=execution_failed` 跳过发送。
+  - 同窗 source runtime 仍有 `HeartbeatDiag=271`、`run_start=72`、`run_finish=72`、`deliver=42`，说明不是 Web scheduler / event-engine 全链路不可用；本轮未见 `persistent_tool_failure`、HTTP 429 / 402 或 OpenAI-compatible stream decode 复发。
+  - 判断：这些样本仍属于“实时核验 / 输出契约 / runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-12 10:01-14:01 CST。
+  - 13:00 CST `持仓重大事件心跳提醒` 与 `AAPL + NVDA + BE 关键事件提醒` 均落成 `heartbeat 输出不是结构化 JSON，任务已标记失败`，随后 Web events 记录 `failure_kind=execution_failed` 并跳过发送。
+  - 同窗 source runtime 仍有 `HeartbeatDiag=238`、`run_start=64`、`run_finish=65`、`deliver=35`，说明不是 Web scheduler / event-engine 全链路不可用；本轮未见 `persistent_tool_failure` 复发。
+  - 判断：这些样本仍属于“实时核验 / 输出契约 / runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-12 06:01-10:02 CST。
+  - 06:30 CST `持仓财报与重大新闻心跳提醒` 与 09:00 CST `光模块板块关键事件心跳提醒` 均落成 `persistent_tool_failure: read-after-write reconciliation failed`，随后 Web events 记录 `failure_kind=runner_error` 或执行失败并跳过发送。
+  - 同窗 06:30 / 08:30 / 09:30 / 10:00 CST 另有 4 轮 heartbeat 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送；source runtime 仍有 `HeartbeatDiag=239`、`run_start=64`、`run_finish=65`、`deliver=38`，说明不是 Web scheduler / event-engine 全链路不可用。
+  - 判断：这些样本仍属于“实时核验 / persistent-tool / runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-10 14:02-18:02 CST。
+  - 17:30 CST `持仓重大事件心跳提醒` 多次落成 `persistent_tool_failure: read-after-write reconciliation failed`，随后 Web events 记录 `failure_kind=runner_error` 或执行失败并跳过发送。
+  - 16:30 CST `NVDA 关键事件心跳提醒` 因 OpenAI-compatible HTTP 529 provider 错误跳过发送；同窗 source runtime 仍有 `HeartbeatDiag` 相关行 359 条、`deliver=51`，说明不是 Web scheduler / event-engine 全链路不可用。
+  - 判断：这些样本仍属于“实时核验 / persistent-tool / provider runner fail-closed 后监控轮次跳过”的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-10 06:00-10:02 CST。
   - 08:00 CST `光模块板块关键事件心跳提醒` 与 08:30 CST `光迅科技关键事件心跳提醒` 均落成 `persistent_tool_failure: read-after-write reconciliation failed`，随后 Web events 只记录 `failure_kind=runner_error` 并跳过发送。
   - 09:32 CST `AI与科技持仓观察关键事件心跳提醒` 又因 OpenAI-compatible stream body decode runner error 跳过发送；同窗 source runtime 仍有 `run_start=96`、`run_finish=105`、`deliver=57`，说明不是 Web scheduler / event-engine 全链路不可用。
