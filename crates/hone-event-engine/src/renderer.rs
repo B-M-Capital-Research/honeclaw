@@ -73,6 +73,7 @@ pub fn render_immediate_with_mainline(
         earnings_countdown_line(event),
         analyst_consensus_line(event),
         position_context_line(event),
+        mainline_links_line(event),
     ]
     .into_iter()
     .flatten()
@@ -133,6 +134,24 @@ pub(crate) fn analyst_consensus_line(event: &MarketEvent) -> Option<String> {
         return None;
     }
     Some(format!("🗓 近30日评级：{}", parts.join(" · ")))
+}
+
+/// 跨票主线关联行(router 注入的 `hone_mainline_links`)。用户的其它主线
+/// 提到本标的时提醒关联:「你有一条 CAI 主线拿它当对照组」。
+pub(crate) fn mainline_links_line(event: &MarketEvent) -> Option<String> {
+    let links = event.payload.get("hone_mainline_links")?.as_array()?;
+    let lines: Vec<String> = links
+        .iter()
+        .filter_map(|link| {
+            let ticker = link.get("ticker")?.as_str()?;
+            let excerpt = link.get("excerpt")?.as_str()?;
+            Some(format!("🔗 {ticker} 主线相关：{excerpt}"))
+        })
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    Some(lines.join("\n"))
 }
 
 /// 持仓上下文行(router 在 actor 级克隆里注入的 `hone_position_*` 字段)。
@@ -281,6 +300,7 @@ fn render_immediate_feishu_post(event: &MarketEvent, mainline: Option<&str>) -> 
         earnings_countdown_line(event),
         analyst_consensus_line(event),
         position_context_line(event),
+        mainline_links_line(event),
     ]
     .into_iter()
     .flatten()

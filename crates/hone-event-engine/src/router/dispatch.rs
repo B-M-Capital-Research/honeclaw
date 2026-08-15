@@ -92,14 +92,14 @@ impl NotificationRouter {
                 }
                 None => (event, sev),
             };
-            // 仓位上下文注入:actor 持有事件标的时,给 actor 级克隆写入
-            // 美元影响 / 距成本 / portfolio_weight_pct(供下方 price policy 的
-            // 大仓位判断与 renderer 的持仓行使用)。原始事件与 store 不动。
-            let actor_position_event;
-            let event = match self.position_annotated_event_for(event, &actor) {
+            // actor 上下文注入:持仓(美元影响 / 距成本 / portfolio_weight_pct,
+            // 供下方 price policy 的大仓位判断与 renderer 的持仓行使用)+
+            // 跨票主线关联。都写在 actor 级克隆上,原始事件与 store 不动。
+            let actor_context_event;
+            let event = match self.actor_context_event_for(event, &actor, &user_prefs) {
                 Some(annotated) => {
-                    actor_position_event = annotated;
-                    &actor_position_event
+                    actor_context_event = annotated;
+                    &actor_context_event
                 }
                 None => event,
             };
@@ -581,18 +581,46 @@ impl NotificationRouter {
         annotated
     }
 
-    /// actor 持有事件任一标的时返回注入仓位上下文的克隆,否则 None。
-    fn position_annotated_event_for(
+    /// actor 级上下文克隆:持仓注入 + 跨票主线关联。两者都缺 → None(沿用原
+    /// 事件,输出与旧版一致)。
+    fn actor_context_event_for(
         &self,
         event: &MarketEvent,
         actor: &hone_core::ActorIdentity,
+        user_prefs: &NotificationPrefs,
     ) -> Option<MarketEvent> {
         let registry = self.registry.load();
-        let position = event
+        let position_annotated = event
             .symbols
             .iter()
-            .find_map(|symbol| registry.position_for(actor, symbol))?;
-        super::position::position_annotated_event(event, position)
+            .find_map(|symbol| registry.position_for(actor, symbol))
+            .and_then(|position| super::position::position_annotated_event(event, position));
+
+        let cross_links = user_prefs
+            .mainline_by_ticker
+            .as_ref()
+            .zip(event.symbols.first())
+            .map(|(mainlines, symbol)| {
+                super::mainline_links::mainline_cross_links(symbol, mainlines)
+            })
+            .filter(|links| !links.is_empty());
+
+        match (position_annotated, cross_links) {
+            (None, None) => None,
+            (position_annotated, cross_links) => {
+                let mut annotated = position_annotated.unwrap_or_else(|| event.clone());
+                if let (Some(links), Some(obj)) = (cross_links, annotated.payload.as_object_mut()) {
+                    let links_json: Vec<serde_json::Value> = links
+                        .iter()
+                        .map(|link| {
+                            serde_json::json!({"ticker": link.ticker, "excerpt": link.excerpt})
+                        })
+                        .collect();
+                    obj.insert("hone_mainline_links".into(), serde_json::json!(links_json));
+                }
+                Some(annotated)
+            }
+        }
     }
 
     /// High 即时推送的完整出站路径:render → polish → send → 审计日志 →

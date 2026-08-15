@@ -17,6 +17,7 @@
 mod classify;
 mod config;
 mod dispatch;
+mod mainline_links;
 mod policy;
 mod position;
 mod sink;

@@ -3088,3 +3088,86 @@ async fn price_alert_without_upcoming_earnings_has_no_countdown() {
     let calls = sink.calls.lock().unwrap();
     assert!(!calls[0].1.contains("财报"), "body={}", calls[0].1);
 }
+
+/// Item 6 端到端:actor 的 CAI 主线以 Tempus 为对照组时,TEM 事件推送带
+/// 「🔗 CAI 主线相关」行。
+#[tokio::test]
+async fn cross_ticker_mainline_link_is_rendered() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["TEM".into(), "CAI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    let mut mainlines = std::collections::HashMap::new();
+    mainlines.insert(
+        "CAI".to_string(),
+        "我长期跟踪CAI是把它当作Tempus的深度对照组，核心看pharma收入占比。".to_string(),
+    );
+    mainlines.insert(
+        "TEM".to_string(),
+        "我把 Tempus 看作靠诊断业务抓取多模态临床数据的混合平台。".to_string(),
+    );
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                mainline_by_ticker: Some(mainlines),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    )
+    .with_prefs(prefs_store);
+
+    let ev = MarketEvent {
+        id: "price_band:TEM:2026-08-14:up:800".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 800,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["TEM".into()],
+        occurred_at: Utc::now(),
+        title: "TEM +8.00%".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({"changesPercentage": 8.0, "hone_price": 60.0}),
+    };
+    let (sent, _) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1);
+    let calls = sink.calls.lock().unwrap();
+    let body = &calls[0].1;
+    assert!(
+        body.contains("🔗 CAI 主线相关：我长期跟踪CAI是把它当作Tempus的深度对照组"),
+        "body={body}"
+    );
+    // 无关标的(没有互指)不应出现关联行
+    drop(calls);
+    let ev2 = MarketEvent {
+        id: "price_band:CAI:2026-08-14:up:900".into(),
+        symbols: vec!["CAI".into()],
+        title: "CAI +9.00%".into(),
+        ..ev.clone()
+    };
+    let (sent2, _) = router.dispatch(&ev2).await.unwrap();
+    assert_eq!(sent2, 1);
+    let calls = sink.calls.lock().unwrap();
+    assert!(
+        calls[1].1.contains("🔗 TEM 主线相关"),
+        "反向(CAI 事件 → TEM 主线共享 Tempus)也应关联: body={}",
+        calls[1].1
+    );
+}
