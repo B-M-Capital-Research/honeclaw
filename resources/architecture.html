@@ -503,7 +503,7 @@
         <span class="pill pill-gray">SessionStorage</span>
         <span class="pill pill-gray">KbStorage</span>
         <span class="pill pill-gray">StockTableStorage</span>
-        <span class="pill pill-red">LlmAuditSink → SQLite</span>
+        <span class="pill pill-red">LlmAuditSink → PostgreSQL</span>
         <span class="pill pill-green">ToolRegistry factory</span>
         <span class="pill pill-green">HoneScheduler</span>
       </div>
@@ -684,15 +684,15 @@
     </div>
     <div class="card theme-gray">
       <div class="card-title">💬 sessions / quota</div>
-      <div class="card-sub">local fallback remains<br/>until PG repositories land</div>
+      <div class="card-sub">PostgreSQL tables<br/>actor isolated</div>
     </div>
     <div class="card theme-gray">
       <div class="card-title">⏰ cron / prefs</div>
-      <div class="card-sub">JSON + SQLite state<br/>actor isolated</div>
+      <div class="card-sub">PostgreSQL tables<br/>actor isolated</div>
     </div>
     <div class="card theme-gray">
       <div class="card-title">📋 audit / portfolio</div>
-      <div class="card-sub">local SQLite / JSON<br/>explicit dependency report</div>
+      <div class="card-sub">PostgreSQL tables<br/>explicit dependency report</div>
     </div>
     <div class="card theme-gray">
       <div class="card-title">📝 artifacts &amp; logs</div>

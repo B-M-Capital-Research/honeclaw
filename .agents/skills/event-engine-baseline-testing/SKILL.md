@@ -134,7 +134,7 @@ Interpretation:
 ## Daily Push Calibration Export
 
 Daily Telegram calibration should start from the actual delivery evidence already stored in
-`data/events.sqlite3`. Use the read-only exporter to produce an ignored local JSON/Markdown
+PostgreSQL. Use the read-only exporter to produce an ignored local JSON/Markdown
 snapshot for one actor and one local day:
 
 ```bash

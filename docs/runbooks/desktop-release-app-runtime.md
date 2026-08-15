@@ -318,7 +318,7 @@ Expected result:
 
 - the response should be a populated JSON array when session history exists
 - `[]` is only valid when the runtime really has no sessions
-- if the workspace has historical data under `data/sessions/` or `data/sessions.sqlite3` but `/api/users` still returns `[]`, treat that as a backend bug, not as proof that the data directory is wrong or empty
+- if PostgreSQL `cloud_sessions` contains rows but `/api/users` still returns `[]`, treat that as a backend bug, not as proof that history is absent
 
 ### 7. Confirm a known session can still return history
 
@@ -397,18 +397,17 @@ Typical examples from 2026-04-16:
 - that produces a misleading state where the desktop app is open, but remote mode still fails because it keeps probing `127.0.0.1:8077`
 - when diagnosing this class of failure, prefer a startup path where the runtime env is explicit and inspectable
 
-### `/api/users` returns `[]` even though `data/sessions.sqlite3` is populated
+### `/api/users` returns `[]` even though `cloud_sessions` is populated
 
 - this is a backend session-listing failure, not evidence that the repo-local `data/` path is wrong
 - on 2026-04-16 the live database had dozens of sessions, but the UI looked empty because `/api/users` returned `[]`
 - two failure modes mattered:
-  - one unreadable sqlite row could poison the whole list operation if the backend aborted the entire listing on deserialize failure
+  - one unreadable row could poison the whole list operation if the backend aborted the entire listing on deserialize failure
   - some historical rows did not carry embedded `actor/session_identity`, but their `session_id` still contained enough information to recover the actor/session identity
 - if this symptom returns:
-  1. verify the data still exists with `sqlite3 data/sessions.sqlite3 'select count(*) from sessions;'`
-  2. verify `data/sessions/` still contains historical JSON files
-  3. call `curl http://127.0.0.1:8077/api/users`
-  4. if the count is non-zero but the API still returns `[]`, restart the backend with the current fixed binary before touching the data directory
+  1. verify the data still exists with `psql -X -v ON_ERROR_STOP=1 -c 'select count(*) from cloud_sessions;'`
+  2. call `curl http://127.0.0.1:8077/api/users`
+  3. if the count is non-zero but the API still returns `[]`, restart the backend with the current fixed binary before mutating any data
 
 ### Detached backend restart exits silently
 

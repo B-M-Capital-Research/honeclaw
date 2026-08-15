@@ -14,9 +14,9 @@ prompt = """
 - 不修改任何业务代码、测试代码、配置代码
 
 允许的信息来源，按优先级从高到低：
-- 最近一小时的会话记录与消息落库，优先看 `data/sessions.sqlite3`
-  - 可优先利用 `sessions.updated_at`、`sessions.last_message_at`
-  - 以及 `session_messages.timestamp`、`session_messages.imported_at`
+- 最近一小时的会话记录与消息落库，优先只读查询 PostgreSQL `cloud_sessions`
+  - 可优先利用 `cloud_sessions.updated_at`
+  - 消息时间与角色从 `cloud_sessions.content` 的会话 JSON 中提取
 - 最近一小时的运行日志，优先看 `data/runtime/logs/*.log` 与 `data/logs/*.log`
 - 最近的非文档代码提交
 - 当前仓库中的 bug 文档与相关设计/约束文档

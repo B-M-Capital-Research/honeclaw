@@ -5,14 +5,14 @@ description: "Use in the honeclaw repository when Codex needs to review event-en
 
 # Event Engine Push Review
 
-Review real delivery evidence from `data/events.sqlite3`. Treat this as an audit task, not a rewrite task. Prefer read-only exports and SQL first; only change code or fixtures after the user agrees on a durable failure pattern.
+Review real delivery evidence from the authoritative PostgreSQL event store. Treat this as an audit task, not a rewrite task. Prefer read-only exports and SQL first; only change code or fixtures after the user agrees on a durable failure pattern.
 
 ## Start Checklist
 
 Write a short todo before running commands:
 
 1. Goal: actor(s), local date/window, and review question.
-2. Files/data: `data/events.sqlite3`, `data/notif_prefs/`, `data/portfolio/`, and ignored exports under `data/exports/event-engine-calibration/`.
+2. Files/data: PostgreSQL `events` / `delivery_log`, actor preferences/portfolio rows, and ignored exports under `data/exports/event-engine-calibration/`.
 3. Verification: read-only export/query commands; if code or baselines change, also use `event-engine-baseline-testing`.
 4. Documentation: update active event-engine plan only when the review leads to a durable behavior change; one-off audit exports do not need plan updates.
 
@@ -28,14 +28,16 @@ Do not commit private runtime DBs, ignored calibration exports, full article bod
 
 Default timezone is `Asia/Shanghai`. For "last 24h", compute the exact UTC bounds and state them in the answer.
 
-List active delivery actors in a local date window:
+List active delivery actors in a local date window. Map the repository's
+`HONE_POSTGRES_*` connection variables to standard `PG*` variables first when
+the shell does not already provide them (see `docs/runbooks/local-postgres-development.md`):
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
   SELECT
-    CAST(strftime('%s','YYYY-MM-DD 00:00:00','-8 hours') AS INTEGER) AS start_ts,
-    CAST(strftime('%s','YYYY-MM-DD 00:00:00','+1 day','-8 hours') AS INTEGER) AS end_ts
+    EXTRACT(EPOCH FROM TIMESTAMPTZ 'YYYY-MM-DD 00:00:00 Asia/Shanghai')::BIGINT AS start_ts,
+    EXTRACT(EPOCH FROM TIMESTAMPTZ 'YYYY-MM-DD 00:00:00 Asia/Shanghai' + INTERVAL '1 day')::BIGINT AS end_ts
 )
 SELECT actor, channel, status, severity, COUNT(*) AS n
 FROM delivery_log, bounds
@@ -67,15 +69,15 @@ data/exports/event-engine-calibration/
 For quick terminal review, query sent rows directly:
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
-  SELECT CAST(strftime('%s','now','-24 hours') AS INTEGER) AS start_ts
+  SELECT EXTRACT(EPOCH FROM now() - INTERVAL '24 hours')::BIGINT AS start_ts
 )
 SELECT
-  datetime(d.sent_at_ts,'unixepoch','localtime') AS sent_local,
+  to_char(to_timestamp(d.sent_at_ts) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS sent_local,
   d.actor, d.channel, d.status, d.severity,
   e.title,
-  substr(replace(coalesce(d.body,''), char(10), ' '), 1, 180) AS body_preview
+  substr(replace(coalesce(d.body,''), E'\n', ' '), 1, 180) AS body_preview
 FROM delivery_log d
 LEFT JOIN events e ON e.id = d.event_id, bounds
 WHERE d.sent_at_ts >= bounds.start_ts
@@ -133,13 +135,13 @@ Flag content problems when:
 Look for repeated event ids:
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
-  SELECT CAST(strftime('%s','now','-24 hours') AS INTEGER) AS start_ts
+  SELECT EXTRACT(EPOCH FROM now() - INTERVAL '24 hours')::BIGINT AS start_ts
 )
 SELECT d.actor, d.event_id, d.channel, d.status, COUNT(*) AS n,
-       MIN(datetime(d.sent_at_ts,'unixepoch','localtime')) AS first_local,
-       MAX(datetime(d.sent_at_ts,'unixepoch','localtime')) AS last_local,
+       to_char(to_timestamp(MIN(d.sent_at_ts)) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS first_local,
+       to_char(to_timestamp(MAX(d.sent_at_ts)) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS last_local,
        e.title
 FROM delivery_log d
 LEFT JOIN events e ON e.id = d.event_id, bounds
@@ -154,13 +156,13 @@ ORDER BY n DESC, last_local DESC;
 Look for repeated titles/facts:
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
-  SELECT CAST(strftime('%s','now','-24 hours') AS INTEGER) AS start_ts
+  SELECT EXTRACT(EPOCH FROM now() - INTERVAL '24 hours')::BIGINT AS start_ts
 )
 SELECT d.actor, e.title, COUNT(*) AS n,
-       GROUP_CONCAT(DISTINCT d.channel) AS channels,
-       GROUP_CONCAT(DISTINCT d.status) AS statuses
+       string_agg(DISTINCT d.channel, ',') AS channels,
+       string_agg(DISTINCT d.status, ',') AS statuses
 FROM delivery_log d
 JOIN events e ON e.id = d.event_id, bounds
 WHERE d.sent_at_ts >= bounds.start_ts
@@ -178,19 +180,19 @@ Manual duplicate judgment matters: immediate + later digest can be acceptable if
 Inspect sent rows with low value signals:
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
-  SELECT CAST(strftime('%s','now','-24 hours') AS INTEGER) AS start_ts
+  SELECT EXTRACT(EPOCH FROM now() - INTERVAL '24 hours')::BIGINT AS start_ts
 )
-SELECT datetime(d.sent_at_ts,'unixepoch','localtime') AS sent_local,
+SELECT to_char(to_timestamp(d.sent_at_ts) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS sent_local,
        d.actor, d.channel, d.severity, e.source, e.title, e.summary
 FROM delivery_log d
 JOIN events e ON e.id = d.event_id, bounds
 WHERE d.sent_at_ts >= bounds.start_ts
   AND d.status IN ('sent','dryrun')
   AND (
-    e.source LIKE '%pr_wire%'
-    OR e.source LIKE '%opinion%'
+    e.source ILIKE '%pr_wire%'
+    OR e.source ILIKE '%opinion%'
     OR lower(e.title) LIKE '%shareholder alert%'
     OR lower(e.title) LIKE '%class action%'
     OR lower(e.title) LIKE '%deadline%'
@@ -211,11 +213,11 @@ Also scan for:
 Review omitted, queued, capped, cooled-down, filtered, failed, and `no_actor` rows. Focus first on High/Medium severity, portfolio symbols, trusted sources, and explicit mainline-aligned tickers.
 
 ```bash
-sqlite3 -header -column data/events.sqlite3 "
+psql -X -v ON_ERROR_STOP=1 -P pager=off -c "
 WITH bounds AS (
-  SELECT CAST(strftime('%s','now','-24 hours') AS INTEGER) AS start_ts
+  SELECT EXTRACT(EPOCH FROM now() - INTERVAL '24 hours')::BIGINT AS start_ts
 )
-SELECT datetime(d.sent_at_ts,'unixepoch','localtime') AS logged_local,
+SELECT to_char(to_timestamp(d.sent_at_ts) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') AS logged_local,
        d.actor, d.channel, d.status, d.severity,
        e.symbols_json, e.source, e.title, e.summary, e.url
 FROM delivery_log d

@@ -56,7 +56,6 @@ Status: Internal reference
 - `src-tauri/binaries/`
 - `*.log`
 - `*.pid`
-- `*.sqlite*`
 - `*.db`
 - `.env`
 - `.env.*`

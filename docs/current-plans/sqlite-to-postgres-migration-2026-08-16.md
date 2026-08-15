@@ -308,6 +308,8 @@ test-only 路径继续用于隔离不属于本阶段的 JSON 模块测试。
 - 更新 `local_durable_dependencies()`（`cloud_runtime.rs`），删掉所有 sqlite 路径项。
 - 删掉 `docs/session-sqlite-migration-plan.md`（2026-03-25 旧提案）→ 移入
   `docs/archive/plans/`，并在本文件注明取代关系。
+  - 已移至 `docs/archive/plans/session-sqlite-migration-plan.md`；其本地 session
+    后端方案由本计划取代。
 - `docs/conventions/`、`docs/runbooks/backend-deployment.md`、`docs/repo-map.md`、
   `docs/technical-spec.md` 里凡提到 sqlite 作为存储后端的段落全部改写。
 - `scripts/` 下任何 backfill / diagnose 影子库脚本一并删除。
@@ -327,10 +329,9 @@ grep -rn -i "sqlite\|rusqlite" --include="*.rs" --include="*.toml" --include="*.
 
 ## 6.5 阶段 4 附：旧版清理
 
-- workspace `Cargo.toml:73` 的 `rusqlite`：从 `crates/hone-event-engine`、`memory`、
-  `bins/hone-cli` 移除依赖；**`bins/hone-imessage` 保留**（见 1.2）。
-  `bins/hone-cli` 需要确认 `cloud migrate` 的 SQLite 读取端是否仍需要它
-  —— 如果迁移工具要长期支持从旧 SQLite 导入，那 hone-cli 也保留。
+- workspace `Cargo.toml:73` 的 `rusqlite`：从 `crates/hone-event-engine`、`memory`
+  移除；**`bins/hone-imessage` 与 `bins/hone-cli` 保留**。当前
+  `cloud migrate --event-store-only` 直接使用 rusqlite 只读导入历史事件库。
 - 更新 `local_durable_dependencies`。
 - 更新 `docs/conventions/`、`docs/runbooks/backend-deployment.md`。
 - `docs/session-sqlite-migration-plan.md`（2026-03-25 的旧提案）移入

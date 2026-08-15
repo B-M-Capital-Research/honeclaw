@@ -73,8 +73,8 @@ webhook 写入固定期限权益。
 
 - Stripe Dashboard 开启支付方式不代表 subscription Checkout 可用；Alipay 与
   WeChat Pay 必须只进入 one-time `payment` Session。
-- 旧表 `provider_subscription_id` 是结构性债务；迁移必须同时覆盖 SQLite 和
-  PostgreSQL，并证明现有生产 Stripe 行无损。
+- 旧表 `provider_subscription_id` 是结构性债务；迁移必须覆盖 PostgreSQL
+  中的历史行，并证明现有生产 Stripe 行无损。
 - 固定期限延长、全额退款和多次购买必须有严格排序/idempotency 语义，不能按
   webhook 到达顺序累计。
 - 支付方式会受账户地区、币种、Payment Method Configuration 与买家地区动态

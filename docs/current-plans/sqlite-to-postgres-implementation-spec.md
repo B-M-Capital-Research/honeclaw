@@ -1,5 +1,7 @@
 # honeclaw SQLite → PostgreSQL — Definitive Implementation Spec
 
+**Status: completed on 2026-08-16; retained as the implementation record.**
+
 **Written against `114a6c8d` (2026-08-16), verified read-only. Every instruction cites `file:line` at that revision.**
 Codex CLI: re-run `git rev-parse HEAD` before starting. If it is not `114a6c8d`, re-verify §1 before trusting anything below.
 
@@ -108,7 +110,9 @@ Re-verified at `114a6c8d`:
 
 `hone_memory::session_sqlite::InterruptedSessionInfo` is used at `bins/hone-feishu/src/handler.rs:261`, `:263`, `:303`, `:2205`, `:2210`, `:2215`, `:2228`. The JSON backend also produces it (`memory/src/session.rs:170-200`), so the type is backend-neutral and must be **relocated**, not deleted, when `memory/src/session_sqlite.rs` goes. It is re-exported at `memory/src/lib.rs:64`.
 
-### C-10 — `bins/hone-cli/Cargo.toml:21 rusqlite` is entirely unused. **Confirmed at HEAD**: `grep -rn 'rusqlite' bins/hone-cli/src/` returns nothing. The `cloud migrate` importer goes through `hone_memory::WebAuthStorage::new` (`bins/hone-cli/src/cloud.rs:2851`), not rusqlite. This line is deletable today, standalone, zero risk.
+### C-10 — CORRECTED DURING PHASE 4: `bins/hone-cli` must retain rusqlite
+
+The implementation moved after this spec was written. Current `bins/hone-cli/src/cloud.rs` uses rusqlite directly for the read-only `cloud migrate --event-store-only` importer, including a 5,000-row batch reader and its migration regression. `bins/hone-cli/Cargo.toml` must therefore retain the dependency alongside `bins/hone-imessage`; it is not a runtime storage backend.
 
 ### C-11 (NEW) — `cron_job_runs` has 17 unmigrated rows and no import channel.
 
@@ -590,11 +594,11 @@ Also resolve C-11 (`cron_job_runs`, 17 rows, no import channel) before the cold 
 
 | Item | Action | Notes |
 |---|---|---|
-| `bins/hone-cli/Cargo.toml:21` | **DELETE NOW** | Unused (C-10). Zero-risk, do it in the first commit of any phase |
+| `bins/hone-cli/Cargo.toml` | **KEEP** | Read-only historical event-store importer (corrected C-10) |
 | `memory/Cargo.toml:16` | Delete after §4 | `tokio-postgres` at `memory/Cargo.toml:24` (dev-dep) stays — it is what the ported tests use |
 | `crates/hone-event-engine/Cargo.toml:19` | Delete after §3 | Add `hone-core` PG deps in the same commit |
-| `Cargo.toml:72-73` (workspace) | **KEEP**, retitle the comment | Still required by `bins/hone-imessage/Cargo.toml`. Change the comment to state it is *exclusively* for `bins/hone-imessage`'s read-only macOS `chat.db` |
-| `Cargo.lock` | Regenerate | `rusqlite` and its exclusive transitive deps drop to a single consumer |
+| `Cargo.toml:72-73` (workspace) | **KEEP**, retitle the comment | Shared only by the `hone-cli` read-only importer and `hone-imessage`'s read-only macOS `chat.db` |
+| `Cargo.lock` | Regenerate | `hone-memory` drops the dependency; two intentional consumers remain |
 
 **`bins/hone-imessage` is out of scope. Do not touch it, its Cargo.toml, or its `SQLITE_OPEN_READ_ONLY` handling. It reads macOS's own `~/Library/Messages/chat.db`.**
 
@@ -744,15 +748,15 @@ grep -rn -i "sqlite\|rusqlite" \
   | grep -v '^docs/current-plans/sqlite-to-postgres-migration-2026-08-16.md'
 ```
 
-**Expected surviving hits — this exact set, nothing else:**
+**Expected surviving non-historical hits after the Phase 4 correction:**
 
-1. `Cargo.toml:72` — the retitled workspace comment naming `bins/hone-imessage` as the sole consumer
-2. `Cargo.toml:73` — `rusqlite = { version = "0.31", features = ["bundled"] }`
-3. `docs/wiki.md` / `docs/repo-map.md` — one line each describing `bins/hone-imessage` as the macOS `chat.db` reader
+1. `Cargo.toml` — the shared workspace dependency
+2. `bins/hone-cli/Cargo.toml` and `bins/hone-cli/src/cloud.rs` — the historical import channel
+3. Current docs that explicitly describe that import exception, plus historical migration records
 
 Any other hit must be fixed, or justified in writing in the handoff. Paste the raw output into the handoff — the plan doc requires it (§6.4).
 
-**`Cargo.lock` is deliberately excluded** from the grep: `rusqlite` legitimately remains there for `bins/hone-imessage`. Verify separately that its consumer list has shrunk to one:
+**`Cargo.lock` is deliberately excluded** from the grep: `rusqlite` legitimately remains there for two consumers. Verify separately that its consumer list contains only `hone-cli` and `hone-imessage`:
 ```bash
 cargo tree -i rusqlite --workspace
 ```

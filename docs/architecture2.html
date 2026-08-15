@@ -430,7 +430,7 @@
         <p>知识库文件与向量检索数据。</p>
       </div>
       <div class="tile t-gray">
-        <h3>llm_audit.sqlite3</h3>
+        <h3>cloud_llm_audit_records</h3>
         <p>按 <code>ActorIdentity</code> 归档 LLM 调用审计。</p>
       </div>
       <div class="tile t-gray">
@@ -518,7 +518,7 @@
     <div class="grid">
       <div class="tile t-gray">
         <h3>🗄 <code>EventStore</code></h3>
-        <p>sqlite（主存）+ <code>events.jsonl</code>（mirror）；按稳定 event id 去重。</p>
+        <p>PostgreSQL 权威存储；按稳定 event id 去重。</p>
       </div>
       <div class="tile t-gray">
         <h3>🧭 <code>Router</code></h3>

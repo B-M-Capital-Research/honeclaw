@@ -556,13 +556,12 @@ hone-cli cloud doctor --ensure-schema --json
 hone-cli cloud object-bench --size-kib 256 --iterations 3 --json
 hone-cli cloud migrate --from-data-dir ./data --json
 hone-cli cloud migrate --from-data-dir ./data --session-only --apply --json
-hone-cli cloud migrate --from-data-dir ./data --web-auth-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --quota-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --skill-registry-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --notification-prefs-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --portfolio-only --apply --json
-hone-cli cloud migrate --from-data-dir ./data --llm-audit-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --company-profiles-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --event-store-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
 ```
@@ -585,7 +584,7 @@ hone-cli cloud community-assets --manifest /path/to/verified-assets.json --apply
 
 Every promoted resource keeps the previous SHA, size, object URI, and access state under `raw_metadata.community_asset_backfill`. Immutable R2 objects are retained for rollback. If a backfill must be reverted, restore the previous row values from that audit metadata or a PG snapshot; do not delete the old or new object until the restored application path has been verified.
 
-The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, `conversation_quota/*.json` into PG, `runtime/skill_registry.json` into PG, `notif_prefs/*.json` into PG, `portfolio/*.json` into PG, `llm_audit.sqlite3` rows into PG, and actor-scoped `company_profiles/**/*.md` into PG `cloud_company_profile_files`; use `--session-only --apply`, `--web-auth-only --apply`, `--quota-only --apply`, `--skill-registry-only --apply`, `--notification-prefs-only --apply`, `--portfolio-only --apply`, `--llm-audit-only --apply`, or `--company-profiles-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. Historical SQLite files outside sessions / web auth / LLM audit are still counted by the broad migrator but are not current runtime hot-path dependencies. Sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles are always PG-backed; generated images, uploads, and attachment/document surfaces use OSS where configured and otherwise retain their explicit local file fallback.
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, `conversation_quota/*.json`, `runtime/skill_registry.json`, `notif_prefs/*.json`, `portfolio/*.json`, and actor-scoped `company_profiles/**/*.md`; use the matching narrow `--*-only --apply` modes for fast idempotent passes before the larger object migration. The completed Web-auth and LLM-audit import flags intentionally reject further use. The retained `--event-store-only` channel reads `events.sqlite3` only as historical input and imports the five event tables into PG. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. All runtime stores are PostgreSQL-backed; generated images, uploads, and attachment/document surfaces use OSS where configured and otherwise retain their explicit local file fallback.
 
 ## Public Community Private-R2 Edge Rollout
 

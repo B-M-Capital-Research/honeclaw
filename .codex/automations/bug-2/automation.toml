@@ -50,7 +50,7 @@ prompt = """
 启动/重启的重点坑位，必须逐项排查而不是凭感觉判断：
 - 锁文件可能是脏锁：如果 `data/runtime/locks/*.lock` 指向的 pid 已不存在，说明需要先清理脏锁再启动；删除前必须先用 `ps -p <pid>` 验证旧 pid 真的已死
 - 可能只有 desktop 挂了，而 backend / channels 仍然活着；也可能正好相反，desktop 还在但 backend 已掉线。必须分别检查 desktop 进程、`8077` 监听、channels 状态，不要把两种故障混为一谈
-- `/api/users` 返回 `[]` 不等于数据目录为空；如果 `data/sessions.sqlite3` 或 `data/sessions/` 明显有数据，但会话列表接口是空的，应优先判定为 backend session-listing 故障
+- `/api/users` 返回 `[]` 不等于没有历史；如果 PostgreSQL `cloud_sessions` 明显有数据但会话列表接口为空，应优先判定为 backend session-listing 故障
 - 某些 detached / nohup 启动方式可能静默失败；如果后台重启不留新锁、不绑定 `8077`、日志也不增加，必须切回前台诊断启动抓首屏错误，再回到 detached 形态
 
 启动后检查项，全部满足才算重启成功：

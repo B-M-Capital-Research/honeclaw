@@ -73,7 +73,7 @@
    `UPDATE ... WHERE started_at IS NULL` 全表扫 + `ALTER COLUMN SET NOT NULL`
    取 ACCESS EXCLUSIVE 锁，恰好加剧我们要修的齐射争用。改为两列可空、不回填。
 2. PG 的 `GREATEST(0, NULL)` 返回 **0 而不是 NULL**（GREATEST 忽略 NULL），
-   会把未知耗时写成"0 毫秒"；SQLite 的 `MAX()` 反而是 NULL 传播。已改用
+   会把未知耗时写成"0 毫秒"；旧实现的 `MAX()` 反而是 NULL 传播。已改用
    `CASE WHEN started_at IS NULL THEN NULL`。
 3. 无配对 started 行的直插终态记录原本写 `started_at = executed_at` +
    `duration_ms = 0`，谎报 0 毫秒；改为双 NULL。

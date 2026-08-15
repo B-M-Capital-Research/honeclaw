@@ -183,7 +183,7 @@ second access truth or roll a newer subscription state backward.
 
 ## Stripe-only Data Migration
 
-Fresh SQLite and PostgreSQL schemas accept only Stripe billing rows, plus the
+Fresh PostgreSQL schemas accept only Stripe billing rows, plus the
 separate domestic-invite entitlement identity. Entitlements carry an explicit
 `entitlement_kind` and a generic `provider_reference_id`: Stripe subscription
 IDs identify recurring rows, and PaymentIntent IDs identify fixed-term rows.
@@ -222,8 +222,8 @@ bash tests/regression/ci/test_billing_contract.sh
 bash tests/regression/ci/test_billing_http_e2e.sh
 ```
 
-`test_billing_http_e2e.sh` starts an isolated real backend with temporary
-SQLite and obviously fake test credentials. It sends signed raw Stripe events
+`test_billing_http_e2e.sh` starts an isolated real backend with PostgreSQL and
+obviously fake test credentials. It sends signed raw Stripe events
 through the durable inbox and proves subscription failure/grace/recovery/
 cancel/delete/repurchase plus fixed-term pending/paid/replay/refund/isolation,
 catalog filtering, and paid-route `402` behavior without an external account.

@@ -383,7 +383,7 @@
         <text x="12" y="18" class="card-title">Stable event IDs · dedup</text>
         <text x="12" y="32" class="card-mono">price:{SYM}:{DATE}</text>
         <text x="12" y="46" class="card-detail">extended:{SYM}:{ET_DATE}:{pre|post}</text>
-        <text x="12" y="56" class="card-detail">SQLite INSERT OR IGNORE</text>
+        <text x="12" y="56" class="card-detail">PostgreSQL ON CONFLICT dedup</text>
       </g>
     </g>
   </g>
@@ -482,7 +482,7 @@
       </g>
       <g transform="translate(340, 0)">
         <rect x="0" y="0" width="280" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
-        <text x="12" y="18" class="card-title">Store · SQLite · data/events.db</text>
+        <text x="12" y="18" class="card-title">Store · PostgreSQL</text>
         <text x="12" y="33" class="card-mono">events · engine_meta · delivery_log</text>
         <text x="12" y="46" class="card-detail">id PK + INSERT OR IGNORE dedup</text>
         <text x="12" y="58" class="card-detail">payload_json holds llm_summary</text>
@@ -957,7 +957,7 @@
   <!-- ─── FOOTER ─── -->
   <g id="footer" transform="translate(72, 2050)">
     <line x1="0" y1="0" x2="1656" y2="0" class="footer-line"/>
-    <text x="0" y="20" font-size="10" fill="#8a8497" letter-spacing="0.1em">RUST · TOKIO · AXUM · SSE · TAURI 2 · SOLIDJS · TAILWIND v4 · OPENROUTER · SQLITE · ARGON2 · MCP · MIT</text>
+        <text x="0" y="20" font-size="10" fill="#8a8497" letter-spacing="0.1em">RUST · TOKIO · AXUM · SSE · TAURI 2 · SOLIDJS · TAILWIND v4 · OPENROUTER · POSTGRESQL · ARGON2 · MCP · MIT</text>
     <text x="1656" y="20" text-anchor="end" font-size="10" fill="#8a8497" letter-spacing="0.1em">HONE-CLAW.COM · DISCORD · BILIBILI · YOUTUBE · MAINTAINED BY 巴芒投研</text>
   </g>
 </svg>
