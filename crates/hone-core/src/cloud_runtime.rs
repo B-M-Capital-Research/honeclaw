@@ -73,6 +73,19 @@ WHERE admin_user_id = $1
   AND action = 'create'
 "#;
 
+const UPSERT_WEB_USER_EXTERNAL_STATE_SQL: &str = r#"
+INSERT INTO cloud_web_user_external_state(
+  user_id, email_address, email_verified_at, identity_kind, email_challenge_json
+)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id)
+DO UPDATE SET
+  email_address = EXCLUDED.email_address,
+  email_verified_at = EXCLUDED.email_verified_at,
+  identity_kind = EXCLUDED.identity_kind,
+  email_challenge_json = EXCLUDED.email_challenge_json
+"#;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeRole {
@@ -778,6 +791,29 @@ pub struct CloudWebInviteUserRecord {
     pub user_id: String,
     pub phone_number: String,
     pub record: serde_json::Value,
+    pub external_state: Option<CloudWebUserExternalStateRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CloudWebUserExternalStateRecord {
+    pub user_id: String,
+    pub email_address: Option<String>,
+    pub email_verified_at: Option<String>,
+    pub identity_kind: Option<String>,
+    pub email_challenge_json: Option<String>,
+}
+
+fn cloud_web_user_external_state_from_row(
+    row: &tokio_postgres::Row,
+    offset: usize,
+) -> CloudWebUserExternalStateRecord {
+    CloudWebUserExternalStateRecord {
+        user_id: row.get(offset),
+        email_address: row.get(offset + 1),
+        email_verified_at: row.get(offset + 2),
+        identity_kind: row.get(offset + 3),
+        email_challenge_json: row.get(offset + 4),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1393,6 +1429,25 @@ UPDATE cloud_web_invite_users
 SET record = record - 'api_key_plaintext',
     updated_at = now()
 WHERE record ? 'api_key_plaintext';
+CREATE TABLE IF NOT EXISTS cloud_web_user_external_state (
+  user_id TEXT PRIMARY KEY REFERENCES cloud_web_invite_users(user_id) ON DELETE CASCADE,
+  email_address TEXT,
+  email_verified_at TEXT,
+  identity_kind TEXT DEFAULT 'domestic_invite',
+  email_challenge_json TEXT
+);
+-- ensure_schema 是热路径；演进列保持可空，不做回填或 SET NOT NULL。
+ALTER TABLE cloud_web_user_external_state
+  ADD COLUMN IF NOT EXISTS email_address TEXT;
+ALTER TABLE cloud_web_user_external_state
+  ADD COLUMN IF NOT EXISTS email_verified_at TEXT;
+ALTER TABLE cloud_web_user_external_state
+  ADD COLUMN IF NOT EXISTS identity_kind TEXT DEFAULT 'domestic_invite';
+ALTER TABLE cloud_web_user_external_state
+  ADD COLUMN IF NOT EXISTS email_challenge_json TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_web_user_external_email
+  ON cloud_web_user_external_state(email_address)
+  WHERE email_address IS NOT NULL;
 CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
   action_id BIGSERIAL PRIMARY KEY,
   admin_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
@@ -2736,6 +2791,171 @@ DO UPDATE SET
         Ok(())
     }
 
+    pub async fn upsert_web_invite_user_record_with_external_state(
+        &self,
+        user_id: &str,
+        phone_number: &str,
+        record: serde_json::Value,
+        external_state: &CloudWebUserExternalStateRecord,
+    ) -> HoneResult<()> {
+        if external_state.user_id != user_id {
+            return Err(HoneError::Config(
+                "Web external state user_id 与 invite user_id 不一致".to_string(),
+            ));
+        }
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web external state 事务创建失败: {err}"))
+        })?;
+        transaction
+            .execute(
+                r#"
+INSERT INTO cloud_web_invite_users(user_id, phone_number, record)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id)
+DO UPDATE SET
+  phone_number = EXCLUDED.phone_number,
+  record = EXCLUDED.record,
+  updated_at = now()
+"#,
+                &[&user_id, &phone_number, &record],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 写入失败: {err}")))?;
+        transaction
+            .execute(
+                UPSERT_WEB_USER_EXTERNAL_STATE_SQL,
+                &[
+                    &external_state.user_id,
+                    &external_state.email_address,
+                    &external_state.email_verified_at,
+                    &external_state.identity_kind,
+                    &external_state.email_challenge_json,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web external state 写入失败: {err}"))
+            })?;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web external state 事务提交失败: {err}"))
+        })?;
+        Ok(())
+    }
+
+    pub async fn upsert_web_user_external_state_record(
+        &self,
+        external_state: &CloudWebUserExternalStateRecord,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                UPSERT_WEB_USER_EXTERNAL_STATE_SQL,
+                &[
+                    &external_state.user_id,
+                    &external_state.email_address,
+                    &external_state.email_verified_at,
+                    &external_state.identity_kind,
+                    &external_state.email_challenge_json,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web external state 写入失败: {err}"))
+            })?;
+        Ok(())
+    }
+
+    pub async fn find_web_user_external_state_record(
+        &self,
+        user_id: &str,
+    ) -> HoneResult<Option<CloudWebUserExternalStateRecord>> {
+        // 不能在 ensure_schema 热路径里扫描回填旧 JSON。仅当独立表还没有该用户行时
+        // 读取旧 record；第一次 external-state 写入后，独立表立即成为唯一真相源。
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT
+  u.user_id,
+  CASE WHEN s.user_id IS NULL
+    THEN NULLIF(u.record #>> '{external_state,email_address}', '')
+    ELSE s.email_address
+  END,
+  CASE WHEN s.user_id IS NULL
+    THEN NULLIF(u.record #>> '{external_state,email_verified_at}', '')
+    ELSE s.email_verified_at
+  END,
+  CASE WHEN s.user_id IS NULL
+    THEN NULLIF(u.record #>> '{external_state,identity_kind}', '')
+    ELSE s.identity_kind
+  END,
+  CASE WHEN s.user_id IS NULL
+    THEN NULLIF(u.record #>> '{external_state,email_challenge}', '')
+    ELSE s.email_challenge_json
+  END
+FROM cloud_web_invite_users u
+LEFT JOIN cloud_web_user_external_state s ON s.user_id = u.user_id
+WHERE u.user_id = $1
+"#,
+                &[&user_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web external state 读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| cloud_web_user_external_state_from_row(&row, 0)))
+    }
+
+    pub async fn find_web_invite_user_record_by_email(
+        &self,
+        email_address: &str,
+    ) -> HoneResult<Option<(serde_json::Value, CloudWebUserExternalStateRecord)>> {
+        // 第一支可命中 email_address 的唯一索引；第二支只兼容尚未写入新表的旧 JSON。
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT record, user_id, email_address, email_verified_at, identity_kind,
+       email_challenge_json
+FROM (
+  SELECT
+    u.record,
+    s.user_id,
+    s.email_address,
+    s.email_verified_at,
+    s.identity_kind,
+    s.email_challenge_json,
+    0 AS source_priority
+  FROM cloud_web_user_external_state s
+  JOIN cloud_web_invite_users u ON u.user_id = s.user_id
+  WHERE s.email_address = $1
+
+  UNION ALL
+
+  SELECT
+    u.record,
+    u.user_id,
+    NULLIF(u.record #>> '{external_state,email_address}', ''),
+    NULLIF(u.record #>> '{external_state,email_verified_at}', ''),
+    NULLIF(u.record #>> '{external_state,identity_kind}', ''),
+    NULLIF(u.record #>> '{external_state,email_challenge}', ''),
+    1 AS source_priority
+  FROM cloud_web_invite_users u
+  LEFT JOIN cloud_web_user_external_state s ON s.user_id = u.user_id
+  WHERE s.user_id IS NULL
+    AND NULLIF(u.record #>> '{external_state,email_address}', '') = $1
+) matched
+ORDER BY source_priority, record->>'created_at' DESC
+LIMIT 1
+"#,
+                &[&email_address],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 邮箱读取失败: {err}")))?;
+        Ok(row.map(|row| (row.get(0), cloud_web_user_external_state_from_row(&row, 1))))
+    }
+
     pub async fn list_web_invite_user_records(&self) -> HoneResult<Vec<serde_json::Value>> {
         let client = self.connect_client().await?;
         let rows = client
@@ -3530,13 +3750,16 @@ DO UPDATE SET
         users: &[CloudWebInviteUserRecord],
         sessions: &[CloudWebAuthSessionRecord],
     ) -> HoneResult<CloudWebAuthImportReport> {
-        let client = self.connect_client().await?;
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web auth import 事务创建失败: {err}"))
+        })?;
         let user_payload =
             serde_json::to_value(users).map_err(|err| HoneError::Serialization(err.to_string()))?;
         let session_payload = serde_json::to_value(sessions)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let user_row = client
-            .query_one(
+        let changed_user_rows = transaction
+            .query(
                 r#"
 WITH input_rows AS (
   SELECT *
@@ -3556,17 +3779,78 @@ DO UPDATE SET
   updated_at = now()
 WHERE cloud_web_invite_users.phone_number IS DISTINCT FROM EXCLUDED.phone_number
    OR cloud_web_invite_users.record IS DISTINCT FROM EXCLUDED.record
-RETURNING 1
+RETURNING user_id
 )
-SELECT
-  (SELECT count(*)::bigint FROM upserted),
-  (SELECT count(*)::bigint FROM input_rows)
+SELECT user_id FROM upserted
 "#,
                 &[&user_payload],
             )
             .await
             .map_err(|err| HoneError::Config(format!("Postgres web invite import 失败: {err}")))?;
-        let session_row = client
+        let changed_external_rows = transaction
+            .query(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    user_id TEXT,
+    external_state JSONB
+  )
+)
+INSERT INTO cloud_web_user_external_state(
+  user_id, email_address, email_verified_at, identity_kind, email_challenge_json
+)
+SELECT
+  user_id,
+  external_state->>'email_address',
+  external_state->>'email_verified_at',
+  external_state->>'identity_kind',
+  external_state->>'email_challenge_json'
+FROM input_rows
+WHERE external_state IS NOT NULL
+ON CONFLICT (user_id)
+DO UPDATE SET
+  email_address = EXCLUDED.email_address,
+  email_verified_at = EXCLUDED.email_verified_at,
+  identity_kind = EXCLUDED.identity_kind,
+  email_challenge_json = EXCLUDED.email_challenge_json
+WHERE cloud_web_user_external_state.email_address IS DISTINCT FROM EXCLUDED.email_address
+   OR cloud_web_user_external_state.email_verified_at IS DISTINCT FROM EXCLUDED.email_verified_at
+   OR cloud_web_user_external_state.identity_kind IS DISTINCT FROM EXCLUDED.identity_kind
+   OR cloud_web_user_external_state.email_challenge_json IS DISTINCT FROM EXCLUDED.email_challenge_json
+RETURNING user_id
+"#,
+                &[&user_payload],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web external state import 失败: {err}"))
+            })?;
+        let removed_external_rows = transaction
+            .query(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    user_id TEXT,
+    external_state JSONB
+  )
+)
+DELETE FROM cloud_web_user_external_state state
+USING input_rows
+WHERE state.user_id = input_rows.user_id
+  AND input_rows.external_state IS NULL
+RETURNING state.user_id
+"#,
+                &[&user_payload],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres web external state import 清理失败: {err}"
+                ))
+            })?;
+        let session_row = transaction
             .query_one(
                 r#"
 WITH input_rows AS (
@@ -3602,10 +3886,21 @@ SELECT
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web auth session import 失败: {err}"))
             })?;
-        let changed_users = user_row.get::<_, i64>(0).max(0) as usize;
-        let total_users = user_row.get::<_, i64>(1).max(0) as usize;
+        let mut changed_user_ids = BTreeSet::new();
+        for row in changed_user_rows
+            .into_iter()
+            .chain(changed_external_rows)
+            .chain(removed_external_rows)
+        {
+            changed_user_ids.insert(row.get::<_, String>(0));
+        }
+        let changed_users = changed_user_ids.len();
+        let total_users = users.len();
         let changed_sessions = session_row.get::<_, i64>(0).max(0) as usize;
         let total_sessions = session_row.get::<_, i64>(1).max(0) as usize;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web auth import 事务提交失败: {err}"))
+        })?;
         Ok(CloudWebAuthImportReport {
             changed_users,
             skipped_users: total_users.saturating_sub(changed_users),

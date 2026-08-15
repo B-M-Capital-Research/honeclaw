@@ -4,6 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
+    CloudWebUserExternalStateRecord,
 };
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -340,15 +341,21 @@ impl WebAuthStorage {
         let record = CloudWebInviteRecord {
             user: user.clone(),
             api_key_hash,
-            external_state,
+            external_state: WebUserExternalState::default(),
         };
         let value = serde_json::to_value(&record)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let user_id = user.user_id.clone();
         let phone_number = user.phone_number.clone();
+        let external_state = cloud_external_state_record(&user_id, &external_state)?;
         run_cloud_web_auth(async move {
             postgres
-                .upsert_web_invite_user_record(&user_id, &phone_number, value)
+                .upsert_web_invite_user_record_with_external_state(
+                    &user_id,
+                    &phone_number,
+                    value,
+                    &external_state,
+                )
                 .await
         })
     }
@@ -387,23 +394,15 @@ impl WebAuthStorage {
             .map(|record| (record.user, record.api_key_hash)))
     }
 
-    fn cloud_list_records(&self) -> HoneResult<Vec<CloudWebInviteRecord>> {
-        let Some(postgres) = self.cloud_postgres() else {
-            return Ok(Vec::new());
-        };
-        run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?
-            .into_iter()
-            .map(cloud_record_from_value)
-            .collect()
-    }
-
     fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
-        if self.cloud_postgres().is_some() {
-            let state = self
-                .cloud_find_record_by("user_id", user_id)?
-                .map(|record| record.external_state)
-                .unwrap_or_default();
-            return Ok(state);
+        if let Some(postgres) = self.cloud_postgres() {
+            let user_id = user_id.to_string();
+            return run_cloud_web_auth(async move {
+                postgres.find_web_user_external_state_record(&user_id).await
+            })?
+            .map(cloud_external_state_from_record)
+            .transpose()
+            .map(|state| state.unwrap_or_default());
         }
         let conn = self.sqlite_conn()?;
         conn.query_row(
@@ -424,11 +423,15 @@ impl WebAuthStorage {
     fn save_external_state(
         &self,
         user: &WebInviteUser,
-        api_key_hash: Option<String>,
         state: WebUserExternalState,
     ) -> HoneResult<()> {
-        if self.cloud_postgres().is_some() {
-            return self.cloud_upsert_invite_with_state(user, api_key_hash, state);
+        if let Some(postgres) = self.cloud_postgres() {
+            let external_state = cloud_external_state_record(&user.user_id, &state)?;
+            return run_cloud_web_auth(async move {
+                postgres
+                    .upsert_web_user_external_state_record(&external_state)
+                    .await
+            });
         }
         let challenge_json = state
             .email_challenge
@@ -466,13 +469,19 @@ impl WebAuthStorage {
     fn find_external_user_by_email(
         &self,
         email_address: &str,
-    ) -> HoneResult<Option<(WebInviteUser, Option<String>, WebUserExternalState)>> {
+    ) -> HoneResult<Option<(WebInviteUser, WebUserExternalState)>> {
         let email = normalize_email_address(email_address)?;
-        if self.cloud_postgres().is_some() {
-            return Ok(self.cloud_list_records()?.into_iter().find_map(|record| {
-                (record.external_state.profile.email_address.as_deref() == Some(email.as_str()))
-                    .then_some((record.user, record.api_key_hash, record.external_state))
-            }));
+        if let Some(postgres) = self.cloud_postgres() {
+            return run_cloud_web_auth(async move {
+                postgres.find_web_invite_user_record_by_email(&email).await
+            })?
+            .map(|(record, external_state)| {
+                Ok((
+                    cloud_record_from_value(record)?.user,
+                    cloud_external_state_from_record(external_state)?,
+                ))
+            })
+            .transpose();
         }
         let user_id = {
             let conn = self.sqlite_conn()?;
@@ -491,7 +500,7 @@ impl WebAuthStorage {
             return Ok(None);
         };
         let state = self.load_external_state(&user_id)?;
-        Ok(Some((user, None, state)))
+        Ok(Some((user, state)))
     }
 
     fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
@@ -987,7 +996,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
     pub fn find_user_by_email(&self, email_address: &str) -> HoneResult<Option<WebInviteUser>> {
         Ok(self
             .find_external_user_by_email(email_address)?
-            .map(|(user, _, _)| user))
+            .map(|(user, _)| user))
     }
 
     pub fn ensure_international_email_user(
@@ -995,9 +1004,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         email_address: &str,
     ) -> HoneResult<WebInviteUser> {
         let email_address = normalize_email_address(email_address)?;
-        if let Some((user, api_key_hash, mut state)) =
-            self.find_external_user_by_email(&email_address)?
-        {
+        if let Some((user, mut state)) = self.find_external_user_by_email(&email_address)? {
             if state.profile.email_verified_at.is_some()
                 && state.profile.email_address.as_deref() != Some(email_address.as_str())
             {
@@ -1007,7 +1014,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             }
             state.profile.email_address = Some(email_address);
             state.profile.identity_kind = WEB_IDENTITY_INTERNATIONAL_EMAIL.to_string();
-            self.save_external_state(&user, api_key_hash, state)?;
+            self.save_external_state(&user, state)?;
             return Ok(user);
         }
         self.create_international_email_user(email_address)
@@ -1018,9 +1025,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         email_address: &str,
         ttl_minutes: i64,
     ) -> HoneResult<Option<String>> {
-        let Some((user, api_key_hash, mut state)) =
-            self.find_external_user_by_email(email_address)?
-        else {
+        let Some((user, mut state)) = self.find_external_user_by_email(email_address)? else {
             return Ok(None);
         };
         let now = beijing_now();
@@ -1031,7 +1036,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             expires_at: (now + chrono::Duration::minutes(ttl_minutes.max(1))).to_rfc3339(),
             attempts: 0,
         });
-        self.save_external_state(&user, api_key_hash, state)?;
+        self.save_external_state(&user, state)?;
         Ok(Some(code))
     }
 
@@ -1040,9 +1045,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         email_address: &str,
         code: &str,
     ) -> HoneResult<EmailVerificationResult> {
-        let Some((user, api_key_hash, mut state)) =
-            self.find_external_user_by_email(email_address)?
-        else {
+        let Some((user, mut state)) = self.find_external_user_by_email(email_address)? else {
             return Ok(EmailVerificationResult::Missing);
         };
         let Some(mut challenge) = state.email_challenge.take() else {
@@ -1050,11 +1053,11 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
         };
         if challenge.attempts >= 5 {
             state.email_challenge = Some(challenge);
-            self.save_external_state(&user, api_key_hash, state)?;
+            self.save_external_state(&user, state)?;
             return Ok(EmailVerificationResult::AttemptsExceeded);
         }
         if challenge.expires_at <= beijing_now_rfc3339() {
-            self.save_external_state(&user, api_key_hash, state)?;
+            self.save_external_state(&user, state)?;
             return Ok(EmailVerificationResult::Expired);
         }
         let normalized_code = normalize_email_verification_code(code);
@@ -1062,7 +1065,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             challenge.attempts = challenge.attempts.saturating_add(1);
             let exhausted = challenge.attempts >= 5;
             state.email_challenge = Some(challenge);
-            self.save_external_state(&user, api_key_hash, state)?;
+            self.save_external_state(&user, state)?;
             return Ok(if exhausted {
                 EmailVerificationResult::AttemptsExceeded
             } else {
@@ -1070,7 +1073,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             });
         }
         state.profile.email_verified_at = Some(beijing_now_rfc3339());
-        self.save_external_state(&user, api_key_hash, state)?;
+        self.save_external_state(&user, state)?;
         Ok(EmailVerificationResult::Verified {
             user_id: user.user_id,
         })
@@ -2082,7 +2085,7 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
                        u.last_login_at, u.revoked_at, u.password_hash, u.password_set_at,
                        u.tos_accepted_at, u.tos_version, u.api_key_prefix,
                        u.api_key_created_at, u.api_key_last_used_at, u.api_key_hash,
-                       e.email_address, e.email_verified_at, e.identity_kind,
+                       e.user_id, e.email_address, e.email_verified_at, e.identity_kind,
                        e.email_challenge_json
                 FROM web_invite_users u
                 LEFT JOIN web_user_external_state e ON e.user_id = u.user_id
@@ -2109,12 +2112,18 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
                     api_key_plaintext: None,
                 };
                 let api_key_hash: Option<String> = row.get(13)?;
-                let external_state = external_state_from_values(
-                    row.get(14)?,
-                    row.get(15)?,
-                    row.get(16)?,
-                    row.get(17)?,
-                )?;
+                let external_state = row
+                    .get::<_, Option<String>>(14)?
+                    .map(|external_user_id| {
+                        external_state_from_values(
+                            row.get(15)?,
+                            row.get(16)?,
+                            row.get(17)?,
+                            row.get(18)?,
+                        )
+                        .map(|state| (external_user_id, state))
+                    })
+                    .transpose()?;
                 Ok((user, api_key_hash, external_state))
             })
             .map_err(sql_err)?;
@@ -2126,13 +2135,19 @@ VALUES (?1, ?2, 'disable', ?3, ?4)
             let record = serde_json::to_value(CloudWebInviteRecord {
                 user,
                 api_key_hash,
-                external_state,
+                external_state: WebUserExternalState::default(),
             })
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            let external_state = external_state
+                .map(|(external_user_id, state)| {
+                    cloud_external_state_record(&external_user_id, &state)
+                })
+                .transpose()?;
             users.push(hone_core::cloud_runtime::CloudWebInviteUserRecord {
                 user_id,
                 phone_number,
                 record,
+                external_state,
             });
         }
 
@@ -2372,6 +2387,53 @@ fn external_state_is_default(state: &WebUserExternalState) -> bool {
     state == &WebUserExternalState::default()
 }
 
+fn cloud_external_state_record(
+    user_id: &str,
+    state: &WebUserExternalState,
+) -> HoneResult<CloudWebUserExternalStateRecord> {
+    let email_challenge_json = state
+        .email_challenge
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|err| HoneError::Serialization(err.to_string()))?;
+    Ok(CloudWebUserExternalStateRecord {
+        user_id: user_id.to_string(),
+        email_address: state.profile.email_address.clone(),
+        email_verified_at: state.profile.email_verified_at.clone(),
+        identity_kind: Some(state.profile.identity_kind.clone()),
+        email_challenge_json,
+    })
+}
+
+fn cloud_external_state_from_record(
+    record: CloudWebUserExternalStateRecord,
+) -> HoneResult<WebUserExternalState> {
+    let identity_kind = record
+        .identity_kind
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            canonical_identity_kind(&value)
+                .map(str::to_string)
+                .ok_or_else(|| HoneError::Serialization(format!("未知 Web 身份类型: {value}")))
+        })
+        .transpose()?
+        .unwrap_or_else(default_identity_kind);
+    let email_challenge = record
+        .email_challenge_json
+        .map(|value| serde_json::from_str(&value))
+        .transpose()
+        .map_err(|err| HoneError::Serialization(err.to_string()))?;
+    Ok(WebUserExternalState {
+        profile: WebUserExternalProfile {
+            email_address: record.email_address,
+            email_verified_at: record.email_verified_at,
+            identity_kind,
+        },
+        email_challenge,
+    })
+}
+
 fn normalize_email_address(email_address: &str) -> HoneResult<String> {
     let normalized = email_address.trim().to_ascii_lowercase();
     let Some((local, domain)) = normalized.split_once('@') else {
@@ -2587,15 +2649,82 @@ mod tests {
         CloudWebInviteRecord, EmailVerificationResult, SESSION_TTL_DAYS_LONG,
         SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebAdminInviteCreateOutcome,
         WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, generate_api_key,
-        generate_invite_code, generate_session_token, hash_session_token,
+        generate_invite_code, generate_session_token, hash_session_token, run_cloud_web_auth,
     };
-    use hone_core::beijing_now;
+    use hone_core::cloud_runtime::CloudPgRuntime;
+    use hone_core::config::{CloudConfig, PostgresConfig};
+    use hone_core::{HoneError, HoneResult, beijing_now};
     use rusqlite::{Connection, params};
+    use tokio_postgres::NoTls;
 
     fn test_storage() -> WebAuthStorage {
         let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("root");
         WebAuthStorage::new(root.join("sessions.sqlite3")).expect("storage")
+    }
+
+    struct CloudWebAuthTestUser {
+        database_url: String,
+        user_id: String,
+    }
+
+    impl Drop for CloudWebAuthTestUser {
+        fn drop(&mut self) {
+            let database_url = self.database_url.clone();
+            let user_id = self.user_id.clone();
+            let _ = run_cloud_web_auth(async move {
+                let (client, connection) = tokio_postgres::connect(&database_url, NoTls)
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!("Postgres test cleanup 连接失败: {err}"))
+                    })?;
+                tokio::spawn(async move {
+                    let _ = connection.await;
+                });
+                client
+                    .execute(
+                        "DELETE FROM cloud_web_invite_users WHERE user_id = $1",
+                        &[&user_id],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!("Postgres test cleanup 删除失败: {err}"))
+                    })?;
+                Ok(())
+            });
+        }
+    }
+
+    fn inspect_cloud_external_state(
+        database_url: String,
+        user_id: String,
+    ) -> HoneResult<(Option<String>, Option<String>, Option<String>, bool)> {
+        run_cloud_web_auth(async move {
+            let (client, connection) = tokio_postgres::connect(&database_url, NoTls)
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres test inspect 连接失败: {err}"))
+                })?;
+            tokio::spawn(async move {
+                let _ = connection.await;
+            });
+            let row = client
+                .query_one(
+                    r#"
+SELECT s.email_address, s.email_verified_at, s.email_challenge_json,
+       u.record ? 'external_state'
+FROM cloud_web_user_external_state s
+JOIN cloud_web_invite_users u ON u.user_id = s.user_id
+WHERE s.user_id = $1
+"#,
+                    &[&user_id],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres test inspect 查询失败: {err}"))
+                })?;
+            Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
+        })
     }
 
     #[test]
@@ -3456,6 +3585,113 @@ mod tests {
                 .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
                 .expect("session")
                 .is_some()
+        );
+    }
+
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn cloud_web_user_external_state_round_trip() {
+        let postgres_config = PostgresConfig::default();
+        let database_url = postgres_config.resolved_database_url();
+        assert!(
+            !database_url.is_empty(),
+            "HONE_POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE must be configured"
+        );
+        let cloud_config = CloudConfig {
+            postgres: postgres_config,
+            ..CloudConfig::default()
+        };
+        let postgres =
+            CloudPgRuntime::from_cloud_config(&cloud_config).expect("configured postgres runtime");
+        let storage = WebAuthStorage::new_cloud(postgres.clone()).expect("cloud web auth storage");
+        let email = format!("pg-web-auth-{}@example.com", uuid::Uuid::new_v4().simple());
+
+        let created = storage
+            .ensure_international_email_user(&email)
+            .expect("create international user");
+        let _cleanup = CloudWebAuthTestUser {
+            database_url: database_url.clone(),
+            user_id: created.user_id.clone(),
+        };
+        let same = storage
+            .ensure_international_email_user(&email.to_ascii_uppercase())
+            .expect("lookup international user by indexed email");
+        assert_eq!(same.user_id, created.user_id);
+        assert_eq!(
+            storage
+                .external_profile(&created.user_id)
+                .expect("load external profile")
+                .email_address
+                .as_deref(),
+            Some(email.as_str())
+        );
+
+        let code = storage
+            .begin_email_verification(&email, 10)
+            .expect("write email challenge")
+            .expect("known email");
+        assert_eq!(
+            storage
+                .verify_email_code(&email, "00000000")
+                .expect("persist invalid attempt"),
+            EmailVerificationResult::Invalid
+        );
+        assert_eq!(
+            storage
+                .verify_email_code(&email, &code)
+                .expect("verify email"),
+            EmailVerificationResult::Verified {
+                user_id: created.user_id.clone()
+            }
+        );
+
+        let (stored_email, verified_at, challenge_json, invite_record_has_external_state) =
+            inspect_cloud_external_state(database_url, created.user_id.clone())
+                .expect("inspect external state row");
+        assert_eq!(stored_email.as_deref(), Some(email.as_str()));
+        assert!(verified_at.is_some());
+        assert_eq!(challenge_json, None);
+        assert!(
+            !invite_record_has_external_state,
+            "new Cloud writes must keep external state in its dedicated table"
+        );
+
+        let sqlite = test_storage();
+        let imported_email = format!(
+            "pg-web-auth-import-{}@example.com",
+            uuid::Uuid::new_v4().simple()
+        );
+        let imported_source = sqlite
+            .ensure_international_email_user(&imported_email)
+            .expect("create SQLite import source");
+        let (users, sessions) = sqlite
+            .export_cloud_records()
+            .expect("export SQLite records");
+        assert_eq!(users.len(), 1);
+        assert!(users[0].external_state.is_some());
+        let import_postgres = postgres.clone();
+        let report = run_cloud_web_auth(async move {
+            import_postgres
+                .import_web_auth_records(&users, &sessions)
+                .await
+        })
+        .expect("import web auth records");
+        assert_eq!(report.changed_users, 1);
+        let _import_cleanup = CloudWebAuthTestUser {
+            database_url: cloud_config.postgres.resolved_database_url(),
+            user_id: imported_source.user_id.clone(),
+        };
+        let imported = storage
+            .find_user_by_email(&imported_email)
+            .expect("find imported user")
+            .expect("imported user");
+        assert_eq!(imported.user_id, imported_source.user_id);
+        assert_eq!(
+            storage
+                .external_profile(&imported.user_id)
+                .expect("load imported external profile")
+                .identity_kind,
+            WEB_IDENTITY_INTERNATIONAL_EMAIL
         );
     }
 }
