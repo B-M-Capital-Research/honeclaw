@@ -388,7 +388,7 @@ WITH due AS (
   )
   ORDER BY next_attempt_ts ASC, created_at_ts ASC
   LIMIT $2
-  FOR UPDATE
+  FOR UPDATE SKIP LOCKED
 ), claimed AS (
   UPDATE earnings_continuity_jobs AS jobs
   SET status = 'running',
@@ -2380,6 +2380,15 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("completed")
+        );
+    }
+
+    #[test]
+    fn continuity_claim_uses_skip_locked_for_multi_worker_leases() {
+        let source = include_str!("store.rs");
+        assert!(
+            source.contains("LIMIT $2\n  FOR UPDATE SKIP LOCKED"),
+            "continuity claim must skip rows leased by another PostgreSQL worker"
         );
     }
 
