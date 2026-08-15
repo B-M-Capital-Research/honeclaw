@@ -3204,18 +3204,18 @@ INSERT INTO billing_entitlements(
   last_event_id, last_event_created_at, created_at, updated_at, record
 )
 VALUES (
-  $1->>'entitlement_id', $1->>'user_id', $1->>'provider',
-  $1->>'entitlement_kind', NULLIF($1->>'provider_customer_id', ''),
-  $1->>'provider_reference_id',
-  NULLIF($1->>'provider_product_id', ''), NULLIF($1->>'provider_price_id', ''),
-  NULLIF($1->>'purchase_email_normalized', ''), $1->>'raw_status',
-  $1->>'access_state', NULLIF($1->>'current_period_start', ''),
-  NULLIF($1->>'current_period_end', ''),
-  COALESCE(($1->>'cancel_at_period_end')::BOOLEAN, FALSE),
-  NULLIF($1->>'manage_url', ''),
-  NULLIF($1->>'grace_expires_at', ''),
-  $1->>'last_event_id', $1->>'last_event_created_at',
-  $1->>'created_at', $1->>'updated_at', $1
+  $1::jsonb->>'entitlement_id', $1::jsonb->>'user_id', $1::jsonb->>'provider',
+  $1::jsonb->>'entitlement_kind', NULLIF($1::jsonb->>'provider_customer_id', ''),
+  $1::jsonb->>'provider_reference_id',
+  NULLIF($1::jsonb->>'provider_product_id', ''), NULLIF($1::jsonb->>'provider_price_id', ''),
+  NULLIF($1::jsonb->>'purchase_email_normalized', ''), $1::jsonb->>'raw_status',
+  $1::jsonb->>'access_state', NULLIF($1::jsonb->>'current_period_start', ''),
+  NULLIF($1::jsonb->>'current_period_end', ''),
+  COALESCE(($1::jsonb->>'cancel_at_period_end')::BOOLEAN, FALSE),
+  NULLIF($1::jsonb->>'manage_url', ''),
+  NULLIF($1::jsonb->>'grace_expires_at', ''),
+  $1::jsonb->>'last_event_id', $1::jsonb->>'last_event_created_at',
+  $1::jsonb->>'created_at', $1::jsonb->>'updated_at', $1::jsonb
 )
 ON CONFLICT (provider, provider_reference_id)
 DO UPDATE SET
@@ -3246,7 +3246,7 @@ WHERE EXCLUDED.last_event_created_at > billing_entitlements.last_event_created_a
             )
             .await
             .map_err(|err| {
-                HoneError::Config(format!("Postgres billing entitlement 写入失败: {err}"))
+                HoneError::Config(format!("Postgres billing entitlement 写入失败: {err:?}"))
             })?;
         Ok(changed > 0)
     }
@@ -3309,13 +3309,13 @@ INSERT INTO billing_webhook_events(
   received_at, processing_started_at, processed_at, normalized_payload, record
 )
 VALUES (
-  $1->>'provider', $1->>'event_id', $1->>'event_type',
-  NULLIF($1->>'object_id', ''), $1->>'payload_sha256',
-  $1->>'provider_created_at', $1->>'processing_state',
-  COALESCE(($1->>'attempt_count')::INTEGER, 0),
-  NULLIF($1->>'last_error', ''), $1->>'received_at',
-  NULLIF($1->>'processing_started_at', ''), NULLIF($1->>'processed_at', ''),
-  COALESCE($1->'normalized_payload', '{}'::jsonb), $1
+  $1::jsonb->>'provider', $1::jsonb->>'event_id', $1::jsonb->>'event_type',
+  NULLIF($1::jsonb->>'object_id', ''), $1::jsonb->>'payload_sha256',
+  $1::jsonb->>'provider_created_at', $1::jsonb->>'processing_state',
+  COALESCE(($1::jsonb->>'attempt_count')::INTEGER, 0),
+  NULLIF($1::jsonb->>'last_error', ''), $1::jsonb->>'received_at',
+  NULLIF($1::jsonb->>'processing_started_at', ''), NULLIF($1::jsonb->>'processed_at', ''),
+  COALESCE($1::jsonb->'normalized_payload', '{}'::jsonb), $1::jsonb
 )
 ON CONFLICT (provider, event_id) DO NOTHING
 "#,
@@ -3323,7 +3323,7 @@ ON CONFLICT (provider, event_id) DO NOTHING
             )
             .await
             .map_err(|err| {
-                HoneError::Config(format!("Postgres billing webhook 收件失败: {err}"))
+                HoneError::Config(format!("Postgres billing webhook 收件失败: {err:?}"))
             })?;
         Ok(inserted > 0)
     }
@@ -3367,7 +3367,7 @@ UPDATE billing_webhook_events
 SET processing_state = 'processing',
     attempt_count = attempt_count + 1,
     last_error = NULL,
-    processing_started_at = NULLIF($5->>'processing_started_at', ''),
+    processing_started_at = NULLIF($5::jsonb->>'processing_started_at', ''),
     record = $5
 WHERE provider = $1
   AND event_id = $2
@@ -5520,6 +5520,26 @@ LIMIT $10 OFFSET $11
             .await
             .map_err(|err| HoneError::Config(format!("Postgres LLM audit 列表读取失败: {err}")))?;
         Ok((rows.into_iter().map(|row| row.get(0)).collect(), total))
+    }
+
+    pub async fn prune_llm_audit_records(&self, cutoff: &str) -> HoneResult<u64> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                "DELETE FROM cloud_llm_audit_records WHERE created_at < $1::text::timestamptz",
+                &[&cutoff],
+            )
+            .await
+            .map_err(|error| HoneError::Config(format!("Postgres LLM audit 清理失败: {error}")))
+    }
+
+    pub async fn count_llm_audit_records(&self) -> HoneResult<i64> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_one("SELECT count(*)::bigint FROM cloud_llm_audit_records", &[])
+            .await
+            .map_err(|error| HoneError::Config(format!("Postgres LLM audit 计数失败: {error}")))?;
+        Ok(row.get::<_, i64>(0).max(0))
     }
 
     pub async fn import_llm_audit_records(

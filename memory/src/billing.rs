@@ -1,12 +1,9 @@
 use std::cmp::Ordering;
-use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
 
 use chrono::DateTime;
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{HoneError, HoneResult, beijing_now_rfc3339};
-use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -108,152 +105,26 @@ pub enum BillingWebhookRecordOutcome {
 }
 
 pub struct BillingStorage {
-    backend: BillingBackend,
-}
-
-enum BillingBackend {
-    Sqlite { conn: Mutex<Connection> },
-    Cloud { postgres: CloudPgRuntime },
+    postgres: CloudPgRuntime,
+    _test_postgres_lease: Option<std::sync::Arc<crate::test_postgres::TestPostgresLease>>,
 }
 
 impl BillingStorage {
-    pub fn new(path: impl AsRef<Path>) -> HoneResult<Self> {
-        let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|err| HoneError::Config(format!("创建 Billing 目录失败: {err}")))?;
-        }
-        let conn = Connection::open(path)
-            .map_err(|err| HoneError::Config(format!("打开 Billing SQLite 失败: {err}")))?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "busy_timeout", 5000)
-            .map_err(sql_err)?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(sql_err)?;
-        let storage = Self {
-            backend: BillingBackend::Sqlite {
-                conn: Mutex::new(conn),
-            },
-        };
-        storage.init_schema()?;
+    /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
+    #[doc(hidden)]
+    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
+        let mut storage = Self::new_cloud(postgres)?;
+        storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
         ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self {
-            backend: BillingBackend::Cloud { postgres },
+            postgres,
+            _test_postgres_lease: None,
         })
-    }
-
-    fn init_schema(&self) -> HoneResult<()> {
-        let BillingBackend::Sqlite { conn } = &self.backend else {
-            return Ok(());
-        };
-        let conn = conn.lock().map_err(lock_err)?;
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS billing_entitlements (
-                entitlement_id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
-                entitlement_kind TEXT NOT NULL CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite')),
-                provider_customer_id TEXT,
-                provider_reference_id TEXT NOT NULL,
-                provider_product_id TEXT,
-                provider_price_id TEXT,
-                purchase_email_normalized TEXT,
-                raw_status TEXT NOT NULL,
-                access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
-                current_period_start TEXT,
-                current_period_end TEXT,
-                cancel_at_period_end INTEGER NOT NULL DEFAULT 0 CHECK (cancel_at_period_end IN (0, 1)),
-                manage_url TEXT,
-                grace_expires_at TEXT,
-                last_event_id TEXT NOT NULL,
-                last_event_created_at TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                UNIQUE(provider, provider_reference_id),
-                FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_billing_entitlements_user_access
-                ON billing_entitlements(user_id, access_state);
-            CREATE INDEX IF NOT EXISTS idx_billing_entitlements_purchase_email
-                ON billing_entitlements(purchase_email_normalized)
-                WHERE purchase_email_normalized IS NOT NULL;
-            CREATE INDEX IF NOT EXISTS idx_billing_entitlements_customer
-                ON billing_entitlements(provider, provider_customer_id)
-                WHERE provider_customer_id IS NOT NULL;
-
-            CREATE TABLE IF NOT EXISTS billing_webhook_events (
-                provider TEXT NOT NULL CHECK (provider = 'stripe'),
-                event_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                object_id TEXT,
-                payload_sha256 TEXT NOT NULL,
-                provider_created_at TEXT NOT NULL,
-                processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
-                attempt_count INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT,
-                received_at TEXT NOT NULL,
-                processing_started_at TEXT,
-                processed_at TEXT,
-                normalized_payload TEXT NOT NULL DEFAULT '{}',
-                PRIMARY KEY(provider, event_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_processing
-                ON billing_webhook_events(processing_state, received_at);
-            ",
-        )
-        .map_err(sql_err)?;
-        ensure_billing_column(&conn, "billing_entitlements", "manage_url", "TEXT")?;
-        ensure_billing_column(&conn, "billing_entitlements", "grace_expires_at", "TEXT")?;
-        ensure_billing_column(
-            &conn,
-            "billing_webhook_events",
-            "normalized_payload",
-            "TEXT NOT NULL DEFAULT '{}'",
-        )?;
-        ensure_billing_column(
-            &conn,
-            "billing_webhook_events",
-            "processing_started_at",
-            "TEXT",
-        )?;
-        migrate_sqlite_billing_to_typed_entitlements(&conn)?;
-        conn.execute(
-            "
-            CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
-                ON billing_webhook_events(
-                    provider, processing_state, processing_started_at, received_at
-                )
-            ",
-            [],
-        )
-        .map_err(sql_err)?;
-        Ok(())
-    }
-
-    fn sqlite_conn(&self) -> HoneResult<MutexGuard<'_, Connection>> {
-        match &self.backend {
-            BillingBackend::Sqlite { conn } => conn.lock().map_err(lock_err),
-            BillingBackend::Cloud { .. } => Err(HoneError::Storage(
-                "billing sqlite connection requested in cloud mode".to_string(),
-            )),
-        }
-    }
-
-    fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
-        match &self.backend {
-            BillingBackend::Cloud { postgres } => Some(postgres.clone()),
-            BillingBackend::Sqlite { .. } => None,
-        }
     }
 
     pub fn entitlement_id(provider: &str, provider_reference_id: &str) -> String {
@@ -266,36 +137,14 @@ impl BillingStorage {
     }
 
     pub fn list_user_entitlements(&self, user_id: &str) -> HoneResult<Vec<BillingEntitlement>> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let user_id = user_id.to_string();
-            return run_cloud_billing(async move {
-                postgres.list_billing_entitlement_records(&user_id).await
-            })?
-            .into_iter()
-            .map(entitlement_from_value)
-            .collect();
-        }
-        let conn = self.sqlite_conn()?;
-        let mut stmt = conn
-            .prepare(
-                "
-                SELECT entitlement_id, user_id, provider, entitlement_kind,
-                       provider_customer_id, provider_reference_id,
-                       provider_product_id, provider_price_id,
-                       purchase_email_normalized, raw_status, access_state,
-                       current_period_start, current_period_end, cancel_at_period_end,
-                       manage_url, grace_expires_at, last_event_id, last_event_created_at,
-                       created_at, updated_at
-                FROM billing_entitlements
-                WHERE user_id = ?1
-                ORDER BY updated_at DESC, entitlement_id DESC
-                ",
-            )
-            .map_err(sql_err)?;
-        let rows = stmt
-            .query_map(params![user_id], map_entitlement)
-            .map_err(sql_err)?;
-        rows.map(|row| row.map_err(sql_err)).collect()
+        let postgres = self.postgres.clone();
+        let user_id = user_id.to_string();
+        return run_cloud_billing(async move {
+            postgres.list_billing_entitlement_records(&user_id).await
+        })?
+        .into_iter()
+        .map(entitlement_from_value)
+        .collect();
     }
 
     pub fn find_entitlement(
@@ -303,35 +152,16 @@ impl BillingStorage {
         provider: &str,
         provider_reference_id: &str,
     ) -> HoneResult<Option<BillingEntitlement>> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let provider = provider.to_string();
-            let provider_reference_id = provider_reference_id.to_string();
-            return run_cloud_billing(async move {
-                postgres
-                    .find_billing_entitlement_record(&provider, &provider_reference_id)
-                    .await
-            })?
-            .map(entitlement_from_value)
-            .transpose();
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT entitlement_id, user_id, provider, entitlement_kind,
-                   provider_customer_id, provider_reference_id,
-                   provider_product_id, provider_price_id,
-                   purchase_email_normalized, raw_status, access_state,
-                   current_period_start, current_period_end, cancel_at_period_end,
-                   manage_url, grace_expires_at, last_event_id, last_event_created_at,
-                   created_at, updated_at
-            FROM billing_entitlements
-            WHERE provider = ?1 AND provider_reference_id = ?2
-            ",
-            params![provider, provider_reference_id],
-            map_entitlement,
-        )
-        .optional()
-        .map_err(sql_err)
+        let postgres = self.postgres.clone();
+        let provider = provider.to_string();
+        let provider_reference_id = provider_reference_id.to_string();
+        return run_cloud_billing(async move {
+            postgres
+                .find_billing_entitlement_record(&provider, &provider_reference_id)
+                .await
+        })?
+        .map(entitlement_from_value)
+        .transpose();
     }
 
     pub fn user_has_paid_access(&self, user_id: &str) -> HoneResult<bool> {
@@ -362,75 +192,14 @@ impl BillingStorage {
             }
         }
 
-        if let Some(postgres) = self.cloud_postgres() {
-            let record = serde_json::to_value(&entitlement)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            let changed = run_cloud_billing(async move {
-                postgres.upsert_billing_entitlement_record(record).await
-            })?;
-            if !changed {
-                let current = self
-                    .find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
-                return Ok(
-                    if current
-                        .as_ref()
-                        .is_some_and(|value| value.last_event_id == entitlement.last_event_id)
-                    {
-                        BillingEntitlementUpsertOutcome::Duplicate
-                    } else {
-                        BillingEntitlementUpsertOutcome::Stale
-                    },
-                );
-            }
-            return Ok(if existing.is_some() {
-                BillingEntitlementUpsertOutcome::Updated
-            } else {
-                BillingEntitlementUpsertOutcome::Created
-            });
-        }
-
-        let conn = self.sqlite_conn()?;
-        let changed = conn
-            .execute(
-                "
-                INSERT INTO billing_entitlements(
-                    entitlement_id, user_id, provider, entitlement_kind,
-                    provider_customer_id, provider_reference_id,
-                    provider_product_id, provider_price_id,
-                    purchase_email_normalized, raw_status, access_state,
-                    current_period_start, current_period_end, cancel_at_period_end,
-                    manage_url, grace_expires_at, last_event_id, last_event_created_at,
-                    created_at, updated_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
-                ON CONFLICT(provider, provider_reference_id)
-                DO UPDATE SET
-                    user_id = excluded.user_id,
-                    entitlement_kind = excluded.entitlement_kind,
-                    provider_customer_id = excluded.provider_customer_id,
-                    provider_product_id = excluded.provider_product_id,
-                    provider_price_id = excluded.provider_price_id,
-                    purchase_email_normalized = excluded.purchase_email_normalized,
-                    raw_status = excluded.raw_status,
-                    access_state = excluded.access_state,
-                    current_period_start = excluded.current_period_start,
-                    current_period_end = excluded.current_period_end,
-                    cancel_at_period_end = excluded.cancel_at_period_end,
-                    manage_url = excluded.manage_url,
-                    grace_expires_at = excluded.grace_expires_at,
-                    last_event_id = excluded.last_event_id,
-                    last_event_created_at = excluded.last_event_created_at,
-                    updated_at = excluded.updated_at
-                WHERE excluded.last_event_created_at > billing_entitlements.last_event_created_at
-                   OR (
-                     excluded.last_event_created_at = billing_entitlements.last_event_created_at
-                     AND excluded.last_event_id > billing_entitlements.last_event_id
-                   )
-                ",
-                entitlement_params(&entitlement),
-            )
-            .map_err(sql_err)?;
-        if changed == 0 {
+        let postgres = self.postgres.clone();
+        let record = serde_json::to_value(&entitlement)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let changed =
+            run_cloud_billing(
+                async move { postgres.upsert_billing_entitlement_record(record).await },
+            )?;
+        if !changed {
             let current =
                 self.find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
             return Ok(
@@ -444,11 +213,11 @@ impl BillingStorage {
                 },
             );
         }
-        Ok(if existing.is_some() {
+        return Ok(if existing.is_some() {
             BillingEntitlementUpsertOutcome::Updated
         } else {
             BillingEntitlementUpsertOutcome::Created
-        })
+        });
     }
 
     pub fn record_webhook_event(
@@ -465,58 +234,14 @@ impl BillingStorage {
             }
             return Ok(BillingWebhookRecordOutcome::Duplicate);
         }
-        if let Some(postgres) = self.cloud_postgres() {
-            let record = serde_json::to_value(&event)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            let inserted = run_cloud_billing(async move {
-                postgres.insert_billing_webhook_event_record(record).await
-            })?;
-            if inserted {
-                return Ok(BillingWebhookRecordOutcome::Inserted);
-            }
-            let existing = self.webhook_event(&event.provider, &event.event_id)?;
-            if existing
-                .as_ref()
-                .is_some_and(|value| value.payload_sha256 == event.payload_sha256)
-            {
-                return Ok(BillingWebhookRecordOutcome::Duplicate);
-            }
-            return Err(HoneError::Storage(
-                "同一 billing webhook event_id 对应不同载荷摘要".to_string(),
-            ));
-        }
-        let payload = serde_json::to_string(&event.normalized_payload)
+
+        let postgres = self.postgres.clone();
+        let record = serde_json::to_value(&event)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let conn = self.sqlite_conn()?;
-        let inserted = conn
-            .execute(
-                "
-            INSERT OR IGNORE INTO billing_webhook_events(
-                provider, event_id, event_type, object_id, payload_sha256,
-                provider_created_at, processing_state, attempt_count,
-                last_error, received_at, processing_started_at, processed_at,
-                normalized_payload
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-            ",
-                params![
-                    &event.provider,
-                    &event.event_id,
-                    &event.event_type,
-                    &event.object_id,
-                    &event.payload_sha256,
-                    &event.provider_created_at,
-                    &event.processing_state,
-                    event.attempt_count,
-                    &event.last_error,
-                    &event.received_at,
-                    &event.processing_started_at,
-                    &event.processed_at,
-                    payload,
-                ],
-            )
-            .map_err(sql_err)?;
-        if inserted > 0 {
+        let inserted = run_cloud_billing(async move {
+            postgres.insert_billing_webhook_event_record(record).await
+        })?;
+        if inserted {
             return Ok(BillingWebhookRecordOutcome::Inserted);
         }
         let existing = self.webhook_event(&event.provider, &event.event_id)?;
@@ -524,12 +249,11 @@ impl BillingStorage {
             .as_ref()
             .is_some_and(|value| value.payload_sha256 == event.payload_sha256)
         {
-            Ok(BillingWebhookRecordOutcome::Duplicate)
-        } else {
-            Err(HoneError::Storage(
-                "同一 billing webhook event_id 对应不同载荷摘要".to_string(),
-            ))
+            return Ok(BillingWebhookRecordOutcome::Duplicate);
         }
+        return Err(HoneError::Storage(
+            "同一 billing webhook event_id 对应不同载荷摘要".to_string(),
+        ));
     }
 
     pub fn webhook_event(
@@ -537,32 +261,16 @@ impl BillingStorage {
         provider: &str,
         event_id: &str,
     ) -> HoneResult<Option<BillingWebhookEvent>> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let provider = provider.to_string();
-            let event_id = event_id.to_string();
-            return run_cloud_billing(async move {
-                postgres
-                    .billing_webhook_event_record(&provider, &event_id)
-                    .await
-            })?
-            .map(webhook_from_value)
-            .transpose();
-        }
-        let conn = self.sqlite_conn()?;
-        conn.query_row(
-            "
-            SELECT provider, event_id, event_type, object_id, payload_sha256,
-                   provider_created_at, processing_state, attempt_count,
-                   last_error, received_at, processing_started_at, processed_at,
-                   normalized_payload
-            FROM billing_webhook_events
-            WHERE provider = ?1 AND event_id = ?2
-            ",
-            params![provider, event_id],
-            map_webhook_event,
-        )
-        .optional()
-        .map_err(sql_err)
+        let postgres = self.postgres.clone();
+        let provider = provider.to_string();
+        let event_id = event_id.to_string();
+        return run_cloud_billing(async move {
+            postgres
+                .billing_webhook_event_record(&provider, &event_id)
+                .await
+        })?
+        .map(webhook_from_value)
+        .transpose();
     }
 
     pub fn claim_webhook_event(
@@ -594,54 +302,24 @@ impl BillingStorage {
         event.last_error = None;
         event.processing_started_at =
             Some(now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
-        if let Some(postgres) = self.cloud_postgres() {
-            let provider = provider.to_string();
-            let event_id = event_id.to_string();
-            let record = serde_json::to_value(&event)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            let claimed = run_cloud_billing(async move {
-                postgres
-                    .claim_billing_webhook_event(
-                        &provider,
-                        &event_id,
-                        &stale_before.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                        BILLING_WEBHOOK_MAX_ATTEMPTS,
-                        record,
-                    )
-                    .await
-            })?;
-            return Ok(claimed.then_some(event));
-        }
-        let conn = self.sqlite_conn()?;
-        let changed = conn
-            .execute(
-                "
-                UPDATE billing_webhook_events
-                SET processing_state = 'processing',
-                    attempt_count = attempt_count + 1,
-                    last_error = NULL,
-                    processing_started_at = ?5
-                WHERE provider = ?1
-                  AND event_id = ?2
-                  AND attempt_count < ?3
-                  AND (
-                    processing_state IN ('received', 'failed')
-                    OR (
-                      processing_state = 'processing'
-                      AND (processing_started_at IS NULL OR processing_started_at <= ?4)
-                    )
-                  )
-                ",
-                params![
-                    provider,
-                    event_id,
+
+        let postgres = self.postgres.clone();
+        let provider = provider.to_string();
+        let event_id = event_id.to_string();
+        let record = serde_json::to_value(&event)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let claimed = run_cloud_billing(async move {
+            postgres
+                .claim_billing_webhook_event(
+                    &provider,
+                    &event_id,
+                    &stale_before.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                     BILLING_WEBHOOK_MAX_ATTEMPTS,
-                    stale_before.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    &event.processing_started_at,
-                ],
-            )
-            .map_err(sql_err)?;
-        Ok((changed > 0).then_some(event))
+                    record,
+                )
+                .await
+        })?;
+        return Ok(claimed.then_some(event));
     }
 
     pub fn claimable_webhook_event_ids(
@@ -658,52 +336,19 @@ impl BillingStorage {
             - chrono::Duration::minutes(BILLING_WEBHOOK_LEASE_MINUTES))
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let limit = limit.clamp(1, 1000);
-        if let Some(postgres) = self.cloud_postgres() {
-            let provider = provider.to_string();
-            return run_cloud_billing(async move {
-                postgres
-                    .list_claimable_billing_webhook_event_ids(
-                        &provider,
-                        &stale_before,
-                        BILLING_WEBHOOK_MAX_ATTEMPTS,
-                        limit,
-                    )
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        let mut statement = conn
-            .prepare(
-                "
-                SELECT event_id
-                FROM billing_webhook_events
-                WHERE provider = ?1
-                  AND attempt_count < ?2
-                  AND (
-                    processing_state IN ('received', 'failed')
-                    OR (
-                      processing_state = 'processing'
-                      AND (processing_started_at IS NULL OR processing_started_at <= ?3)
-                    )
-                  )
-                ORDER BY received_at, event_id
-                LIMIT ?4
-                ",
-            )
-            .map_err(sql_err)?;
-        statement
-            .query_map(
-                params![
-                    provider,
+
+        let postgres = self.postgres.clone();
+        let provider = provider.to_string();
+        return run_cloud_billing(async move {
+            postgres
+                .list_claimable_billing_webhook_event_ids(
+                    &provider,
+                    &stale_before,
                     BILLING_WEBHOOK_MAX_ATTEMPTS,
-                    stale_before,
-                    i64::try_from(limit).unwrap_or(1000),
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(sql_err)?
-            .map(|row| row.map_err(sql_err))
-            .collect()
+                    limit,
+                )
+                .await
+        });
     }
 
     pub fn finish_webhook_event(
@@ -736,53 +381,28 @@ impl BillingStorage {
             }
         }
         event.processing_started_at = None;
-        if let Some(postgres) = self.cloud_postgres() {
-            let provider = provider.to_string();
-            let event_id = event_id.to_string();
-            let state = event.processing_state.clone();
-            let last_error = event.last_error.clone();
-            let processed_at = event.processed_at.clone();
-            let record = serde_json::to_value(&event)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            return run_cloud_billing(async move {
-                postgres
-                    .finish_billing_webhook_event(
-                        &provider,
-                        &event_id,
-                        expected_attempt_count,
-                        &state,
-                        last_error.as_deref(),
-                        processed_at.as_deref(),
-                        record,
-                    )
-                    .await
-            });
-        }
-        let conn = self.sqlite_conn()?;
-        let changed = conn
-            .execute(
-                "
-            UPDATE billing_webhook_events
-            SET processing_state = ?3,
-                last_error = ?4,
-                processed_at = ?5,
-                processing_started_at = NULL
-            WHERE provider = ?1
-              AND event_id = ?2
-              AND processing_state = 'processing'
-              AND attempt_count = ?6
-            ",
-                params![
-                    provider,
-                    event_id,
-                    &event.processing_state,
-                    &event.last_error,
-                    &event.processed_at,
+
+        let postgres = self.postgres.clone();
+        let provider = provider.to_string();
+        let event_id = event_id.to_string();
+        let state = event.processing_state.clone();
+        let last_error = event.last_error.clone();
+        let processed_at = event.processed_at.clone();
+        let record = serde_json::to_value(&event)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        return run_cloud_billing(async move {
+            postgres
+                .finish_billing_webhook_event(
+                    &provider,
+                    &event_id,
                     expected_attempt_count,
-                ],
-            )
-            .map_err(sql_err)?;
-        Ok(changed > 0)
+                    &state,
+                    last_error.as_deref(),
+                    processed_at.as_deref(),
+                    record,
+                )
+                .await
+        });
     }
 }
 
@@ -929,91 +549,6 @@ fn parse_timestamp(value: &str, name: &str) -> HoneResult<DateTime<chrono::Fixed
         .map_err(|_| HoneError::Config(format!("billing {name} 时间格式不合法")))
 }
 
-fn entitlement_params(
-    value: &BillingEntitlement,
-) -> rusqlite::ParamsFromIter<Vec<rusqlite::types::Value>> {
-    use rusqlite::types::Value;
-    let values = vec![
-        Value::Text(value.entitlement_id.clone()),
-        Value::Text(value.user_id.clone()),
-        Value::Text(value.provider.clone()),
-        Value::Text(value.entitlement_kind.clone()),
-        option_text(&value.provider_customer_id),
-        Value::Text(value.provider_reference_id.clone()),
-        option_text(&value.provider_product_id),
-        option_text(&value.provider_price_id),
-        option_text(&value.purchase_email_normalized),
-        Value::Text(value.raw_status.clone()),
-        Value::Text(value.access_state.clone()),
-        option_text(&value.current_period_start),
-        option_text(&value.current_period_end),
-        Value::Integer(i64::from(value.cancel_at_period_end)),
-        option_text(&value.manage_url),
-        option_text(&value.grace_expires_at),
-        Value::Text(value.last_event_id.clone()),
-        Value::Text(value.last_event_created_at.clone()),
-        Value::Text(value.created_at.clone()),
-        Value::Text(value.updated_at.clone()),
-    ];
-    rusqlite::params_from_iter(values)
-}
-
-fn option_text(value: &Option<String>) -> rusqlite::types::Value {
-    value
-        .clone()
-        .map(rusqlite::types::Value::Text)
-        .unwrap_or(rusqlite::types::Value::Null)
-}
-
-fn map_entitlement(row: &Row<'_>) -> rusqlite::Result<BillingEntitlement> {
-    Ok(BillingEntitlement {
-        entitlement_id: row.get(0)?,
-        user_id: row.get(1)?,
-        provider: row.get(2)?,
-        entitlement_kind: row.get(3)?,
-        provider_customer_id: row.get(4)?,
-        provider_reference_id: row.get(5)?,
-        provider_product_id: row.get(6)?,
-        provider_price_id: row.get(7)?,
-        purchase_email_normalized: row.get(8)?,
-        raw_status: row.get(9)?,
-        access_state: row.get(10)?,
-        current_period_start: row.get(11)?,
-        current_period_end: row.get(12)?,
-        cancel_at_period_end: row.get::<_, i64>(13)? != 0,
-        manage_url: row.get(14)?,
-        grace_expires_at: row.get(15)?,
-        last_event_id: row.get(16)?,
-        last_event_created_at: row.get(17)?,
-        created_at: row.get(18)?,
-        updated_at: row.get(19)?,
-    })
-}
-
-fn map_webhook_event(row: &Row<'_>) -> rusqlite::Result<BillingWebhookEvent> {
-    Ok(BillingWebhookEvent {
-        provider: row.get(0)?,
-        event_id: row.get(1)?,
-        event_type: row.get(2)?,
-        object_id: row.get(3)?,
-        payload_sha256: row.get(4)?,
-        provider_created_at: row.get(5)?,
-        processing_state: row.get(6)?,
-        attempt_count: row.get(7)?,
-        last_error: row.get(8)?,
-        received_at: row.get(9)?,
-        processing_started_at: row.get(10)?,
-        processed_at: row.get(11)?,
-        normalized_payload: serde_json::from_str(&row.get::<_, String>(12)?).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(
-                12,
-                rusqlite::types::Type::Text,
-                Box::new(error),
-            )
-        })?,
-    })
-}
-
 fn entitlement_from_value(value: serde_json::Value) -> HoneResult<BillingEntitlement> {
     serde_json::from_value(value).map_err(|err| HoneError::Serialization(err.to_string()))
 }
@@ -1030,192 +565,27 @@ where
     run_cloud_sync(future, None, "cloud billing operation")
 }
 
-fn lock_err<T>(error: std::sync::PoisonError<T>) -> HoneError {
-    HoneError::Storage(format!("billing sqlite lock poisoned: {error}"))
-}
-
-fn sql_err(error: rusqlite::Error) -> HoneError {
-    HoneError::Storage(format!("billing sqlite error: {error}"))
-}
-
-fn ensure_billing_column(
-    conn: &Connection,
-    table: &str,
-    column: &str,
-    definition: &str,
-) -> HoneResult<()> {
-    let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info({table})"))
-        .map_err(sql_err)?;
-    let columns = stmt
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(sql_err)?;
-    for value in columns {
-        if value.map_err(sql_err)? == column {
-            return Ok(());
-        }
-    }
-    conn.execute(
-        &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
-        [],
-    )
-    .map_err(sql_err)?;
-    Ok(())
-}
-
-fn migrate_sqlite_billing_to_typed_entitlements(conn: &Connection) -> HoneResult<()> {
-    let entitlement_sql = sqlite_table_sql(conn, "billing_entitlements")?;
-    let webhook_sql = sqlite_table_sql(conn, "billing_webhook_events")?;
-    if entitlement_sql.contains("provider IN ('stripe', 'domestic_invite')")
-        && entitlement_sql.contains("entitlement_kind")
-        && entitlement_sql.contains("provider_reference_id")
-        && webhook_sql.contains("provider = 'stripe'")
-    {
-        return Ok(());
-    }
-
-    let reference_column = if entitlement_sql.contains("provider_reference_id") {
-        "provider_reference_id"
-    } else {
-        "provider_subscription_id"
-    };
-    let kind_expression = if entitlement_sql.contains("entitlement_kind") {
-        "entitlement_kind"
-    } else {
-        "CASE WHEN provider = 'stripe' THEN 'recurring_subscription' ELSE 'domestic_invite' END"
-    };
-
-    conn.execute_batch(
-        &format!(
-            "
-        BEGIN IMMEDIATE;
-
-        ALTER TABLE billing_entitlements RENAME TO billing_entitlements_before_stripe_only;
-        CREATE TABLE billing_entitlements (
-            entitlement_id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            provider TEXT NOT NULL CHECK (provider IN ('stripe', 'domestic_invite')),
-            entitlement_kind TEXT NOT NULL CHECK (entitlement_kind IN ('recurring_subscription', 'fixed_term_purchase', 'domestic_invite')),
-            provider_customer_id TEXT,
-            provider_reference_id TEXT NOT NULL,
-            provider_product_id TEXT,
-            provider_price_id TEXT,
-            purchase_email_normalized TEXT,
-            raw_status TEXT NOT NULL,
-            access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
-            current_period_start TEXT,
-            current_period_end TEXT,
-            cancel_at_period_end INTEGER NOT NULL DEFAULT 0 CHECK (cancel_at_period_end IN (0, 1)),
-            manage_url TEXT,
-            grace_expires_at TEXT,
-            last_event_id TEXT NOT NULL,
-            last_event_created_at TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE(provider, provider_reference_id),
-            FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
-        );
-        INSERT INTO billing_entitlements (
-            entitlement_id, user_id, provider, entitlement_kind,
-            provider_customer_id, provider_reference_id,
-            provider_product_id, provider_price_id,
-            purchase_email_normalized, raw_status, access_state,
-            current_period_start, current_period_end, cancel_at_period_end,
-            manage_url, grace_expires_at, last_event_id, last_event_created_at,
-            created_at, updated_at
-        )
-        SELECT
-            entitlement_id, user_id, provider, {kind_expression},
-            provider_customer_id, {reference_column},
-            provider_product_id, provider_price_id,
-            purchase_email_normalized, raw_status, access_state,
-            current_period_start, current_period_end, cancel_at_period_end,
-            manage_url, grace_expires_at, last_event_id, last_event_created_at,
-            created_at, updated_at
-        FROM billing_entitlements_before_stripe_only
-        WHERE provider IN ('stripe', 'domestic_invite');
-        DROP TABLE billing_entitlements_before_stripe_only;
-
-        ALTER TABLE billing_webhook_events RENAME TO billing_webhook_events_before_stripe_only;
-        CREATE TABLE billing_webhook_events (
-            provider TEXT NOT NULL CHECK (provider = 'stripe'),
-            event_id TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            object_id TEXT,
-            payload_sha256 TEXT NOT NULL,
-            provider_created_at TEXT NOT NULL,
-            processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
-            attempt_count INTEGER NOT NULL DEFAULT 0,
-            last_error TEXT,
-            received_at TEXT NOT NULL,
-            processing_started_at TEXT,
-            processed_at TEXT,
-            normalized_payload TEXT NOT NULL DEFAULT '{{}}',
-            PRIMARY KEY(provider, event_id)
-        );
-        INSERT INTO billing_webhook_events (
-            provider, event_id, event_type, object_id, payload_sha256,
-            provider_created_at, processing_state, attempt_count, last_error,
-            received_at, processing_started_at, processed_at, normalized_payload
-        )
-        SELECT
-            provider, event_id, event_type, object_id, payload_sha256,
-            provider_created_at, processing_state, attempt_count, last_error,
-            received_at, processing_started_at, processed_at, normalized_payload
-        FROM billing_webhook_events_before_stripe_only
-        WHERE provider = 'stripe';
-        DROP TABLE billing_webhook_events_before_stripe_only;
-
-        CREATE INDEX idx_billing_entitlements_user_access
-            ON billing_entitlements(user_id, access_state);
-        CREATE INDEX idx_billing_entitlements_purchase_email
-            ON billing_entitlements(purchase_email_normalized)
-            WHERE purchase_email_normalized IS NOT NULL;
-        CREATE INDEX idx_billing_entitlements_customer
-            ON billing_entitlements(provider, provider_customer_id)
-            WHERE provider_customer_id IS NOT NULL;
-        CREATE INDEX idx_billing_webhook_events_processing
-            ON billing_webhook_events(processing_state, received_at);
-        CREATE INDEX idx_billing_webhook_events_retry
-            ON billing_webhook_events(
-                provider, processing_state, processing_started_at, received_at
-            );
-
-        COMMIT;
-        "
-        ),
-    )
-    .map_err(sql_err)
-}
-
-fn sqlite_table_sql(conn: &Connection, table: &str) -> HoneResult<String> {
-    conn.query_row(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
-        [table],
-        |row| row.get(0),
-    )
-    .optional()
-    .map_err(sql_err)?
-    .ok_or_else(|| HoneError::Storage(format!("billing sqlite table {table} 不存在")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn test_storage() -> BillingStorage {
         let root = std::env::temp_dir().join(format!("hone-billing-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).expect("root");
-        let auth = Connection::open(root.join("sessions.sqlite3")).expect("auth db");
-        auth.execute_batch(
-            "
-            PRAGMA foreign_keys = ON;
-            CREATE TABLE web_invite_users(user_id TEXT PRIMARY KEY);
-            INSERT INTO web_invite_users(user_id) VALUES ('user_1');
-            ",
-        )
-        .expect("auth schema");
-        BillingStorage::new(root.join("sessions.sqlite3")).expect("billing")
+        let storage = BillingStorage::new(&root).expect("billing");
+        let postgres = storage.postgres.clone();
+        run_cloud_billing(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "INSERT INTO cloud_web_invite_users(user_id, phone_number, record) VALUES ('user_1', '', '{}'::jsonb) ON CONFLICT (user_id) DO NOTHING",
+                    &[],
+                )
+                .await
+                .map_err(|error| HoneError::Config(format!("{error:?}")))?;
+            Ok(())
+        })
+        .expect("billing test user");
+        storage
     }
 
     fn entitlement_for(
@@ -1258,6 +628,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn active_stripe_entitlement_grants_access_and_stale_events_cannot_revoke() {
         let storage = test_storage();
         assert_eq!(
@@ -1293,131 +664,40 @@ mod tests {
     }
 
     #[test]
-    fn legacy_provider_tables_are_rebuilt_as_stripe_only() {
-        let root =
-            std::env::temp_dir().join(format!("hone-billing-stripe-only-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).expect("root");
-        let database_path = root.join("sessions.sqlite3");
-        {
-            let conn = Connection::open(&database_path).expect("legacy db");
-            conn.execute_batch(
-                "
-                PRAGMA foreign_keys = ON;
-                CREATE TABLE web_invite_users(user_id TEXT PRIMARY KEY);
-                INSERT INTO web_invite_users(user_id) VALUES ('user_1');
-                CREATE TABLE billing_entitlements (
-                    entitlement_id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    provider TEXT NOT NULL CHECK (provider IN ('legacy', 'stripe', 'domestic_invite')),
-                    provider_customer_id TEXT,
-                    provider_subscription_id TEXT NOT NULL,
-                    provider_product_id TEXT,
-                    provider_price_id TEXT,
-                    purchase_email_normalized TEXT,
-                    raw_status TEXT NOT NULL,
-                    access_state TEXT NOT NULL CHECK (access_state IN ('pending', 'active', 'grace', 'inactive')),
-                    current_period_start TEXT,
-                    current_period_end TEXT,
-                    cancel_at_period_end INTEGER NOT NULL DEFAULT 0 CHECK (cancel_at_period_end IN (0, 1)),
-                    manage_url TEXT,
-                    grace_expires_at TEXT,
-                    last_event_id TEXT NOT NULL,
-                    last_event_created_at TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    UNIQUE(provider, provider_subscription_id),
-                    FOREIGN KEY(user_id) REFERENCES web_invite_users(user_id) ON DELETE CASCADE
-                );
-                INSERT INTO billing_entitlements (
-                    entitlement_id, user_id, provider, provider_subscription_id,
-                    raw_status, access_state, last_event_id, last_event_created_at,
-                    created_at, updated_at
-                ) VALUES
-                    ('ent_stripe', 'user_1', 'stripe', 'sub_1', 'active', 'active',
-                     'evt_stripe', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z'),
-                    ('ent_legacy', 'user_1', 'legacy', 'mem_1', 'active', 'active',
-                     'evt_legacy', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z');
-                CREATE TABLE billing_webhook_events (
-                    provider TEXT NOT NULL CHECK (provider IN ('legacy', 'stripe')),
-                    event_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    object_id TEXT,
-                    payload_sha256 TEXT NOT NULL,
-                    provider_created_at TEXT NOT NULL,
-                    processing_state TEXT NOT NULL CHECK (processing_state IN ('received', 'processing', 'processed', 'failed')),
-                    attempt_count INTEGER NOT NULL DEFAULT 0,
-                    last_error TEXT,
-                    received_at TEXT NOT NULL,
-                    processing_started_at TEXT,
-                    processed_at TEXT,
-                    normalized_payload TEXT NOT NULL DEFAULT '{}',
-                    PRIMARY KEY(provider, event_id)
-                );
-                INSERT INTO billing_webhook_events (
-                    provider, event_id, event_type, payload_sha256,
-                    provider_created_at, processing_state, received_at
-                ) VALUES
-                    ('stripe', 'evt_stripe', 'invoice.paid',
-                     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                     '2026-08-04T00:00:00Z', 'processed', '2026-08-04T00:00:00Z'),
-                    ('legacy', 'evt_legacy', 'membership.activated',
-                     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                     '2026-08-04T00:00:00Z', 'processed', '2026-08-04T00:00:00Z');
-                ",
-            )
-            .expect("legacy schema");
-        }
-
-        let storage = BillingStorage::new(&database_path).expect("migrate");
-        let conn = storage.sqlite_conn().expect("connection");
-        let entitlement_providers: Vec<String> = conn
-            .prepare("SELECT provider FROM billing_entitlements ORDER BY provider")
-            .expect("prepare entitlements")
-            .query_map([], |row| row.get(0))
-            .expect("query entitlements")
-            .collect::<Result<_, _>>()
-            .expect("entitlement providers");
-        let event_providers: Vec<String> = conn
-            .prepare("SELECT provider FROM billing_webhook_events ORDER BY provider")
-            .expect("prepare events")
-            .query_map([], |row| row.get(0))
-            .expect("query events")
-            .collect::<Result<_, _>>()
-            .expect("event providers");
-        assert_eq!(entitlement_providers, vec!["stripe"]);
-        assert_eq!(event_providers, vec!["stripe"]);
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_provider_constraints_reject_legacy_values() {
+        let storage = test_storage();
+        let postgres = storage.postgres.clone();
+        let error = run_cloud_billing(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    r#"
+INSERT INTO billing_entitlements(
+  entitlement_id, user_id, provider, entitlement_kind, provider_reference_id,
+  raw_status, access_state, last_event_id, last_event_created_at, created_at, updated_at, record
+) VALUES (
+  'ent_legacy', 'user_1', 'legacy', 'recurring_subscription', 'legacy_1',
+  'active', 'active', 'evt_legacy', '2026-08-04T00:00:00Z',
+  '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '{}'::jsonb
+)
+"#,
+                    &[],
+                )
+                .await
+                .map_err(|error| HoneError::Config(format!("{error:?}")))?;
+            Ok(())
+        })
+        .expect_err("legacy provider must violate the PostgreSQL CHECK constraint");
         assert!(
-            sqlite_table_sql(&conn, "billing_entitlements")
-                .expect("entitlement schema")
-                .contains("provider IN ('stripe', 'domestic_invite')")
-        );
-        assert!(
-            sqlite_table_sql(&conn, "billing_entitlements")
-                .expect("entitlement schema")
-                .contains("provider_reference_id")
-        );
-        let migrated: (String, String) = conn
-            .query_row(
-                "SELECT entitlement_kind, provider_reference_id FROM billing_entitlements WHERE entitlement_id = 'ent_stripe'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("migrated entitlement");
-        assert_eq!(
-            migrated,
-            (
-                BILLING_ENTITLEMENT_RECURRING_SUBSCRIPTION.to_string(),
-                "sub_1".to_string()
-            )
-        );
-        assert!(
-            sqlite_table_sql(&conn, "billing_webhook_events")
-                .expect("event schema")
-                .contains("provider = 'stripe'")
+            error
+                .to_string()
+                .contains("billing_entitlements_provider_check")
         );
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn old_subscription_events_cannot_revoke_a_repurchase_and_all_inactive_denies_access() {
         let storage = test_storage();
         storage
@@ -1478,6 +758,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn webhook_inbox_rejects_event_id_payload_conflicts_and_tracks_processing() {
         let storage = test_storage();
         let event = BillingWebhookEvent {
@@ -1534,14 +815,19 @@ mod tests {
                 .expect("second claim")
                 .is_none()
         );
-        storage
-            .sqlite_conn()
-            .expect("connection")
-            .execute(
-                "UPDATE billing_webhook_events SET processing_started_at = ?1 WHERE event_id = ?2",
-                params!["2020-08-03T01:00:00.000Z", "evt_1"],
-            )
-            .expect("expire lease");
+        let postgres = storage.postgres.clone();
+        run_cloud_billing(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE billing_webhook_events SET processing_started_at = $1, record = jsonb_set(record, '{processing_started_at}', to_jsonb($1::text)) WHERE event_id = $2",
+                    &[&"2020-08-03T01:00:00.000Z", &"evt_1"],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(())
+        })
+        .expect("expire lease");
         let reclaimed = storage
             .claim_webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
             .expect("reclaim")
@@ -1581,6 +867,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn grace_access_requires_an_unexpired_deadline() {
         let mut value = entitlement(
             "evt_grace",
@@ -1596,6 +883,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn fixed_term_access_requires_an_unexpired_period_end() {
         let mut value = entitlement_for(
             BILLING_PROVIDER_STRIPE,
