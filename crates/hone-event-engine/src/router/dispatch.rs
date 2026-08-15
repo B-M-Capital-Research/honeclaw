@@ -51,6 +51,9 @@ impl NotificationRouter {
         }
         let upgraded = self.maybe_upgrade_news(event);
         let routed = self.apply_system_event_policy(&upgraded);
+        // 评级事件注入「近 30 日共识计数」锚点(actor 无关,dispatch 前一次算好;
+        // 事件本身已入库,计数含当前这条)。查询失败不阻断分发。
+        let routed = self.annotate_analyst_consensus(routed);
         let event = &routed;
         // 每次 dispatch 都拿最新快照——用户持仓更新后下一条事件即可感知。
         let hits = self.registry.load().resolve(event);
@@ -493,6 +496,46 @@ impl NotificationRouter {
             }
         }
         Ok((sent, pending))
+    }
+
+    /// 评级事件 → 注入近 30 日共识计数(`hone_analyst_consensus_30d`)。
+    /// 非评级 / 无 symbol / 查询失败 → 原样返回。
+    fn annotate_analyst_consensus(&self, event: MarketEvent) -> MarketEvent {
+        if !matches!(event.kind, EventKind::AnalystGrade) {
+            return event;
+        }
+        let Some(symbol) = event.symbols.first() else {
+            return event;
+        };
+        let end = event.occurred_at.max(chrono::Utc::now());
+        let start = end - chrono::Duration::days(30);
+        let payloads = match self
+            .store
+            .list_analyst_grade_payloads_in_window(symbol, start, end)
+        {
+            Ok(payloads) => payloads,
+            Err(error) => {
+                tracing::warn!(event_id = %event.id, "共识计数查询失败: {error:#}");
+                return event;
+            }
+        };
+        let counts = crate::pollers::analyst_grade::consensus_counts_from_payloads(&payloads);
+        if counts.total() == 0 {
+            return event;
+        }
+        let mut annotated = event;
+        if let Some(obj) = annotated.payload.as_object_mut() {
+            obj.insert(
+                "hone_analyst_consensus_30d".into(),
+                serde_json::json!({
+                    "down": counts.down,
+                    "up": counts.up,
+                    "initiated": counts.init,
+                    "reiterated": counts.reiter,
+                }),
+            );
+        }
+        annotated
     }
 
     /// actor 持有事件任一标的时返回注入仓位上下文的克隆,否则 None。

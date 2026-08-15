@@ -875,6 +875,36 @@ impl EventStore {
         Ok(signal_kinds)
     }
 
+    /// 某 symbol 在时间窗内所有 analyst_grade 事件的 payload(单事件 + 汇总
+    /// 摘要)。供 router 在分发评级事件时聚合「近 30 日共识计数」锚点。
+    pub fn list_analyst_grade_payloads_in_window(
+        &self,
+        symbol: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<serde_json::Value>> {
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT payload_json FROM events
+            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
+              AND symbols_json LIKE ?3
+              AND kind_json LIKE '%analyst_grade%'
+            "#,
+        )?;
+        let rows = stmt.query_map(params![start.timestamp(), end.timestamp(), needle], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut payloads = Vec::new();
+        for row_result in rows {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&row_result?) {
+                payloads.push(payload);
+            }
+        }
+        Ok(payloads)
+    }
+
     /// 历史兼容:旧的 "since 12h" 语义 shim,内部委派给窗口查询。
     pub fn today_signal_kinds(
         &self,

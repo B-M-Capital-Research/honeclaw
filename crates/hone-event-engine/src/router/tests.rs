@@ -2938,3 +2938,81 @@ async fn no_position_line_for_actor_without_holding() {
     let calls = sink.calls.lock().unwrap();
     assert!(!calls[0].1.contains("📌 持仓"), "body={}", calls[0].1);
 }
+
+/// Item 3 端到端:dispatch 评级事件时从 store 聚合近 30 日共识并渲染锚点行。
+#[tokio::test]
+async fn analyst_consensus_anchor_is_injected_and_rendered() {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["MU".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+
+    // 30 日窗口内的历史:一条真实下调 + 一条汇总摘要(3 下调/2 重申)
+    let mk = |id: &str, days_ago: i64, payload: serde_json::Value| MarketEvent {
+        id: id.into(),
+        kind: EventKind::AnalystGrade,
+        severity: Severity::Medium,
+        symbols: vec!["MU".into()],
+        occurred_at: Utc::now() - chrono::Duration::days(days_ago),
+        title: "MU 历史评级".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.upgrades_downgrades".into(),
+        payload,
+    };
+    store
+        .insert_event(&mk(
+            "grade:MU:old1",
+            10,
+            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Hold"}),
+        ))
+        .unwrap();
+    store
+        .insert_event(&mk(
+            "grade_roundup:MU:old2",
+            5,
+            serde_json::json!({
+                "hone_analyst_roundup": true,
+                "counts": {"downgrade": 3, "upgrade": 0, "initiated": 0, "reiterated": 2}
+            }),
+        ))
+        .unwrap();
+    // 40 天前的事件必须被窗口排除
+    store
+        .insert_event(&mk(
+            "grade:MU:tooold",
+            40,
+            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Sell"}),
+        ))
+        .unwrap();
+
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    );
+    let ev = mk(
+        "grade:MU:new",
+        0,
+        serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Neutral",
+            "gradingCompany": "TestFirm"}),
+    );
+    let mut ev = ev;
+    ev.severity = Severity::High;
+    ev.title = "MU · TestFirm 下调至 Neutral（原 Buy）".into();
+    let (sent, _) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1);
+    let calls = sink.calls.lock().unwrap();
+    let body = &calls[0].1;
+    // 历史 1+3 下调 + 2 重申;40 天前的不计入(否则会是 5 下调)
+    assert!(
+        body.contains("🗓 近30日评级：4 下调 · 2 重申"),
+        "body={body}"
+    );
+}

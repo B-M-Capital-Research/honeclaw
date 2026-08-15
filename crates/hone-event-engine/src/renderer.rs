@@ -69,6 +69,11 @@ pub fn render_immediate_with_mainline(
         out.push_str(&render_inline(body_trim, fmt));
     }
 
+    if let Some(consensus_line) = analyst_consensus_line(event) {
+        out.push_str("\n\n");
+        out.push_str(&render_inline(&consensus_line, fmt));
+    }
+
     if let Some(position_line) = position_context_line(event) {
         out.push_str("\n\n");
         out.push_str(&render_inline(&position_line, fmt));
@@ -79,6 +84,32 @@ pub fn render_immediate_with_mainline(
         out.push_str(&render_link(u, fmt));
     }
     out
+}
+
+/// 近 30 日评级共识行(router 注入的 `hone_analyst_consensus_30d`)。
+/// 单条评级孤立看没有分量感 —— 「30 日内第 5 家下调」和「30 日内唯一一家」
+/// 是完全不同的信号。
+pub(crate) fn analyst_consensus_line(event: &MarketEvent) -> Option<String> {
+    let counts = event.payload.get("hone_analyst_consensus_30d")?;
+    let get = |key: &str| counts.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+    let (down, up, init, reiter) = (get("down"), get("up"), get("initiated"), get("reiterated"));
+    let mut parts = Vec::new();
+    if down > 0 {
+        parts.push(format!("{down} 下调"));
+    }
+    if up > 0 {
+        parts.push(format!("{up} 上调"));
+    }
+    if init > 0 {
+        parts.push(format!("{init} 首评"));
+    }
+    if reiter > 0 {
+        parts.push(format!("{reiter} 重申"));
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!("🗓 近30日评级：{}", parts.join(" · ")))
 }
 
 /// 持仓上下文行(router 在 actor 级克隆里注入的 `hone_position_*` 字段)。
@@ -221,6 +252,10 @@ fn render_immediate_feishu_post(event: &MarketEvent, mainline: Option<&str>) -> 
     let body_trim = body.trim();
     if !body_trim.is_empty() {
         content.push(vec![feishu_text(body_trim)]);
+    }
+
+    if let Some(consensus_line) = analyst_consensus_line(event) {
+        content.push(vec![feishu_text(&consensus_line)]);
     }
 
     if let Some(position_line) = position_context_line(event) {

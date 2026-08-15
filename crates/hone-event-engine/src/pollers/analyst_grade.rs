@@ -136,12 +136,39 @@ pub(crate) fn events_from_grades(
                 "{ticker} · {grading_company} {}",
                 summarize_action(&action, &new_grade, &prev_grade, target_change.as_ref())
             );
-            let summary = summarize_payload(&new_grade, &prev_grade, target_change.as_ref());
+            let mut summary = summarize_payload(&new_grade, &prev_grade, target_change.as_ref());
+            // 目标价锚点:目标价数值 + 发布时现价都在时,标注方向差。
+            // 「下调目标价至 $1150 但仍高于现价 961(+19.7%)」和「低于现价」是
+            // 完全不同的信号,裸的目标价转变无法区分。
+            let price_when_posted = item
+                .get("priceWhenPosted")
+                .and_then(|v| v.as_f64())
+                .filter(|p| *p > 0.0);
+            let target_vs_price = target_change
+                .as_ref()
+                .and_then(|change| change.new_target.as_deref())
+                .and_then(parse_dollar_amount)
+                .zip(price_when_posted)
+                .map(|(target, price)| (target, (target - price) / price * 100.0));
+            if let Some((_, vs_pct)) = target_vs_price {
+                let relation = if vs_pct >= 0.0 {
+                    "高于现价"
+                } else {
+                    "低于现价"
+                };
+                summary.push_str(&format!("（目标价{relation} {vs_pct:+.1}%）"));
+            }
             let url = item
                 .get("newsURL")
                 .and_then(|v| v.as_str())
                 .filter(|url| is_user_visible_url(url))
                 .map(|s| s.to_string());
+            let mut payload = item.clone();
+            if let (Some((target, vs_pct)), Some(obj)) = (target_vs_price, payload.as_object_mut())
+            {
+                obj.insert("hone_target_price".into(), serde_json::json!(target));
+                obj.insert("hone_target_vs_price_pct".into(), serde_json::json!(vs_pct));
+            }
             Some(MarketEvent {
                 id: format!("grade:{ticker}:{published}:{grading_company}"),
                 kind: EventKind::AnalystGrade,
@@ -152,7 +179,7 @@ pub(crate) fn events_from_grades(
                 summary,
                 url,
                 source: "fmp.upgrades_downgrades".into(),
-                payload: item.clone(),
+                payload,
             })
         })
         .collect();
@@ -564,6 +591,81 @@ fn target_change_from_news_title(title: &str) -> Option<TargetChange> {
         new_target: amounts.first().cloned(),
         old_target: amounts.get(1).cloned(),
     })
+}
+
+/// 30 日评级共识计数(item 3 锚点)。分类规则与 [`roundup_summary_event`]
+/// 完全一致:下调/上调只在评级**真的变化**时计入,initiated 计首评,其余重申。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ConsensusCounts {
+    pub down: usize,
+    pub up: usize,
+    pub init: usize,
+    pub reiter: usize,
+}
+
+impl ConsensusCounts {
+    pub(crate) fn total(&self) -> usize {
+        self.down + self.up + self.init + self.reiter
+    }
+}
+
+/// 从 30 日窗口内的 analyst_grade payload 列表聚合共识计数。
+/// 单事件按 action+评级变化分类;汇总摘要事件直接累加其 `counts`。
+pub(crate) fn consensus_counts_from_payloads(payloads: &[Value]) -> ConsensusCounts {
+    let mut counts = ConsensusCounts::default();
+    for payload in payloads {
+        if payload
+            .get("hone_analyst_roundup")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+        {
+            let roundup = payload.get("counts");
+            let get = |key: &str| {
+                roundup
+                    .and_then(|c| c.get(key))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as usize
+            };
+            counts.down += get("downgrade");
+            counts.up += get("upgrade");
+            counts.init += get("initiated");
+            counts.reiter += get("reiterated");
+            continue;
+        }
+        let action = payload
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let prev = payload
+            .get("previousGrade")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let new = payload
+            .get("newGrade")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let changed = !prev.is_empty() && !new.is_empty() && !prev.eq_ignore_ascii_case(new);
+        match action.as_str() {
+            "downgrade" if changed => counts.down += 1,
+            "upgrade" if changed => counts.up += 1,
+            "initiated" | "initialise" => counts.init += 1,
+            _ => counts.reiter += 1,
+        }
+    }
+    counts
+}
+
+/// `"$1,328"` / `"$45.50"` → 数值。非金额字符串 → None。
+fn parse_dollar_amount(amount: &str) -> Option<f64> {
+    let cleaned: String = amount
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    cleaned.parse::<f64>().ok().filter(|v| *v > 0.0)
 }
 
 fn dollar_amounts(title: &str) -> Vec<String> {
@@ -1026,5 +1128,111 @@ mod tests {
                 event.severity, event.title, event.summary
             );
         }
+    }
+
+    /// Item 3 锚点:真实 Citi MU 案例 —— 下调目标价至 $1,150,发布时现价 961。
+    /// 「下调但仍高于现价 +19.7%」必须与「低于现价」可区分。
+    #[test]
+    fn lowered_target_still_above_price_is_annotated() {
+        let raw = serde_json::json!([{
+            "symbol": "MU",
+            "publishedDate": "2026-08-14T13:46:27.000Z",
+            "newsURL": "https://thefly.com/x",
+            "newsTitle": "Micron price target lowered to $1,150 from $1,290 at Citi",
+            "newGrade": "Buy",
+            "previousGrade": "Buy",
+            "gradingCompany": "Citi",
+            "action": "hold",
+            "priceWhenPosted": 961.0,
+        }]);
+        let events = events_from_grades(
+            &raw,
+            "MU",
+            chrono::DateTime::parse_from_rfc3339("2026-08-10T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert!(
+            event.summary.contains("目标价高于现价 +19.7%"),
+            "summary={}",
+            event.summary
+        );
+        assert_eq!(
+            event
+                .payload
+                .get("hone_target_price")
+                .and_then(|v| v.as_f64()),
+            Some(1150.0)
+        );
+        let vs = event
+            .payload
+            .get("hone_target_vs_price_pct")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert!((vs - 19.667).abs() < 0.01, "vs={vs}");
+    }
+
+    /// 目标价低于现价的下调 → 「低于现价」负号标注。
+    #[test]
+    fn lowered_target_below_price_is_annotated_negative() {
+        let raw = serde_json::json!([{
+            "symbol": "AAPL",
+            "publishedDate": "2026-08-14T13:00:00.000Z",
+            "newsURL": "https://thefly.com/y",
+            "newsTitle": "Apple price target lowered to $180 from $250 at TestFirm",
+            "newGrade": "Hold",
+            "previousGrade": "Buy",
+            "gradingCompany": "TestFirm",
+            "action": "downgrade",
+            "priceWhenPosted": 200.0,
+        }]);
+        let events = events_from_grades(
+            &raw,
+            "AAPL",
+            chrono::DateTime::parse_from_rfc3339("2026-08-10T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        let event = &events[0];
+        assert!(
+            event.summary.contains("目标价低于现价 -10.0%"),
+            "summary={}",
+            event.summary
+        );
+    }
+
+    /// 无 priceWhenPosted / 标题不含目标价 → 不标注,行为与旧版一致。
+    #[test]
+    fn missing_price_or_target_produces_no_anchor() {
+        let raw = serde_json::json!([sample_grade("downgrade", 0)]);
+        let events = events_from_grades(&raw, "AAPL", Utc::now() - chrono::Duration::days(7));
+        assert!(!events[0].summary.contains("现价"));
+        assert!(events[0].payload.get("hone_target_price").is_none());
+    }
+
+    /// Item 3 共识聚合:单事件 + 汇总摘要 counts 合并,分类规则与 roundup 一致。
+    #[test]
+    fn consensus_counts_merge_singles_and_roundups() {
+        let payloads = vec![
+            // 真实下调(评级变化)
+            serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Hold"}),
+            // 脏 upgrade(prev==new)→ 重申
+            serde_json::json!({"action": "upgrade", "previousGrade": "Buy", "newGrade": "Buy"}),
+            // 首评
+            serde_json::json!({"action": "initiated", "previousGrade": "", "newGrade": "Overweight"}),
+            // 汇总摘要
+            serde_json::json!({
+                "hone_analyst_roundup": true,
+                "counts": {"downgrade": 3, "upgrade": 1, "initiated": 4, "reiterated": 2}
+            }),
+        ];
+        let counts = consensus_counts_from_payloads(&payloads);
+        assert_eq!(
+            (counts.down, counts.up, counts.init, counts.reiter),
+            (4, 1, 5, 3)
+        );
+        assert_eq!(counts.total(), 13);
     }
 }
