@@ -1,8 +1,8 @@
 use hone_core::cloud_runtime::{CloudLlmAuditFilter, CloudLlmAuditRecord, CloudPgRuntime};
+use hone_core::cloud_sync::run_cloud_sync;
 use hone_core::{HoneError, HoneResult, LlmAuditRecord, LlmAuditSink};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
@@ -626,20 +626,9 @@ fn audit_summary_from_record(record: LlmAuditRecord) -> AuditRecordSummary {
 fn run_cloud_llm_audit<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud llm audit worker panicked".to_string()))?;
-    }
-    let runtime =
-        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud llm audit operation")
 }
 
 fn detect_token_columns(conn: &Connection) -> HoneResult<bool> {
