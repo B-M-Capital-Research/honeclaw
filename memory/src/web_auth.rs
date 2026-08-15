@@ -1299,9 +1299,9 @@ mod tests {
     use tokio_postgres::NoTls;
 
     fn test_storage() -> WebAuthStorage {
-        let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).expect("root");
-        WebAuthStorage::new(root.join("sessions.sqlite3")).expect("storage")
+        let namespace =
+            std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
+        WebAuthStorage::new(namespace).expect("storage")
     }
 
     struct CloudWebAuthTestUser {

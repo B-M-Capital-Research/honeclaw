@@ -184,9 +184,9 @@ mod tests {
     #[test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn record_and_prune_expired_rows() {
-        let root = std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
-        let db_path = root.join("audit.sqlite3");
-        let storage = LlmAuditStorage::new(&db_path, 30).expect("storage");
+        let namespace =
+            std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
+        let storage = LlmAuditStorage::new(namespace, 30).expect("storage");
 
         let mut fresh = LlmAuditRecord::new(
             "Actor_feishu__direct__alice",
@@ -225,16 +225,14 @@ mod tests {
         assert_eq!(storage.count_records().expect("count"), 2);
         storage.prune_expired().expect("prune");
         assert_eq!(storage.count_records().expect("count after"), 1);
-
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn query_audit_records_with_filters() {
-        let root = std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
-        let db_path = root.join("audit.sqlite3");
-        let storage = LlmAuditStorage::new(&db_path, 30).expect("storage");
+        let namespace =
+            std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
+        let storage = LlmAuditStorage::new(namespace, 30).expect("storage");
 
         let mut chat_audit_record = LlmAuditRecord::new(
             "sess1",
@@ -313,8 +311,6 @@ mod tests {
 
         let missing = storage.get_audit_record("not-exist").unwrap();
         assert!(missing.is_none());
-
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
