@@ -7,6 +7,13 @@
 
 ## 最新进展
 
+- `2026-08-16 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-16 02:01-06:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 05:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-15 23:40 CST` `bug-2` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs` 现在会在 heartbeat 结构化结果缺少 `message` 时，从 `symbol/ticker/triggered_tickers` 与 `event/detail/headline/reason` 组合出用户可读正文；plain-text trigger 路径也会优先回收 fenced / inline JSON 的结构化内容，不再把整段协议体原样送入 deliver。
   - `crates/hone-channels/src/runtime.rs` / `scheduler.rs` 同轮补齐 raw tool tag 与内部行情口径净化，避免结构化 heartbeat 退化为 PlainTextTriggered 时再把协议噪音带出。

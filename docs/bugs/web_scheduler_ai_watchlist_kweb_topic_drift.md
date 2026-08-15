@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-16 02:01-06:02 CST（UTC 2026-08-15 18:01-22:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 02:01 CST deliver preview 转为 VIX / VXX 投教长文，05:30 CST 又转为“你的推送日程 / 即时推阈值 / 最低严重度”等配置说明，没有稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 03:00 / 03:30 / 06:00 CST 多轮转为低轨卫星赛道、跌 20% 是否买入或工具额度耗尽后的单项事件说明，偏离该 job 的持仓观察列表关键事件核验目标。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒`。
+  - 03:00 / 03:30 / 05:00 / 05:30 CST deliver preview 转向美国芯片出口管制与中美科技博弈长文，而不是围绕 NVDA 关键事件心跳筛查收口。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-15 18:02-22:01 CST（UTC 2026-08-15 10:02-14:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 21:00 / 22:00 CST deliver preview 转为 VIX 投教长文，主体是“VIX 本身不可直接买卖 / 买 VIX 是交易波动率预期”，没有稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
