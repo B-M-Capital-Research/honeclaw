@@ -86,7 +86,7 @@ describe("public workspace page contract", () => {
   });
 
   it("keeps restoration inside the Agent visual language", () => {
-    expect(startup).toContain("HONE AGENT");
+    expect(startup).toContain("HONE 投资助手");
     expect(startup).not.toContain("HONE CONVERSATION");
     expect(startup).toContain('class="public-chat-startup-tabs"');
     expect(me).toContain("CONTENT.chat_page.me_page.loading_title");

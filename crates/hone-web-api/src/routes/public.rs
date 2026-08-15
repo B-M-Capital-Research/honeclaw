@@ -54,6 +54,7 @@ pub(crate) const COMMUNITY_EDGE_COOKIE: &str = "hone_community_edge";
 pub(crate) const COMMUNITY_EDGE_COOKIE_PATH: &str = "/_community/v1/";
 const WEB_SESSION_MAX_AGE_LONG_SECS: i64 = 30 * 24 * 60 * 60;
 const WEB_SESSION_MAX_AGE_SHORT_SECS: i64 = 24 * 60 * 60;
+const LOCAL_DEV_LOGIN_PHONE: &str = "19900000001";
 
 /// 与 memory::web_auth 中的 TTL 常量保持一致。
 const SESSION_TTL_DAYS_LONG: i64 = hone_memory::SESSION_TTL_DAYS_LONG;
@@ -65,6 +66,121 @@ pub(crate) const TOS_VERSION: &str = "2.4";
 
 pub(crate) async fn handle_captcha_config() -> Response {
     Json(crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env()).into_response()
+}
+
+pub(crate) async fn handle_dev_login_config(State(state): State<Arc<AppState>>) -> Response {
+    Json(json!({ "enabled": public_dev_login_enabled(&state) })).into_response()
+}
+
+pub(crate) async fn handle_dev_login(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Response {
+    if !public_dev_login_enabled(&state) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let user = match state
+        .web_auth
+        .find_active_invite_user_by_phone(LOCAL_DEV_LOGIN_PHONE)
+    {
+        Ok(Some(user)) => user,
+        Ok(None) => match state.web_auth.create_invite_user(LOCAL_DEV_LOGIN_PHONE) {
+            Ok(user) => user,
+            Err(error) => {
+                return crate::routes::json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("创建本地测试账号失败: {error}"),
+                );
+            }
+        },
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取本地测试账号失败: {error}"),
+            );
+        }
+    };
+
+    if let Err(error) = state
+        .web_auth
+        .record_tos_acceptance(&user.user_id, TOS_VERSION)
+    {
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("记录本地测试账号协议状态失败: {error}"),
+        );
+    }
+    let session = match state
+        .web_auth
+        .create_session_for_user(&user.user_id, SESSION_TTL_DAYS_LONG)
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "本地测试账号不可用",
+            );
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建本地测试会话失败: {error}"),
+            );
+        }
+    };
+    let refreshed = match state.web_auth.find_invite_user(&user.user_id) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "本地测试账号已丢失",
+            );
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取本地测试账号失败: {error}"),
+            );
+        }
+    };
+
+    let mut response = Json(json!({
+        "user": to_public_auth_user(&state, &user.user_id, refreshed),
+    }))
+    .into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        build_session_cookie(
+            &session.session_token,
+            &headers,
+            WEB_SESSION_MAX_AGE_LONG_SECS,
+        ),
+    );
+    response
+}
+
+fn public_dev_login_enabled(state: &AppState) -> bool {
+    public_dev_login_enabled_for(
+        &state.deployment_mode,
+        state.core.config.cloud.effective_mode().as_str(),
+        std::env::var("HONE_PUBLIC_DEV_LOGIN").ok().as_deref(),
+    )
+}
+
+fn public_dev_login_enabled_for(
+    deployment_mode: &str,
+    cloud_mode: &str,
+    configured: Option<&str>,
+) -> bool {
+    deployment_mode.eq_ignore_ascii_case("local")
+        && cloud_mode.eq_ignore_ascii_case("local")
+        && configured.is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -844,6 +960,14 @@ pub(crate) async fn handle_chat(
 
     if let Some((workflow, _)) = workflow {
         combined_message = forced_earnings_skill_input(&workflow, &combined_message);
+    }
+
+    match crate::routes::research_library::chat_context_for_user_async(&state, &user.user_id, &message)
+        .await
+    {
+        Ok(Some(context)) => combined_message.push_str(&context),
+        Ok(None) => {}
+        Err(error) => tracing::warn!(%error, "research library context unavailable"),
     }
 
     build_chat_sse(
@@ -1736,6 +1860,13 @@ async fn run_public_api_chat_once(
     {
         return Ok(reply);
     }
+    let mut message = message;
+    if let Ok(Some(context)) =
+        crate::routes::research_library::chat_context_for_user_async(&state, &actor.user_id, &message)
+            .await
+    {
+        message.push_str(&context);
+    }
     let prompt_options = PromptOptions {
         is_admin: state.core.is_admin_actor(&actor),
         ..PromptOptions::default()
@@ -1796,6 +1927,17 @@ fn build_openai_chat_sse(
                 .await;
             let _ = tx.send("[DONE]".to_string()).await;
             return;
+        }
+        let mut message = message;
+        if let Ok(Some(context)) =
+            crate::routes::research_library::chat_context_for_user_async(
+                &state,
+                &actor.user_id,
+                &message,
+            )
+            .await
+        {
+            message.push_str(&context);
         }
         let prompt_options = PromptOptions {
             is_admin: state.core.is_admin_actor(&actor),
@@ -2092,9 +2234,10 @@ mod tests {
         infer_canonical_earnings_workflow, is_earnings_research_skill_command,
         logout_success_response, public_active_state_response, public_api_failure_message,
         public_api_finish_reason, public_attachment_filename, public_client_key,
-        public_sms_phone_candidates, resolve_public_generated_file_path,
-        sms_login_rejected_response, sms_send_accepted_response,
-        validate_public_generated_file_path, validate_public_upload_path,
+        public_dev_login_enabled_for, public_sms_phone_candidates,
+        resolve_public_generated_file_path, sms_login_rejected_response,
+        sms_send_accepted_response, validate_public_generated_file_path,
+        validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
@@ -2106,6 +2249,32 @@ mod tests {
         HistoryMsg, HistoryScheduledPush, PublicEarningsWorkflowKind, PublicEarningsWorkflowRequest,
     };
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
+
+    #[test]
+    fn public_dev_login_requires_explicit_local_local_enablement() {
+        assert!(public_dev_login_enabled_for("local", "local", Some("true")));
+        assert!(public_dev_login_enabled_for(
+            "LOCAL",
+            "LOCAL",
+            Some(" yes ")
+        ));
+        assert!(!public_dev_login_enabled_for("local", "local", None));
+        assert!(!public_dev_login_enabled_for(
+            "local",
+            "local",
+            Some("false")
+        ));
+        assert!(!public_dev_login_enabled_for(
+            "remote",
+            "local",
+            Some("true")
+        ));
+        assert!(!public_dev_login_enabled_for(
+            "local",
+            "cloud",
+            Some("true")
+        ));
+    }
 
     #[test]
     fn earnings_workflow_is_canonical_and_forces_the_named_skill() {

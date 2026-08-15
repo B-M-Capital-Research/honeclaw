@@ -615,6 +615,8 @@ function toPublicAttachments(
 }
 
 const ATTACHMENT_LINE = /^\[附件:\s*.+\]$/;
+const SAVED_DAILY_SIGNAL_CONTEXT =
+  /<!-- HONE_SAVED_DAILY_SIGNAL_REPORT[\s\S]*?END_HONE_SAVED_DAILY_SIGNAL_REPORT -->\s*/g;
 
 /**
  * Strips `[附件: <path>]` marker lines (inserted server-side when a user sends
@@ -623,6 +625,7 @@ const ATTACHMENT_LINE = /^\[附件:\s*.+\]$/;
  */
 export function stripAttachmentMarkers(content: string | null | undefined): string {
   return (content ?? "")
+    .replace(SAVED_DAILY_SIGNAL_CONTEXT, "")
     .split("\n")
     .filter((line) => !ATTACHMENT_LINE.test(line.trim()))
     .join("\n")

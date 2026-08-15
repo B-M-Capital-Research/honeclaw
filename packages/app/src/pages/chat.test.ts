@@ -696,6 +696,14 @@ describe("stripAttachmentMarkers", () => {
       ),
     ).toBe("问题正文\n正文里提到 [附件: label] 不应被删");
   });
+
+  it("hides saved report context while keeping the user's visible question", () => {
+    expect(
+      stripAttachmentMarkers(
+        '<!-- HONE_SAVED_DAILY_SIGNAL_REPORT\n{"score":72}\nEND_HONE_SAVED_DAILY_SIGNAL_REPORT -->\n基于已保存的宏观红绿灯回答：为什么是黄灯？',
+      ),
+    ).toBe("基于已保存的宏观红绿灯回答：为什么是黄灯？");
+  });
 });
 
 describe("public chat composer state", () => {

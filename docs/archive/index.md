@@ -1,6 +1,202 @@
 # Archive Index
 
-Last updated: 2026-08-13
+Last updated: 2026-08-15
+
+## 2026-08-11
+
+### Weekly Brief Readable Calendar
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/weekly-brief-readable-calendar.md`
+- Handoff: `docs/handoffs/2026-08-11-weekly-brief-readable-calendar.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-15-separate-weekly-review-from-the-industry-event-chain`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Web API 289/2 ignored; Web 454/454; focused weekly and key-event contracts; TypeScript; public production build; authenticated API and desktop browser acceptance
+- Current conclusion: the key-event-chain ten-day view has been replaced by a standalone structured weekly brief. It shows the prior and next Beijing natural weeks as readable date-grouped agendas, reuses macro/earnings JSON instead of the finance-calendar PNG, accepts only confirmed industry changes as completed facts, and labels past schedules, future reminders and missing earnings coverage explicitly. The local 2026-08-11 report correctly shows four prior-week schedules, three next-week macro events and no guessed earnings while FMP is unconfigured.
+- Next entry point: configure the existing FMP key pool for covered-company earnings, then add a separately verified official-release ingestion path if prior-week macro actuals are required; do not infer results from schedule dates.
+
+### Company Research Corpus Dialogue Priority
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/company-research-corpus-dialogue-priority.md`
+- Handoff: `docs/handoffs/2026-08-11-company-research-corpus-dialogue-priority.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-11-compose-covered-company-dialogue-from-historical-thesis-cards-and-current-evidence`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Skill Creator validation; `hone-channels` 793/1 ignored; company research dialogue contract; Hari conversation contract; Rust format/diff checks; console build; local skill-enabled smoke
+- Current conclusion: covered-company questions now privately project only the relevant cards from the 52-company transcript corpus and require both the company-thesis and Hari Skills. Historical business-model, fundamental, moat and falsifier logic is preferred over generic memory, while all current prices, filings, guidance, orders, news, industry state and valuation inputs remain on the current evidence chain.
+- Next entry point: configure the target environment's actor-safe function-calling model, then run MSFT, SNDK, APP+BE and uncovered NVDA answer canaries without weakening the public actor sandbox.
+
+### Multi-method Daily Valuation And Rating Integration
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/multi-method-valuation-rating-integration.md`
+- Handoff: `docs/handoffs/2026-08-11-multi-method-valuation-rating-integration.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-10-route-daily-valuation-by-business-model-and-feed-ratings-only-from-cross-checked-results`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Web API 276/2 ignored; focused Web 22/22; TypeScript; Rust formatting/diff checks; public production build; console binary build; local fail-closed snapshot smoke
+- Current conclusion: HONE valuation v2 now selects a multi-method model by business type, adds cycle normalization, scenario probabilities, method-level results and reverse valuation, and only sends fresh cross-checked values into company-rating v3. The 19:20 valuation run immediately refreshes ratings and the independent 19:30 run remains. Missing FMP data produces explicit unavailable rows and cannot reuse v1 or mock values.
+- Next entry point: configure the target environment's existing FMP key pool, manually review at least one cyclical and one profitable-growth company, then version any profile-specific weight changes without weakening the quality gate.
+
+### Hari Invest Conversation Decision Layer
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/hari-invest-conversation-agent.md`
+- Handoff: `docs/handoffs/2026-08-11-hari-invest-conversation-agent.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-09-make-decisiveness-an-evidence-backed-decision-zone-contract`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Skill Creator validation; Hari conversation contract; skill-runtime consistency/tools; `hone-tools` 185 passed / 1 ignored; `hone-channels` 789 passed / 1 ignored; console binary build; live admin dialogue with Skill tool trace
+- Current conclusion: HONE's public `hari-invest` is now a conversation decision Skill rather than an exposed copy of the internal research package. Natural Chinese investment questions can discover it, its first paragraph must choose opportunity/hold/risk/data-insufficient with confidence and reason, and the rest separates time horizons, evidence, the strongest counterargument and observable change conditions. A real local dialogue loaded the Skill and its references before producing a decisive, bounded answer.
+- Next entry point: configure an actor-safe server-side function-calling model or `hone_cloud` provider for ordinary public users, then add a golden-dialogue evaluation gate. Do not grant public actors host-capable Codex ACP access merely to make the button work.
+
+### Daily Valuation Lab
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/daily-valuation-lab.md`
+- Handoff: `docs/handoffs/2026-08-11-daily-valuation-lab.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-08-keep-numeric-valuation-hone-owned-reproducible-and-fail-closed`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: valuation Rust 5/5; Web API 268/2 ignored; Web 444/444; TypeScript; Rust formatting; public production build; console binary build; authenticated API and desktop browser acceptance
+- Current conclusion: HONE now has a signed-in `/valuation-lab` and a 19:20 Beijing daily worker for the existing 52-company coverage. It uses current quote, quarterly free cash flow, balance-sheet and analyst-estimate evidence to compute transparent bear/base/bull DCF values, a forward-EPS cross-check and reverse-DCF implied growth. Only fresh, positive-FCF, convergent and cross-validated rows may enter company ratings; all other rows remain explicit no-valuation states. Exact numeric thresholds are HONE model defaults rather than claimed Hari formulas.
+- Next entry point: configure the existing FMP key pool in the target environment, review the first live eligible cohort, then add versioned business-model-specific methods instead of weakening the missing-data gate.
+
+### Unified Research Library
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/unified-research-library.md`
+- Handoff: `docs/handoffs/2026-08-11-unified-research-library.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-07-keep-imported-research-actor-scoped-and-evidence-only`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Web API 262/2 ignored; Web 441/441; TypeScript; Rust formatting; public production build; authenticated desktop/mobile browser acceptance; multipart API upload/list smoke
+- Current conclusion: HONE now has a signed-in `/research-library` for daily personal or administrator-owned global research. It keeps source/date/hash/ticker/topic provenance and explicit per-item authorization for chat, key-event chains and portfolio news. Personal data stays actor-scoped; imported prose is evidence-only and cannot override instructions or become an automatic trade action. The current single-node local implementation uses manifest files plus stored bytes and does not claim a production vector database.
+- Next entry point: migrate metadata to PostgreSQL and bytes to object storage before a cloud rollout, then implement one documented official connector at a time. Knowledge Planet/IMA private-session scraping remains out of scope.
+
+### Continuous Research Ten-day Brief
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/continuous-research-ten-day-brief.md`
+- Handoff: `docs/handoffs/2026-08-11-key-event-chain-and-serenity-source.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-06-treat-the-next-ten-days-as-a-verification-queue-not-a-prediction-calendar`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: key-event chain 9/9; Web API 258/2 ignored; Web 438/438; TypeScript; public production build; authenticated local browser acceptance
+- Current conclusion: the key-event-chain dialog now includes a secondary ten-day brief without adding another homepage launcher. The current source-only snapshot reviews one attributable Rubin event for 2026-08-02–08-11 and keeps four questions for 2026-08-12–08-21; two HBM questions correctly wait for primary evidence. Review-by dates are not event predictions, broad titles use topic-specific evidence excerpts, and every available item links back to an admitted original.
+- Next entry point: enrich the verification queue only from lawful primary calendars or filings, and keep explicit event dates separate from review-by dates. Configure the existing digest model only if bounded impact analysis is desired.
+
+### Key-event Chain And Serenity Source
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/key-event-chain-and-serenity-source.md`
+- Handoff: `docs/handoffs/2026-08-11-key-event-chain-and-serenity-source.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-05-build-key-event-chains-from-attributed-source-events`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: core 153/153; Web API 254/2 ignored; influencer adapter 7/7; key-event chain 5/5; Web 436/436; TypeScript; production build; fresh local source snapshots
+- Current conclusion: the chat home now includes a seventh “关键事件链” Button. It builds 30-day Rubin and HBM timelines from attributable public-source events, preserves each original URL, labels deterministic topic admission separately from optional model analysis, and refreshes daily at 19:55 Beijing. The current local snapshot contains four Rubin events and three HBM events. Serenity is also connected to “大V速报” through the user-confirmed public aggregation feed while each item retains its exact X original. With no digest model configured, both products correctly remain `source_only` and do not invent impact judgments.
+- Next entry point: configure the existing digest model profile to add ID-bound impact analysis, or add new event-chain topics through explicit keyword and source contracts; do not promote aggregation translations to primary evidence.
+
+### Daily Influencer Brief Dashboard
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/influencer-daily-brief-dashboard.md`
+- Handoff: `docs/handoffs/2026-08-11-influencer-daily-brief-dashboard.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-04-treat-influencer-content-as-attributed-opinion-not-market-truth`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: core 153/153; Web API 254/2 ignored; Web 436/436; TypeScript; production build; fresh local source snapshot
+- Current conclusion: the chat home includes a cached “大V速报” that refreshes at 19:50 Beijing, preserves author/source/time, and separates original opinion, HONE summary and counterpoint. SemiAnalysis is connected through its official feed. The user-confirmed aichainmap public Serenity feed is connected as a named translation/aggregation layer while every row retains and validates the exact X original; Jukan remains “源待配置”. Missing sources, models and updates never become fabricated content or investment actions.
+- Next entry point: configure a lawful Jukan bridge and digest model if desired; retain exact Serenity endpoint and X-original identity checks.
+
+### Hari Daily Position-management Dashboard
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/position-management-daily-dashboard.md`
+- Handoff: `docs/handoffs/2026-08-11-position-management-daily-dashboard.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-03-make-position-advice-evidence-gated-deterministic-and-non-executing`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: position-policy Rust 7/7; Web API 242/2 ignored; Web 430/430; focused Web 23/23; TypeScript; production build; authenticated local mobile browser acceptance
+- Current conclusion: the fifth chat-home Button now produces an actor-scoped daily research report from real portfolio structure plus current company, macro, valuation and news evidence. It separates Hari logic from HONE concentration controls, fails closed on transcript-only/stale/uncovered data, and never executes or mutates a position. With current local FMP and same-day valuations unavailable, the real actor portfolio truthfully remains “数据不足”; no baseline score was promoted to advice and no private symbols or weights are retained here.
+- Next entry point: configure current FMP evidence and reviewed daily Hari valuations to unlock current actions. The original five-Button scope is now implemented; future大V速报 or关键事件链 should start as separate product plans rather than weakening these evidence gates.
+
+### Actor-scoped Daily Portfolio News Dashboard
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/portfolio-news-daily-dashboard.md`
+- Handoff: `docs/handoffs/2026-08-11-portfolio-news-daily-dashboard.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-02-keep-portfolio-context-inside-hone-when-analyzing-news`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: portfolio-news Rust 6/6; Web API 235/2 ignored; Web 425/425; TypeScript; production build; authenticated local browser acceptance
+- Current conclusion: the fourth chat-home Button now reads each actor's real positions, excludes watchlist rows, merges option exposure by underlying, filters the last 48 hours to attributable news, and optionally asks HONE's configured model for a validated impact analysis without disclosing portfolio context. Actor-local weights affect only ranking; source/model gaps remain explicit and never become invented actions.
+- Next entry point: configure the existing FMP key pool and digest model in the deployed HONE environment, then let the 20:00 Asia/Shanghai worker populate real actor snapshots. The next product item is仓位管理, but it has not been started in this change set.
+
+### Daily Signal Data Quality And Company Valuation Guardrails
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/daily-signal-data-quality-and-valuation.md`
+- Handoff: `docs/handoffs/2026-08-11-daily-signal-data-quality-and-valuation.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-01-fail-closed-on-unsupported-daily-signals-and-stale-valuation`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: `docs/runbooks/source-web-startup.md`; Web API 229/2 ignored; full Web 420/420 plus focused contracts 21/21; TypeScript; production build; authenticated local browser acceptance
+- Current conclusion: macro v2 now includes US 10Y/30Y Treasury yields, effective Fed funds, employment-population ratio and VIX with correct risk direction. AI v2 keeps only seven verifiable company-financial factors and removes unsupported specialized/hardware placeholders. Company valuation no longer uses transcript-era or generic P/E scores: only a same-day verified Hari three-scenario artifact can contribute, otherwise the UI says “今日不计估值分” and normalizes the remaining weights.
+- Next entry point: populate `data/company_ratings/valuations/latest.json` only from a separately reviewed daily Hari research run; do not restore static valuation or begin the remaining homepage features until the user prioritizes the next one.
+
+## 2026-08-10
+
+### Local Public UI Dev Login Without SMS
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/local-public-dev-login.md`
+- Handoff: `docs/handoffs/2026-08-10-local-public-dev-login.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-10-02-make-local-dev-login-explicit-server-owned-and-fail-closed`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: `docs/runbooks/source-web-startup.md`; backend gate test; frontend contract test; TypeScript; real Vite-proxied cookie/auth smoke
+- Current conclusion: an explicitly enabled local/local HONE runtime now offers a server-owned test-account login button and normal HttpOnly session without SMS. The capability is off by default, does not render when disabled, and cannot activate in remote or cloud mode. Local ports 3000/3001/8077/8088 are healthy and only Web is running.
+- Next entry point: refresh `http://127.0.0.1:3001/chat` and click “进入本地测试账号”; never set `HONE_PUBLIC_DEV_LOGIN` in production.
+
+### Hari Invest Default Investment-Q&A Skill
+
+- Status: done locally; no commit, public release, production deployment, or external publication
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/hari-invest-hone-default.md`
+- Handoff: `docs/handoffs/2026-08-10-hari-invest-hone-default.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-10-01-load-hari-invest-before-every-investment-answer`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Skill validator; HONE prompt tests 14/14; discover tests 2/2; skill-tool tests 13/13; real MCP discovery/load; local runtime/API/channel smoke
+- Current conclusion: HONE now installs the public-facing `hari-invest` Skill and requires every investment-related answer to load it before final judgment, while current facts remain evidence-backed and non-investment questions remain unaffected. The internal distiller and source transcripts are not exposed. The local runtime lists `hari-invest enabled=true`, Web is the only running channel, and both Vite frontends remain available.
+- Next entry point: ask any investment question in the local HONE user UI at `http://127.0.0.1:3001/`; public release or production deployment requires separate explicit authorization.
+
+### Macro And AI Daily Traffic-light Dashboards
+
+- Status: done locally; no commit or deployment
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/macro-ai-daily-signals.md`
+- Handoff: `docs/handoffs/2026-08-10-macro-ai-daily-signals.md`
+- Decision / ADR: no new ADR; reuses authenticated public API, worker lifecycle, FMP key pool and atomic snapshot boundaries
+- Related PRs / commits: uncommitted local change set
+- Related runbooks / regressions: Web API 218/2 ignored; daily-signals 7/7 and `cargo check -p hone-web-api`; Web full tests, TypeScript and production build; authenticated local 8077/8088/3001 runtime smoke
+- Current conclusion: authenticated chat now has two cached daily-report launchers with gauges, evidence, history, CSP/hardware detail and saved-report Q&A. The worker preserves prior success, retries incomplete snapshots every 15 minutes, and never converts missing data to zero. FRED single-series CSV is live at 11/11 coverage (66.3 yellow); with FMP unconfigured, SEC Company Facts supplies all four CSP financial baselines (72.6 yellow) while hardware quotes remain explicitly unknown.
+- Next entry point: refresh the local chat at `http://127.0.0.1:3001/chat`; configure the existing FMP key pool only if hardware market-confirmation quotes are required, and never hard-code a score to satisfy the visual gate.
+
+### Transcript-informed Company Skill And Daily Ratings Dashboard
+
+- Status: done locally; no commit, deployment, release, or tag
+- Date: 2026-08-10
+- Plan: `docs/archive/plans/company-thesis-daily-ratings.md`
+- Handoff: `docs/handoffs/2026-08-10-company-thesis-daily-ratings.md`
+- Decision / ADR: no new ADR; the dashboard uses an original explainable score and existing authenticated public/FMP boundaries
+- Related PRs / commits: uncommitted local change set
+- Related runbooks / regressions: Skill validation; transcript source coverage; Web API 214/2 ignored; Web 412; TypeScript; production build; local 8077/8088/3000/3001 runtime smoke
+- Current conclusion: 51 private transcripts now resolve to 52 US-traded company research cards plus four cross-company evidence notes. Authenticated users get a searchable, filterable red/yellow/green dashboard above chat, backed by a 19:30 Beijing snapshot worker and explicit live/partial/stale/transcript-only provenance. No FMP key exists locally, so the current runtime correctly labels all 52 rows as research baselines rather than current-market ratings.
+- Next entry point: configure the existing FMP key pool, restart the backend, and perform authenticated desktop/mobile acceptance from `http://127.0.0.1:3001/chat`; unsupported new listings and OTC rows must remain partial/low-confidence instead of receiving invented values.
 
 ## 2026-08-10
 
@@ -2345,6 +2541,41 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: the component already rendered `Agent / 推送 / 洞察 / 我的`, but a stale three-column CSS grid wrapped `我的` below the fixed-height navigation and clipped it. Production now uses four equal columns, all four tabs remain inside the viewport, and `我的` navigates to `/me`.
 - Next entry point: `docs/handoffs/2026-08-09-mobile-bottom-nav-four-tabs.md`; keep rendered tab count and CSS grid tracks synchronized.
 
+### Personal Knowledge Sources And Curation
+
+- Status: done locally
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/personal-knowledge-sources-and-curation.md`
+- Handoff: `docs/handoffs/2026-08-11-personal-knowledge-sources-and-curation.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-12-promote-external-research-through-an-explicit-trust-ladder`
+- Related PRs / commits: uncommitted local change set; no PR, release or production deployment
+- Related runbooks / regressions: `tests/regression/ci/test_research_curation_contract.sh`; Web API research tests; Web 445/445; public production build; authenticated desktop/mobile browser acceptance
+- Current conclusion: HONE now exposes “我的知识源” from `/me`, accepts personal Knowledge Planet official-Skill exports and iMA exports without private-session scraping, and enforces a three-domain `personal → community_candidate → hone_global` trust ladder. Candidates cannot enter Agent or daily-product retrieval until an administrator explicitly approves and copies them into the official library.
+- Next entry point: migrate the three scopes to PostgreSQL/object storage before production; implement public forum posts/comments/likes as a separate untrusted content domain with moderation and an explicit curation submission action.
+
+### First-principles Key-event Chain
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/first-principles-key-event-chain.md`
+- Handoff: `docs/handoffs/2026-08-11-key-event-chain-and-serenity-source.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-13-model-key-events-as-a-first-principles-industry-state-chain`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: key-event chain 12/12; Web API 281/2 ignored; focused Web 6/6; full Web 446/446; TypeScript; Rust formatting; public production build; authenticated desktop/mobile acceptance
+- Current conclusion: the seventh home Button is now a twelve-topic first-principles industry state chain rather than a Rubin/HBM news list. It requires topic-plus-milestone admission, separates topic-specific company/SEC confirmation from research/opinion clues, exposes first principles and source status in the UI, and keeps the ten-day view to one evidence-gated question per topic. The final local snapshot retained 40 original-linked milestones: 3 confirmed and 37 clues; SOFC stayed empty instead of receiving fabricated filler.
+- Next entry point: validate and configure stable official feeds/APIs company by company. Preserve the rule that 白毛/Serenity and research uploads are discovery clues, not factual confirmation.
+
+### HONE Community Discussion Forum
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-11
+- Plan: `docs/archive/plans/community-discussion-forum.md`
+- Handoff: `docs/handoffs/2026-08-11-community-discussion-forum.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-11-14-keep-member-discussion-outside-the-research-authority`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: forum Rust 7/7; Web API 286/2 ignored; focused Web 10/10; full Web 451/451; TypeScript; Rust formatting; public production build; `tests/regression/ci/test_community_forum_research_boundary.sh`; authenticated desktop/mobile acceptance
+- Current conclusion: `/community` now separates the existing read-only HONE archive from an authenticated member discussion forum. Members can post, comment, like, report and attach one bounded safe file under a pseudonymous identity; owners and administrators retain deletion/moderation controls. Forum material never enters Agent or investment evidence paths, and the UI sends curation candidates through “我的知识源”.
+- Next entry point: migrate the forum to PostgreSQL/object storage with retention, moderation audit and abuse observability before any production enablement. Do not add ranking, DMs or investment retrieval to the local filesystem version.
 ### Earnings Original-workflow Migration And Mode Isolation
 
 - Status: done

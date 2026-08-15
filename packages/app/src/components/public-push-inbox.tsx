@@ -130,7 +130,7 @@ export function PublicPushInbox(props: {
   return (
     <section class="public-push-inbox" aria-labelledby="public-push-inbox-title">
       <header class="public-push-inbox-heading">
-        <span>HONE Dispatch</span>
+        <span>HONE 快报</span>
         <h2 id="public-push-inbox-title">{copy().messages_title}</h2>
         <p>{copy().messages_hint}</p>
       </header>

@@ -4,6 +4,12 @@ This directory contains the built-in skill definitions for Hone Financial.
 
 Each skill is a subdirectory with a `SKILL.md` file that describes its purpose, trigger conditions, and workflow.
 
+## Local Internal Research Skill
+
+`company-thesis-ratings` is the local HONE runtime skill for transcript-informed company research and the explainable daily rating dashboard. Its 52 compressed company cards are derived from 51 authorized transcripts and four research workbooks. A per-turn alias index projects only cards named in the current question. When a covered company is matched, HONE must load this Skill before answering and use it as the preferred historical baseline for business model, fundamentals, moat, value-chain position, risks and falsifiers. Current prices, filings, guidance, orders, news and valuation inputs still come from the current evidence tools. Do not redistribute the cards or reconstruct the original transcripts from them.
+
+`hari-invest` is the locally installed public-facing conversation and decision layer distilled from Hari's confirmed investment framework. HONE must load it for investment questions and combine it with current market, filing, news and portfolio evidence. Covered-company questions compose it with `company-thesis-ratings`: the company Skill supplies the historical company-specific thesis, while Hari supplies the current decision discipline. After the required data-time line it gives one explicit opportunity / hold / risk / insufficient-data research zone, confidence, time-horizon differences, the strongest counterargument and observable upgrade/downgrade conditions. The internal team Skill, distillation workspace and `laowang-investment-distiller` are not runtime Q&A skills and must never be exposed to ordinary users. Local installation does not authorize public redistribution or production deployment.
+
 ---
 
 ## Note on Open-Source Scope

@@ -37,6 +37,21 @@ import type {
   FinanceCalendarPayload,
   PublicCommunityPage,
   PublicCommunityResource,
+  CommunityForumPage,
+  CommunityForumPost,
+  CompanyRatingSnapshot,
+  ValuationLabSnapshot,
+  PortfolioNewsSnapshot,
+  PositionManagementSnapshot,
+  InfluencerDigestSnapshot,
+  KeyEventChainSnapshot,
+  WeeklyBriefPayload,
+  ResearchLibraryBundle,
+  ResearchLibraryItem,
+  DailySignalHistoryItem,
+  DailySignalKind,
+  DailySignalReport,
+  ResearchOverviewPayload,
 } from "./types";
 import type { ActorRef } from "./actors";
 import {
@@ -315,6 +330,22 @@ export async function publicSmsLogin(input: {
   return payload.user;
 }
 
+export async function getPublicDevLoginConfig() {
+  const response = await apiFetch("/api/public/auth/dev-login/config", {
+    cache: "no-store",
+  });
+  return parseJson<{ enabled: boolean }>(response);
+}
+
+export async function publicDevLogin() {
+  const response = await apiFetch("/api/public/auth/dev-login", {
+    method: "POST",
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  setCachedPublicUser(payload.user);
+  return payload.user;
+}
+
 export async function publicSendEmailCode(
   emailAddress: string,
   intent?: "stripe_checkout",
@@ -425,10 +456,7 @@ export async function getPublicAdminUsage(
     cache: "no-store",
   });
   const report = await parseJson<PublicAdminUsageReport>(response);
-  if (
-    Number.isInteger(report.period_days) &&
-    report.period_days > 0
-  ) {
+  if (Number.isInteger(report.period_days) && report.period_days > 0) {
     return report;
   }
   const start = Date.parse(`${report.period_start}T00:00:00Z`);
@@ -667,7 +695,8 @@ export async function getAdminCompanyProfile(
     user_id: actor.user_id,
     ticker,
   });
-  if (actor.channel_scope) queryParams.set("channel_scope", actor.channel_scope);
+  if (actor.channel_scope)
+    queryParams.set("channel_scope", actor.channel_scope);
   const response = await apiFetch(
     `/api/event-engine/company-profile?${queryParams.toString()}`,
   );
@@ -937,11 +966,13 @@ function verifiedPublicCommunityDeliveryPath(
   return deliveryPath === expected ? expected : null;
 }
 
-export async function getPublicCommunity(input: {
-  before?: number;
-  limit?: number;
-  signal?: AbortSignal;
-} = {}) {
+export async function getPublicCommunity(
+  input: {
+    before?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  } = {},
+) {
   const edge =
     input.limit == null || input.limit === 20
       ? await discoverPublicCommunityEdge(input.signal)
@@ -949,9 +980,12 @@ export async function getPublicCommunity(input: {
   if (edge) {
     try {
       const [feedResponse, stateResponse] = await Promise.all([
-        fetchPublicCommunityEdge(publicCommunityEdgeFeedPath(edge, input.before), {
-          signal: input.signal,
-        }),
+        fetchPublicCommunityEdge(
+          publicCommunityEdgeFeedPath(edge, input.before),
+          {
+            signal: input.signal,
+          },
+        ),
         fetch(buildApiUrl("/api/public/community/state"), {
           credentials: "include",
           signal: input.signal,
@@ -984,6 +1018,89 @@ export async function getPublicCommunity(input: {
   return parseJson<PublicCommunityPage>(response);
 }
 
+export async function getCommunityForum(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/community/forum", { signal });
+  return parseJson<CommunityForumPage>(response);
+}
+
+export async function createCommunityForumPost(input: {
+  title: string;
+  body: string;
+  tickers: string;
+  topics: string;
+  sourceUrl: string;
+  attachment?: File | null;
+}) {
+  const body = new FormData();
+  body.set("title", input.title);
+  body.set("body", input.body);
+  body.set("tickers", input.tickers);
+  body.set("topics", input.topics);
+  body.set("source_url", input.sourceUrl);
+  if (input.attachment) body.set("attachment", input.attachment);
+  const response = await apiFetch("/api/public/community/forum/posts", {
+    method: "POST",
+    body,
+  });
+  return parseJson<CommunityForumPost>(response);
+}
+
+async function mutateCommunityForumPost(
+  postId: string,
+  suffix: string,
+  init: RequestInit,
+) {
+  const response = await apiFetch(
+    `/api/public/community/forum/posts/${encodeURIComponent(postId)}${suffix}`,
+    init,
+  );
+  return parseJson<CommunityForumPost>(response);
+}
+
+export function toggleCommunityForumLike(postId: string) {
+  return mutateCommunityForumPost(postId, "/like", { method: "POST" });
+}
+
+export function commentCommunityForumPost(postId: string, body: string) {
+  return mutateCommunityForumPost(postId, "/comments", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function reportCommunityForumPost(postId: string, reason: string) {
+  return mutateCommunityForumPost(postId, "/report", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function moderateCommunityForumPost(postId: string, action: "hide" | "restore") {
+  return mutateCommunityForumPost(postId, "/moderation", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+}
+
+export function deleteCommunityForumPost(postId: string) {
+  return mutateCommunityForumPost(postId, "", { method: "DELETE" });
+}
+
+export function deleteCommunityForumComment(postId: string, commentId: string) {
+  return mutateCommunityForumPost(
+    postId,
+    `/comments/${encodeURIComponent(commentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function communityForumAttachmentUrl(postId: string, attachmentId: string) {
+  return `/api/public/community/forum/posts/${encodeURIComponent(postId)}/attachments/${encodeURIComponent(attachmentId)}`;
+}
+
 export async function markPublicCommunitySeen(contentId: number) {
   const response = await apiFetch("/api/public/community/seen", {
     method: "POST",
@@ -993,7 +1110,10 @@ export async function markPublicCommunitySeen(contentId: number) {
   return parseJson<{ ok: boolean }>(response);
 }
 
-function publicCommunityResourcePath(resourceId: number, version?: string | null) {
+function publicCommunityResourcePath(
+  resourceId: number,
+  version?: string | null,
+) {
   const normalizedVersion = version?.trim();
   const suffix = normalizedVersion
     ? `?${new URLSearchParams({ v: normalizedVersion }).toString()}`
@@ -1017,7 +1137,9 @@ export async function resolvePublicCommunityResourceUrl(
   version?: string | null,
   deliveryPath?: string | null,
 ) {
-  const legacyUrl = buildApiUrl(publicCommunityResourcePath(resourceId, version));
+  const legacyUrl = buildApiUrl(
+    publicCommunityResourcePath(resourceId, version),
+  );
   const edgePath = verifiedPublicCommunityDeliveryPath(
     resourceId,
     version,
@@ -1025,7 +1147,9 @@ export async function resolvePublicCommunityResourceUrl(
   );
   if (!edgePath) return legacyUrl;
   try {
-    const response = await fetchPublicCommunityEdge(edgePath, { method: "HEAD" });
+    const response = await fetchPublicCommunityEdge(edgePath, {
+      method: "HEAD",
+    });
     return response.ok ? buildApiUrl(edgePath) : legacyUrl;
   } catch {
     return legacyUrl;
@@ -1033,7 +1157,10 @@ export async function resolvePublicCommunityResourceUrl(
 }
 
 export function publicCommunityResourceDownloadName(
-  resource: Pick<PublicCommunityResource, "resource_id" | "display_name" | "content_type">,
+  resource: Pick<
+    PublicCommunityResource,
+    "resource_id" | "display_name" | "content_type"
+  >,
 ) {
   const fallback = `community-resource-${resource.resource_id}`;
   const displayName = resource.display_name?.trim() || fallback;
@@ -1069,7 +1196,9 @@ export async function getPublicCommunityResourceBlob(
       // The legacy authenticated API remains the per-resource safety net.
     }
   }
-  const response = await apiFetch(publicCommunityResourcePath(resourceId, version));
+  const response = await apiFetch(
+    publicCommunityResourcePath(resourceId, version),
+  );
   if (!response.ok) throw await apiErrorFromResponse(response);
   return response.blob();
 }
@@ -1691,7 +1820,9 @@ export async function putLanguage(language: "zh" | "en"): Promise<"zh" | "en"> {
 
 export async function listPublicSubscriptions(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/subscriptions", { signal });
-  const payload = await parseJson<{ subscriptions: PublicSubscription[] }>(response);
+  const payload = await parseJson<{ subscriptions: PublicSubscription[] }>(
+    response,
+  );
   return payload.subscriptions;
 }
 
@@ -1708,12 +1839,17 @@ export async function updatePublicSubscription(
     enabled?: boolean;
   },
 ) {
-  const response = await apiFetch(`/api/public/subscriptions/${encodeURIComponent(jobId)}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
-  });
-  const payload = await parseJson<{ subscription: PublicSubscription }>(response);
+  const response = await apiFetch(
+    `/api/public/subscriptions/${encodeURIComponent(jobId)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    },
+  );
+  const payload = await parseJson<{ subscription: PublicSubscription }>(
+    response,
+  );
   return payload.subscription;
 }
 
@@ -1722,5 +1858,182 @@ export async function unsubscribePublicSubscription(jobId: string) {
     `/api/public/subscriptions/${encodeURIComponent(jobId)}/unsubscribe`,
     { method: "POST" },
   );
-  return parseJson<{ subscription: PublicSubscription; already_unsubscribed: boolean }>(response);
+  return parseJson<{
+    subscription: PublicSubscription;
+    already_unsubscribed: boolean;
+  }>(response);
+}
+
+export async function getPublicCompanyRatings(
+  signal?: AbortSignal,
+): Promise<CompanyRatingSnapshot> {
+  const response = await apiFetch("/api/public/company-ratings", { signal });
+  return parseJson<CompanyRatingSnapshot>(response);
+}
+
+export async function getPublicValuationLab(
+  signal?: AbortSignal,
+): Promise<ValuationLabSnapshot> {
+  const response = await apiFetch("/api/public/valuation-lab", { signal });
+  return parseJson<ValuationLabSnapshot>(response);
+}
+
+export async function getPublicPortfolioNews(
+  signal?: AbortSignal,
+): Promise<PortfolioNewsSnapshot> {
+  const response = await apiFetch("/api/public/portfolio-news", { signal });
+  return parseJson<PortfolioNewsSnapshot>(response);
+}
+
+export async function getPublicPositionManagement(
+  signal?: AbortSignal,
+): Promise<PositionManagementSnapshot> {
+  const response = await apiFetch("/api/public/position-management", {
+    signal,
+  });
+  return parseJson<PositionManagementSnapshot>(response);
+}
+
+export async function getPublicInfluencerDigest(
+  signal?: AbortSignal,
+): Promise<InfluencerDigestSnapshot> {
+  const response = await apiFetch("/api/public/influencer-digest", { signal });
+  return parseJson<InfluencerDigestSnapshot>(response);
+}
+
+export async function getPublicKeyEventChains(
+  signal?: AbortSignal,
+): Promise<KeyEventChainSnapshot> {
+  const response = await apiFetch("/api/public/key-event-chains", { signal });
+  return parseJson<KeyEventChainSnapshot>(response);
+}
+
+export async function getPublicWeeklyBrief(
+  signal?: AbortSignal,
+): Promise<WeeklyBriefPayload> {
+  const response = await apiFetch("/api/public/weekly-brief", { signal });
+  return parseJson<WeeklyBriefPayload>(response);
+}
+
+export async function getPublicResearchLibrary(
+  signal?: AbortSignal,
+): Promise<ResearchLibraryBundle> {
+  const response = await apiFetch("/api/public/research-library", { signal });
+  return parseJson<ResearchLibraryBundle>(response);
+}
+
+export async function uploadPublicResearchLibrary(form: FormData): Promise<{
+  item: ResearchLibraryItem;
+  deduplicated: boolean;
+}> {
+  const response = await apiFetch("/api/public/research-library", {
+    method: "POST",
+    body: form,
+  });
+  return parseJson<{ item: ResearchLibraryItem; deduplicated: boolean }>(
+    response,
+  );
+}
+
+export async function updatePublicResearchLibrary(
+  id: string,
+  patch: Partial<
+    Pick<
+      ResearchLibraryItem,
+      | "title"
+      | "source_name"
+      | "source_url"
+      | "source_date"
+      | "tickers"
+      | "topics"
+      | "uses"
+    >
+  >,
+): Promise<ResearchLibraryItem> {
+  const response = await apiFetch(
+    `/api/public/research-library/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    },
+  );
+  const payload = await parseJson<{ item: ResearchLibraryItem }>(response);
+  return payload.item;
+}
+
+export async function deletePublicResearchLibrary(id: string): Promise<void> {
+  const response = await apiFetch(
+    `/api/public/research-library/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  await parseJson<{ deleted: boolean }>(response);
+}
+
+export async function submitPublicResearchLibraryCandidate(
+  id: string,
+): Promise<{
+  item: ResearchLibraryItem;
+  deduplicated: boolean;
+}> {
+  const response = await apiFetch(
+    `/api/public/research-library/${encodeURIComponent(id)}/submit`,
+    { method: "POST" },
+  );
+  return parseJson<{ item: ResearchLibraryItem; deduplicated: boolean }>(
+    response,
+  );
+}
+
+export async function reviewPublicResearchLibraryCandidate(
+  id: string,
+  decision: "approve" | "reject",
+  note = "",
+): Promise<{
+  item: ResearchLibraryItem;
+  promoted_item?: ResearchLibraryItem | null;
+}> {
+  const response = await apiFetch(
+    `/api/public/research-library/${encodeURIComponent(id)}/review`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision, note }),
+    },
+  );
+  return parseJson<{
+    item: ResearchLibraryItem;
+    promoted_item?: ResearchLibraryItem | null;
+  }>(response);
+}
+
+export async function getPublicDailySignal(
+  kind: DailySignalKind,
+  signal?: AbortSignal,
+): Promise<DailySignalReport> {
+  const response = await apiFetch(`/api/public/daily-signals/${kind}`, {
+    signal,
+  });
+  return parseJson<DailySignalReport>(response);
+}
+
+export async function getPublicDailySignalHistory(
+  kind: DailySignalKind,
+  limit = 14,
+  signal?: AbortSignal,
+): Promise<{ items: DailySignalHistoryItem[] }> {
+  const response = await apiFetch(
+    `/api/public/daily-signals/${kind}/history?limit=${limit}`,
+    { signal },
+  );
+  return parseJson<{ items: DailySignalHistoryItem[] }>(response);
+}
+
+export async function getPublicResearchOverview(
+  signal?: AbortSignal,
+): Promise<ResearchOverviewPayload> {
+  const response = await apiFetch("/api/public/research-overview", { signal });
+  return parseJson<ResearchOverviewPayload>(response);
 }

@@ -5,6 +5,13 @@ const page = readFileSync(new URL("./public-community.tsx", import.meta.url), "u
 const css = readFileSync(new URL("./public-community.css", import.meta.url), "utf8");
 
 describe("public community interaction contract", () => {
+  it("separates official material from member discussion", () => {
+    expect(page).toContain("官方动态");
+    expect(page).toContain("讨论区");
+    expect(page).toContain("未经官方核验");
+    expect(page).toContain("CommunityForum");
+  });
+
   it("keeps image preview zoomable by touch, pointer, wheel, and explicit controls", () => {
     expect(page).toContain('addEventListener("touchmove"');
     expect(page).toContain('addEventListener("pointermove"');

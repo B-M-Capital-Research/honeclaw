@@ -28,6 +28,19 @@
   --hone-success-600: #176a38;
   --hone-line: rgba(23, 32, 31, 0.11);
   --hone-line-strong: rgba(23, 32, 31, 0.18);
+  /* Traffic-light semantics for research dashboards. These are data-signal
+     colors, not brand accents: the deprecated amber palette stays deprecated
+     for decoration, while signal yellow legitimately exists here. */
+  --hone-signal-green: #1f7a45;
+  --hone-signal-yellow: #a37b12;
+  --hone-signal-orange: #b35d24;
+  --hone-signal-red: #b94432;
+  --hone-signal-green-soft: #e7f1e9;
+  --hone-signal-yellow-soft: #f7efd9;
+  --hone-signal-orange-soft: #f8ead9;
+  --hone-signal-red-soft: #f9e6e0;
+  --hone-signal-neutral: #68736f;
+  --hone-signal-neutral-soft: #eeece5;
   --hone-radius-sm: 10px;
   --hone-radius-md: 16px;
   --hone-radius-lg: 24px;
@@ -62,6 +75,16 @@
   --hone-success-600: #85dca4;
   --hone-line: rgba(255, 255, 255, 0.13);
   --hone-line-strong: rgba(255, 255, 255, 0.22);
+  --hone-signal-green: #7fd6a1;
+  --hone-signal-yellow: #e3c06a;
+  --hone-signal-orange: #e8a06a;
+  --hone-signal-red: #ff9a86;
+  --hone-signal-green-soft: rgba(127, 214, 161, 0.16);
+  --hone-signal-yellow-soft: rgba(227, 192, 106, 0.16);
+  --hone-signal-orange-soft: rgba(232, 160, 106, 0.16);
+  --hone-signal-red-soft: rgba(255, 154, 134, 0.16);
+  --hone-signal-neutral: #a8b0aa;
+  --hone-signal-neutral-soft: rgba(168, 176, 170, 0.16);
   --hone-login-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
   --hone-focus-ring: #f5f0e5;
 }

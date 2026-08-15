@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-13
-状态：有 12 个活跃任务
+最后更新：2026-08-15
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,20 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **oldwang 投研功能整合：信息架构与数据流收敛**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/oldwang-research-platform-integration.md`
+  - 摘要：把 oldwang 分支的 10 个投研功能以"深度投研平台"标准收敛后合入 main：新增
+    /research 研究台（URL 可寻址面板 + 单次聚合接口替代首屏 9 连发）、五区块导航、
+    仪表盘迁为受控面板并统一弹层/状态/提问模板、CSS 回归 --hone-* 令牌（新增红绿灯
+    语义令牌）、后端抽 research_store 去重并修复 body-limit/同步 IO/weekly-brief 扇出、
+    邮件令牌旧名回退。全部门禁已过（后端全 workspace、前端 483、CI 契约 23/23）
+
+- **2026-08-11 全产品压力/功能验收与上线**
+  - 状态：`blocked`
+  - 计划：`docs/current-plans/full-product-qa-and-release-2026-08-11.md`
+  - 摘要：代码与测试数据修复已完成：后端 298 项、前端 465 项、类型检查、构建和 CI 均通过；30,400 请求主压测及 6,000 请求复测零失败。当前只被安全对话模型/FMP/搜索凭证缺失，以及本地 main 落后 23 个提交且工作树未形成可审计候选版本所阻塞，不能用假数据替代或从脏工作树上线
 
 - **Public 推送缺口审计与移动详情弹窗修复**
   - 状态：`in_progress`

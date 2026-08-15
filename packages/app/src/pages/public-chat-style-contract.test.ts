@@ -19,21 +19,55 @@ const shareCard = readFileSync(
   new URL("../components/chat-share-card.tsx", import.meta.url),
   "utf8",
 );
+const researchPage = readFileSync(
+  new URL("./public-research.tsx", import.meta.url),
+  "utf8",
+);
+const ratingDashboard = readFileSync(
+  new URL("../components/company-rating-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const ratingCss = readFileSync(
+  new URL("../components/company-rating-dashboard.css", import.meta.url),
+  "utf8",
+);
+const portfolioNewsDashboard = readFileSync(
+  new URL("../components/portfolio-news-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const positionManagementDashboard = readFileSync(
+  new URL("../components/position-management-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const influencerDigestDashboard = readFileSync(
+  new URL("../components/influencer-digest-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const keyEventChainDashboard = readFileSync(
+  new URL("../components/key-event-chain-dashboard.tsx", import.meta.url),
+  "utf8",
+);
+const weeklyBriefDashboard = readFileSync(
+  new URL("../components/weekly-brief-dashboard.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("public chat visual contract", () => {
   it("uses one responsive Agent workspace with real product destinations", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
     expect(chat).toContain('onInsights={() => navigate("/community")}');
-    // 四项导航：Agent / 推送 / 洞察 / 我的
-    expect(workspace).toContain("<span>Agent</span>");
+    // 五项导航：投资助手 / 研究 / 推送 / 洞察 / 我的
+    expect(workspace).toContain("<span>投资助手</span>");
+    expect(workspace).toContain("CONTENT.chat_page.workspace.research");
+    expect(workspace).toContain('routePrefetchHandlers("research")');
     expect(workspace).toContain("CONTENT.chat_page.workspace.pushes_tab");
     expect(workspace).toContain("CONTENT.chat_page.workspace.insights");
     expect(workspace).toContain("CONTENT.chat_page.workspace.me");
     expect(workspace).toContain("props.unreadPushCount > 0");
     expect(chat).toContain("unreadPushCount={pushUnreadCount()}");
     expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)");
-    expect(workspaceCss).toContain("grid-template-columns: repeat(4,1fr)");
+    expect(workspaceCss).toContain("grid-template-columns: repeat(5,1fr)");
     expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");
   });
 
@@ -194,5 +228,58 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain(
       ".agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }",
     );
+  });
+
+  it("hosts every daily research product on the research desk, not above chat", () => {
+    // The chat page carries a slim navigation entry only; the dashboards
+    // mount as URL-addressable panels on /research.
+    for (const legacyMount of [
+      "<DailySignalDashboard",
+      "<CompanyRatingDashboard",
+      "<PortfolioNewsDashboard",
+      "<PositionManagementDashboard",
+      "<InfluencerDigestDashboard",
+      "<WeeklyBriefDashboard",
+      "<KeyEventChainDashboard",
+    ]) {
+      expect(chat).not.toContain(legacyMount);
+    }
+    expect(chat).toContain('class="chat-research-entry"');
+    expect(researchPage).toContain('<DailySignalPanel kind="macro"');
+    expect(researchPage).toContain('<DailySignalPanel kind="ai"');
+    expect(researchPage).toContain("<CompanyRatingPanel");
+    expect(researchPage).toContain("<PortfolioNewsPanel");
+    expect(researchPage).toContain("<PositionManagementPanel");
+    expect(researchPage).toContain("<InfluencerDigestPanel");
+    expect(researchPage).toContain("<WeeklyBriefPanel");
+    expect(researchPage).toContain("<KeyEventChainPanel");
+    // The open panel is shareable state, and back closes it.
+    expect(researchPage).toContain("searchParams.panel");
+    expect(researchPage).toContain("setSearchParams({ panel: section.key })");
+    expect(researchPage).toContain("getPublicResearchOverview");
+  });
+
+  it("keeps the explainable rating methodology inside the rating panel", () => {
+    expect(ratingDashboard).toContain("每日公司评级");
+    expect(ratingDashboard).toContain("filterRatings");
+    expect(ratingDashboard).toContain("item.valuation_method");
+    expect(ratingDashboard).toContain("今日不计估值分");
+    expect(ratingDashboard).toContain("valuation().probability_weighted_value");
+    expect(ratingDashboard).toContain("评分标准与估值同步");
+    expect(ratingDashboard).toContain("25 / 45 / 60 / 75 / 90");
+    expect(ratingDashboard).toContain("没有生成或沿用旧目标价");
+    expect(ratingDashboard).toContain("item.falsifiers");
+    // Panel styling flows from the shared token system now.
+    expect(ratingCss).toContain("var(--hone-");
+  });
+
+  it("keeps grounded ask-markers and discipline rules in the research panels", () => {
+    expect(portfolioNewsDashboard).toContain("HONE_SAVED_PORTFOLIO_NEWS_REPORT");
+    expect(portfolioNewsDashboard).toContain("不要自动修改仓位");
+    expect(positionManagementDashboard).toContain("HONE_SAVED_POSITION_MANAGEMENT_REPORT");
+    expect(positionManagementDashboard).toContain("不得自动修改持仓或声称已经下单");
+    expect(influencerDigestDashboard).toContain("HONE_SAVED_INFLUENCER_DIGEST");
+    expect(weeklyBriefDashboard).toContain("HONE_SAVED_WEEKLY_BRIEF");
+    expect(keyEventChainDashboard).toContain("HONE_SAVED_KEY_EVENT_CHAIN");
   });
 });

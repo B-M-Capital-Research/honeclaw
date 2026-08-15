@@ -1,0 +1,346 @@
+/* Final accessibility and layout layer for the public HONE conversation. */
+
+.public-chat-page--ready .public-chat-shell.is-conversation > .public-chat-messages {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 260px !important;
+  min-height: 180px !important;
+}
+
+/* Slim research entry: pure navigation, no data fetching. The daily research
+   products live on /research; the conversation keeps a one-line doorway. */
+.chat-research-entry {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(948px, 100%);
+  margin: 0 auto;
+  padding: 6px 12px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-research-entry::-webkit-scrollbar { display: none; }
+
+.chat-research-entry button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--hone-line);
+  border-radius: 999px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
+}
+
+.chat-research-entry button:hover {
+  border-color: var(--hone-line-strong);
+  color: var(--hone-ink-950);
+}
+
+.chat-research-entry__primary {
+  color: var(--hone-ink-950) !important;
+  font-weight: 600;
+}
+
+.chat-research-entry__primary i {
+  font-style: normal;
+  color: var(--hone-ink-400);
+}
+
+/* A new conversation is useful before the first keystroke. */
+.chat-empty-prompts {
+  min-height: clamp(320px, 56vh, 560px);
+  display: grid;
+  place-content: center;
+  gap: 24px;
+  padding: 32px 0 42px;
+}
+
+.chat-empty-prompts > header {
+  text-align: center;
+}
+
+.chat-empty-prompts > header span {
+  color: #d16e4e;
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.chat-empty-prompts h2 {
+  margin: 7px 0 5px;
+  color: var(--hone-ink-950, #17201f);
+  font-size: clamp(26px, 3vw, 36px);
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.chat-empty-prompts > header p {
+  margin: 0;
+  color: var(--hone-ink-600, #68736f);
+  font-size: 15px;
+}
+
+.chat-empty-prompts > div {
+  width: min(820px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.chat-empty-prompts button {
+  position: relative;
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 13px 44px 13px 16px;
+  border: 1px solid var(--hone-line, rgba(35, 48, 45, 0.13));
+  border-radius: 16px;
+  background: var(--hone-surface-raised, rgba(255, 255, 255, 0.84));
+  color: var(--hone-ink-950, #25322f);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.chat-empty-prompts button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.chat-empty-prompts button:hover {
+  border-color: rgba(54, 126, 101, 0.42);
+  background: rgba(54, 126, 101, 0.07);
+  transform: translateY(-1px);
+}
+
+.chat-empty-prompts button:focus-visible {
+  outline: 3px solid rgba(54, 126, 101, 0.23);
+  outline-offset: 2px;
+}
+
+.chat-empty-prompts button small {
+  color: #d16e4e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-empty-prompts button strong {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.chat-empty-prompts button i {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  color: var(--hone-ink-500, #7b8782);
+  font-size: 18px;
+  font-style: normal;
+  transform: translateY(-50%);
+}
+
+/* Older-reader baseline: the middle preference is now genuinely comfortable. */
+[data-chat-fs="s"] .public-chat-messages .hf-markdown {
+  font-size: 16.5px !important;
+  line-height: 1.7 !important;
+}
+
+[data-chat-fs="m"] .public-chat-messages .hf-markdown {
+  font-size: 18px !important;
+  line-height: 1.75 !important;
+}
+
+[data-chat-fs="l"] .public-chat-messages .hf-markdown {
+  font-size: 20px !important;
+  line-height: 1.75 !important;
+}
+
+[data-chat-fs="xl"] .public-chat-messages .hf-markdown {
+  font-size: 23px !important;
+  line-height: 1.78 !important;
+}
+
+[data-chat-fs="s"] .public-chat-messages .pub-msg-bubble--user { font-size: 16px !important; }
+[data-chat-fs="m"] .public-chat-messages .pub-msg-bubble--user { font-size: 17.5px !important; }
+[data-chat-fs="l"] .public-chat-messages .pub-msg-bubble--user { font-size: 19.5px !important; }
+[data-chat-fs="xl"] .public-chat-messages .pub-msg-bubble--user { font-size: 22px !important; }
+
+.public-chat-composer-input,
+.public-chat-composer-input::placeholder {
+  font-size: 17px !important;
+}
+
+[data-chat-fs="l"] .public-chat-composer-input,
+[data-chat-fs="l"] .public-chat-composer-input::placeholder {
+  font-size: 19px !important;
+}
+
+[data-chat-fs="xl"] .public-chat-composer-input,
+[data-chat-fs="xl"] .public-chat-composer-input::placeholder {
+  font-size: 21px !important;
+}
+
+[data-chat-fs="l"] .chat-empty-prompts button strong { font-size: 17.5px !important; }
+[data-chat-fs="xl"] .chat-empty-prompts button strong { font-size: 19px !important; }
+[data-chat-fs="l"] .chat-empty-prompts h2 { font-size: 32px !important; }
+[data-chat-fs="xl"] .chat-empty-prompts h2 { font-size: 35px !important; }
+
+.agent-workspace-nav button,
+.agent-workspace-new {
+  min-height: 46px;
+  font-size: 14px !important;
+}
+
+.agent-workspace-history button {
+  font-size: 13px !important;
+  line-height: 1.45;
+}
+
+/* Raise the information density without returning to tiny dashboard copy. */
+:is(
+  .daily-signal-dialog,
+  .company-rating-dialog,
+  .portfolio-news-dialog,
+  .position-management-dialog,
+  .influencer-digest-dialog,
+  .weekly-brief-dialog,
+  .key-chain-dialog
+) h2 {
+  font-size: 28px !important;
+  line-height: 1.2 !important;
+}
+
+:is(
+  .daily-signal-dialog,
+  .company-rating-dialog,
+  .portfolio-news-dialog,
+  .position-management-dialog,
+  .influencer-digest-dialog,
+  .weekly-brief-dialog,
+  .key-chain-dialog
+) header > div > span {
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+}
+
+:is(.weekly-brief-dialog-head, .key-chain-dialog > header, .influencer-digest-dialog > header) p {
+  font-size: 12px !important;
+}
+
+:is(.weekly-brief-meta, .key-chain-meta, .influencer-digest-meta) {
+  font-size: 12px !important;
+}
+
+.weekly-brief-tabs button { min-height: 42px; }
+.weekly-brief-tabs button span { font-size: 13px !important; }
+.weekly-brief-hero > div > span,
+.weekly-brief-hero aside strong { font-size: 12.5px !important; }
+.weekly-brief-hero h3 { font-size: 16px !important; line-height: 1.55 !important; }
+.weekly-brief-coverage { font-size: 13px !important; line-height: 1.55 !important; }
+.weekly-brief-week > header h3 { font-size: 20px !important; }
+.weekly-brief-week > header span { font-size: 12px !important; }
+.weekly-brief-week > header time { font-size: 12.5px !important; }
+.weekly-brief-date strong { font-size: 15px !important; }
+.weekly-brief-date span { font-size: 13px !important; }
+.weekly-brief-event-meta :is(span, b, em) { font-size: 11px !important; }
+.weekly-brief-events h4 { font-size: 17px !important; }
+.weekly-brief-events p { font-size: 14px !important; line-height: 1.6 !important; }
+.weekly-brief-events aside { font-size: 13px !important; line-height: 1.55 !important; }
+.weekly-brief-evidence { font-size: 12px !important; }
+.weekly-brief-method { font-size: 12px !important; line-height: 1.55 !important; }
+.weekly-brief-footer > p { font-size: 11.5px !important; line-height: 1.5 !important; }
+.weekly-brief-footer :is(input, button) { min-height: 44px; font-size: 14px !important; }
+
+.key-chain-topic-head p { font-size: 13px !important; }
+.key-chain-topic-head > strong { font-size: 13.5px !important; line-height: 1.55 !important; }
+.key-chain-timeline h4 { font-size: 16px !important; }
+.key-chain-timeline p { font-size: 13.5px !important; line-height: 1.65 !important; }
+.key-chain-timeline aside { font-size: 12.5px !important; line-height: 1.55 !important; }
+.key-chain-timeline time,
+.key-chain-timeline a { font-size: 11.5px !important; }
+.key-chain-event-meta span,
+.key-chain-tickers span { font-size: 10.5px !important; }
+
+.influencer-authors button { min-height: 40px; font-size: 12.5px !important; }
+.influencer-digest-body article > div:first-child { font-size: 11.5px !important; }
+.influencer-digest-body h3 { font-size: 16px !important; }
+.influencer-digest-body p { font-size: 13.5px !important; line-height: 1.65 !important; }
+.influencer-digest-body aside { font-size: 12.5px !important; line-height: 1.55 !important; }
+.influencer-tags span,
+.influencer-digest-body article > a { font-size: 10.5px !important; }
+
+[data-theme="dark"] .chat-empty-prompts h2,
+[data-theme="dark"] .chat-empty-prompts button {
+  color: #edf2ef;
+}
+
+[data-theme="dark"] .chat-empty-prompts > header p {
+  color: #aeb7b3;
+}
+
+[data-theme="dark"] .chat-empty-prompts button {
+  border-color: #2c3b4d;
+  background: rgba(21, 30, 28, 0.92);
+}
+
+[data-theme="dark"] .chat-empty-prompts button:hover {
+  border-color: rgba(72, 164, 130, 0.54);
+  background: rgba(54, 126, 101, 0.14);
+}
+
+@media (min-width: 821px) {
+  .public-chat-page--ready .public-chat-composer-dock {
+    position: relative !important;
+    z-index: 5;
+    flex: 0 0 auto;
+    border-top: 1px solid var(--agent-line, rgba(35, 48, 45, 0.12));
+    background: var(--agent-paper, #faf9f6);
+  }
+}
+
+@media (max-width: 820px) {
+  .public-chat-page--ready .public-chat-shell.is-conversation > .public-chat-messages {
+    min-height: 0 !important;
+    padding-bottom: 172px !important;
+  }
+
+  .chat-empty-prompts {
+    min-height: 440px;
+    place-content: start center;
+    gap: 18px;
+    padding: 48px 0 28px;
+  }
+
+  .chat-empty-prompts h2 { font-size: 27px; }
+  .chat-empty-prompts > header p { font-size: 14px; }
+  .chat-empty-prompts > div { grid-template-columns: 1fr; gap: 8px; }
+  .chat-empty-prompts button,
+  .chat-empty-prompts button:last-child:nth-child(odd) {
+    grid-column: auto;
+    min-height: 68px;
+  }
+
+  :is(
+    .daily-signal-dialog,
+    .company-rating-dialog,
+    .portfolio-news-dialog,
+    .position-management-dialog,
+    .influencer-digest-dialog,
+    .weekly-brief-dialog,
+    .key-chain-dialog
+  ) h2 {
+    font-size: 25px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-empty-prompts button { transition: none; }
+}

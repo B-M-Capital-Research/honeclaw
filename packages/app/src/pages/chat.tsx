@@ -21,12 +21,15 @@ import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import {
   AgentWorkspaceHistoryDrawer,
+  AgentWorkspaceIcon,
   AgentWorkspaceLoadingState,
   AgentWorkspaceMobileHeader,
   AgentWorkspaceMobileNav,
   AgentWorkspaceSidebar,
   AgentWorkspaceTopbar,
 } from "@/components/public-agent-workspace";
+import { routePrefetchHandlers } from "@/lib/route-prefetch";
+import { takeResearchAsk } from "@/lib/research-ask";
 import { PublicPrefsButton } from "@/components/public-prefs-button";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
@@ -52,6 +55,7 @@ import "./public-site.css";
 import "./public-polish.css";
 import "./public-chat.css";
 import "./public-agent-workspace.css";
+import "./public-chat-accessibility.css";
 import {
   getPublicChatBootstrap,
   getPublicCommunity,
@@ -120,6 +124,8 @@ import {
   daySeparatorLabel,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
+import { buildChatStarterPrompts } from "@/lib/chat-empty-prompts";
+import { useLocale } from "@/lib/i18n";
 import type {
   FinanceCalendarPayload,
   PublicCommunityContent,
@@ -2520,6 +2526,7 @@ export default function PublicChatPage() {
     createSignal<FinanceCalendarPayload>();
   const [trackingOpenRequest, setTrackingOpenRequest] = createSignal(0);
   const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
+  const [conversationStartIndex, setConversationStartIndex] = createSignal<number | null>(null);
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
@@ -2613,7 +2620,10 @@ export default function PublicChatPage() {
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
       : 0;
-  const visibleMessages = createMemo(() => messages);
+  const visibleMessages = createMemo(() => {
+    const start = conversationStartIndex();
+    return start === null ? messages : messages.slice(Math.min(start, messages.length));
+  });
   const sidebarHistoryMessages = createMemo(() =>
     messages
       .filter((message) => message.role === "user")
@@ -2631,6 +2641,14 @@ export default function PublicChatPage() {
   );
   const workspaceDisplayName = createMemo(() =>
     workspaceUserName(currentUser()?.user_id ?? ""),
+  );
+  const starterPrompts = createMemo(() =>
+    buildChatStarterPrompts({
+      holdings: workspaceCalendar()?.holdings ?? [],
+      events: workspaceCalendar()?.events ?? [],
+      today: workspaceCalendar()?.today,
+      locale: useLocale(),
+    }),
   );
   const hasOlderMessages = () => historyNextBefore() !== undefined;
   const pendingAssistantMessage = createMemo(() => {
@@ -2883,16 +2901,34 @@ export default function PublicChatPage() {
     focusWorkspaceComposer();
   });
 
-  /* 「新对话」：清空草稿、回到最新消息并聚焦输入框。后端目前是单会话模型，
-     这里不新建 session，只把界面复位到「可以开始问」的状态。 */
+  /* 研究台面板的「发送到对话」：正文可达数 KB，不走 URL，改经 sessionStorage
+     转交（见 research-ask.ts），这里只认一个一次性的 ?ask=research 标记。 */
+  createEffect(() => {
+    if (searchParams.ask !== "research") return;
+    setSearchParams({ ask: undefined }, { replace: true });
+    const message = takeResearchAsk();
+    if (message) setPendingAutoSend(message);
+  });
+
+  /* 「新对话」在当前服务端会话内建立一个新的可见分段。旧消息仍能从左侧
+     对话记录恢复，但新页面先显示和当前持仓、日历相关的提问入口。 */
   const startNewConversation = () => {
+    if (isSendingOrStreaming()) {
+      settleAtBottom();
+      return;
+    }
     setDraft("");
-    settleAtBottom();
+    setConversationStartIndex(messages.length);
+    setAwayFromBottom(false);
+    requestAnimationFrame(() => {
+      if (scrollRef) scrollRef.scrollTop = 0;
+    });
     focusWorkspaceComposer();
   };
 
   const openWorkspaceResearch = (id: string) => {
     setHistoryDrawerOpen(false);
+    setConversationStartIndex(null);
     requestAnimationFrame(() => scrollToMessage(id));
   };
 
@@ -3696,7 +3732,10 @@ export default function PublicChatPage() {
                   onLoadOlder={() => void loadOlderMessages()}
                   onNewResearch={startNewConversation}
                   onSelectResearch={openWorkspaceResearch}
-                  onHome={startNewConversation}
+                  /* 当前区块的导航项被再次点击时只回到对话底部；开新分段
+                     是「新对话」按钮的职责，误触不该截断正在看的记录。 */
+                  onHome={settleAtBottom}
+                  onResearchDesk={() => navigate("/research")}
                   onInsights={() => navigate("/community")}
                   onPushes={() => navigate("/pushes")}
                   unreadPushCount={pushUnreadCount()}
@@ -3760,6 +3799,30 @@ export default function PublicChatPage() {
                               ref={messagesInnerRef}
                               style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}
                             >
+                              <Show when={authState() === "ready" && visibleMessages().length === 0}>
+                                <section class="chat-empty-prompts" aria-label={CONTENT.chat_page.workspace.starter_aria}>
+                                  <header>
+                                    <span>{CONTENT.chat_page.workspace.starter_kicker}</span>
+                                    <h2>{CONTENT.chat_page.workspace.starter_title}</h2>
+                                    <p>{CONTENT.chat_page.workspace.starter_desc}</p>
+                                  </header>
+                                  <div>
+                                    <For each={starterPrompts()}>
+                                      {(prompt) => (
+                                        <button
+                                          type="button"
+                                          data-prompt-kind={prompt.id}
+                                          onClick={() => setPendingAutoSend(prompt.question)}
+                                        >
+                                          <small>{prompt.eyebrow}</small>
+                                          <strong>{prompt.title}</strong>
+                                          <i aria-hidden="true">↗</i>
+                                        </button>
+                                      )}
+                                    </For>
+                                  </div>
+                                </section>
+                              </Show>
                               <Show when={hasOlderMessages()}>
                                 <div class="public-chat-history-status">
                                   {loadingOlderMessages()
@@ -3796,6 +3859,19 @@ export default function PublicChatPage() {
                             </div>
                           </div>
                       <div class="public-chat-composer-dock" style={{ position: "relative" }}>
+                        <Show when={authState() === "ready"}>
+                          {/* 研究产品有自己的家（/research）。这里只留一条纯导航
+                              入口，不取数、不弹窗，把版面还给对话本身。 */}
+                          <nav class="chat-research-entry" aria-label={CONTENT.chat_page.workspace.daily_tools_aria}>
+                            <button type="button" class="chat-research-entry__primary" {...routePrefetchHandlers("research")} onClick={() => navigate("/research")}>
+                              <AgentWorkspaceIcon name="research" size={15} />
+                              <span>{CONTENT.chat_page.workspace.research_desk_entry}</span>
+                              <i aria-hidden="true">›</i>
+                            </button>
+                            <button type="button" onClick={() => navigate("/valuation-lab")}>{CONTENT.chat_page.workspace.valuation_lab_title}</button>
+                            <button type="button" onClick={() => navigate("/research-library")}>{CONTENT.chat_page.workspace.research_library_title}</button>
+                          </nav>
+                        </Show>
                         <Show when={awayFromBottom()}>
                           <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
@@ -3838,9 +3914,10 @@ export default function PublicChatPage() {
                   activeSection="agent"
                   communityUnread={communityUnread()}
                   unreadPushCount={pushUnreadCount()}
-                  onHome={startNewConversation}
+                  onHome={settleAtBottom}
                   onInsights={() => navigate("/community")}
-                  onAgent={startNewConversation}
+                  onAgent={settleAtBottom}
+                  onResearchDesk={() => navigate("/research")}
                   onPushesTab={() => navigate("/pushes")}
                   onAccount={() => navigate("/me")}
                 />
@@ -3861,8 +3938,9 @@ export default function PublicChatPage() {
                   }}
                   onHome={() => {
                     setHistoryDrawerOpen(false);
-                    startNewConversation();
+                    settleAtBottom();
                   }}
+                  onResearchDesk={() => navigate("/research")}
                   onInsights={() => navigate("/community")}
                   onAccount={() => navigate("/me")}
                 />

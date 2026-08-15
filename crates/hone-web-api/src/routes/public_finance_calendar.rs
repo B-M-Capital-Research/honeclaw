@@ -14,6 +14,7 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::{Datelike, NaiveDate};
+use futures::stream::{self, StreamExt};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -38,6 +39,7 @@ const FMP_PLAN_REJECTED_MARKER: &str = "HTTP 402";
 /// How long an out-of-plan symbol stays skipped. Short enough that a plan
 /// upgrade takes effect the same day without a restart.
 const FMP_UNSUPPORTED_SYMBOL_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const FMP_EARNINGS_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[derive(Default)]
 struct UnsupportedFmpSymbols {
@@ -46,6 +48,14 @@ struct UnsupportedFmpSymbols {
 
 static FMP_UNSUPPORTED_SYMBOLS: LazyLock<Mutex<UnsupportedFmpSymbols>> =
     LazyLock::new(|| Mutex::new(UnsupportedFmpSymbols::default()));
+
+#[derive(Default)]
+struct CachedFmpEarnings {
+    entries: HashMap<String, (Instant, Value)>,
+}
+
+static FMP_EARNINGS_CACHE: LazyLock<Mutex<CachedFmpEarnings>> =
+    LazyLock::new(|| Mutex::new(CachedFmpEarnings::default()));
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct FinanceCalendarQuery {
@@ -630,6 +640,87 @@ async fn fetch_earnings_for_symbols(
     symbols: &[String],
     month: &MonthSpec,
 ) -> EarningsFetchOutcome {
+    let start = NaiveDate::from_ymd_opt(month.year, month.month, 1)
+        .expect("validated calendar month must have a first day");
+    let next_month = if month.month == 12 {
+        NaiveDate::from_ymd_opt(month.year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(month.year, month.month + 1, 1)
+    }
+    .expect("validated calendar month must have a next month");
+    fetch_earnings_for_symbols_in_range(state, symbols, start, next_month - chrono::Days::new(1))
+        .await
+}
+
+pub(crate) struct FinanceCalendarRangeResult {
+    pub events: Vec<FinanceCalendarEvent>,
+    pub earnings_status: String,
+    pub errors: Vec<String>,
+}
+
+pub(crate) async fn calendar_events_for_range(
+    state: &AppState,
+    symbols: &[String],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> FinanceCalendarRangeResult {
+    let mut events = macro_seed_events()
+        .into_iter()
+        .filter(|event| {
+            NaiveDate::parse_from_str(&event.date, "%Y-%m-%d")
+                .map(|date| date >= start && date <= end)
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+    let mut errors = Vec::new();
+    let earnings_status = if symbols.is_empty() {
+        "empty_scope".to_string()
+    } else {
+        match fetch_earnings_for_symbols_in_range(state, symbols, start, end).await {
+            EarningsFetchOutcome::Ok(items) => {
+                events.extend(items);
+                "ok".to_string()
+            }
+            EarningsFetchOutcome::MissingKey => {
+                errors.push("未配置 FMP API Key，重点公司财报日期未进入本期简报".to_string());
+                "missing_key".to_string()
+            }
+            EarningsFetchOutcome::Partial {
+                events: items,
+                errors: errs,
+            } => {
+                events.extend(items);
+                errors.extend(errs);
+                "partial".to_string()
+            }
+            EarningsFetchOutcome::Failed(errs) => {
+                errors.extend(errs);
+                "failed".to_string()
+            }
+        }
+    };
+    events.sort_by(|left, right| {
+        left.date
+            .cmp(&right.date)
+            .then_with(|| event_kind_sort_key(&left.kind).cmp(&event_kind_sort_key(&right.kind)))
+            .then_with(|| left.title.cmp(&right.title))
+    });
+    events.dedup_by(|left, right| {
+        left.date == right.date && left.kind == right.kind && left.title == right.title
+    });
+    FinanceCalendarRangeResult {
+        events,
+        earnings_status,
+        errors,
+    }
+}
+
+async fn fetch_earnings_for_symbols_in_range(
+    state: &AppState,
+    symbols: &[String],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> EarningsFetchOutcome {
     let pool = state.core.config.fmp.effective_key_pool();
     let keys = pool.keys();
     if keys.is_empty() {
@@ -639,19 +730,35 @@ async fn fetch_earnings_for_symbols(
     let mut events = Vec::new();
     let mut errors = Vec::new();
     let mut unsupported = Vec::new();
-    for symbol in symbols {
-        if fmp_symbol_is_known_unsupported(symbol) {
-            unsupported.push(symbol.clone());
-            continue;
-        }
-        match fetch_symbol_earnings(state, keys, symbol).await {
-            Ok(value) => events.extend(earnings_events_from_value(symbol, &value, month)),
+    let requests = symbols
+        .iter()
+        .filter_map(|symbol| {
+            if fmp_symbol_is_known_unsupported(symbol) {
+                unsupported.push(symbol.clone());
+                None
+            } else {
+                Some(symbol.clone())
+            }
+        })
+        .collect::<Vec<_>>();
+    let results = stream::iter(requests.into_iter().map(|symbol| async move {
+        let result = fetch_symbol_earnings(state, keys, &symbol).await;
+        (symbol, result)
+    }))
+    .buffer_unordered(8)
+    .collect::<Vec<_>>()
+    .await;
+    for (symbol, result) in results {
+        match result {
+            Ok(value) => events.extend(earnings_events_from_value_in_range(
+                &symbol, &value, start, end,
+            )),
             Err(error) if fmp_error_is_plan_rejection(&error) => {
                 // Not a failure to retry: the plan will answer the same way
                 // until it is upgraded, so remember it and stop asking.
-                remember_unsupported_fmp_symbol(symbol);
+                remember_unsupported_fmp_symbol(&symbol);
                 debug!(%symbol, "finance calendar FMP symbol outside subscription: {error}");
-                unsupported.push(symbol.clone());
+                unsupported.push(symbol);
             }
             Err(error) => {
                 warn!(%symbol, "finance calendar FMP earnings fetch failed: {error}");
@@ -708,6 +815,10 @@ async fn fetch_symbol_earnings(
     symbol: &str,
 ) -> Result<Value, String> {
     let stable_base = stable_fmp_base_url(&state.core.config.fmp.base_url);
+    let cache_key = format!("{stable_base}|{symbol}");
+    if let Some(value) = cached_fmp_earnings(&cache_key) {
+        return Ok(value);
+    }
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url_base = format!("{stable_base}/stable/earnings?symbol={encoded_symbol}");
     let mut last_error = String::new();
@@ -715,7 +826,10 @@ async fn fetch_symbol_earnings(
         let encoded_key = utf8_percent_encode(key, NON_ALPHANUMERIC).to_string();
         let url = format!("{url_base}&apikey={encoded_key}");
         match fetch_fmp_json_once(&state.http_client, &url, state.core.config.fmp.timeout).await {
-            Ok(value) => return Ok(value),
+            Ok(value) => {
+                remember_fmp_earnings(cache_key.clone(), value.clone());
+                return Ok(value);
+            }
             Err(error) => last_error = error,
         }
     }
@@ -724,6 +838,23 @@ async fn fetch_symbol_earnings(
     } else {
         last_error
     })
+}
+
+fn cached_fmp_earnings(key: &str) -> Option<Value> {
+    let Ok(mut cache) = FMP_EARNINGS_CACHE.lock() else {
+        return None;
+    };
+    let now = Instant::now();
+    cache
+        .entries
+        .retain(|_, (seen_at, _)| now.duration_since(*seen_at) < FMP_EARNINGS_CACHE_TTL);
+    cache.entries.get(key).map(|(_, value)| value.clone())
+}
+
+fn remember_fmp_earnings(key: String, value: Value) {
+    if let Ok(mut cache) = FMP_EARNINGS_CACHE.lock() {
+        cache.entries.insert(key, (Instant::now(), value));
+    }
 }
 
 pub(crate) async fn fetch_fmp_json_once(
@@ -774,10 +905,33 @@ fn stable_fmp_base_url(base_url: &str) -> String {
     base.trim_end_matches('/').to_string()
 }
 
+#[cfg(test)]
 fn earnings_events_from_value(
     requested_symbol: &str,
     value: &Value,
     month: &MonthSpec,
+) -> Vec<FinanceCalendarEvent> {
+    let start = NaiveDate::from_ymd_opt(month.year, month.month, 1)
+        .expect("validated calendar month must have a first day");
+    let next_month = if month.month == 12 {
+        NaiveDate::from_ymd_opt(month.year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(month.year, month.month + 1, 1)
+    }
+    .expect("validated calendar month must have a next month");
+    earnings_events_from_value_in_range(
+        requested_symbol,
+        value,
+        start,
+        next_month - chrono::Days::new(1),
+    )
+}
+
+fn earnings_events_from_value_in_range(
+    requested_symbol: &str,
+    value: &Value,
+    start: NaiveDate,
+    end: NaiveDate,
 ) -> Vec<FinanceCalendarEvent> {
     let items = match value.as_array() {
         Some(items) => items,
@@ -788,7 +942,7 @@ fn earnings_events_from_value(
         let Some(date) = earnings_date_from_item(item) else {
             continue;
         };
-        if date.year() != month.year || date.month() != month.month {
+        if date < start || date > end {
             continue;
         }
         let date_text = date.format("%Y-%m-%d").to_string();

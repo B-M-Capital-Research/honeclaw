@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hari Invest"
+  short_description: "用老王框架给出有证据、能落地的美股判断"
+  default_prompt: "使用 $hari-invest 分析这家美股公司，并给出证据充分、结论明确的当前研究区间。"
+
+policy:
+  allow_implicit_invocation: true

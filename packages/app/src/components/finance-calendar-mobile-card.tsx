@@ -98,7 +98,7 @@ export function FinanceCalendarMobileCard(props: {
   const nextEvent = createMemo(() => agenda()[0]);
   const monthLabel = createMemo(() => {
     const parsed = parsedMonth();
-    return parsed ? MONTHS[parsed.month - 1] : "MONTH";
+    return parsed ? MONTHS[parsed.month - 1] : "月份";
   });
 
   return (
@@ -109,7 +109,7 @@ export function FinanceCalendarMobileCard(props: {
     >
       <header class="fcm-cover">
         <div class="fcm-cover__eyebrow">
-          <span>HONE / SIGNAL CALENDAR</span>
+          <span>HONE / 财经日历</span>
           <strong>{CONTENT.chat_page.calendar.beijing_time} · {parsedMonth()?.year ?? ""}</strong>
         </div>
         <div class="fcm-cover__body">

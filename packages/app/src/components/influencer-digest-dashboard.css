@@ -1,0 +1,261 @@
+/* 大V速报 panel — controlled ResearchPanel content.
+   Surfaces and accents use --hone-* tokens so dark mode adapts without a
+   bespoke dark-theme override block. */
+
+.influencer-digest-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10057;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #11191780;
+  backdrop-filter: blur(10px);
+}
+
+.influencer-digest-dialog {
+  width: min(1050px, 100%);
+  height: min(830px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--hone-paper-50);
+  color: var(--hone-ink-950);
+  box-shadow: 0 38px 100px #070d0c52;
+}
+
+.influencer-digest-dialog header {
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 26px 16px;
+  border-bottom: 1px solid var(--hone-line);
+}
+
+.influencer-digest-dialog header p {
+  margin: 0;
+  color: var(--hone-coral-600);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.influencer-digest-dialog h2 {
+  margin: 4px 0 0;
+  font-size: 26px;
+}
+
+.influencer-digest-dialog header span {
+  color: var(--hone-ink-500);
+  font-size: 12px;
+}
+
+.influencer-digest-dialog header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--hone-line);
+  border-radius: 11px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-size: 22px;
+}
+
+.influencer-digest-meta {
+  padding: 8px 26px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--hone-line);
+  color: var(--hone-ink-500);
+  font-size: 10px;
+}
+
+.influencer-digest-meta b {
+  padding: 4px 8px;
+  border-radius: 99px;
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.influencer-digest-meta button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--hone-coral-600);
+}
+
+.influencer-authors {
+  padding: 10px 26px;
+  display: flex;
+  gap: 7px;
+  overflow: auto;
+  border-bottom: 1px solid var(--hone-line);
+}
+
+.influencer-authors button {
+  padding: 7px 10px;
+  border: 1px solid var(--hone-line);
+  border-radius: 10px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.influencer-authors button small {
+  margin-left: 5px;
+  color: var(--hone-ink-500);
+}
+
+.influencer-authors button.active {
+  border-color: var(--hone-coral-600);
+  color: var(--hone-coral-600);
+}
+
+.influencer-authors button.missing {
+  opacity: 0.65;
+}
+
+.influencer-digest-body {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 26px;
+}
+
+.influencer-digest-body article {
+  position: relative;
+  margin-bottom: 10px;
+  padding: 15px 17px;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-600);
+  border-radius: 14px;
+  background: var(--hone-surface-raised);
+}
+
+.influencer-digest-body article > div:first-child {
+  display: flex;
+  gap: 7px;
+  color: var(--hone-ink-500);
+  font-size: 9px;
+}
+
+.influencer-digest-body time {
+  margin-left: auto;
+}
+
+.influencer-digest-body h3 {
+  margin: 9px 0 6px;
+  font-size: 14px;
+}
+
+.influencer-digest-body p {
+  margin: 0;
+  color: var(--hone-ink-600);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.influencer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.influencer-tags span {
+  padding: 3px 6px;
+  border-radius: 7px;
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  font-size: 8px;
+}
+
+.influencer-digest-body aside {
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+  font-size: 9px;
+}
+
+.influencer-digest-body article > a {
+  display: block;
+  margin-top: 9px;
+  color: var(--hone-coral-600);
+  font-size: 9px;
+  text-decoration: none;
+}
+
+.influencer-digest-dialog footer {
+  padding: 9px 26px;
+  border-top: 1px solid var(--hone-line);
+}
+
+.influencer-digest-dialog footer > p {
+  margin: 0 0 6px;
+  text-align: center;
+  color: var(--hone-ink-500);
+  font-size: 8px;
+}
+
+.influencer-digest-dialog footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.influencer-digest-dialog input {
+  flex: 1;
+  padding: 9px 11px;
+  border: 1px solid var(--hone-line);
+  border-radius: 10px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+}
+
+.influencer-digest-dialog footer button {
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hone-coral-600);
+  color: white;
+}
+
+.influencer-digest-dialog footer button:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 768px) {
+  .influencer-digest-backdrop {
+    padding: 0;
+    place-items: end;
+  }
+
+  .influencer-digest-dialog {
+    width: 100%;
+    height: 93dvh;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .influencer-digest-dialog header {
+    padding: 18px 16px 13px;
+  }
+
+  .influencer-digest-meta,
+  .influencer-authors {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .influencer-digest-meta span:nth-of-type(2) {
+    display: none;
+  }
+
+  .influencer-digest-body {
+    padding: 12px;
+  }
+
+  .influencer-digest-dialog footer {
+    padding: 8px 12px;
+  }
+}

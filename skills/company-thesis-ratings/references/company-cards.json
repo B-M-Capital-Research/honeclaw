@@ -1,0 +1,1809 @@
+{
+  "schema_version": 1,
+  "generated_from": "authorized internal transcript research workbook plus reviewed newer transcripts",
+  "companies": [
+    {
+      "name": "台积电",
+      "symbol": "TSM",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "先进制造/晶圆代工",
+      "business_model": "先进制程晶圆代工+先进封装，卖全行业最稀缺产能",
+      "moat": "全球最强先进制程、CoWoS/先进封装、客户不竞争、良率与交付纪律形成复利护城河",
+      "thesis_summary": "AI芯片、ASIC、HBM控制器、网络芯片几乎都绕不开先进制造；稀缺性来自产能、良率和生态锁定。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 94,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调台积电70%级先进代工份额、服务和交付护城河。"
+      ],
+      "risks": [
+        "估值已不便宜；地缘政治、美国/日本产能效率、先进封装扩产节奏。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250904203049-台积电-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "谷歌",
+      "symbol": "GOOGL",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "AI平台/TPU/云",
+      "business_model": "搜索广告+YouTube+Google Cloud+TPU自研算力+Gemini生态",
+      "moat": "搜索分发、数据、模型、TPU、云和开发者生态的软硬一体闭环",
+      "thesis_summary": "在模型、TPU、云、搜索AI化上形成低成本算力和分发优势；比纯算力链更有现金流防御。",
+      "valuation_method": "forward P/E 与 FCF/DCF，检验资本开支转化为收入和自由现金流的速度",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 2
+      },
+      "static_score": 93,
+      "confidence": "medium",
+      "watch_items": [
+        "当前PE约28倍；逐字稿强调谷歌AI模型、TPU和云增长的组合优势。"
+      ],
+      "risks": [
+        "AI搜索可能压缩传统广告商业模式；监管；资本开支持续上行。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251120202745-谷歌-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Microsoft",
+      "symbol": "MSFT",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "AI云/软件平台",
+      "business_model": "Azure、Office、Copilot、OpenAI合作和自有模型",
+      "moat": "企业软件分发、Azure客户、OpenAI合作和现金流",
+      "thesis_summary": "质量极高，但不是最稀缺卖铲；CapEx回报和OpenAI关系是关键。",
+      "valuation_method": "forward P/E 与 FCF/DCF，检验资本开支转化为收入和自由现金流的速度",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 2
+      },
+      "static_score": 93,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿重点分析微软AI与OpenAI关系。"
+      ],
+      "risks": [
+        "云增速放缓、AI资本开支回报、OpenAI关系变化。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251218205938-微软-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "博通",
+      "symbol": "AVGO",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "ASIC/网络芯片",
+      "business_model": "定制AI ASIC、交换芯片、网络芯片+VMware基础设施软件",
+      "moat": "客户定制ASIC设计能力、网络交换芯片、软件现金流、超大客户深绑定",
+      "thesis_summary": "开放ASIC和AI网络的核心卖铲人；AI半导体收入仍高速增长，且软件现金流降低周期性。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 91,
+      "confidence": "medium",
+      "watch_items": [
+        "Q2 FY2026 AI半导体收入108亿美元，同比+143%；总收入222亿美元，同比+48%。"
+      ],
+      "risks": [
+        "客户集中；ASIC客户自研/议价；高预期下财报若不持续上修易杀估值。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260115202748-博通-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "KLA",
+      "symbol": "KLAC",
+      "market_scope": "us_listed",
+      "theme": "半导体设备",
+      "value_chain": "过程控制/检测/良率管理",
+      "business_model": "高毛利检测设备加装机服务；制程复杂度提升带动检测强度",
+      "moat": "前端检测份额、缺陷数据、算法与客户工艺反馈形成数据飞轮和高转换成本",
+      "thesis_summary": "先进制程、HBM 和封装复杂度上升使良率控制成为刚需，收入质量通常优于纯周期设备",
+      "valuation_method": "跨 WFE 周期的 forward P/E、FCF 与服务收入质量；比较订单/装机基数",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 91,
+      "confidence": "medium",
+      "watch_items": [
+        "过程控制占 WFE 比例",
+        "服务收入和毛利率",
+        "先进封装检测订单"
+      ],
+      "risks": [
+        "高估值",
+        "WFE 节奏和中国限制",
+        "竞争技术追赶"
+      ],
+      "falsifiers": [
+        "检测强度随制程复杂度上升的关系减弱",
+        "份额、毛利或服务续约持续下滑"
+      ],
+      "transcript_sources": [
+        "20260709202737-KLAC-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-07-09"
+    },
+    {
+      "name": "SK hynix",
+      "symbol": "SKHY",
+      "market_scope": "us_adr",
+      "theme": "存储/HBM",
+      "value_chain": "DRAM/HBM/NAND 制造",
+      "business_model": "存储芯片制造，以 HBM 领先地位参与 AI 加速器供应链",
+      "moat": "HBM 量产良率、先进封装和头部客户认证形成当前领先，但需持续研发和资本投入",
+      "thesis_summary": "作为 HBM 龙头提供更纯的 AI 存储敞口；美国 ADR 上市时间短，估值和流动性口径需谨慎",
+      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 91,
+      "confidence": "low",
+      "watch_items": [
+        "HBM 代际量产和客户份额",
+        "DRAM 价格与资本开支",
+        "ADR 流动性和折溢价"
+      ],
+      "risks": [
+        "HBM 竞争追赶",
+        "存储周期",
+        "ADR 历史和数据覆盖较短"
+      ],
+      "falsifiers": [
+        "下一代 HBM 认证或量产落后主要竞争者",
+        "HBM 溢价和份额连续下降"
+      ],
+      "transcript_sources": [
+        "20260723202325-海力士-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-07-23"
+    },
+    {
+      "name": "Vistra",
+      "symbol": "VST",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "电力/零售发电一体化",
+      "business_model": "发电资产+零售电力+PPA，给AI数据中心提供稳定电力",
+      "moat": "核电/燃气/储能组合、零售对冲、区域电力稀缺下的PPA议价能力",
+      "thesis_summary": "AI最底层卡脖子是电；VST既有资产又有客户PPA，现金流更确定。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 90,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调Meta 20年PPA和垂直一体化自然对冲。"
+      ],
+      "risks": [
+        "电价监管、燃料价格、天气、政治和环保约束。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260122202941-VST-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "GE Vernova",
+      "symbol": "GEV",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "燃气轮机/电网设备",
+      "business_model": "燃机、电网、风电及电力基础设施设备供应商",
+      "moat": "H级燃机与电网设备交付能力，在美国数据中心缺电周期中供给极稀缺",
+      "thesis_summary": "数据中心并网慢、燃机订单紧缺；GEV是电力扩容链条中确定性最高的设备商之一。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 87,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调燃气轮机被抢购和数据中心缺电。"
+      ],
+      "risks": [
+        "估值反映较多预期；燃机交付周期、政策和供应链瓶颈。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251113202730-GEV & BWTX-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Amazon",
+      "symbol": "AMZN",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "云/电商/自研芯片",
+      "business_model": "AWS、电商、广告、Trainium/Inferentia、自研AI芯片",
+      "moat": "AWS规模、电商现金流、广告和自研芯片潜力",
+      "thesis_summary": "AWS仍强，但增速和AI差异化不如Google/AVGO/TSM稀缺。",
+      "valuation_method": "forward P/E 与 FCF/DCF，检验资本开支转化为收入和自由现金流的速度",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 86,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿重点讨论AWS和reinvent AI芯片布局。"
+      ],
+      "risks": [
+        "AWS竞争、零售利润波动、CapEx压力。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251204203045-亚马逊& ALAB-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Applied Materials",
+      "symbol": "AMAT",
+      "market_scope": "us_listed",
+      "theme": "半导体设备",
+      "value_chain": "材料工程/沉积/刻蚀/先进封装",
+      "business_model": "广覆盖半导体设备平台加长期服务，横跨逻辑、DRAM、NAND 和封装",
+      "moat": "数十年工艺配方、广泛装机基数、良率集成和客户共同开发形成平台护城河",
+      "thesis_summary": "DRAM/HBM、GAA、背面供电和先进封装共同提高材料工程强度，业务广度使周期更稳",
+      "valuation_method": "跨 WFE 周期的 forward P/E、FCF 与服务收入质量；比较订单/装机基数",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 85,
+      "confidence": "medium",
+      "watch_items": [
+        "DRAM/HBM 与先进封装收入",
+        "服务业务增长",
+        "中国限制后的收入结构"
+      ],
+      "risks": [
+        "中国限制和国产替代",
+        "WFE 周期",
+        "估值已反映较强增长"
+      ],
+      "falsifiers": [
+        "新架构材料强度未带来份额或订单提升",
+        "服务和自由现金流质量持续下降"
+      ],
+      "transcript_sources": [
+        "20260702201824-AMAT-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-07-02"
+    },
+    {
+      "name": "Lam Research",
+      "symbol": "LRCX",
+      "market_scope": "us_listed",
+      "theme": "半导体设备",
+      "value_chain": "刻蚀/沉积/晶圆设备服务",
+      "business_model": "设备销售加装机基数服务与耗材；服务业务降低单一资本开支周期波动",
+      "moat": "3D NAND 高深宽比刻蚀与沉积工艺、长期验证、装机数据和服务网络形成高转换成本",
+      "thesis_summary": "NAND 层数提升和企业级 SSD 拉动工艺强度；相对 DRAM/HBM 更偏 2027 NAND 资本开支弹性",
+      "valuation_method": "跨 WFE 周期的 forward P/E、FCF 与服务收入质量；比较订单/装机基数",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 85,
+      "confidence": "medium",
+      "watch_items": [
+        "NAND 客户资本开支与 CSBG 增速",
+        "中国收入及出口限制影响",
+        "先进封装与 DRAM/HBM 份额"
+      ],
+      "risks": [
+        "WFE 周期和 NAND 扩产推迟",
+        "中国限制与国产替代",
+        "高估值压缩"
+      ],
+      "falsifiers": [
+        "NAND 工艺强度提升未转化为订单",
+        "服务收入增速和装机利用率持续下降"
+      ],
+      "transcript_sources": [
+        "20260625202409-LRCX-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-25"
+    },
+    {
+      "name": "ARM",
+      "symbol": "ARM",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "CPU IP/端侧+服务器架构",
+      "business_model": "CPU IP授权、版税、CSS平台、潜在数据中心CPU价值提升",
+      "moat": "ARM架构生态、低功耗CPU IP、客户授权锁定、服务器CPU占比提升期权",
+      "thesis_summary": "GPU:CPU比例变化和低功耗推理/端侧AI会抬升ARM单片价值。",
+      "valuation_method": "forward EV/S 与增长、毛利、经营杠杆的相对估值，辅以盈利拐点情景",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 5
+      },
+      "static_score": 84,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调AGI CPU、CSS和服务器份额提升。"
+      ],
+      "risks": [
+        "估值很高；自研CPU会带来与客户关系变化；RISC-V长期风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260514202025-ARM-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Meta",
+      "symbol": "META",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "AI应用/广告/算力需求方",
+      "business_model": "社交广告、AI推荐、Llama、AI眼镜和自建算力",
+      "moat": "社交流量、广告闭环、开源模型生态和大规模算力需求",
+      "thesis_summary": "AI需求确定，但更像CapEx买方；上游稀缺资产弹性更高。",
+      "valuation_method": "forward P/E 与 FCF/DCF，检验资本开支转化为收入和自由现金流的速度",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 5,
+        "visibility": 3,
+        "execution": 5,
+        "valuation_risk": 2
+      },
+      "static_score": 84,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿覆盖宏观和Meta AI资本开支逻辑。"
+      ],
+      "risks": [
+        "模型投资回报、监管、广告周期。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251127203144-宏观& Meta-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Coherent",
+      "symbol": "COHR",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "InP/激光器/光模块",
+      "business_model": "InP晶圆、激光器、800G/1.6T模块、CPO/OCS相关器件",
+      "moat": "6英寸InP能力、高功率激光器和垂直整合；处于AI光通信核心瓶颈",
+      "thesis_summary": "比纯模块厂更上游；InP和激光器能力稀缺，景气周期中议价能力强。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 83,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调6英寸InP、高功率激光器和订单出货比。"
+      ],
+      "risks": [
+        "高估值和周期波动；新技术路线替代；客户集中和供应链地缘风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260305202811-COHR-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Marvell",
+      "symbol": "MRVL",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "DSP/光互联/定制芯片",
+      "business_model": "数据中心互联芯片、DSP、定制ASIC、交换/存储连接芯片",
+      "moat": "AI互联层核心芯片能力，DSP+定制ASIC+连接组合，客户设计周期长、替换成本高",
+      "thesis_summary": "摩尔定律放缓后，集群互联价值提升；Marvell是光、电、ASIC连接层核心受益者。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 83,
+      "confidence": "medium",
+      "watch_items": [
+        "FY2026收入81.95亿美元创新高；Q1 FY2027收入24.18亿美元，同比+28%，非GAAP毛利58.9%。"
+      ],
+      "risks": [
+        "估值高；设计胜出到收入确认有时滞；与博通/英伟达竞争。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260402202908-Marvell-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Vertiv",
+      "symbol": "VRT",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "液冷/电源/数据中心基础设施",
+      "business_model": "数据中心电源、热管理、液冷、机柜和服务",
+      "moat": "AI服务器热密度提升带来的液冷和电源系统卡位，客户认证和交付网络强",
+      "thesis_summary": "AI数据中心从GPU扩到液冷/供电系统，VRT是最纯的数据中心物理基础设施卖铲人。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 83,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿围绕数据中心液冷和供电基础设施展开。"
+      ],
+      "risks": [
+        "高增长预期；竞争加剧；大客户CapEx节奏影响订单。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260326212357-VRT-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Ciena",
+      "symbol": "CIEN",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "DCI/光传输网络",
+      "business_model": "WaveLogic光传输、DCI、路由和网络平台",
+      "moat": "WaveLogic DSP/相干光传输能力强，运营商和数据中心互联份额提升",
+      "thesis_summary": "当AI集群跨园区/跨数据中心扩展，DCI和相干光传输需求爆发。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 5,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 82,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调Q1收入同比+33%、WaveLogic 6量产和70亿美元积压。"
+      ],
+      "risks": [
+        "估值上行后弹性下降；运营商周期；与模块厂/系统厂竞争。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260318202711-Ciena-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Cisco",
+      "symbol": "CSCO",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "AI网络/以太网/安全",
+      "business_model": "Silicon One、Nexus交换路由、光模块、Splunk安全与可观测性",
+      "moat": "企业网络全家桶、开放以太网AI Fabric、长期服务收入和认证体系形成粘性",
+      "thesis_summary": "相比纯光模块弹性小，但开放AI网络+安全软件能享受估值重估。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 81,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调Silicon One、Nexus、Splunk和开放以太网生态。"
+      ],
+      "risks": [
+        "云数据中心份额被Arista/NVIDIA挤压；传统业务低增速。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260611202622-思科CSCO-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Lumentum",
+      "symbol": "LITE",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "光源/光模块/CPO",
+      "business_model": "EML/激光器、高速光模块、光通信器件和光子系统",
+      "moat": "高端激光器和光子制造能力，AI数据中心从800G/1.6T向CPO升级的上游稀缺环节",
+      "thesis_summary": "光源是AI互联卡脖子；LITE处于激光器和模块能力强的一线阵营，受益于CPO/OCS。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 80,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；公开资料显示Cloud & Networking供应AI/云数据中心光子组件。"
+      ],
+      "risks": [
+        "股价已充分反映光通信景气；技术路线变化和客户集中风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251016202913-LITE-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "SpaceX",
+      "symbol": "SPCX",
+      "market_scope": "us_listed",
+      "theme": "航天/能源材料",
+      "value_chain": "太空运力/Starlink/轨道AI",
+      "business_model": "可复用火箭、Starlink、政府/商业发射、潜在太空算力",
+      "moat": "可复用发射成本、星链现金流、垂直整合和马斯克执行力，极强但估值极高",
+      "thesis_summary": "独一份稀缺性极强；但当前估值已把Starlink、发射、AI和太空算力愿景一次性定价。",
+      "valuation_method": "分部 EV/S 与订单质量，结合发射/交付里程碑、资本开支和稀释情景",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 5,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 80,
+      "confidence": "low",
+      "watch_items": [
+        "Reuters称SpaceX按1.75万亿美元估值IPO，2025收入约186.7亿美元，市销率约93.7x；Starlink贡献主要收入。"
+      ],
+      "risks": [
+        "IPO后估值/P/S极高；AI和太空数据中心仍未验证；治理和监管风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260528201710-spaceX-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "BWX Technologies",
+      "symbol": "BWXT",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "核电/国防核组件",
+      "business_model": "核反应堆部件、海军核动力、核燃料/核医药等",
+      "moat": "国防核供应链稀缺，SMR/核电复兴中有期权",
+      "thesis_summary": "核供应链稀缺性强，但AI数据中心直接弹性不如VST/GEV。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 78,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿中写作BWTX，应为BWXT。"
+      ],
+      "risks": [
+        "政府预算、项目周期、核监管和估值。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251113202730-GEV & BWTX-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "康宁",
+      "symbol": "GLW",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "光纤/玻璃/硅光材料",
+      "business_model": "光纤、连接器、玻璃材料、数据中心光通信材料与系统",
+      "moat": "玻璃/光纤材料科学百年积累，AI数据中心光纤与硅光材料增量明确",
+      "thesis_summary": "不是最性感的光模块，但更像光通信底层材料卖铲人；AI光纤需求扩张具备长期性。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 78,
+      "confidence": "medium",
+      "watch_items": [
+        "Q1收入43.5亿美元同比+18%、EPS同比+30%；公司上调长期销售目标，IBD称其AI数据中心受益。"
+      ],
+      "risks": [
+        "传统显示/消费业务拖累；机构兑现；估值已明显重估。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260226202857-康宁-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Teradyne",
+      "symbol": "TER",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "半导体测试",
+      "business_model": "ATE测试设备、HBM/AI芯片/系统级测试、机器人业务",
+      "moat": "AI芯片复杂度提升带来测试时间和价值量提升，ATE双寡头之一",
+      "thesis_summary": "AI、HBM、ASIC、GPU无论谁赢，都需要测试；卖铲属性强。",
+      "valuation_method": "跨 WFE 周期的 forward P/E、FCF 与服务收入质量；比较订单/装机基数",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 78,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调AI相关收入占比提升和双寡头格局。"
+      ],
+      "risks": [
+        "估值不低；半导体设备周期；Advantest竞争。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260205202824-TER泰瑞达-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Fabrinet",
+      "symbol": "FN",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "光模块代工/OMS",
+      "business_model": "光模块和复杂光学制造代工，服务云厂商和光通信客户",
+      "moat": "高复杂度光学制造、泰国产能、客户认证和良率管理，受益但毛利有限",
+      "thesis_summary": "光模块扩产的卖铲代工；不像LITE/COHR有强光源上游，但交付确定性好。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 3,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 77,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调1.6T出货、泰国产能和零负债现金。"
+      ],
+      "risks": [
+        "低毛利代工属性；客户集中；无法完全分享上游定价权。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260312202937-FN-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Qualcomm",
+      "symbol": "QCOM",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "端侧AI/低功耗推理",
+      "business_model": "手机SoC、车载、IoT、AI PC/端侧推理和潜在数据中心低功耗方案",
+      "moat": "低功耗芯片、专利授权、移动生态和端侧AI入口",
+      "thesis_summary": "若AI从云端扩散到端侧，高通低功耗推理和授权模式可重估。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 3,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 77,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调低功耗推理、端侧AI和手机业务转型。"
+      ],
+      "risks": [
+        "手机周期；苹果/客户自研；数据中心故事仍需订单验证。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260430202836-高通Qcom-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "AMD",
+      "symbol": "AMD",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "GPU/CPU/推理算力",
+      "business_model": "GPU、CPU、APU、网络/平台方案，挑战英伟达的第二供应商",
+      "moat": "CPU生态、GPU路线图、开放软件栈、客户希望多供应商降低英伟达依赖",
+      "thesis_summary": "AI推理时代客户需要第二供应商；CPU+GPU+开放生态能切入New Cloud和Hyperscaler。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 76,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿重点分析MI路线图、推理时代差异化和客户选择逻辑。"
+      ],
+      "risks": [
+        "软件生态弱于CUDA；高估值；GPU交付节奏和毛利验证压力。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250814203014-AMD-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Micron",
+      "symbol": "MU",
+      "market_scope": "us_listed",
+      "theme": "存储/HBM",
+      "value_chain": "DRAM/HBM/NAND 制造",
+      "business_model": "存储芯片制造；价格、位元供给和产品组合共同决定利润",
+      "moat": "先进 DRAM/HBM 工艺、客户认证和资本密集型供给纪律；护城河低于独占型平台但供给集中",
+      "thesis_summary": "AI 推理提高 HBM 与 DRAM 内容量，长期协议可能降低周期性；仍必须用供给和中周期利润检验",
+      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 76,
+      "confidence": "medium",
+      "watch_items": [
+        "HBM 收入/份额和毛利",
+        "长期协议覆盖",
+        "行业资本开支和库存"
+      ],
+      "risks": [
+        "2027 下半年至 2028 新供给释放",
+        "价格正常化",
+        "韩国与中国竞争"
+      ],
+      "falsifiers": [
+        "HBM 份额或认证进度持续落后",
+        "供给增速重新显著超过需求并导致价格连续下跌"
+      ],
+      "transcript_sources": [
+        "20260716202748-美光-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-07-16"
+    },
+    {
+      "name": "Nebius",
+      "symbol": "NBIS",
+      "market_scope": "us_listed",
+      "theme": "New Cloud",
+      "value_chain": "New Cloud/AI算力",
+      "business_model": "GPU云、AI基础设施、长期容量合同、软件调度平台",
+      "moat": "GPU、电力、液冷、网络、软件调度的一体化交付；比传统云更贴近大模型训练/推理任务",
+      "thesis_summary": "如果能把大客户长约转化为稳定现金流，New Cloud可能成为AI时代的新型基础设施资产。",
+      "valuation_method": "EV/S 与合同 backlog，扣除债务、资本开支、折旧和融资成本后验证",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 5,
+        "execution": 3,
+        "valuation_risk": 5
+      },
+      "static_score": 76,
+      "confidence": "medium",
+      "watch_items": [
+        "FY2026指引收入30-34亿美元、调整后EBITDA率约40%，CapEx上调至200-250亿美元。"
+      ],
+      "risks": [
+        "高CapEx、融资依赖、交付延迟、折旧和债务成本；订单不等于自由现金流。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260604201156-Nbis + CRWV-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Sandisk",
+      "symbol": "SNDK",
+      "market_scope": "us_listed",
+      "theme": "存储/企业级 SSD",
+      "value_chain": "NAND/控制器/固件/SSD",
+      "business_model": "NAND 制造与企业/消费 SSD，控制器和固件把闪存转化为系统产品",
+      "moat": "NAND 制造、控制器、固件、长期认证和 CSP 合同组合，企业级产品转换成本较高",
+      "thesis_summary": "AI 推理和 KV cache 提高企业级 SSD 需求与价值量，但仍受 NAND 供给周期约束",
+      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 76,
+      "confidence": "medium",
+      "watch_items": [
+        "数据中心收入占比和毛利",
+        "价格与出货量贡献",
+        "NAND 行业资本开支"
+      ],
+      "risks": [
+        "2027 下半年至 2028 供给增加",
+        "NAND 价格周期",
+        "竞争和客户集中"
+      ],
+      "falsifiers": [
+        "企业级份额/认证未改善",
+        "收入增长主要由短期价格而非产品结构驱动且价格开始反转"
+      ],
+      "transcript_sources": [
+        "20260806202703-SNDK-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-08-06"
+    },
+    {
+      "name": "Western Digital",
+      "symbol": "WDC",
+      "market_scope": "us_listed",
+      "theme": "其他",
+      "value_chain": "HDD/云存储",
+      "business_model": "企业级HDD、云数据中心存储",
+      "moat": "HDD双寡头之一，AI数据留存和冷存储需求推升容量价值",
+      "thesis_summary": "AI数据爆发带来存储需求，但股价/估值可能已较充分反映周期上行。",
+      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 74,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调AI数据燃料和HDD寡头。"
+      ],
+      "risks": [
+        "HDD周期、客户库存、云CapEx切换。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251106202604-西部数据&希捷-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "AppLovin",
+      "symbol": "APP",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "AI广告",
+      "business_model": "AXON广告引擎、移动广告投放和变现平台",
+      "moat": "算法ROI提升和开发者生态，利润率高，但不是AI基础设施稀缺环节",
+      "thesis_summary": "商业模式好、现金流强，但与AI算力稀缺链条关联低于光/电/芯片。",
+      "valuation_method": "forward P/E 与 FCF/DCF，检验资本开支转化为收入和自由现金流的速度",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 5,
+        "visibility": 3,
+        "execution": 5,
+        "valuation_risk": 4
+      },
+      "static_score": 73,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿讨论AXON引擎、高利润率和做空争议。"
+      ],
+      "risks": [
+        "做空争议、平台政策、广告周期和估值波动。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251023202842-Applovin-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Bloom Energy",
+      "symbol": "BE",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "燃料电池/现场供电",
+      "business_model": "固体氧化物燃料电池、现场发电、氢电解槽",
+      "moat": "可模块化、现场部署、效率较高，解决数据中心并网慢和可靠供电问题",
+      "thesis_summary": "AI电力短缺下，现场供电具备战略价值；若大客户订单兑现，收入弹性显著。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 3,
+        "valuation_risk": 5
+      },
+      "static_score": 72,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调SOFC效率、模块化和数据中心供电场景。"
+      ],
+      "risks": [
+        "估值极高、盈利质量待验证；燃气/氢路线经济性和政策风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250821203240-Bloom Energy-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "CoreWeave",
+      "symbol": "CRWV",
+      "market_scope": "us_listed",
+      "theme": "New Cloud",
+      "value_chain": "New Cloud/AI算力",
+      "business_model": "NVIDIA GPU云、长期容量合约、AI基础设施租赁",
+      "moat": "AI云大客户锁单、超大backlog、NVIDIA生态绑定和快速交付经验",
+      "thesis_summary": "最纯New Cloud龙头之一，若债务和交付被市场接受，估值弹性很大。",
+      "valuation_method": "EV/S 与合同 backlog，扣除债务、资本开支、折旧和融资成本后验证",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 5,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 72,
+      "confidence": "medium",
+      "watch_items": [
+        "Q1 2026 revenue backlog为994亿美元；外部分析称潜在backlog可继续提升，但债务仍是争议点。"
+      ],
+      "risks": [
+        "高杠杆、高CapEx、折旧与融资成本；backlog向现金流转化是最大风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260604201156-Nbis + CRWV-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Dell",
+      "symbol": "DELL",
+      "market_scope": "us_listed",
+      "theme": "AI服务器/OEM",
+      "value_chain": "AI服务器/OEM",
+      "business_model": "AI服务器、存储、企业IT服务、AI Factory交付",
+      "moat": "供应链、企业客户、服务器集成能力强，但硬件毛利和差异化弱于上游芯片/光/电",
+      "thesis_summary": "AI服务器订单能带来戴维斯双击，但更像系统集成商，议价权弱于GPU/光/电。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 3,
+        "visibility": 4,
+        "execution": 5,
+        "valuation_risk": 3
+      },
+      "static_score": 72,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调AI优化服务器签单和积压订单。"
+      ],
+      "risks": [
+        "低毛利；订单与利润转化不确定；竞争激烈。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260416202746-DELL-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Rocket Lab",
+      "symbol": "RKLB",
+      "market_scope": "us_listed",
+      "theme": "航天/能源材料",
+      "value_chain": "航天/发射+太空系统",
+      "business_model": "小火箭发射、太空系统、卫星部件、任务软件和端到端航天服务",
+      "moat": "Electron高成功率、Neutron上限期权、Space Systems收入占比提升，纯航天资产稀缺",
+      "thesis_summary": "太空经济稀缺资产，若Neutron成功，商业发射+国防+太空系统会重估。",
+      "valuation_method": "分部 EV/S 与订单质量，结合发射/交付里程碑、资本开支和稀释情景",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 3,
+        "valuation_risk": 5
+      },
+      "static_score": 72,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿反复强调Neutron决定上限、Space Systems决定收入质量。"
+      ],
+      "risks": [
+        "估值高、仍亏损；Neutron延期/失败会重杀；资本开支和稀释风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260423203027-RKLB-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Astera Labs",
+      "symbol": "ALAB",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "PCIe/CXL连接芯片",
+      "business_model": "AI服务器高速连接、PCIe/CXL retimer和交换芯片",
+      "moat": "AI服务器内部连接卡位强，客户认证壁垒高",
+      "thesis_summary": "好赛道但估值极高；若回调可纳入2%-3%。",
+      "valuation_method": "forward EV/S 与增长、毛利、经营杠杆的相对估值，辅以盈利拐点情景",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 71,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿与亚马逊一起分析AI连接和ALAB价值。"
+      ],
+      "risks": [
+        "单一产品周期、竞争和估值风险。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251204203045-亚马逊& ALAB-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Credo",
+      "symbol": "CRDO",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "SerDes/有源电缆/连接芯片",
+      "business_model": "高速连接芯片、AEC、有源电缆、DSP/CPO/NPO相关方案",
+      "moat": "低功耗SerDes与有源电缆切入AI集群连接，客户粘性随平台导入增强",
+      "thesis_summary": "AI互联不只光模块，短距铜/有源电缆和低功耗连接同样卡脖子。",
+      "valuation_method": "forward EV/S 与增长、毛利、经营杠杆的相对估值，辅以盈利拐点情景",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 71,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿重点讨论财报后CPO/NPO初收延后导致的短期压力。"
+      ],
+      "risks": [
+        "估值极高；CPO/NPO收入更偏2028；客户集中。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260212202920-CRDO-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Seagate",
+      "symbol": "STX",
+      "market_scope": "us_listed",
+      "theme": "其他",
+      "value_chain": "HDD/云存储",
+      "business_model": "企业级HDD、HAMR等大容量硬盘",
+      "moat": "HDD双寡头、AI冷存储和容量盘稀缺",
+      "thesis_summary": "逻辑强但估值和涨幅后弹性不一定优于WDC/光/电。",
+      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 4,
+        "valuation_risk": 5
+      },
+      "static_score": 71,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿与WDC一起分析存储寡头。"
+      ],
+      "risks": [
+        "HDD价格周期、云客户采购波动。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251106202604-西部数据&希捷-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Tempus AI",
+      "symbol": "TEM",
+      "market_scope": "us_listed",
+      "theme": "AI医疗",
+      "value_chain": "AI医疗/真实世界数据",
+      "business_model": "临床数据、基因检测、AI模型和医疗决策支持",
+      "moat": "多模态临床数据、检测网络、药企合作和模型反馈闭环",
+      "thesis_summary": "AI生物医疗里数据资产最重要；TEM比纯药物发现更接近商业收入和真实世界数据闭环。",
+      "valuation_method": "EV/S、现金跑道和商业化里程碑；不以远期管线概率替代收入",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 3,
+        "valuation_risk": 4
+      },
+      "static_score": 70,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿将TEM作为AI医疗长期主线之一。"
+      ],
+      "risks": [
+        "仍亏损；医疗支付/监管；模型商业化速度。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251225203749-RKLB & TEm-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Adeia",
+      "symbol": "ADEA",
+      "market_scope": "us_listed",
+      "theme": "主题观察",
+      "value_chain": "IP授权/半导体媒体技术",
+      "business_model": "知识产权授权、媒体/半导体IP专利组合",
+      "moat": "专利现金流模式稳定，但与AI硬稀缺链条相关性有限",
+      "thesis_summary": "现金流/专利授权属性有防御，但不是AI主线核心。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 4,
+        "visibility": 3,
+        "execution": 4,
+        "valuation_risk": 3
+      },
+      "static_score": 68,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿与宏观一起覆盖ADEA。"
+      ],
+      "risks": [
+        "诉讼和续约周期，授权收入波动。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260521202240-宏观 + ADEA-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Cerebras",
+      "symbol": "CBRS",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "AI推理芯片/系统",
+      "business_model": "晶圆级芯片、推理加速系统、AI基础设施服务",
+      "moat": "晶圆级架构独特，推理速度差异化强，但客户集中和估值高",
+      "thesis_summary": "技术差异化大，但IPO后估值和客户集中让风险收益不如上游确定龙头。",
+      "valuation_method": "forward EV/S 与增长、毛利、经营杠杆的相对估值，辅以盈利拐点情景",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 68,
+      "confidence": "low",
+      "watch_items": [
+        "2026年5月IPO，股票代码CBRS；公开资料称2025收入5.10亿美元且仍亏损。"
+      ],
+      "risks": [
+        "G42/大客户集中、亏损、供应链复杂、IPO后波动。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260507191416-Cerebras-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Caris Life Sciences",
+      "symbol": "CAI",
+      "market_scope": "us_listed",
+      "theme": "AI医疗",
+      "value_chain": "AI精准医疗/诊断",
+      "business_model": "全外显子组/转录组测序、AI多模态诊断、真实世界临床基因组数据库",
+      "moat": "肿瘤多组学数据库和检测网络，毛利改善明显",
+      "thesis_summary": "AI医疗数据资产有价值，但相比TEM上市后历史短、验证期更早。",
+      "valuation_method": "EV/S、现金跑道和商业化里程碑；不以远期管线概率替代收入",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 3,
+        "execution": 3,
+        "valuation_risk": 4
+      },
+      "static_score": 66,
+      "confidence": "low",
+      "watch_items": [
+        "Q1 2026收入2.162亿美元，同比+79%；毛利率65%，净亏损50万美元。"
+      ],
+      "risks": [
+        "医保支付、临床 adoption、竞争、数据隐私。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250828203052-CAI-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Figma",
+      "symbol": "FIG",
+      "market_scope": "us_listed",
+      "theme": "AI平台/软件",
+      "value_chain": "协作设计软件/AI应用",
+      "business_model": "浏览器协作设计、Dev Mode、白板、AI设计工具",
+      "moat": "产品协作网络效应、设计工作流锁定、Adobe收购失败后独立成长",
+      "thesis_summary": "优秀软件公司，但不属于AI硬基础设施稀缺资产；适合软件成长组合。",
+      "valuation_method": "forward EV/S 与增长、毛利、经营杠杆的相对估值，辅以盈利拐点情景",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 4,
+        "visibility": 3,
+        "execution": 4,
+        "valuation_risk": 4
+      },
+      "static_score": 65,
+      "confidence": "medium",
+      "watch_items": [
+        "Q1 2026收入3.334亿美元，同比+46%；非GAAP经营利润5210万美元。"
+      ],
+      "risks": [
+        "AI功能同质化、Adobe竞争、IPO后股权激励和亏损压力。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250717202705-Figma20250717-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Sivers Semiconductors",
+      "symbol": "SIVEF",
+      "market_scope": "us_otc_foreign_ordinary",
+      "theme": "光通信/网络",
+      "value_chain": "DFB激光源/开放CPO生态",
+      "business_model": "高功率DFB激光器/阵列、InP平台、面向开放CPO/光I/O生态",
+      "moat": "开放生态光源稀缺卡位，客户验证周期长，GF/Jabil/POET/Ayar等潜在生态入口",
+      "thesis_summary": "小市值高弹性，若开放CPO生态放量，SIVE可能从验证阶段进入产品收入放大期。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 5,
+        "pricing_quality": 4,
+        "visibility": 3,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 64,
+      "confidence": "low",
+      "watch_items": [
+        "Q1 2026收入6190万SEK，同比-22%；公司称AI数据中心光网络供需失衡，且与GlobalFoundries推进AI光解决方案。"
+      ],
+      "risks": [
+        "当前收入很小且仍亏损；pipeline不是backlog；技术验证到量产有巨大不确定性。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260617202551-SIVE-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "AAOI",
+      "symbol": "AAOI",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "光模块/激光器",
+      "business_model": "数据中心光模块、激光器和相关光电产品",
+      "moat": "光模块黑马，有上游光源能力，但规模、客户和盈利稳定性弱于LITE/COHR",
+      "thesis_summary": "弹性很大，但更适合回调或订单确认后配置。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 4,
+        "visibility": 4,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 63,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿将其定位为光电黑马。"
+      ],
+      "risks": [
+        "亏损、客户集中、技术路线切换、估值波动。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260409202913-AAOI-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "IREN",
+      "symbol": "IREN",
+      "market_scope": "us_listed",
+      "theme": "New Cloud",
+      "value_chain": "AI数据中心/电力+算力",
+      "business_model": "比特币矿转AI数据中心、低成本电力和GPU云",
+      "moat": "电力资源和数据中心基础，但业务转型和币价相关性带来复杂性",
+      "thesis_summary": "有电力和算力稀缺性，但资产质量和客户能见度不如NBIS/CRWV。",
+      "valuation_method": "EV/S 与合同 backlog，扣除债务、资本开支、折旧和融资成本后验证",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 3,
+        "visibility": 4,
+        "execution": 3,
+        "valuation_risk": 5
+      },
+      "static_score": 63,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿与SBET一起讨论数字资产/算力相关主题。"
+      ],
+      "risks": [
+        "矿业周期、融资、客户集中、执行。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250918203518-SBET、IREN-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Nokia",
+      "symbol": "NOK",
+      "market_scope": "us_listed",
+      "theme": "光通信/网络",
+      "value_chain": "6G/AI-RAN",
+      "business_model": "电信设备、基站、NVIDIA ARC/AI-RAN合作",
+      "moat": "电信专利和运营商关系，但行业增长慢、毛利和周期性弱于数据中心光链",
+      "thesis_summary": "AI-RAN是长期主题，但商业化节奏慢；更适合观察而非重仓。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 3,
+        "visibility": 3,
+        "execution": 3,
+        "valuation_risk": 3
+      },
+      "static_score": 60,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿记录NVIDIA与Nokia ARC/AI-RAN合作逻辑。"
+      ],
+      "risks": [
+        "运营商CapEx、华为/爱立信竞争、6G周期不确定。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20251030202930-诺基亚-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Redwire",
+      "symbol": "RDW",
+      "market_scope": "us_listed",
+      "theme": "航天/能源材料",
+      "value_chain": "航天/国防",
+      "business_model": "航天结构、传感器、无人机系统、空间制造和任务部件",
+      "moat": "太空系统细分能力和国防订单，但现金流和亏损压力较大",
+      "thesis_summary": "太空经济高弹性标的，但不如RKLB纯度和规模确定。",
+      "valuation_method": "分部 EV/S 与订单质量，结合发射/交付里程碑、资本开支和稀释情景",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 3,
+        "visibility": 4,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 59,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调Q3收入同比+50.7%和7.2亿美元积压订单。"
+      ],
+      "risks": [
+        "亏损、并购整合、现金流、稀释。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260129202917-Redwire-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Recursion",
+      "symbol": "RXRX",
+      "market_scope": "us_listed",
+      "theme": "AI医疗",
+      "value_chain": "AI药物发现",
+      "business_model": "自动化湿实验+机器学习平台+药物管线",
+      "moat": "高通量实验平台和生物数据闭环，但商业化验证仍早",
+      "thesis_summary": "AI生物学方向长期有潜力，但管线兑现周期长，不如TEM/CAI商业收入确定。",
+      "valuation_method": "EV/S、现金跑道和商业化里程碑；不以远期管线概率替代收入",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 3,
+        "visibility": 3,
+        "execution": 2,
+        "valuation_risk": 4
+      },
+      "static_score": 58,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调Recursion工业化药物发现和算力平台。"
+      ],
+      "risks": [
+        "临床失败、烧钱、融资稀释、平台价值难量化。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250724203135-Recursion20250724-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Intel",
+      "symbol": "INTC",
+      "market_scope": "us_listed",
+      "theme": "算力芯片/制造",
+      "value_chain": "先进制造/CPU",
+      "business_model": "CPU、数据中心、晶圆制造和代工18A",
+      "moat": "若18A成功具备美国本土先进制造战略价值，但当前良率/客户验证不确定",
+      "thesis_summary": "国家战略属性强，但投资更像押18A良率和外部客户，不如TSM确定。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 4,
+        "pricing_quality": 3,
+        "visibility": 3,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 55,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调18A良率20%-30%与代工业务风险。"
+      ],
+      "risks": [
+        "18A良率、资本开支、客户缺失、AMD/ARM竞争。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20260108202627-英特尔-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "Amprius",
+      "symbol": "AMPX",
+      "market_scope": "us_listed",
+      "theme": "航天/能源材料",
+      "value_chain": "高能量密度电池",
+      "business_model": "硅纳米线负极电池，面向航空、无人机、高性能移动设备",
+      "moat": "高能量密度技术差异化，但量产和成本仍需验证",
+      "thesis_summary": "航天/无人机能源密度有价值，但与AI稀缺链条关联弱。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 3,
+        "pricing_quality": 3,
+        "visibility": 3,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 50,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿讨论硅纳米线负极和能量密度优势。"
+      ],
+      "risks": [
+        "量产良率、客户认证、现金流、竞争。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250925202648-AMPX-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    },
+    {
+      "name": "SharpLink",
+      "symbol": "SBET",
+      "market_scope": "us_listed",
+      "theme": "电力/液冷",
+      "value_chain": "数字资产/以太坊持仓",
+      "business_model": "以太坊资产持有、质押收益、原体育营销业务",
+      "moat": "主要是ETH资产敞口，不是AI基础设施护城河",
+      "thesis_summary": "除非判断以太坊周期，否则不符合AI稀缺资产框架。",
+      "valuation_method": "forward P/E、FCF yield 与同类公司/自身历史区间交叉验证，并做增长和毛利敏感性分析",
+      "dimensions_1_to_5": {
+        "scarcity": 2,
+        "pricing_quality": 2,
+        "visibility": 2,
+        "execution": 2,
+        "valuation_risk": 5
+      },
+      "static_score": 37,
+      "confidence": "medium",
+      "watch_items": [
+        "当前价格/市值取自公开行情；逐字稿强调其主要资产是ETH持仓。"
+      ],
+      "risks": [
+        "币价波动、折价/溢价、监管和融资。"
+      ],
+      "falsifiers": [
+        "最新财报或订单数据连续两个季度违背核心增长逻辑",
+        "竞争或供给变化使研究卡所述稀缺性和议价能力明显下降"
+      ],
+      "transcript_sources": [
+        "20250918203518-SBET、IREN-逐字稿文本-1.txt"
+      ],
+      "source_updated_at": "2026-06-20"
+    }
+  ],
+  "evidence_only_topics": [
+    "核电篮子",
+    "量子板块",
+    "年度策略与问答"
+  ],
+  "evidence_sources": [
+    "20250911202938-宏观+量子-逐字稿文本-1.txt",
+    "20251211210019-核电-逐字稿文本-1.txt",
+    "20260101202609-跨年分享-逐字稿文本-1.txt",
+    "20260730202247-答疑专场-逐字稿文本-1 (1).txt"
+  ]
+}

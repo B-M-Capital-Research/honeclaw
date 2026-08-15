@@ -953,6 +953,28 @@ fn score_field(value: &str, query: &str, base: i32) -> i32 {
     if !tokens.is_empty() && tokens.iter().all(|token| normalized.contains(token)) {
         return base + 400 - tokens.len() as i32;
     }
+    // Chinese task descriptions commonly list compact trigger phrases with
+    // punctuation instead of whitespace, while the user's natural question
+    // wraps one of those phrases in a longer sentence. Match only bounded
+    // multi-character fragments so a one-character term cannot activate a
+    // broad skill accidentally.
+    let reverse_phrase_match = normalized
+        .split(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '、' | '，' | '。' | '；' | ';' | '：' | ':' | '/' | '（' | '）' | '(' | ')'
+                )
+        })
+        .map(str::trim)
+        .filter(|term| {
+            let length = term.chars().count();
+            (2..=16).contains(&length)
+        })
+        .any(|term| query.contains(term));
+    if reverse_phrase_match {
+        return base + 200;
+    }
     0
 }
 
@@ -1004,6 +1026,31 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].display_name, "Dynamic");
         assert_eq!(summaries[0].loaded_from, "dynamic");
+    }
+
+    #[test]
+    fn chinese_trigger_phrase_matches_inside_a_natural_question() {
+        let root = make_temp_dir("hone_skill_runtime_chinese_trigger");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("hari-invest")).expect("hari dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("hari-invest/SKILL.md"),
+            "---\nname: hari-invest\ndescription: 股票分析、护城河、估值、能买吗、加仓、减仓\n---\n\nbody",
+        )
+        .expect("write skill");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        for query in [
+            "英伟达现在能买吗？",
+            "MU 回调后可以加仓吗",
+            "帮我分析它的护城河",
+        ] {
+            let matches = runtime.search(query, &[], 5);
+            assert_eq!(matches.len(), 1, "query={query}");
+            assert_eq!(matches[0].id, "hari-invest", "query={query}");
+        }
     }
 
     #[test]

@@ -112,6 +112,44 @@ html {
   color: var(--hone-link);
   font-weight: 700;
 }
+.public-login-dev-button {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid color-mix(in srgb, var(--hone-coral-500) 42%, transparent);
+  border-radius: var(--hone-radius-sm);
+  background: color-mix(in srgb, var(--hone-coral-500) 12%, var(--hone-surface-raised));
+  color: var(--hone-link);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+.public-login-dev-button:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+.public-login-dev-hint {
+  margin: 8px 0 14px;
+  color: var(--hone-ink-500);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.public-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--hone-ink-400);
+  font-size: 11px;
+}
+.public-login-divider::before,
+.public-login-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--hone-line);
+  content: "";
+}
 .public-activate {
   min-height: 100dvh;
   padding: 48px 20px;
@@ -908,6 +946,7 @@ html {
 .pub-msg-in { animation: pub-fadeup 0.3s ease forwards; }
 
 /* ── Composer: paperclip + attachment menu ─────────────────────────────── */
+.research-library-chat-entry{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 24px 0;max-width:900px;width:100%;margin:0 auto}.research-library-chat-entry button{width:100%;min-width:0;min-height:58px;display:flex;align-items:center;gap:11px;padding:9px 13px;border:1px solid rgba(35,48,45,.11);border-radius:17px;background:rgba(255,255,255,.9);box-shadow:0 9px 26px rgba(23,32,31,.07);color:#33443e;text-align:left;cursor:pointer}.research-library-chat-entry button:hover{transform:translateY(-1px);border-color:rgba(54,126,101,.3);background:#fff}.research-library-chat-entry span{display:grid;place-items:center;flex:0 0 auto;width:37px;height:37px;border-radius:12px;background:#e8f1eb;color:#277259;font-size:19px}.research-library-chat-entry b{min-width:0;display:grid;gap:2px}.research-library-chat-entry strong{font-size:14px}.research-library-chat-entry small{overflow:hidden;color:#7b8782;font-size:10px;white-space:nowrap;text-overflow:ellipsis}.research-library-chat-entry i{margin-left:auto;color:#84908b;font-size:22px;font-style:normal}[data-theme="dark"] .research-library-chat-entry button{background:#111a28;border-color:#2c3b4d;color:#edf2ef}@media(max-width:720px){.research-library-chat-entry{grid-template-columns:1fr;padding:7px 12px 0}.research-library-chat-entry button{min-height:52px;border-radius:15px}.research-library-chat-entry span{width:34px;height:34px}.research-library-chat-entry small{display:none}}
 
 .pub-attach-btn {
   width: 40px;

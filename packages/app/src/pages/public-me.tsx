@@ -215,6 +215,13 @@ function AccountView(props: {
           <PublicHoldingsPanel />
           <PublicSettingsPanel />
         </Show>
+        <section class="public-workspace-panel public-account-card">
+          <h2>我的知识源</h2>
+          <p class="public-account-note">导入你自己的知识星球、iMA、研报和会议纪要；个人资料只服务你的 HONE，投稿经管理员核验后才可能进入官方研究库。</p>
+          <div class="public-account-actions">
+            <button type="button" onClick={() => navigate("/research-library")}>管理知识源</button>
+          </div>
+        </section>
         <Show when={props.user.is_admin}>
           <PublicAdminUsagePanel />
           <PublicAdminWhitelistPanel />

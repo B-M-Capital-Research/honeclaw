@@ -1,0 +1,389 @@
+.position-management-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10056;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 25, 23, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.position-management-dialog {
+  width: min(1080px, 100%);
+  height: min(850px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 24px;
+  background: #fbfaf7;
+  color: var(--hone-ink-950);
+  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
+}
+
+.position-management-dialog header svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.position-management-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 26px 16px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.09);
+}
+
+.position-management-dialog > header p {
+  margin: 0 0 5px;
+  color: var(--hone-signal-green);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.position-management-dialog > header h2 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.035em;
+}
+
+.position-management-dialog > header span {
+  display: block;
+  margin-top: 6px;
+  color: #67716e;
+  font-size: 13px;
+}
+
+.position-management-dialog > header button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(35, 48, 45, 0.1);
+  border-radius: 11px;
+  background: white;
+  color: #52605b;
+  cursor: pointer;
+}
+
+.position-management-meta {
+  min-height: 40px;
+  padding: 8px 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.07);
+  color: #6b7672;
+  font-size: 11px;
+}
+
+.position-management-meta b {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.position-management-meta b.is-partial,
+.position-management-meta b.is-portfolio_changed {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.position-management-meta b.is-data_unavailable,
+.position-management-meta b.is-no_portfolio,
+.position-management-meta b.is-waiting_refresh {
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral);
+}
+
+.position-management-meta b.is-stale { background: #f5e8e3; color: #985044; }
+
+.position-management-meta button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--hone-signal-green);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.position-management-overview {
+  padding: 12px 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+}
+
+.position-management-overview > div {
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+  border-radius: 12px;
+  background: #f1f2ee;
+}
+
+.position-management-overview strong { font-size: 15px; }
+.position-management-overview span { color: #7a8581; font-size: 9px; }
+.position-management-overview .is-high strong { color: var(--hone-signal-red); }
+.position-management-overview .is-elevated strong { color: var(--hone-signal-yellow); }
+.position-management-overview .is-balanced strong { color: var(--hone-signal-green); }
+
+.position-management-summary {
+  padding: 11px 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 78px) minmax(0, 1fr);
+  gap: 8px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+}
+
+.position-management-summary > div {
+  padding: 7px 9px;
+  display: grid;
+  border-radius: 10px;
+  background: #f2f1ed;
+}
+
+.position-management-summary strong { font-size: 16px; }
+.position-management-summary span { color: #7c8682; font-size: 9px; }
+.position-management-summary .is-review strong,
+.position-management-summary .is-reduce strong { color: var(--hone-signal-red); }
+.position-management-summary .is-increase_candidate strong { color: var(--hone-signal-green); }
+
+.position-management-summary p {
+  margin: 0;
+  align-self: center;
+  color: #52605b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.position-management-filters {
+  padding: 8px 26px;
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+}
+
+.position-management-filters button {
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hone-ink-500);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.position-management-filters button.is-active {
+  border-color: rgba(35, 48, 45, 0.1);
+  background: white;
+  color: var(--hone-ink-950);
+  box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
+}
+
+.position-management-body {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 13px 26px 18px;
+}
+
+.position-management-list { display: grid; gap: 9px; }
+
+.position-management-list details {
+  border: 1px solid rgba(35, 48, 45, 0.09);
+  border-left: 3px solid #89938f;
+  border-radius: 13px;
+  background: white;
+  overflow: hidden;
+}
+
+.position-management-list details.is-review,
+.position-management-list details.is-reduce { border-left-color: var(--hone-signal-red); }
+.position-management-list details.is-increase_candidate { border-left-color: var(--hone-signal-green); }
+
+.position-management-list summary {
+  min-height: 60px;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: 92px minmax(160px, 1fr) 90px 90px 20px;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.position-management-list summary::-webkit-details-marker { display: none; }
+.position-management-list summary > span { display: grid; }
+.position-management-list summary strong { font-size: 13px; }
+.position-management-list summary small { margin-top: 2px; color: #7b8581; font-size: 9px; }
+.position-management-list summary i { color: #7b8581; font-style: normal; }
+
+.position-management-action {
+  width: max-content;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--hone-signal-neutral-soft);
+  color: #606b67;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.position-management-action.is-review,
+.position-management-action.is-reduce {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red);
+}
+
+.position-management-action.is-increase_candidate {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.position-management-action.is-hold {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.position-management-detail {
+  padding: 0 14px 14px;
+  border-top: 1px solid rgba(35, 48, 45, 0.07);
+}
+
+.position-management-facts {
+  padding: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.position-management-facts span {
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: #f2f1ed;
+  color: #65706c;
+  font-size: 9px;
+}
+
+.position-management-detail h3 { margin: 5px 0; color: #34413d; font-size: 11px; }
+
+.position-management-detail ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #58645f;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.position-management-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.position-management-evidence {
+  margin: 9px 0 0;
+  color: #89928f;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.position-management-dialog > footer {
+  padding: 9px 26px;
+  border-top: 1px solid rgba(35, 48, 45, 0.08);
+}
+
+.position-management-dialog > footer > div { display: flex; gap: 9px; }
+
+.position-management-dialog > footer input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid rgba(35, 48, 45, 0.12);
+  border-radius: 10px;
+  background: white;
+  color: var(--hone-ink-950);
+  font: inherit;
+  font-size: 11px;
+}
+
+.position-management-dialog > footer button {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hone-signal-green);
+  color: white;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.position-management-dialog > footer button:disabled { opacity: 0.45; }
+
+.position-management-dialog > footer p {
+  margin: 5px 0 0;
+  color: #858f8b;
+  font-size: 8px;
+  text-align: center;
+}
+
+.position-management-dialog > footer .position-management-method {
+  margin: 0 0 6px;
+  color: #6f7975;
+}
+
+[data-theme="dark"] .position-management-dialog,
+[data-theme="dark"] .position-management-list details,
+[data-theme="dark"] .position-management-dialog > header button,
+[data-theme="dark"] .position-management-filters button.is-active,
+[data-theme="dark"] .position-management-dialog > footer input {
+  background: #111a28;
+  color: #ecf2ef;
+  border-color: #263347;
+}
+
+[data-theme="dark"] .position-management-overview > div,
+[data-theme="dark"] .position-management-summary > div,
+[data-theme="dark"] .position-management-facts span { background: #172231; }
+
+[data-theme="dark"] .position-management-dialog > header,
+[data-theme="dark"] .position-management-meta,
+[data-theme="dark"] .position-management-overview,
+[data-theme="dark"] .position-management-summary,
+[data-theme="dark"] .position-management-filters,
+[data-theme="dark"] .position-management-detail,
+[data-theme="dark"] .position-management-dialog > footer { border-color: #263347; }
+
+[data-theme="dark"] .position-management-detail h3 { color: #e9f0ed; }
+
+@media (max-width: 768px) {
+  .position-management-backdrop { padding: 0; place-items: end center; }
+  .position-management-dialog { width: 100%; height: min(94dvh, 880px); border-radius: 22px 22px 0 0; }
+  .position-management-dialog > header { padding: 18px 16px 13px; }
+  .position-management-dialog > header h2 { font-size: 22px; }
+  .position-management-dialog > header span { max-width: 300px; font-size: 10px; }
+  .position-management-meta { padding: 7px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
+  .position-management-meta span:nth-of-type(2), .position-management-meta span:nth-of-type(3) { display: none; }
+  .position-management-overview { padding: 10px 16px; grid-template-columns: 1fr 1fr; }
+  .position-management-summary { padding: 9px 16px; grid-template-columns: repeat(4, 1fr); }
+  .position-management-summary p { grid-column: 1 / -1; }
+  .position-management-filters { padding: 7px 16px; overflow-x: auto; }
+  .position-management-body { padding: 11px 12px 15px; }
+  .position-management-list summary { grid-template-columns: 82px minmax(100px, 1fr) 64px 16px; }
+  .position-management-list summary > span:nth-of-type(4) { display: none; }
+  .position-management-columns { grid-template-columns: 1fr; }
+  .position-management-dialog > footer { padding: 8px 12px; }
+  .position-management-dialog > footer .position-management-method { display: none; }
+}

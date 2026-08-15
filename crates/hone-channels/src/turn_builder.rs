@@ -174,6 +174,9 @@ impl<'a> PromptTurnBuilder<'a> {
                     .push(crate::prompt::DEFAULT_WEB_CRON_DELIVERY_POLICY.to_string());
             }
         }
+        if let Some(company_research) = crate::prompt::company_research_baseline(user_input) {
+            prompt_options.extra_sections.push(company_research);
+        }
         let related_skills = if use_native_codex_turn_input {
             Vec::new()
         } else {

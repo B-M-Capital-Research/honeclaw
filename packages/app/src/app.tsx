@@ -32,6 +32,9 @@ const PublicActivatePage = lazy(() => import("@/pages/public-activate"))
 const PublicSiteTermsPage = lazy(() => import("@/pages/public-terms"))
 const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
 const PublicCommunityPage = lazy(() => import("@/pages/public-community"))
+const PublicResearchPage = lazy(() => import("@/pages/public-research"))
+const PublicResearchLibraryPage = lazy(() => import("@/pages/public-research-library"))
+const PublicValuationLabPage = lazy(() => import("@/pages/public-valuation-lab"))
 const SharePreviewPage = lazy(() => import("@/pages/__share-preview"))
 const DashboardPage = lazy(() => import("@/pages/dashboard"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
@@ -134,6 +137,9 @@ function PublicSurface() {
             <Route path="/portfolio" component={() => <Navigate href="/me" />} />
             <Route path="/invest" component={() => <Navigate href="/me" />} />
             <Route path="/community" component={PublicCommunityPage} />
+            <Route path="/research" component={PublicResearchPage} />
+            <Route path="/research-library" component={PublicResearchLibraryPage} />
+            <Route path="/valuation-lab" component={PublicValuationLabPage} />
             <Route path="/terms" component={PublicSiteTermsPage} />
             <Route path="/privacy" component={PublicSitePrivacyPage} />
             <Route path="/chat" component={PublicChatPage} />

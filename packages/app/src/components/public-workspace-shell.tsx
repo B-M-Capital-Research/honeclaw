@@ -28,7 +28,7 @@ import "@/pages/public-site.css";
 import "@/pages/public-agent-workspace.css";
 import "@/pages/public-workspace.css";
 
-export type PublicWorkspaceSection = "pushes" | "insights" | "me";
+export type PublicWorkspaceSection = "research" | "pushes" | "insights" | "me";
 
 export function PublicWorkspaceShell(
   props: ParentProps<{
@@ -132,6 +132,7 @@ export function PublicWorkspaceShell(
         onNewResearch={startNewResearch}
         onSelectResearch={openResearch}
         onHome={goAgent}
+        onResearchDesk={() => navigate("/research")}
         onInsights={() => navigate("/community")}
         onAccount={() => navigate("/me")}
         onLogout={() => navigate("/me")}
@@ -166,6 +167,7 @@ export function PublicWorkspaceShell(
         onHome={goAgent}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
+        onResearchDesk={() => navigate("/research")}
         onPushesTab={() => navigate("/pushes")}
         onAccount={() => navigate("/me")}
       />
@@ -183,6 +185,7 @@ export function PublicWorkspaceShell(
         onLoadOlder={() => undefined}
         onNewResearch={startNewResearch}
         onHome={goAgent}
+        onResearchDesk={() => navigate("/research")}
         onInsights={() => navigate("/community")}
         onAccount={() => navigate("/me")}
       />
