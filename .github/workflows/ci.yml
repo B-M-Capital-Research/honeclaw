@@ -59,6 +59,7 @@ jobs:
             file \
             libxdo-dev \
             libssl-dev \
+            postgresql-client \
             libayatana-appindicator3-dev \
             librsvg2-dev
 

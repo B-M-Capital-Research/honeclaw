@@ -5,11 +5,48 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TMP_ROOT="$(mktemp -d)"
 SERVER_PID=""
+PG_SCHEMA_READY=0
+
+command -v psql >/dev/null 2>&1 || {
+  printf '[FAIL] psql is required for the PostgreSQL billing E2E\n' >&2
+  exit 1
+}
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  PSQL=(psql -X --set=ON_ERROR_STOP=1 "$DATABASE_URL")
+else
+  : "${HONE_POSTGRES_HOST:?HONE_POSTGRES_HOST is required}"
+  : "${HONE_POSTGRES_PORT:?HONE_POSTGRES_PORT is required}"
+  : "${HONE_POSTGRES_USER:?HONE_POSTGRES_USER is required}"
+  : "${HONE_POSTGRES_PASSWORD:?HONE_POSTGRES_PASSWORD is required}"
+  : "${HONE_POSTGRES_DATABASE:?HONE_POSTGRES_DATABASE is required}"
+  export PGPASSWORD="$HONE_POSTGRES_PASSWORD"
+  PSQL=(
+    psql -X --set=ON_ERROR_STOP=1
+    --host "$HONE_POSTGRES_HOST"
+    --port "$HONE_POSTGRES_PORT"
+    --username "$HONE_POSTGRES_USER"
+    --dbname "$HONE_POSTGRES_DATABASE"
+  )
+fi
+
+cleanup_billing_rows() {
+  "${PSQL[@]}" >/dev/null <<'SQL'
+DELETE FROM billing_entitlements WHERE user_id = 'web_billing_ci';
+DELETE FROM billing_webhook_events WHERE event_id LIKE 'evt_ci_%';
+DELETE FROM cloud_web_auth_sessions WHERE user_id = 'web_billing_ci';
+DELETE FROM cloud_web_user_external_state WHERE user_id = 'web_billing_ci';
+DELETE FROM cloud_web_invite_users WHERE user_id = 'web_billing_ci';
+SQL
+}
 
 cleanup() {
   if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+  fi
+  if [[ "$PG_SCHEMA_READY" == 1 ]]; then
+    cleanup_billing_rows || true
   fi
   case "$TMP_ROOT" in
     /tmp/* | /private/tmp/* | /var/folders/* | /private/var/folders/*)
@@ -55,7 +92,6 @@ cargo build -p hone-console-page --quiet
     HONE_PUBLIC_WEB_PORT="$PUBLIC_PORT" \
     HONE_DISABLE_AUTO_OPEN=1 \
     HONE_DEPLOYMENT_MODE=local \
-    HONE_CLOUD_MODE=local \
     HONE_WEB_DIST_DIR="$TMP_ROOT/web-admin" \
     HONE_PUBLIC_WEB_DIST_DIR="$TMP_ROOT/web-public" \
     HONE_PUBLIC_ALLOWED_ORIGINS="http://127.0.0.1:$PUBLIC_PORT" \
@@ -90,70 +126,43 @@ if [[ "$ready" != 1 ]]; then
   exit 1
 fi
 
-python3 - "$TMP_ROOT/data/sessions.sqlite3" <<'PY'
-import sqlite3
-import sys
+PG_SCHEMA_READY=1
+cleanup_billing_rows
+"${PSQL[@]}" >/dev/null <<'SQL'
+INSERT INTO cloud_web_invite_users(user_id, phone_number, is_admin, record)
+VALUES (
+  'web_billing_ci',
+  '',
+  FALSE,
+  '{"user_id":"web_billing_ci","invite_code":"HONE-CI-BILLING-ISOLATED","phone_number":"","created_at":"2026-08-03T00:00:00+00:00","last_login_at":"2026-08-03T00:00:00+00:00","revoked_at":null,"password_hash":null,"password_set_at":null,"tos_accepted_at":"2026-08-03T00:00:00+00:00","tos_version":"2.4","api_key_prefix":null,"api_key_created_at":null,"api_key_last_used_at":null}'::jsonb
+);
+INSERT INTO cloud_web_user_external_state(
+  user_id, email_address, email_verified_at, identity_kind
+) VALUES (
+  'web_billing_ci',
+  'billing-ci@hone-claw.invalid',
+  '2026-08-03T00:00:00+00:00',
+  'international_email'
+);
+INSERT INTO cloud_web_auth_sessions(session_hash, user_id, record, expires_at)
+VALUES (
+  'd655851b3d441ba1635432b543392fc7a568da56ae8a7805e93860bee11bae4f',
+  'web_billing_ci',
+  '{"session_hash":"d655851b3d441ba1635432b543392fc7a568da56ae8a7805e93860bee11bae4f","user_id":"web_billing_ci","created_at":"2026-08-03T00:00:00+00:00","expires_at":"2099-08-03T00:00:00+00:00","last_seen_at":"2026-08-03T00:00:00+00:00"}'::jsonb,
+  '2099-08-03T00:00:00+00:00'::timestamptz
+);
+SQL
 
-database = sqlite3.connect(sys.argv[1])
-with database:
-    database.execute(
-        """
-        INSERT INTO web_invite_users(
-            user_id, invite_code, phone_number, created_at, last_login_at,
-            tos_accepted_at, tos_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            "web_billing_ci",
-            "HONE-CI-BILLING-ISOLATED",
-            "",
-            "2026-08-03T00:00:00+00:00",
-            "2026-08-03T00:00:00+00:00",
-            "2026-08-03T00:00:00+00:00",
-            "2.4",
-        ),
-    )
-    database.execute(
-        """
-        INSERT INTO web_user_external_state(
-            user_id, email_address, email_verified_at, identity_kind
-        ) VALUES (?, ?, ?, ?)
-        """,
-        (
-            "web_billing_ci",
-            "billing-ci@hone-claw.invalid",
-            "2026-08-03T00:00:00+00:00",
-            "international_email",
-        ),
-    )
-    database.execute(
-        """
-        INSERT INTO web_auth_sessions(
-            session_token, user_id, created_at, expires_at, last_seen_at
-        ) VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            "billing-ci-session",
-            "web_billing_ci",
-            "2026-08-03T00:00:00+00:00",
-            "2099-08-03T00:00:00+00:00",
-            "2026-08-03T00:00:00+00:00",
-        ),
-    )
-PY
-
-python3 - "$PUBLIC_PORT" "$TMP_ROOT/data/sessions.sqlite3" <<'PY'
+python3 - "$PUBLIC_PORT" <<'PY'
 import hashlib
 import hmac
 import json
-import sqlite3
 import sys
 import time
 import urllib.error
 import urllib.request
 
 public_port = int(sys.argv[1])
-database_path = sys.argv[2]
 base_url = f"http://127.0.0.1:{public_port}"
 cookie = "hone_web_session=billing-ci-session"
 user_id = "web_billing_ci"
@@ -733,31 +742,38 @@ wait_status(
 )
 assert paid_api_code() == 402
 
-database = sqlite3.connect(database_path)
-paid_replay_rows = database.execute(
-    "SELECT COUNT(*) FROM billing_webhook_events WHERE provider = 'stripe' AND event_id = 'evt_ci_paid'"
-).fetchone()[0]
-wrong_catalog_rows = database.execute(
-    """
-    SELECT COUNT(*)
-    FROM billing_webhook_events
-    WHERE event_id IN (
-        'evt_ci_missing_mode',
-        'evt_ci_wrong_mode',
-        'evt_ci_wrong_catalog'
-    )
-    """
-).fetchone()[0]
-unfinished_rows = database.execute(
-    "SELECT COUNT(*) FROM billing_webhook_events WHERE processing_state != 'processed'"
-).fetchone()[0]
-duplicate_attempts = database.execute(
-    "SELECT attempt_count FROM billing_webhook_events WHERE provider = 'stripe' AND event_id = 'evt_ci_paid'"
-).fetchone()[0]
-assert paid_replay_rows == 1
-assert wrong_catalog_rows == 0
-assert unfinished_rows == 0
-assert duplicate_attempts == 1
 PY
+
+read -r paid_replay_rows wrong_catalog_rows unfinished_rows duplicate_attempts < <(
+  "${PSQL[@]}" --tuples-only --no-align --field-separator=' ' <<'SQL'
+SELECT
+  COUNT(*) FILTER (WHERE provider = 'stripe' AND event_id = 'evt_ci_paid'),
+  COUNT(*) FILTER (
+    WHERE event_id IN ('evt_ci_missing_mode', 'evt_ci_wrong_mode', 'evt_ci_wrong_catalog')
+  ),
+  COUNT(*) FILTER (WHERE processing_state != 'processed'),
+  COALESCE(MAX(attempt_count) FILTER (
+    WHERE provider = 'stripe' AND event_id = 'evt_ci_paid'
+  ), -1)
+FROM billing_webhook_events
+WHERE event_id LIKE 'evt_ci_%';
+SQL
+)
+[[ "$paid_replay_rows" == 1 ]] || {
+  printf '[FAIL] expected one persisted evt_ci_paid row, got %s\n' "$paid_replay_rows" >&2
+  exit 1
+}
+[[ "$wrong_catalog_rows" == 0 ]] || {
+  printf '[FAIL] invalid/catalog-mismatch events were persisted: %s\n' "$wrong_catalog_rows" >&2
+  exit 1
+}
+[[ "$unfinished_rows" == 0 ]] || {
+  printf '[FAIL] unfinished billing events remain: %s\n' "$unfinished_rows" >&2
+  exit 1
+}
+[[ "$duplicate_attempts" == 1 ]] || {
+  printf '[FAIL] replay changed attempt_count: %s\n' "$duplicate_attempts" >&2
+  exit 1
+}
 
 printf '[PASS] isolated signed Stripe-only HTTP billing lifecycle\n'

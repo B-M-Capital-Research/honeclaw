@@ -10,7 +10,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
-for command_name in cargo curl jq python3 stripe; do
+for command_name in cargo curl jq psql python3 stripe; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "[FAIL] missing command: $command_name" >&2
     exit 1
@@ -29,6 +29,24 @@ EMAIL_ADDRESS="stripe-lifecycle-${RUN_ID}@hone-claw.invalid"
 TMP_ROOT="$(mktemp -d)"
 chmod 700 "$TMP_ROOT"
 
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  PSQL=(psql -X --set=ON_ERROR_STOP=1 "$DATABASE_URL")
+else
+  : "${HONE_POSTGRES_HOST:?HONE_POSTGRES_HOST is required}"
+  : "${HONE_POSTGRES_PORT:?HONE_POSTGRES_PORT is required}"
+  : "${HONE_POSTGRES_USER:?HONE_POSTGRES_USER is required}"
+  : "${HONE_POSTGRES_PASSWORD:?HONE_POSTGRES_PASSWORD is required}"
+  : "${HONE_POSTGRES_DATABASE:?HONE_POSTGRES_DATABASE is required}"
+  export PGPASSWORD="$HONE_POSTGRES_PASSWORD"
+  PSQL=(
+    psql -X --set=ON_ERROR_STOP=1
+    --host "$HONE_POSTGRES_HOST"
+    --port "$HONE_POSTGRES_PORT"
+    --username "$HONE_POSTGRES_USER"
+    --dbname "$HONE_POSTGRES_DATABASE"
+  )
+fi
+
 SERVER_PID=""
 LISTENER_PID=""
 SUBSCRIPTION_CHECKOUT_SESSION_ID=""
@@ -43,6 +61,18 @@ SUBSCRIPTION_PRICE_ID=""
 SUBSCRIPTION_PRICE_ARCHIVED=0
 FIXED_PRICE_ID=""
 FIXED_PRICE_ARCHIVED=0
+PG_SCHEMA_READY=0
+
+cleanup_billing_rows() {
+  "${PSQL[@]}" --set=user_id="$USER_ID" >/dev/null <<'SQL'
+DELETE FROM billing_entitlements WHERE user_id = :'user_id';
+DELETE FROM billing_webhook_events
+WHERE record::text LIKE '%' || :'user_id' || '%';
+DELETE FROM cloud_web_auth_sessions WHERE user_id = :'user_id';
+DELETE FROM cloud_web_user_external_state WHERE user_id = :'user_id';
+DELETE FROM cloud_web_invite_users WHERE user_id = :'user_id';
+SQL
+}
 
 stripe_api() {
   stripe --color off "$@"
@@ -87,6 +117,9 @@ cleanup() {
   if [[ -n "$LISTENER_PID" ]] && kill -0 "$LISTENER_PID" 2>/dev/null; then
     kill "$LISTENER_PID" 2>/dev/null || true
     wait "$LISTENER_PID" 2>/dev/null || true
+  fi
+  if [[ "$PG_SCHEMA_READY" == 1 ]]; then
+    cleanup_billing_rows || true
   fi
 
   case "$TMP_ROOT" in
@@ -274,7 +307,6 @@ done
     HONE_PUBLIC_WEB_PORT="$PUBLIC_PORT" \
     HONE_DISABLE_AUTO_OPEN=1 \
     HONE_DEPLOYMENT_MODE=local \
-    HONE_CLOUD_MODE=local \
     HONE_WEB_DIST_DIR="$TMP_ROOT/web-admin" \
     HONE_PUBLIC_WEB_DIST_DIR="$TMP_ROOT/web-public" \
     HONE_PUBLIC_ALLOWED_ORIGINS="http://127.0.0.1:$PUBLIC_PORT" \
@@ -307,44 +339,58 @@ done
 [[ "$server_ready" == 1 ]] || fail "isolated HONE billing runtime did not become ready"
 
 NOW_RFC3339="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-python3 - \
-  "$TMP_ROOT/data/sessions.sqlite3" \
-  "$USER_ID" \
-  "$SESSION_TOKEN" \
-  "$EMAIL_ADDRESS" \
-  "$NOW_RFC3339" <<'PY'
-import sqlite3
+SESSION_HASH="$(python3 - "$SESSION_TOKEN" <<'PY'
+import hashlib
 import sys
 
-database_path, user_id, session_token, email_address, now = sys.argv[1:]
-database = sqlite3.connect(database_path)
-with database:
-    database.execute(
-        """
-        INSERT INTO web_invite_users(
-            user_id, invite_code, phone_number, created_at, last_login_at,
-            tos_accepted_at, tos_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (user_id, f"HONE-STRIPE-LIFECYCLE-{user_id}", "", now, now, now, "2.4"),
-    )
-    database.execute(
-        """
-        INSERT INTO web_user_external_state(
-            user_id, email_address, email_verified_at, identity_kind
-        ) VALUES (?, ?, ?, ?)
-        """,
-        (user_id, email_address, now, "international_email"),
-    )
-    database.execute(
-        """
-        INSERT INTO web_auth_sessions(
-            session_token, user_id, created_at, expires_at, last_seen_at
-        ) VALUES (?, ?, ?, ?, ?)
-        """,
-        (session_token, user_id, now, "2099-08-03T00:00:00Z", now),
-    )
+print(hashlib.sha256(sys.argv[1].encode()).hexdigest())
 PY
+)"
+PG_SCHEMA_READY=1
+cleanup_billing_rows
+"${PSQL[@]}" \
+  --set=user_id="$USER_ID" \
+  --set=session_hash="$SESSION_HASH" \
+  --set=email_address="$EMAIL_ADDRESS" \
+  --set=now="$NOW_RFC3339" >/dev/null <<'SQL'
+INSERT INTO cloud_web_invite_users(user_id, phone_number, is_admin, record)
+VALUES (
+  :'user_id',
+  '',
+  FALSE,
+  jsonb_build_object(
+    'user_id', :'user_id',
+    'invite_code', 'HONE-STRIPE-LIFECYCLE-' || :'user_id',
+    'phone_number', '',
+    'created_at', :'now',
+    'last_login_at', :'now',
+    'revoked_at', NULL,
+    'password_hash', NULL,
+    'password_set_at', NULL,
+    'tos_accepted_at', :'now',
+    'tos_version', '2.4',
+    'api_key_prefix', NULL,
+    'api_key_created_at', NULL,
+    'api_key_last_used_at', NULL
+  )
+);
+INSERT INTO cloud_web_user_external_state(
+  user_id, email_address, email_verified_at, identity_kind
+) VALUES (:'user_id', :'email_address', :'now', 'international_email');
+INSERT INTO cloud_web_auth_sessions(session_hash, user_id, record, expires_at)
+VALUES (
+  :'session_hash',
+  :'user_id',
+  jsonb_build_object(
+    'session_hash', :'session_hash',
+    'user_id', :'user_id',
+    'created_at', :'now',
+    'expires_at', '2099-08-03T00:00:00Z',
+    'last_seen_at', :'now'
+  ),
+  '2099-08-03T00:00:00Z'::timestamptz
+);
+SQL
 
 wait_for_billing \
   "fresh international account did not start fail-closed" \
@@ -582,50 +628,34 @@ wait_for_billing \
     and ([.billing.entitlements[] | select(.provider == "stripe" and .access_state == "inactive")] | length) >= 1'
 [[ "$(paid_api_status)" == 200 ]] || fail "paid API did not return to 200 after repurchase"
 
-python3 - "$TMP_ROOT/data/sessions.sqlite3" <<'PY'
-import sqlite3
-import sys
-
-database = sqlite3.connect(sys.argv[1])
-event_count = database.execute(
-    "SELECT COUNT(*) FROM billing_webhook_events WHERE provider = 'stripe'"
-).fetchone()[0]
-unfinished = database.execute(
-    """
-    SELECT COUNT(*)
-    FROM billing_webhook_events
-    WHERE provider = 'stripe' AND processing_state != 'processed'
-    """
-).fetchone()[0]
-failed_attempts = database.execute(
-    """
-    SELECT COUNT(*)
-    FROM billing_webhook_events
-    WHERE provider = 'stripe' AND (attempt_count != 1 OR last_error IS NOT NULL)
-    """
-).fetchone()[0]
-active_rows = database.execute(
-    """
-    SELECT COUNT(*)
-    FROM billing_entitlements
-    WHERE provider = 'stripe' AND access_state = 'active'
-    """
-).fetchone()[0]
-inactive_rows = database.execute(
-    """
-    SELECT COUNT(*)
-    FROM billing_entitlements
-    WHERE provider = 'stripe' AND access_state = 'inactive'
-    """
-).fetchone()[0]
-
-assert event_count >= 8, event_count
-assert unfinished == 0, unfinished
-assert failed_attempts == 0, failed_attempts
-assert active_rows == 1, active_rows
-assert inactive_rows >= 1, inactive_rows
-print(f"[INFO] processed Stripe events: {event_count}; active rows: {active_rows}; inactive rows: {inactive_rows}")
-PY
+read -r event_count unfinished failed_attempts active_rows inactive_rows < <(
+  "${PSQL[@]}" \
+    --set=user_id="$USER_ID" \
+    --tuples-only --no-align --field-separator=' ' <<'SQL'
+WITH matching_events AS (
+  SELECT *
+  FROM billing_webhook_events
+  WHERE provider = 'stripe'
+    AND record::text LIKE '%' || :'user_id' || '%'
+), matching_entitlements AS (
+  SELECT *
+  FROM billing_entitlements
+  WHERE provider = 'stripe' AND user_id = :'user_id'
+)
+SELECT
+  (SELECT COUNT(*) FROM matching_events),
+  (SELECT COUNT(*) FROM matching_events WHERE processing_state != 'processed'),
+  (SELECT COUNT(*) FROM matching_events WHERE attempt_count != 1 OR last_error IS NOT NULL),
+  (SELECT COUNT(*) FROM matching_entitlements WHERE access_state = 'active'),
+  (SELECT COUNT(*) FROM matching_entitlements WHERE access_state = 'inactive');
+SQL
+)
+(( event_count >= 8 )) || fail "expected at least 8 processed Stripe events, got $event_count"
+[[ "$unfinished" == 0 ]] || fail "unfinished Stripe events remain: $unfinished"
+[[ "$failed_attempts" == 0 ]] || fail "Stripe events have failed/repeated attempts: $failed_attempts"
+[[ "$active_rows" == 1 ]] || fail "expected one active entitlement, got $active_rows"
+(( inactive_rows >= 1 )) || fail "expected at least one inactive entitlement, got $inactive_rows"
+echo "[INFO] processed Stripe events: $event_count; active rows: $active_rows; inactive rows: $inactive_rows"
 
 echo "[INFO] removing disposable Stripe customer/subscriptions and archiving the test catalog"
 stripe_api test_helpers test_clocks delete "$TEST_CLOCK_ID" --confirm >/dev/null
