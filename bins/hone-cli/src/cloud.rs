@@ -9,7 +9,7 @@ use hone_core::cloud_runtime::{
     CloudCommunityPublishLock, CloudCommunityReconcileCandidate,
     CloudCommunityResourceBackfillOutcome, CloudCommunityResourceBackfillTarget,
     CloudCommunityResourceBackfillUpdate, CloudCompanyProfileFileRecord,
-    CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex, CloudLlmAuditRecord,
+    CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex,
     CloudNotificationPrefsRecord, CloudPgRuntime, CloudPortfolioRecord, CloudSessionRecord,
     OssObjectStore, RuntimeRole, local_durable_dependencies, sanitize_key_component, sha256_hex,
 };
@@ -2775,6 +2775,12 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
                 .to_string(),
         );
     }
+    if args.web_auth_only || args.llm_audit_only {
+        return Err(
+            "Web Auth 与 LLM audit 的 SQLite 数据已在阶段 3.5 完成迁移；对应 SQLite importer 已移除"
+                .to_string(),
+        );
+    }
     let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
     let mut report = MigrationReport {
         mode: if args.apply { "apply" } else { "dry-run" },
@@ -2867,30 +2873,6 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         }
         if !args.quota_only
             && !args.session_only
-            && !args.cron_only
-            && !args.skill_registry_only
-            && !args.notification_prefs_only
-            && !args.portfolio_only
-            && !args.llm_audit_only
-            && !args.company_profiles_only
-        {
-            let web_auth_storage =
-                hone_memory::WebAuthStorage::new(&config.storage.session_sqlite_db_path)
-                    .map_err(|err| err.to_string())?;
-            let (users, sessions) = web_auth_storage
-                .export_cloud_records()
-                .map_err(|err| err.to_string())?;
-            let auth_report = pg
-                .import_web_auth_records(&users, &sessions)
-                .await
-                .map_err(|err| err.to_string())?;
-            report.changed_web_auth_users = auth_report.changed_users;
-            report.skipped_web_auth_users = auth_report.skipped_users;
-            report.changed_web_auth_sessions = auth_report.changed_sessions;
-            report.skipped_web_auth_sessions = auth_report.skipped_sessions;
-        }
-        if !args.quota_only
-            && !args.session_only
             && !args.web_auth_only
             && !args.skill_registry_only
             && !args.notification_prefs_only
@@ -2969,19 +2951,6 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
                 .map_err(|err| err.to_string())?;
             report.changed_company_profile_files = company_profile_report.changed_rows;
             report.skipped_company_profile_files = company_profile_report.skipped_rows;
-        }
-        if !args.quota_only
-            && !args.session_only
-            && !args.web_auth_only
-            && !args.cron_only
-            && !args.skill_registry_only
-            && !args.notification_prefs_only
-            && !args.portfolio_only
-            && !args.company_profiles_only
-        {
-            import_llm_audit(&pg, &args.from_data_dir, &mut report)
-                .await
-                .map_err(|err| err.to_string())?;
         }
         if args.quota_only
             || args.session_only
@@ -3754,35 +3723,6 @@ fn hex_digit(b: u8) -> Option<u8> {
 fn system_time_to_rfc3339(value: SystemTime) -> String {
     let datetime: chrono::DateTime<chrono::Utc> = value.into();
     datetime.to_rfc3339()
-}
-
-async fn import_llm_audit(
-    pg: &CloudPgRuntime,
-    from_data_dir: &Path,
-    report: &mut MigrationReport,
-) -> HoneResult<()> {
-    let path = from_data_dir.join("llm_audit.sqlite3");
-    if !path.exists() {
-        return Ok(());
-    }
-    let storage = hone_memory::LlmAuditStorage::new_readonly_local(&path)?;
-    let batch_size = 500usize;
-    let mut offset = 0usize;
-    loop {
-        let records: Vec<CloudLlmAuditRecord> =
-            storage.export_cloud_records_page(batch_size, offset)?;
-        if records.is_empty() {
-            break;
-        }
-        let import_report = pg.import_llm_audit_records(&records).await?;
-        report.changed_llm_audit_rows += import_report.changed_rows;
-        report.skipped_llm_audit_rows += import_report.skipped_rows;
-        offset += records.len();
-        if records.len() < batch_size {
-            break;
-        }
-    }
-    Ok(())
 }
 
 fn cron_actor_from_data(data: &hone_memory::cron_job::CronJobData) -> Option<ActorIdentity> {

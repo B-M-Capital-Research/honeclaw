@@ -421,8 +421,7 @@ mod tests {
     #[test]
     fn heartbeat_history_includes_actor_cross_job_deliveries() {
         let dir = make_temp_dir("hone_scheduler_cross_job_history");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("feishu", "ou_cross_job", None::<String>).expect("actor");
 
         storage
@@ -472,8 +471,7 @@ mod tests {
     #[test]
     fn heartbeat_history_keeps_same_job_delivery_when_actor_history_is_busy() {
         let dir = make_temp_dir("hone_scheduler_same_job_history");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("feishu", "ou_same_job", None::<String>).expect("actor");
 
         storage
@@ -532,8 +530,7 @@ mod tests {
     #[tokio::test]
     async fn scheduler_records_missing_channel_target_without_dispatching() {
         let dir = make_temp_dir("hone_scheduler_missing_target");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = Arc::new(CronJobStorage::with_sqlite(&dir, &sqlite_path));
+        let storage = Arc::new(CronJobStorage::new(&dir));
         let actor = ActorIdentity::new("telegram", "user_missing", None::<String>).expect("actor");
         let now = Utc::now().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
         let job = CronJob {

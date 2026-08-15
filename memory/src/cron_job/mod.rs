@@ -1,4 +1,4 @@
-//! 定时任务存储 — 本地 JSON/SQLite 或 cloud PG 执行记录
+//! 定时任务存储 — PostgreSQL 权威后端
 //!
 //! 管理按 actor（channel + user_id + channel_scope）隔离的定时任务持久化存储。
 //!
@@ -8,14 +8,10 @@
 //! - [`storage`] —— `CronJobStorage` 的 JSON CRUD 与 `get_due_jobs`
 //! - [`history`] —— `CronJobStorage` 的 SQLite 执行历史读写
 
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
-use tracing::warn;
 
 pub mod history;
 pub mod schedule;
@@ -31,38 +27,21 @@ pub use types::{
 
 /// 定时任务存储管理器
 pub struct CronJobStorage {
-    pub(super) data_dir: PathBuf,
-    pub(super) sqlite_path: Option<PathBuf>,
-    pub(super) postgres: Option<CloudPgRuntime>,
+    pub(super) postgres: CloudPgRuntime,
     pub(super) task_runs_dir: Option<PathBuf>,
+    _test_postgres_lease: Option<Arc<crate::test_postgres::TestPostgresLease>>,
 }
 
 const DEFAULT_CLOUD_CRON_TIMEOUT_SECS: u64 = 15;
 
 impl CronJobStorage {
-    pub fn new(data_dir: impl AsRef<Path>) -> Self {
-        let data_dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&data_dir).ok();
-        Self {
-            data_dir,
-            sqlite_path: None,
-            postgres: None,
-            task_runs_dir: None,
-        }
-    }
-
-    pub fn with_sqlite(data_dir: impl AsRef<Path>, sqlite_path: impl AsRef<Path>) -> Self {
-        let data_dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&data_dir).ok();
-        let storage = Self {
-            data_dir,
-            sqlite_path: Some(sqlite_path.as_ref().to_path_buf()),
-            postgres: None,
-            task_runs_dir: None,
-        };
-        if let Err(err) = storage.init_execution_schema() {
-            warn!("failed to initialize cron execution sqlite schema: {err}");
-        }
+    /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
+    #[doc(hidden)]
+    pub fn new(namespace: impl AsRef<std::path::Path>) -> Self {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(namespace)
+            .expect("CronJobStorage PostgreSQL test runtime");
+        let mut storage = Self::new_cloud(postgres).expect("CronJobStorage PostgreSQL schema");
+        storage._test_postgres_lease = Some(lease);
         storage
     }
 
@@ -75,15 +54,10 @@ impl CronJobStorage {
         // 首次成功后就跳过。失败不置位,下次仍会重试。竞态下重复跑一次无害:DDL 幂等。
         ensure_cloud_schema_once(postgres.clone(), Some(cloud_cron_operation_timeout()))?;
         Ok(Self {
-            data_dir: PathBuf::new(),
-            sqlite_path: None,
-            postgres: Some(postgres),
+            postgres,
             task_runs_dir: None,
+            _test_postgres_lease: None,
         })
-    }
-
-    pub(super) fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
-        self.postgres.clone()
     }
 
     pub fn with_task_runs_dir(mut self, task_runs_dir: Option<PathBuf>) -> Self {
@@ -133,7 +107,7 @@ mod tests {
     ///
     /// 只用 `pid + nanos` 是不够的:macOS 上 `SystemTime` 的实际粒度远粗于纳秒,
     /// 两个同时启动的测试会拿到**同一个**时间戳 → 同一个目录,随后各自
-    /// `remove_dir_all` 把对方的 sqlite 删掉,表现为随机的
+    /// `remove_dir_all` 释放对方的测试 schema,表现为随机的
     /// `disk I/O error`。实测基线 8 次里偶发失败 4 次。
     static TEMP_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -149,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn cloud_cron_timeout_returns_storage_error_instead_of_blocking() {
         let started = Instant::now();
         let err = run_cloud_cron_with_timeout(
@@ -178,6 +153,7 @@ mod tests {
     /// 一旦误用 `Runtime::block_on`,tokio 会 panic
     /// "Cannot start a runtime from within a runtime"。
     #[tokio::test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn cloud_cron_bridge_works_from_inside_a_tokio_context() {
         // 借 blocking 线程调用同步桥——这正是生产里的形态:
         // 同步的 `get_due_jobs` / `record_execution_event` 跑在 tokio worker 上。
@@ -231,6 +207,40 @@ mod tests {
 
     fn actor(channel: &str, user_id: &str, channel_scope: Option<&str>) -> ActorIdentity {
         ActorIdentity::new(channel, user_id, channel_scope).expect("actor")
+    }
+
+    fn set_cron_run_executed_at(storage: &CronJobStorage, job_id: &str, executed_at: &str) {
+        let postgres = storage.postgres.clone();
+        let job_id = job_id.to_string();
+        let executed_at = executed_at.to_string();
+        run_cloud_cron(async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE cloud_cron_job_runs SET executed_at = $1 WHERE job_id = $2",
+                    &[&executed_at, &job_id],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok(())
+        })
+        .expect("update cron run timestamp");
+    }
+
+    fn cron_run_counts(storage: &CronJobStorage) -> (i64, i64) {
+        let postgres = storage.postgres.clone();
+        run_cloud_cron(async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    "SELECT count(*)::bigint, count(*) FILTER (WHERE execution_status = 'running' AND message_send_status = 'pending')::bigint FROM cloud_cron_job_runs",
+                    &[],
+                )
+                .await
+                .map_err(|error| HoneError::Config(error.to_string()))?;
+            Ok((row.get(0), row.get(1)))
+        })
+        .expect("count cron runs")
     }
 
     fn add_enabled_job(storage: &CronJobStorage, actor: &ActorIdentity, name: &str) -> Value {
@@ -299,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn add_job_validates_params() {
         let dir = make_temp_dir("hone_cron_storage_validate");
         let storage = CronJobStorage::new(&dir);
@@ -340,6 +351,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn add_job_rejects_empty_channel_target() {
         let dir = make_temp_dir("hone_cron_storage_empty_target");
         let storage = CronJobStorage::new(&dir);
@@ -367,10 +379,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn channel_target_directory_aggregates_jobs_and_execution_history() {
         let dir = make_temp_dir("hone_cron_storage_target_directory");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("telegram", "user_1", Some("g:1:c:2"));
 
         let add = storage.add_job(
@@ -429,6 +441,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn due_job_and_mark_run_prevents_immediate_duplicate() {
         let dir = make_temp_dir("hone_cron_storage_due");
         let storage = CronJobStorage::new(&dir);
@@ -476,6 +489,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn due_jobs_skip_mismatched_cron_file_actor() {
         let dir = make_temp_dir("hone_cron_storage_mismatch");
         let storage = CronJobStorage::new(&dir);
@@ -529,6 +543,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn due_jobs_dedup_same_job_id_across_files() {
         let dir = make_temp_dir("hone_cron_storage_dup_files");
         let storage = CronJobStorage::new(&dir);
@@ -581,6 +596,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn list_jobs_isolated_by_actor_scope() {
         let dir = make_temp_dir("hone_cron_storage_scope");
         let storage = CronJobStorage::new(&dir);
@@ -629,6 +645,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn remove_all_jobs_is_actor_scoped_clears_pending_updates_and_is_idempotent() {
         let dir = make_temp_dir("hone_cron_storage_remove_all");
         let storage = CronJobStorage::new(&dir);
@@ -671,12 +688,25 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn remove_all_jobs_does_not_report_success_when_durable_data_is_unreadable() {
         let dir = make_temp_dir("hone_cron_storage_remove_all_corrupt");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "u1", None);
-        std::fs::write(storage.get_actor_file(&actor), "{not valid json")
-            .expect("write corrupt cron data");
+        let postgres = storage.postgres.clone();
+        let actor_key = actor.storage_key();
+        let actor_value = serde_json::to_value(&actor).expect("actor");
+        run_cloud_cron(async move {
+            postgres
+                .upsert_cron_job_record(
+                    &actor_key,
+                    "corrupt",
+                    actor_value,
+                    serde_json::json!({"not": "a cron job"}),
+                )
+                .await
+        })
+        .expect("write corrupt cron data");
 
         let error = storage
             .remove_all_jobs(&actor)
@@ -692,6 +722,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn sixth_enabled_job_is_rejected_but_disabled_job_is_allowed() {
         let dir = make_temp_dir("hone_cron_storage_limit_add");
         let storage = CronJobStorage::new(&dir);
@@ -728,6 +759,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn enabling_sixth_job_via_toggle_or_update_is_rejected() {
         let dir = make_temp_dir("hone_cron_storage_limit_enable");
         let storage = CronJobStorage::new(&dir);
@@ -786,6 +818,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn heartbeat_jobs_run_once_per_half_hour_slot() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat");
         let storage = CronJobStorage::new(&dir);
@@ -846,6 +879,7 @@ mod tests {
     /// heartbeat 齐射削峰:偏移必须确定性、落在 `[0, JITTER_SPREAD_MINUTES)`,
     /// 且始终留在到期容错窗口内(否则该轮任务会被整个丢掉)。
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn heartbeat_dispatch_jitter_is_deterministic_and_stays_inside_due_window() {
         use super::storage::{JITTER_SPREAD_MINUTES, dispatch_jitter_minutes};
 
@@ -875,6 +909,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn daily_jobs_catch_up_after_missed_window_same_day() {
         let dir = make_temp_dir("hone_cron_storage_catch_up");
         let storage = CronJobStorage::new(&dir);
@@ -918,6 +953,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn daily_jobs_created_after_slot_do_not_backfill_immediately() {
         let dir = make_temp_dir("hone_cron_storage_no_backfill_new_job");
         let storage = CronJobStorage::new(&dir);
@@ -960,6 +996,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn add_job_rejects_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_add");
         let storage = CronJobStorage::new(&dir);
@@ -986,6 +1023,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn due_jobs_repair_existing_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
         let storage = CronJobStorage::new(&dir);
@@ -1049,6 +1087,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn once_jobs_with_future_date_do_not_run_today() {
         let dir = make_temp_dir("hone_cron_storage_once_date");
         let storage = CronJobStorage::new(&dir);
@@ -1081,10 +1120,10 @@ mod tests {
     }
 
     #[test]
-    fn execution_records_are_persisted_in_sqlite() {
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn execution_records_are_persisted_in_postgres() {
         let dir = make_temp_dir("hone_cron_storage_exec_records");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec", None);
 
         let add = storage.add_job(
@@ -1135,10 +1174,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn discord_send_failed_without_error_is_classified_by_storage_backstop() {
         let dir = make_temp_dir("hone_cron_storage_discord_send_failed_backstop");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("discord", "g_exec", Some("channel-1"));
 
         storage
@@ -1178,10 +1217,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn execution_terminal_event_updates_matching_pending_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_pending");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec_update", None);
 
         let add = storage.add_job(
@@ -1262,10 +1301,10 @@ mod tests {
     /// 没有配对 started 行的终态记录:开始时刻未知,必须留 NULL,
     /// 不能回填成 executed_at —— 那会谎报 0 毫秒并污染时延统计。
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn terminal_only_execution_leaves_start_and_duration_unknown() {
         let dir = make_temp_dir("hone_cron_storage_exec_terminal_only");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("web", "web-user-terminal-only", None);
 
         storage
@@ -1303,10 +1342,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn started_execution_can_be_failed_by_exact_delivery_key_watchdog() {
         let dir = make_temp_dir("hone_cron_storage_watchdog_pending");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let target_actor = actor("feishu", "ou_watchdog", None);
         let other_actor = actor("feishu", "ou_watchdog_other", None);
 
@@ -1401,10 +1440,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn stale_started_rows_can_be_recovered_as_failed() {
         let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let feishu_actor = actor("feishu", "ou_interrupted", None);
         let discord_actor = actor("discord", "du_interrupted", None);
 
@@ -1451,12 +1490,7 @@ mod tests {
                 .expect("record pending");
         }
 
-        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
-        conn.execute(
-            "UPDATE cron_job_runs SET executed_at = ?1 WHERE job_id = ?2",
-            rusqlite::params!["2026-05-07T20:30:00+08:00", "j_feishu_started"],
-        )
-        .expect("make started row stale");
+        set_cron_run_executed_at(&storage, "j_feishu_started", "2026-05-07T20:30:00+08:00");
 
         let updated = storage
             .recover_stale_started_executions(
@@ -1512,10 +1546,10 @@ mod tests {
     /// `running + pending` across windows, so verify no orphan started rows
     /// remain after both windows finish.
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn heartbeat_started_rows_finalize_across_two_windows() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_two_windows");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_heartbeat", None);
 
         let job_names = [
@@ -1585,22 +1619,12 @@ mod tests {
             }
         }
 
-        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
-        let stuck: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count stuck");
+        let (total, stuck) = cron_run_counts(&storage);
         assert_eq!(
             stuck, 0,
             "no started row should remain running+pending after terminal noop"
         );
 
-        let total: i64 = conn
-            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
-            .expect("count total");
         let expected = (job_names.len() * windows.len()) as i64;
         assert_eq!(
             total, expected,
@@ -1613,10 +1637,10 @@ mod tests {
     /// `delivery_key` at top level, plus a `scheduler` sub-object — matches the
     /// real production payload exactly.
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_scheduler_wrap");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_heartbeat_wrap", None);
 
         let job_id = "j_db12f27f";
@@ -1683,10 +1707,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn execution_terminal_event_falls_back_to_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_recent_started");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec_update_fallback", None);
 
         let add = storage.add_job(
@@ -1756,10 +1780,10 @@ mod tests {
     /// Reproduce the v0.5.0 terminal write that handed raw heartbeat
     /// diagnostics to storage without wrapping a top-level delivery_key.
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_pre_fix_terminal");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_pre_fix", None);
 
         let job_id = "j_654aef9b";
@@ -1812,17 +1836,7 @@ mod tests {
             )
             .expect("record terminal");
 
-        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
-        let stuck: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count stuck");
-        let total: i64 = conn
-            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
-            .expect("count total");
+        let (total, stuck) = cron_run_counts(&storage);
 
         assert_eq!(stuck, 0);
         assert_eq!(total, 1);
@@ -1830,10 +1844,10 @@ mod tests {
 
     /// Reproduce a legacy started row written without delivery_key in detail.
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback() {
         let dir = make_temp_dir("hone_cron_storage_legacy_started");
-        let sqlite_path = dir.join("sessions.sqlite3");
-        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_legacy", None);
 
         let job_id = "j_legacy";
@@ -1878,17 +1892,7 @@ mod tests {
             )
             .expect("record terminal");
 
-        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
-        let stuck: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count stuck");
-        let total: i64 = conn
-            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
-            .expect("count total");
+        let (total, stuck) = cron_run_counts(&storage);
 
         assert_eq!(stuck, 0);
         assert_eq!(total, 1);

@@ -1,7 +1,6 @@
-//! CronJobStorage JSON 存储层：按 actor 的定时任务 CRUD + 触发判定。
+//! CronJobStorage PostgreSQL 存储层：按 actor 的定时任务 CRUD + 触发判定。
 
 use std::collections::{BTreeMap, HashSet};
-use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, FixedOffset, NaiveDate, Timelike};
 use hone_core::cloud_runtime::CloudCronJobRecord;
@@ -161,63 +160,18 @@ fn due_job_dedup_key(job: &CronJob) -> String {
 }
 
 impl CronJobStorage {
-    pub(super) fn get_actor_file(&self, actor: &ActorIdentity) -> PathBuf {
-        self.data_dir
-            .join(format!("cron_jobs_{}.json", actor.storage_key()))
-    }
-
     pub fn list_all_jobs(&self) -> Vec<(ActorIdentity, CronJob)> {
-        if let Some(postgres) = self.cloud_postgres() {
-            return match run_cloud_cron(async move { postgres.list_cron_job_records().await }) {
-                Ok(records) => records
-                    .into_iter()
-                    .filter_map(cron_pair_from_cloud_record)
-                    .collect(),
-                Err(error) => {
-                    warn!("failed to list cloud cron jobs: {error}");
-                    Vec::new()
-                }
-            };
-        }
-
-        let mut jobs = Vec::new();
-        let entries = match std::fs::read_dir(&self.data_dir) {
-            Ok(entries) => entries,
-            Err(_) => return jobs,
+        let postgres = self.postgres.clone();
+        return match run_cloud_cron(async move { postgres.list_cron_job_records().await }) {
+            Ok(records) => records
+                .into_iter()
+                .filter_map(cron_pair_from_cloud_record)
+                .collect(),
+            Err(error) => {
+                warn!("failed to list cloud cron jobs: {error}");
+                Vec::new()
+            }
         };
-
-        for entry in entries.flatten() {
-            let fname = entry.file_name().to_string_lossy().to_string();
-            if !fname.starts_with("cron_jobs_") || !fname.ends_with(".json") {
-                continue;
-            }
-
-            let path = entry.path();
-            let content = match std::fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(_) => continue,
-            };
-            let data = match serde_json::from_str::<CronJobData>(&content) {
-                Ok(data) => data,
-                Err(_) => continue,
-            };
-
-            let Some(actor) = actor_from_cron_data(&data) else {
-                continue;
-            };
-            if !cron_file_matches_actor(&path, &actor) {
-                warn!(
-                    "skipping mismatched cron file path={} actor={}",
-                    path.display(),
-                    actor.storage_key()
-                );
-                continue;
-            }
-
-            jobs.extend(data.jobs.into_iter().map(|job| (actor.clone(), job)));
-        }
-
-        jobs
     }
 
     /// Fallibly load one actor's scheduled-task data.
@@ -225,37 +179,29 @@ impl CronJobStorage {
     /// Mutation paths must use this method so a cloud or local read failure
     /// cannot be mistaken for an empty task list and reported as success.
     pub fn try_load_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<CronJobData> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let actor_key = actor.storage_key();
-            let records = run_cloud_cron(async move {
-                postgres.list_cron_job_records_for_actor(&actor_key).await
-            })?;
-            return Ok(CronJobData {
-                actor: Some(actor.clone()),
-                user_id: actor.user_id.clone(),
-                jobs: records
-                    .into_iter()
-                    .filter_map(cron_pair_from_cloud_record)
-                    .map(|(_, job)| job)
-                    .collect(),
-                pending_updates: Vec::new(),
-            });
-        }
-
-        let path = self.get_actor_file(actor);
-        if path.exists() {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|error| HoneError::Storage(error.to_string()))?;
-            let data = serde_json::from_str::<CronJobData>(&content)
-                .map_err(|error| HoneError::Serialization(error.to_string()))?;
-            return Ok(data);
-        }
-        Ok(CronJobData {
+        let postgres = self.postgres.clone();
+        let actor_key = actor.storage_key();
+        let records =
+            run_cloud_cron(
+                async move { postgres.list_cron_job_records_for_actor(&actor_key).await },
+            )?;
+        return Ok(CronJobData {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
-            jobs: Vec::new(),
+            jobs: records
+                .into_iter()
+                .map(|record| {
+                    cron_pair_from_cloud_record(record)
+                        .map(|(_, job)| job)
+                        .ok_or_else(|| {
+                            HoneError::Serialization(
+                                "PostgreSQL cron record 无法反序列化".to_string(),
+                            )
+                        })
+                })
+                .collect::<hone_core::HoneResult<Vec<_>>>()?,
             pending_updates: Vec::new(),
-        })
+        });
     }
 
     /// 加载 actor 的定时任务数据
@@ -283,55 +229,48 @@ impl CronJobStorage {
         actor: &ActorIdentity,
         data: &CronJobData,
     ) -> hone_core::HoneResult<()> {
-        if let Some(postgres) = self.cloud_postgres() {
-            let actor_key = actor.storage_key();
-            let actor_value = serde_json::to_value(actor)
-                .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?;
-            let records = data
-                .jobs
-                .iter()
-                .map(|job| {
-                    Ok(CloudCronJobRecord {
-                        actor_storage_key: actor_key.clone(),
-                        job_id: job.id.clone(),
-                        actor: actor_value.clone(),
-                        job: serde_json::to_value(job)
-                            .map_err(|err| HoneError::Serialization(err.to_string()))?,
-                    })
+        let postgres = self.postgres.clone();
+        let actor_key = actor.storage_key();
+        let actor_value = serde_json::to_value(actor)
+            .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?;
+        let records = data
+            .jobs
+            .iter()
+            .map(|job| {
+                Ok(CloudCronJobRecord {
+                    actor_storage_key: actor_key.clone(),
+                    job_id: job.id.clone(),
+                    actor: actor_value.clone(),
+                    job: serde_json::to_value(job)
+                        .map_err(|err| HoneError::Serialization(err.to_string()))?,
                 })
-                .collect::<hone_core::HoneResult<Vec<_>>>()?;
-            return run_cloud_cron(async move {
-                let existing = postgres.list_cron_job_records_for_actor(&actor_key).await?;
-                let wanted = records
-                    .iter()
-                    .map(|record| record.job_id.clone())
-                    .collect::<HashSet<_>>();
-                for record in existing {
-                    if !wanted.contains(&record.job_id) {
-                        postgres
-                            .delete_cron_job_record(&actor_key, &record.job_id)
-                            .await?;
-                    }
-                }
-                for record in records {
+            })
+            .collect::<hone_core::HoneResult<Vec<_>>>()?;
+        return run_cloud_cron(async move {
+            let existing = postgres.list_cron_job_records_for_actor(&actor_key).await?;
+            let wanted = records
+                .iter()
+                .map(|record| record.job_id.clone())
+                .collect::<HashSet<_>>();
+            for record in existing {
+                if !wanted.contains(&record.job_id) {
                     postgres
-                        .upsert_cron_job_record(
-                            &record.actor_storage_key,
-                            &record.job_id,
-                            record.actor,
-                            record.job,
-                        )
+                        .delete_cron_job_record(&actor_key, &record.job_id)
                         .await?;
                 }
-                Ok(())
-            });
-        }
-
-        let path = self.get_actor_file(actor);
-        let content = serde_json::to_string_pretty(data)
-            .map_err(|e| hone_core::HoneError::Storage(e.to_string()))?;
-        std::fs::write(&path, content).map_err(|e| hone_core::HoneError::Storage(e.to_string()))?;
-        Ok(())
+            }
+            for record in records {
+                postgres
+                    .upsert_cron_job_record(
+                        &record.actor_storage_key,
+                        &record.job_id,
+                        record.actor,
+                        record.job,
+                    )
+                    .await?;
+            }
+            Ok(())
+        });
     }
 
     pub fn get_job(
@@ -693,149 +632,76 @@ impl CronJobStorage {
         let current_day = now.date_naive();
         let current_total = current_hour * 60 + current_minute;
 
-        if let Some(postgres) = self.cloud_postgres() {
-            let owner_id = cron_owner_id();
-            for (actor, job) in self.list_all_jobs() {
-                if !job.enabled {
-                    continue;
-                }
-
-                if !job_channel_allowed(&job, channels) {
-                    continue;
-                }
-
-                if !job_due_in_current_window(&job, current_total, current_day) {
-                    continue;
-                }
-
-                let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
-                if !repeat_matches_current_day(&job, repeat_kind, current_day, current_weekday) {
-                    continue;
-                }
-
-                if already_ran_in_current_period(&job, repeat_kind, now, current_total) {
-                    continue;
-                }
-
-                let dedup_key = due_job_dedup_key(&job);
-                if !seen_due_keys.insert(dedup_key) {
-                    warn!(
-                        "skipping duplicate due cloud cron job actor={} job_id={} target={}",
-                        actor.storage_key(),
-                        job.id,
-                        job.channel_target
-                    );
-                    continue;
-                }
-
-                let job_key = cron_claim_job_key(&actor, &job);
-                let due_key = cron_claim_due_key(&job, repeat_kind, current_total, current_day);
-                let claim = run_cloud_cron({
-                    let postgres = postgres.clone();
-                    let owner_id = owner_id.clone();
-                    async move {
-                        postgres
-                            .try_claim_cron_due_job(&job_key, &due_key, &owner_id)
-                            .await
+        let postgres = self.postgres.clone();
+        let owner_id = cron_owner_id();
+        for (actor, mut job) in self.list_all_jobs() {
+            if repair_prompt_schedule_mismatch(&mut job) {
+                let mut data = self.load_jobs(&actor);
+                if let Some(saved) = data.jobs.iter_mut().find(|saved| saved.id == job.id) {
+                    *saved = job.clone();
+                    if let Err(error) = self.save_jobs(&actor, &data) {
+                        warn!(
+                            actor = %actor.storage_key(),
+                            job_id = %job.id,
+                            "failed to persist repaired PostgreSQL cron schedule: {error}"
+                        );
                     }
-                });
-                match claim {
-                    Ok(true) => due.push((actor, job)),
-                    Ok(false) => {}
-                    Err(error) => warn!(
-                        "failed to claim cloud cron due job actor={} job_id={}: {error}",
-                        actor.storage_key(),
-                        job.id
-                    ),
                 }
             }
-            return due;
-        }
-
-        // 只扫描 `cron_jobs_*.json` 文件；无法读取或解析的跳过，避免一个坏文件阻塞全部扫描。
-
-        let entries = match std::fs::read_dir(&self.data_dir) {
-            Ok(e) => e,
-            Err(_) => return due,
-        };
-
-        for entry in entries.flatten() {
-            let fname = entry.file_name().to_string_lossy().to_string();
-            if !fname.starts_with("cron_jobs_") || !fname.ends_with(".json") {
+            if !job.enabled {
                 continue;
             }
 
-            let path = entry.path();
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let mut data: CronJobData = match serde_json::from_str(&content) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-
-            let Some(actor) = actor_from_cron_data(&data) else {
-                continue;
-            };
-            if !cron_file_matches_actor(&path, &actor) {
-                warn!(
-                    "skipping mismatched cron file path={} actor={}",
-                    path.display(),
-                    actor.storage_key()
-                );
+            if !job_channel_allowed(&job, channels) {
                 continue;
             }
-            let repaired_mismatches = repair_legacy_prompt_schedule_mismatches(&mut data);
-            if repaired_mismatches > 0
-                && let Err(err) = self.save_jobs(&actor, &data)
-            {
+
+            if !job_due_in_current_window(&job, current_total, current_day) {
+                continue;
+            }
+
+            let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
+            if !repeat_matches_current_day(&job, repeat_kind, current_day, current_weekday) {
+                continue;
+            }
+
+            if already_ran_in_current_period(&job, repeat_kind, now, current_total) {
+                continue;
+            }
+
+            let dedup_key = due_job_dedup_key(&job);
+            if !seen_due_keys.insert(dedup_key) {
                 warn!(
-                    "failed to persist repaired cron schedule/prompt mismatches actor={} repairs={} error={}",
+                    "skipping duplicate due cloud cron job actor={} job_id={} target={}",
                     actor.storage_key(),
-                    repaired_mismatches,
-                    err
+                    job.id,
+                    job.channel_target
                 );
+                continue;
             }
 
-            for job in &data.jobs {
-                if !job.enabled {
-                    continue;
+            let job_key = cron_claim_job_key(&actor, &job);
+            let due_key = cron_claim_due_key(&job, repeat_kind, current_total, current_day);
+            let claim = run_cloud_cron({
+                let postgres = postgres.clone();
+                let owner_id = owner_id.clone();
+                async move {
+                    postgres
+                        .try_claim_cron_due_job(&job_key, &due_key, &owner_id)
+                        .await
                 }
-
-                if !job_channel_allowed(job, channels) {
-                    continue;
-                }
-
-                if !job_due_in_current_window(job, current_total, current_day) {
-                    continue;
-                }
-
-                let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
-                if !repeat_matches_current_day(job, repeat_kind, current_day, current_weekday) {
-                    continue;
-                }
-
-                if already_ran_in_current_period(job, repeat_kind, now, current_total) {
-                    continue;
-                }
-
-                let dedup_key = due_job_dedup_key(job);
-                if !seen_due_keys.insert(dedup_key) {
-                    warn!(
-                        "skipping duplicate due cron job actor={} job_id={} target={}",
-                        actor.storage_key(),
-                        job.id,
-                        job.channel_target
-                    );
-                    continue;
-                }
-
-                due.push((actor.clone(), job.clone()));
+            });
+            match claim {
+                Ok(true) => due.push((actor, job)),
+                Ok(false) => {}
+                Err(error) => warn!(
+                    "failed to claim cloud cron due job actor={} job_id={}: {error}",
+                    actor.storage_key(),
+                    job.id
+                ),
             }
         }
-
-        due
+        return due;
     }
 
     fn mutate_job<F>(
@@ -864,14 +730,11 @@ impl CronJobStorage {
     }
 
     fn list_unique_cron_actors(&self) -> Vec<ActorIdentity> {
-        let mut actors = self
-            .list_all_jobs()
-            .into_iter()
-            .map(|(actor, _)| actor)
-            .collect::<Vec<_>>();
-        actors.sort_by_key(|actor| actor.storage_key());
-        actors.dedup_by_key(|actor| actor.storage_key());
-        actors
+        let mut actors = BTreeMap::new();
+        for (actor, _) in self.list_all_jobs() {
+            actors.entry(actor.storage_key()).or_insert(actor);
+        }
+        actors.into_values().collect()
     }
 
     fn mutate_job_for_actor<F>(
@@ -959,57 +822,15 @@ fn cron_claim_due_key(
     )
 }
 
-fn actor_from_cron_data(data: &CronJobData) -> Option<ActorIdentity> {
-    match data.actor.clone() {
-        Some(actor) => Some(actor),
-        None => {
-            if data.user_id.is_empty() {
-                return None;
-            }
-            let channel = data
-                .jobs
-                .first()
-                .map(|j| j.channel.clone())
-                .filter(|c| !c.is_empty())
-                .unwrap_or_else(|| "imessage".to_string());
-            let scope = data.jobs.first().and_then(|j| j.channel_scope.clone());
-            ActorIdentity::new(channel, data.user_id.clone(), scope).ok()
-        }
-    }
-}
-
-fn cron_file_matches_actor(path: &Path, actor: &ActorIdentity) -> bool {
-    cron_filename_storage_key(path).is_none_or(|key| key == actor.storage_key())
-}
-
-fn cron_filename_storage_key(path: &Path) -> Option<String> {
-    let file_name = path.file_name()?.to_str()?;
-    Some(
-        file_name
-            .strip_prefix("cron_jobs_")?
-            .strip_suffix(".json")?
-            .to_string(),
-    )
-}
-
-fn repair_legacy_prompt_schedule_mismatches(data: &mut CronJobData) -> usize {
-    let mut repaired = 0;
-    for job in &mut data.jobs {
-        let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) else {
-            continue;
-        };
-        warn!(
-            "repairing legacy cron job schedule/prompt mismatch: job_id={} job={} schedule={:02}:{:02} prompt={:02}:{:02}",
-            job.id,
-            job.name,
-            job.schedule.hour,
-            job.schedule.minute,
-            declared_hour,
-            declared_minute
-        );
-        job.schedule.hour = declared_hour;
-        job.schedule.minute = declared_minute;
-        repaired += 1;
-    }
-    repaired
+fn repair_prompt_schedule_mismatch(job: &mut CronJob) -> bool {
+    let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) else {
+        return false;
+    };
+    warn!(
+        "repairing legacy cron job schedule/prompt mismatch: job_id={} job={} schedule={:02}:{:02} prompt={:02}:{:02}",
+        job.id, job.name, job.schedule.hour, job.schedule.minute, declared_hour, declared_minute
+    );
+    job.schedule.hour = declared_hour;
+    job.schedule.minute = declared_minute;
+    true
 }

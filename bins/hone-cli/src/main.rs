@@ -235,28 +235,14 @@ pub(crate) fn non_empty(value: &str) -> bool {
 }
 
 fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
-    if config.cloud.effective_mode().is_cloud_authoritative()
-        && config.cloud.postgres.is_configured()
-        && let Some(postgres) =
-            hone_core::cloud_runtime::CloudPgRuntime::from_cloud_config(&config.cloud)
-    {
-        match CronJobStorage::new_cloud(postgres) {
-            Ok(storage) => return storage,
-            Err(error) => tracing::warn!("{}", cloud_cron_storage_fallback_warning(&error)),
-        }
-    }
-    if config.storage.session_sqlite_db_path.trim().is_empty() {
-        CronJobStorage::new(&config.storage.cron_jobs_dir)
-    } else {
-        CronJobStorage::with_sqlite(
-            &config.storage.cron_jobs_dir,
-            &config.storage.session_sqlite_db_path,
-        )
-    }
+    let postgres = hone_core::cloud_runtime::CloudPgRuntime::from_cloud_config(&config.cloud)
+        .expect("PostgreSQL must be configured for cron storage");
+    CronJobStorage::new_cloud(postgres)
+        .unwrap_or_else(|error| panic!("{}", cloud_cron_storage_failure(&error)))
 }
 
-fn cloud_cron_storage_fallback_warning(error: &impl std::fmt::Display) -> String {
-    format!("Cloud PG cron 存储初始化失败，已降级到本地存储: {error}")
+fn cloud_cron_storage_failure(error: &impl std::fmt::Display) -> String {
+    format!("PostgreSQL cron 存储初始化失败: {error}")
 }
 
 fn print_channel_targets_text(targets: &[ChannelTargetRecord]) {
@@ -633,13 +619,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cloud_cron_fallback_warning_includes_pg_error_and_local_destination() {
-        let warning = cloud_cron_storage_fallback_warning(&"PG schema unavailable");
+    fn postgres_cron_failure_includes_original_error_without_claiming_a_fallback() {
+        let warning = cloud_cron_storage_failure(&"PG schema unavailable");
 
         assert_eq!(
             warning,
-            "Cloud PG cron 存储初始化失败，已降级到本地存储: PG schema unavailable"
+            "PostgreSQL cron 存储初始化失败: PG schema unavailable"
         );
+        assert!(!warning.contains("降级"));
     }
 
     #[test]
