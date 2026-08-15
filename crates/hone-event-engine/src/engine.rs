@@ -569,6 +569,9 @@ impl EventEngine {
                     .unwrap_or_else(|| PathBuf::from("data/weekly_reports")),
             )
             .with_tz_offset_hours(tz_offset);
+            if let Some(task_runs_dir) = self.task_runs_dir.as_deref() {
+                weekly = weekly.with_task_runs_dir(task_runs_dir.clone());
+            }
             if fmp_available {
                 weekly = weekly.with_fmp_client(client.clone());
             }

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-15
-状态：有 12 个活跃任务
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **调度与定时任务体系化整治**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/scheduler-runtime-hardening-2026-08-15.md`
+  - 摘要：先将当前 GCE 从 `runtime_role=all` 回滚到 Web-only 并恢复 Feishu 独立 worker 止血，再修复心跳契约重试、cron 健康可见性、齐射/并发/流式重试、cloud runtime/全表扫描、僵尸记录回收与 meta/部署探针，完成全仓门禁、真实 LLM 冒烟、精确部署和生产波次观察
 
 - **2026-08-11 全产品压力/功能验收与上线**
   - 状态：`blocked`

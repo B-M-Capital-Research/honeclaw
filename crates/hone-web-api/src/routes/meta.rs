@@ -72,20 +72,55 @@ pub(crate) async fn handle_put_language(
     }
 }
 
+/// 单个云探活的总预算。超时返回 `ok=false` + `probe_timeout`,而不是挂住请求。
+const CLOUD_PROBE_BUDGET: Duration = Duration::from_secs(8);
+
+async fn probe_with_budget<F>(
+    label: &str,
+    probe: F,
+) -> Option<hone_core::cloud_runtime::CloudHealth>
+where
+    F: std::future::Future<Output = Option<hone_core::cloud_runtime::CloudHealth>>,
+{
+    match tokio::time::timeout(CLOUD_PROBE_BUDGET, probe).await {
+        Ok(health) => health,
+        Err(_) => {
+            tracing::warn!("/api/meta {label} health probe timed out");
+            Some(hone_core::cloud_runtime::CloudHealth {
+                ok: false,
+                detail: format!(
+                    "{label} health probe_timeout ({}s budget)",
+                    CLOUD_PROBE_BUDGET.as_secs()
+                ),
+            })
+        }
+    }
+}
+
 pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     if let Some(cached) = cached_meta() {
         return Json(cached);
     }
     let runtime_role = RuntimeRole::from_env();
     let local_deps = local_durable_dependencies(&state.core.config);
-    let postgres_health = match CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
-        Some(pg) => Some(pg.health().await),
-        None => None,
-    };
-    let oss_health = match OssObjectStore::from_config(&state.core.config.cloud.oss) {
-        Some(oss) => Some(oss.health().await),
-        None => None,
-    };
+    // 每个探活自身已有 5s 预算,这里再加一道总预算兜底:`OssObjectStore::from_config`
+    // 会同步新建一个 reqwest::Client(TLS/proxy 初始化),那段在各自的 timeout 之外。
+    // 超时一律降级成"结构完整但 ok=false",绝不 5xx、更不能挂住连接
+    // ——照 routes/users.rs 的既有惯例。
+    let postgres_health = probe_with_budget("postgres", async {
+        match CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
+            Some(pg) => Some(pg.health().await),
+            None => None,
+        }
+    })
+    .await;
+    let oss_health = probe_with_budget("oss", async {
+        match OssObjectStore::from_config(&state.core.config.cloud.oss) {
+            Some(oss) => Some(oss.health().await),
+            None => None,
+        }
+    })
+    .await;
     let cloud_storage_authoritative = state
         .core
         .config

@@ -33,6 +33,7 @@ pub struct CronJobStorage {
     pub(super) data_dir: PathBuf,
     pub(super) sqlite_path: Option<PathBuf>,
     pub(super) postgres: Option<CloudPgRuntime>,
+    pub(super) task_runs_dir: Option<PathBuf>,
 }
 
 const DEFAULT_CLOUD_CRON_TIMEOUT_SECS: u64 = 15;
@@ -45,6 +46,7 @@ impl CronJobStorage {
             data_dir,
             sqlite_path: None,
             postgres: None,
+            task_runs_dir: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl CronJobStorage {
             data_dir,
             sqlite_path: Some(sqlite_path.as_ref().to_path_buf()),
             postgres: None,
+            task_runs_dir: None,
         };
         if let Err(err) = storage.init_execution_schema() {
             warn!("failed to initialize cron execution sqlite schema: {err}");
@@ -69,11 +72,17 @@ impl CronJobStorage {
             data_dir: PathBuf::new(),
             sqlite_path: None,
             postgres: Some(postgres),
+            task_runs_dir: None,
         })
     }
 
     pub(super) fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
         self.postgres.clone()
+    }
+
+    pub fn with_task_runs_dir(mut self, task_runs_dir: Option<PathBuf>) -> Self {
+        self.task_runs_dir = task_runs_dir;
+        self
     }
 }
 
@@ -746,8 +755,15 @@ mod tests {
         let job_id = job_id_from_add_result(&add);
 
         let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
-        let due_first =
-            storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        // 查询分钟取到最大抖动偏移之后:heartbeat 现在按 job_id 在半点后的
+        // [0, JITTER_SPREAD_MINUTES) 分钟内错峰,槽内任一分钟都算同一槽。
+        let probe_minute = 30 + super::storage::JITTER_SPREAD_MINUTES - 1;
+        let due_first = storage.get_due_jobs(
+            10,
+            probe_minute,
+            now_bj.weekday().num_days_from_monday(),
+            &["feishu"],
+        );
         assert_eq!(due_first.len(), 1);
         assert_eq!(due_first[0].1.id, job_id);
         assert!(due_first[0].1.is_heartbeat());
@@ -755,7 +771,7 @@ mod tests {
         let mut data = storage.load_jobs(&actor);
         let slot_time = now_bj
             .with_hour(10)
-            .and_then(|dt| dt.with_minute(30))
+            .and_then(|dt| dt.with_minute(probe_minute as u32))
             .and_then(|dt| dt.with_second(0))
             .expect("slot time");
         let job = data
@@ -765,9 +781,44 @@ mod tests {
             .expect("job exists");
         job.last_run_at = Some(slot_time.to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
-        let due_second =
-            storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        let due_second = storage.get_due_jobs(
+            10,
+            probe_minute,
+            now_bj.weekday().num_days_from_monday(),
+            &["feishu"],
+        );
         assert!(due_second.is_empty());
+    }
+
+    /// heartbeat 齐射削峰:偏移必须确定性、落在 `[0, JITTER_SPREAD_MINUTES)`,
+    /// 且始终留在到期容错窗口内(否则该轮任务会被整个丢掉)。
+    #[test]
+    fn heartbeat_dispatch_jitter_is_deterministic_and_stays_inside_due_window() {
+        use super::storage::{JITTER_SPREAD_MINUTES, dispatch_jitter_minutes};
+
+        assert!(
+            JITTER_SPREAD_MINUTES < super::schedule::DUE_WINDOW_MINUTES,
+            "抖动越过容错窗口会导致任务被丢弃"
+        );
+
+        let mut seen_offsets = std::collections::HashSet::new();
+        for index in 0..200 {
+            let job_id = format!("j_{index:06x}");
+            let offset = dispatch_jitter_minutes(&job_id);
+            assert!(
+                (0..JITTER_SPREAD_MINUTES).contains(&offset),
+                "offset {offset} out of range for {job_id}"
+            );
+            // 确定性:同一 job_id 必须永远得到同一偏移,否则无法复现排查。
+            assert_eq!(offset, dispatch_jitter_minutes(&job_id));
+            seen_offsets.insert(offset);
+        }
+        // 真的摊开了,而不是全挤在同一分钟。
+        assert_eq!(
+            seen_offsets.len(),
+            JITTER_SPREAD_MINUTES as usize,
+            "jitter should spread jobs across every offset minute"
+        );
     }
 
     #[test]
@@ -1144,6 +1195,58 @@ mod tests {
         assert!(records[0].delivered);
         assert_eq!(records[0].response_preview.as_deref(), Some("final report"));
         assert_eq!(records[0].detail["phase"], "terminal");
+        // 配对 started 行存在 ⇒ 开始时刻已知,时延可算。
+        assert!(
+            records[0].started_at.is_some(),
+            "paired started row should keep its start timestamp"
+        );
+        assert!(
+            records[0].duration_ms.is_some(),
+            "duration must be derivable when the start timestamp is known"
+        );
+    }
+
+    /// 没有配对 started 行的终态记录:开始时刻未知,必须留 NULL,
+    /// 不能回填成 executed_at —— 那会谎报 0 毫秒并污染时延统计。
+    #[test]
+    fn terminal_only_execution_leaves_start_and_duration_unknown() {
+        let dir = make_temp_dir("hone_cron_storage_exec_terminal_only");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("web", "web-user-terminal-only", None);
+
+        storage
+            .record_execution_event(
+                &actor,
+                "j_terminal_only",
+                "target missing job",
+                "web-user-terminal-only",
+                false,
+                CronJobExecutionInput {
+                    execution_status: "execution_failed".to_string(),
+                    message_send_status: "skipped_error".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: Some("channel target missing".to_string()),
+                    detail: serde_json::json!({"phase": "terminal"}),
+                },
+            )
+            .expect("record terminal without a started row");
+
+        let records = storage
+            .list_execution_records("j_terminal_only", 10)
+            .expect("list execution records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].execution_status, "execution_failed");
+        assert_eq!(
+            records[0].started_at, None,
+            "unpaired terminal row must not claim a start timestamp"
+        );
+        assert_eq!(
+            records[0].duration_ms, None,
+            "unknown start must yield unknown duration, not 0"
+        );
     }
 
     #[test]

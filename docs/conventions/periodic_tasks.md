@@ -173,4 +173,36 @@ LLM provider 限流),按需引入 [`backon`](https://crates.io/crates/backon) �
   Supervisor 真正的价值在跨进程 / 资源边界 / 重启策略,跟当前架构不匹配
 - **HoneScheduler(用户 cron job)与本约定的关系**:
   HoneScheduler 是用户层产品功能(让 agent 周期跑某 skill),
-  跟 event-engine 内部任务不是一个层面,不强行合并
+  跟 event-engine 内部任务不是一个层面,不强行合并。
+  **但有一条例外:用户 cron 也必须写 `task_runs.jsonl`**——见下。
+
+---
+
+## 6. 用户 cron 也要写 `task_runs.jsonl`
+
+上面第 5 条说过 HoneScheduler 不跟内部周期任务合并抽象,但**可观测性口径必须
+统一**:`CronJobStorage::record_execution_event` 在写终态记录时,同步写一行
+`task_runs.jsonl`(`task` 取 `cron.{channel}.{heartbeat|scheduled}`)。
+
+理由是一次真实事故:2026-08-15 翻生产库发现,客户定时任务的失败率
+**长期在 30%–50%,持续至少两周而无人发现**——因为用户 cron 完全不在
+`/api/admin/task-runs` 的 24h 健康视图里,而那正是我们查"任务健康"的唯一入口。
+`cron_job_runs` 表里有逐条记录,但没有人会去逐条翻。
+
+两个口径**正交,都要写**:
+
+- `cron_job_runs` / `cloud_cron_job_runs`:终端用户视角的**单任务**执行历史
+  (给 `/api/cron-jobs/{id}`、通知页用)。真实耗时记在这里的 `duration_ms`,
+  由 SQL 用 `started_at` 与 `executed_at` 相减算出。
+- `task_runs.jsonl`:全局**任务维度**的机器视图(给 `/api/admin/task-runs` 用),
+  只关心 ok / skipped / failed 计数与最近失败。
+
+注意 `TaskRunRecord.started_at` 在读取侧只当"这条记录发生的时刻"用
+(窗口过滤、排序、`last_seen_at` / `last_failure_at`),**不用来算时延**;
+所以终态落账时取 `Utc::now()` 即可,不必为了补一个"真实开始时刻"再查一次
+started 行。
+
+`started_at` / `duration_ms` 两列都**可空**,NULL = 未知(历史行,或没有配对
+started 行的直插终态行)。不要为了"补齐"把它回填成 `executed_at`——那会谎报
+0 毫秒并污染时延分位数。也不要给它加 `SET NOT NULL`:那需要 ACCESS EXCLUSIVE
+锁,而 `ensure_schema` 在每个调度事件都会跑一遍。

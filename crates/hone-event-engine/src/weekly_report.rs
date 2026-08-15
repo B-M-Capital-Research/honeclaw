@@ -12,7 +12,8 @@
 //!    共识计数,汇总文只计入其 counts);
 //! 3. 推送质量 —— delivery_log 状态分布 + 汇总文拦截数 + band 阶梯合流数,
 //!    即离线回放 `replay_push_quality_audit` 的同口径线上版;
-//! 4. 下周财报 —— store 里未来 7 天的 earnings_upcoming。
+//! 4. 定时任务健康 —— `task_runs.jsonl` 里 `cron.*` 的近 7 日成败率;
+//! 5. 下周财报 —— store 里未来 7 天的 earnings_upcoming。
 //!
 //! tick contract 与 DailyReport 相同:上层每 60s `tick_once(now, &mut fired)`。
 
@@ -35,6 +36,9 @@ pub struct WeeklyReport {
     sink: Arc<dyn OutboundSink>,
     client: Option<FmpClient>,
     report_dir: PathBuf,
+    /// `task_runs.jsonl` 所在目录(即 `data/runtime/`)。为 `None` 时省略
+    /// "定时任务健康"section。
+    task_runs_dir: Option<PathBuf>,
     tz_offset_hours: i32,
     trigger_weekday: Weekday,
     trigger_time: String,
@@ -53,6 +57,7 @@ impl WeeklyReport {
             sink,
             client: None,
             report_dir: report_dir.into(),
+            task_runs_dir: None,
             tz_offset_hours: 8,
             trigger_weekday: Weekday::Sat,
             trigger_time: "10:00".into(),
@@ -61,6 +66,11 @@ impl WeeklyReport {
 
     pub fn with_fmp_client(mut self, client: FmpClient) -> Self {
         self.client = Some(client);
+        self
+    }
+
+    pub fn with_task_runs_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.task_runs_dir = Some(dir.into());
         self
     }
 
@@ -170,6 +180,9 @@ impl WeeklyReport {
         if let Some(quality) = self.render_push_quality(now) {
             sections.push(quality);
         }
+        if let Some(cron_health) = self.render_cron_health(now) {
+            sections.push(cron_health);
+        }
         if let Some(earnings) = self.render_upcoming_earnings(now, positions) {
             sections.push(earnings);
         }
@@ -249,6 +262,54 @@ impl WeeklyReport {
         }
         if band_events > 0 {
             line.push_str(&format!(" · 盘中跨档事件 {band_events} 条(阶梯已合流)"));
+        }
+        Some(line)
+    }
+
+    /// 近 7 日定时任务健康:成败率按 `cron.{channel}.{kind}` 汇总。
+    ///
+    /// 数据来自 `task_runs.jsonl`——这正是让用户 cron 写这份账的目的:
+    /// 2026-08-15 翻生产库才发现客户定时任务失败率长期 30%–50%、持续两周无人
+    /// 发现,因为它此前完全不在任何主动出现在人眼前的视图里。
+    fn render_cron_health(&self, now: DateTime<Utc>) -> Option<String> {
+        let dir = self.task_runs_dir.as_deref()?;
+        let since = now - Duration::days(7);
+        let runs = hone_core::task_observer::read_recent_task_runs(dir, 7, 20_000);
+        let mut ok = 0_u32;
+        let mut skipped = 0_u32;
+        let mut failed = 0_u32;
+        let mut last_error: Option<String> = None;
+        for run in runs
+            .iter()
+            .filter(|run| run.task.starts_with("cron.") && run.started_at >= since)
+        {
+            match run.outcome {
+                hone_core::TaskOutcome::Ok => ok += 1,
+                hone_core::TaskOutcome::Skipped => skipped += 1,
+                hone_core::TaskOutcome::Failed => {
+                    failed += 1;
+                    if last_error.is_none() {
+                        last_error = run.error.clone();
+                    }
+                }
+            }
+        }
+        // 数据不可得就整段省略,绝不编数字。
+        let attempted = ok + failed;
+        if attempted == 0 && skipped == 0 {
+            return None;
+        }
+        let mut line = format!("⏰ 本周定时任务:成功 {ok} · 失败 {failed}");
+        if skipped > 0 {
+            line.push_str(&format!(" · 无触发 {skipped}"));
+        }
+        if attempted > 0 {
+            let rate = (failed as f64) * 100.0 / (attempted as f64);
+            line.push_str(&format!("（失败率 {rate:.0}%）"));
+        }
+        if let Some(error) = last_error {
+            let brief: String = error.chars().take(60).collect();
+            line.push_str(&format!("\n   最近失败:{brief}"));
         }
         Some(line)
     }
@@ -376,6 +437,63 @@ mod tests {
         let mut positions = HashMap::new();
         positions.insert("SNDK".to_string(), position(13.0));
         assert!(render_week_pnl(&positions, &HashMap::new()).is_none());
+    }
+
+    /// 定时任务健康:从 `task_runs.jsonl` 聚合 cron.* 的成败,只统计 7 日窗口内。
+    /// 没接 task_runs_dir 或窗口内无记录时整段省略,绝不编数字。
+    #[test]
+    fn cron_health_summarizes_task_runs_and_omits_when_unavailable() {
+        use crate::router::LogSink;
+        use crate::subscription::SubscriptionRegistry;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let make = |runs_dir: Option<PathBuf>| {
+            let mut report = WeeklyReport::new(
+                store.clone(),
+                Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new())),
+                Arc::new(LogSink),
+                dir.path().join("weekly"),
+            );
+            if let Some(runs_dir) = runs_dir {
+                report = report.with_task_runs_dir(runs_dir);
+            }
+            report
+        };
+
+        let now = Utc::now();
+        // 没配 task_runs_dir → 省略
+        assert!(make(None).render_cron_health(now).is_none());
+
+        // 配了但目录为空 → 仍省略
+        let runs_dir = dir.path().join("runtime");
+        std::fs::create_dir_all(&runs_dir).unwrap();
+        assert!(
+            make(Some(runs_dir.clone()))
+                .render_cron_health(now)
+                .is_none()
+        );
+
+        let started = now - Duration::hours(2);
+        for _ in 0..3 {
+            hone_core::task_observer::record_ok(&runs_dir, "cron.web.heartbeat", started, 1);
+        }
+        hone_core::task_observer::record_failed(
+            &runs_dir,
+            "cron.web.heartbeat",
+            started,
+            "heartbeat 输出不是结构化 JSON，任务已标记失败",
+        );
+        hone_core::task_observer::record_skipped(&runs_dir, "cron.feishu.scheduled", started);
+        // 非 cron 任务不得混入
+        hone_core::task_observer::record_failed(&runs_dir, "poller.fmp.news", started, "boom");
+
+        let text = make(Some(runs_dir)).render_cron_health(now).unwrap();
+        assert!(text.contains("成功 3"), "{text}");
+        assert!(text.contains("失败 1"), "{text}");
+        assert!(text.contains("无触发 1"), "{text}");
+        assert!(text.contains("失败率 25%"), "{text}");
+        assert!(text.contains("结构化 JSON"), "{text}");
+        assert!(!text.contains("boom"), "非 cron 任务不应计入: {text}");
     }
 
     /// 触发窗口:仅本地周六 trigger_time 命中,且同日只发一次。

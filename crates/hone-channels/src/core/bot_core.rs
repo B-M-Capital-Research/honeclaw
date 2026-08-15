@@ -607,17 +607,19 @@ impl HoneBotCore {
     }
 
     pub fn cron_job_storage(&self) -> CronJobStorage {
+        let task_runs_dir = Some(self.configured_runtime_dir());
         if self.config.cloud.effective_mode().is_cloud_authoritative()
             && self.config.cloud.postgres.is_configured()
             && let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud)
             && let Ok(storage) = CronJobStorage::new_cloud(postgres)
         {
-            return storage;
+            return storage.with_task_runs_dir(task_runs_dir);
         }
         CronJobStorage::with_sqlite(
             &self.config.storage.cron_jobs_dir,
             &self.config.storage.session_sqlite_db_path,
         )
+        .with_task_runs_dir(task_runs_dir)
     }
 
     /// 创建 Agent runner 实例。

@@ -124,7 +124,12 @@ pub struct CronJobExecutionRecord {
     pub channel_scope: Option<String>,
     pub channel_target: String,
     pub heartbeat: bool,
+    /// `None` 表示开始时刻未知(历史行,或没有配对 started 行的直插终态行)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
     pub executed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
     pub execution_status: String,
     pub message_send_status: String,
     pub should_deliver: bool,

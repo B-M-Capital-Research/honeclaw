@@ -936,7 +936,10 @@ pub struct CloudCronExecutionRecord {
     pub channel_scope: Option<String>,
     pub channel_target: String,
     pub heartbeat: bool,
+    /// `None` 表示开始时刻未知(历史行,或没有配对 started 行的直插终态行)。
+    pub started_at: Option<String>,
     pub executed_at: String,
+    pub duration_ms: Option<u64>,
     pub execution_status: String,
     pub message_send_status: String,
     pub should_deliver: bool,
@@ -1211,24 +1214,32 @@ impl CloudPgRuntime {
     }
 
     pub async fn health(&self) -> CloudHealth {
-        match tokio::time::timeout(Duration::from_secs(5), self.connect_client()).await {
-            Ok(Ok(client)) => match client.query_one("SELECT 1", &[]).await {
-                Ok(_) => CloudHealth {
-                    ok: true,
-                    detail: "postgres connected".to_string(),
-                },
-                Err(error) => CloudHealth {
-                    ok: false,
-                    detail: format!("postgres query failed: {error}"),
-                },
+        // 超时必须罩住**建连 + 查询**两段。此前 5 秒只包了 `connect_client()`,
+        // 而 `query_one` 在窗口之外、完全无界:PG 建好连接但 backend 排在锁/CPU
+        // 队列后面(或链路半开、代理静默 stall)时,`/api/meta` 会无限挂住,
+        // 连带把部署验收和就绪探测一起拖死。
+        let probe = async {
+            let client = self.connect_client().await?;
+            client
+                .query_one("SELECT 1", &[])
+                .await
+                .map_err(|error| HoneError::Config(format!("postgres query failed: {error}")))?;
+            Ok::<(), HoneError>(())
+        };
+        match tokio::time::timeout(Duration::from_secs(5), probe).await {
+            Ok(Ok(())) => CloudHealth {
+                ok: true,
+                detail: "postgres connected".to_string(),
             },
             Ok(Err(error)) => CloudHealth {
                 ok: false,
                 detail: error.to_string(),
             },
+            // 探活超时 ≠ 云存储已失效:存储后端由配置 `effective_mode()` 决定,
+            // 不看这里的结果。别把这个 false 读成"已回落本地"。
             Err(_) => CloudHealth {
                 ok: false,
-                detail: "postgres health timeout".to_string(),
+                detail: "postgres health probe_timeout (5s, connect+query)".to_string(),
             },
         }
     }
@@ -1308,7 +1319,9 @@ CREATE TABLE IF NOT EXISTS cloud_cron_job_runs (
   actor_channel_scope TEXT,
   channel_target TEXT NOT NULL,
   heartbeat BOOLEAN NOT NULL DEFAULT false,
+  started_at TEXT,
   executed_at TEXT NOT NULL,
+  duration_ms BIGINT,
   execution_status TEXT NOT NULL,
   message_send_status TEXT NOT NULL,
   should_deliver BOOLEAN NOT NULL DEFAULT false,
@@ -1317,6 +1330,12 @@ CREATE TABLE IF NOT EXISTS cloud_cron_job_runs (
   error_message TEXT,
   detail JSONB NOT NULL DEFAULT '{}'::jsonb
 );
+-- `started_at` / `duration_ms` 刻意保持可空:NULL 表示"开始时刻未知"(历史行、
+-- 或没有配对 started 行的直插终态行),不回填成 executed_at——那会谎报 0 毫秒
+-- 并污染时延分位数。也因此不加 SET NOT NULL:那需要 ACCESS EXCLUSIVE 锁,
+-- 而 ensure_schema 在每个调度事件都会跑一遍。
+ALTER TABLE cloud_cron_job_runs ADD COLUMN IF NOT EXISTS started_at TEXT;
+ALTER TABLE cloud_cron_job_runs ADD COLUMN IF NOT EXISTS duration_ms BIGINT;
 CREATE INDEX IF NOT EXISTS idx_cloud_cron_jobs_actor
   ON cloud_cron_jobs(actor_storage_key, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_time
@@ -3759,6 +3778,8 @@ ON CONFLICT (job_key, due_key) DO NOTHING
         let input = normalize_cloud_cron_execution_input_for_storage(actor, input);
         let executed_at = crate::beijing_now_rfc3339();
         let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
+        let is_started_row =
+            input.execution_status == "running" && input.message_send_status == "pending";
         let response_preview = input.response_preview;
         let error_message = input.error_message;
         if input.execution_status != "running" && input.message_send_status != "pending" {
@@ -3774,6 +3795,13 @@ ON CONFLICT (job_key, due_key) DO NOTHING
 UPDATE cloud_cron_job_runs
 SET
   executed_at = $1,
+  duration_ms = CASE
+    WHEN started_at IS NULL THEN NULL
+    ELSE GREATEST(
+      0,
+      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+    )
+  END,
   execution_status = $2,
   message_send_status = $3,
   should_deliver = $4,
@@ -3829,6 +3857,13 @@ WHERE run_id = (
 UPDATE cloud_cron_job_runs
 SET
   executed_at = $1,
+  duration_ms = CASE
+    WHEN started_at IS NULL THEN NULL
+    ELSE GREATEST(
+      0,
+      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+    )
+  END,
   execution_status = $2,
   message_send_status = $3,
   should_deliver = $4,
@@ -3886,14 +3921,16 @@ INSERT INTO cloud_cron_job_runs (
   job_id, job_name,
   actor_channel, actor_user_id, actor_channel_scope,
   channel_target, heartbeat,
-  executed_at, execution_status, message_send_status,
+  started_at, executed_at,
+  execution_status, message_send_status,
   should_deliver, delivered, response_preview, error_message, detail
 ) VALUES (
   $1, $2,
   $3, $4, $5,
   $6, $7,
-  $8, $9, $10,
-  $11, $12, $13, $14, $15
+  $8, $9,
+  $10, $11,
+  $12, $13, $14, $15, $16
 )
 "#,
                 &[
@@ -3904,6 +3941,9 @@ INSERT INTO cloud_cron_job_runs (
                     &actor.channel_scope,
                     &channel_target,
                     &heartbeat,
+                    // 只有"started"行才知道开始时刻;直插的终态行没有配对 started 行,
+                    // started_at 留 NULL(未知),duration_ms 随之保持 NULL。
+                    &(is_started_row.then_some(executed_at.as_str())),
                     &executed_at,
                     &input.execution_status,
                     &input.message_send_status,
@@ -3943,6 +3983,13 @@ INSERT INTO cloud_cron_job_runs (
 UPDATE cloud_cron_job_runs
 SET
   executed_at = $1,
+  duration_ms = CASE
+    WHEN started_at IS NULL THEN NULL
+    ELSE GREATEST(
+      0,
+      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+    )
+  END,
   execution_status = 'execution_failed',
   message_send_status = 'skipped_error',
   should_deliver = false,
@@ -4003,6 +4050,13 @@ WHERE job_id = $4
 UPDATE cloud_cron_job_runs
 SET
   executed_at = $1,
+  duration_ms = CASE
+    WHEN started_at IS NULL THEN NULL
+    ELSE GREATEST(
+      0,
+      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+    )
+  END,
   execution_status = 'execution_failed',
   message_send_status = 'send_failed',
   should_deliver = false,
@@ -4042,7 +4096,8 @@ SELECT
   run_id, job_id, job_name,
   actor_channel, actor_user_id, actor_channel_scope,
   channel_target, heartbeat,
-  executed_at, execution_status, message_send_status,
+  started_at, executed_at, duration_ms,
+  execution_status, message_send_status,
   should_deliver, delivered, response_preview, error_message, detail
 FROM cloud_cron_job_runs
 WHERE ($1::text IS NULL OR executed_at >= $1)
@@ -4081,14 +4136,18 @@ LIMIT $9
                 channel_scope: row.get(5),
                 channel_target: row.get(6),
                 heartbeat: row.get(7),
-                executed_at: row.get(8),
-                execution_status: row.get(9),
-                message_send_status: row.get(10),
-                should_deliver: row.get(11),
-                delivered: row.get(12),
-                response_preview: row.get(13),
-                error_message: row.get(14),
-                detail: row.get(15),
+                started_at: row.get(8),
+                executed_at: row.get(9),
+                duration_ms: row
+                    .get::<_, Option<i64>>(10)
+                    .map(|value| value.max(0) as u64),
+                execution_status: row.get(11),
+                message_send_status: row.get(12),
+                should_deliver: row.get(13),
+                delivered: row.get(14),
+                response_preview: row.get(15),
+                error_message: row.get(16),
+                detail: row.get(17),
             })
             .collect())
     }

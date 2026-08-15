@@ -14,6 +14,78 @@ use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+/// 同一时刻允许并行执行的定时任务数。
+///
+/// 生产实证(2026-08-15):同分钟到期的任务此前是各渠道裸 `tokio::spawn`、完全无
+/// 上限。北京 22:09 的 8 个任务齐射把上游 LLM 的**建连**阶段打挂(16 次调用全部
+/// `error sending request`),而同一时刻手工单发流式请求 2.2 秒即成功;峰值单分钟
+/// 曾达 86 次执行,这些分钟的失败率明显高于基线。
+///
+/// 闸设在 job 层而不是 LLM provider 内部,原因有二:
+/// 1. provider 实例并不共享——`main` profile 是 `HoneBotCore` 上的单例,但
+///    event-engine 另建了约 10 个独立 Provider(各自独立 `reqwest::Client` 与
+///    连接池),闸放实例内部限不住全局并发;
+/// 2. `chat_with_tools_stream` 返回 `BoxStream`,permit 必须随 stream 一起 move
+///    才能覆盖读流阶段,否则只闸住建连、形同虚设。
+///
+/// 放在 job 层则天然覆盖整条下游链路。每个渠道进程各持一份(渠道本就是独立进程)。
+const DEFAULT_JOB_CONCURRENCY: usize = 4;
+
+fn configured_job_concurrency() -> usize {
+    std::env::var("HONE_SCHEDULER_JOB_CONCURRENCY")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_JOB_CONCURRENCY)
+}
+
+static JOB_SLOTS: std::sync::LazyLock<Arc<tokio::sync::Semaphore>> =
+    std::sync::LazyLock::new(|| {
+        Arc::new(tokio::sync::Semaphore::new(configured_job_concurrency()))
+    });
+
+/// 取一个定时任务执行位;permit 在返回值 drop 时归还。
+///
+/// 调用点应放在**已 spawn 的任务内部**,而不是收事件之前:在收事件前等 permit
+/// 会让一个卡住的任务连带堵死整个消费循环;放在任务内部则事件照收,超额任务在此
+/// 排队,排队深度天然被单轮到期任务数限住。
+pub async fn acquire_job_slot() -> Option<tokio::sync::OwnedSemaphorePermit> {
+    JOB_SLOTS.clone().acquire_owned().await.ok()
+}
+
+/// 回收上一进程遗留的 `running/pending` 执行记录。
+///
+/// `mark_job_run` 在任务**送进队列时**就落 `last_run_at`(而不是执行成功后),
+/// 所以进程中途崩溃的任务当天不会重跑,并在执行历史里留下永久 `running/pending`
+/// 行。生产实测:今日 15 条,历史累计约 40 条,且每次重启新增。
+///
+/// 这段回收此前**只有飞书渠道实现**,web / telegram / discord 全都没有。
+/// 提到这里由各渠道启动时统一调用。
+pub fn recover_stale_started_rows(
+    storage: &CronJobStorage,
+    channel: &str,
+    recovery_window: std::time::Duration,
+    reason: &str,
+) {
+    let Ok(recovery_delta) = chrono::TimeDelta::from_std(recovery_window) else {
+        warn!("[{channel}] scheduler 启动恢复：非法恢复窗口");
+        return;
+    };
+    let stale_before = (Utc::now() - recovery_delta).to_rfc3339();
+    match storage.recover_stale_started_executions(
+        channel,
+        &stale_before,
+        reason,
+        "Scheduler runtime restarted before this run reached a terminal status",
+    ) {
+        Ok(0) => {}
+        Ok(count) => {
+            warn!("[{channel}] 已回收上一进程遗留的 stale pending 定时任务: count={count}")
+        }
+        Err(err) => warn!("[{channel}] 回收上一进程 stale pending 定时任务失败: err={err}"),
+    }
+}
+
 /// 定时任务触发事件
 #[derive(Debug, Clone)]
 pub struct SchedulerEvent {

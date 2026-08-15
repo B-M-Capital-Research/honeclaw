@@ -87,6 +87,26 @@ pub struct OpenAiCompatibleProvider {
     pub model: String,
     pub max_tokens: u16,
     request_options: LlmRequestOptions,
+    /// 流式请求建连失败后,同一把 key 最多再重试几次。0 表示不重试。
+    stream_transport_retries: u32,
+}
+
+/// 流式建连重试的基础退避(毫秒),按尝试次数左移做指数退避。
+const STREAM_RETRY_BASE_BACKOFF_MS: u64 = 400;
+/// 重试抖动上限(毫秒),避免同批齐射任务在同一时刻一起重试。
+const STREAM_RETRY_JITTER_SPAN_MS: u64 = 400;
+/// 未显式配置 `max_retries` 时的默认重试次数。
+const DEFAULT_STREAM_TRANSPORT_RETRIES: u32 = 2;
+
+/// 确定性抖动:不引入随机数依赖,用 key 与尝试序号派生,同批任务因 key 相同而
+/// 依赖 attempt 拉开间隔。
+fn stream_retry_jitter_ms(seed: &str, attempt: u32) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in seed.as_bytes().iter().chain(&attempt.to_le_bytes()) {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash % STREAM_RETRY_JITTER_SPAN_MS
 }
 
 impl OpenAiCompatibleProvider {
@@ -154,7 +174,19 @@ impl OpenAiCompatibleProvider {
             model: model.to_string(),
             max_tokens,
             request_options: LlmRequestOptions::default(),
+            stream_transport_retries: DEFAULT_STREAM_TRANSPORT_RETRIES,
         })
+    }
+
+    /// 接上 `llm.providers.<name>.max_retries`。
+    ///
+    /// 这个配置项之前是 **dead config**:定义在 `config/agent.rs`、默认 3,但全仓
+    /// 没有任何读取点,`LlmResolver` 构造 provider 时只取 `timeout` 和 key pool。
+    pub fn with_transport_retries(mut self, max_retries: Option<u32>) -> Self {
+        if let Some(retries) = max_retries {
+            self.stream_transport_retries = retries;
+        }
+        self
     }
 
     pub fn with_request_options(mut self, request_options: LlmRequestOptions) -> Self {
@@ -692,6 +724,98 @@ mod tests {
             )
             .collect::<Vec<_>>()
             .await
+    }
+
+    /// 齐射打挂的是**建连**阶段。此前流式路径失败即换下一把 key,而生产只有一把,
+    /// 于是整批任务一次性失败。现在同一把 key 要退避重试。
+    #[tokio::test]
+    async fn stream_retries_same_key_after_transport_failure_at_connect() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let connections = Arc::new(AtomicUsize::new(0));
+        let seen = connections.clone();
+
+        tokio::spawn(async move {
+            // 第一次连接:接受后立刻断开,模拟上游在齐射下拒绝建连。
+            let (socket, _) = listener.accept().await.expect("accept first");
+            seen.fetch_add(1, Ordering::SeqCst);
+            drop(socket);
+
+            // 第二次连接:正常回一段 SSE。
+            let (mut socket, _) = listener.accept().await.expect("accept retry");
+            seen.fetch_add(1, Ordering::SeqCst);
+            let payload = read_json_request(&mut socket).await;
+            assert_eq!(payload["stream"], true);
+            let body = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n\
+                        data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                        data: [DONE]\n\n";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write test stream");
+            socket.shutdown().await.expect("close test stream");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider")
+        .with_transport_retries(Some(2));
+
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("answer".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[],
+                None,
+                ToolChoiceMode::Auto,
+            )
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(
+            connections.load(Ordering::SeqCst),
+            2,
+            "transport failure must be retried on the same key"
+        );
+        assert!(
+            events.iter().all(|event| event.is_ok()),
+            "retry should yield a healthy stream, got {events:?}"
+        );
+    }
+
+    #[test]
+    fn stream_retry_jitter_is_deterministic_and_bounded() {
+        for attempt in 0..4 {
+            let value = stream_retry_jitter_ms("sk-test-key", attempt);
+            assert!(value < STREAM_RETRY_JITTER_SPAN_MS);
+            assert_eq!(value, stream_retry_jitter_ms("sk-test-key", attempt));
+        }
+    }
+
+    /// 生产实际错误文案必须被判为可重试,否则这条重试路径永远不会触发。
+    #[test]
+    fn production_connect_failure_text_is_retryable() {
+        assert!(is_retryable_transport_error(
+            "error sending request for url (https://api.minimaxi.com/v1/chat/completions)"
+        ));
     }
 
     #[test]
@@ -1789,19 +1913,47 @@ impl LlmProvider for OpenAiCompatibleProvider {
             let mut last_error = String::new();
             let mut successful_response = None;
             for client in &self.clients {
-                let response = match client
-                    .http_client
-                    .post(format!("{}/chat/completions", client.base_url))
-                    .bearer_auth(&client.api_key)
-                    .json(&request)
-                    .send()
-                    .await
-                {
-                    Ok(response) => response,
-                    Err(error) => {
-                        last_error = error.to_string();
-                        continue;
+                // 传输错误(建连阶段)同凭据退避重试。
+                //
+                // 此前流式路径完全没有重试:失败即 `continue` 换下一把 key,而生产
+                // 只配了一把 key(`api_keys: []`),于是"重试"退化成一次性调用——
+                // 齐射打挂建连时整批任务直接失败。非流式路径反而早有 `0..=1` 重试。
+                //
+                // 只对**同一把 key** 重试:`docs/invariants.md` 规定只有
+                // 认证 / 配额 / 限流失败才允许轮换凭据,传输失败不得跨凭据 fan-out。
+                let mut response = None;
+                for attempt in 0..=self.stream_transport_retries {
+                    match client
+                        .http_client
+                        .post(format!("{}/chat/completions", client.base_url))
+                        .bearer_auth(&client.api_key)
+                        .json(&request)
+                        .send()
+                        .await
+                    {
+                        Ok(value) => {
+                            response = Some(value);
+                            break;
+                        }
+                        Err(error) => {
+                            let message = error.to_string();
+                            let retryable = is_retryable_transport_error(&message);
+                            last_error = message;
+                            if !retryable || attempt == self.stream_transport_retries {
+                                break;
+                            }
+                            // 指数退避 + 确定性抖动,避免同批任务的重试又一次齐射。
+                            let backoff_ms = STREAM_RETRY_BASE_BACKOFF_MS << attempt;
+                            let jitter_ms = stream_retry_jitter_ms(&client.api_key, attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                backoff_ms + jitter_ms,
+                            ))
+                            .await;
+                        }
                     }
+                }
+                let Some(response) = response else {
+                    continue;
                 };
                 let status = response.status();
                 if status.is_success() {

@@ -454,13 +454,21 @@ stop_job_and_wait() {
 }
 
 wait_web_ready() {
+    # 就绪探测走 /api/runtime/active-chat-runs(纯内存计数、零 IO),不用 /api/meta:
+    # meta 会做实时 PostgreSQL / 对象存储探活,外部依赖一慢就返回不了,
+    # `--max-time 3` 下表现为空串,循环只能空转到超时——生产上实测过 meta 挂 >120 秒。
+    # docs/runbooks/backend-deployment.md 本来就要求就绪与验收分开。
     local expected_revision="${1:-}" deadline=$((SECONDS + STARTUP_TIMEOUT)) payload
     while (( SECONDS < deadline )); do
-        payload="$(curl -fsS --max-time 3 http://127.0.0.1:8077/api/meta 2>/dev/null || true)"
-        if [[ -n "$payload" ]] && curl -fsS --max-time 3 http://127.0.0.1:8088/ >/dev/null 2>&1; then
-            if [[ -z "$expected_revision" ]] \
-                || { [[ "$payload" == *"\"git_sha\":\"$expected_revision\""* ]] \
-                    && [[ "$payload" == *'"source":"direct_source_runtime"'* ]]; }; then
+        if curl -fsS --max-time 3 http://127.0.0.1:8077/api/runtime/active-chat-runs >/dev/null 2>&1 \
+            && curl -fsS --max-time 3 http://127.0.0.1:8088/ >/dev/null 2>&1; then
+            if [[ -z "$expected_revision" ]]; then
+                return 0
+            fi
+            # 进程已在监听后才做 revision 验收,此时给 meta 宽一点的预算。
+            payload="$(curl -fsS --max-time 20 http://127.0.0.1:8077/api/meta 2>/dev/null || true)"
+            if [[ "$payload" == *"\"git_sha\":\"$expected_revision\""* ]] \
+                && [[ "$payload" == *'"source":"direct_source_runtime"'* ]]; then
                 return 0
             fi
         fi

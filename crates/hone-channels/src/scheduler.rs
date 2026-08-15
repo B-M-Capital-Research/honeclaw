@@ -59,6 +59,7 @@ enum HeartbeatRecoveryReason {
     ContextOverflow,
     MaxIterationsExceeded,
     TransportError,
+    ContractViolation,
 }
 
 fn heartbeat_tool_call_limits() -> HashMap<String, u32> {
@@ -124,6 +125,7 @@ fn heartbeat_recovery_reason_label(reason: HeartbeatRecoveryReason) -> &'static 
         HeartbeatRecoveryReason::ContextOverflow => "context_overflow",
         HeartbeatRecoveryReason::MaxIterationsExceeded => "max_iterations_exceeded",
         HeartbeatRecoveryReason::TransportError => "transport_error",
+        HeartbeatRecoveryReason::ContractViolation => "contract_violation",
     }
 }
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
@@ -1978,6 +1980,24 @@ fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<Stri
         }
         _ => None,
     }
+}
+
+fn heartbeat_contract_recovery_profile(
+    profile: HeartbeatExecutionProfile,
+    content: &str,
+) -> Option<(HeartbeatExecutionProfile, HeartbeatParseKind)> {
+    if profile != HeartbeatExecutionProfile::Primary {
+        return None;
+    }
+    let (_, parse_kind) = inspect_heartbeat_result(content);
+    heartbeat_parse_error_message(&parse_kind).map(|_| {
+        (
+            HeartbeatExecutionProfile::BudgetRecovery {
+                reason: HeartbeatRecoveryReason::ContractViolation,
+            },
+            parse_kind,
+        )
+    })
 }
 
 fn heartbeat_execution_from_content(
@@ -4160,6 +4180,9 @@ fn build_heartbeat_recovery_prompt(
         HeartbeatRecoveryReason::TransportError => {
             "上一轮因为上游传输抖动失败，本轮只允许走最短核验路径并快速补做一次。"
         }
+        HeartbeatRecoveryReason::ContractViolation => {
+            "上一轮已经完成检查，但最终输出违反心跳 JSON 契约；本轮不得复述分析，只能重新给出严格 JSON。"
+        }
     };
     format!(
         "[心跳检测恢复重试] 任务名称：{}。\n\
@@ -4919,6 +4942,20 @@ async fn run_heartbeat_task(
                 result.response.content.chars().count(),
                 profile,
             );
+            if let Some((recovery_profile, parse_kind)) =
+                heartbeat_contract_recovery_profile(profile, &result.response.content)
+            {
+                tracing::warn!(
+                    "[HeartbeatDiag] retry_with_contract_recovery job_id={} job={} target={} reason={} parse_kind={:?}",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    heartbeat_recovery_reason_label(HeartbeatRecoveryReason::ContractViolation),
+                    parse_kind,
+                );
+                profile = recovery_profile;
+                continue;
+            }
             return Ok(HeartbeatTaskResult {
                 content: result.response.content,
                 tool_calls_made: result.response.tool_calls_made,
@@ -4968,10 +5005,10 @@ mod tests {
         execute_scheduler_event, extract_all_ticker_hit_zones_from_source,
         extract_scheduler_verified_quote_prices, guard_commodity_causality_for_event,
         guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
-        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
-        heartbeat_execution_from_content_at, heartbeat_execution_from_content_at_beijing,
-        heartbeat_execution_from_runner_error, heartbeat_max_tool_calls,
-        heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
+        heartbeat_contract_recovery_profile, heartbeat_duplicate_preview_match,
+        heartbeat_execution_from_content, heartbeat_execution_from_content_at,
+        heartbeat_execution_from_content_at_beijing, heartbeat_execution_from_runner_error,
+        heartbeat_max_tool_calls, heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
         heartbeat_recovery_reason_label, heartbeat_runner_selection,
         heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
         is_empty_success_fallback, is_stale_market_data_success_fallback, load_actor_quiet_hours,
@@ -6903,6 +6940,50 @@ mod tests {
         assert_eq!(
             heartbeat_recovery_reason_label(HeartbeatRecoveryReason::TransportError),
             "transport_error"
+        );
+        assert_eq!(
+            heartbeat_recovery_reason_label(HeartbeatRecoveryReason::ContractViolation),
+            "contract_violation"
+        );
+    }
+
+    #[test]
+    fn heartbeat_plain_text_contract_failure_retries_once_then_accepts_json_noop() {
+        let (profile, first_kind) = heartbeat_contract_recovery_profile(
+            HeartbeatExecutionProfile::Primary,
+            "检查完成，目前没有需要通知用户的新情况。",
+        )
+        .expect("plain text suppression should enter contract recovery");
+        assert_eq!(first_kind, HeartbeatParseKind::PlainTextSuppressed);
+        assert_eq!(
+            profile,
+            HeartbeatExecutionProfile::BudgetRecovery {
+                reason: HeartbeatRecoveryReason::ContractViolation,
+            }
+        );
+
+        // 重试轮产出合规 JSON ⇒ 正常收敛,不再触发下一轮。
+        let (outcome, recovered_kind) = inspect_heartbeat_result(r#"{"status":"noop"}"#);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
+        assert_eq!(recovered_kind, HeartbeatParseKind::JsonNoop);
+
+        // 一次性:重试轮**再次**违约也不得二次进入 recovery,否则
+        // run_heartbeat_task 的 loop 会无限重跑。这是这个测试真正要守的东西
+        // ——用合规 JSON 去断言 None 是恒真的(profile != Primary already 提前返回),
+        // 守不住任何回归。
+        assert!(
+            heartbeat_contract_recovery_profile(profile, "又是一段不合契约的纯文本。").is_none(),
+            "contract recovery must be one-shot"
+        );
+
+        // Primary 且输出合规时不应无谓重试(多花一整轮模型调用)。
+        assert!(
+            heartbeat_contract_recovery_profile(
+                HeartbeatExecutionProfile::Primary,
+                r#"{"status":"noop"}"#
+            )
+            .is_none(),
+            "a contract-compliant primary run must not retry"
         );
     }
 

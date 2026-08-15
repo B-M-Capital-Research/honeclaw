@@ -19,6 +19,14 @@ use super::types::{
     CronJobExecutionInput, CronJobExecutionRecord, WebPushMessage, WebPushMessageInput,
 };
 
+#[derive(Debug, Clone)]
+struct CronTaskObservation {
+    task: String,
+    started_at: chrono::DateTime<chrono::Utc>,
+    outcome: hone_core::TaskOutcome,
+    error: Option<String>,
+}
+
 /// 跨任务列举执行记录的过滤条件。所有时间字段使用东八区 RFC3339 字符串
 /// (与 `cron_job_runs.executed_at` 的写入格式一致),按字符串比较即可。
 #[derive(Debug, Default, Clone)]
@@ -82,6 +90,10 @@ impl CronJobStorage {
                 UPDATE cron_job_runs
                 SET
                     executed_at = ?1,
+                    duration_ms = MAX(
+                        0,
+                        CAST((julianday(?1) - julianday(started_at)) * 86400000 AS INTEGER)
+                    ),
                     execution_status = 'execution_failed',
                     message_send_status = 'skipped_error',
                     should_deliver = 0,
@@ -158,6 +170,10 @@ impl CronJobStorage {
                 UPDATE cron_job_runs
                 SET
                     executed_at = ?1,
+                    duration_ms = MAX(
+                        0,
+                        CAST((julianday(?1) - julianday(started_at)) * 86400000 AS INTEGER)
+                    ),
                     execution_status = 'execution_failed',
                     message_send_status = 'send_failed',
                     should_deliver = 0,
@@ -199,6 +215,7 @@ impl CronJobStorage {
         input: CronJobExecutionInput,
     ) -> HoneResult<()> {
         let input = normalize_cron_execution_input_for_storage(actor, input);
+        let observation = cron_task_observation(actor, job_name, heartbeat, &input);
         if let Some(postgres) = self.cloud_postgres() {
             let actor = actor.clone();
             let job_id = job_id.to_string();
@@ -219,7 +236,7 @@ impl CronJobStorage {
                     .map(|text| truncate_chars_append(text, 500, "...")),
                 detail: input.detail,
             };
-            return run_cloud_cron(async move {
+            let result = run_cloud_cron(async move {
                 postgres
                     .record_cron_execution_event(
                         &actor,
@@ -231,6 +248,10 @@ impl CronJobStorage {
                     )
                     .await
             });
+            if result.is_ok() {
+                self.record_cron_task_observation(observation.as_ref());
+            }
+            return result;
         }
 
         let Some(conn) = self.open_execution_conn()? else {
@@ -257,6 +278,10 @@ impl CronJobStorage {
                         UPDATE cron_job_runs
                         SET
                             executed_at = ?1,
+                            duration_ms = MAX(
+                                0,
+                                CAST((julianday(?1) - julianday(started_at)) * 86400000 AS INTEGER)
+                            ),
                             execution_status = ?2,
                             message_send_status = ?3,
                             should_deliver = ?4,
@@ -300,6 +325,7 @@ impl CronJobStorage {
                     )
                     .map_err(sqlite_err)?;
                 if updated > 0 {
+                    self.record_cron_task_observation(observation.as_ref());
                     return Ok(());
                 }
             }
@@ -310,6 +336,10 @@ impl CronJobStorage {
                     UPDATE cron_job_runs
                     SET
                         executed_at = ?1,
+                        duration_ms = MAX(
+                            0,
+                            CAST((julianday(?1) - julianday(started_at)) * 86400000 AS INTEGER)
+                        ),
                         execution_status = ?2,
                         message_send_status = ?3,
                         should_deliver = ?4,
@@ -354,6 +384,7 @@ impl CronJobStorage {
                 )
                 .map_err(sqlite_err)?;
             if updated > 0 {
+                self.record_cron_task_observation(observation.as_ref());
                 return Ok(());
             }
         }
@@ -363,14 +394,16 @@ impl CronJobStorage {
                 job_id, job_name,
                 actor_channel, actor_user_id, actor_channel_scope,
                 channel_target, heartbeat,
-                executed_at, execution_status, message_send_status,
+                started_at, executed_at,
+                execution_status, message_send_status,
                 should_deliver, delivered, response_preview, error_message, detail_json
             ) VALUES (
                 ?1, ?2,
                 ?3, ?4, ?5,
                 ?6, ?7,
-                ?8, ?9, ?10,
-                ?11, ?12, ?13, ?14, ?15
+                ?8, ?9,
+                ?10, ?11,
+                ?12, ?13, ?14, ?15, ?16
             )
             ",
             params![
@@ -381,6 +414,13 @@ impl CronJobStorage {
                 actor.channel_scope,
                 channel_target,
                 if heartbeat { 1 } else { 0 },
+                // 只有"started"行才知道开始时刻;直插的终态行没有配对 started 行,
+                // started_at 留 NULL(未知),duration_ms 随之保持 NULL。
+                if input.execution_status == "running" && input.message_send_status == "pending" {
+                    Some(executed_at.as_str())
+                } else {
+                    None
+                },
                 executed_at,
                 input.execution_status,
                 input.message_send_status,
@@ -392,7 +432,34 @@ impl CronJobStorage {
             ],
         )
         .map_err(sqlite_err)?;
+        self.record_cron_task_observation(observation.as_ref());
         Ok(())
+    }
+
+    fn record_cron_task_observation(&self, observation: Option<&CronTaskObservation>) {
+        let (Some(runtime_dir), Some(observation)) = (self.task_runs_dir.as_deref(), observation)
+        else {
+            return;
+        };
+        match observation.outcome {
+            hone_core::TaskOutcome::Ok => hone_core::task_observer::record_ok(
+                runtime_dir,
+                &observation.task,
+                observation.started_at,
+                1,
+            ),
+            hone_core::TaskOutcome::Skipped => hone_core::task_observer::record_skipped(
+                runtime_dir,
+                &observation.task,
+                observation.started_at,
+            ),
+            hone_core::TaskOutcome::Failed => hone_core::task_observer::record_failed(
+                runtime_dir,
+                &observation.task,
+                observation.started_at,
+                observation.error.as_deref().unwrap_or("cron task failed"),
+            ),
+        }
     }
 
     pub fn list_execution_records(
@@ -422,7 +489,8 @@ impl CronJobStorage {
                     run_id, job_id, job_name,
                     actor_channel, actor_user_id, actor_channel_scope,
                     channel_target, heartbeat,
-                    executed_at, execution_status, message_send_status,
+                    started_at, executed_at, duration_ms,
+                    execution_status, message_send_status,
                     should_deliver, delivered, response_preview, error_message, detail_json
                 FROM cron_job_runs
                 WHERE job_id = ?1
@@ -433,7 +501,7 @@ impl CronJobStorage {
             .map_err(sqlite_err)?;
         let rows = stmt
             .query_map(params![job_id, limit as i64], |row| {
-                let detail_raw: String = row.get(15)?;
+                let detail_raw: String = row.get(17)?;
                 let detail = serde_json::from_str(&detail_raw).unwrap_or(Value::Null);
                 Ok(CronJobExecutionRecord {
                     run_id: row.get(0)?,
@@ -444,13 +512,17 @@ impl CronJobStorage {
                     channel_scope: row.get(5)?,
                     channel_target: row.get(6)?,
                     heartbeat: row.get::<_, i64>(7)? != 0,
-                    executed_at: row.get(8)?,
-                    execution_status: row.get(9)?,
-                    message_send_status: row.get(10)?,
-                    should_deliver: row.get::<_, i64>(11)? != 0,
-                    delivered: row.get::<_, i64>(12)? != 0,
-                    response_preview: row.get(13)?,
-                    error_message: row.get(14)?,
+                    started_at: row.get(8)?,
+                    executed_at: row.get(9)?,
+                    duration_ms: row
+                        .get::<_, Option<i64>>(10)?
+                        .map(|value| value.max(0) as u64),
+                    execution_status: row.get(11)?,
+                    message_send_status: row.get(12)?,
+                    should_deliver: row.get::<_, i64>(13)? != 0,
+                    delivered: row.get::<_, i64>(14)? != 0,
+                    response_preview: row.get(15)?,
+                    error_message: row.get(16)?,
                     detail,
                 })
             })
@@ -496,7 +568,8 @@ impl CronJobStorage {
                 run_id, job_id, job_name,
                 actor_channel, actor_user_id, actor_channel_scope,
                 channel_target, heartbeat,
-                executed_at, execution_status, message_send_status,
+                started_at, executed_at, duration_ms,
+                execution_status, message_send_status,
                 should_deliver, delivered, response_preview, error_message, detail_json
             FROM cron_job_runs
             WHERE 1=1
@@ -546,7 +619,7 @@ impl CronJobStorage {
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
         let rows = stmt
             .query_map(rusqlite::params_from_iter(param_refs.iter()), |row| {
-                let detail_raw: String = row.get(15)?;
+                let detail_raw: String = row.get(17)?;
                 let detail = serde_json::from_str(&detail_raw).unwrap_or(Value::Null);
                 Ok(CronJobExecutionRecord {
                     run_id: row.get(0)?,
@@ -557,13 +630,17 @@ impl CronJobStorage {
                     channel_scope: row.get(5)?,
                     channel_target: row.get(6)?,
                     heartbeat: row.get::<_, i64>(7)? != 0,
-                    executed_at: row.get(8)?,
-                    execution_status: row.get(9)?,
-                    message_send_status: row.get(10)?,
-                    should_deliver: row.get::<_, i64>(11)? != 0,
-                    delivered: row.get::<_, i64>(12)? != 0,
-                    response_preview: row.get(13)?,
-                    error_message: row.get(14)?,
+                    started_at: row.get(8)?,
+                    executed_at: row.get(9)?,
+                    duration_ms: row
+                        .get::<_, Option<i64>>(10)?
+                        .map(|value| value.max(0) as u64),
+                    execution_status: row.get(11)?,
+                    message_send_status: row.get(12)?,
+                    should_deliver: row.get::<_, i64>(13)? != 0,
+                    delivered: row.get::<_, i64>(14)? != 0,
+                    response_preview: row.get(15)?,
+                    error_message: row.get(16)?,
                     detail,
                 })
             })
@@ -905,7 +982,9 @@ impl CronJobStorage {
                 actor_channel_scope TEXT,
                 channel_target TEXT NOT NULL,
                 heartbeat INTEGER NOT NULL DEFAULT 0,
+                started_at TEXT,
                 executed_at TEXT NOT NULL,
+                duration_ms INTEGER,
                 execution_status TEXT NOT NULL,
                 message_send_status TEXT NOT NULL,
                 should_deliver INTEGER NOT NULL DEFAULT 0,
@@ -937,6 +1016,20 @@ impl CronJobStorage {
             ",
         )
         .map_err(sqlite_err)?;
+        // 两列都刻意可空:NULL = 开始时刻未知。不回填历史行(那会谎报 0 毫秒),
+        // 也因此不需要在这里跑全表 UPDATE——本函数每次开执行库连接都会执行一遍。
+        ensure_sqlite_column(
+            conn,
+            "cron_job_runs",
+            "started_at",
+            "ALTER TABLE cron_job_runs ADD COLUMN started_at TEXT",
+        )?;
+        ensure_sqlite_column(
+            conn,
+            "cron_job_runs",
+            "duration_ms",
+            "ALTER TABLE cron_job_runs ADD COLUMN duration_ms INTEGER",
+        )?;
         Ok(())
     }
 }
@@ -1001,6 +1094,84 @@ fn normalize_cron_execution_input_for_storage(
     input
 }
 
+fn cron_task_observation(
+    actor: &ActorIdentity,
+    job_name: &str,
+    heartbeat: bool,
+    input: &CronJobExecutionInput,
+) -> Option<CronTaskObservation> {
+    if input.execution_status == "running" && input.message_send_status == "pending" {
+        return None;
+    }
+
+    let explicitly_skipped = matches!(
+        input.message_send_status.as_str(),
+        "skipped_noop" | "skipped_cancelled" | "duplicate_suppressed"
+    ) || input.execution_status == "noop";
+    let failed = input.execution_status == "execution_failed"
+        || matches!(
+            input.message_send_status.as_str(),
+            "send_failed" | "skipped_error" | "target_missing" | "target_resolution_failed"
+        );
+    let outcome = if failed {
+        hone_core::TaskOutcome::Failed
+    } else if explicitly_skipped {
+        hone_core::TaskOutcome::Skipped
+    } else {
+        hone_core::TaskOutcome::Ok
+    };
+    let error = (outcome == hone_core::TaskOutcome::Failed).then(|| {
+        input
+            .error_message
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!(
+                    "job={job_name} execution_status={} message_send_status={}",
+                    input.execution_status, input.message_send_status
+                )
+            })
+    });
+    Some(CronTaskObservation {
+        task: format!(
+            "cron.{}.{}",
+            actor.channel,
+            if heartbeat { "heartbeat" } else { "scheduled" }
+        ),
+        // task_runs 的 `started_at` 在读取侧只当"这条记录发生的时刻"用
+        // (`routes/task_runs.rs` 拿它做 24h 窗口过滤、排序、last_seen_at /
+        // last_failure_at),不用来算时延。所以这里取终态落账时刻即可,不必为了
+        // 补一个"真实开始时刻"再去查一次 started 行。
+        // 单任务的真实耗时另有去处:`cron_job_runs.duration_ms`(由 SQL 用
+        // started_at 与 executed_at 相减算出,未知时为 NULL)。
+        started_at: chrono::Utc::now(),
+        outcome,
+        error,
+    })
+}
+
+fn ensure_sqlite_column(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    alter_sql: &str,
+) -> HoneResult<()> {
+    let mut statement = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(sqlite_err)?;
+    let existing = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sqlite_err)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_err)?;
+    if !existing.iter().any(|name| name == column) {
+        conn.execute(alter_sql, []).map_err(sqlite_err)?;
+    }
+    Ok(())
+}
+
 fn cron_execution_from_cloud(
     record: hone_core::cloud_runtime::CloudCronExecutionRecord,
 ) -> CronJobExecutionRecord {
@@ -1013,7 +1184,9 @@ fn cron_execution_from_cloud(
         channel_scope: record.channel_scope,
         channel_target: record.channel_target,
         heartbeat: record.heartbeat,
+        started_at: record.started_at,
         executed_at: record.executed_at,
+        duration_ms: record.duration_ms,
         execution_status: record.execution_status,
         message_send_status: record.message_send_status,
         should_deliver: record.should_deliver,

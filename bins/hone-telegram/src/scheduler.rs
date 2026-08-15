@@ -33,6 +33,15 @@ pub(crate) async fn handle_scheduler_events(
     mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: telegram）");
+    hone_scheduler::recover_stale_started_rows(
+        &core.cron_job_storage(),
+        "telegram",
+        core.config
+            .agent
+            .overall_timeout()
+            .saturating_add(std::time::Duration::from_secs(30)),
+        "telegram_scheduler_startup",
+    );
     while let Some(event) = event_rx.recv().await {
         if event.channel != "telegram" {
             continue;
@@ -41,6 +50,10 @@ pub(crate) async fn handle_scheduler_events(
         let bot_clone = bot.clone();
         let core_clone = core.clone();
         tokio::spawn(async move {
+            // 排队等一个执行位(见 hone_scheduler::acquire_job_slot 的说明)。
+            let Some(_slot) = hone_scheduler::acquire_job_slot().await else {
+                return;
+            };
             let storage = core_clone.cron_job_storage();
             let result = run_scheduled_task(&core_clone, &event, &storage).await;
             if !result.should_deliver {

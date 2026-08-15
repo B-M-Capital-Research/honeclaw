@@ -41,9 +41,43 @@ fn job_channel_allowed(job: &CronJob, channels: &[&str]) -> bool {
     channels.is_empty() || channels.contains(&job.channel.as_str())
 }
 
-fn heartbeat_due_in_current_window(current_total: i32) -> bool {
+/// 齐射削峰:把同一个半点槽到期的 **heartbeat** 按 `job_id` 确定性地摊到
+/// `[0, JITTER_SPREAD_MINUTES)` 分钟内。
+///
+/// 背景:生产上 25 个 heartbeat 每个半点整齐射(每天 48 轮,约 1200 次执行),
+/// 峰值单分钟 86 次;这些分钟的失败率明显高于基线(20:01 为 35%、08:31 为 28%,
+/// 基线约 13%),失败集中在建连阶段的上游传输错误。
+///
+/// **只对 heartbeat 生效**:heartbeat 压根不看 `schedule.hour/minute`(每半点自动
+/// 触发),推迟几分钟对用户不可见。用户显式设定时刻的定时任务(如 20:00 日报)不加
+/// 抖动 —— 那是产品语义,改触发时刻要单独决策;它们的削峰靠投递侧并发闸完成,
+/// 那条路径不改变任何触发时刻。
+///
+/// **必须严格小于 [`DUE_WINDOW_MINUTES`]** —— 被推迟的任务要靠后续 tick 重新进入
+/// 同一个到期窗口才能跑到,偏移量若够到窗口边界,该轮就会被整个丢掉。
+pub(super) const JITTER_SPREAD_MINUTES: i32 = 4;
+const _: () = assert!(
+    JITTER_SPREAD_MINUTES < DUE_WINDOW_MINUTES,
+    "抖动偏移必须留在到期容错窗口内,否则会丢任务"
+);
+
+/// 确定性偏移:同一个 job 每天落在同一分钟,便于复现和排查。
+///
+/// 用手写 FNV-1a 而不是 `DefaultHasher`——后者的实现不保证跨 Rust 版本稳定,
+/// 升级工具链就会让所有任务的触发分钟集体漂移。
+pub(super) fn dispatch_jitter_minutes(job_id: &str) -> i32 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in job_id.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (hash % JITTER_SPREAD_MINUTES as u64) as i32
+}
+
+fn heartbeat_due_in_current_window(job: &CronJob, current_total: i32) -> bool {
     let slot_minute = (current_total / 30) * 30;
-    slot_minute <= current_total && current_total <= slot_minute + DUE_WINDOW_MINUTES
+    let earliest = slot_minute + dispatch_jitter_minutes(&job.id);
+    earliest <= current_total && current_total <= slot_minute + DUE_WINDOW_MINUTES
 }
 
 fn scheduled_job_due_in_current_window(
@@ -60,7 +94,7 @@ fn scheduled_job_due_in_current_window(
 
 fn job_due_in_current_window(job: &CronJob, current_total: i32, current_day: NaiveDate) -> bool {
     if job.is_heartbeat() {
-        heartbeat_due_in_current_window(current_total)
+        heartbeat_due_in_current_window(job, current_total)
     } else {
         scheduled_job_due_in_current_window(job, current_total, current_day)
     }

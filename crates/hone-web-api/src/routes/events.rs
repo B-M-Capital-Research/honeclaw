@@ -182,6 +182,18 @@ pub(crate) async fn handle_scheduler_events(
     mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: imessage）");
+    // 回收上一进程崩溃时留下的 running/pending 行(此前只有飞书做这件事)。
+    let recovery_window =
+        scheduler_execution_timeout_for(state.core.config.agent.overall_timeout())
+            .saturating_add(Duration::from_secs(SCHEDULER_EXECUTION_GRACE_SECS));
+    for channel in ["web", "imessage"] {
+        hone_scheduler::recover_stale_started_rows(
+            &state.core.cron_job_storage(),
+            channel,
+            recovery_window,
+            "web_scheduler_startup",
+        );
+    }
     while let Some(event) = event_rx.recv().await {
         if event.channel == "imessage" && !state.core.config.imessage.enabled {
             warn!(
@@ -206,6 +218,11 @@ pub(crate) async fn handle_scheduler_events(
 
         let state_clone = state.clone();
         tokio::spawn(async move {
+            // 排队等一个执行位(见 hone_scheduler::acquire_job_slot 的说明)。
+            let Some(_slot) = hone_scheduler::acquire_job_slot().await else {
+                error!("⏰ 调度并发闸已关闭，跳过任务: job={}", event.job_name);
+                return;
+            };
             let storage = state_clone.core.cron_job_storage();
             let _ = storage.record_execution_event(
                 &event.actor,

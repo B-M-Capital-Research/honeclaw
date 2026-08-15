@@ -896,6 +896,8 @@ mod tests {
             channel_scope: channel_scope.map(str::to_string),
             channel_target: user_id.to_string(),
             heartbeat: false,
+            started_at: None,
+            duration_ms: None,
             executed_at: executed_at.to_string(),
             execution_status: "completed".to_string(),
             message_send_status: if delivered { "sent" } else { "send_failed" }.to_string(),

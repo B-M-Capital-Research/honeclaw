@@ -44,6 +44,11 @@ pub(crate) async fn handle_scheduler_events(
 
         let state_clone = state.clone();
         tokio::spawn(async move {
+            // 排队等一个执行位(见 hone_scheduler::acquire_job_slot 的说明)。
+            let Some(_slot) = hone_scheduler::acquire_job_slot().await else {
+                error!("⏰ 调度并发闸已关闭，跳过任务: job={}", event.job_name);
+                return;
+            };
             let storage = state_clone.core.cron_job_storage();
             let _ = storage.record_execution_event(
                 &event.actor,
@@ -437,27 +442,12 @@ fn mark_scheduler_handler_watchdog_timeout(
 fn recover_stale_started_rows(state: &AppState) {
     let recovery_window = scheduler_execution_timeout(state)
         .saturating_add(Duration::from_secs(SCHEDULER_STALE_RECOVERY_GRACE_SECS));
-    let Ok(recovery_delta) = chrono::TimeDelta::from_std(recovery_window) else {
-        warn!("[Feishu] scheduler 启动恢复：非法恢复窗口");
-        return;
-    };
-    let stale_before = (chrono::Utc::now() - recovery_delta).to_rfc3339();
-    match state
-        .core
-        .cron_job_storage()
-        .recover_stale_started_executions(
-            "feishu",
-            &stale_before,
-            "feishu_scheduler_startup",
-            "Feishu scheduler runtime restarted before this run reached a terminal status",
-        ) {
-        Ok(0) => {}
-        Ok(count) => warn!("[Feishu] 已回收上一进程遗留的 stale pending 定时任务: count={count}"),
-        Err(err) => warn!(
-            "[Feishu] 回收上一进程 stale pending 定时任务失败: err={}",
-            err
-        ),
-    }
+    hone_scheduler::recover_stale_started_rows(
+        &state.core.cron_job_storage(),
+        "feishu",
+        recovery_window,
+        "feishu_scheduler_startup",
+    );
 }
 
 fn persist_scheduler_timeout_failure_turn(

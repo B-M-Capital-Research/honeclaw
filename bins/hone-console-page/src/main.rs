@@ -3,6 +3,15 @@ use std::path::PathBuf;
 #[tokio::main]
 async fn main() {
     hone_core::cloud_runtime::load_dotenv_if_present();
+    // 预热 build info。`current_build_info()` 是 `LazyLock`,其中的
+    // `binary_sha256` 要同步读完整个二进制算 SHA-256——生产上这个二进制 278 MB,
+    // 纯 CPU 就要 3.8 秒,机器繁忙时成倍放大。它此前是被 `/api/meta` 的请求路径
+    // 首次触发的,于是重启后第一个 meta 请求会在 async worker 线程上同步哈希,
+    // 并发请求还会全部阻塞在同一个 `Once` 上、挂住 runtime worker 线程。
+    // 渠道进程早就通过 `hone_channels::bootstrap` 预热了,web 进程一直漏着。
+    tokio::task::spawn_blocking(|| {
+        let _ = hone_core::current_build_info();
+    });
     let config_path =
         std::env::var("HONE_CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
     let data_dir = std::env::var("HONE_DATA_DIR").ok().map(PathBuf::from);

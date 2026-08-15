@@ -186,7 +186,8 @@ impl<'a> LlmResolver<'a> {
                     provider_cfg.timeout.unwrap_or(120),
                     max_tokens,
                 )?
-                .with_request_options(options),
+                .with_request_options(options)
+                .with_transport_retries(provider_cfg.max_retries),
             )
         };
 

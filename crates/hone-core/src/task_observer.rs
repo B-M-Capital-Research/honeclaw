@@ -111,8 +111,9 @@ fn record_task_run_inner(runtime_dir: &Path, record: &TaskRunRecord) -> std::io:
     fs::create_dir_all(runtime_dir)
         .map_err(|err| task_runs_io_error("create task_runs directory", runtime_dir, err))?;
     let path = task_runs_path(runtime_dir, record.started_at.date_naive());
-    let line = serde_json::to_string(record)
+    let mut line = serde_json::to_string(record)
         .map_err(|err| task_runs_data_error("serialize task_runs record", &path, err))?;
+    line.push('\n');
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let mut f = OpenOptions::new()
         .create(true)
@@ -121,8 +122,6 @@ fn record_task_run_inner(runtime_dir: &Path, record: &TaskRunRecord) -> std::io:
         .map_err(|err| task_runs_io_error("open task_runs jsonl", &path, err))?;
     f.write_all(line.as_bytes())
         .map_err(|err| task_runs_io_error("write task_runs jsonl", &path, err))?;
-    f.write_all(b"\n")
-        .map_err(|err| task_runs_io_error("write task_runs newline", &path, err))?;
     Ok(())
 }
 
