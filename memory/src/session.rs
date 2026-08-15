@@ -18,11 +18,11 @@ use hone_core::agent::{
     denormalize_normalized_message,
 };
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{ActorIdentity, HoneResult, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -118,8 +118,7 @@ pub struct CloudPgSessionIndex {
 
 impl CloudPgSessionIndex {
     pub fn new(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        let schema_postgres = postgres.clone();
-        run_cloud_session(async move { schema_postgres.ensure_schema().await })?;
+        ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self { postgres })
     }
 }
@@ -235,20 +234,9 @@ fn session_actor_storage_key(session: &Session) -> String {
 fn run_cloud_session<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new()
-                .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| hone_core::HoneError::Storage("cloud session worker panicked".to_string()))?;
-    }
-    let runtime = tokio::runtime::Runtime::new()
-        .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud session operation")
 }
 
 fn default_session_version() -> u32 {
