@@ -15,6 +15,8 @@ use hone_core::cloud_runtime::{
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
+use rusqlite::types::ValueRef;
+use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use walkdir::WalkDir;
@@ -105,6 +107,9 @@ pub(crate) struct CloudMigrateArgs {
     /// Only import actor-scoped company profile markdown files into PG.
     #[arg(long = "company-profiles-only")]
     pub(crate) company_profiles_only: bool,
+    /// Only import <data_dir>/events.sqlite3 into the PostgreSQL event store tables.
+    #[arg(long = "event-store-only")]
+    pub(crate) event_store_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -245,8 +250,16 @@ struct MigrationReport {
     skipped_company_profile_files: usize,
     changed_llm_audit_rows: usize,
     skipped_llm_audit_rows: usize,
+    event_store_tables: BTreeMap<String, EventStoreTableMigrationCounts>,
     skipped_objects: usize,
     conflicts: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+struct EventStoreTableMigrationCounts {
+    source_rows: usize,
+    changed_rows: usize,
+    skipped_rows: usize,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -2751,13 +2764,14 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         args.portfolio_only,
         args.llm_audit_only,
         args.company_profiles_only,
+        args.event_store_only,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
     .count();
     if narrow_modes > 1 {
         return Err(
-            "--quota-only / --session-only / --web-auth-only / --cron-only / --skill-registry-only / --notification-prefs-only / --portfolio-only / --llm-audit-only / --company-profiles-only 不能同时使用"
+            "--quota-only / --session-only / --web-auth-only / --cron-only / --skill-registry-only / --notification-prefs-only / --portfolio-only / --llm-audit-only / --company-profiles-only / --event-store-only 不能同时使用"
                 .to_string(),
         );
     }
@@ -2794,9 +2808,22 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         skipped_company_profile_files: 0,
         changed_llm_audit_rows: 0,
         skipped_llm_audit_rows: 0,
+        event_store_tables: BTreeMap::new(),
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
+
+    if args.event_store_only {
+        let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+            .ok_or_else(|| "Postgres 未配置，不能迁移 event store".to_string())?;
+        if args.apply {
+            pg.ensure_schema().await.map_err(|err| err.to_string())?;
+        }
+        report.event_store_tables =
+            migrate_event_store(&pg, &args.from_data_dir.join("events.sqlite3"), args.apply)
+                .await?;
+        return print_event_store_migration_report(&report, args.json);
+    }
 
     let candidates = collect_candidates(&args.from_data_dir, &mut report.counted)
         .map_err(|err| err.to_string())?;
@@ -3115,6 +3142,342 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         }
         Ok(())
     }
+}
+
+const EVENT_STORE_MIGRATION_BATCH_SIZE: usize = 5_000;
+
+struct EventStoreMigrationSpec {
+    name: &'static str,
+    source_select: &'static str,
+    missing_sql: &'static str,
+    insert_sql: &'static str,
+}
+
+const EVENT_STORE_MIGRATION_SPECS: &[EventStoreMigrationSpec] = &[
+    EventStoreMigrationSpec {
+        name: "events",
+        source_select: "SELECT id, kind_json, severity, symbols_json, occurred_at_ts, title, summary, url, source, payload_json, created_at_ts FROM events ORDER BY id",
+        missing_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    id text, kind_json text, severity text, symbols_json text,
+    occurred_at_ts bigint, title text, summary text, url text,
+    source text, payload_json text, created_at_ts bigint
+  )
+)
+SELECT count(*)::bigint FROM input
+WHERE NOT EXISTS (SELECT 1 FROM events WHERE events.id=input.id)
+"#,
+        insert_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    id text, kind_json text, severity text, symbols_json text,
+    occurred_at_ts bigint, title text, summary text, url text,
+    source text, payload_json text, created_at_ts bigint
+  )
+), inserted AS (
+  INSERT INTO events(
+    id, kind_json, severity, symbols_json, occurred_at_ts,
+    title, summary, url, source, payload_json, created_at_ts
+  )
+  SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+         title, summary, url, source, payload_json, created_at_ts
+  FROM input
+  ON CONFLICT DO NOTHING
+  RETURNING 1
+)
+SELECT count(*)::bigint FROM inserted
+"#,
+    },
+    EventStoreMigrationSpec {
+        name: "engine_meta",
+        source_select: "SELECT key, value FROM engine_meta ORDER BY key",
+        missing_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(key text, value text)
+)
+SELECT count(*)::bigint FROM input
+WHERE NOT EXISTS (SELECT 1 FROM engine_meta WHERE engine_meta.key=input.key)
+"#,
+        insert_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(key text, value text)
+), inserted AS (
+  INSERT INTO engine_meta(key, value)
+  SELECT key, value FROM input
+  ON CONFLICT DO NOTHING
+  RETURNING 1
+)
+SELECT count(*)::bigint FROM inserted
+"#,
+    },
+    EventStoreMigrationSpec {
+        name: "delivery_log",
+        source_select: "SELECT id, event_id, actor, channel, severity, sent_at_ts, status, body FROM delivery_log ORDER BY id",
+        missing_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    id bigint, event_id text, actor text, channel text, severity text,
+    sent_at_ts bigint, status text, body text
+  )
+)
+SELECT count(*)::bigint FROM input
+WHERE NOT EXISTS (SELECT 1 FROM delivery_log WHERE delivery_log.id=input.id)
+"#,
+        insert_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    id bigint, event_id text, actor text, channel text, severity text,
+    sent_at_ts bigint, status text, body text
+  )
+), inserted AS (
+  INSERT INTO delivery_log(id, event_id, actor, channel, severity, sent_at_ts, status, body)
+  SELECT id, event_id, actor, channel, severity, sent_at_ts, status, body FROM input
+  ON CONFLICT DO NOTHING
+  RETURNING 1
+)
+SELECT count(*)::bigint FROM inserted
+"#,
+    },
+    EventStoreMigrationSpec {
+        name: "delivered_push_context",
+        source_select: "SELECT delivery_log_id, actor, source_id, delivered_at_ms, body, observed_native_session_id, claimed_turn_id, claim_expires_at_ms, consumed_turn_id, consumed_at_ms FROM delivered_push_context ORDER BY delivery_log_id",
+        missing_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    delivery_log_id bigint, actor text, source_id text, delivered_at_ms bigint,
+    body text, observed_native_session_id text, claimed_turn_id text,
+    claim_expires_at_ms bigint, consumed_turn_id text, consumed_at_ms bigint
+  )
+)
+SELECT count(*)::bigint FROM input
+WHERE NOT EXISTS (
+  SELECT 1 FROM delivered_push_context AS target
+  WHERE target.delivery_log_id=input.delivery_log_id
+     OR (target.actor=input.actor AND target.source_id=input.source_id)
+)
+"#,
+        insert_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    delivery_log_id bigint, actor text, source_id text, delivered_at_ms bigint,
+    body text, observed_native_session_id text, claimed_turn_id text,
+    claim_expires_at_ms bigint, consumed_turn_id text, consumed_at_ms bigint
+  )
+), inserted AS (
+  INSERT INTO delivered_push_context(
+    delivery_log_id, actor, source_id, delivered_at_ms, body,
+    observed_native_session_id, claimed_turn_id, claim_expires_at_ms,
+    consumed_turn_id, consumed_at_ms
+  )
+  SELECT delivery_log_id, actor, source_id, delivered_at_ms, body,
+         observed_native_session_id, claimed_turn_id, claim_expires_at_ms,
+         consumed_turn_id, consumed_at_ms
+  FROM input
+  ON CONFLICT DO NOTHING
+  RETURNING 1
+)
+SELECT count(*)::bigint FROM inserted
+"#,
+    },
+    EventStoreMigrationSpec {
+        name: "earnings_continuity_jobs",
+        source_select: "SELECT job_key, actor_json, event_json, status, attempts, next_attempt_ts, lease_until_ts, last_error, created_at_ts, updated_at_ts FROM earnings_continuity_jobs ORDER BY job_key",
+        missing_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    job_key text, actor_json text, event_json text, status text, attempts integer,
+    next_attempt_ts bigint, lease_until_ts bigint, last_error text,
+    created_at_ts bigint, updated_at_ts bigint
+  )
+)
+SELECT count(*)::bigint FROM input
+WHERE NOT EXISTS (
+  SELECT 1 FROM earnings_continuity_jobs
+  WHERE earnings_continuity_jobs.job_key=input.job_key
+)
+"#,
+        insert_sql: r#"
+WITH input AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS row(
+    job_key text, actor_json text, event_json text, status text, attempts integer,
+    next_attempt_ts bigint, lease_until_ts bigint, last_error text,
+    created_at_ts bigint, updated_at_ts bigint
+  )
+), inserted AS (
+  INSERT INTO earnings_continuity_jobs(
+    job_key, actor_json, event_json, status, attempts, next_attempt_ts,
+    lease_until_ts, last_error, created_at_ts, updated_at_ts
+  )
+  SELECT job_key, actor_json, event_json, status, attempts, next_attempt_ts,
+         lease_until_ts, last_error, created_at_ts, updated_at_ts
+  FROM input
+  ON CONFLICT DO NOTHING
+  RETURNING 1
+)
+SELECT count(*)::bigint FROM inserted
+"#,
+    },
+];
+
+async fn migrate_event_store(
+    postgres: &CloudPgRuntime,
+    source_path: &Path,
+    apply: bool,
+) -> Result<BTreeMap<String, EventStoreTableMigrationCounts>, String> {
+    if !source_path.is_file() {
+        return Err(format!(
+            "event store SQLite 不存在: {}",
+            source_path.display()
+        ));
+    }
+    let source = Connection::open_with_flags(
+        source_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("打开 event store SQLite 失败: {error}"))?;
+    let client = postgres
+        .connect_cached_client()
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut report = BTreeMap::new();
+
+    for spec in EVENT_STORE_MIGRATION_SPECS {
+        let table_exists = client
+            .query_one(
+                "SELECT to_regclass($1::text)::text IS NOT NULL",
+                &[&spec.name],
+            )
+            .await
+            .map_err(|error| format!("检查 PG {} 表失败: {error}", spec.name))?
+            .get::<_, bool>(0);
+        if apply && !table_exists {
+            return Err(format!(
+                "PG {} 表不存在；请先执行 cloud doctor --ensure-schema",
+                spec.name
+            ));
+        }
+
+        let mut counts = EventStoreTableMigrationCounts::default();
+        let mut offset = 0usize;
+        loop {
+            let batch = read_event_store_sqlite_batch(&source, spec, offset)?;
+            if batch.is_empty() {
+                break;
+            }
+            let batch_len = batch.len();
+            let changed = if !table_exists {
+                batch_len
+            } else {
+                let payload = serde_json::Value::Array(batch);
+                let sql = if apply {
+                    spec.insert_sql
+                } else {
+                    spec.missing_sql
+                };
+                let changed_i64 = client
+                    .query_one(sql, &[&payload])
+                    .await
+                    .map_err(|error| format!("迁移 PG {} 批次失败: {error}", spec.name))?
+                    .get::<_, i64>(0);
+                usize::try_from(changed_i64)
+                    .map_err(|_| format!("PG {} changed 行数越界: {changed_i64}", spec.name))?
+            };
+            counts.source_rows += batch_len;
+            counts.changed_rows += changed;
+            counts.skipped_rows += batch_len.saturating_sub(changed);
+            offset += batch_len;
+            eprintln!(
+                "[cloud migrate event-store] table={} processed={}",
+                spec.name, counts.source_rows
+            );
+        }
+        report.insert(spec.name.to_string(), counts);
+
+        if apply && spec.name == "delivery_log" {
+            client
+                .query_one(
+                    r#"
+SELECT setval(
+  pg_get_serial_sequence('delivery_log', 'id'),
+  CASE WHEN max(id) IS NULL THEN 1 ELSE max(id) END,
+  max(id) IS NOT NULL
+)
+FROM delivery_log
+"#,
+                    &[],
+                )
+                .await
+                .map_err(|error| format!("修正 delivery_log id 序列失败: {error}"))?;
+        }
+    }
+    Ok(report)
+}
+
+fn read_event_store_sqlite_batch(
+    source: &Connection,
+    spec: &EventStoreMigrationSpec,
+    offset: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    let sql = format!("{} LIMIT ?1 OFFSET ?2", spec.source_select);
+    let mut statement = source
+        .prepare(&sql)
+        .map_err(|error| format!("读取 SQLite {} 失败: {error}", spec.name))?;
+    let column_names = statement
+        .column_names()
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let rows = statement
+        .query_map(
+            params![EVENT_STORE_MIGRATION_BATCH_SIZE as i64, offset as i64],
+            |row| {
+                let mut object = serde_json::Map::with_capacity(column_names.len());
+                for (index, name) in column_names.iter().enumerate() {
+                    let value = match row.get_ref(index)? {
+                        ValueRef::Null => serde_json::Value::Null,
+                        ValueRef::Integer(value) => serde_json::Value::Number(value.into()),
+                        ValueRef::Real(value) => serde_json::Number::from_f64(value)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null),
+                        ValueRef::Text(value) => {
+                            serde_json::Value::String(String::from_utf8_lossy(value).into_owned())
+                        }
+                        ValueRef::Blob(_) => {
+                            return Err(rusqlite::Error::InvalidColumnType(
+                                index,
+                                name.clone(),
+                                rusqlite::types::Type::Blob,
+                            ));
+                        }
+                    };
+                    object.insert(name.clone(), value);
+                }
+                Ok(serde_json::Value::Object(object))
+            },
+        )
+        .map_err(|error| format!("读取 SQLite {} 批次失败: {error}", spec.name))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| format!("解析 SQLite {} 批次失败: {error}", spec.name))
+}
+
+fn print_event_store_migration_report(report: &MigrationReport, json: bool) -> Result<(), String> {
+    if json {
+        return print_json(report);
+    }
+    println!(
+        "mode={} from_data_dir={} event_store_tables={}",
+        report.mode,
+        report.from_data_dir,
+        report.event_store_tables.len()
+    );
+    for (table, counts) in &report.event_store_tables {
+        println!(
+            "table={} source_rows={} changed={} skipped={}",
+            table, counts.source_rows, counts.changed_rows, counts.skipped_rows
+        );
+    }
+    Ok(())
 }
 
 fn collect_session_imports(candidates: &[MigrationCandidate]) -> Vec<CloudSessionRecord> {
@@ -3683,6 +4046,116 @@ fn classify_path(rel: &str) -> Option<Classification> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn event_store_migration_preserves_delivery_ids_repairs_sequence_and_is_idempotent() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sqlite_path = temp.path().join("events.sqlite3");
+        let source = Connection::open(&sqlite_path).expect("sqlite fixture");
+        source
+            .execute_batch(
+                r#"
+CREATE TABLE events (
+  id TEXT PRIMARY KEY, kind_json TEXT NOT NULL, severity TEXT NOT NULL,
+  symbols_json TEXT NOT NULL, occurred_at_ts INTEGER NOT NULL,
+  title TEXT NOT NULL, summary TEXT NOT NULL, url TEXT, source TEXT NOT NULL,
+  payload_json TEXT NOT NULL, created_at_ts INTEGER NOT NULL
+);
+CREATE TABLE engine_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE delivery_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, actor TEXT NOT NULL,
+  channel TEXT NOT NULL, severity TEXT NOT NULL, sent_at_ts INTEGER NOT NULL,
+  status TEXT NOT NULL, body TEXT
+);
+CREATE TABLE delivered_push_context (
+  delivery_log_id INTEGER PRIMARY KEY, actor TEXT NOT NULL, source_id TEXT NOT NULL,
+  delivered_at_ms INTEGER NOT NULL, body TEXT NOT NULL,
+  observed_native_session_id TEXT, claimed_turn_id TEXT, claim_expires_at_ms INTEGER,
+  consumed_turn_id TEXT, consumed_at_ms INTEGER, UNIQUE(actor, source_id)
+);
+CREATE TABLE earnings_continuity_jobs (
+  job_key TEXT PRIMARY KEY, actor_json TEXT NOT NULL, event_json TEXT NOT NULL,
+  status TEXT NOT NULL, attempts INTEGER NOT NULL, next_attempt_ts INTEGER NOT NULL,
+  lease_until_ts INTEGER, last_error TEXT, created_at_ts INTEGER NOT NULL,
+  updated_at_ts INTEGER NOT NULL
+);
+INSERT INTO events VALUES (
+  'event-42', '{"type":"earnings_upcoming"}', 'high', '["MU"]', 42,
+  'title', 'summary', NULL, 'fixture', '{}', 43
+);
+INSERT INTO engine_meta VALUES ('baseline_at_ts', '41');
+INSERT INTO delivery_log(id, event_id, actor, channel, severity, sent_at_ts, status, body)
+VALUES (42, 'event-42', 'discord::::u1', 'sink', 'high', 44, 'sent', 'body');
+INSERT INTO delivered_push_context(
+  delivery_log_id, actor, source_id, delivered_at_ms, body
+) VALUES (42, 'discord::::u1', 'event-42', 44000, 'body');
+INSERT INTO earnings_continuity_jobs VALUES (
+  'job-42', '{}', '{"id":"event-42"}', 'pending', 0, 45,
+  NULL, NULL, 45, 45
+);
+"#,
+            )
+            .expect("fixture schema and rows");
+        drop(source);
+
+        let cloud = hone_core::config::CloudConfig::default();
+        let postgres = CloudPgRuntime::from_cloud_config(&cloud)
+            .expect("tests require configured PostgreSQL")
+            .with_isolated_test_connection(sqlite_path.to_string_lossy().to_string())
+            .expect("isolated PG connection");
+        postgres
+            .ensure_event_store_schema()
+            .await
+            .expect("PG event schema");
+
+        let dry_run = migrate_event_store(&postgres, &sqlite_path, false)
+            .await
+            .expect("dry-run");
+        assert!(dry_run.values().all(|counts| counts.changed_rows == 1));
+        assert!(dry_run.values().all(|counts| counts.skipped_rows == 0));
+
+        let applied = migrate_event_store(&postgres, &sqlite_path, true)
+            .await
+            .expect("apply");
+        assert!(applied.values().all(|counts| counts.changed_rows == 1));
+        let client = postgres.connect_cached_client().await.expect("PG client");
+        let linked = client
+            .query_one(
+                r#"
+SELECT count(*)::bigint
+FROM delivered_push_context context
+JOIN delivery_log log ON log.id=context.delivery_log_id
+WHERE context.delivery_log_id=42 AND log.event_id='event-42'
+"#,
+                &[],
+            )
+            .await
+            .expect("linked id query")
+            .get::<_, i64>(0);
+        assert_eq!(linked, 1);
+        let next_id = client
+            .query_one(
+                r#"
+INSERT INTO delivery_log(event_id, actor, channel, severity, sent_at_ts, status, body)
+VALUES ('next', 'discord::::u1', 'sink', 'low', 46, 'sent', NULL)
+RETURNING id
+"#,
+                &[],
+            )
+            .await
+            .expect("sequence insert")
+            .get::<_, i64>(0);
+        assert_eq!(next_id, 43);
+
+        let second_dry_run = migrate_event_store(&postgres, &sqlite_path, false)
+            .await
+            .expect("idempotent dry-run");
+        assert!(
+            second_dry_run
+                .values()
+                .all(|counts| counts.changed_rows == 0 && counts.skipped_rows == 1)
+        );
+    }
 
     #[test]
     fn web_admin_phone_normalization_accepts_local_and_plus_86_only() {

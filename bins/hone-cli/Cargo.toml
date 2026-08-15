@@ -11,6 +11,10 @@ path = "src/main.rs"
 hone-core = { workspace = true }
 hone-channels = { workspace = true }
 hone-memory = { workspace = true }
+# 仅供 `cloud migrate` 从历史 SQLite 导入(events.sqlite3 / llm_audit.sqlite3)。
+# 运行时不再有任何 SQLite 依赖;SQLite→PostgreSQL 迁移完成后仍要保留这一条,
+# 否则历史数据没有导入通道。
+rusqlite = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }

@@ -270,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn earnings_chain_is_personalized_idempotent_and_single_delivery_per_document() {
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
         let mut registry = SubscriptionRegistry::new();
@@ -367,7 +367,7 @@ mod tests {
     #[tokio::test]
     async fn failed_structured_earnings_delivery_keeps_sec_digest_fallback() {
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         let mut registry = SubscriptionRegistry::new();
         let target = actor("failed");

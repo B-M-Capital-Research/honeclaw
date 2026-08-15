@@ -9,8 +9,12 @@ representative samples to `tests/fixtures/event_engine/`.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
-import sqlite3
+import os
+import shutil
+import subprocess
 from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -24,7 +28,6 @@ except ImportError as exc:  # pragma: no cover
 
 DEFAULT_TZ = "Asia/Shanghai"
 DEFAULT_ACTOR = "telegram::::8039067465"
-DEFAULT_DB = Path("data/events.sqlite3")
 DEFAULT_OUT_DIR = Path("data/exports/event-engine-calibration")
 
 
@@ -33,10 +36,9 @@ def parse_args() -> argparse.Namespace:
         description="Export event-engine delivery records for one local day."
     )
     parser.add_argument(
-        "--db",
-        type=Path,
-        default=DEFAULT_DB,
-        help="events.sqlite3 path, default data/events.sqlite3",
+        "--database",
+        default=None,
+        help="PostgreSQL database override; default HONE_POSTGRES_DATABASE/PGDATABASE",
     )
     parser.add_argument(
         "--actor",
@@ -125,10 +127,27 @@ def normalize_body(body: str | None, include_body: bool, preview_chars: int) -> 
     return {"body_len": len(body), "body_preview": preview}
 
 
-def fetch_rows(conn: sqlite3.Connection, actor: str, start_ts: int, end_ts: int) -> list[dict[str, Any]]:
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """
+def postgres_env(database: str | None) -> dict[str, str]:
+    env = os.environ.copy()
+    for hone_key, pg_key in [
+        ("HONE_POSTGRES_HOST", "PGHOST"),
+        ("HONE_POSTGRES_PORT", "PGPORT"),
+        ("HONE_POSTGRES_USER", "PGUSER"),
+        ("HONE_POSTGRES_PASSWORD", "PGPASSWORD"),
+        ("HONE_POSTGRES_DATABASE", "PGDATABASE"),
+    ]:
+        if value := os.environ.get(hone_key):
+            env.setdefault(pg_key, value)
+    if database:
+        env["PGDATABASE"] = database
+    return env
+
+
+def fetch_rows(actor: str, start_ts: int, end_ts: int, database: str | None) -> list[dict[str, Any]]:
+    psql = shutil.which("psql")
+    if not psql:
+        raise SystemExit("psql is required to query the PostgreSQL event store")
+    sql = """
         SELECT
             d.id AS delivery_id,
             d.event_id,
@@ -150,14 +169,42 @@ def fetch_rows(conn: sqlite3.Connection, actor: str, start_ts: int, end_ts: int)
             e.created_at_ts
         FROM delivery_log d
         LEFT JOIN events e ON e.id = d.event_id
-        WHERE d.actor = ?1
-          AND d.sent_at_ts >= ?2
-          AND d.sent_at_ts < ?3
+        WHERE d.actor = :'actor'
+          AND d.sent_at_ts >= :'start_ts'::BIGINT
+          AND d.sent_at_ts < :'end_ts'::BIGINT
         ORDER BY d.sent_at_ts ASC, d.id ASC
-        """,
-        (actor, start_ts, end_ts),
-    ).fetchall()
-    return [dict(r) for r in rows]
+    """
+    completed = subprocess.run(
+        [
+            psql,
+            "-X",
+            "--csv",
+            "--quiet",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-v",
+            f"actor={actor}",
+            "-v",
+            f"start_ts={start_ts}",
+            "-v",
+            f"end_ts={end_ts}",
+        ],
+        check=False,
+        capture_output=True,
+        input=sql,
+        text=True,
+        env=postgres_env(database),
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "psql exited without an error message"
+        raise SystemExit(f"PostgreSQL event-store query failed: {detail}")
+
+    rows = list(csv.DictReader(io.StringIO(completed.stdout)))
+    for row in rows:
+        for key in ("delivery_id", "sent_at_ts", "occurred_at_ts", "created_at_ts"):
+            raw = row.get(key)
+            row[key] = int(raw) if raw else None
+    return rows
 
 
 def event_summary(row: dict[str, Any], include_body: bool, preview_chars: int) -> dict[str, Any]:
@@ -303,11 +350,7 @@ def main() -> None:
     tz = ZoneInfo(args.timezone)
     local_day = resolve_local_date(args.date, tz)
     start_ts, end_ts = day_bounds(local_day, tz)
-    if not args.db.exists():
-        raise SystemExit(f"events db not found: {args.db}")
-
-    conn = sqlite3.connect(args.db)
-    rows = fetch_rows(conn, args.actor, start_ts, end_ts)
+    rows = fetch_rows(args.actor, start_ts, end_ts, args.database)
     items = [event_summary(r, args.include_body, args.preview_chars) for r in rows]
     grouped = group_report(items)
     status_counts = Counter(x["status"] for x in items)

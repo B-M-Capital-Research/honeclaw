@@ -1,38 +1,16 @@
-//! EventStore — SQLite 持久化与去重，附 JSONL 镜像 + append-only 推送审计。
-//!
-//! 表结构：
-//! - `events (id PK, kind, severity, symbols_json, occurred_at_ts, title, summary,
-//!            url, source, payload_json, created_at_ts)`
-//! - `engine_meta (key PK, value)` — 存 `baseline_at_ts` 等单例标量
-//! - `delivery_log (rowid AUTOINCREMENT, event_id, actor, channel, severity,
-//!                  sent_at_ts, status, body)` — **append-only** 推送审计
-//! - `delivered_push_context (delivery_log_id UNIQUE, actor, source_id,
-//!                  delivered_at_ms, body, claim/consume state)` — 下一轮 Agent
-//!                  一次性上下文领取状态；只由显式“确认送达”写入创建
-//! - `earnings_continuity_jobs (job_key PK, actor_json, event_json, status,
-//!                  attempts, next_attempt_ts, lease_until_ts, ...)` — A 级财报
-//!                  研究对账的持久任务、租约和退避状态
-//!
-//! 幂等语义：`insert_event` 使用 `INSERT OR IGNORE`；同 id 只落一次。
-//! baseline：首次打开 DB 时写入 `baseline_at_ts = now`，之后读取；低于 baseline
-//! 的事件由调用方根据语义决定是否入库/推送（store 层不拦截）。
-//!
-//! JSONL 镜像：`with_jsonl_path(...)` 可选，`insert_event` 新写入时同步 append
-//! 一行完整事件 JSON；用于 SQLite 损坏时的人肉回放。
-//!
-//! 清理：`purge_events_older_than(days)` 按 `created_at_ts` 删除旧 events；
-//! delivery_log 单独按 `sent_at_ts` 清。
+//! EventStore — PostgreSQL 持久化与去重，附 JSONL 镜像 + append-only 推送审计。
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
-use hone_core::ActorIdentity;
-use rusqlite::types::Value as SqlValue;
-use rusqlite::{
-    Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
-};
+use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
+use hone_core::config::CloudConfig;
+use hone_core::{ActorIdentity, HoneError, HoneResult};
+use tokio_postgres::Row;
 
 use crate::earnings_document::{
     EARNINGS_DOCUMENT_KEY, EARNINGS_RESEARCH_OBJECT_KEY, canonical_earnings_document_key,
@@ -42,11 +20,43 @@ use crate::event::{EventKind, MarketEvent};
 
 const EARNINGS_RESEARCH_LINK_WINDOW_SECS: i64 = 45 * 24 * 60 * 60;
 const EARNINGS_CONTINUITY_LEASE_SECS: i64 = 15 * 60;
+const DEFAULT_EVENT_STORE_TIMEOUT_SECS: u64 = 15;
 
 pub struct EventStore {
-    conn: Mutex<Connection>,
+    postgres: CloudPgRuntime,
     jsonl_path: Option<PathBuf>,
+    _test_connection_lease: Option<Arc<TestConnectionLease>>,
 }
+
+struct TestConnectionLease {
+    namespace: String,
+    postgres: CloudPgRuntime,
+}
+
+impl Drop for TestConnectionLease {
+    fn drop(&mut self) {
+        let namespace = self.namespace.clone();
+        let postgres = self.postgres.clone();
+        std::thread::spawn(move || {
+            // Sequential "restart" tests reopen the same path immediately after
+            // dropping the first store. Leave a very small reuse window, then
+            // evict only if no replacement lease appeared.
+            std::thread::sleep(Duration::from_millis(10));
+            let mut leases = TEST_CONNECTION_LEASES
+                .lock()
+                .expect("event store test connection lease cleanup lock");
+            let still_used = leases.get(&namespace).and_then(Weak::upgrade).is_some();
+            if !still_used {
+                leases.remove(&namespace);
+                postgres.evict_cached_test_client();
+            }
+        });
+    }
+}
+
+static TEST_CONNECTION_LEASES: LazyLock<
+    Mutex<std::collections::HashMap<String, Weak<TestConnectionLease>>>,
+> = LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 #[derive(Debug, Clone, Default)]
 pub struct DeliveryLogFilter {
@@ -103,160 +113,148 @@ pub(crate) struct EarningsContinuityJob {
 }
 
 impl EventStore {
-    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        if let Some(parent) = path.as_ref().parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        let conn = Connection::open(path)?;
-        // event-engine 与 channel runtime 会各自打开同一 SQLite。短暂写竞争应
-        // 等待而不是立即丢失已确认送达记录；更长的阻塞仍返回错误交给调用方。
-        conn.busy_timeout(Duration::from_secs(5))?;
-        conn.execute_batch(
-            r#"
-            CREATE TABLE IF NOT EXISTS events (
-                id              TEXT PRIMARY KEY,
-                kind_json       TEXT NOT NULL,
-                severity        TEXT NOT NULL,
-                symbols_json    TEXT NOT NULL,
-                occurred_at_ts  INTEGER NOT NULL,
-                title           TEXT NOT NULL,
-                summary         TEXT NOT NULL,
-                url             TEXT,
-                source          TEXT NOT NULL,
-                payload_json    TEXT NOT NULL,
-                created_at_ts   INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_events_occurred_at
-                ON events(occurred_at_ts);
-            CREATE INDEX IF NOT EXISTS idx_events_source
-                ON events(source);
-
-            CREATE TABLE IF NOT EXISTS engine_meta (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS delivery_log (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id   TEXT NOT NULL,
-                actor      TEXT NOT NULL,
-                channel    TEXT NOT NULL,
-                severity   TEXT NOT NULL,
-                sent_at_ts INTEGER NOT NULL,
-                status     TEXT NOT NULL,
-                body       TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_delivery_event_actor
-                ON delivery_log(event_id, actor, sent_at_ts);
-            CREATE INDEX IF NOT EXISTS idx_delivery_sent_at
-                ON delivery_log(sent_at_ts);
-
-            CREATE TABLE IF NOT EXISTS delivered_push_context (
-                delivery_log_id    INTEGER PRIMARY KEY,
-                actor              TEXT NOT NULL,
-                source_id          TEXT NOT NULL,
-                delivered_at_ms    INTEGER NOT NULL,
-                body               TEXT NOT NULL,
-                observed_native_session_id TEXT,
-                claimed_turn_id    TEXT,
-                claim_expires_at_ms INTEGER,
-                consumed_turn_id   TEXT,
-                consumed_at_ms     INTEGER,
-                UNIQUE(actor, source_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_delivered_push_context_pending
-                ON delivered_push_context(
-                    actor, consumed_at_ms, delivered_at_ms, delivery_log_id
-                );
-
-            CREATE TABLE IF NOT EXISTS earnings_continuity_jobs (
-                job_key          TEXT PRIMARY KEY,
-                actor_json       TEXT NOT NULL,
-                event_json       TEXT NOT NULL,
-                status           TEXT NOT NULL,
-                attempts         INTEGER NOT NULL DEFAULT 0,
-                next_attempt_ts  INTEGER NOT NULL,
-                lease_until_ts   INTEGER,
-                last_error       TEXT,
-                created_at_ts    INTEGER NOT NULL,
-                updated_at_ts    INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_earnings_continuity_jobs_due
-                ON earnings_continuity_jobs(status, next_attempt_ts, lease_until_ts);
-            "#,
-        )?;
+    /// 打开生产 PostgreSQL event store。schema 在进程内只确保一次。
+    pub fn new(postgres: CloudPgRuntime) -> anyhow::Result<Self> {
+        ensure_cloud_schema_once(postgres.clone(), Some(event_store_operation_timeout()))?;
         let store = Self {
-            conn: Mutex::new(conn),
+            postgres,
             jsonl_path: None,
+            _test_connection_lease: None,
         };
         store.ensure_baseline(Utc::now())?;
         Ok(store)
     }
 
-    /// 开启 JSONL 镜像：每次新事件入库后，把完整事件 JSON 追加一行到
-    /// 指定文件；用作 SQLite 故障时的人肉兜底。
+    /// 真实 PostgreSQL 测试构造器。
+    ///
+    /// 路径只作为缓存连接的隔离 namespace；表建在该连接的 `pg_temp` schema，
+    /// 不会读写 SQLite，也不会污染生产 schema。同一路径的两个句柄复用连接，
+    /// 用于覆盖跨 `EventStore` 句柄可见性。
+    #[doc(hidden)]
+    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let cloud = CloudConfig::default();
+        let postgres = CloudPgRuntime::from_cloud_config(&cloud).ok_or_else(|| {
+            anyhow::anyhow!(
+                "EventStore PostgreSQL 测试需要 HONE_POSTGRES_* 或 HONE_POSTGRES_DATABASE_URL"
+            )
+        })?;
+        let namespace = path.as_ref().to_string_lossy().to_string();
+        let postgres = postgres.with_isolated_test_connection(namespace.clone())?;
+        let test_connection_lease = acquire_test_connection_lease(&namespace, postgres.clone());
+        let schema_postgres = postgres.clone();
+        run_cloud_sync(
+            async move { schema_postgres.ensure_event_store_schema().await },
+            Some(event_store_operation_timeout()),
+            "event store schema operation",
+        )?;
+        let store = Self {
+            postgres,
+            jsonl_path: None,
+            _test_connection_lease: Some(test_connection_lease),
+        };
+        store.ensure_baseline(Utc::now())?;
+        Ok(store)
+    }
+
     pub fn with_jsonl_path(mut self, path: impl Into<PathBuf>) -> Self {
-        let p = path.into();
-        if let Some(parent) = p.parent() {
+        let path = path.into();
+        if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        self.jsonl_path = Some(p);
+        self.jsonl_path = Some(path);
         self
     }
 
+    fn run<T, F, Fut>(&self, operation: F) -> anyhow::Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(CloudPgRuntime) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = HoneResult<T>> + Send + 'static,
+    {
+        let postgres = self.postgres.clone();
+        run_cloud_sync(
+            async move { operation(postgres).await },
+            Some(event_store_operation_timeout()),
+            "event store operation",
+        )
+        .map_err(anyhow::Error::from)
+    }
+
     fn ensure_baseline(&self, now: DateTime<Utc>) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT OR IGNORE INTO engine_meta(key, value) VALUES ('baseline_at_ts', ?1)",
-            params![now.timestamp()],
-        )?;
-        Ok(())
+        let now = now.timestamp().to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "INSERT INTO engine_meta(key, value) VALUES ('baseline_at_ts', $1) ON CONFLICT (key) DO NOTHING",
+                    &[&now],
+                )
+                .await
+                .map_err(|error| pg_store_error("initialize baseline", error))?;
+            Ok(())
+        })
     }
 
     pub fn baseline_at(&self) -> anyhow::Result<DateTime<Utc>> {
-        let conn = self.conn.lock().unwrap();
-        let baseline_ts: Option<i64> = conn
-            .query_row(
-                "SELECT CAST(value AS INTEGER) FROM engine_meta WHERE key='baseline_at_ts'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let baseline_ts = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_opt(
+                    "SELECT value::bigint FROM engine_meta WHERE key='baseline_at_ts'",
+                    &[],
+                )
+                .await
+                .map_err(|error| pg_store_error("load baseline", error))?;
+            Ok(row.map(|row| row.get::<_, i64>(0)))
+        })?;
         let baseline_ts = baseline_ts.ok_or_else(|| anyhow::anyhow!("baseline 未初始化"))?;
         Utc.timestamp_opt(baseline_ts, 0)
             .single()
             .ok_or_else(|| anyhow::anyhow!("baseline 时间戳无效: {baseline_ts}"))
     }
 
-    /// 插入一条事件。若 `id` 已存在，返回 `Ok(false)`；首次写入返回 `Ok(true)`。
-    /// 首次写入成功 + 启用了 JSONL 镜像时，同步 append 一行事件 JSON；写失败只
-    /// 记 warn，不影响 SQLite 事务结果。
+    /// 同 id 只写入一次；冲突时返回 `false`。
     pub fn insert_event(&self, event: &MarketEvent) -> anyhow::Result<bool> {
-        let affected = {
-            let conn = self.conn.lock().unwrap();
-            conn.execute(
-                r#"
-                INSERT OR IGNORE INTO events (
-                    id, kind_json, severity, symbols_json, occurred_at_ts,
-                    title, summary, url, source, payload_json, created_at_ts
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-                "#,
-                params![
-                    event.id,
-                    serde_json::to_string(&event.kind)?,
-                    severity_tag(&event.severity),
-                    serde_json::to_string(&event.symbols)?,
-                    event.occurred_at.timestamp(),
-                    event.title,
-                    event.summary,
-                    event.url,
-                    event.source,
-                    serde_json::to_string(&event.payload)?,
-                    Utc::now().timestamp(),
-                ],
-            )?
-        };
-        let is_new = affected > 0;
+        let id = event.id.clone();
+        let kind_json = serde_json::to_string(&event.kind)?;
+        let severity = severity_tag(&event.severity).to_string();
+        let symbols_json = serde_json::to_string(&event.symbols)?;
+        let occurred_at_ts = event.occurred_at.timestamp();
+        let title = event.title.clone();
+        let summary = event.summary.clone();
+        let url = event.url.clone();
+        let source = event.source.clone();
+        let payload_json = serde_json::to_string(&event.payload)?;
+        let created_at_ts = Utc::now().timestamp();
+        let is_new = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let affected = client
+                .execute(
+                    r#"
+INSERT INTO events (
+  id, kind_json, severity, symbols_json, occurred_at_ts,
+  title, summary, url, source, payload_json, created_at_ts
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (id) DO NOTHING
+"#,
+                    &[
+                        &id,
+                        &kind_json,
+                        &severity,
+                        &symbols_json,
+                        &occurred_at_ts,
+                        &title,
+                        &summary,
+                        &url,
+                        &source,
+                        &payload_json,
+                        &created_at_ts,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("insert event", error))?;
+            Ok(affected > 0)
+        })?;
         if is_new
             && earnings_research_material_kind(event) == Some("earnings_release")
             && let Some(research_object_key) = earnings_research_object_key_for_event(event)
@@ -269,22 +267,17 @@ impl EventStore {
                 "earnings research material backfill failed: {error:#}"
             );
         }
-        if is_new && let Err(e) = self.append_jsonl_mirror(event) {
+        if is_new && let Err(error) = self.append_jsonl_mirror(event) {
             tracing::warn!(
                 event_id = %event.id,
                 source = %event.source,
                 symbols = ?event.symbols,
-                "events jsonl mirror append failed: {e:#}"
+                "events jsonl mirror append failed: {error:#}"
             );
         }
         Ok(is_new)
     }
 
-    /// 在事件首次入库前，为财报 release / transcript / 10-Q(10-K) 解析同一研究对象。
-    ///
-    /// release 使用已核验新闻稿的 canonical key；后续材料只在同 ticker 且 45 天
-    /// 临近窗口内关联最近的结构化财报卡。没有可靠锚点时保持未关联，禁止按日期
-    /// 或模型常识猜 fiscal quarter。
     pub(crate) fn link_earnings_research_object(
         &self,
         event: &mut MarketEvent,
@@ -301,7 +294,6 @@ impl EventStore {
         {
             return Ok(Some(existing.to_string()));
         }
-
         let research_object_key = if material_kind == "earnings_release" {
             earnings_research_object_key_for_event(event)
         } else {
@@ -346,24 +338,28 @@ impl EventStore {
                 ""
             }
         );
+        let actor_json = serde_json::to_string(actor)?;
+        let event_json = serde_json::to_string(event)?;
         let now = Utc::now().timestamp();
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            r#"
-            INSERT OR IGNORE INTO earnings_continuity_jobs (
-                job_key, actor_json, event_json, status, attempts,
-                next_attempt_ts, lease_until_ts, last_error,
-                created_at_ts, updated_at_ts
-            ) VALUES (?1, ?2, ?3, 'pending', 0, ?4, NULL, NULL, ?4, ?4)
-            "#,
-            params![
-                job_key,
-                serde_json::to_string(actor)?,
-                serde_json::to_string(event)?,
-                now,
-            ],
-        )?;
-        Ok(Some(job_key))
+        let returned_key = job_key.clone();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    r#"
+INSERT INTO earnings_continuity_jobs (
+  job_key, actor_json, event_json, status, attempts,
+  next_attempt_ts, lease_until_ts, last_error, created_at_ts, updated_at_ts
+) VALUES ($1, $2, $3, 'pending', 0, $4, NULL, NULL, $4, $4)
+ON CONFLICT (job_key) DO NOTHING
+"#,
+                    &[&job_key, &actor_json, &event_json, &now],
+                )
+                .await
+                .map_err(|error| pg_store_error("enqueue earnings continuity job", error))?;
+            Ok(())
+        })?;
+        Ok(Some(returned_key))
     }
 
     pub(crate) fn claim_due_earnings_continuity_jobs(
@@ -376,40 +372,56 @@ impl EventStore {
         }
         let now_ts = now.timestamp();
         let lease_until_ts = now_ts + EARNINGS_CONTINUITY_LEASE_SECS;
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let rows = {
-            let mut stmt = tx.prepare(
-                r#"
-                SELECT job_key, actor_json, event_json, attempts
-                FROM earnings_continuity_jobs
-                WHERE (
-                    status IN ('pending', 'retry') AND next_attempt_ts <= ?1
-                ) OR (
-                    status = 'running' AND COALESCE(lease_until_ts, 0) <= ?1
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+WITH due AS (
+  SELECT job_key
+  FROM earnings_continuity_jobs
+  WHERE (
+    status IN ('pending', 'retry') AND next_attempt_ts <= $1
+  ) OR (
+    status = 'running' AND (lease_until_ts IS NULL OR lease_until_ts <= $1)
+  )
+  ORDER BY next_attempt_ts ASC, created_at_ts ASC
+  LIMIT $2
+  FOR UPDATE
+), claimed AS (
+  UPDATE earnings_continuity_jobs AS jobs
+  SET status = 'running',
+      attempts = jobs.attempts + 1,
+      lease_until_ts = $3,
+      updated_at_ts = $1,
+      last_error = NULL
+  FROM due
+  WHERE jobs.job_key = due.job_key
+  RETURNING jobs.job_key, jobs.actor_json, jobs.event_json, jobs.attempts
+)
+SELECT job_key, actor_json, event_json, attempts
+FROM claimed
+ORDER BY job_key
+"#,
+                    &[&now_ts, &limit, &lease_until_ts],
                 )
-                ORDER BY next_attempt_ts ASC, created_at_ts ASC
-                LIMIT ?2
-                "#,
-            )?;
-            let mapped = stmt.query_map(params![now_ts, limit as i64], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, u32>(3)?,
-                ))
-            })?;
-            mapped.collect::<rusqlite::Result<Vec<_>>>()?
-        };
+                .await
+                .map_err(|error| pg_store_error("claim earnings continuity jobs", error))
+        })?;
         let mut jobs = Vec::with_capacity(rows.len());
-        for (job_key, actor_json, event_json, attempts) in rows {
+        for row in rows {
+            let job_key: String = row.get(0);
+            let actor_json: String = row.get(1);
+            let event_json: String = row.get(2);
+            let attempts_i32: i32 = row.get(3);
             let actor = match serde_json::from_str::<ActorIdentity>(&actor_json) {
                 Ok(actor) => actor,
                 Err(error) => {
-                    tx.execute(
-                        "UPDATE earnings_continuity_jobs SET status='dead', last_error=?2, updated_at_ts=?3 WHERE job_key=?1",
-                        params![job_key, truncate_store_error(&format!("invalid actor_json: {error}")), now_ts],
+                    self.mark_earnings_continuity_job_dead(
+                        &job_key,
+                        &format!("invalid actor_json: {error}"),
+                        now_ts,
                     )?;
                     continue;
                 }
@@ -417,32 +429,43 @@ impl EventStore {
             let event = match serde_json::from_str::<MarketEvent>(&event_json) {
                 Ok(event) => event,
                 Err(error) => {
-                    tx.execute(
-                        "UPDATE earnings_continuity_jobs SET status='dead', last_error=?2, updated_at_ts=?3 WHERE job_key=?1",
-                        params![job_key, truncate_store_error(&format!("invalid event_json: {error}")), now_ts],
+                    self.mark_earnings_continuity_job_dead(
+                        &job_key,
+                        &format!("invalid event_json: {error}"),
+                        now_ts,
                     )?;
                     continue;
                 }
             };
-            let attempts = attempts.saturating_add(1);
-            tx.execute(
-                r#"
-                UPDATE earnings_continuity_jobs
-                SET status='running', attempts=?2, lease_until_ts=?3,
-                    updated_at_ts=?4, last_error=NULL
-                WHERE job_key=?1
-                "#,
-                params![job_key, attempts, lease_until_ts, now_ts],
-            )?;
             jobs.push(EarningsContinuityJob {
                 job_key,
                 actor,
                 event,
-                attempts,
+                attempts: u32::try_from(attempts_i32).unwrap_or(u32::MAX),
             });
         }
-        tx.commit()?;
         Ok(jobs)
+    }
+
+    fn mark_earnings_continuity_job_dead(
+        &self,
+        job_key: &str,
+        error: &str,
+        now_ts: i64,
+    ) -> anyhow::Result<()> {
+        let job_key = job_key.to_string();
+        let error = truncate_store_error(error);
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE earnings_continuity_jobs SET status='dead', last_error=$2, lease_until_ts=NULL, updated_at_ts=$3 WHERE job_key=$1",
+                    &[&job_key, &error, &now_ts],
+                )
+                .await
+                .map_err(|error| pg_store_error("mark earnings continuity job dead", error))?;
+            Ok(())
+        })
     }
 
     pub(crate) fn complete_earnings_continuity_job(
@@ -450,16 +473,24 @@ impl EventStore {
         job_key: &str,
         attempts: u32,
     ) -> anyhow::Result<bool> {
-        let conn = self.conn.lock().unwrap();
-        let affected = conn.execute(
-            r#"
-            UPDATE earnings_continuity_jobs
-            SET status='completed', lease_until_ts=NULL, last_error=NULL, updated_at_ts=?2
-            WHERE job_key=?1 AND status='running' AND attempts=?3
-            "#,
-            params![job_key, Utc::now().timestamp(), attempts],
-        )?;
-        Ok(affected > 0)
+        let job_key = job_key.to_string();
+        let attempts = i32::try_from(attempts).unwrap_or(i32::MAX);
+        let now = Utc::now().timestamp();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let affected = client
+                .execute(
+                    r#"
+UPDATE earnings_continuity_jobs
+SET status='completed', lease_until_ts=NULL, last_error=NULL, updated_at_ts=$2
+WHERE job_key=$1 AND status='running' AND attempts=$3
+"#,
+                    &[&job_key, &now, &attempts],
+                )
+                .await
+                .map_err(|error| pg_store_error("complete earnings continuity job", error))?;
+            Ok(affected > 0)
+        })
     }
 
     pub(crate) fn retry_earnings_continuity_job(
@@ -471,35 +502,43 @@ impl EventStore {
     ) -> anyhow::Result<bool> {
         let exponent = attempts.saturating_sub(1).min(8);
         let delay_secs = 60_i64.saturating_mul(1_i64 << exponent).min(6 * 60 * 60);
-        let conn = self.conn.lock().unwrap();
-        let affected = conn.execute(
-            r#"
-            UPDATE earnings_continuity_jobs
-            SET status='retry', next_attempt_ts=?2, lease_until_ts=NULL,
-                last_error=?3, updated_at_ts=?4
-            WHERE job_key=?1 AND status='running' AND attempts=?5
-            "#,
-            params![
-                job_key,
-                now.timestamp() + delay_secs,
-                truncate_store_error(error),
-                now.timestamp(),
-                attempts,
-            ],
-        )?;
-        Ok(affected > 0)
+        let job_key = job_key.to_string();
+        let attempts = i32::try_from(attempts).unwrap_or(i32::MAX);
+        let error = truncate_store_error(error);
+        let now_ts = now.timestamp();
+        let next_attempt_ts = now_ts + delay_secs;
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let affected = client
+                .execute(
+                    r#"
+UPDATE earnings_continuity_jobs
+SET status='retry', next_attempt_ts=$2, lease_until_ts=NULL,
+    last_error=$3, updated_at_ts=$4
+WHERE job_key=$1 AND status='running' AND attempts=$5
+"#,
+                    &[&job_key, &next_attempt_ts, &error, &now_ts, &attempts],
+                )
+                .await
+                .map_err(|error| pg_store_error("retry earnings continuity job", error))?;
+            Ok(affected > 0)
+        })
     }
 
     #[cfg(test)]
     fn earnings_continuity_job_status(&self, job_key: &str) -> anyhow::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            "SELECT status FROM earnings_continuity_jobs WHERE job_key=?1",
-            params![job_key],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(anyhow::Error::from)
+        let job_key = job_key.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_opt(
+                    "SELECT status FROM earnings_continuity_jobs WHERE job_key=$1",
+                    &[&job_key],
+                )
+                .await
+                .map_err(|error| pg_store_error("load earnings continuity job status", error))?;
+            Ok(row.map(|row| row.get(0)))
+        })
     }
 
     fn nearest_earnings_research_object_key(
@@ -507,37 +546,41 @@ impl EventStore {
         symbol: &str,
         occurred_at_ts: i64,
     ) -> anyhow::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT kind_json, symbols_json, payload_json
-            FROM events
-            WHERE occurred_at_ts BETWEEN ?1 AND ?2
-              AND EXISTS (
-                  SELECT 1 FROM json_each(events.symbols_json)
-                  WHERE lower(CAST(value AS TEXT)) = lower(?4)
-              )
-            ORDER BY ABS(occurred_at_ts - ?3) ASC
-            LIMIT 200
-            "#,
-        )?;
-        let mut rows = stmt.query(params![
-            occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS,
-            occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS,
-            occurred_at_ts,
-            symbol,
-        ])?;
-        while let Some(row) = rows.next()? {
-            let kind_json: String = row.get(0)?;
-            let symbols_json: String = row.get(1)?;
-            let payload_json: String = row.get(2)?;
+        let symbol = symbol.to_string();
+        let query_symbol = symbol.clone();
+        let start = occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS;
+        let end = occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS;
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT kind_json, symbols_json, payload_json
+FROM events
+WHERE occurred_at_ts BETWEEN $1 AND $2
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(symbols_json::jsonb) AS item(value)
+    WHERE lower(item.value) = lower($4)
+  )
+ORDER BY abs(occurred_at_ts - $3) ASC
+LIMIT 200
+"#,
+                    &[&start, &end, &occurred_at_ts, &query_symbol],
+                )
+                .await
+                .map_err(|error| pg_store_error("find nearest earnings research object", error))
+        })?;
+        for row in rows {
+            let kind_json: String = row.get(0);
+            let symbols_json: String = row.get(1);
+            let payload_json: String = row.get(2);
             let Ok(EventKind::EarningsReleased) = serde_json::from_str(&kind_json) else {
                 continue;
             };
             let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             if !symbols
                 .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(symbol))
+                .any(|candidate| candidate.eq_ignore_ascii_case(&symbol))
             {
                 continue;
             }
@@ -576,132 +619,88 @@ impl EventStore {
         else {
             return Ok(0);
         };
+        let symbol = symbol.to_string();
+        let release_id = release.id.clone();
         let occurred_at_ts = release.occurred_at.timestamp();
-        let mut conn = self.conn.lock().unwrap();
-        let candidates = {
-            let mut stmt = conn.prepare(
-                r#"
-                SELECT id, kind_json, symbols_json, payload_json
-                FROM events
-                WHERE occurred_at_ts BETWEEN ?1 AND ?2
-                  AND id <> ?3
-                  AND EXISTS (
-                      SELECT 1 FROM json_each(events.symbols_json)
-                      WHERE lower(CAST(value AS TEXT)) = lower(?5)
-                  )
-                ORDER BY ABS(occurred_at_ts - ?4) ASC
-                LIMIT 200
-                "#,
-            )?;
-            let rows = stmt.query_map(
-                params![
-                    occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS,
-                    occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS,
-                    release.id,
-                    occurred_at_ts,
-                    symbol,
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                },
-            )?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        };
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut updated = 0usize;
-        for (event_id, kind_json, symbols_json, payload_json) in candidates {
-            let Ok(kind) = serde_json::from_str::<EventKind>(&kind_json) else {
-                continue;
-            };
-            let is_follow_up_material = matches!(kind, EventKind::EarningsCallTranscript)
-                || matches!(
-                    kind,
-                    EventKind::SecFiling { ref form }
-                        if form.eq_ignore_ascii_case("10-Q") || form.eq_ignore_ascii_case("10-K")
-                );
-            if !is_follow_up_material {
-                continue;
-            }
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            if !symbols
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(symbol))
-            {
-                continue;
-            }
-            let mut payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            if payload.get(EARNINGS_RESEARCH_OBJECT_KEY).is_some() {
-                continue;
-            }
-            ensure_payload_object(&mut payload).insert(
-                EARNINGS_RESEARCH_OBJECT_KEY.to_string(),
-                serde_json::Value::String(research_object_key.to_string()),
-            );
-            updated += tx.execute(
-                "UPDATE events SET payload_json = ?2 WHERE id = ?1",
-                params![event_id, serde_json::to_string(&payload)?],
-            )?;
-        }
-        tx.commit()?;
-        Ok(updated)
+        let start = occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS;
+        let end = occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS;
+        let research_object_key = research_object_key.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let updated = client
+                .execute(
+                    r#"
+UPDATE events
+SET payload_json = jsonb_set(
+      CASE
+        WHEN jsonb_typeof(payload_json::jsonb) = 'object' THEN payload_json::jsonb
+        ELSE '{}'::jsonb
+      END,
+      ARRAY['hone_earnings_research_object_key'],
+      to_jsonb($6::text),
+      true
+    )::text
+WHERE occurred_at_ts BETWEEN $1 AND $2
+  AND id <> $3
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(symbols_json::jsonb) AS item(value)
+    WHERE lower(item.value) = lower($5)
+  )
+  AND abs(occurred_at_ts - $4) <= $7
+  AND NOT (payload_json::jsonb ? 'hone_earnings_research_object_key')
+  AND (
+    kind_json LIKE '%"earnings_call_transcript"%'
+    OR (
+      kind_json LIKE '%"sec_filing"%'
+      AND (
+        lower(payload_json::jsonb ->> 'form') IN ('10-q', '10-k')
+        OR lower(kind_json) LIKE '%10-q%'
+        OR lower(kind_json) LIKE '%10-k%'
+      )
+    )
+  )
+"#,
+                    &[
+                        &start,
+                        &end,
+                        &release_id,
+                        &occurred_at_ts,
+                        &symbol,
+                        &research_object_key,
+                        &EARNINGS_RESEARCH_LINK_WINDOW_SECS,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("backfill earnings research materials", error))?;
+            Ok(usize::try_from(updated).unwrap_or(usize::MAX))
+        })
     }
 
     pub(crate) fn list_earnings_research_materials(
         &self,
         research_object_key: &str,
     ) -> anyhow::Result<Vec<MarketEvent>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
-                   title, summary, url, source, payload_json
-            FROM events
-            WHERE json_extract(payload_json, '$.hone_earnings_research_object_key') = ?1
-            ORDER BY occurred_at_ts ASC, id ASC
-            "#,
-        )?;
-        let rows = stmt.query_map(params![research_object_key], |row| {
-            let kind_json: String = row.get(1)?;
-            let severity: String = row.get(2)?;
-            let symbols_json: String = row.get(3)?;
-            let payload_json: String = row.get(9)?;
-            let kind = serde_json::from_str::<EventKind>(&kind_json).map_err(|error| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    kind_json.len(),
-                    rusqlite::types::Type::Text,
-                    Box::new(error),
+        let research_object_key = research_object_key.to_string();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+       title, summary, url, source, payload_json
+FROM events
+WHERE payload_json::jsonb ->> 'hone_earnings_research_object_key' = $1
+ORDER BY occurred_at_ts ASC, id ASC
+"#,
+                    &[&research_object_key],
                 )
-            })?;
-            let severity = match severity.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let occurred_at_ts: i64 = row.get(4)?;
-            let occurred_at = Utc
-                .timestamp_opt(occurred_at_ts, 0)
-                .single()
-                .ok_or_else(|| rusqlite::Error::IntegralValueOutOfRange(4, occurred_at_ts))?;
-            Ok(MarketEvent {
-                id: row.get(0)?,
-                kind,
-                severity,
-                symbols: serde_json::from_str(&symbols_json).unwrap_or_default(),
-                occurred_at,
-                title: row.get(5)?,
-                summary: row.get(6)?,
-                url: row.get(7)?,
-                source: row.get(8)?,
-                payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
-            })
+                .await
+                .map_err(|error| pg_store_error("list earnings research materials", error))
         })?;
-        let mut materials = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut materials = rows
+            .iter()
+            .map(decode_market_event)
+            .collect::<HoneResult<Vec<_>>>()?;
         materials.retain(|event| {
             matches!(
                 earnings_research_material_kind(event),
@@ -713,22 +712,99 @@ impl EventStore {
 
     #[cfg(test)]
     fn event_research_object_key(&self, event_id: &str) -> anyhow::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
-        let payload_json: Option<String> = conn
-            .query_row(
-                "SELECT payload_json FROM events WHERE id = ?1",
-                params![event_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(payload_json
-            .and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
-            .and_then(|payload| {
-                payload
-                    .get(EARNINGS_RESEARCH_OBJECT_KEY)
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-            }))
+        let event_id = event_id.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_opt("SELECT payload_json FROM events WHERE id=$1", &[&event_id])
+                .await
+                .map_err(|error| pg_store_error("load event research object key", error))?;
+            Ok(row
+                .and_then(|row| {
+                    serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(0)).ok()
+                })
+                .and_then(|payload| {
+                    payload
+                        .get(EARNINGS_RESEARCH_OBJECT_KEY)
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                }))
+        })
+    }
+
+    #[cfg(test)]
+    fn test_delivery_attempt_summary(
+        &self,
+        event_id: &str,
+        actor: &str,
+    ) -> anyhow::Result<(i64, String)> {
+        let event_id = event_id.to_string();
+        let actor = actor.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT count(*)::bigint,
+       (array_agg(status ORDER BY sent_at_ts DESC, id DESC))[1]
+FROM delivery_log WHERE event_id=$1 AND actor=$2
+"#,
+                    &[&event_id, &actor],
+                )
+                .await
+                .map_err(|error| pg_store_error("summarize delivery attempts", error))?;
+            Ok((row.get(0), row.get(1)))
+        })
+    }
+
+    #[cfg(test)]
+    fn test_set_delivered_at_ms(&self, source_id: &str, value: i64) -> anyhow::Result<()> {
+        let source_id = source_id.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE delivered_push_context SET delivered_at_ms=$1 WHERE source_id=$2",
+                    &[&value, &source_id],
+                )
+                .await
+                .map_err(|error| pg_store_error("set delivered push timestamp", error))?;
+            Ok(())
+        })
+    }
+
+    #[cfg(test)]
+    fn test_insert_historical_delivery(&self) -> anyhow::Result<()> {
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    r#"
+INSERT INTO delivery_log(event_id, actor, channel, severity, sent_at_ts, status, body)
+VALUES ('historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH')
+"#,
+                    &[],
+                )
+                .await
+                .map_err(|error| pg_store_error("insert historical delivery", error))?;
+            Ok(())
+        })
+    }
+
+    #[cfg(test)]
+    fn test_set_event_created_at(&self, event_id: &str, value: i64) -> anyhow::Result<()> {
+        let event_id = event_id.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    "UPDATE events SET created_at_ts=$1 WHERE id=$2",
+                    &[&value, &event_id],
+                )
+                .await
+                .map_err(|error| pg_store_error("set event created_at", error))?;
+            Ok(())
+        })
     }
 
     fn append_jsonl_mirror(&self, event: &MarketEvent) -> anyhow::Result<()> {
@@ -737,66 +813,76 @@ impl EventStore {
         };
         use std::io::Write;
         let line = serde_json::to_string(event)?;
-        let mut f = std::fs::OpenOptions::new()
+        let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(path)?;
-        writeln!(f, "{line}")?;
+        writeln!(file, "{line}")?;
         Ok(())
     }
 
-    /// 按 `created_at_ts` 删除早于 `cutoff_days` 天的 events，返回删除行数。
-    /// delivery_log 单独按 `sent_at_ts` 清，`purge_delivery_log_older_than`。
     pub fn purge_events_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
-        let conn = self.conn.lock().unwrap();
-        let deleted_count = conn.execute(
-            "DELETE FROM events WHERE created_at_ts < ?1",
-            params![cutoff],
-        )?;
-        Ok(deleted_count)
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let count = client
+                .execute("DELETE FROM events WHERE created_at_ts < $1", &[&cutoff])
+                .await
+                .map_err(|error| pg_store_error("purge events", error))?;
+            Ok(usize::try_from(count).unwrap_or(usize::MAX))
+        })
     }
 
     pub fn purge_delivery_log_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        tx.execute(
-            "DELETE FROM delivered_push_context WHERE delivered_at_ms < ?1",
-            params![cutoff.saturating_mul(1000)],
-        )?;
-        let deleted_count = tx.execute(
-            "DELETE FROM delivery_log WHERE sent_at_ts < ?1",
-            params![cutoff],
-        )?;
-        tx.commit()?;
-        Ok(deleted_count)
+        let cutoff_ms = cutoff.saturating_mul(1000);
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let rows = client
+                .query(
+                    r#"
+WITH removed_context AS (
+  DELETE FROM delivered_push_context WHERE delivered_at_ms < $1
+)
+DELETE FROM delivery_log WHERE sent_at_ts < $2
+RETURNING id
+"#,
+                    &[&cutoff_ms, &cutoff],
+                )
+                .await;
+            match rows {
+                Ok(rows) => Ok(rows.len()),
+                Err(error) => Err(pg_store_error("purge delivery log", error)),
+            }
+        })
     }
 
     pub fn count_events(&self) -> anyhow::Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let event_count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
-        Ok(event_count)
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one("SELECT count(*)::bigint FROM events", &[])
+                .await
+                .map_err(|error| pg_store_error("count events", error))?;
+            Ok(row.get(0))
+        })
     }
 
-    /// 快速查询稳定事件 id 是否已入库。高频 poller 可在执行下游
-    /// SEC 抓取 / LLM 复核前跨重启短路；最终投递幂等仍由
-    /// `insert_event` 和 delivery log 负责。
     pub fn contains_event(&self, event_id: &str) -> anyhow::Result<bool> {
-        let conn = self.conn.lock().unwrap();
-        let exists: i64 = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM events WHERE id = ?1)",
-            params![event_id],
-            |row| row.get(0),
-        )?;
-        Ok(exists != 0)
+        let event_id = event_id.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    "SELECT EXISTS(SELECT 1 FROM events WHERE id=$1)",
+                    &[&event_id],
+                )
+                .await
+                .map_err(|error| pg_store_error("contains event", error))?;
+            Ok(row.get(0))
+        })
     }
 
-    /// 某 actor 是否已成功收到由同一财报文档生成的结构化财报卡。
-    /// 只把 sink/digest_item 的成功状态当作已交付；`failed` / `queued` /
-    /// `quiet_held` 不会被当成已送达。queued 结构化卡可在 digest buffer 内
-    /// 取代同文档 SEC 项，但不能让 router 把该文档的待投递路径全部压掉。
     pub(crate) fn actor_has_delivered_earnings_for_document(
         &self,
         actor: &str,
@@ -805,46 +891,35 @@ impl EventStore {
         let Some(document_key) = canonical_earnings_document_key(document_url) else {
             return Ok(false);
         };
-        let conn = self.conn.lock().unwrap();
-        let key_path = format!("$.{EARNINGS_DOCUMENT_KEY}");
-        let exists: i64 = conn.query_row(
-            r#"
-            SELECT EXISTS(
-                SELECT 1
-                FROM delivery_log d
-                JOIN events e ON e.id = d.event_id
-                WHERE d.actor = ?1
-                  AND d.status IN ('sent', 'dryrun')
-                  AND d.channel IN ('sink', 'digest_item')
-                  AND e.kind_json LIKE '%"earnings_released"%'
-                  AND json_extract(e.payload_json, '$.earnings_quality_review_applied') = 1
-                  AND (
-                    lower(rtrim(substr(e.url, 1,
-                      CASE
-                        WHEN instr(e.url, '?') > 0 THEN instr(e.url, '?') - 1
-                        ELSE length(e.url)
-                      END
-                    ), '/')) = ?2
-                    OR lower(json_extract(e.payload_json, ?3)) = ?2
-                  )
-            )
-            "#,
-            params![actor, document_key, key_path],
-            |row| row.get(0),
-        )?;
-        Ok(exists != 0)
+        let actor = actor.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT EXISTS(
+  SELECT 1
+  FROM delivery_log d
+  JOIN events e ON e.id = d.event_id
+  WHERE d.actor = $1
+    AND d.status IN ('sent', 'dryrun')
+    AND d.channel IN ('sink', 'digest_item')
+    AND e.kind_json LIKE '%"earnings_released"%'
+    AND (e.payload_json::jsonb ->> 'earnings_quality_review_applied')::boolean IS TRUE
+    AND (
+      lower(rtrim(split_part(e.url, '?', 1), '/')) = $2
+      OR lower(e.payload_json::jsonb ->> $3) = $2
+    )
+)
+"#,
+                    &[&actor, &document_key, &EARNINGS_DOCUMENT_KEY],
+                )
+                .await
+                .map_err(|error| pg_store_error("check delivered earnings document", error))?;
+            Ok(row.get(0))
+        })
     }
 
-    /// 列出 `[start, end]` 窗口内、`symbol` 命中的事件的 kind tag (snake_case
-    /// 字符串,如 `"price_alert"` / `"earnings_released"` / `"sec_filing"`)。
-    ///
-    /// 用途:
-    /// - 新闻多信号合流:`[news_ts - 6h, news_ts + 1h]` 查近期硬信号
-    /// - 财报窗口升级:`[news_ts - 12h, news_ts + 2d]` 查 earnings_upcoming
-    ///   (含未来财报日)
-    ///
-    /// 注意:`occurred_at` 是**事件真实发生时刻**,不是入库时刻——所以
-    /// `earnings_upcoming` 在财报日当天 00:00,查询窗口必须向未来延伸才能命中。
     pub fn symbol_signal_kinds_in_window(
         &self,
         symbol: &str,
@@ -852,31 +927,28 @@ impl EventStore {
         end: DateTime<Utc>,
     ) -> anyhow::Result<Vec<String>> {
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT kind_json FROM events
-            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
-              AND symbols_json LIKE ?3
-            "#,
-        )?;
-        let rows = stmt.query_map(params![start.timestamp(), end.timestamp(), needle], |row| {
-            row.get::<_, String>(0)
+        let start = start.timestamp();
+        let end = end.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    "SELECT kind_json FROM events WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2 AND symbols_json ILIKE $3",
+                    &[&start, &end, &needle],
+                )
+                .await
+                .map_err(|error| pg_store_error("list symbol signal kinds", error))
         })?;
-        let mut signal_kinds: Vec<String> = Vec::new();
-        for row_result in rows {
-            let json = row_result?;
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json)
-                && let Some(t) = v.get("type").and_then(|v| v.as_str())
-            {
-                signal_kinds.push(t.to_string());
-            }
-        }
-        Ok(signal_kinds)
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(0))
+                    .ok()
+                    .and_then(|value| value.get("type")?.as_str().map(str::to_string))
+            })
+            .collect())
     }
 
-    /// 某 symbol 在时间窗内所有 analyst_grade 事件的 payload(单事件 + 汇总
-    /// 摘要)。供 router 在分发评级事件时聚合「近 30 日共识计数」锚点。
     pub fn list_analyst_grade_payloads_in_window(
         &self,
         symbol: &str,
@@ -884,28 +956,29 @@ impl EventStore {
         end: DateTime<Utc>,
     ) -> anyhow::Result<Vec<serde_json::Value>> {
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT payload_json FROM events
-            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
-              AND symbols_json LIKE ?3
-              AND kind_json LIKE '%analyst_grade%'
-            "#,
-        )?;
-        let rows = stmt.query_map(params![start.timestamp(), end.timestamp(), needle], |row| {
-            row.get::<_, String>(0)
+        let start = start.timestamp();
+        let end = end.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT payload_json FROM events
+WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
+  AND symbols_json ILIKE $3
+  AND kind_json LIKE '%analyst_grade%'
+"#,
+                    &[&start, &end, &needle],
+                )
+                .await
+                .map_err(|error| pg_store_error("list analyst grade payloads", error))
         })?;
-        let mut payloads = Vec::new();
-        for row_result in rows {
-            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&row_result?) {
-                payloads.push(payload);
-            }
-        }
-        Ok(payloads)
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| serde_json::from_str(&row.get::<_, String>(0)).ok())
+            .collect())
     }
 
-    /// 历史兼容:旧的 "since 12h" 语义 shim,内部委派给窗口查询。
     pub fn today_signal_kinds(
         &self,
         symbol: &str,
@@ -914,11 +987,6 @@ impl EventStore {
         self.symbol_signal_kinds_in_window(symbol, since, Utc::now())
     }
 
-    /// 列出未来 `within_days` 天内的 `EarningsUpcoming` teaser 事件。
-    ///
-    /// 用于 `UnifiedDigestScheduler` 在每个 slot 触发时把"今天应该提醒 T-3/T-2/T-1"
-    /// 的财报现算出来(见 `pollers::earnings::synthesize_countdowns`),这样
-    /// 即使 poller 的 cron tick 漂移也不会让倒计时 off-by-one。
     pub fn list_upcoming_earnings(
         &self,
         now: DateTime<Utc>,
@@ -926,76 +994,20 @@ impl EventStore {
     ) -> anyhow::Result<Vec<MarketEvent>> {
         let start = now.timestamp();
         let end = (now + chrono::Duration::days(within_days)).timestamp();
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
+        self.query_events(
             r#"
-            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
-                   title, summary, url, source, payload_json
-            FROM events
-            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
-              AND kind_json LIKE '%"earnings_upcoming"%'
-            "#,
-        )?;
-        let rows = stmt.query_map(params![start, end], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-            ))
-        })?;
-        let mut upcoming_earnings_events = Vec::new();
-        for row_result in rows {
-            let (
-                id,
-                kind_json,
-                severity_label,
-                symbols_json,
-                occurred_at_ts,
-                title,
-                summary,
-                url,
-                source,
-                payload_json,
-            ) = row_result?;
-            let Ok(kind) = serde_json::from_str(&kind_json) else {
-                continue;
-            };
-            let severity = match severity_label.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
-                continue;
-            };
-            upcoming_earnings_events.push(MarketEvent {
-                id,
-                kind,
-                severity,
-                symbols,
-                occurred_at,
-                title,
-                summary,
-                url,
-                source,
-                payload,
-            });
-        }
-        Ok(upcoming_earnings_events)
+SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+       title, summary, url, source, payload_json
+FROM events
+WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
+  AND kind_json LIKE '%"earnings_upcoming"%'
+"#,
+            start,
+            end,
+            "list upcoming earnings",
+        )
     }
 
-    /// 某 symbol 在 `[now, now+within_days]` 内最近一场财报的时间。
-    /// 供 router 给价格警报注入「N 天后财报」倒计时锚点。无 → None。
     pub fn next_upcoming_earnings_for_symbol(
         &self,
         symbol: &str,
@@ -1003,57 +1015,62 @@ impl EventStore {
         within_days: i64,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let end = now + chrono::Duration::days(within_days);
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT occurred_at_ts FROM events
-            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
-              AND kind_json LIKE '%"earnings_upcoming"%'
-              AND symbols_json LIKE ?3
-            ORDER BY occurred_at_ts ASC LIMIT 1
-            "#,
-        )?;
-        let ts: Option<i64> = stmt
-            .query_row(params![now.timestamp(), end.timestamp(), needle], |row| {
-                row.get(0)
-            })
-            .optional()?;
-        Ok(ts.and_then(|t| DateTime::<Utc>::from_timestamp(t, 0)))
+        let start = now.timestamp();
+        let end = (now + chrono::Duration::days(within_days)).timestamp();
+        let timestamp = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_opt(
+                    r#"
+SELECT occurred_at_ts FROM events
+WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
+  AND kind_json LIKE '%"earnings_upcoming"%'
+  AND symbols_json ILIKE $3
+ORDER BY occurred_at_ts ASC LIMIT 1
+"#,
+                    &[&start, &end, &needle],
+                )
+                .await
+                .map_err(|error| pg_store_error("find next upcoming earnings", error))?;
+            Ok(row.map(|row| row.get::<_, i64>(0)))
+        })?;
+        Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    /// 时间窗内 id 以 `id_prefix` 开头的事件数。周报用它统计防线拦截量
-    /// (如 `grade_roundup:` / `price_band:`)。
     pub fn count_event_ids_in_window(
         &self,
         id_prefix: &str,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> anyhow::Result<i64> {
-        let escaped = id_prefix.replace('%', "\\%").replace('_', "\\_");
-        let conn = self.conn.lock().unwrap();
-        let count = conn.query_row(
-            r#"
-            SELECT COUNT(*) FROM events
-            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
-              AND id LIKE ?3 ESCAPE '\'
-            "#,
-            params![start.timestamp(), end.timestamp(), format!("{escaped}%")],
-            |row| row.get(0),
-        )?;
-        Ok(count)
+        let escaped = id_prefix
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("{escaped}%");
+        let start = start.timestamp();
+        let end = end.timestamp();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT count(*)::bigint FROM events
+WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
+  AND id LIKE $3 ESCAPE '\'
+"#,
+                    &[&start, &end, &pattern],
+                )
+                .await
+                .map_err(|error| pg_store_error("count event ids in window", error))?;
+            Ok(row.get(0))
+        })
     }
 
-    /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
-    /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
-    /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。
     pub fn count_high_sent_since(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
         self.count_high_sent_since_for_category(actor, since, "all")
     }
 
-    /// 该 actor 在 `[since, now]` 窗口内某一事件类别通过 sink 成功送达的 High 数。
-    /// `category="all"` 维持旧语义；其它类别用于把 price/news/filing/earnings/macro
-    /// 的 high cap 分桶，避免互相挤占。
     pub fn count_high_sent_since_for_category(
         &self,
         actor: &str,
@@ -1066,50 +1083,54 @@ impl EventStore {
         let Some(tags) = category_kind_tags(category) else {
             return self.count_high_sent_since_all(actor, since);
         };
-        let predicates = vec!["e.kind_json LIKE ?"; tags.len()].join(" OR ");
-        let sql = format!(
-            r#"
-            SELECT COUNT(*) FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND d.sent_at_ts >= ?
-              AND ({predicates})
-            "#
-        );
-        let mut values = Vec::with_capacity(2 + tags.len());
-        values.push(SqlValue::Text(actor.to_string()));
-        values.push(SqlValue::Integer(since.timestamp()));
-        for tag in tags {
-            values.push(SqlValue::Text(format!("%\"{tag}\"%")));
-        }
-        let conn = self.conn.lock().unwrap();
-        let sent_count: i64 = conn.query_row(&sql, params_from_iter(values), |row| row.get(0))?;
-        Ok(sent_count)
+        let actor = actor.to_string();
+        let since = since.timestamp();
+        let patterns = tags
+            .iter()
+            .map(|tag| format!("%\"{tag}\"%"))
+            .collect::<Vec<_>>();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT count(*)::bigint FROM delivery_log d
+JOIN events e ON d.event_id = e.id
+WHERE d.actor = $1
+  AND d.severity = 'high'
+  AND d.status = 'sent'
+  AND d.channel = 'sink'
+  AND d.sent_at_ts >= $2
+  AND e.kind_json LIKE ANY($3::text[])
+"#,
+                    &[&actor, &since, &patterns],
+                )
+                .await
+                .map_err(|error| pg_store_error("count high sends by category", error))?;
+            Ok(row.get(0))
+        })
     }
 
     fn count_high_sent_since_all(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let sent_count: i64 = conn.query_row(
-            r#"
-            SELECT COUNT(*) FROM delivery_log
-            WHERE actor = ?1
-              AND severity = 'high'
-              AND status = 'sent'
-              AND channel = 'sink'
-              AND sent_at_ts >= ?2
-            "#,
-            params![actor, since.timestamp()],
-            |row| row.get(0),
-        )?;
-        Ok(sent_count)
+        let actor = actor.to_string();
+        let since = since.timestamp();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT count(*)::bigint FROM delivery_log
+WHERE actor=$1 AND severity='high' AND status='sent'
+  AND channel='sink' AND sent_at_ts >= $2
+"#,
+                    &[&actor, &since],
+                )
+                .await
+                .map_err(|error| pg_store_error("count high sends", error))?;
+            Ok(row.get(0))
+        })
     }
 
-    /// 该 actor 针对 `symbol` 最近一次 High 成功送达 sink 的时刻。
-    /// 用于 Router 对同一 ticker 的短时冷却:防止 5 分钟内价格异动 + 新闻 + 盈利三连推。
-    /// 返回 None 表示该 symbol 在 delivery_log 里从未命中 High+sent+sink。
     pub fn last_high_sink_send_for_symbol(
         &self,
         actor: &str,
@@ -1118,10 +1139,6 @@ impl EventStore {
         self.last_high_sink_send_for_symbol_category(actor, symbol, "all", None)
     }
 
-    /// 该 actor 针对 symbol + category 最近一次 High 成功送达 sink 的时刻。
-    /// `firm` 仅当 category 命中 kind 列表时附加 `payload_json.gradingCompany` 过滤,
-    /// 用于把 AnalystGrade 的冷却 key 拆到 (symbol, firm) 粒度,这样同 ticker 不同
-    /// 投行同分钟到达不会互相冷却。其他 category 一律传 `None`。
     pub fn last_high_sink_send_for_symbol_category(
         &self,
         actor: &str,
@@ -1135,40 +1152,32 @@ impl EventStore {
         let Some(tags) = category_kind_tags(category) else {
             return self.last_high_sink_send_for_symbol_all(actor, symbol);
         };
-        let predicates = vec!["e.kind_json LIKE ?"; tags.len()].join(" OR ");
+        let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let firm_clause = if firm.is_some() {
-            "AND json_extract(e.payload_json, '$.gradingCompany') = ?"
-        } else {
-            ""
-        };
-        let sql = format!(
-            r#"
-            SELECT MAX(d.sent_at_ts) FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND e.symbols_json LIKE ?
-              AND ({predicates})
-              {firm_clause}
-            "#
-        );
-        let mut values = Vec::with_capacity(2 + tags.len() + firm.is_some() as usize);
-        values.push(SqlValue::Text(actor.to_string()));
-        values.push(SqlValue::Text(needle));
-        for tag in tags {
-            values.push(SqlValue::Text(format!("%\"{tag}\"%")));
-        }
-        if let Some(f) = firm {
-            values.push(SqlValue::Text(f.to_string()));
-        }
-        let conn = self.conn.lock().unwrap();
-        let row: Option<i64> = conn.query_row(&sql, params_from_iter(values), |row| {
-            row.get::<_, Option<i64>>(0)
+        let patterns = tags
+            .iter()
+            .map(|tag| format!("%\"{tag}\"%"))
+            .collect::<Vec<_>>();
+        let firm = firm.map(str::to_string);
+        let timestamp = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT max(d.sent_at_ts) FROM delivery_log d
+JOIN events e ON d.event_id = e.id
+WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
+  AND e.symbols_json ILIKE $2
+  AND e.kind_json LIKE ANY($3::text[])
+  AND ($4::text IS NULL OR e.payload_json::jsonb ->> 'gradingCompany' = $4)
+"#,
+                    &[&actor, &needle, &patterns, &firm],
+                )
+                .await
+                .map_err(|error| pg_store_error("load last high send by category", error))?;
+            Ok(row.get::<_, Option<i64>>(0))
         })?;
-        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
+        Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
     fn last_high_sink_send_for_symbol_all(
@@ -1176,27 +1185,27 @@ impl EventStore {
         actor: &str,
         symbol: &str,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let row: Option<i64> = conn.query_row(
-            r#"
-            SELECT MAX(d.sent_at_ts) FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND e.symbols_json LIKE ?2
-            "#,
-            params![actor, needle],
-            |row| row.get::<_, Option<i64>>(0),
-        )?;
-        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
+        let timestamp = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT max(d.sent_at_ts) FROM delivery_log d
+JOIN events e ON d.event_id = e.id
+WHERE d.actor=$1 AND d.severity='high' AND d.status='sent'
+  AND d.channel='sink' AND e.symbols_json ILIKE $2
+"#,
+                    &[&actor, &needle],
+                )
+                .await
+                .map_err(|error| pg_store_error("load last high send", error))?;
+            Ok(row.get::<_, Option<i64>>(0))
+        })?;
+        Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    /// 该 actor 针对同一 ticker + analyst source article 最近一次 High sink 成功送达。
-    /// AnalystGrade 的通用 cooldown 按投行拆 key；这个查询补上同一 TheFly article
-    /// fanout 的批次防护，避免一个聚合页拆成 5-10 条不同 firm immediate。
     pub fn last_high_sink_send_for_analyst_news_url(
         &self,
         actor: &str,
@@ -1208,34 +1217,31 @@ impl EventStore {
         if news_url.is_empty() {
             return Ok(None);
         }
+        let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let row: Option<i64> = conn.query_row(
-            r#"
-            SELECT MAX(d.sent_at_ts) FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND d.sent_at_ts >= ?2
-              AND e.symbols_json LIKE ?3
-              AND e.kind_json LIKE '%"analyst_grade"%'
-              AND (
-                    json_extract(e.payload_json, '$.newsURL') = ?4
-                    OR e.url = ?4
-                  )
-            "#,
-            params![actor, since.timestamp(), needle, news_url],
-            |row| row.get::<_, Option<i64>>(0),
-        )?;
-        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
+        let news_url = news_url.to_string();
+        let since = since.timestamp();
+        let timestamp = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+SELECT max(d.sent_at_ts) FROM delivery_log d
+JOIN events e ON d.event_id = e.id
+WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
+  AND d.sent_at_ts >= $2 AND e.symbols_json ILIKE $3
+  AND e.kind_json LIKE '%"analyst_grade"%'
+  AND (e.payload_json::jsonb ->> 'newsURL' = $4 OR e.url = $4)
+"#,
+                    &[&actor, &since, &needle, &news_url],
+                )
+                .await
+                .map_err(|error| pg_store_error("load analyst article send", error))?;
+            Ok(row.get::<_, Option<i64>>(0))
+        })?;
+        Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    /// 返回 `since` 之后 actor 在 (symbol, direction) 上**已被 sink 推过的最大
-    /// band bps**(从 `price_band:SYM:DATE:up:BPS` 的 id 末段解析)。供 dispatch
-    /// 的「monotone 新高 + N」单一推送规则用 —— 新档 pct 必须比该值高出
-    /// `price_band_min_advance_pct` 才允许直推,否则降级 digest。
     pub fn last_price_band_max_bps_for_symbol_direction(
         &self,
         actor: &str,
@@ -1246,278 +1252,142 @@ impl EventStore {
         let Some(pattern) = price_band_id_pattern(symbol, direction) else {
             return Ok(None);
         };
+        let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT e.id FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND d.sent_at_ts >= ?2
-              AND e.symbols_json LIKE ?3
-              AND e.id LIKE ?4
-            "#,
-        )?;
-        let rows = stmt.query_map(params![actor, since.timestamp(), needle, pattern], |row| {
-            row.get::<_, String>(0)
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT e.id FROM delivery_log d
+JOIN events e ON d.event_id=e.id
+WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
+  AND d.sent_at_ts >= $2 AND e.symbols_json ILIKE $3 AND e.id LIKE $4
+"#,
+                    &[&actor, &since, &needle, &pattern],
+                )
+                .await
+                .map_err(|error| pg_store_error("list delivered price bands", error))
         })?;
-        let mut max_bps: Option<i64> = None;
-        for row_result in rows {
-            let id = row_result?;
-            if let Some(bps) = parse_bps_from_band_id(&id) {
-                max_bps = Some(max_bps.map_or(bps, |m| m.max(bps)));
-            }
-        }
-        Ok(max_bps)
+        Ok(rows
+            .iter()
+            .filter_map(|row| parse_bps_from_band_id(&row.get::<_, String>(0)))
+            .max())
     }
 
     pub fn last_digest_success_at(&self, actor: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
-        let conn = self.conn.lock().unwrap();
-        let row: Option<i64> = conn.query_row(
-            r#"
-            SELECT MAX(sent_at_ts) FROM delivery_log
-            WHERE actor = ?1
-              AND channel = 'digest'
-              AND status IN ('sent', 'dryrun')
-            "#,
-            params![actor],
-            |row| row.get::<_, Option<i64>>(0),
-        )?;
-        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
+        let actor = actor.to_string();
+        let timestamp = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    "SELECT max(sent_at_ts) FROM delivery_log WHERE actor=$1 AND channel='digest' AND status IN ('sent','dryrun')",
+                    &[&actor],
+                )
+                .await
+                .map_err(|error| pg_store_error("load last digest success", error))?;
+            Ok(row.get::<_, Option<i64>>(0))
+        })?;
+        Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    /// 列出 `since` 之后某 actor 在 digest 流程里**被吞掉**的事件 + 各自的吞掉
-    /// 原因(curation 噪音过滤 / 单批数量上限 / 同 ticker 冷却 / 用户 prefs 过滤
-    /// 等)。供 `/missed` 斜杠命令查询。
-    ///
-    /// status 取值含义:
-    /// - `omitted` —— 被 curation 砍(per-symbol/source/domain cap、jaccard 同主题、
-    ///   `should_omit_from_digest` 把 opinion_blog 等噪音砍了)
-    /// - `capped` / `price_capped` —— `max_items_per_batch` 单批数量上限截断
-    /// - `cooled_down` / `price_cooled_down` —— 同 ticker / 同 symbol 冷却命中
-    /// - `filtered` —— 用户 prefs(`should_deliver`)主动过滤
     pub fn list_missed_digest_items_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(MarketEvent, String)>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
-                   e.title, e.summary, e.url, e.source, e.payload_json, d.status
-            FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.channel IN ('digest_item', 'prefs')
-              AND d.status NOT IN ('sent', 'dryrun', 'queued')
-              AND d.sent_at_ts >= ?2
-            ORDER BY d.sent_at_ts DESC
-            "#,
-        )?;
-        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, String>(10)?,
-            ))
+        let actor = actor.to_string();
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+       e.title, e.summary, e.url, e.source, e.payload_json, d.status
+FROM delivery_log d JOIN events e ON d.event_id=e.id
+WHERE d.actor=$1 AND d.channel IN ('digest_item','prefs')
+  AND d.status NOT IN ('sent','dryrun','queued') AND d.sent_at_ts >= $2
+ORDER BY d.sent_at_ts DESC
+"#,
+                    &[&actor, &since],
+                )
+                .await
+                .map_err(|error| pg_store_error("list missed digest items", error))
         })?;
-        let mut missed_digest_items = Vec::new();
-        for row_result in rows {
-            let (
-                id,
-                kind_json,
-                severity_label,
-                symbols_json,
-                occurred_at_ts,
-                title,
-                summary,
-                url,
-                source,
-                payload_json,
-                status,
-            ) = row_result?;
-            let Ok(kind) = serde_json::from_str(&kind_json) else {
-                continue;
-            };
-            let severity = match severity_label.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
-                continue;
-            };
-            missed_digest_items.push((
-                MarketEvent {
-                    id,
-                    kind,
-                    severity,
-                    symbols,
-                    occurred_at,
-                    title,
-                    summary,
-                    url,
-                    source,
-                    payload,
-                },
-                status,
-            ));
-        }
-        Ok(missed_digest_items)
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                decode_market_event(row)
+                    .ok()
+                    .map(|event| (event, row.get(10)))
+            })
+            .collect())
     }
 
-    /// 列出 `since` 之后某 actor 已经成功推送过的 event_id 集合。
-    /// 与 `list_recent_digest_item_events` 的区别:这里**不 JOIN events 表**,
-    /// 因此能覆盖"只在 delivery_log 留痕"的合成事件(例如
-    /// `digest.synth.earnings_countdown`,scheduler 自己造的事件不会写
-    /// `events` 表)。专供 synth 跨 flush 去重用。
     pub fn delivered_event_ids_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
-    ) -> anyhow::Result<std::collections::HashSet<String>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT DISTINCT event_id FROM delivery_log
-            WHERE actor = ?1
-              AND status IN ('sent', 'dryrun')
-              AND sent_at_ts >= ?2
-            "#,
-        )?;
-        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
-            row.get::<_, String>(0)
-        })?;
-        let mut delivered_event_ids = std::collections::HashSet::new();
-        for event_id in rows.flatten() {
-            delivered_event_ids.insert(event_id);
-        }
-        Ok(delivered_event_ids)
+    ) -> anyhow::Result<HashSet<String>> {
+        self.event_ids_since(
+            "SELECT DISTINCT event_id FROM delivery_log WHERE actor=$1 AND status IN ('sent','dryrun') AND sent_at_ts >= $2",
+            actor,
+            since,
+            "list delivered event ids",
+        )
     }
 
-    /// 列出在 `since` 之后有 `quiet_held` 行的 distinct actor key。供 UnifiedDigestScheduler
-    /// 在 quiet.to 分钟把这些 actor 也加入 tick 迭代集合 —— 否则只 buffer 为空、
-    /// 仅靠 router hold 的 actor 永远等不到 quiet_flush。
     pub fn list_actors_with_quiet_held_since(
         &self,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT DISTINCT actor FROM delivery_log
-            WHERE channel = 'sink'
-              AND status = 'quiet_held'
-              AND sent_at_ts >= ?1
-            "#,
-        )?;
-        let rows = stmt.query_map(params![since.timestamp()], |row| row.get::<_, String>(0))?;
-        let mut actors = Vec::new();
-        for row_result in rows {
-            actors.push(row_result?);
-        }
-        Ok(actors)
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    "SELECT DISTINCT actor FROM delivery_log WHERE channel='sink' AND status='quiet_held' AND sent_at_ts >= $1",
+                    &[&since],
+                )
+                .await
+                .map_err(|error| pg_store_error("list quiet-held actors", error))
+        })?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 
-    /// 列出某 actor 在 `since` 之后被 router 因 quiet_hours hold 住的事件。
-    /// 用于 `quiet_flush` 在 `quiet_hours.to` 时刻把这批事件按保鲜期筛选后合并发送。
-    /// 返回 `(MarketEvent, sent_at_ts)`，`sent_at_ts` 是当初被 hold 时刻（用于排序）。
-    /// LEFT JOIN 风格：events 表里查不到的 hold 行（synth/已被清理）直接跳过。
     pub fn list_quiet_held_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(MarketEvent, i64)>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
-                   e.title, e.summary, e.url, e.source, e.payload_json, d.sent_at_ts
-            FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.channel = 'sink'
-              AND d.status = 'quiet_held'
-              AND d.sent_at_ts >= ?2
-            ORDER BY d.sent_at_ts ASC
-            "#,
-        )?;
-        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, i64>(10)?,
-            ))
+        let actor = actor.to_string();
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+       e.title, e.summary, e.url, e.source, e.payload_json, d.sent_at_ts
+FROM delivery_log d JOIN events e ON d.event_id=e.id
+WHERE d.actor=$1 AND d.channel='sink' AND d.status='quiet_held' AND d.sent_at_ts >= $2
+ORDER BY d.sent_at_ts ASC
+"#,
+                    &[&actor, &since],
+                )
+                .await
+                .map_err(|error| pg_store_error("list quiet-held events", error))
         })?;
-        let mut quiet_held_events = Vec::new();
-        for row_result in rows {
-            let (
-                id,
-                kind_json,
-                severity_label,
-                symbols_json,
-                occurred_at_ts,
-                title,
-                summary,
-                url,
-                source,
-                payload_json,
-                sent_at,
-            ) = row_result?;
-            let Ok(kind) = serde_json::from_str(&kind_json) else {
-                continue;
-            };
-            let severity = match severity_label.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
-                continue;
-            };
-            quiet_held_events.push((
-                MarketEvent {
-                    id,
-                    kind,
-                    severity,
-                    symbols,
-                    occurred_at,
-                    title,
-                    summary,
-                    url,
-                    source,
-                    payload,
-                },
-                sent_at,
-            ));
-        }
-        Ok(quiet_held_events)
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                decode_market_event(row)
+                    .ok()
+                    .map(|event| (event, row.get(10)))
+            })
+            .collect())
     }
 
     pub fn list_recent_digest_item_events(
@@ -1525,200 +1395,78 @@ impl EventStore {
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<MarketEvent>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
-                   e.title, e.summary, e.url, e.source, e.payload_json
-            FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.channel = 'digest_item'
-              AND d.status IN ('sent', 'dryrun')
-              AND d.sent_at_ts >= ?2
-            "#,
-        )?;
-        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-            ))
+        let actor = actor.to_string();
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+       e.title, e.summary, e.url, e.source, e.payload_json
+FROM delivery_log d JOIN events e ON d.event_id=e.id
+WHERE d.actor=$1 AND d.channel='digest_item'
+  AND d.status IN ('sent','dryrun') AND d.sent_at_ts >= $2
+"#,
+                    &[&actor, &since],
+                )
+                .await
+                .map_err(|error| pg_store_error("list recent digest item events", error))
         })?;
-        let mut delivered_digest_events = Vec::new();
-        for row_result in rows {
-            let (
-                id,
-                kind_json,
-                severity_label,
-                symbols_json,
-                occurred_at_ts,
-                title,
-                summary,
-                url,
-                source,
-                payload_json,
-            ) = row_result?;
-            let Ok(kind) = serde_json::from_str(&kind_json) else {
-                continue;
-            };
-            let severity = match severity_label.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
-                continue;
-            };
-            delivered_digest_events.push(MarketEvent {
-                id,
-                kind,
-                severity,
-                symbols,
-                occurred_at,
-                title,
-                summary,
-                url,
-                source,
-                payload,
-            });
-        }
-        Ok(delivered_digest_events)
+        Ok(rows
+            .iter()
+            .filter_map(|row| decode_market_event(row).ok())
+            .collect())
     }
 
-    /// 按 `occurred_at_ts` 拉一段窗口内的 `NewsCritical` 事件,供 global_digest
-    /// collector 二次过滤(source_class / legal_ad / 已广播)。**不**做 source_class
-    /// 解析——那是 collector 的职责;这里只做 SQL 层能高效完成的过滤
-    /// (kind / severity / 时间窗口 / source 前缀)。
-    ///
-    /// **severity 门槛非对称**(2026-04-27 POC 复盘后调整):
-    /// - RSS 源(Bloomberg/SpaceNews/STAT 等):无脑 High,severity 不再二次过滤
-    /// - FMP `trusted` 域(reuters/wsj/cnbc/marketwatch 等):允许 Low 进入候选池
-    ///   —— `pollers::news::classify_severity` 只在命中 distress/M&A 关键词时才升 High,
-    ///   导致 GOOGL 财报预告、Tokyo Electron 半导体上下游等主线硬料被砍。
-    ///   POC 实测 24h 多出 19 条 trusted-Low,其中 ~25% 是主线相关硬料,
-    ///   工作日扩量 ~80-180 条仍在 Pass1 prompt 容量内。
-    /// - FMP 非 trusted 域(opinion_blog / pr_wire / uncertain):SQL 预选只保留
-    ///   high/medium,便于 collector 统一检查 payload;当前 collector 仍会丢弃
-    ///   非 trusted,防止 seekingalpha listicle、律所 PR 灌进来。
     pub fn list_global_digest_news_candidates(
         &self,
         since: DateTime<Utc>,
         until: DateTime<Utc>,
     ) -> anyhow::Result<Vec<MarketEvent>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
-                   title, summary, url, source, payload_json
-            FROM events
-            WHERE occurred_at_ts >= ?1
-              AND occurred_at_ts < ?2
-              AND kind_json LIKE '%news_critical%'
-              AND (
-                    source LIKE 'rss:%'
-                 OR (source LIKE 'fmp.stock_news:%' AND severity IN ('high', 'medium'))
-                 OR (source LIKE 'fmp.stock_news:%'
-                     AND json_extract(payload_json, '$.source_class') = 'trusted')
-              )
-            ORDER BY occurred_at_ts DESC
-            "#,
-        )?;
-        let rows = stmt.query_map(params![since.timestamp(), until.timestamp()], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-            ))
+        let since = since.timestamp();
+        let until = until.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(
+                    r#"
+SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+       title, summary, url, source, payload_json
+FROM events
+WHERE occurred_at_ts >= $1 AND occurred_at_ts < $2
+  AND kind_json LIKE '%news_critical%'
+  AND (
+    source LIKE 'rss:%'
+    OR (source LIKE 'fmp.stock_news:%' AND severity IN ('high','medium'))
+    OR (source LIKE 'fmp.stock_news:%' AND payload_json::jsonb ->> 'source_class' = 'trusted')
+  )
+ORDER BY occurred_at_ts DESC
+"#,
+                    &[&since, &until],
+                )
+                .await
+                .map_err(|error| pg_store_error("list global digest news candidates", error))
         })?;
-        let mut news_candidates = Vec::new();
-        for row_result in rows {
-            let (
-                id,
-                kind_json,
-                severity_label,
-                symbols_json,
-                occurred_at_ts,
-                title,
-                summary,
-                url,
-                source,
-                payload_json,
-            ) = row_result?;
-            let Ok(kind) = serde_json::from_str(&kind_json) else {
-                continue;
-            };
-            let severity = match severity_label.as_str() {
-                "high" => crate::event::Severity::High,
-                "medium" => crate::event::Severity::Medium,
-                _ => crate::event::Severity::Low,
-            };
-            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
-                continue;
-            };
-            news_candidates.push(MarketEvent {
-                id,
-                kind,
-                severity,
-                symbols,
-                occurred_at,
-                title,
-                summary,
-                url,
-                source,
-                payload,
-            });
-        }
-        Ok(news_candidates)
+        Ok(rows
+            .iter()
+            .filter_map(|row| decode_market_event(row).ok())
+            .collect())
     }
 
-    /// 列出某 channel 在 `since` 之后所有 actor 的成功投递 event_id 集合。
-    /// 用于 global_digest 跨批次去重——一旦某条新闻被某次 broadcast 推过,后续
-    /// 批次不再纳入候选池。
     pub fn broadcasted_event_ids_since(
         &self,
         channel: &str,
         since: DateTime<Utc>,
-    ) -> anyhow::Result<std::collections::HashSet<String>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT DISTINCT event_id FROM delivery_log
-            WHERE channel = ?1
-              AND status IN ('sent', 'dryrun')
-              AND sent_at_ts >= ?2
-            "#,
-        )?;
-        let rows = stmt.query_map(params![channel, since.timestamp()], |row| {
-            row.get::<_, String>(0)
-        })?;
-        Ok(rows.flatten().collect())
+    ) -> anyhow::Result<HashSet<String>> {
+        self.event_ids_since(
+            "SELECT DISTINCT event_id FROM delivery_log WHERE channel=$1 AND status IN ('sent','dryrun') AND sent_at_ts >= $2",
+            channel,
+            since,
+            "list broadcast event ids",
+        )
     }
 
-    /// Append-only 追加一条推送审计。同一 (event, actor) 可以多行，表达
-    /// queued → sent / failed 等状态迁移。`body` 是实际下发给 sink 的正文（含
-    /// LLM 润色后的结果），用于回放对账；digest 入队阶段传 `None`（flush
-    /// 时再写入渲染后的 digest 正文）。
     pub fn log_delivery(
         &self,
         event_id: &str,
@@ -1728,33 +1476,37 @@ impl EventStore {
         status: &str,
         body: Option<&str>,
     ) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            r#"
-            INSERT INTO delivery_log
-              (event_id, actor, channel, severity, sent_at_ts, status, body)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            "#,
-            params![
-                event_id,
-                actor,
-                channel,
-                severity_tag(&severity),
-                Utc::now().timestamp(),
-                status,
-                body,
-            ],
-        )?;
-        Ok(())
+        let event_id = event_id.to_string();
+        let actor = actor.to_string();
+        let channel = channel.to_string();
+        let severity = severity_tag(&severity).to_string();
+        let status = status.to_string();
+        let body = body.map(str::to_string);
+        let sent_at_ts = Utc::now().timestamp();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    r#"
+INSERT INTO delivery_log(event_id, actor, channel, severity, sent_at_ts, status, body)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+"#,
+                    &[
+                        &event_id,
+                        &actor,
+                        &channel,
+                        &severity,
+                        &sent_at_ts,
+                        &status,
+                        &body,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("append delivery log", error))?;
+            Ok(())
+        })
     }
 
-    /// 原子记录一条已经获得渠道确认、且应该在用户下一轮进入 Agent 上下文的
-    /// 主动推送。普通 [`Self::log_delivery`] 即使 status 写成 `sent` 也只做审计，
-    /// 不会隐式进入上下文，避免审计字符串意外改变会话语义。
-    ///
-    /// `observed_native_session_id` 表示生成这条文本的原生 Agent session 已经
-    /// 观察过内容；下一次仍使用同一 native session 时只推进消费位点，不重复
-    /// 注入。Replay 或其它 session 仍会领取。
     pub fn log_confirmed_delivery(
         &self,
         event_id: &str,
@@ -1765,56 +1517,49 @@ impl EventStore {
         observed_native_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(!body.trim().is_empty(), "确认送达的正文不能为空");
+        let event_id = event_id.to_string();
         let actor = delivery_actor_key(actor);
+        let channel = channel.to_string();
+        let severity = severity_tag(&severity).to_string();
+        let body = body.to_string();
+        let observed_native_session_id = observed_native_session_id.map(str::to_string);
         let now = Utc::now();
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        tx.execute(
-            r#"
-            INSERT INTO delivery_log
-              (event_id, actor, channel, severity, sent_at_ts, status, body)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            "#,
-            params![
-                event_id,
-                actor,
-                channel,
-                severity_tag(&severity),
-                now.timestamp(),
-                "sent",
-                body,
-            ],
-        )?;
-        let delivery_log_id = tx.last_insert_rowid();
-        // `(actor, source_id)` 是用户真正看到的一次业务推送的幂等键。
-        // delivery_log 仍完整保留所有 retry attempt；上下文只保留首次成功
-        // 送达，避免同一事件因 transport retry 在下一轮被重复注入。
-        tx.execute(
-            r#"
-            INSERT OR IGNORE INTO delivered_push_context (
-                delivery_log_id, actor, source_id, delivered_at_ms, body,
-                observed_native_session_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-            params![
-                delivery_log_id,
-                actor,
-                event_id,
-                now.timestamp_millis(),
-                body,
-                observed_native_session_id,
-            ],
-        )?;
-        tx.commit()?;
-        Ok(())
+        let sent_at_ts = now.timestamp();
+        let delivered_at_ms = now.timestamp_millis();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .execute(
+                    r#"
+WITH logged AS (
+  INSERT INTO delivery_log(event_id, actor, channel, severity, sent_at_ts, status, body)
+  VALUES ($1, $2, $3, $4, $5, 'sent', $6)
+  RETURNING id
+)
+INSERT INTO delivered_push_context(
+  delivery_log_id, actor, source_id, delivered_at_ms, body,
+  observed_native_session_id
+)
+SELECT id, $2, $1, $7, $6, $8 FROM logged
+ON CONFLICT DO NOTHING
+"#,
+                    &[
+                        &event_id,
+                        &actor,
+                        &channel,
+                        &severity,
+                        &sent_at_ts,
+                        &body,
+                        &delivered_at_ms,
+                        &observed_native_session_id,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("record confirmed delivery", error))?;
+            Ok(())
+        })
     }
 
-    /// 为一个交互 turn 原子领取“在用户消息到达前已经送达”的推送。
-    ///
-    /// - 同一 `turn_id` 重入时返回同一批，保证 runner 内部 retry 稳定；
-    /// - 过期 claim 可被后续 turn 重新领取，避免进程崩溃永久丢消息；
-    /// - 成功/失败由调用方分别 `complete` / `release`；
-    /// - 只读取 `log_delivery` 写入新表后的记录，不回填升级前历史。
     pub fn claim_delivered_push_context(
         &self,
         actor: &ActorIdentity,
@@ -1846,122 +1591,149 @@ impl EventStore {
         consumer_native_session_id: Option<&str>,
     ) -> anyhow::Result<DeliveredPushContextClaim> {
         let actor = delivery_actor_key(actor);
-        let max_records = max_records.clamp(1, 100);
+        let turn_id = turn_id.to_string();
+        let max_records = i64::try_from(max_records.clamp(1, 100)).unwrap_or(100);
+        let max_body_chars = i64::try_from(max_body_chars.max(1)).unwrap_or(i64::MAX);
         let now_ms = Utc::now().timestamp_millis();
         let claim_expires_at_ms = now_ms.saturating_add(lease_ms.max(1));
-        let mut conn = self.conn.lock().unwrap();
-        // 跨进程 claimant 先抢写锁，再读取/标记批次，避免两个 runtime 在
-        // deferred transaction 的读写升级窗口里同时选中同一条推送。
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-
-        let existing = load_claimed_push_context(&tx, &actor, turn_id)?;
-        if !existing.is_empty() {
-            let remaining_count = count_pending_push_context(
-                &tx,
-                &actor,
-                delivered_before_ms,
-                now_ms,
-                Some(turn_id),
-            )?;
-            tx.commit()?;
-            return Ok(DeliveredPushContextClaim {
-                records: existing,
-                remaining_count,
-            });
-        }
-
-        tx.execute(
-            r#"
-            UPDATE delivered_push_context
-            SET claimed_turn_id = NULL, claim_expires_at_ms = NULL
-            WHERE actor = ?1
-              AND consumed_at_ms IS NULL
-              AND claim_expires_at_ms IS NOT NULL
-              AND claim_expires_at_ms <= ?2
-            "#,
-            params![actor, now_ms],
-        )?;
-
-        if let Some(native_session_id) = consumer_native_session_id {
-            // 这些推送已经作为 scheduler turn 的 assistant 输出存在于同一
-            // 原生上游线程。用户下一轮到达时只推进本地消费位点，避免把同一
-            // 文本再作为新的 user prompt 事实重复一次。
-            tx.execute(
-                r#"
-                UPDATE delivered_push_context
-                SET consumed_turn_id = ?3,
-                    consumed_at_ms = ?4,
-                    claimed_turn_id = NULL,
-                    claim_expires_at_ms = NULL
-                WHERE actor = ?1
-                  AND observed_native_session_id = ?2
-                  AND delivered_at_ms <= ?5
-                  AND consumed_at_ms IS NULL
-                  AND claimed_turn_id IS NULL
-                "#,
-                params![
-                    actor,
-                    native_session_id,
-                    turn_id,
-                    now_ms,
-                    delivered_before_ms,
-                ],
-            )?;
-        }
-
-        let ids = {
-            let mut stmt = tx.prepare(
-                r#"
-                SELECT delivery_log_id, body
-                FROM delivered_push_context
-                WHERE actor = ?1
-                  AND consumed_at_ms IS NULL
-                  AND claimed_turn_id IS NULL
-                  AND delivered_at_ms <= ?2
-                ORDER BY delivered_at_ms ASC, delivery_log_id ASC
-                LIMIT ?3
-                "#,
-            )?;
-            let candidates = stmt
-                .query_map(
-                    params![actor, delivered_before_ms, max_records as i64],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-                )?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            let mut selected = Vec::with_capacity(candidates.len());
-            let mut selected_chars = 0usize;
-            for (delivery_log_id, body) in candidates {
-                let body_chars = body.chars().count();
-                if !selected.is_empty()
-                    && selected_chars.saturating_add(body_chars) > max_body_chars.max(1)
-                {
-                    break;
-                }
-                selected.push(delivery_log_id);
-                selected_chars = selected_chars.saturating_add(body_chars);
-            }
-            selected
-        };
-        for delivery_log_id in ids {
-            tx.execute(
-                r#"
-                UPDATE delivered_push_context
-                SET claimed_turn_id = ?2, claim_expires_at_ms = ?3
-                WHERE delivery_log_id = ?1
-                  AND consumed_at_ms IS NULL
-                  AND claimed_turn_id IS NULL
-                "#,
-                params![delivery_log_id, turn_id, claim_expires_at_ms],
-            )?;
-        }
-
-        let records = load_claimed_push_context(&tx, &actor, turn_id)?;
-        let remaining_count =
-            count_pending_push_context(&tx, &actor, delivered_before_ms, now_ms, Some(turn_id))?;
-        tx.commit()?;
+        let consumer_native_session_id = consumer_native_session_id.map(str::to_string);
+        let (records_json, remaining_count) = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let row = client
+                .query_one(
+                    r#"
+WITH existing AS MATERIALIZED (
+  SELECT delivery_log_id, source_id, delivered_at_ms, body
+  FROM delivered_push_context
+  WHERE actor=$1 AND claimed_turn_id=$2 AND consumed_at_ms IS NULL
+), native_consumed AS (
+  UPDATE delivered_push_context AS context
+  SET consumed_turn_id=$2,
+      consumed_at_ms=$6,
+      claimed_turn_id=NULL,
+      claim_expires_at_ms=NULL
+  WHERE context.actor=$1
+    AND NOT EXISTS (SELECT 1 FROM existing)
+    AND $8::text IS NOT NULL
+    AND context.observed_native_session_id=$8
+    AND context.delivered_at_ms <= $3
+    AND context.consumed_at_ms IS NULL
+    AND (
+      context.claimed_turn_id IS NULL
+      OR context.claim_expires_at_ms <= $6
+    )
+  RETURNING context.delivery_log_id
+), ranked AS MATERIALIZED (
+  SELECT
+    context.delivery_log_id,
+    context.source_id,
+    context.delivered_at_ms,
+    context.body,
+    row_number() OVER (
+      ORDER BY context.delivered_at_ms, context.delivery_log_id
+    ) AS row_number,
+    sum(char_length(context.body)) OVER (
+      ORDER BY context.delivered_at_ms, context.delivery_log_id
+    ) AS cumulative_chars
+  FROM delivered_push_context AS context
+  WHERE context.actor=$1
+    AND NOT EXISTS (SELECT 1 FROM existing)
+    AND context.consumed_at_ms IS NULL
+    AND context.delivered_at_ms <= $3
+    AND (
+      context.claimed_turn_id IS NULL
+      OR context.claim_expires_at_ms <= $6
+    )
+    AND ($8::text IS NULL OR context.observed_native_session_id IS DISTINCT FROM $8)
+), candidates AS MATERIALIZED (
+  SELECT delivery_log_id
+  FROM ranked
+  WHERE row_number=1 OR cumulative_chars <= $5
+  ORDER BY delivered_at_ms, delivery_log_id
+  LIMIT $4
+), claimed AS (
+  UPDATE delivered_push_context AS context
+  SET claimed_turn_id=$2,
+      claim_expires_at_ms=$7
+  FROM candidates
+  WHERE context.delivery_log_id=candidates.delivery_log_id
+    AND context.consumed_at_ms IS NULL
+    AND (
+      context.claimed_turn_id IS NULL
+      OR context.claim_expires_at_ms <= $6
+    )
+  RETURNING context.delivery_log_id, context.source_id,
+            context.delivered_at_ms, context.body
+), selected AS MATERIALIZED (
+  SELECT * FROM existing
+  UNION ALL
+  SELECT * FROM claimed
+)
+SELECT
+  COALESCE(
+    (
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'delivery_log_id', delivery_log_id,
+          'source_id', source_id,
+          'delivered_at_ms', delivered_at_ms,
+          'body', body
+        ) ORDER BY delivered_at_ms, delivery_log_id
+      )
+      FROM selected
+    ),
+    '[]'::jsonb
+  ),
+  (
+    SELECT count(*)::bigint
+    FROM delivered_push_context AS context
+    WHERE context.actor=$1
+      AND context.consumed_at_ms IS NULL
+      AND context.delivered_at_ms <= $3
+      AND (
+        context.claimed_turn_id IS NULL
+        OR context.claim_expires_at_ms <= $6
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM selected WHERE selected.delivery_log_id=context.delivery_log_id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM native_consumed
+        WHERE native_consumed.delivery_log_id=context.delivery_log_id
+      )
+  )
+"#,
+                    &[
+                        &actor,
+                        &turn_id,
+                        &delivered_before_ms,
+                        &max_records,
+                        &max_body_chars,
+                        &now_ms,
+                        &claim_expires_at_ms,
+                        &consumer_native_session_id,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("claim delivered push context", error))?;
+            Ok((row.get::<_, serde_json::Value>(0), row.get::<_, i64>(1)))
+        })?;
+        let records = records_json
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| {
+                Some(DeliveredPushContextRecord {
+                    delivery_log_id: value.get("delivery_log_id")?.as_i64()?,
+                    source_id: value.get("source_id")?.as_str()?.to_string(),
+                    delivered_at_ms: value.get("delivered_at_ms")?.as_i64()?,
+                    body: value.get("body")?.as_str()?.to_string(),
+                })
+            })
+            .collect();
         Ok(DeliveredPushContextClaim {
             records,
-            remaining_count,
+            remaining_count: usize::try_from(remaining_count).unwrap_or(usize::MAX),
         })
     }
 
@@ -1971,20 +1743,24 @@ impl EventStore {
         turn_id: &str,
     ) -> anyhow::Result<usize> {
         let actor = delivery_actor_key(actor);
-        let conn = self.conn.lock().unwrap();
-        Ok(conn.execute(
-            r#"
-            UPDATE delivered_push_context
-            SET consumed_turn_id = ?2,
-                consumed_at_ms = ?3,
-                claimed_turn_id = NULL,
-                claim_expires_at_ms = NULL
-            WHERE actor = ?1
-              AND claimed_turn_id = ?2
-              AND consumed_at_ms IS NULL
-            "#,
-            params![actor, turn_id, Utc::now().timestamp_millis()],
-        )?)
+        let turn_id = turn_id.to_string();
+        let now_ms = Utc::now().timestamp_millis();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let count = client
+                .execute(
+                    r#"
+UPDATE delivered_push_context
+SET consumed_turn_id=$2, consumed_at_ms=$3,
+    claimed_turn_id=NULL, claim_expires_at_ms=NULL
+WHERE actor=$1 AND claimed_turn_id=$2 AND consumed_at_ms IS NULL
+"#,
+                    &[&actor, &turn_id, &now_ms],
+                )
+                .await
+                .map_err(|error| pg_store_error("complete delivered push context", error))?;
+            Ok(usize::try_from(count).unwrap_or(usize::MAX))
+        })
     }
 
     pub fn release_delivered_push_context(
@@ -1993,163 +1769,322 @@ impl EventStore {
         turn_id: &str,
     ) -> anyhow::Result<usize> {
         let actor = delivery_actor_key(actor);
-        let conn = self.conn.lock().unwrap();
-        Ok(conn.execute(
-            r#"
-            UPDATE delivered_push_context
-            SET claimed_turn_id = NULL, claim_expires_at_ms = NULL
-            WHERE actor = ?1
-              AND claimed_turn_id = ?2
-              AND consumed_at_ms IS NULL
-            "#,
-            params![actor, turn_id],
-        )?)
+        let turn_id = turn_id.to_string();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let count = client
+                .execute(
+                    r#"
+UPDATE delivered_push_context
+SET claimed_turn_id=NULL, claim_expires_at_ms=NULL
+WHERE actor=$1 AND claimed_turn_id=$2 AND consumed_at_ms IS NULL
+"#,
+                    &[&actor, &turn_id],
+                )
+                .await
+                .map_err(|error| pg_store_error("release delivered push context", error))?;
+            Ok(usize::try_from(count).unwrap_or(usize::MAX))
+        })
     }
 
     pub fn list_recent_delivery_logs(
         &self,
         filter: &DeliveryLogFilter,
     ) -> anyhow::Result<Vec<DeliveryLogRecord>> {
-        let conn = self.conn.lock().unwrap();
-        let mut sql = String::from(
-            r#"
-            SELECT
-                d.id, d.event_id, d.actor, d.channel, d.severity,
-                d.sent_at_ts, d.status, d.body,
-                e.title, e.summary, e.kind_json, e.source, e.url, e.symbols_json
-            FROM delivery_log d
-            LEFT JOIN events e ON e.id = d.event_id
-            WHERE 1=1
-            "#,
-        );
-        let mut values: Vec<SqlValue> = Vec::new();
+        let filter = filter.clone();
+        self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let actor = filter.actor.filter(|value| !value.is_empty());
+            let actor_channel = filter
+                .actor_channel
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{value}::%"));
+            let actor_user_id = filter
+                .actor_user_id
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("%::{value}"));
+            let event_id = filter.event_id.filter(|value| !value.is_empty());
+            let status = filter.status.filter(|value| !value.is_empty());
+            let delivery_channel = filter.delivery_channel.filter(|value| !value.is_empty());
+            let top_level_only = filter.top_level_only;
+            let limit = i64::try_from(filter.limit.max(1)).unwrap_or(i64::MAX);
+            let rows = client
+                .query(
+                    r#"
+SELECT
+  d.id, d.event_id, d.actor, d.channel, d.severity,
+  d.sent_at_ts, d.status, d.body,
+  e.title, e.summary, e.kind_json, e.source, e.url, e.symbols_json
+FROM delivery_log d
+LEFT JOIN events e ON e.id=d.event_id
+WHERE ($1::bigint IS NULL OR d.sent_at_ts >= $1)
+  AND ($2::bigint IS NULL OR d.sent_at_ts <= $2)
+  AND (
+    ($3::text IS NOT NULL AND d.actor=$3)
+    OR (
+      $3::text IS NULL
+      AND ($4::text IS NULL OR d.actor LIKE $4)
+      AND ($5::text IS NULL OR d.actor LIKE $5)
+    )
+  )
+  AND ($6::text IS NULL OR d.event_id=$6)
+  AND ($7::text IS NULL OR d.status=$7)
+  AND ($8::text IS NULL OR d.channel=$8)
+  AND (
+    NOT $9::boolean
+    OR d.channel NOT IN ('router','digest_item','global_digest_item')
+  )
+ORDER BY d.sent_at_ts DESC, d.id DESC
+LIMIT $10
+"#,
+                    &[
+                        &filter.since_ts,
+                        &filter.until_ts,
+                        &actor,
+                        &actor_channel,
+                        &actor_user_id,
+                        &event_id,
+                        &status,
+                        &delivery_channel,
+                        &top_level_only,
+                        &limit,
+                    ],
+                )
+                .await
+                .map_err(|error| pg_store_error("list recent delivery logs", error))?;
+            rows.iter().map(decode_delivery_log).collect()
+        })
+    }
 
-        if let Some(since_ts) = filter.since_ts {
-            sql.push_str(" AND d.sent_at_ts >= ?");
-            values.push(SqlValue::Integer(since_ts));
-        }
-        if let Some(until_ts) = filter.until_ts {
-            sql.push_str(" AND d.sent_at_ts <= ?");
-            values.push(SqlValue::Integer(until_ts));
-        }
-        if let Some(actor) = filter.actor.as_deref().filter(|v| !v.is_empty()) {
-            sql.push_str(" AND d.actor = ?");
-            values.push(SqlValue::Text(actor.to_string()));
-        } else {
-            if let Some(channel) = filter.actor_channel.as_deref().filter(|v| !v.is_empty()) {
-                sql.push_str(" AND d.actor LIKE ?");
-                values.push(SqlValue::Text(format!("{channel}::%")));
-            }
-            if let Some(user_id) = filter.actor_user_id.as_deref().filter(|v| !v.is_empty()) {
-                sql.push_str(" AND d.actor LIKE ?");
-                values.push(SqlValue::Text(format!("%::{user_id}")));
-            }
-        }
-        if let Some(event_id) = filter.event_id.as_deref().filter(|v| !v.is_empty()) {
-            sql.push_str(" AND d.event_id = ?");
-            values.push(SqlValue::Text(event_id.to_string()));
-        }
-        if let Some(status) = filter.status.as_deref().filter(|v| !v.is_empty()) {
-            sql.push_str(" AND d.status = ?");
-            values.push(SqlValue::Text(status.to_string()));
-        }
-        if let Some(channel) = filter.delivery_channel.as_deref().filter(|v| !v.is_empty()) {
-            sql.push_str(" AND d.channel = ?");
-            values.push(SqlValue::Text(channel.to_string()));
-        }
-        if filter.top_level_only {
-            sql.push_str(" AND d.channel NOT IN ('router', 'digest_item', 'global_digest_item')");
-        }
-
-        sql.push_str(" ORDER BY d.sent_at_ts DESC, d.id DESC LIMIT ?");
-        values.push(SqlValue::Integer(filter.limit.max(1) as i64));
-
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(values), |row| {
-            let kind_json: Option<String> = row.get(10)?;
-            let symbols_json: Option<String> = row.get(13)?;
-            let event_kind = kind_json
-                .as_deref()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-                .and_then(|value| {
-                    value
-                        .get("type")
-                        .and_then(|type_value| type_value.as_str())
-                        .map(str::to_string)
-                });
-            let event_symbols = symbols_json
-                .as_deref()
-                .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
-                .unwrap_or_default();
-            Ok(DeliveryLogRecord {
-                id: row.get(0)?,
-                event_id: row.get(1)?,
-                actor: row.get(2)?,
-                channel: row.get(3)?,
-                severity: row.get(4)?,
-                sent_at_ts: row.get(5)?,
-                status: row.get(6)?,
-                body: row.get(7)?,
-                event_title: row.get(8)?,
-                event_summary: row.get(9)?,
-                event_kind,
-                event_source: row.get(11)?,
-                event_url: row.get(12)?,
-                event_symbols,
-            })
+    fn query_events(
+        &self,
+        sql: &'static str,
+        first: i64,
+        second: i64,
+        operation_name: &'static str,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(sql, &[&first, &second])
+                .await
+                .map_err(|error| pg_store_error(operation_name, error))
         })?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| decode_market_event(row).ok())
+            .collect())
+    }
 
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(anyhow::Error::from)
+    fn event_ids_since(
+        &self,
+        sql: &'static str,
+        scope: &str,
+        since: DateTime<Utc>,
+        operation_name: &'static str,
+    ) -> anyhow::Result<HashSet<String>> {
+        let scope = scope.to_string();
+        let since = since.timestamp();
+        let rows = self.run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            client
+                .query(sql, &[&scope, &since])
+                .await
+                .map_err(|error| pg_store_error(operation_name, error))
+        })?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 }
 
-/// 按 `source` 分组的事件入库数——用于 daily report 展示"各 poller 产出多少"。
-/// 返回排序过的 `(source, count)` 列表,count 降序。
 pub fn event_breakdown_by_source(
     store: &EventStore,
     since: DateTime<Utc>,
     until: DateTime<Utc>,
 ) -> anyhow::Result<Vec<(String, i64)>> {
-    let conn = store.conn.lock().unwrap();
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT source, COUNT(*) FROM events
-        WHERE created_at_ts >= ?1 AND created_at_ts < ?2
-        GROUP BY source ORDER BY 2 DESC
-        "#,
-    )?;
-    let rows = stmt.query_map(params![since.timestamp(), until.timestamp()], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(anyhow::Error::from)
+    let since = since.timestamp();
+    let until = until.timestamp();
+    store.run(move |postgres| async move {
+        let client = postgres.connect_cached_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT source, count(*)::bigint FROM events
+WHERE created_at_ts >= $1 AND created_at_ts < $2
+GROUP BY source ORDER BY 2 DESC
+"#,
+                &[&since, &until],
+            )
+            .await
+            .map_err(|error| pg_store_error("event breakdown by source", error))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get(0), row.get(1)))
+            .collect())
+    })
 }
 
-/// 按 `actor` + `status` 分组的推送统计——用于 daily report 按用户切片。
-/// status 值通常是 `sent` / `queued` / `failed` / `filtered` 等。
 pub fn delivery_breakdown_per_actor(
     store: &EventStore,
     since: DateTime<Utc>,
     until: DateTime<Utc>,
 ) -> anyhow::Result<Vec<(String, String, i64)>> {
-    let conn = store.conn.lock().unwrap();
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT actor, status, COUNT(*) FROM delivery_log
-        WHERE sent_at_ts >= ?1 AND sent_at_ts < ?2
-        GROUP BY actor, status ORDER BY actor, status
-        "#,
-    )?;
-    let rows = stmt.query_map(params![since.timestamp(), until.timestamp()], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)?,
-        ))
+    let since = since.timestamp();
+    let until = until.timestamp();
+    store.run(move |postgres| async move {
+        let client = postgres.connect_cached_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT actor, status, count(*)::bigint FROM delivery_log
+WHERE sent_at_ts >= $1 AND sent_at_ts < $2
+GROUP BY actor, status ORDER BY actor, status
+"#,
+                &[&since, &until],
+            )
+            .await
+            .map_err(|error| pg_store_error("delivery breakdown per actor", error))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get(0), row.get(1), row.get(2)))
+            .collect())
+    })
+}
+
+fn event_store_operation_timeout() -> Duration {
+    std::env::var("HONE_EVENT_STORE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_EVENT_STORE_TIMEOUT_SECS))
+}
+
+fn acquire_test_connection_lease(
+    namespace: &str,
+    postgres: CloudPgRuntime,
+) -> Arc<TestConnectionLease> {
+    let mut leases = TEST_CONNECTION_LEASES
+        .lock()
+        .expect("event store test connection lease lock");
+    if let Some(lease) = leases.get(namespace).and_then(Weak::upgrade) {
+        return lease;
+    }
+    let lease = Arc::new(TestConnectionLease {
+        namespace: namespace.to_string(),
+        postgres,
+    });
+    leases.insert(namespace.to_string(), Arc::downgrade(&lease));
+    lease
+}
+
+fn pg_store_error(context: &str, error: tokio_postgres::Error) -> HoneError {
+    HoneError::Storage(format!("Postgres event store {context} 失败: {error}"))
+}
+
+fn decode_market_event(row: &Row) -> HoneResult<MarketEvent> {
+    let kind_json: String = row
+        .try_get(1)
+        .map_err(|error| pg_store_error("decode event kind", error))?;
+    let kind = serde_json::from_str::<EventKind>(&kind_json)
+        .map_err(|error| HoneError::Serialization(error.to_string()))?;
+    let severity_label: String = row
+        .try_get(2)
+        .map_err(|error| pg_store_error("decode event severity", error))?;
+    let symbols_json: String = row
+        .try_get(3)
+        .map_err(|error| pg_store_error("decode event symbols", error))?;
+    let occurred_at_ts: i64 = row
+        .try_get(4)
+        .map_err(|error| pg_store_error("decode event timestamp", error))?;
+    let occurred_at = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0).ok_or_else(|| {
+        HoneError::Serialization(format!("event occurred_at_ts 越界: {occurred_at_ts}"))
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(anyhow::Error::from)
+    let payload_json: String = row
+        .try_get(9)
+        .map_err(|error| pg_store_error("decode event payload", error))?;
+    Ok(MarketEvent {
+        id: row
+            .try_get(0)
+            .map_err(|error| pg_store_error("decode event id", error))?,
+        kind,
+        severity: match severity_label.as_str() {
+            "high" => crate::event::Severity::High,
+            "medium" => crate::event::Severity::Medium,
+            _ => crate::event::Severity::Low,
+        },
+        symbols: serde_json::from_str(&symbols_json).unwrap_or_default(),
+        occurred_at,
+        title: row
+            .try_get(5)
+            .map_err(|error| pg_store_error("decode event title", error))?,
+        summary: row
+            .try_get(6)
+            .map_err(|error| pg_store_error("decode event summary", error))?,
+        url: row
+            .try_get(7)
+            .map_err(|error| pg_store_error("decode event url", error))?,
+        source: row
+            .try_get(8)
+            .map_err(|error| pg_store_error("decode event source", error))?,
+        payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
+    })
+}
+
+fn decode_delivery_log(row: &Row) -> HoneResult<DeliveryLogRecord> {
+    let kind_json: Option<String> = row
+        .try_get(10)
+        .map_err(|error| pg_store_error("decode delivery event kind", error))?;
+    let symbols_json: Option<String> = row
+        .try_get(13)
+        .map_err(|error| pg_store_error("decode delivery event symbols", error))?;
+    let event_kind = kind_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.get("type")?.as_str().map(str::to_string));
+    let event_symbols = symbols_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .unwrap_or_default();
+    Ok(DeliveryLogRecord {
+        id: row
+            .try_get(0)
+            .map_err(|error| pg_store_error("decode delivery id", error))?,
+        event_id: row
+            .try_get(1)
+            .map_err(|error| pg_store_error("decode delivery event id", error))?,
+        actor: row
+            .try_get(2)
+            .map_err(|error| pg_store_error("decode delivery actor", error))?,
+        channel: row
+            .try_get(3)
+            .map_err(|error| pg_store_error("decode delivery channel", error))?,
+        severity: row
+            .try_get(4)
+            .map_err(|error| pg_store_error("decode delivery severity", error))?,
+        sent_at_ts: row
+            .try_get(5)
+            .map_err(|error| pg_store_error("decode delivery timestamp", error))?,
+        status: row
+            .try_get(6)
+            .map_err(|error| pg_store_error("decode delivery status", error))?,
+        body: row
+            .try_get(7)
+            .map_err(|error| pg_store_error("decode delivery body", error))?,
+        event_title: row
+            .try_get(8)
+            .map_err(|error| pg_store_error("decode delivery event title", error))?,
+        event_summary: row
+            .try_get(9)
+            .map_err(|error| pg_store_error("decode delivery event summary", error))?,
+        event_kind,
+        event_source: row
+            .try_get(11)
+            .map_err(|error| pg_store_error("decode delivery event source", error))?,
+        event_url: row
+            .try_get(12)
+            .map_err(|error| pg_store_error("decode delivery event url", error))?,
+        event_symbols,
+    })
 }
 
 fn ensure_payload_object(
@@ -2184,59 +2119,6 @@ fn delivery_actor_key(actor: &ActorIdentity) -> String {
     )
 }
 
-fn load_claimed_push_context(
-    tx: &Transaction<'_>,
-    actor: &str,
-    turn_id: &str,
-) -> anyhow::Result<Vec<DeliveredPushContextRecord>> {
-    let mut stmt = tx.prepare(
-        r#"
-        SELECT delivery_log_id, source_id, delivered_at_ms, body
-        FROM delivered_push_context
-        WHERE actor = ?1
-          AND claimed_turn_id = ?2
-          AND consumed_at_ms IS NULL
-        ORDER BY delivered_at_ms ASC, delivery_log_id ASC
-        "#,
-    )?;
-    Ok(stmt
-        .query_map(params![actor, turn_id], |row| {
-            Ok(DeliveredPushContextRecord {
-                delivery_log_id: row.get(0)?,
-                source_id: row.get(1)?,
-                delivered_at_ms: row.get(2)?,
-                body: row.get(3)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?)
-}
-
-fn count_pending_push_context(
-    tx: &Transaction<'_>,
-    actor: &str,
-    delivered_before_ms: i64,
-    now_ms: i64,
-    excluded_turn_id: Option<&str>,
-) -> anyhow::Result<usize> {
-    let count: i64 = tx.query_row(
-        r#"
-        SELECT COUNT(*)
-        FROM delivered_push_context
-        WHERE actor = ?1
-          AND consumed_at_ms IS NULL
-          AND delivered_at_ms <= ?2
-          AND (
-                claimed_turn_id IS NULL
-                OR claim_expires_at_ms <= ?3
-              )
-          AND (?4 IS NULL OR claimed_turn_id IS NULL OR claimed_turn_id <> ?4)
-        "#,
-        params![actor, delivered_before_ms, now_ms, excluded_turn_id],
-        |row| row.get(0),
-    )?;
-    Ok(usize::try_from(count).unwrap_or(usize::MAX))
-}
-
 fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
     match category {
         "price" => Some(&["price_alert", "weekly52_high", "weekly52_low"]),
@@ -2258,7 +2140,7 @@ fn parse_bps_from_band_id(id: &str) -> Option<i64> {
     if !id.starts_with("price_band:") {
         return None;
     }
-    id.rsplit(':').next().and_then(|s| s.parse::<i64>().ok())
+    id.rsplit(':').next().and_then(|value| value.parse().ok())
 }
 
 fn price_band_id_pattern(symbol: &str, direction: &str) -> Option<String> {
@@ -2272,7 +2154,6 @@ fn price_band_id_pattern(symbol: &str, direction: &str) -> Option<String> {
         direction
     ))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2310,7 +2191,7 @@ mod tests {
     #[test]
     fn insert_is_idempotent_per_id() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let event = sample_event("earnings:AAPL:2026-04-30");
         assert!(store.insert_event(&event).unwrap()); // 首次
         assert!(!store.insert_event(&event).unwrap()); // 重复
@@ -2320,7 +2201,7 @@ mod tests {
     #[test]
     fn transcript_and_formal_filing_link_to_the_nearest_reviewed_release() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let occurred_at = Utc::now();
         let mut release = reviewed_release("release", occurred_at);
         let release_key = store
@@ -2368,7 +2249,7 @@ mod tests {
     #[test]
     fn reviewed_release_backfills_a_transcript_that_arrived_first() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let occurred_at = Utc.with_ymd_and_hms(2026, 8, 5, 20, 0, 0).unwrap();
         let mut transcript = sample_event("transcript-first");
         transcript.kind = EventKind::EarningsCallTranscript;
@@ -2411,18 +2292,16 @@ mod tests {
     #[test]
     fn continuity_job_survives_restart_retries_and_recovers_an_expired_lease() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("events.db");
+        let path = dir.path().join("event-store");
         let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
         let occurred_at = Utc::now();
-        let job_key = {
-            let store = EventStore::open(&path).unwrap();
-            let mut release = reviewed_release("release-job", occurred_at);
-            store.link_earnings_research_object(&mut release).unwrap();
-            store
-                .enqueue_earnings_continuity_job(&actor, &release)
-                .unwrap()
-                .unwrap()
-        };
+        let fixture = EventStore::open(&path).unwrap();
+        let mut release = reviewed_release("release-job", occurred_at);
+        fixture.link_earnings_research_object(&mut release).unwrap();
+        let job_key = fixture
+            .enqueue_earnings_continuity_job(&actor, &release)
+            .unwrap()
+            .unwrap();
 
         let store = EventStore::open(&path).unwrap();
         // enqueue 使用真实时钟写入 next_attempt_ts；给模拟领取时钟留出一秒，
@@ -2507,7 +2386,7 @@ mod tests {
     #[test]
     fn release_and_reviewed_transcript_have_distinct_continuity_jobs() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
         let occurred_at = Utc::now();
         let mut release = reviewed_release("release-job-stage", occurred_at);
@@ -2543,7 +2422,7 @@ mod tests {
     #[test]
     fn contains_event_supports_cross_restart_poller_short_circuit() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         assert!(!store.contains_event("earnings:SNDK:q4").unwrap());
         store
             .insert_event(&sample_event("earnings:SNDK:q4"))
@@ -2554,7 +2433,7 @@ mod tests {
     #[test]
     fn sec_fallback_is_superseded_only_after_actor_received_structured_earnings() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let mut earnings = sample_event("earnings_surprise:SNDK:2026-08-05");
         earnings.kind = EventKind::EarningsReleased;
         earnings.severity = Severity::High;
@@ -2606,7 +2485,7 @@ mod tests {
     #[test]
     fn distinct_ids_are_all_stored() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         assert!(store.insert_event(&sample_event("a")).unwrap());
         assert!(store.insert_event(&sample_event("b")).unwrap());
         assert!(store.insert_event(&sample_event("c")).unwrap());
@@ -2616,11 +2495,11 @@ mod tests {
     #[test]
     fn baseline_is_set_on_first_open_and_preserved() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("events.db");
-        let baseline_a = {
-            let store = EventStore::open(&path).unwrap();
-            store.baseline_at().unwrap()
-        };
+        let path = dir.path().join("event-store");
+        // pg_temp 的生命周期绑定测试连接；保留 fixture lease，同时用第二个
+        // EventStore 句柄覆盖生产中的重复构造不会改写 baseline。
+        let fixture = EventStore::open(&path).unwrap();
+        let baseline_a = fixture.baseline_at().unwrap();
         // 重新打开不应重写 baseline
         std::thread::sleep(std::time::Duration::from_millis(1100));
         let store = EventStore::open(&path).unwrap();
@@ -2631,7 +2510,7 @@ mod tests {
     #[test]
     fn delivery_log_is_append_only_across_retries() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         store
             .log_delivery(
                 "ev1",
@@ -2653,29 +2532,17 @@ mod tests {
                 Some("body v2"),
             )
             .unwrap();
-        let conn = store.conn.lock().unwrap();
-        let attempt_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM delivery_log WHERE event_id='ev1' AND actor='imessage:u1'",
-                [],
-                |r| r.get(0),
-            )
+        let (attempt_count, last_status) = store
+            .test_delivery_attempt_summary("ev1", "imessage:u1")
             .unwrap();
         assert_eq!(attempt_count, 2, "delivery_log 应 append-only 保留每次尝试");
-        let last_status: String = conn
-            .query_row(
-                "SELECT status FROM delivery_log WHERE event_id='ev1' ORDER BY sent_at_ts DESC, id DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
         assert_eq!(last_status, "sent");
     }
 
     #[test]
     fn delivered_push_context_claims_only_explicit_confirmations_in_delivery_order() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = ActorIdentity::new("discord", "u1", Some("dm-1")).unwrap();
         let other_scope = ActorIdentity::new("discord", "u1", Some("room-2")).unwrap();
         let actor_key = delivery_actor_key(&actor);
@@ -2814,7 +2681,7 @@ mod tests {
     #[test]
     fn delivered_push_after_user_cutoff_waits_for_next_turn() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = ActorIdentity::new("telegram", "u1", None::<String>).unwrap();
         store
             .log_confirmed_delivery(
@@ -2827,14 +2694,9 @@ mod tests {
             )
             .unwrap();
         let user_cutoff = Utc::now().timestamp_millis();
-        {
-            let conn = store.conn.lock().unwrap();
-            conn.execute(
-                "UPDATE delivered_push_context SET delivered_at_ms = ?1 WHERE source_id = 'future-push'",
-                params![user_cutoff + 1],
-            )
+        store
+            .test_set_delivered_at_ms("future-push", user_cutoff + 1)
             .unwrap();
-        }
 
         assert!(
             store
@@ -2852,7 +2714,7 @@ mod tests {
     #[test]
     fn delivered_push_context_crosses_store_connections_and_respects_body_budget() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("events.db");
+        let path = dir.path().join("event-store");
         let writer = EventStore::open(&path).unwrap();
         let reader = EventStore::open(&path).unwrap();
         let actor = ActorIdentity::new("web", "u1", Some("chat-1")).unwrap();
@@ -2884,7 +2746,7 @@ mod tests {
     #[test]
     fn native_session_observation_skips_duplicate_but_replay_still_claims() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let native_actor = ActorIdentity::new("cli", "native", None::<String>).unwrap();
         let replay_actor = ActorIdentity::new("web", "replay", None::<String>).unwrap();
         store
@@ -2939,30 +2801,11 @@ mod tests {
     #[test]
     fn opening_an_old_delivery_log_does_not_backfill_historical_context() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("events.db");
-        {
-            let conn = Connection::open(&path).unwrap();
-            conn.execute_batch(
-                r#"
-                CREATE TABLE delivery_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    channel TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    sent_at_ts INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    body TEXT
-                );
-                INSERT INTO delivery_log (
-                    event_id, actor, channel, severity, sent_at_ts, status, body
-                ) VALUES (
-                    'historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH'
-                );
-                "#,
-            )
+        let path = dir.path().join("event-store");
+        EventStore::open(&path)
+            .unwrap()
+            .test_insert_historical_delivery()
             .unwrap();
-        }
 
         let store = EventStore::open(&path).unwrap();
         let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
@@ -2985,7 +2828,7 @@ mod tests {
     #[test]
     fn list_recent_delivery_logs_keeps_operator_level_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         store
             .log_delivery(
                 "ev-no-actor",
@@ -3032,7 +2875,7 @@ mod tests {
     #[test]
     fn list_recent_delivery_logs_exposes_event_kind_type() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let mut event = sample_event("ev-kind");
         event.kind = EventKind::SecFiling {
             form: "8-K".to_string(),
@@ -3065,7 +2908,7 @@ mod tests {
     fn jsonl_mirror_appends_once_per_new_event() {
         let dir = tempdir().unwrap();
         let mirror = dir.path().join("events.jsonl");
-        let store = EventStore::open(dir.path().join("events.db"))
+        let store = EventStore::open(dir.path().join("event-store"))
             .unwrap()
             .with_jsonl_path(&mirror);
         let event = sample_event("e-jsonl");
@@ -3080,7 +2923,7 @@ mod tests {
     #[test]
     fn count_high_sent_since_only_counts_high_sink_sent() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
         // 真正算数的:高优 + sink + sent —— 4 条
         for i in 0..4 {
@@ -3130,7 +2973,7 @@ mod tests {
     #[test]
     fn high_counts_are_bucketed_by_event_category() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
         let mut price = sample_event("price-aapl");
         price.kind = EventKind::PriceAlert {
@@ -3167,7 +3010,7 @@ mod tests {
     #[test]
     fn last_high_sink_send_for_symbol_matches_case_insensitive_and_ignores_other_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
 
         // 给 AAPL 和 NVDA 分别入库一条事件
@@ -3226,7 +3069,7 @@ mod tests {
     #[test]
     fn last_high_sink_send_with_firm_filter_distinguishes_grading_company() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
 
         let mk = |id: &str, firm: &str| MarketEvent {
@@ -3285,7 +3128,7 @@ mod tests {
     #[test]
     fn last_high_sink_send_for_analyst_news_url_matches_same_article_fanout() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
         let url = "https://thefly.com/ajax/news_get.php?id=4346982";
 
@@ -3350,7 +3193,7 @@ mod tests {
     #[test]
     fn event_breakdown_counts_by_source() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let mut a = sample_event("a");
         a.source = "fmp.stock_news".into();
         let mut b = sample_event("b");
@@ -3371,7 +3214,7 @@ mod tests {
     #[test]
     fn delivery_breakdown_groups_per_actor_and_status() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         store
             .log_delivery("e1", "u1", "tg", Severity::High, "sent", None)
             .unwrap();
@@ -3395,7 +3238,7 @@ mod tests {
     #[test]
     fn today_signal_kinds_returns_same_day_symbol_hits() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
 
         // 今日 AAPL 价格异动
         let mut price = sample_event("price:AAPL:today");
@@ -3437,7 +3280,7 @@ mod tests {
     #[test]
     fn list_upcoming_earnings_returns_in_window_only() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
 
         // 未来 5 天后的 AAPL earnings —— 应命中(within_days=14)
         let mut future = sample_event("earnings:AAPL:2026-04-26");
@@ -3476,18 +3319,11 @@ mod tests {
     #[test]
     fn purge_events_removes_older_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         assert!(store.insert_event(&sample_event("old")).unwrap());
         // 人工把这条改到 40 天前
-        {
-            let conn = store.conn.lock().unwrap();
-            let cutoff = Utc::now().timestamp() - 40 * 86_400;
-            conn.execute(
-                "UPDATE events SET created_at_ts = ?1 WHERE id = 'old'",
-                params![cutoff],
-            )
-            .unwrap();
-        }
+        let cutoff = Utc::now().timestamp() - 40 * 86_400;
+        store.test_set_event_created_at("old", cutoff).unwrap();
         assert!(store.insert_event(&sample_event("new")).unwrap());
         let removed = store.purge_events_older_than(30).unwrap();
         assert_eq!(removed, 1);
@@ -3500,7 +3336,7 @@ mod tests {
     #[test]
     fn delivered_event_ids_since_filters_by_actor_status_and_time() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store")).unwrap();
         let actor = "tg::::u1";
         let other = "tg::::u2";
         let earlier = chrono::Utc::now() - chrono::Duration::hours(1);

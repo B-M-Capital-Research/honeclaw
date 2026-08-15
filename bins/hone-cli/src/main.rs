@@ -810,7 +810,33 @@ mod tests {
                 assert!(args.upload_oss);
                 assert!(!args.reuse_existing);
                 assert_eq!(args.concurrency, 6);
+                assert!(!args.event_store_only);
                 assert!(args.apply);
+                assert!(args.json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_event_store_only_migration_as_dry_run() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "migrate",
+            "--from-data-dir",
+            "./data",
+            "--event-store-only",
+            "--json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::Migrate(args),
+            }) => {
+                assert_eq!(args.from_data_dir, PathBuf::from("./data"));
+                assert!(args.event_store_only);
+                assert!(!args.apply);
                 assert!(args.json);
             }
             other => panic!("unexpected command: {other:?}"),

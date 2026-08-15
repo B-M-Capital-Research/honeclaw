@@ -956,8 +956,8 @@ pub async fn start_server(
         );
         let task_runs_dir_arc = std::sync::Arc::new(task_runs_dir.clone());
         let (events_db, events_jsonl, digest_dir) = {
-            // 统一使用 HoneBotCore 的事件存储路径；其它事件 API、渠道确认与
-            // Agent 下一轮 claim 必须打开同一个 events.sqlite3。
+            // 路径只继续承载 JSONL/digest 等本地非数据库文件的位置；事件、
+            // 投递审计与下一轮 push context 统一使用 PostgreSQL。
             let events_db = state.core.configured_event_store_path();
             let base = events_db
                 .parent()
@@ -1044,8 +1044,14 @@ pub async fn start_server(
         }
 
         let engine_task_runs_dir = task_runs_dir.clone();
+        let event_postgres = CloudPgRuntime::from_cloud_config(&state.core.config.cloud);
         task_handles.push(tokio::spawn(async move {
+            let Some(event_postgres) = event_postgres else {
+                tracing::warn!("event engine 未启动：PostgreSQL 未配置");
+                return;
+            };
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
+                .with_postgres(event_postgres)
                 .with_store_path(events_db)
                 .with_events_jsonl_path(Some(events_jsonl))
                 .with_portfolio_dir(portfolio_dir)

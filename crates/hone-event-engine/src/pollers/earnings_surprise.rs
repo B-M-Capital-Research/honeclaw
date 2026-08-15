@@ -749,7 +749,7 @@ mod tests {
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
         let raw = serde_json::json!([surprise(0, 0.18, 0.10)]);
         let mut events =
             events_from_surprises(&raw, "SNDK", Utc::now() - chrono::Duration::days(3), 5.0);
@@ -780,7 +780,7 @@ mod tests {
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
         let client = FmpClient::from_config(&hone_core::config::FmpConfig {
             api_key: "test-key".into(),
             api_keys: vec![],

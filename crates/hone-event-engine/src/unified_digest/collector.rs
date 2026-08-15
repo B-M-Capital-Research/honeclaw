@@ -169,7 +169,7 @@ mod tests {
 
     fn open_store() -> EventStore {
         let temp_dir = tempdir().unwrap();
-        let path = temp_dir.path().join("test.sqlite3");
+        let path = temp_dir.path().join("event-store");
         let store = EventStore::open(&path).unwrap();
         std::mem::forget(temp_dir);
         store

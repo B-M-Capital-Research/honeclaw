@@ -33,6 +33,7 @@ use crate::spawner::spawn_event_source;
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
 use crate::unified_digest::{DigestSlot, UnifiedDigestScheduler};
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::config::{EventEngineConfig, FmpConfig};
 
 /// 事件引擎句柄。`start()` 只 `spawn` 各 poller 任务并立即返回——
@@ -41,6 +42,7 @@ pub struct EventEngine {
     engine_cfg: EventEngineConfig,
     fmp_cfg: FmpConfig,
     store_path: PathBuf,
+    postgres: Option<CloudPgRuntime>,
     events_jsonl_path: Option<PathBuf>,
     portfolio_dir: PathBuf,
     /// actor sandbox 的根目录；配置后，tracking-enabled 公司画像会和持仓一起
@@ -79,7 +81,8 @@ impl EventEngine {
         Self {
             engine_cfg,
             fmp_cfg,
-            store_path: PathBuf::from("./data/events.db"),
+            store_path: PathBuf::from("./data/event-store"),
+            postgres: None,
             events_jsonl_path: Some(PathBuf::from("./data/events.jsonl")),
             portfolio_dir: PathBuf::from("./data/portfolio"),
             company_profile_dir: None,
@@ -111,6 +114,11 @@ impl EventEngine {
 
     pub fn with_store_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.store_path = path.into();
+        self
+    }
+
+    pub fn with_postgres(mut self, postgres: CloudPgRuntime) -> Self {
+        self.postgres = Some(postgres);
         self
     }
 
@@ -273,7 +281,18 @@ impl EventEngine {
             );
         }
 
-        let mut store_builder = EventStore::open(&self.store_path)?;
+        let mut store_builder = if let Some(postgres) = self.postgres.clone() {
+            EventStore::new(postgres)?
+        } else {
+            #[cfg(test)]
+            {
+                EventStore::open(&self.store_path)?
+            }
+            #[cfg(not(test))]
+            {
+                anyhow::bail!("event engine requires configured PostgreSQL")
+            }
+        };
         if let Some(jsonl) = &self.events_jsonl_path {
             store_builder = store_builder.with_jsonl_path(jsonl);
             info!(jsonl = %jsonl.display(), "events jsonl mirror enabled");

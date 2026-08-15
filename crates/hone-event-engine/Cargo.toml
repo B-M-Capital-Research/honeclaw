@@ -8,6 +8,7 @@ hone-core = { workspace = true }
 hone-memory = { workspace = true }
 hone-llm = { workspace = true }
 tokio = { workspace = true }
+tokio-postgres = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -16,7 +17,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
-rusqlite = { workspace = true }
 scraper = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }

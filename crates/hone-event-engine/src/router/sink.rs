@@ -92,7 +92,7 @@ pub(crate) fn actor_key(a: &ActorIdentity) -> String {
 }
 
 /// 取 body 头 120 字符做 tracing 预览,换行折成单行 ⏎,避免日志多行难抓。
-/// 全文一律已经在 SQLite `delivery_log` 里,这里只是肉眼速读用。
+/// 全文一律已经在 PostgreSQL `delivery_log` 里,这里只是肉眼速读用。
 pub(crate) fn body_preview(body: &str) -> String {
     let mut s: String = body.chars().take(120).collect();
     if body.chars().count() > 120 {

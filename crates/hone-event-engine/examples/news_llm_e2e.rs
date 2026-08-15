@@ -11,7 +11,7 @@
 //!      Important / NotImportant。
 //!   5. 验证缓存:同一条新闻第二次 classify 不再 LLM 调用(LLM 计数稳定)。
 //!
-//! 不发 telegram、不写 sqlite,只做"链路真打通"验收。
+//! 不发 telegram、不写数据库,只做"链路真打通"验收。
 
 use std::sync::Arc;
 

@@ -2,12 +2,11 @@
 //!
 //! 合并两类推送审计:
 //! - cron 定时任务执行记录(SQLite `cron_job_runs`)
-//! - event-engine 主动推送出口记录(SQLite `delivery_log`)
+//! - event-engine 主动推送出口记录(PostgreSQL `delivery_log`)
 //!
 //! 这样管理端能同时排查自定义 cron 任务、Discord/Telegram/Feishu/iMessage
 //! 上真实送达的事件推送、静音 hold、偏好过滤、digest 排队与失败。
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
@@ -18,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use hone_core::beijing_offset;
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_memory::cron_job::{CronJobExecutionRecord, ExecutionFilter};
 
 use crate::state::AppState;
@@ -189,11 +189,10 @@ fn list_event_delivery_records(
     since: &str,
     limit: usize,
 ) -> Vec<NotificationRecord> {
-    let path = event_store_path(state);
-    if !path.exists() {
+    let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) else {
         return Vec::new();
-    }
-    let Ok(store) = EventStore::open(&path) else {
+    };
+    let Ok(store) = EventStore::new(postgres) else {
         return Vec::new();
     };
     let effective_since = if since.trim().is_empty() {
@@ -219,10 +218,6 @@ fn list_event_delivery_records(
         .into_iter()
         .map(record_from_delivery)
         .collect()
-}
-
-fn event_store_path(state: &AppState) -> PathBuf {
-    state.core.configured_event_store_path()
 }
 
 fn exact_actor_key(q: &NotificationsQuery) -> Option<String> {

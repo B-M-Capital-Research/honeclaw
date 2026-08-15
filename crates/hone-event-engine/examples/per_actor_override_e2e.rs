@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let actor = ActorIdentity::new("telegram", ACTOR_USER, None::<&str>)?;
 
     let tmp = tempfile::tempdir()?;
-    let store = Arc::new(EventStore::open(tmp.path().join("events.db"))?);
+    let store = Arc::new(EventStore::open(tmp.path().join("event-store"))?);
     let digest = Arc::new(DigestBuffer::new(tmp.path().join("digest"))?);
 
     let mut reg = SubscriptionRegistry::new();

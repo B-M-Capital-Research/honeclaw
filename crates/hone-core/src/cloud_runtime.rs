@@ -86,6 +86,73 @@ DO UPDATE SET
   email_challenge_json = EXCLUDED.email_challenge_json
 "#;
 
+const EVENT_STORE_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  kind_json TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  symbols_json TEXT NOT NULL,
+  occurred_at_ts BIGINT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  url TEXT,
+  source TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at_ts BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_occurred_at
+  ON events(occurred_at_ts);
+CREATE INDEX IF NOT EXISTS idx_events_source
+  ON events(source);
+CREATE TABLE IF NOT EXISTS engine_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS delivery_log (
+  id BIGSERIAL PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  sent_at_ts BIGINT NOT NULL,
+  status TEXT NOT NULL,
+  body TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_event_actor
+  ON delivery_log(event_id, actor, sent_at_ts);
+CREATE INDEX IF NOT EXISTS idx_delivery_sent_at
+  ON delivery_log(sent_at_ts);
+CREATE TABLE IF NOT EXISTS delivered_push_context (
+  delivery_log_id BIGINT PRIMARY KEY,
+  actor TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  delivered_at_ms BIGINT NOT NULL,
+  body TEXT NOT NULL,
+  observed_native_session_id TEXT,
+  claimed_turn_id TEXT,
+  claim_expires_at_ms BIGINT,
+  consumed_turn_id TEXT,
+  consumed_at_ms BIGINT,
+  UNIQUE(actor, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_delivered_push_context_pending
+  ON delivered_push_context(actor, consumed_at_ms, delivered_at_ms, delivery_log_id);
+CREATE TABLE IF NOT EXISTS earnings_continuity_jobs (
+  job_key TEXT PRIMARY KEY,
+  actor_json TEXT NOT NULL,
+  event_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_ts BIGINT NOT NULL,
+  lease_until_ts BIGINT,
+  last_error TEXT,
+  created_at_ts BIGINT NOT NULL,
+  updated_at_ts BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_earnings_continuity_jobs_due
+  ON earnings_continuity_jobs(status, next_attempt_ts, lease_until_ts);
+"#;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeRole {
@@ -130,6 +197,7 @@ pub struct CloudHealth {
 #[derive(Debug, Clone)]
 pub struct CloudPgRuntime {
     config: PostgresConfig,
+    isolated_test_connection: Option<String>,
 }
 
 /// A session-scoped lock held on a dedicated PostgreSQL connection so two
@@ -1147,6 +1215,31 @@ impl CloudPgRuntime {
     pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
         config.postgres.is_configured().then(|| Self {
             config: config.postgres.clone(),
+            isolated_test_connection: None,
+        })
+    }
+
+    /// 为依赖真实 PostgreSQL 的测试创建一个独立缓存连接。
+    ///
+    /// 连接的 `search_path` 以 `pg_temp` 开头，因此 schema 与数据会随测试进程
+    /// 的连接关闭自动清理；同一个 namespace 会复用同一连接，允许测试验证
+    /// 两个 `EventStore` 句柄之间的可见性。
+    #[doc(hidden)]
+    pub fn with_isolated_test_connection(&self, namespace: impl Into<String>) -> HoneResult<Self> {
+        let namespace = namespace.into();
+        if namespace.is_empty()
+            || namespace.len() > 200
+            || !namespace.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'/' | b'.')
+            })
+        {
+            return Err(HoneError::Config(
+                "Postgres test connection namespace 无效".to_string(),
+            ));
+        }
+        Ok(Self {
+            config: self.config.clone(),
+            isolated_test_connection: Some(namespace),
         })
     }
 
@@ -1182,7 +1275,8 @@ impl CloudPgRuntime {
         self.connect_new_client().await.map(Arc::new)
     }
 
-    async fn connect_cached_client(&self) -> HoneResult<Arc<PgClient>> {
+    /// 获取进程内复用、带断线驱逐的 PostgreSQL client。
+    pub async fn connect_cached_client(&self) -> HoneResult<Arc<PgClient>> {
         let cache_key = self.client_cache_key();
         let cached = PG_CLIENT_CACHE
             .lock()
@@ -1215,16 +1309,43 @@ impl CloudPgRuntime {
         Ok(client)
     }
 
+    /// 精确驱逐当前 runtime key 对应的缓存 client。
+    ///
+    /// 仅供 connection-local `pg_temp` 测试 lease 在最后一个句柄释放时清理；
+    /// 生产断线仍由 `connect_cached_client` 的存活检查自动驱逐。
+    #[doc(hidden)]
+    pub fn evict_cached_test_client(&self) {
+        if self.isolated_test_connection.is_none() {
+            return;
+        }
+        if let Ok(mut cache) = PG_CLIENT_CACHE.lock() {
+            cache.remove(&self.client_cache_key());
+        }
+    }
+
     fn client_cache_key(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}",
             self.config.resolved_proxy(),
             self.config.resolved_host(),
             self.config.resolved_port().unwrap_or(5432),
             self.config.resolved_user(),
             self.config.resolved_database(),
             self.config.resolved_database_url(),
+            self.isolated_test_connection.as_deref().unwrap_or("public"),
         )
+    }
+
+    async fn prepare_client(&self, client: &PgClient) -> HoneResult<()> {
+        if self.isolated_test_connection.is_some() {
+            client
+                .batch_execute("SET search_path TO pg_temp, public")
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres test search_path 初始化失败: {err}"))
+                })?;
+        }
+        Ok(())
     }
 
     async fn connect_new_client(&self) -> HoneResult<PgClient> {
@@ -1239,6 +1360,7 @@ impl CloudPgRuntime {
                     tracing::warn!("postgres connection task ended: {error}");
                 }
             });
+            self.prepare_client(&client).await?;
             return Ok(client);
         }
 
@@ -1260,6 +1382,7 @@ impl CloudPgRuntime {
                 tracing::warn!("postgres proxied connection task ended: {error}");
             }
         });
+        self.prepare_client(&client).await?;
         Ok(client)
     }
 
@@ -1295,7 +1418,11 @@ impl CloudPgRuntime {
     }
 
     pub async fn ensure_schema(&self) -> HoneResult<()> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
+        client
+            .batch_execute(EVENT_STORE_SCHEMA_SQL)
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres event schema 初始化失败: {err}")))?;
         client
             .batch_execute(
                 r#"
@@ -1760,6 +1887,14 @@ COMMIT;
             .await
             .map_err(|err| HoneError::Config(format!("Postgres schema 初始化失败: {err}")))?;
         Ok(())
+    }
+
+    pub async fn ensure_event_store_schema(&self) -> HoneResult<()> {
+        let client = self.connect_cached_client().await?;
+        client
+            .batch_execute(EVENT_STORE_SCHEMA_SQL)
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres event schema 初始化失败: {err}")))
     }
 
     pub async fn insert_survey_response(
@@ -6374,6 +6509,7 @@ mod tests {
     async fn community_backfill_rejects_non_object_audit_before_connecting() {
         let runtime = CloudPgRuntime {
             config: PostgresConfig::default(),
+            isolated_test_connection: None,
         };
         let update = CloudCommunityResourceBackfillUpdate {
             resource_id: 1,

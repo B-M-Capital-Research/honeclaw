@@ -109,19 +109,29 @@ impl HoneBotCore {
             ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
                 .expect("failed to initialize conversation quota storage")
         };
+        #[cfg(test)]
         let delivered_push_context_store = {
-            let event_store_path = configured_event_store_path(&config);
-            match EventStore::open(&event_store_path) {
+            let event_store_namespace = configured_event_store_path(&config);
+            Some(
+                EventStore::open(&event_store_namespace).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to open isolated PostgreSQL delivered push context store ({}): {err:#}",
+                        event_store_namespace.display()
+                    )
+                }),
+            )
+        };
+        #[cfg(not(test))]
+        let delivered_push_context_store = CloudPgRuntime::from_cloud_config(&config.cloud)
+            .and_then(|postgres| match EventStore::new(postgres) {
                 Ok(store) => Some(store),
                 Err(err) => {
                     tracing::warn!(
-                        path = %event_store_path.display(),
-                        "failed to open delivered push context store: {err:#}"
+                        "failed to open PostgreSQL delivered push context store: {err:#}"
                     );
                     None
                 }
-            }
-        };
+            });
         configure_cloud_skill_registry(cloud_pg_runtime.clone());
         configure_cloud_notification_prefs(cloud_pg_runtime.clone());
         configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
@@ -447,13 +457,13 @@ impl HoneBotCore {
         }
 
         // 让用户通过 `/missed` 或自然语言查回 digest/router 主动筛掉的事件。
-        // event store 路径与 web-api `bootstrap_event_engine` 约定一致:
-        // `<data_dir>/events.sqlite3`。actor 强制绑定调用方 —— 工具层面也
-        // 不允许查别人。
-        registry.register(Box::new(hone_tools::MissedEventsTool::new(
-            self.configured_event_store_path(),
-            actor.cloned(),
-        )));
+        // 与 event-engine 共用 PostgreSQL 权威表；actor 强制绑定调用方。
+        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud) {
+            registry.register(Box::new(hone_tools::MissedEventsTool::new(
+                postgres,
+                actor.cloned(),
+            )));
+        }
 
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
@@ -893,13 +903,13 @@ fn cloud_cron_storage_fallback_warning(error: &impl std::fmt::Display) -> String
 
 fn configured_event_store_path(config: &HoneConfig) -> PathBuf {
     if let Ok(root) = std::env::var("HONE_DATA_DIR") {
-        return PathBuf::from(root).join("events.sqlite3");
+        return PathBuf::from(root).join("event-store");
     }
     PathBuf::from(&config.storage.sessions_dir)
         .parent()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"))
-        .join("events.sqlite3")
+        .join("event-store")
 }
 
 #[cfg(test)]

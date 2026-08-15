@@ -7,30 +7,25 @@
 //!
 //! 设计原则:
 //! - 构造时绑定 `actor` —— 不允许查别人的;
-//! - `events_db_path` 直接指向 sqlite 文件,每次 `execute` 打开一次。EventStore
-//!   open 是 idempotent + 快的(<1ms),不开常驻连接是为了简单 + 避免 tool 持有
-//!   跨进程 lock(BotCore 不持有 `Arc<EventStore>`);
+//! - 构造时注入与 runtime 相同的 `CloudPgRuntime`，查询走复用连接；
 //! - 返回结构化 JSON 列表,LLM 自行渲染中文文案给用户。
 
 use async_trait::async_trait;
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use hone_event_engine::store::EventStore;
 use serde_json::{Value, json};
-use std::path::PathBuf;
 
 use crate::base::{Tool, ToolParameter};
 
 pub struct MissedEventsTool {
-    events_db_path: PathBuf,
+    postgres: CloudPgRuntime,
     actor: Option<ActorIdentity>,
 }
 
 impl MissedEventsTool {
-    pub fn new(events_db_path: impl Into<PathBuf>, actor: Option<ActorIdentity>) -> Self {
-        Self {
-            events_db_path: events_db_path.into(),
-            actor,
-        }
+    pub fn new(postgres: CloudPgRuntime, actor: Option<ActorIdentity>) -> Self {
+        Self { postgres, actor }
     }
 
     fn actor_key(&self) -> HoneResult<String> {
@@ -110,12 +105,8 @@ impl Tool for MissedEventsTool {
             .map(|n| n.clamp(1, 200))
             .unwrap_or(30) as usize;
 
-        let store = EventStore::open(&self.events_db_path).map_err(|e| {
-            HoneError::Tool(format!(
-                "打开 event store 失败({}): {e}",
-                self.events_db_path.display()
-            ))
-        })?;
+        let store = EventStore::new(self.postgres.clone())
+            .map_err(|e| HoneError::Tool(format!("打开 PostgreSQL event store 失败: {e}")))?;
         let since = chrono::Utc::now()
             - chrono::Duration::milliseconds((since_hours * 3600.0 * 1000.0) as i64);
         let rows = store

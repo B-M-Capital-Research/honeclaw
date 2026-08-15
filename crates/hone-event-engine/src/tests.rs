@@ -35,7 +35,7 @@ async fn live_engine_e2e() {
     // 等到下一个 prefetch 窗口。8 秒 sleep 只会命中冷启动那一次 poll,足够做 e2e 校验。
 
     let temp_dir = tempfile::tempdir().unwrap();
-    let store_path = temp_dir.path().join("events.db");
+    let store_path = temp_dir.path().join("event-store");
     let jsonl_path = temp_dir.path().join("events.jsonl");
     let portfolio_dir = temp_dir.path().join("portfolio");
     let engine = EventEngine::new(engine_cfg, fmp_cfg)
@@ -53,11 +53,11 @@ async fn live_engine_e2e() {
         .map(|s| s.lines().filter(|l| !l.is_empty()).count() as i64)
         .unwrap_or(-1);
     println!("e2e count_events = {stored_event_count} jsonl_lines = {jsonl_lines}");
-    assert!(stored_event_count > 0, "SQLite 应写入事件");
+    assert!(stored_event_count > 0, "PostgreSQL 应写入事件");
     assert!(jsonl_lines > 0, "JSONL 镜像应同步写入事件");
     assert_eq!(
         jsonl_lines, stored_event_count,
-        "JSONL 行数应与 SQLite events 行数一致（单次冷启，无去重丢失）"
+        "JSONL 行数应与 PostgreSQL events 行数一致（单次冷启，无去重丢失）"
     );
 }
 
@@ -939,7 +939,7 @@ async fn daily_report_roundtrip() {
     use chrono::TimeZone;
 
     let temp_dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(EventStore::open(temp_dir.path().join("events.db")).unwrap());
+    let store = Arc::new(EventStore::open(temp_dir.path().join("event-store")).unwrap());
     let report_dir = temp_dir.path().join("reports");
 
     let now_utc = chrono::Utc::now();
@@ -1068,7 +1068,7 @@ async fn live_social_engine_e2e() {
     use hone_memory::portfolio::{Holding, Portfolio};
 
     let temp_dir = tempfile::tempdir().unwrap();
-    let store_path = temp_dir.path().join("events.db");
+    let store_path = temp_dir.path().join("event-store");
     let jsonl_path = temp_dir.path().join("events.jsonl");
     let portfolio_dir = temp_dir.path().join("portfolio");
     let digest_dir = temp_dir.path().join("digest");
@@ -1153,7 +1153,10 @@ async fn live_social_engine_e2e() {
         println!("第一条:{first}");
     }
 
-    assert!(stored_event_count > 0, "events SQLite 应有至少 1 条事件");
+    assert!(
+        stored_event_count > 0,
+        "PostgreSQL events 应有至少 1 条事件"
+    );
     assert!(
         !tg_lines.is_empty(),
         "应至少有 1 条 source=telegram.watcherguru 事件(若 Telegram 改版或网络问题请另查)"
@@ -1432,12 +1435,12 @@ fn sigma_adaptive_thresholds_regression() {
 /// 把过去 N 天的真实事件按新管线重建:评级重跑汇总文坍缩 + 目标价锚点,
 /// 价格按 σ-自适应阈值(fixture 日线逐日计算,无前视)重新过滤定级,再按
 /// 事件当日口径注入持仓行 / 30 日共识 / 财报倒计时 / 主线关联,按时间顺序
-/// 推到目标 Discord 用户。store 必须指向副本 —— 本测试只读查询,但绝不
-/// 允许指向生产库以防误用。
+/// 推到目标 Discord 用户。store namespace 会映射到当前连接的 `pg_temp`
+/// schema，不读写生产表。
 ///
 /// ```bash
 /// HONE_REPLAY_EVENTS_JSONL=$PWD/data/events.jsonl \
-/// HONE_REPLAY_STORE=/path/to/replay_events.db \
+/// HONE_REPLAY_STORE=replay-event-store \
 /// HONE_REPLAY_PREFS_DIR=$PWD/data/notif_prefs \
 /// HONE_REPLAY_PORTFOLIO_DIR=$PWD/data/portfolio \
 /// HONE_REPLAY_OUT=/tmp/replay_dryrun.md \
@@ -1465,15 +1468,15 @@ async fn replay_two_weeks_and_push() {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     let env = |k: &str| std::env::var(k).ok();
-    let (Some(jsonl), Some(store_path)) =
+    let (Some(jsonl), Some(store_namespace)) =
         (env("HONE_REPLAY_EVENTS_JSONL"), env("HONE_REPLAY_STORE"))
     else {
         eprintln!("HONE_REPLAY_EVENTS_JSONL / HONE_REPLAY_STORE 未设置,跳过");
         return;
     };
     assert!(
-        !store_path.contains("data/events.sqlite3"),
-        "HONE_REPLAY_STORE 不允许指向生产库,请用副本"
+        !store_namespace.trim().is_empty(),
+        "HONE_REPLAY_STORE 不能为空"
     );
     let prefs_dir = env("HONE_REPLAY_PREFS_DIR").expect("HONE_REPLAY_PREFS_DIR");
     let portfolio_dir = env("HONE_REPLAY_PORTFOLIO_DIR").expect("HONE_REPLAY_PORTFOLIO_DIR");
@@ -1485,7 +1488,7 @@ async fn replay_two_weeks_and_push() {
 
     let now = Utc::now();
     let cutoff = now - Duration::days(days);
-    let store = EventStore::open(&store_path).expect("open store copy");
+    let store = EventStore::open(&store_namespace).expect("open isolated PostgreSQL store");
     let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir);
     let registry = registry.load();
     let actor = ActorIdentity::new("discord", target_user.as_str(), None::<&str>)

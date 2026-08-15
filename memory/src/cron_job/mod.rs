@@ -14,6 +14,7 @@ use std::{
 };
 
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use tracing::warn;
 
 pub mod history;
@@ -37,39 +38,6 @@ pub struct CronJobStorage {
 }
 
 const DEFAULT_CLOUD_CRON_TIMEOUT_SECS: u64 = 15;
-
-/// 云 schema 是否已在本进程内确保过一次。见 `new_cloud`。
-static CLOUD_CRON_SCHEMA_READY: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// 云 cron 同步桥专用的长驻 runtime。
-///
-/// 此前 `run_cloud_cron_with_timeout` **每次调用**都 `Runtime::new()`——那是
-/// multi_thread、worker 数 = CPU 核数,即每次云操作都要创建并销毁 `1 + N` 个 OS
-/// 线程(默认 2MB 栈)外加一套 epoll/时间轮。调度器每 60s tick 会走这条路 5–6 次,
-/// 每个调度事件还要再走几次。生产实测(GCE 2 vCPU)进程 26 分钟烧掉 47 CPU 分钟,
-/// 线程画像显示 CPU 集中在大量短命线程而非长驻 worker。
-///
-/// 固定 2 个 worker 而不是跟随核数:这条路径全是 PG 往返(IO 等待为主),2 个足够,
-/// 且在小机器上不会跟 web/agent 抢核。
-///
-/// 另一个关键副作用:`connect_new_client` 会把 PG 连接的 driver task spawn 到
-/// **当前** runtime 上。此前 driver 随临时 runtime 一起销毁,所以 cron 路径根本
-/// 没法复用缓存连接;改成长驻 runtime 后,缓存连接才真正可用。
-static CLOUD_CRON_RUNTIME: std::sync::LazyLock<std::io::Result<tokio::runtime::Runtime>> =
-    std::sync::LazyLock::new(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .thread_name("hone-cloud-cron")
-            .enable_all()
-            .build()
-    });
-
-fn cloud_cron_runtime() -> hone_core::HoneResult<&'static tokio::runtime::Runtime> {
-    CLOUD_CRON_RUNTIME
-        .as_ref()
-        .map_err(|err| hone_core::HoneError::Config(format!("云 cron runtime 构建失败: {err}")))
-}
 
 impl CronJobStorage {
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
@@ -105,11 +73,7 @@ impl CronJobStorage {
         //
         // schema 在一个进程生命周期内不会变(换版本 = 换进程 = 会重跑),所以只需
         // 首次成功后就跳过。失败不置位,下次仍会重试。竞态下重复跑一次无害:DDL 幂等。
-        if !CLOUD_CRON_SCHEMA_READY.load(std::sync::atomic::Ordering::Acquire) {
-            let schema_postgres = postgres.clone();
-            run_cloud_cron(async move { schema_postgres.ensure_schema().await })?;
-            CLOUD_CRON_SCHEMA_READY.store(true, std::sync::atomic::Ordering::Release);
-        }
+        ensure_cloud_schema_once(postgres.clone(), Some(cloud_cron_operation_timeout()))?;
         Ok(Self {
             data_dir: PathBuf::new(),
             sqlite_path: None,
@@ -153,37 +117,7 @@ where
     T: Send + 'static,
     F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
 {
-    let runtime = cloud_cron_runtime()?;
-    let guarded = async move {
-        match tokio::time::timeout(operation_timeout, future).await {
-            Ok(result) => result,
-            Err(_) => Err(hone_core::HoneError::Storage(format!(
-                "cloud cron operation timed out after {}ms",
-                operation_timeout.as_millis()
-            ))),
-        }
-    };
-
-    // 不在 tokio 上下文里(CLI / 同步测试):直接借长驻 runtime 跑。
-    if tokio::runtime::Handle::try_current().is_err() {
-        return runtime.block_on(guarded);
-    }
-
-    // 在 tokio 上下文里:不能对另一个 runtime 调 `block_on`(tokio 会 panic
-    // "Cannot start a runtime from within a runtime"),所以把 future 交给长驻
-    // runtime,再阻塞当前线程等结果。阻塞语义与此前的 `thread::spawn().join()`
-    // 完全一致,省掉的是每次新建/销毁整个 runtime 的开销。
-    let (tx, rx) = std::sync::mpsc::sync_channel(1);
-    runtime.spawn(async move {
-        let _ = tx.send(guarded.await);
-    });
-    // future 自身已带超时;这里再留一点余量兜底,避免 runtime 被关闭时永久阻塞。
-    match rx.recv_timeout(operation_timeout.saturating_add(Duration::from_secs(5))) {
-        Ok(result) => result,
-        Err(err) => Err(hone_core::HoneError::Storage(format!(
-            "cloud cron worker did not report a result: {err}"
-        ))),
-    }
+    run_cloud_sync(future, Some(operation_timeout), "cloud cron operation")
 }
 
 #[cfg(test)]

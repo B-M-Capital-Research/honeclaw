@@ -199,7 +199,7 @@ mod tests {
         use tempfile::tempdir;
 
         let temp_dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(temp_dir.path().join("events.db")).unwrap());
+        let store = Arc::new(EventStore::open(temp_dir.path().join("event-store")).unwrap());
         let report_dir = temp_dir.path().join("reports");
 
         let report = DailyReport::new(store, &report_dir)

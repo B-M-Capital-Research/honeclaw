@@ -193,12 +193,7 @@ mod tests {
 
     fn open_store() -> EventStore {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("test.sqlite3");
-        let store = EventStore::open(&path).unwrap();
-        // tempdir 析构后 path 失效,但 EventStore 持有 Connection 即可工作;
-        // 测试结束 leak 是可接受的(单测进程一次性)。
-        std::mem::forget(dir);
-        store
+        EventStore::open(dir.path().join("event-store")).unwrap()
     }
 
     #[test]

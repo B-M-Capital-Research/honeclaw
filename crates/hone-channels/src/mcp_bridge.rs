@@ -881,6 +881,9 @@ mod tests {
     }
 
     fn clear_test_env() {
+        // PostgreSQL is shared test infrastructure for EventStore. Do not mutate
+        // HONE_POSTGRES_* here: unrelated channel tests run in parallel and use
+        // connection-local pg_temp tables for isolation.
         for key in [
             "HONE_MCP_BIN",
             "HONE_MCP_ALLOWED_TOOLS",
@@ -897,13 +900,6 @@ mod tests {
             "HONE_CLOUD_ENABLED",
             "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE",
             "DATABASE_URL",
-            "HONE_POSTGRES_HOST",
-            "HONE_POSTGRES_PORT",
-            "HONE_POSTGRES_USER",
-            "HONE_POSTGRES_PASSWORD",
-            "HONE_POSTGRES_DATABASE",
-            "HONE_POSTGRES_PROXY",
-            "HONE_POSTGRES_NO_PROXY",
             "HONE_OSS_PROVIDER",
             "HONE_OSS_ACCESS_KEY_ID",
             "HONE_OSS_ACCESS_KEY_SECRET",
