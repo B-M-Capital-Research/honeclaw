@@ -69,14 +69,17 @@ pub fn render_immediate_with_mainline(
         out.push_str(&render_inline(body_trim, fmt));
     }
 
-    if let Some(consensus_line) = analyst_consensus_line(event) {
+    let context_lines: Vec<String> = [
+        earnings_countdown_line(event),
+        analyst_consensus_line(event),
+        position_context_line(event),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !context_lines.is_empty() {
         out.push_str("\n\n");
-        out.push_str(&render_inline(&consensus_line, fmt));
-    }
-
-    if let Some(position_line) = position_context_line(event) {
-        out.push_str("\n\n");
-        out.push_str(&render_inline(&position_line, fmt));
+        out.push_str(&render_inline(&context_lines.join("\n"), fmt));
     }
 
     if let Some(u) = event.user_visible_url() {
@@ -84,6 +87,26 @@ pub fn render_immediate_with_mainline(
         out.push_str(&render_link(u, fmt));
     }
     out
+}
+
+/// 财报倒计时行(router 注入的 `hone_days_to_earnings`)。财报前的价格异动
+/// 可能是抢跑,与平常日含义不同。
+pub(crate) fn earnings_countdown_line(event: &MarketEvent) -> Option<String> {
+    let days = event
+        .payload
+        .get("hone_days_to_earnings")
+        .and_then(|v| v.as_i64())?;
+    let date = event
+        .payload
+        .get("hone_next_earnings_date")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Some(match (days, date.is_empty()) {
+        (0, false) => format!("📅 今日财报（{date}）"),
+        (0, true) => "📅 今日财报".to_string(),
+        (_, false) => format!("📅 {days} 天后财报（{date}）"),
+        (_, true) => format!("📅 {days} 天后财报"),
+    })
 }
 
 /// 近 30 日评级共识行(router 注入的 `hone_analyst_consensus_30d`)。
@@ -254,12 +277,15 @@ fn render_immediate_feishu_post(event: &MarketEvent, mainline: Option<&str>) -> 
         content.push(vec![feishu_text(body_trim)]);
     }
 
-    if let Some(consensus_line) = analyst_consensus_line(event) {
-        content.push(vec![feishu_text(&consensus_line)]);
-    }
-
-    if let Some(position_line) = position_context_line(event) {
-        content.push(vec![feishu_text(&position_line)]);
+    for context_line in [
+        earnings_countdown_line(event),
+        analyst_consensus_line(event),
+        position_context_line(event),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        content.push(vec![feishu_text(&context_line)]);
     }
 
     serde_json::json!({

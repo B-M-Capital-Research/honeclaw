@@ -54,6 +54,8 @@ impl NotificationRouter {
         // 评级事件注入「近 30 日共识计数」锚点(actor 无关,dispatch 前一次算好;
         // 事件本身已入库,计数含当前这条)。查询失败不阻断分发。
         let routed = self.annotate_analyst_consensus(routed);
+        // 价格警报注入「N 天后财报」倒计时(同样 actor 无关)。
+        let routed = self.annotate_earnings_countdown(routed);
         let event = &routed;
         // 每次 dispatch 都拿最新快照——用户持仓更新后下一条事件即可感知。
         let hits = self.registry.load().resolve(event);
@@ -534,6 +536,47 @@ impl NotificationRouter {
                     "reiterated": counts.reiter,
                 }),
             );
+        }
+        annotated
+    }
+
+    /// 价格警报(含 52 周高/低)→ 注入「N 天后财报」倒计时。财报前的价格
+    /// 异动和平常日的含义完全不同 —— 可能是抢跑,digest 里也该带上这个背景。
+    /// 无 upcoming / 查询失败 → 原样返回。
+    fn annotate_earnings_countdown(&self, event: MarketEvent) -> MarketEvent {
+        const EARNINGS_LOOKAHEAD_DAYS: i64 = 14;
+        if !matches!(
+            event.kind,
+            EventKind::PriceAlert { .. } | EventKind::Weekly52High | EventKind::Weekly52Low
+        ) {
+            return event;
+        }
+        let Some(symbol) = event.symbols.first() else {
+            return event;
+        };
+        let now = chrono::Utc::now();
+        let earnings_at =
+            match self
+                .store
+                .next_upcoming_earnings_for_symbol(symbol, now, EARNINGS_LOOKAHEAD_DAYS)
+            {
+                Ok(Some(at)) => at,
+                Ok(None) => return event,
+                Err(error) => {
+                    tracing::warn!(event_id = %event.id, "财报倒计时查询失败: {error:#}");
+                    return event;
+                }
+            };
+        let days = (earnings_at.date_naive() - now.date_naive())
+            .num_days()
+            .max(0);
+        let mut annotated = event;
+        if let Some(obj) = annotated.payload.as_object_mut() {
+            obj.insert(
+                "hone_next_earnings_date".into(),
+                serde_json::json!(earnings_at.date_naive().to_string()),
+            );
+            obj.insert("hone_days_to_earnings".into(), serde_json::json!(days));
         }
         annotated
     }

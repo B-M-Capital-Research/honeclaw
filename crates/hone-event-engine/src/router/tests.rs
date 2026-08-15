@@ -3016,3 +3016,75 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
         "body={body}"
     );
 }
+
+/// Item 4 端到端:store 里有 3 天后的 earnings_upcoming 时,价格警报带
+/// 「📅 3 天后财报」倒计时;窗口外(>14 天)不带。
+#[tokio::test]
+async fn price_alert_carries_earnings_countdown_when_upcoming() {
+    let (router, sink, store, _dir) = router_with_aapl_actor();
+    let earnings_at = Utc::now() + chrono::Duration::days(3);
+    store
+        .insert_event(&MarketEvent {
+            id: format!("earnings:AAPL:{}", earnings_at.format("%Y-%m-%d")),
+            kind: EventKind::EarningsUpcoming,
+            severity: Severity::Low,
+            symbols: vec!["AAPL".into()],
+            occurred_at: earnings_at,
+            title: "AAPL 财报".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.earnings_calendar".into(),
+            payload: serde_json::json!({}),
+        })
+        .unwrap();
+
+    let ev = MarketEvent {
+        id: "price_band:AAPL:2026-08-14:up:800".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 800,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["AAPL".into()],
+        occurred_at: Utc::now(),
+        title: "AAPL +8.00%".into(),
+        summary: "当前 250.00，日涨 +8.00%".into(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({"changesPercentage": 8.0, "hone_price": 250.0}),
+    };
+    let (sent, _) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1);
+    let calls = sink.calls.lock().unwrap();
+    let body = &calls[0].1;
+    assert!(body.contains("📅 3 天后财报"), "body={body}");
+    assert!(
+        body.contains(&earnings_at.date_naive().to_string()),
+        "body={body}"
+    );
+}
+
+/// 无 upcoming 财报 → 价格警报不带倒计时行(与旧输出一致)。
+#[tokio::test]
+async fn price_alert_without_upcoming_earnings_has_no_countdown() {
+    let (router, sink, _store, _dir) = router_with_aapl_actor();
+    let ev = MarketEvent {
+        id: "price_band:AAPL:2026-08-14:up:800".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 800,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["AAPL".into()],
+        occurred_at: Utc::now(),
+        title: "AAPL +8.00%".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({"changesPercentage": 8.0}),
+    };
+    let (sent, _) = router.dispatch(&ev).await.unwrap();
+    assert_eq!(sent, 1);
+    let calls = sink.calls.lock().unwrap();
+    assert!(!calls[0].1.contains("财报"), "body={}", calls[0].1);
+}

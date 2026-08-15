@@ -994,6 +994,34 @@ impl EventStore {
         Ok(upcoming_earnings_events)
     }
 
+    /// 某 symbol 在 `[now, now+within_days]` 内最近一场财报的时间。
+    /// 供 router 给价格警报注入「N 天后财报」倒计时锚点。无 → None。
+    pub fn next_upcoming_earnings_for_symbol(
+        &self,
+        symbol: &str,
+        now: DateTime<Utc>,
+        within_days: i64,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let end = now + chrono::Duration::days(within_days);
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT occurred_at_ts FROM events
+            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
+              AND kind_json LIKE '%"earnings_upcoming"%'
+              AND symbols_json LIKE ?3
+            ORDER BY occurred_at_ts ASC LIMIT 1
+            "#,
+        )?;
+        let ts: Option<i64> = stmt
+            .query_row(params![now.timestamp(), end.timestamp(), needle], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        Ok(ts.and_then(|t| DateTime::<Utc>::from_timestamp(t, 0)))
+    }
+
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
     /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
     /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。
