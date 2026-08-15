@@ -1211,6 +1211,14 @@ ORDER BY p.published_at DESC NULLS LAST, p.content_id DESC
         .collect()
 }
 
+fn isolated_memory_test_schema(namespace: &str) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    namespace.hash(&mut hasher);
+    format!("hone_memory_test_{:016x}", hasher.finish())
+}
+
 impl CloudPgRuntime {
     pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
         config.postgres.is_configured().then(|| Self {
@@ -1323,6 +1331,28 @@ impl CloudPgRuntime {
         }
     }
 
+    /// Drop the named schema used by memory's real-PostgreSQL tests.
+    #[doc(hidden)]
+    pub async fn drop_isolated_memory_test_schema(&self) -> HoneResult<()> {
+        let Some(namespace) = self.isolated_test_connection.as_deref() else {
+            return Ok(());
+        };
+        if !namespace.starts_with("hone_memory_") {
+            return Ok(());
+        }
+        let schema = isolated_memory_test_schema(namespace);
+        let client = self.connect_new_client().await?;
+        client
+            .batch_execute(&format!(
+                "SET search_path TO public; DROP SCHEMA IF EXISTS {schema} CASCADE"
+            ))
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres memory 测试 schema 清理失败: {err}"))
+            })?;
+        Ok(())
+    }
+
     fn client_cache_key(&self) -> String {
         format!(
             "{}|{}|{}|{}|{}|{}|{}",
@@ -1337,7 +1367,21 @@ impl CloudPgRuntime {
     }
 
     async fn prepare_client(&self, client: &PgClient) -> HoneResult<()> {
-        if self.isolated_test_connection.is_some() {
+        if let Some(namespace) = self.isolated_test_connection.as_deref() {
+            if namespace.starts_with("hone_memory_") {
+                let schema = isolated_memory_test_schema(namespace);
+                client
+                    .batch_execute(&format!(
+                        "CREATE SCHEMA IF NOT EXISTS {schema}; SET search_path TO {schema}, public"
+                    ))
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres memory 测试 search_path 初始化失败: {err}"
+                        ))
+                    })?;
+                return Ok(());
+            }
             client
                 .batch_execute("SET search_path TO pg_temp, public")
                 .await

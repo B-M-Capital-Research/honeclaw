@@ -10,8 +10,8 @@ pub mod password;
 pub mod portfolio;
 pub mod quota;
 pub mod session;
-pub mod session_sqlite;
 pub mod survey;
+mod test_postgres;
 pub mod web_auth;
 
 pub use billing::{
@@ -47,6 +47,7 @@ pub use quota::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, ConversationQuotaSnapshot,
     ConversationQuotaStorage,
 };
+pub use session::InterruptedSessionInfo;
 pub use session::{
     ASSISTANT_TOOL_CALLS_METADATA_KEY, COMPACT_BOUNDARY_METADATA_KEY,
     COMPACT_SKILL_SNAPSHOT_METADATA_KEY, COMPACT_SUMMARY_METADATA_KEY, INVOKED_SKILLS_METADATA_KEY,
@@ -61,7 +62,6 @@ pub use session::{
     session_message_from_normalized, session_message_from_text, session_message_in_context,
     session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };
-pub use session_sqlite::InterruptedSessionInfo;
 pub use survey::{
     ACTIVE_SURVEY_ID, SURVEY_CLIENT_WINDOW_HOURS, SURVEY_CLIENT_WINDOW_LIMIT, SurveyResponse,
     SurveyStorage, configure_cloud_survey_storage,

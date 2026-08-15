@@ -1,17 +1,5 @@
-//! 会话存储 — JSON 文件 + 可选的 SQLite 索引层
-//!
-//! 架构要点：
-//! - JSON 文件始终是 session 的权威持久化：`SessionStorage::write_session`
-//!   每次都会写 `{data_dir}/{session_id}.json`，不管有没有启用 SQLite
-//! - SQLite 是可选的「索引/加速」层，通过 `SessionIndex` trait 抽象：
-//!   * `runtime_backend=Sqlite`：读路径先查 index，未命中再读 JSON 并回填 index
-//!   * 只要配置了 SQLite index，启动时都会 best-effort 回填既有 JSON，修复
-//!     index 曾被关闭或未追平期间留下的缺口
-//! - 当前只有 `SqliteSessionMirror` 一种实现；抽成 trait 的原因是让
-//!   runtime 层（`AgentSession`、tests）能接受任意实现（例如 mock、
-//!   或将来要接的远程索引），而不用硬绑定到 SQLite
+//! 会话存储 — PostgreSQL 权威后端。
 
-use crate::session_sqlite::{InterruptedSessionInfo, SqliteSessionMirror};
 use chrono::{DateTime, FixedOffset};
 use hone_core::agent::{
     AgentMessage, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
@@ -26,6 +14,15 @@ use std::collections::HashMap;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+
+/// Session that was in-flight when the process was killed, identified by a recent
+/// last user message without a following assistant reply.
+#[derive(Debug, Clone)]
+pub struct InterruptedSessionInfo {
+    pub session_id: String,
+    pub actor_user_id: String,
+    pub actor_channel_scope: Option<String>,
+}
 
 /// Session 的「索引/加速」后端抽象。
 ///
@@ -65,51 +62,16 @@ pub trait SessionIndex: Send + Sync {
 ///
 /// 字段说明：
 /// - `data_dir`：session JSON 文件的根目录
-/// - `sqlite_storage`：可选的 `SessionIndex` 实现;
-///   `None` 代表纯 JSON 模式；`Some` 可能是 shadow-write 的镜像，
-///   也可能是 `runtime_backend=Sqlite` 时的主读写路径
-/// - `runtime_backend`：读路径应优先走哪边（见模块头文档）
-/// - `shadow_sqlite_enabled`：在 JSON 主后端下，是否把每次写入同步到 index
+/// `storage` 是唯一的 PostgreSQL 会话索引；测试可注入同语义的内存实现。
 pub struct SessionStorage {
     data_dir: PathBuf,
-    sqlite_storage: Option<Arc<dyn SessionIndex>>,
-    cloud_storage: Option<Arc<dyn SessionIndex>>,
-    runtime_backend: SessionRuntimeBackend,
-    shadow_sqlite_enabled: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionStorageOptions {
-    pub shadow_sqlite_db_path: Option<PathBuf>,
-    pub shadow_sqlite_enabled: bool,
-    pub runtime_backend: SessionRuntimeBackend,
-}
-
-impl Default for SessionStorageOptions {
-    fn default() -> Self {
-        Self {
-            shadow_sqlite_db_path: None,
-            shadow_sqlite_enabled: false,
-            runtime_backend: SessionRuntimeBackend::Json,
-        }
-    }
+    storage: Arc<dyn SessionIndex>,
+    _test_postgres_lease: Option<Arc<crate::test_postgres::TestPostgresLease>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionRuntimeBackend {
-    Json,
-    Sqlite,
     CloudPg,
-}
-
-impl SessionRuntimeBackend {
-    fn from_config_value(value: &str) -> Self {
-        match value.trim() {
-            "sqlite" => Self::Sqlite,
-            "cloud_pg" => Self::CloudPg,
-            _ => Self::Json,
-        }
-    }
 }
 
 pub struct CloudPgSessionIndex {
@@ -828,134 +790,37 @@ pub fn restore_tool_message(message: &SessionMessage) -> Option<(String, String,
 }
 
 impl SessionStorage {
+    /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
+    #[doc(hidden)]
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
-        Self::with_options(data_dir, SessionStorageOptions::default())
-    }
-
-    pub fn with_options(data_dir: impl AsRef<Path>, options: SessionStorageOptions) -> Self {
-        let dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).ok();
-        // 仅在「Sqlite 主后端」或「JSON 主 + shadow_write」场景下才实例化索引。
-        // 初始化失败时降级为纯 JSON：带 warn log，避免启动阻塞。
-        let sqlite_storage: Option<Arc<dyn SessionIndex>> = if options.shadow_sqlite_enabled
-            || matches!(options.runtime_backend, SessionRuntimeBackend::Sqlite)
-        {
-            options.shadow_sqlite_db_path.as_ref().and_then(|path| {
-                match SqliteSessionMirror::new(path) {
-                    Ok(storage) => Some(Arc::new(storage) as Arc<dyn SessionIndex>),
-                    Err(err) => {
-                        tracing::warn!(
-                            path = %path.display(),
-                            "failed to initialize session shadow sqlite: {err}"
-                        );
-                        None
-                    }
-                }
-            })
-        } else {
-            None
-        };
-
-        let storage = Self {
-            data_dir: dir,
-            sqlite_storage,
-            cloud_storage: None,
-            runtime_backend: options.runtime_backend,
-            shadow_sqlite_enabled: options.shadow_sqlite_enabled,
-        };
-        storage.backfill_shadow_from_json_dir();
+        let data_dir = data_dir.as_ref().to_path_buf();
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(&data_dir)
+            .expect("SessionStorage PostgreSQL test runtime");
+        let mut storage =
+            Self::new_cloud(&data_dir, postgres).expect("SessionStorage PostgreSQL test schema");
+        storage._test_postgres_lease = Some(lease);
         storage
     }
 
-    pub fn new_cloud(
-        data_dir: impl AsRef<Path>,
-        postgres: CloudPgRuntime,
-        shadow_sqlite_db_path: Option<PathBuf>,
-        shadow_sqlite_enabled: bool,
-    ) -> HoneResult<Self> {
+    pub fn new_cloud(data_dir: impl AsRef<Path>, postgres: CloudPgRuntime) -> HoneResult<Self> {
         let dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).ok();
-        let cloud_storage = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
-        let sqlite_storage = if shadow_sqlite_enabled {
-            shadow_sqlite_db_path
-                .as_ref()
-                .and_then(|path| match SqliteSessionMirror::new(path) {
-                    Ok(storage) => Some(Arc::new(storage) as Arc<dyn SessionIndex>),
-                    Err(err) => {
-                        tracing::warn!(
-                            path = %path.display(),
-                            "failed to initialize cloud session shadow sqlite: {err}"
-                        );
-                        None
-                    }
-                })
-        } else {
-            None
-        };
-        let storage = Self {
+        let storage = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
+        Ok(Self {
             data_dir: dir,
-            sqlite_storage,
-            cloud_storage: Some(cloud_storage),
-            runtime_backend: SessionRuntimeBackend::CloudPg,
-            shadow_sqlite_enabled,
-        };
-        storage.backfill_shadow_from_cloud_runtime();
-        storage.backfill_shadow_from_json_dir();
-        Ok(storage)
+            storage,
+            _test_postgres_lease: None,
+        })
     }
 
     /// 测试 / runtime 层可以注入自定义的 `SessionIndex`（例如 mock）。
     /// 生产流程走 `with_options` 即可，不需要用这个构造器。
-    pub fn with_custom_index(
-        data_dir: impl AsRef<Path>,
-        runtime_backend: SessionRuntimeBackend,
-        shadow_sqlite_enabled: bool,
-        index: Option<Arc<dyn SessionIndex>>,
-    ) -> Self {
+    pub fn with_custom_index(data_dir: impl AsRef<Path>, index: Arc<dyn SessionIndex>) -> Self {
         let dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).ok();
         Self {
             data_dir: dir,
-            sqlite_storage: index,
-            cloud_storage: None,
-            runtime_backend,
-            shadow_sqlite_enabled,
+            storage: index,
+            _test_postgres_lease: None,
         }
-    }
-
-    #[cfg(test)]
-    fn with_custom_indexes_for_test(
-        data_dir: impl AsRef<Path>,
-        runtime_backend: SessionRuntimeBackend,
-        shadow_sqlite_enabled: bool,
-        runtime_index: Option<Arc<dyn SessionIndex>>,
-        shadow_sqlite_index: Option<Arc<dyn SessionIndex>>,
-    ) -> Self {
-        let dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).ok();
-        let storage = Self {
-            data_dir: dir,
-            sqlite_storage: shadow_sqlite_index,
-            cloud_storage: runtime_index,
-            runtime_backend,
-            shadow_sqlite_enabled,
-        };
-        storage.backfill_shadow_from_cloud_runtime();
-        storage.backfill_shadow_from_json_dir();
-        storage
-    }
-
-    pub fn from_storage_config(config: &hone_core::config::StorageConfig) -> Self {
-        Self::with_options(
-            &config.sessions_dir,
-            SessionStorageOptions {
-                shadow_sqlite_db_path: Some(PathBuf::from(&config.session_sqlite_db_path)),
-                shadow_sqlite_enabled: config.session_sqlite_shadow_write_enabled,
-                runtime_backend: SessionRuntimeBackend::from_config_value(
-                    &config.session_runtime_backend,
-                ),
-            },
-        )
     }
 
     /// 创建新会话
@@ -1031,32 +896,7 @@ impl SessionStorage {
     /// Json 主后端直接读文件；Sqlite 主后端先查索引，未命中再读 JSON 并
     /// 回填索引（保证 JSON→SQLite 的数据迁移过程中老 session 也能被索引）。
     pub fn load_session(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
-        match self.runtime_backend {
-            SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
-            SessionRuntimeBackend::CloudPg => {
-                if let Some(storage) = &self.cloud_storage {
-                    return storage.load(session_id);
-                }
-                Ok(None)
-            }
-            SessionRuntimeBackend::Sqlite => {
-                if let Some(storage) = &self.sqlite_storage
-                    && let Some(session) = storage.load(session_id)?
-                {
-                    return Ok(Some(session));
-                }
-
-                // 索引未命中 → 回 JSON 找兜底；若命中就顺手回填索引。
-                // 回填失败只 warn 不抛，避免破坏主读路径。
-                let fallback = self.load_session_from_json(session_id)?;
-                if let Some(session) = &fallback
-                    && let Ok(path) = self.session_json_path(session_id)
-                {
-                    let _ = self.write_session_to_sqlite(&path, session);
-                }
-                Ok(fallback)
-            }
-        }
+        self.storage.load(session_id)
     }
 
     /// 添加消息
@@ -1148,25 +988,7 @@ impl SessionStorage {
     }
 
     pub fn list_sessions(&self) -> hone_core::HoneResult<Vec<Session>> {
-        match self.runtime_backend {
-            SessionRuntimeBackend::Json => self.list_sessions_from_json(),
-            SessionRuntimeBackend::CloudPg => {
-                if let Some(storage) = &self.cloud_storage {
-                    return storage.list();
-                }
-                Ok(Vec::new())
-            }
-            SessionRuntimeBackend::Sqlite => {
-                // 索引返回空时降级到 JSON 扫描，兼容首次启动尚未回填的情况。
-                if let Some(storage) = &self.sqlite_storage {
-                    let sessions = storage.list()?;
-                    if !sessions.is_empty() {
-                        return Ok(sessions);
-                    }
-                }
-                self.list_sessions_from_json()
-            }
-        }
+        self.storage.list()
     }
 
     /// 查询某渠道内「最后一条是 user、没有 assistant 回复」的会话，
@@ -1177,28 +999,9 @@ impl SessionStorage {
         channel: &str,
         updated_after_rfc3339: &str,
         updated_before_rfc3339: &str,
-    ) -> hone_core::HoneResult<Vec<crate::session_sqlite::InterruptedSessionInfo>> {
-        match self.runtime_backend {
-            SessionRuntimeBackend::CloudPg => {
-                if let Some(storage) = &self.cloud_storage {
-                    return storage.find_interrupted(
-                        channel,
-                        updated_after_rfc3339,
-                        updated_before_rfc3339,
-                    );
-                }
-            }
-            SessionRuntimeBackend::Json | SessionRuntimeBackend::Sqlite => {
-                if let Some(storage) = &self.sqlite_storage {
-                    return storage.find_interrupted(
-                        channel,
-                        updated_after_rfc3339,
-                        updated_before_rfc3339,
-                    );
-                }
-            }
-        }
-        Ok(Vec::new())
+    ) -> hone_core::HoneResult<Vec<InterruptedSessionInfo>> {
+        self.storage
+            .find_interrupted(channel, updated_after_rfc3339, updated_before_rfc3339)
     }
 
     /// 获取或初始化 session 级 prompt 状态。
@@ -1311,244 +1114,16 @@ impl SessionStorage {
     }
 
     fn write_session(&self, session_id: &str, session: &Session) -> hone_core::HoneResult<()> {
-        if matches!(self.runtime_backend, SessionRuntimeBackend::CloudPg) {
-            self.write_session_to_cloud(session)?;
-            self.shadow_write_session(&self.cloud_shadow_source_path(session_id), session);
-            return Ok(());
-        }
-        let path = self.session_json_path(session_id)?;
-        let json = serde_json::to_string_pretty(session)
-            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
-        std::fs::write(&path, json)?;
-
-        match self.runtime_backend {
-            SessionRuntimeBackend::Json => self.shadow_write_session(&path, session),
-            SessionRuntimeBackend::CloudPg => self.write_session_to_sqlite(&path, session)?,
-            SessionRuntimeBackend::Sqlite => self.write_session_to_sqlite(&path, session)?,
-        }
-        Ok(())
-    }
-
-    fn session_json_path(&self, session_id: &str) -> hone_core::HoneResult<PathBuf> {
         let normalized = validate_storage_component(session_id).ok_or_else(|| {
             hone_core::HoneError::Config("session_id 包含非法路径组件".to_string())
         })?;
-        Ok(self.data_dir.join(format!("{normalized}.json")))
-    }
-
-    fn load_session_from_json(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
-        let path = self.session_json_path(session_id)?;
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(&path)?;
-        let session: Session = serde_json::from_str(&content)
-            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
-        Ok(Some(session))
-    }
-
-    fn backfill_shadow_from_json_dir(&self) {
-        if !self.shadow_sqlite_enabled
-            && !matches!(self.runtime_backend, SessionRuntimeBackend::Sqlite)
-        {
-            return;
-        }
-        let Some(shadow_sqlite) = &self.sqlite_storage else {
-            return;
-        };
-
-        let entries = match std::fs::read_dir(&self.data_dir) {
-            Ok(entries) => entries,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
-            Err(err) => {
-                tracing::warn!(
-                    path = %self.data_dir.display(),
-                    "failed to scan session json dir for sqlite shadow backfill: {err}"
-                );
-                return;
-            }
-        };
-
-        let mut imported = 0usize;
-        let mut failed = 0usize;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(err) => {
-                    failed += 1;
-                    tracing::warn!(
-                        path = %path.display(),
-                        "failed to read session json during sqlite shadow backfill: {err}"
-                    );
-                    continue;
-                }
-            };
-            let session: Session = match serde_json::from_str(&content) {
-                Ok(session) => session,
-                Err(err) => {
-                    failed += 1;
-                    tracing::warn!(
-                        path = %path.display(),
-                        "failed to parse session json during sqlite shadow backfill: {err}"
-                    );
-                    continue;
-                }
-            };
-
-            if let Err(err) = shadow_sqlite.upsert(&path, &session) {
-                failed += 1;
-                tracing::warn!(
-                    session_id = %session.id,
-                    path = %path.display(),
-                    "failed to backfill session into sqlite shadow: {err}"
-                );
-                continue;
-            }
-            imported += 1;
-        }
-
-        if imported > 0 || failed > 0 {
-            tracing::info!(
-                sessions_imported = imported,
-                sessions_failed = failed,
-                "completed sqlite shadow backfill from session json dir"
-            );
-        }
-    }
-
-    fn backfill_shadow_from_cloud_runtime(&self) {
-        if !matches!(self.runtime_backend, SessionRuntimeBackend::CloudPg)
-            || !self.shadow_sqlite_enabled
-        {
-            return;
-        }
-        let Some(cloud_storage) = &self.cloud_storage else {
-            return;
-        };
-        let Some(shadow_sqlite) = &self.sqlite_storage else {
-            return;
-        };
-
-        let sessions = match cloud_storage.list() {
-            Ok(sessions) => sessions,
-            Err(err) => {
-                tracing::warn!("failed to list cloud sessions for sqlite shadow backfill: {err}");
-                return;
-            }
-        };
-
-        let mut imported = 0usize;
-        let mut failed = 0usize;
-        for session in sessions {
-            let path = self.cloud_shadow_source_path(&session.id);
-            if let Err(err) = shadow_sqlite.upsert(&path, &session) {
-                failed += 1;
-                tracing::warn!(
-                    session_id = %session.id,
-                    path = %path.display(),
-                    "failed to backfill cloud session into sqlite shadow: {err}"
-                );
-                continue;
-            }
-            imported += 1;
-        }
-
-        if imported > 0 || failed > 0 {
-            tracing::info!(
-                sessions_imported = imported,
-                sessions_failed = failed,
-                "completed sqlite shadow backfill from cloud session runtime"
-            );
-        }
-    }
-
-    fn list_sessions_from_json(&self) -> hone_core::HoneResult<Vec<Session>> {
-        let mut sessions = Vec::new();
-        let entries = match std::fs::read_dir(&self.data_dir) {
-            Ok(entries) => entries,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(err.into()),
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(_) => continue,
-            };
-            let session: Session = match serde_json::from_str(&content) {
-                Ok(session) => session,
-                Err(_) => continue,
-            };
-            sessions.push(session);
-        }
-
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        Ok(sessions)
-    }
-
-    /// Sqlite 主后端下的主写入路径：把同一份 session upsert 到索引。
-    /// 没配索引时退化为 shadow-write 语义（通常不会走到,但保留兜底）。
-    fn write_session_to_sqlite(&self, path: &Path, session: &Session) -> hone_core::HoneResult<()> {
-        let Some(sqlite_storage) = &self.sqlite_storage else {
-            self.shadow_write_session(path, session);
-            return Ok(());
-        };
-
-        if let Err(err) = sqlite_storage.upsert(path, session) {
-            tracing::error!(
-                session_id = %session.id,
-                path = %path.display(),
-                "failed to write session into sqlite runtime backend: {err}"
-            );
-            return Err(err);
-        }
-
-        Ok(())
-    }
-
-    fn write_session_to_cloud(&self, session: &Session) -> hone_core::HoneResult<()> {
-        let Some(cloud_storage) = &self.cloud_storage else {
-            return Err(hone_core::HoneError::Storage(
-                "cloud session runtime backend missing cloud storage".to_string(),
-            ));
-        };
-        cloud_storage.upsert(&self.cloud_shadow_source_path(&session.id), session)
-    }
-
-    /// JSON 主后端下的可选镜像写入。未开启 shadow 或没配索引时静默跳过；
-    /// 失败只 warn 不抛，因为权威数据（JSON）此时已经落盘成功。
-    fn shadow_write_session(&self, path: &Path, session: &Session) {
-        if !self.shadow_sqlite_enabled {
-            return;
-        }
-
-        let Some(shadow_sqlite) = &self.sqlite_storage else {
-            return;
-        };
-
-        if let Err(err) = shadow_sqlite.upsert(path, session) {
-            tracing::warn!(
-                session_id = %session.id,
-                path = %path.display(),
-                "failed to shadow-write session into sqlite: {err}"
-            );
-        }
-    }
-
-    fn cloud_shadow_source_path(&self, session_id: &str) -> PathBuf {
-        self.data_dir
-            .join("cloud_sessions")
-            .join(format!("{session_id}.json"))
+        self.storage.upsert(
+            &self
+                .data_dir
+                .join("cloud_sessions")
+                .join(format!("{normalized}.json")),
+            session,
+        )
     }
 }
 
@@ -1625,6 +1200,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn update_metadata_merges_existing_values() {
         let root = make_temp_dir("hone_memory_test");
         let storage = SessionStorage::new(&root);
@@ -1669,6 +1245,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn create_session_for_actor_persists_actor_identity() {
         let root = make_temp_dir("hone_memory_test");
         let storage = SessionStorage::new(&root);
@@ -1691,6 +1268,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn concurrent_add_message_does_not_lose_data() {
         let root = make_temp_dir("hone_memory_test_concurrent");
         let storage = Arc::new(SessionStorage::new(&root));
@@ -1722,6 +1300,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn load_session_missing_returns_none() {
         let root = make_temp_dir("hone_memory_test_missing");
         let storage = SessionStorage::new(&root);
@@ -1731,6 +1310,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn add_message_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_missing_add");
         let storage = SessionStorage::new(&root);
@@ -1742,6 +1322,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn get_messages_missing_session_returns_empty() {
         let root = make_temp_dir("hone_memory_test_missing_get");
         let storage = SessionStorage::new(&root);
@@ -1751,6 +1332,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn get_messages_limit_returns_latest_in_order() {
         let root = make_temp_dir("hone_memory_test_limit");
         let storage = SessionStorage::new(&root);
@@ -1774,6 +1356,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn remove_last_message_if_matches_only_removes_matching_tail() {
         let root = make_temp_dir("hone_memory_test_remove_last_matching");
         let storage = SessionStorage::new(&root);
@@ -1818,6 +1401,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn replace_messages_overwrites_existing() {
         let root = make_temp_dir("hone_memory_test_replace");
         let storage = SessionStorage::new(&root);
@@ -1847,6 +1431,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn replace_messages_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_replace_missing");
         let storage = SessionStorage::new(&root);
@@ -1858,6 +1443,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn create_session_rejects_parent_dir_component() {
         let root = make_temp_dir("hone_memory_test_invalid_session_id");
         let storage = SessionStorage::new(&root);
@@ -1872,6 +1458,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn ensure_prompt_state_sets_frozen_time_once() {
         let root = make_temp_dir("hone_memory_test_prompt_state");
         let storage = SessionStorage::new(&root);
@@ -1892,6 +1479,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn replace_messages_with_summary_updates_both() {
         let root = make_temp_dir("hone_memory_test_replace_summary");
         let storage = SessionStorage::new(&root);
@@ -1999,6 +1587,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     fn update_metadata_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_metadata_missing");
         let storage = SessionStorage::new(&root);
@@ -2013,273 +1602,221 @@ mod tests {
     }
 
     #[test]
-    fn shadow_sqlite_writes_without_affecting_json_flow() {
-        let root = make_temp_dir("hone_memory_test_shadow_sqlite");
-        let db_path = root.join("sessions.sqlite3");
-        let storage = SessionStorage::with_options(
-            root.join("sessions"),
-            SessionStorageOptions {
-                shadow_sqlite_db_path: Some(db_path.clone()),
-                shadow_sqlite_enabled: true,
-                runtime_backend: SessionRuntimeBackend::Json,
-            },
-        );
-
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_write_is_visible_on_read() {
+        let root = make_temp_dir("hone_memory_test_postgres_visibility");
+        let storage = SessionStorage::new(&root);
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
         let session_id = storage.create_session_for_actor(&actor).expect("create");
         storage
-            .add_message(&session_id, "user", "hello shadow", None)
+            .add_message(&session_id, "user", "hello postgres", None)
             .expect("append");
-
-        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
-        let session_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .expect("session count");
-        let message_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("message count");
-
-        assert_eq!(session_count, 1);
-        assert_eq!(message_count, 1);
-
-        let _ = std::fs::remove_dir_all(root);
+        let loaded = storage
+            .load_session(&session_id)
+            .expect("load")
+            .expect("session");
+        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(session_message_text(&loaded.messages[0]), "hello postgres");
     }
 
     #[test]
-    fn shadow_sqlite_backfills_existing_json_on_startup() {
-        let root = make_temp_dir("hone_memory_test_shadow_sqlite_backfill");
-        let sessions_dir = root.join("sessions");
-        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
-        let db_path = root.join("sessions.sqlite3");
-
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_sessions_survive_a_second_storage_handle() {
+        let root = make_temp_dir("hone_memory_test_postgres_second_handle");
+        let first = SessionStorage::new(&root);
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
-        let session_id = actor.session_id();
-        let session = Session {
-            version: default_session_version(),
-            id: session_id.clone(),
-            actor: Some(actor.clone()),
-            session_identity: SessionIdentity::from_actor(&actor).ok(),
-            created_at: "2026-05-09T09:00:00+08:00".to_string(),
-            updated_at: "2026-05-09T09:05:00+08:00".to_string(),
-            messages: vec![
-                session_message_from_text(
-                    "user",
-                    "hello before shadow",
-                    "2026-05-09T09:00:00+08:00",
-                    None,
-                ),
-                session_message_from_text(
-                    "assistant",
-                    "world after shadow",
-                    "2026-05-09T09:05:00+08:00",
-                    None,
-                ),
-            ],
-            metadata: HashMap::new(),
-            runtime: SessionRuntimeState::default(),
-            summary: None,
-        };
-        std::fs::write(
-            sessions_dir.join(format!("{session_id}.json")),
-            serde_json::to_string_pretty(&session).expect("session json"),
-        )
-        .expect("write session json");
-
-        let _storage = SessionStorage::with_options(
-            &sessions_dir,
-            SessionStorageOptions {
-                shadow_sqlite_db_path: Some(db_path.clone()),
-                shadow_sqlite_enabled: true,
-                runtime_backend: SessionRuntimeBackend::Json,
-            },
-        );
-
-        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
-        let session_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .expect("session count");
-        let message_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("message count");
-        let latest_update: String = conn
-            .query_row(
-                "SELECT updated_at FROM sessions WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("latest update");
-
-        assert_eq!(session_count, 1);
-        assert_eq!(message_count, 2);
-        assert_eq!(latest_update, "2026-05-09T09:05:00+08:00");
-
-        let _ = std::fs::remove_dir_all(root);
+        let session_id = first.create_session_for_actor(&actor).expect("create");
+        first
+            .add_message(&session_id, "user", "persisted", None)
+            .expect("append");
+        let second = SessionStorage::new(&root);
+        let loaded = second
+            .load_session(&session_id)
+            .expect("load")
+            .expect("session");
+        assert_eq!(session_message_text(&loaded.messages[0]), "persisted");
     }
 
     #[test]
-    fn sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled() {
-        let root = make_temp_dir("hone_memory_test_sqlite_runtime_backfill");
-        let sessions_dir = root.join("sessions");
-        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
-        let db_path = root.join("sessions.sqlite3");
-
-        let actor = ActorIdentity::new("feishu", "sqlite-backfill", None::<String>).expect("actor");
-        let session_id = actor.session_id();
-        let session = Session {
-            version: default_session_version(),
-            id: session_id.clone(),
-            actor: Some(actor.clone()),
-            session_identity: SessionIdentity::from_actor(&actor).ok(),
-            created_at: "2026-05-10T18:00:00+08:00".to_string(),
-            updated_at: "2026-05-10T18:03:00+08:00".to_string(),
-            messages: vec![
-                session_message_from_text(
-                    "user",
-                    "hello before sqlite index",
-                    "2026-05-10T18:00:00+08:00",
-                    None,
-                ),
-                session_message_from_text(
-                    "assistant",
-                    "world after sqlite index",
-                    "2026-05-10T18:03:00+08:00",
-                    None,
-                ),
-            ],
-            metadata: HashMap::new(),
-            runtime: SessionRuntimeState::default(),
-            summary: None,
-        };
-        std::fs::write(
-            sessions_dir.join(format!("{session_id}.json")),
-            serde_json::to_string_pretty(&session).expect("session json"),
-        )
-        .expect("write session json");
-
-        let _storage = SessionStorage::with_options(
-            &sessions_dir,
-            SessionStorageOptions {
-                shadow_sqlite_db_path: Some(db_path.clone()),
-                shadow_sqlite_enabled: false,
-                runtime_backend: SessionRuntimeBackend::Sqlite,
-            },
-        );
-
-        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
-        let message_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("message count");
-        let latest_update: String = conn
-            .query_row(
-                "SELECT updated_at FROM sessions WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("latest update");
-
-        assert_eq!(message_count, 2);
-        assert_eq!(latest_update, "2026-05-10T18:03:00+08:00");
-
-        let _ = std::fs::remove_dir_all(root);
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_list_reflects_updates_from_another_handle() {
+        let root = make_temp_dir("hone_memory_test_postgres_list");
+        let first = SessionStorage::new(&root);
+        let second = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "postgres-list", None::<String>).expect("actor");
+        let session_id = first.create_session_for_actor(&actor).expect("create");
+        first
+            .add_message(&session_id, "assistant", "visible", None)
+            .expect("append");
+        let listed = second.list_sessions().expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(session_message_text(&listed[0].messages[0]), "visible");
     }
 
     #[test]
-    fn sqlite_runtime_backend_reads_from_sqlite() {
-        let root = make_temp_dir("hone_memory_test_sqlite_runtime");
-        let db_path = root.join("sessions.sqlite3");
-        let storage = SessionStorage::with_options(
-            root.join("sessions"),
-            SessionStorageOptions {
-                shadow_sqlite_db_path: Some(db_path.clone()),
-                shadow_sqlite_enabled: true,
-                runtime_backend: SessionRuntimeBackend::Sqlite,
-            },
-        );
-
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn postgres_runtime_does_not_read_local_json() {
+        let root = make_temp_dir("hone_memory_test_postgres_authority");
+        let storage = SessionStorage::new(&root);
         let actor = ActorIdentity::new("feishu", "bob", None::<String>).expect("actor");
         let session_id = storage.create_session_for_actor(&actor).expect("create");
         storage
-            .add_message(&session_id, "user", "hello sqlite", None)
+            .add_message(&session_id, "user", "hello postgres", None)
             .expect("append");
-
-        std::fs::remove_file(root.join("sessions").join(format!("{session_id}.json")))
-            .expect("remove json fallback");
-
+        std::fs::create_dir_all(&root).expect("local dir");
+        std::fs::write(root.join(format!("{session_id}.json")), "not valid json")
+            .expect("local poison file");
         let session = storage
             .load_session(&session_id)
             .expect("load")
             .expect("session");
         assert_eq!(session.messages.len(), 1);
-        assert_eq!(session_message_text(&session.messages[0]), "hello sqlite");
-
+        assert_eq!(session_message_text(&session.messages[0]), "hello postgres");
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn cloud_runtime_backend_dual_writes_sqlite_shadow() {
-        let root = make_temp_dir("hone_memory_test_cloud_shadow_write");
-        let sessions_dir = root.join("sessions");
-        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
-        let db_path = root.join("sessions.sqlite3");
-
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn cloud_runtime_backend_creates_no_local_shadow_artifact() {
+        let root = make_temp_dir("hone_memory_test_no_local_shadow");
         let runtime_index = Arc::new(RecordingSessionIndex::default()) as Arc<dyn SessionIndex>;
-        let shadow_index = Arc::new(SqliteSessionMirror::new(&db_path).expect("sqlite shadow"))
-            as Arc<dyn SessionIndex>;
-        let storage = SessionStorage::with_custom_indexes_for_test(
-            &sessions_dir,
-            SessionRuntimeBackend::CloudPg,
-            true,
-            Some(runtime_index.clone()),
-            Some(shadow_index),
-        );
-
+        let storage = SessionStorage::with_custom_index(&root, runtime_index.clone());
         let actor = ActorIdentity::new("web", "cloud-shadow", None::<String>).expect("actor");
         let session_id = storage.create_session_for_actor(&actor).expect("create");
         storage
-            .add_message(&session_id, "user", "hello cloud mirror", None)
+            .add_message(&session_id, "user", "hello postgres only", None)
             .expect("append");
-
         let runtime_session = runtime_index
             .load(&session_id)
             .expect("runtime load")
             .expect("runtime session");
         assert_eq!(runtime_session.messages.len(), 1);
+        assert!(
+            !root.exists(),
+            "PG-only session writes must not create a local artifact"
+        );
+    }
 
-        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
-        let session_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .expect("session count");
-        let source_path: String = conn
-            .query_row(
-                "SELECT source_path FROM sessions WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn upsert_session_persists_rows() {
+        let root = make_temp_dir("hone_session_pg_upsert");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        storage
+            .add_message(&session_id, "user", "hello", None)
+            .expect("append");
+        let loaded = storage
+            .load_session(&session_id)
+            .expect("load")
+            .expect("session");
+        assert_eq!(loaded.id, session_id);
+        assert_eq!(loaded.messages.len(), 1);
+    }
+
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn upsert_session_replaces_old_rows_and_stores_message_metadata_columns() {
+        let root = make_temp_dir("hone_session_pg_replace");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "replace", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        let metadata = HashMap::from([(
+            "tool_name".to_string(),
+            Value::String("web_search".to_string()),
+        )]);
+        storage
+            .add_message(&session_id, "tool", "first", Some(metadata.clone()))
+            .expect("append");
+        storage
+            .replace_messages(
+                &session_id,
+                vec![session_message_from_text(
+                    "tool",
+                    "replacement",
+                    hone_core::beijing_now_rfc3339(),
+                    Some(metadata),
+                )],
             )
-            .expect("source path");
-        let message_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-                [&session_id],
-                |row| row.get(0),
-            )
-            .expect("message count");
+            .expect("replace");
+        let loaded = storage
+            .load_session(&session_id)
+            .expect("load")
+            .expect("session");
+        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(session_message_text(&loaded.messages[0]), "replacement");
+        assert_eq!(
+            loaded.messages[0]
+                .metadata
+                .as_ref()
+                .and_then(|value| value.get("tool_name"))
+                .and_then(Value::as_str),
+            Some("web_search")
+        );
+    }
 
-        assert_eq!(session_count, 1);
-        assert_eq!(message_count, 1);
-        assert!(source_path.ends_with(&format!("cloud_sessions/{session_id}.json")));
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn upsert_session_accepts_cloud_shadow_source_path_without_local_file() {
+        let root = make_temp_dir("hone_session_pg_no_local_source");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("web", "no-local-source", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        assert!(storage.load_session(&session_id).expect("load").is_some());
+        assert!(!root.exists());
+    }
 
-        let _ = std::fs::remove_dir_all(root);
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn list_sessions_orders_by_updated_at_desc() {
+        let root = make_temp_dir("hone_session_pg_list_order");
+        let storage = SessionStorage::new(&root);
+        for (id, updated_at) in [
+            ("older", "2026-01-01T00:00:00+08:00"),
+            ("newer", "2026-01-02T00:00:00+08:00"),
+        ] {
+            let session = Session {
+                version: default_session_version(),
+                id: id.to_string(),
+                actor: None,
+                session_identity: None,
+                created_at: updated_at.to_string(),
+                updated_at: updated_at.to_string(),
+                messages: Vec::new(),
+                metadata: HashMap::new(),
+                runtime: SessionRuntimeState::default(),
+                summary: None,
+            };
+            storage.write_session(id, &session).expect("write");
+        }
+        let listed = storage.list_sessions().expect("list");
+        assert_eq!(
+            listed
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newer", "older"]
+        );
+    }
+
+    #[test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    fn list_sessions_skips_unreadable_rows() {
+        let root = make_temp_dir("hone_session_pg_invalid_json");
+        let (postgres, _lease) = crate::test_postgres::isolated_postgres(&root).expect("postgres");
+        let invalid_postgres = postgres.clone();
+        run_cloud_session(async move {
+            invalid_postgres
+                .upsert_session_record(
+                    "invalid",
+                    "invalid",
+                    serde_json::json!({"not": "a session"}),
+                )
+                .await
+        })
+        .expect("insert malformed session value");
+        let storage = SessionStorage::new_cloud(&root, postgres).expect("storage");
+        assert!(storage.list_sessions().expect("list").is_empty());
     }
 }

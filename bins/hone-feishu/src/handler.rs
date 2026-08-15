@@ -258,9 +258,9 @@ const RESTART_RECOVERY_SWEEP_SECONDS: u64 = 60;
 const RESTART_RECOVERY_TEXT: &str = "服务重启，之前的消息处理已中断，请稍后重试。";
 
 fn recoverable_interrupted_sessions(
-    interrupted: Vec<hone_memory::session_sqlite::InterruptedSessionInfo>,
+    interrupted: Vec<hone_memory::InterruptedSessionInfo>,
     session_locks: &SessionLockRegistry,
-) -> Vec<hone_memory::session_sqlite::InterruptedSessionInfo> {
+) -> Vec<hone_memory::InterruptedSessionInfo> {
     interrupted
         .into_iter()
         .filter(|session_info| {
@@ -300,7 +300,7 @@ fn session_needs_restart_recovery(
 
 fn candidate_still_needs_restart_recovery(
     storage: &SessionStorage,
-    session_info: &hone_memory::session_sqlite::InterruptedSessionInfo,
+    session_info: &hone_memory::InterruptedSessionInfo,
     updated_after: chrono::DateTime<chrono::Utc>,
     updated_before: chrono::DateTime<chrono::Utc>,
 ) -> bool {
@@ -2202,17 +2202,17 @@ mod tests {
             .expect("active session");
 
         let interrupted = vec![
-            hone_memory::session_sqlite::InterruptedSessionInfo {
+            hone_memory::InterruptedSessionInfo {
                 session_id: "s_active".to_string(),
                 actor_user_id: "ou_active".to_string(),
                 actor_channel_scope: None,
             },
-            hone_memory::session_sqlite::InterruptedSessionInfo {
+            hone_memory::InterruptedSessionInfo {
                 session_id: "s_group".to_string(),
                 actor_user_id: "ou_group".to_string(),
                 actor_channel_scope: Some("chat:123".to_string()),
             },
-            hone_memory::session_sqlite::InterruptedSessionInfo {
+            hone_memory::InterruptedSessionInfo {
                 session_id: "s_direct".to_string(),
                 actor_user_id: "ou_direct".to_string(),
                 actor_channel_scope: None,
@@ -2225,7 +2225,7 @@ mod tests {
 
         drop(active_guard);
         let recoverable_after_release = recoverable_interrupted_sessions(
-            vec![hone_memory::session_sqlite::InterruptedSessionInfo {
+            vec![hone_memory::InterruptedSessionInfo {
                 session_id: "s_active".to_string(),
                 actor_user_id: "ou_active".to_string(),
                 actor_channel_scope: None,

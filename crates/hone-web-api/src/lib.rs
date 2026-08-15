@@ -33,7 +33,7 @@ use hone_event_engine::{
     OutboundSink, TelegramSink, parse_polish_levels,
 };
 use hone_llm::{CreatedLlmProvider, LlmResolver};
-use hone_memory::session::{Session, SessionRuntimeBackend, SessionStorageOptions};
+use hone_memory::session::Session;
 use hone_memory::{ChannelTargetRecord, CronJobStorage, SessionStorage};
 use serde_json::json;
 use tokio::sync::broadcast;
@@ -440,71 +440,31 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
             &core_cfg.storage.session_sqlite_db_path,
         )
     };
-    let session_storage = if core_cfg.cloud.effective_mode().is_cloud_authoritative()
-        && core_cfg.cloud.postgres.is_configured()
-    {
-        CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
-            .and_then(|pg| {
-                // 影子库的开关必须和 bot_core.rs:89 完全一致——配置字段**与**
-                // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW 同时成立才写。
-                // 此前这里只看配置字段、不读环境变量,于是渠道进程关掉了影子库、
-                // web 进程却照写:2026-08-16 在 GCE 上实测到一个 75 MB、294 个会话、
-                // 6559 条消息且仍在被写的 sessions.sqlite3,而该机
-                // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false。
-                // 更糟的是 `local_durable_dependencies` 用的正是这个双条件判断,
-                // 所以 strict_no_local_storage=true 会通过检查,同时会话内容仍在落地——
-                // 也就是 cloud_runtime.rs 注释里警告过的「假的无本地依赖」。
-                let keep_shadow =
-                    hone_core::cloud_runtime::session_sqlite_shadow_enabled(&core_cfg);
-                SessionStorage::new_cloud(
-                    &core_cfg.storage.sessions_dir,
-                    pg,
-                    keep_shadow.then(|| {
-                        std::path::PathBuf::from(&core_cfg.storage.session_sqlite_db_path)
-                    }),
-                    keep_shadow,
-                )
-                .ok()
-            })
-            .unwrap_or_else(|| SessionStorage::from_storage_config(&core_cfg.storage))
-    } else {
-        SessionStorage::from_storage_config(&core_cfg.storage)
+    let session_storage = CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
+        .ok_or_else(|| "PostgreSQL must be configured for Feishu contact lookup".to_string())
+        .and_then(|pg| {
+            SessionStorage::new_cloud(&core_cfg.storage.sessions_dir, pg)
+                .map_err(|error| error.to_string())
+        });
+    let sessions = match session_storage {
+        Ok(storage) => sessions_or_empty(storage.list_sessions()),
+        Err(error) => {
+            warn!(%error, "failed to initialize PostgreSQL sessions for Feishu direct actor contacts");
+            Vec::new()
+        }
     };
-    let sessions = sessions_with_json_fallback(session_storage.list_sessions(), || {
-        SessionStorage::with_options(
-            &core_cfg.storage.sessions_dir,
-            SessionStorageOptions {
-                shadow_sqlite_db_path: None,
-                shadow_sqlite_enabled: false,
-                runtime_backend: SessionRuntimeBackend::Json,
-            },
-        )
-        .list_sessions()
-    });
     feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets(), sessions)
 }
 
-fn sessions_with_json_fallback<F>(
-    primary: hone_core::HoneResult<Vec<Session>>,
-    fallback: F,
-) -> Vec<Session>
-where
-    F: FnOnce() -> hone_core::HoneResult<Vec<Session>>,
-{
+fn sessions_or_empty(primary: hone_core::HoneResult<Vec<Session>>) -> Vec<Session> {
     match primary {
         Ok(sessions) => sessions,
         Err(err) => {
             warn!(
                 error = %err,
-                "failed to list sessions for Feishu direct actor contacts; falling back to JSON sessions"
+                "failed to list PostgreSQL sessions for Feishu direct actor contacts"
             );
-            fallback().unwrap_or_else(|fallback_err| {
-                warn!(
-                    error = %fallback_err,
-                    "failed to list fallback JSON sessions for Feishu direct actor contacts"
-                );
-                Vec::new()
-            })
+            Vec::new()
         }
     }
 }
@@ -743,28 +703,16 @@ pub async fn start_server(
     config.ensure_runtime_dirs();
 
     let core = Arc::new(hone_channels::HoneBotCore::new(config));
-    let cloud_postgres = if core.config.cloud.effective_mode().is_cloud_authoritative()
-        && core.config.cloud.postgres.is_configured()
-    {
-        Some(
-            CloudPgRuntime::from_cloud_config(&core.config.cloud)
-                .ok_or_else(|| "Cloud Billing/Auth 初始化失败: Postgres 未配置".to_string())?,
-        )
-    } else {
-        None
-    };
-    let web_auth = Arc::new(match cloud_postgres.as_ref() {
-        Some(postgres) => hone_memory::WebAuthStorage::new_cloud(postgres.clone())
-            .map_err(|e| format!("Web Auth cloud 存储初始化失败: {e}"))?,
-        None => hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
-            .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?,
-    });
-    let billing = Arc::new(match cloud_postgres {
-        Some(postgres) => hone_memory::BillingStorage::new_cloud(postgres)
-            .map_err(|e| format!("Billing cloud 存储初始化失败: {e}"))?,
-        None => hone_memory::BillingStorage::new(&core.config.storage.session_sqlite_db_path)
-            .map_err(|e| format!("Billing 存储初始化失败: {e}"))?,
-    });
+    let cloud_postgres = CloudPgRuntime::from_cloud_config(&core.config.cloud)
+        .ok_or_else(|| "Web Auth/Billing 初始化失败: PostgreSQL 未配置".to_string())?;
+    let web_auth = Arc::new(
+        hone_memory::WebAuthStorage::new_cloud(cloud_postgres.clone())
+            .map_err(|e| format!("Web Auth PostgreSQL 存储初始化失败: {e}"))?,
+    );
+    let billing = Arc::new(
+        hone_memory::BillingStorage::new_cloud(cloud_postgres)
+            .map_err(|e| format!("Billing PostgreSQL 存储初始化失败: {e}"))?,
+    );
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────
     // 必须使用 global_log_buffer()：tracing 全局订阅者只能 set 一次，
     // 若每次 start_server 创建新 buffer，重连后 AppState 持有新 buffer
@@ -1331,25 +1279,12 @@ mod tests {
     }
 
     #[test]
-    fn feishu_direct_actor_targets_fall_back_to_json_sessions_on_primary_error() {
-        let sessions = sessions_with_json_fallback(
-            Err(hone_core::HoneError::Storage(
-                "database is locked".to_string(),
-            )),
-            || {
-                Ok(vec![feishu_direct_session(
-                    "ou_event_only",
-                    Some("+8619106838169"),
-                    None,
-                )])
-            },
-        );
+    fn feishu_direct_actor_targets_do_not_fall_back_on_postgres_error() {
+        let sessions = sessions_or_empty(Err(hone_core::HoneError::Storage(
+            "postgres unavailable".to_string(),
+        )));
         let targets = feishu_direct_actor_contact_targets_from_sources(Vec::new(), sessions);
-
-        assert_eq!(
-            targets,
-            vec![("ou_event_only".to_string(), "+8619106838169".to_string())]
-        );
+        assert!(targets.is_empty());
     }
 
     fn channel_target_record(

@@ -17,7 +17,6 @@ use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::config::{AgentConversationStrategy, HoneConfig};
 use hone_llm::provider::{ChatResult, ChatStreamFinishReason, FunctionCall, ToolCall};
 use hone_llm::{ChatResponse, ChatStreamEvent, LlmProvider, Message, ToolChoiceMode};
-use hone_memory::session::{SessionRuntimeBackend, SessionStorageOptions};
 use hone_memory::{
     ConversationQuotaReserveResult, SessionStorage, assistant_tool_calls_from_metadata,
     build_assistant_message_metadata, build_tool_message_metadata_parts,
@@ -5803,17 +5802,9 @@ fn persistable_turn_from_response_stores_only_final_text_and_tool_call_metadata(
 }
 
 #[test]
-fn persistable_turn_from_response_keeps_sqlite_runtime_history_on_final_text() {
+fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text() {
     let root = make_temp_dir("hone_channels_persistable_turn_preview");
-    let db_path = root.join("sessions.sqlite3");
-    let storage = SessionStorage::with_options(
-        root.join("sessions"),
-        SessionStorageOptions {
-            shadow_sqlite_db_path: Some(db_path.clone()),
-            shadow_sqlite_enabled: true,
-            runtime_backend: SessionRuntimeBackend::Sqlite,
-        },
-    );
+    let storage = SessionStorage::new(root.join("sessions"));
     let actor = ActorIdentity::new("feishu", "preview-user", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)

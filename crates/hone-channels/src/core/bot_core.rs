@@ -75,29 +75,15 @@ pub struct HoneBotCore {
 impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
-        let cloud_pg_runtime = if config.cloud.effective_mode().is_cloud_authoritative()
-            && config.cloud.postgres.is_configured()
-        {
+        let cloud_pg_runtime = Some(
             CloudPgRuntime::from_cloud_config(&config.cloud)
-        } else {
-            None
-        };
-        let session_storage = if let Some(pg) = cloud_pg_runtime.clone() {
-            // 云端 PG 是权威存储，本地 SQLite 影子库在容器里既留不住也没人读，
-            // 反而会把全部会话内容复制到临时磁盘上。默认关闭，只有显式设置
-            // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW 才保留（本地跑 cloud 模式调试用）。
-            let keep_shadow = hone_core::cloud_runtime::session_sqlite_shadow_enabled(&config);
-            SessionStorage::new_cloud(
-                &config.storage.sessions_dir,
-                pg,
-                keep_shadow
-                    .then(|| std::path::PathBuf::from(&config.storage.session_sqlite_db_path)),
-                keep_shadow,
-            )
-            .expect("failed to initialize cloud session storage")
-        } else {
-            SessionStorage::from_storage_config(&config.storage)
-        };
+                .expect("PostgreSQL must be configured for the runtime"),
+        );
+        let session_storage = SessionStorage::new_cloud(
+            &config.storage.sessions_dir,
+            cloud_pg_runtime.clone().expect("cloud postgres configured"),
+        )
+        .expect("failed to initialize PostgreSQL session storage");
         let conversation_quota_storage = if config.cloud.effective_mode().is_cloud_authoritative()
             && config.cloud.postgres.is_configured()
         {
