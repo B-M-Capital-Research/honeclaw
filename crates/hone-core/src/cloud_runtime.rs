@@ -6107,6 +6107,21 @@ pub fn keep_cloud_session_sqlite_shadow() -> bool {
     )
 }
 
+/// 云端模式下是否真的要写会话影子库。**唯一权威判断**——配置字段与
+/// `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW` 必须同时成立。
+///
+/// 抽成函数是因为这条策略此前在两个进程里各算了一遍并且算法不同:
+/// `bot_core.rs` 检查两个条件,`hone-web-api/src/lib.rs` 只检查配置字段。
+/// 结果是 GCE 上渠道进程关掉了影子库、web 进程却照写——2026-08-16 实测到一个
+/// 75 MB、294 个会话、6559 条消息且仍在增长的 `sessions.sqlite3`,而该机
+/// `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false`。
+///
+/// 危害不只是磁盘:`local_durable_dependencies` 用的正是这个双条件判断,
+/// 于是 `strict_no_local_storage=true` 顺利通过,同时客户会话内容一直在落本地盘。
+pub fn session_sqlite_shadow_enabled(config: &HoneConfig) -> bool {
+    config.storage.session_sqlite_shadow_write_enabled && keep_cloud_session_sqlite_shadow()
+}
+
 pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     if !config.cloud.effective_mode().is_cloud_authoritative() {
         return Vec::new();
@@ -6125,9 +6140,7 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         deps.push(config.storage.sessions_dir.clone());
         deps.push(config.storage.session_sqlite_db_path.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
-    } else if config.storage.session_sqlite_shadow_write_enabled
-        && keep_cloud_session_sqlite_shadow()
-    {
+    } else if session_sqlite_shadow_enabled(config) {
         // PG 已经是权威存储，但影子库被显式打开时仍会把会话写到本地盘，
         // 必须报出来，否则 strict_no_local_storage 会给出假的「无本地依赖」。
         deps.push(config.storage.session_sqlite_db_path.clone());
@@ -6605,11 +6618,30 @@ mod tests {
         assert!(!keep_cloud_session_sqlite_shadow());
         assert!(local_durable_dependencies(&config).is_empty());
 
+        // 配置字段为 true 但环境变量未设时,影子库必须是关的。
+        // 这是 2026-08-16 GCE 上那个 75 MB sessions.sqlite3 的判定条件:
+        // 当时 hone-web-api 只看配置字段、不看环境变量,于是渠道进程关了、web 进程照写,
+        // 而 local_durable_dependencies 用双条件判断,strict_no_local_storage 还报"无依赖"。
+        // 现在两个进程都必须调这一个函数。
+        assert!(
+            !session_sqlite_shadow_enabled(&config),
+            "配置字段单独为 true 不足以打开影子库;必须同时设置环境变量"
+        );
+
         // 显式打开后必须报成本地依赖，strict_no_local_storage 才拦得住。
         unsafe {
             std::env::set_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW", "1");
         }
         assert!(keep_cloud_session_sqlite_shadow());
+        assert!(session_sqlite_shadow_enabled(&config));
+
+        // 反向:环境变量开着但配置字段关掉,同样不写。
+        config.storage.session_sqlite_shadow_write_enabled = false;
+        assert!(
+            !session_sqlite_shadow_enabled(&config),
+            "两个条件必须同时成立"
+        );
+        config.storage.session_sqlite_shadow_write_enabled = true;
         assert!(
             local_durable_dependencies(&config)
                 .iter()

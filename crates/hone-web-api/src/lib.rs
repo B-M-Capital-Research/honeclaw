@@ -445,13 +445,24 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
     {
         CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
             .and_then(|pg| {
+                // 影子库的开关必须和 bot_core.rs:89 完全一致——配置字段**与**
+                // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW 同时成立才写。
+                // 此前这里只看配置字段、不读环境变量,于是渠道进程关掉了影子库、
+                // web 进程却照写:2026-08-16 在 GCE 上实测到一个 75 MB、294 个会话、
+                // 6559 条消息且仍在被写的 sessions.sqlite3,而该机
+                // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false。
+                // 更糟的是 `local_durable_dependencies` 用的正是这个双条件判断,
+                // 所以 strict_no_local_storage=true 会通过检查,同时会话内容仍在落地——
+                // 也就是 cloud_runtime.rs 注释里警告过的「假的无本地依赖」。
+                let keep_shadow =
+                    hone_core::cloud_runtime::session_sqlite_shadow_enabled(&core_cfg);
                 SessionStorage::new_cloud(
                     &core_cfg.storage.sessions_dir,
                     pg,
-                    Some(std::path::PathBuf::from(
-                        &core_cfg.storage.session_sqlite_db_path,
-                    )),
-                    core_cfg.storage.session_sqlite_shadow_write_enabled,
+                    keep_shadow.then(|| {
+                        std::path::PathBuf::from(&core_cfg.storage.session_sqlite_db_path)
+                    }),
+                    keep_shadow,
                 )
                 .ok()
             })

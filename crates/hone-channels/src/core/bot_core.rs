@@ -86,8 +86,7 @@ impl HoneBotCore {
             // 云端 PG 是权威存储，本地 SQLite 影子库在容器里既留不住也没人读，
             // 反而会把全部会话内容复制到临时磁盘上。默认关闭，只有显式设置
             // HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW 才保留（本地跑 cloud 模式调试用）。
-            let keep_shadow = config.storage.session_sqlite_shadow_write_enabled
-                && hone_core::cloud_runtime::keep_cloud_session_sqlite_shadow();
+            let keep_shadow = hone_core::cloud_runtime::session_sqlite_shadow_enabled(&config);
             SessionStorage::new_cloud(
                 &config.storage.sessions_dir,
                 pg,
