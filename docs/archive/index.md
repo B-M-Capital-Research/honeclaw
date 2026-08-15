@@ -2600,3 +2600,16 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `tests/regression/ci/test_earnings_research_pdf_markdown.sh`; 49 finance automation contracts; production ACP prompt audit; real CRWV preview/analysis browser canaries
 - Current conclusion: HONE directly follows the recovered BamangResearch/Dify earnings prompts without mechanical evidence/content gates. Preview and analysis are separate host-selected products, their prompts exist only in the current turn and never persist/compact/restore, and the renderer only owns technical PDF completion. Exact production `521c0787` is healthy; one CRWV preview and one CRWV analysis each received only its own prompt, used one renderer, emitted no compact, persisted a distinct PDF, and remained downloadable after refresh. A completed renderer artifact can survive an exact subsequent Gemini signature failure only when the trace proves no unrelated write.
 - Next entry point: continue content improvement through retrieval, targeted search, original prompts/model choices and real-sample review; do not restore report schemas, source/number coverage gates or validator-driven rewrite loops. Immediate runtime rollback is retained `7beb53e9`.
+
+### SQLite To PostgreSQL Full Migration
+
+- Status: done
+- Date: 2026-08-16
+- Plan: `docs/archive/plans/sqlite-to-postgres-migration-2026-08-16.md`
+- Implementation spec: `docs/archive/plans/sqlite-to-postgres-implementation-spec.md`
+- Superseded plan: `docs/archive/plans/session-sqlite-migration-plan.md`
+- Handoff: none added for Phase 4 by explicit user instruction; earlier migration evidence remains in the existing dated handoff
+- Related commits: `524204f1`, `8191089b`, `8608c6d4`, plus the final verification/archive commit
+- Verification: workspace tests 2575 passed / 0 failed across 30 targets; 92 ignored hone-memory PostgreSQL tests passed; 22 CI-safe regressions passed; Web 486 passed / 0 failed; cloud doctor reported PostgreSQL healthy and schema ensured; `cargo tree -i rusqlite --workspace` showed only `hone-cli` and `hone-imessage`
+- Current conclusion: PostgreSQL is the only Hone runtime database backend. All alternate storage configuration, shadow/backfill tooling, stale fixtures, prompts, policies, and current architecture/runbook references are removed. `hone-cli` retains a read-only historical event-store importer, while `hone-imessage` independently reads macOS `chat.db`; neither is runtime persistence.
+- Next entry point: no migration work remains. Future storage changes must preserve the PostgreSQL authority and treat the two read-only consumers as narrow compatibility boundaries.

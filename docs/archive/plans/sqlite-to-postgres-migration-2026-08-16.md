@@ -1,6 +1,6 @@
 # SQLite 全量迁移到 PostgreSQL
 
-状态：`in_progress`（阶段 0 / 1 / 2 / 3 / 3.5 已完成；阶段 4 未在本次执行）
+状态：`done`（阶段 0 / 1 / 2 / 3 / 3.5 / 4 全部完成）
 创建：2026-08-16
 执行方：Codex CLI（本文件即交接书，Codex 按阶段推进，每阶段独立可合并）
 协调方：Claude（本会话产出计划、验收标准与阶段评审）
@@ -280,6 +280,22 @@ test-only 路径继续用于隔离不属于本阶段的 JSON 模块测试。
 
 **验收标准是"全仓搜不到 SQLite 痕迹"，`bins/hone-imessage` 除外。**
 下面每一项都要逐条核过，不允许"改完代码就算"：
+
+阶段 4 已于 2026-08-16 完成：
+
+- `StorageConfig::data_root()` 从 `sessions_dir` 的父目录推导文件型数据根，research
+  与 community forum 不再借用已删除的数据库路径字段。
+- 三个废弃配置字段、memory 的 rusqlite 依赖、影子库脚本/runbook/CI 回归、手工
+  YAML 残留与旧提示词字面量均已删除；周报导出脚本保留 JSON 输入路径。
+- 旧 session 本地存储方案已归档；事件推送审计 skill、巡检自动化、架构图和当前
+  runbook 已改为 PostgreSQL。
+- GCE `/etc/hone/runtime.env` 的旧 shadow 开关精确删除 1 条；4 个 Hone systemd
+  unit/drop-in 前后均为 0 条，文件仍为 `root:root 0600`，本次未重启服务。
+- 最终验证：workspace 30 个 test target 共 2575 passed / 0 failed / 112 ignored；
+  hone-memory ignored 真 PG 测试 92 passed / 0 failed；CI-safe 22 个脚本退出 0；
+  Web 486 passed / 0 failed；cloud doctor 返回 PostgreSQL healthy 且 schema ensured。
+- rusqlite 最终只有 `hone-cli` 历史事件导入器与 `hone-imessage` macOS `chat.db`
+  读取器两个消费者；这是本阶段明确保留的两个例外。
 
 ### 6.1 依赖
 
