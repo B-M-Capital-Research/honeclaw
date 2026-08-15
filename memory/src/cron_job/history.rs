@@ -1231,14 +1231,20 @@ fn sqlite_err(err: rusqlite::Error) -> HoneError {
 mod web_push_tests {
     use super::*;
 
+    /// 进程内单调计数器。理由同 `cron_job::tests::make_temp_dir`:只靠
+    /// `pid + nanos` 在 macOS 的时钟粒度下会让并行测试撞同一个目录,
+    /// 随后互相 `remove_dir_all` 造成随机 `disk I/O error`。
+    static TEMP_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
-            "hone_web_push_{}_{}",
+            "hone_web_push_{}_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
-                .as_nanos()
+                .as_nanos(),
+            TEMP_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).expect("mkdir");
         let storage = CronJobStorage::with_sqlite(root.join("cron"), root.join("cron.sqlite3"));

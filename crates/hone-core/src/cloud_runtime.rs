@@ -1148,13 +1148,27 @@ impl CloudPgRuntime {
 
     async fn connect_cached_client(&self) -> HoneResult<Arc<PgClient>> {
         let cache_key = self.client_cache_key();
-        if let Some(client) = PG_CLIENT_CACHE
+        let cached = PG_CLIENT_CACHE
             .lock()
             .map_err(|err| HoneError::Config(format!("Postgres client cache 锁失败: {err}")))?
             .get(&cache_key)
-            .cloned()
-        {
-            return Ok(client);
+            .cloned();
+        if let Some(client) = cached {
+            // 缓存此前没有任何驱逐:连接一旦断开(PG 重启 / 网络抖动 / driver task
+            // 随 runtime 销毁),后续每次都会拿到同一条死连接,直到进程重启为止。
+            // 这里显式判活,死连接就丢掉重连。
+            if !client.is_closed() {
+                return Ok(client);
+            }
+            if let Ok(mut cache) = PG_CLIENT_CACHE.lock() {
+                // 只在仍是同一条(未被别人替换过)时移除,避免踩掉刚重建的连接。
+                if cache
+                    .get(&cache_key)
+                    .is_some_and(|c| Arc::ptr_eq(c, &client))
+                {
+                    cache.remove(&cache_key);
+                }
+            }
         }
 
         let client = Arc::new(self.connect_new_client().await?);
@@ -3600,8 +3614,15 @@ SELECT
         })
     }
 
+    // 以下 cron 方法一律走 `connect_cached_client`:它们在每分钟 tick 与每个调度
+    // 事件上被反复调用,此前每次都是 connect → auth → query → disconnect 一整轮。
+    //
+    // 复用连接的前提是连接的 driver task 得活着——而 driver 是 spawn 到**当前**
+    // runtime 上的。此前云 cron 每次调用都新建临时 runtime,driver 随之销毁,
+    // 所以根本没法复用;改成长驻 runtime(见 `memory/src/cron_job/mod.rs` 的
+    // `CLOUD_CRON_RUNTIME`)之后才成立。
     pub async fn list_cron_job_records(&self) -> HoneResult<Vec<CloudCronJobRecord>> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let rows = client
             .query(
                 r#"
@@ -3628,7 +3649,7 @@ ORDER BY updated_at DESC
         &self,
         actor_storage_key: &str,
     ) -> HoneResult<Vec<CloudCronJobRecord>> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let rows = client
             .query(
                 r#"
@@ -3659,7 +3680,7 @@ ORDER BY updated_at DESC
         actor: serde_json::Value,
         job: serde_json::Value,
     ) -> HoneResult<()> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         client
             .execute(
                 r#"
@@ -3683,7 +3704,7 @@ DO UPDATE SET
         actor_storage_key: &str,
         job_id: &str,
     ) -> HoneResult<()> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         client
             .execute(
                 "DELETE FROM cloud_cron_jobs WHERE actor_storage_key = $1 AND job_id = $2",
@@ -3750,7 +3771,7 @@ SELECT
         due_key: &str,
         owner_id: &str,
     ) -> HoneResult<bool> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let rows = client
             .execute(
                 r#"
@@ -3774,7 +3795,7 @@ ON CONFLICT (job_key, due_key) DO NOTHING
         heartbeat: bool,
         input: CloudCronExecutionInput,
     ) -> HoneResult<()> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let input = normalize_cloud_cron_execution_input_for_storage(actor, input);
         let executed_at = crate::beijing_now_rfc3339();
         let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
@@ -3969,7 +3990,7 @@ INSERT INTO cloud_cron_job_runs (
         recovered_by: &str,
         reason: &str,
     ) -> HoneResult<usize> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let recovered_at = crate::beijing_now_rfc3339();
         let detail = serde_json::json!({
             "phase": "scheduler_handler_watchdog_timeout",
@@ -4037,7 +4058,7 @@ WHERE job_id = $4
         recovered_by: &str,
         reason: &str,
     ) -> HoneResult<usize> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let interrupted_at = crate::beijing_now_rfc3339();
         let detail = serde_json::json!({
             "phase": "recovered_stale_pending",
@@ -4087,7 +4108,7 @@ WHERE actor_channel = $4
         &self,
         filter: CloudCronExecutionFilter,
     ) -> HoneResult<Vec<CloudCronExecutionRecord>> {
-        let client = self.connect_client().await?;
+        let client = self.connect_cached_client().await?;
         let limit = i64::try_from(filter.limit.max(1)).unwrap_or(1000);
         let rows = client
             .query(
