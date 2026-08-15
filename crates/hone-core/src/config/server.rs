@@ -114,10 +114,30 @@ impl EmailConfig {
         if env_name.is_empty() {
             return String::new();
         }
-        std::env::var(env_name)
+        let resolved = std::env::var(env_name)
             .unwrap_or_default()
             .trim()
-            .to_string()
+            .to_string();
+        if !resolved.is_empty() {
+            return resolved;
+        }
+        // The default env var was renamed from CLOUDFLARE_API_TOKEN. A deploy
+        // that still exports only the old name must keep sending mail instead
+        // of silently dropping to "email disabled".
+        if env_name == default_email_token_env() {
+            let legacy = std::env::var(LEGACY_EMAIL_TOKEN_ENV)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if !legacy.is_empty() {
+                tracing::warn!(
+                    "email token read from legacy {LEGACY_EMAIL_TOKEN_ENV}; \
+                     rename it to {env_name}"
+                );
+                return legacy;
+            }
+        }
+        String::new()
     }
 
     /// Sending needs all three: an account, a credential and a verified
@@ -143,6 +163,9 @@ impl EmailConfig {
         )
     }
 }
+
+/// Pre-rename credential name still present in older deploy environments.
+const LEGACY_EMAIL_TOKEN_ENV: &str = "CLOUDFLARE_API_TOKEN";
 
 fn default_email_token_env() -> String {
     // Reuse the established runtime-only Email Sending credential rather than
