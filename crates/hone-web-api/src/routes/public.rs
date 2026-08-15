@@ -163,18 +163,12 @@ pub(crate) async fn handle_dev_login(
 fn public_dev_login_enabled(state: &AppState) -> bool {
     public_dev_login_enabled_for(
         &state.deployment_mode,
-        state.core.config.cloud.effective_mode().as_str(),
         std::env::var("HONE_PUBLIC_DEV_LOGIN").ok().as_deref(),
     )
 }
 
-fn public_dev_login_enabled_for(
-    deployment_mode: &str,
-    cloud_mode: &str,
-    configured: Option<&str>,
-) -> bool {
+fn public_dev_login_enabled_for(deployment_mode: &str, configured: Option<&str>) -> bool {
     deployment_mode.eq_ignore_ascii_case("local")
-        && cloud_mode.eq_ignore_ascii_case("local")
         && configured.is_some_and(|value| {
             matches!(
                 value.trim().to_ascii_lowercase().as_str(),
@@ -962,8 +956,12 @@ pub(crate) async fn handle_chat(
         combined_message = forced_earnings_skill_input(&workflow, &combined_message);
     }
 
-    match crate::routes::research_library::chat_context_for_user_async(&state, &user.user_id, &message)
-        .await
+    match crate::routes::research_library::chat_context_for_user_async(
+        &state,
+        &user.user_id,
+        &message,
+    )
+    .await
     {
         Ok(Some(context)) => combined_message.push_str(&context),
         Ok(None) => {}
@@ -1861,9 +1859,12 @@ async fn run_public_api_chat_once(
         return Ok(reply);
     }
     let mut message = message;
-    if let Ok(Some(context)) =
-        crate::routes::research_library::chat_context_for_user_async(&state, &actor.user_id, &message)
-            .await
+    if let Ok(Some(context)) = crate::routes::research_library::chat_context_for_user_async(
+        &state,
+        &actor.user_id,
+        &message,
+    )
+    .await
     {
         message.push_str(&context);
     }
@@ -1929,13 +1930,12 @@ fn build_openai_chat_sse(
             return;
         }
         let mut message = message;
-        if let Ok(Some(context)) =
-            crate::routes::research_library::chat_context_for_user_async(
-                &state,
-                &actor.user_id,
-                &message,
-            )
-            .await
+        if let Ok(Some(context)) = crate::routes::research_library::chat_context_for_user_async(
+            &state,
+            &actor.user_id,
+            &message,
+        )
+        .await
         {
             message.push_str(&context);
         }
@@ -2251,29 +2251,12 @@ mod tests {
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
 
     #[test]
-    fn public_dev_login_requires_explicit_local_local_enablement() {
-        assert!(public_dev_login_enabled_for("local", "local", Some("true")));
-        assert!(public_dev_login_enabled_for(
-            "LOCAL",
-            "LOCAL",
-            Some(" yes ")
-        ));
-        assert!(!public_dev_login_enabled_for("local", "local", None));
-        assert!(!public_dev_login_enabled_for(
-            "local",
-            "local",
-            Some("false")
-        ));
-        assert!(!public_dev_login_enabled_for(
-            "remote",
-            "local",
-            Some("true")
-        ));
-        assert!(!public_dev_login_enabled_for(
-            "local",
-            "cloud",
-            Some("true")
-        ));
+    fn public_dev_login_requires_explicit_local_deployment_enablement() {
+        assert!(public_dev_login_enabled_for("local", Some("true")));
+        assert!(public_dev_login_enabled_for("LOCAL", Some(" yes ")));
+        assert!(!public_dev_login_enabled_for("local", None));
+        assert!(!public_dev_login_enabled_for("local", Some("false")));
+        assert!(!public_dev_login_enabled_for("remote", Some("true")));
     }
 
     #[test]

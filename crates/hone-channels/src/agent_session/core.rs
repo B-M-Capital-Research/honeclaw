@@ -2848,18 +2848,8 @@ impl AgentSession {
                 .as_deref()
                 .is_some_and(|extra| extra.contains("openai_compatible_api=true"))
         {
-            let oss_store = self
-                .core
-                .config
-                .cloud
-                .effective_mode()
-                .is_cloud_authoritative()
-                .then(|| {
-                    hone_core::cloud_runtime::OssObjectStore::from_config(
-                        &self.core.config.cloud.oss,
-                    )
-                })
-                .flatten();
+            let oss_store =
+                hone_core::cloud_runtime::OssObjectStore::from_config(&self.core.config.cloud.oss);
             let promotion = oss_store.as_ref().map(|store| OssPromotion {
                 store,
                 actor: &self.actor,

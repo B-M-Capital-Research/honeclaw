@@ -28,7 +28,6 @@ storage:
   base_path: "./data"
   sessions_dir: "./data/sessions"
   session_sqlite_db_path: "./data/sessions.sqlite3"
-  session_sqlite_shadow_write_enabled: false
   session_runtime_backend: "json"
   llm_audit_enabled: false
   llm_audit_db_path: "./data/llm_audit.sqlite3"

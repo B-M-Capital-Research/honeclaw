@@ -171,12 +171,7 @@ impl HoneBotCore {
             tracing::warn!("[Startup/{channel}] llm.audit=disabled");
         }
 
-        tracing::info!(
-            "[Startup/{channel}] session.runtime_backend={} session.shadow_sqlite.enabled={} session.shadow_sqlite.path={}",
-            self.config.storage.session_runtime_backend,
-            self.config.storage.session_sqlite_shadow_write_enabled,
-            self.config.storage.session_sqlite_db_path
-        );
+        tracing::info!("[Startup/{channel}] session.runtime_backend=postgresql");
     }
 
     /// 记录“收到用户消息”事件（统一日志格式）

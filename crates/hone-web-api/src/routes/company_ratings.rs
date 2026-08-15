@@ -434,15 +434,7 @@ fn parse_cards() -> Vec<CompanyCard> {
 }
 
 fn simulation_preview_enabled(state: &AppState) -> bool {
-    if state.deployment_mode != "local"
-        || !state
-            .core
-            .config
-            .cloud
-            .effective_mode()
-            .as_str()
-            .eq_ignore_ascii_case("local")
-    {
+    if state.deployment_mode != "local" {
         return false;
     }
     std::env::var("HONE_COMPANY_RATING_SIMULATION")

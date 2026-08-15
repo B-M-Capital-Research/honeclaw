@@ -10,10 +10,10 @@ const api = read("../lib/api.ts");
 const login = read("../components/public-login-form.tsx");
 
 describe("local public dev login contract", () => {
-  it("fails closed outside explicit local deployment and cloud modes", () => {
+  it("fails closed outside explicit local deployment mode", () => {
     expect(backend).toContain('std::env::var("HONE_PUBLIC_DEV_LOGIN")');
     expect(backend).toContain('deployment_mode.eq_ignore_ascii_case("local")');
-    expect(backend).toContain('cloud_mode.eq_ignore_ascii_case("local")');
+    expect(backend).not.toContain('cloud_mode.eq_ignore_ascii_case("local")');
     expect(backend).toContain("StatusCode::NOT_FOUND.into_response()");
   });
 

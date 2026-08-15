@@ -1452,7 +1452,7 @@ impl CloudPgRuntime {
                 ok: false,
                 detail: error.to_string(),
             },
-            // 探活超时 ≠ 云存储已失效:存储后端由配置 `effective_mode()` 决定,
+            // 探活超时 ≠ 云存储已失效:PostgreSQL 后端由已验证的配置决定,
             // 不看这里的结果。别把这个 false 读成"已回落本地"。
             Err(_) => CloudHealth {
                 ok: false,
@@ -6292,57 +6292,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// 云端模式下是否仍保留本地 SQLite 会话影子库。默认 false —— 容器磁盘是临时的，
-/// 影子库既留不住也没人读，却会把全部会话内容落到本地。仅在本地用 cloud 模式
-/// 调试、想要一份可直接 sqlite3 打开的副本时才打开。
-pub fn keep_cloud_session_sqlite_shadow() -> bool {
-    matches!(
-        std::env::var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "1" | "true" | "yes" | "on"
-    )
-}
-
-/// 云端模式下是否真的要写会话影子库。**唯一权威判断**——配置字段与
-/// `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW` 必须同时成立。
-///
-/// 抽成函数是因为这条策略此前在两个进程里各算了一遍并且算法不同:
-/// `bot_core.rs` 检查两个条件,`hone-web-api/src/lib.rs` 只检查配置字段。
-/// 结果是 GCE 上渠道进程关掉了影子库、web 进程却照写——2026-08-16 实测到一个
-/// 75 MB、294 个会话、6559 条消息且仍在增长的 `sessions.sqlite3`,而该机
-/// `HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW=false`。
-///
-/// 危害不只是磁盘:`local_durable_dependencies` 用的正是这个双条件判断,
-/// 于是 `strict_no_local_storage=true` 顺利通过,同时客户会话内容一直在落本地盘。
-pub fn session_sqlite_shadow_enabled(config: &HoneConfig) -> bool {
-    config.storage.session_sqlite_shadow_write_enabled && keep_cloud_session_sqlite_shadow()
-}
-
 pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
-    if !config.cloud.effective_mode().is_cloud_authoritative() {
-        return Vec::new();
-    }
     let mut deps = Vec::new();
     if !config.cloud.oss.is_configured() {
         deps.push(config.storage.gen_images_dir.clone());
-    }
-    if !config.cloud.postgres.is_configured() {
-        deps.push("./data/agent-sandboxes".to_string());
-        deps.push(config.storage.llm_audit_db_path.clone());
-        deps.push(config.storage.portfolio_dir.clone());
-        deps.push("./data/runtime/skill_registry.json".to_string());
-        deps.push(config.storage.notif_prefs_dir.clone());
-        deps.push(config.storage.cron_jobs_dir.clone());
-        deps.push(config.storage.sessions_dir.clone());
-        deps.push(config.storage.session_sqlite_db_path.clone());
-        deps.push(config.storage.conversation_quota_dir.clone());
-    } else if session_sqlite_shadow_enabled(config) {
-        // PG 已经是权威存储，但影子库被显式打开时仍会把会话写到本地盘，
-        // 必须报出来，否则 strict_no_local_storage 会给出假的「无本地依赖」。
-        deps.push(config.storage.session_sqlite_db_path.clone());
     }
     deps.retain(|dep| !dep.trim().is_empty());
     deps.sort();
@@ -6754,11 +6707,7 @@ mod tests {
 
     #[test]
     fn cloud_local_dependency_report_omits_pg_backed_stores_when_postgres_is_configured() {
-        unsafe {
-            std::env::set_var("HONE_CLOUD_MODE", "cloud");
-        }
         let mut config = HoneConfig::default();
-        config.cloud.mode = "cloud".to_string();
         config.cloud.postgres.host = "localhost".to_string();
         config.cloud.postgres.user = "user".to_string();
         config.cloud.postgres.password = "password".to_string();
@@ -6789,93 +6738,28 @@ mod tests {
                 .iter()
                 .any(|dep| dep == &config.storage.llm_audit_db_path)
         );
-        unsafe {
-            std::env::remove_var("HONE_CLOUD_MODE");
-        }
     }
 
     #[test]
-    fn cloud_session_sqlite_shadow_is_opt_in_and_reported_as_a_local_dependency() {
-        // 两个断言共用同一个进程级 env，必须放在一个测试里，避免并行互相清掉。
-        unsafe {
-            std::env::set_var("HONE_CLOUD_MODE", "cloud");
-            std::env::remove_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW");
-        }
+    fn local_dependency_report_contains_only_the_optional_oss_fallback() {
         let mut config = HoneConfig::default();
-        config.cloud.mode = "cloud".to_string();
-        config.cloud.postgres.host = "localhost".to_string();
-        config.cloud.postgres.user = "user".to_string();
-        config.cloud.postgres.password = "password".to_string();
-        config.cloud.postgres.database = "hone".to_string();
+        config.storage.gen_images_dir = "/tmp/hone/gen_images".to_string();
+        let deps = local_durable_dependencies(&config);
+        assert_eq!(deps, vec!["/tmp/hone/gen_images".to_string()]);
+        assert!(!deps.iter().any(|dependency| dependency.contains("sqlite")));
+    }
+
+    #[test]
+    fn local_dependency_report_never_reintroduces_pg_backed_paths() {
+        let mut config = HoneConfig::default();
         config.cloud.oss.access_key_id = "access".to_string();
         config.cloud.oss.access_key_secret = "secret".to_string();
         config.cloud.oss.bucket = "bucket".to_string();
         config.cloud.oss.endpoint = "https://example.com".to_string();
-        config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
-        config.storage.session_sqlite_shadow_write_enabled = true;
-
-        // 默认：云端不保留影子库，也就没有本地依赖。
-        assert!(!keep_cloud_session_sqlite_shadow());
-        assert!(local_durable_dependencies(&config).is_empty());
-
-        // 配置字段为 true 但环境变量未设时,影子库必须是关的。
-        // 这是 2026-08-16 GCE 上那个 75 MB sessions.sqlite3 的判定条件:
-        // 当时 hone-web-api 只看配置字段、不看环境变量,于是渠道进程关了、web 进程照写,
-        // 而 local_durable_dependencies 用双条件判断,strict_no_local_storage 还报"无依赖"。
-        // 现在两个进程都必须调这一个函数。
-        assert!(
-            !session_sqlite_shadow_enabled(&config),
-            "配置字段单独为 true 不足以打开影子库;必须同时设置环境变量"
-        );
-
-        // 显式打开后必须报成本地依赖，strict_no_local_storage 才拦得住。
-        unsafe {
-            std::env::set_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW", "1");
-        }
-        assert!(keep_cloud_session_sqlite_shadow());
-        assert!(session_sqlite_shadow_enabled(&config));
-
-        // 反向:环境变量开着但配置字段关掉,同样不写。
-        config.storage.session_sqlite_shadow_write_enabled = false;
-        assert!(
-            !session_sqlite_shadow_enabled(&config),
-            "两个条件必须同时成立"
-        );
-        config.storage.session_sqlite_shadow_write_enabled = true;
-        assert!(
-            local_durable_dependencies(&config)
-                .iter()
-                .any(|dep| dep == "/tmp/hone/sessions.sqlite3")
-        );
-
-        unsafe {
-            std::env::remove_var("HONE_CLOUD_KEEP_SESSION_SQLITE_SHADOW");
-            std::env::remove_var("HONE_CLOUD_MODE");
-        }
-    }
-
-    #[test]
-    fn cloud_local_dependency_report_keeps_quota_without_postgres() {
-        unsafe {
-            std::env::set_var("HONE_CLOUD_MODE", "cloud");
-        }
-        let mut config = HoneConfig::default();
-        config.cloud.mode = "cloud".to_string();
-        config.cloud.postgres.database_url_env = "HONE_TEST_UNUSED_PG_URL".to_string();
-        config.cloud.postgres.host_env = "HONE_TEST_UNUSED_PG_HOST".to_string();
-        config.cloud.postgres.user_env = "HONE_TEST_UNUSED_PG_USER".to_string();
-        config.cloud.postgres.password_env = "HONE_TEST_UNUSED_PG_PASSWORD".to_string();
-        config.cloud.postgres.database_env = "HONE_TEST_UNUSED_PG_DATABASE".to_string();
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
         config.storage.cron_jobs_dir = "/tmp/hone/cron".to_string();
-        let deps = local_durable_dependencies(&config);
-        assert!(deps.iter().any(|dep| dep == "/tmp/hone/quota"));
-        assert!(deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
-        assert!(deps.iter().any(|dep| dep == "/tmp/hone/cron"));
-        unsafe {
-            std::env::remove_var("HONE_CLOUD_MODE");
-        }
+        assert!(local_durable_dependencies(&config).is_empty());
     }
 
     #[test]

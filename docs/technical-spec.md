@@ -340,7 +340,7 @@ Precedence is:
 
 ### 6.1 Storage Strategy
 
-The backend still keeps core runtime state local-first today. JSON files are the default session runtime read path, while SQLite-backed session indexes/runtime reads are available through `storage.session_sqlite_db_path` and `storage.session_runtime_backend`; cron run history, Web auth sessions, and LLM audit records also use local SQLite tables. `cloud.postgres` now records the managed Postgres env contract for the migration target, but PG-backed repositories are not yet the default runtime storage path.
+PostgreSQL is the authoritative runtime store for sessions, cron definitions/history, Web auth, billing, LLM audit, quotas, notification preferences, portfolios, company profiles, and event-engine state. The legacy SQLite path/backend fields below remain parsed only for migration compatibility until the separate configuration-cleanup phase; they do not select a runtime backend.
 
 Main directories come from `config.storage.*`:
 
@@ -359,7 +359,7 @@ When `cloud.oss` is configured through runtime env, public Web uploads are store
 
 `memory/src/session.rs`
 
-- In `json` mode, one session corresponds to one JSON file; in `sqlite` mode, `storage.session_sqlite_db_path` is the runtime read source while JSON can remain a rollback mirror
+- Runtime sessions always use PG `cloud_sessions`; legacy `session_runtime_backend` and SQLite path values are inert compatibility input pending removal
 - The session structure contains `actor`, the message list, metadata, and summary
 - The Web UI, CLI, and every channel reuse the same persistence layer
 
@@ -540,8 +540,8 @@ Important constraints:
 
 - LLM provider/profile credentials are config-owned. Prefer `llm.providers.<symbol>.api_key/api_keys`; legacy `llm.openrouter.*` remains readable only as a config fallback during migration.
 - Tavily web search currently consumes `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` remain schema/compatibility fields and are not wired into requests until the search tool request builder is widened.
-- `cloud.enabled` is effectively enabled when set directly, when `HONE_CLOUD_ENABLED` is true, or when `cloud.postgres` / `cloud.oss` resolve enough env-backed credentials to be configured.
-- `cloud.postgres` and `cloud.oss` prefer env references such as `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*`; committed config should keep the actual credentials empty.
+- `cloud.postgres` is the mandatory PostgreSQL runtime store in every deployment mode. It prefers env references such as `DATABASE_URL` and `HONE_POSTGRES_*`; committed config should keep actual credentials empty.
+- `cloud.oss` is optional object storage and prefers `HONE_OSS_*` env references. Without it, generated files retain their explicit local fallback path.
 - `cloud.strict_no_local_storage` / `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` fail startup while declared local storage dependencies remain, so they should stay false until managed replacements exist for all listed stores.
 - `logging.udp_port: null` uses the default local UDP log sink port `18118`; there is currently no config-level disable switch for UDP logging.
 - `logging.console` and `logging.file` are parsed compatibility fields; `setup_logging` currently installs the console formatter unconditionally and does not create a file appender from `logging.file`.

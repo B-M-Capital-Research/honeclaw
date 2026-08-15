@@ -45,20 +45,11 @@ pub(crate) async fn handle_company_profile_spaces(
         );
     }
 
-    let result = if state
-        .core
-        .config
-        .cloud
-        .effective_mode()
-        .is_cloud_authoritative()
+    let result = if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud)
     {
-        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
-            list_cloud_company_profile_spaces(postgres).await
-        } else {
-            Ok(Vec::new())
-        }
+        list_cloud_company_profile_spaces(postgres).await
     } else {
-        Ok(state.core.company_profile_storage.list_profile_spaces_raw())
+        Err("PostgreSQL is not configured for company profile spaces".to_string())
     };
 
     let spaces = match result {

@@ -72,7 +72,6 @@ agent:
 storage:
   sessions_dir: "$data_dir/sessions"
   session_sqlite_db_path: "$data_dir/sessions.sqlite3"
-  session_sqlite_shadow_write_enabled: false
   session_runtime_backend: "json"
   conversation_quota_dir: "$data_dir/conversation_quota"
   llm_audit_db_path: "$data_dir/llm_audit.sqlite3"

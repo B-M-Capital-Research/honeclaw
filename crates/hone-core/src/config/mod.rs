@@ -39,8 +39,7 @@ pub use event_engine::{
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
-    normalize_runtime_storage_rollout_settings, promote_legacy_runtime_agent_settings,
-    seed_canonical_config_from_source,
+    promote_legacy_runtime_agent_settings, seed_canonical_config_from_source,
 };
 pub use mutation::{
     ConfigApplyPlan, ConfigMutation, ConfigMutationResult, apply_config_mutations,
@@ -48,7 +47,7 @@ pub use mutation::{
     read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
-    CloudConfig, CloudMode, CommunityDeliveryConfig, CommunityDeliveryMode, EmailConfig, FmpConfig,
+    CloudConfig, CommunityDeliveryConfig, CommunityDeliveryMode, EmailConfig, FmpConfig,
     LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig, SearchConfig, SecurityConfig,
     StorageConfig, ToolGuardConfig, WebConfig,
 };
@@ -199,12 +198,8 @@ impl HoneConfig {
     /// 免得容器里凭空多出一堆永远为空的 `data/*`，让人误以为还依赖本地盘。
     /// 生成图片等仍需要本地暂存目录，由各自的写入路径按需创建。
     pub fn ensure_runtime_dirs(&self) {
-        if self.cloud.effective_mode().is_cloud_authoritative()
-            && self.cloud.postgres.is_configured()
-        {
-            return;
-        }
-        self.storage.ensure_runtime_dirs();
+        // PostgreSQL is always authoritative. File-backed features create their
+        // own transient directories only when they are actually used.
     }
 }
 

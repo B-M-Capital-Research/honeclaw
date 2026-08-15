@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_mutations_and_generate_keeps_session_shadow_write_enabled() {
+    fn apply_mutations_and_generate_keeps_runtime_backend_config() {
         let root = temp_dir("hone_cli_yaml_io");
         let runtime_dir = root.join("data/runtime");
         std::fs::create_dir_all(&runtime_dir).unwrap();
@@ -97,7 +97,6 @@ mod tests {
             &canonical,
             r#"
 storage:
-  session_sqlite_shadow_write_enabled: false
   session_runtime_backend: "json"
 agent:
   runner: codex_acp
@@ -127,9 +126,8 @@ agent:
         assert!(!result.config_revision.is_empty());
         let canonical_config = hone_core::HoneConfig::from_file(&canonical).unwrap();
         assert_eq!(canonical_config.agent.runner, "opencode_acp");
-        assert!(canonical_config.storage.session_sqlite_shadow_write_enabled);
         let effective_config = hone_core::HoneConfig::from_file(&effective).unwrap();
-        assert!(effective_config.storage.session_sqlite_shadow_write_enabled);
+        assert_eq!(effective_config.storage.session_runtime_backend, "json");
 
         let _ = std::fs::remove_dir_all(root);
     }

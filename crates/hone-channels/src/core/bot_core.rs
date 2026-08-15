@@ -83,17 +83,10 @@ impl HoneBotCore {
             cloud_pg_runtime.clone().expect("cloud postgres configured"),
         )
         .expect("failed to initialize PostgreSQL session storage");
-        let conversation_quota_storage = if config.cloud.effective_mode().is_cloud_authoritative()
-            && config.cloud.postgres.is_configured()
-        {
-            ConversationQuotaStorage::new_cloud(
-                cloud_pg_runtime.clone().expect("cloud postgres configured"),
-            )
-            .expect("failed to initialize cloud conversation quota storage")
-        } else {
-            ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
-                .expect("failed to initialize conversation quota storage")
-        };
+        let conversation_quota_storage = ConversationQuotaStorage::new_cloud(
+            cloud_pg_runtime.clone().expect("cloud postgres configured"),
+        )
+        .expect("failed to initialize PostgreSQL conversation quota storage");
         #[cfg(test)]
         let delivered_push_context_store = {
             let event_store_namespace = configured_event_store_path(&config);
@@ -343,38 +336,21 @@ impl HoneBotCore {
                 .iter()
                 .map(|slot| slot.time.clone())
                 .collect::<Vec<_>>();
-            let cron_tool: Box<dyn hone_tools::Tool> =
-                if self.config.cloud.effective_mode().is_cloud_authoritative()
-                    && self.config.cloud.postgres.is_configured()
-                    && let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-                {
-                    Box::new(
-                        CronJobTool::new_cloud(
-                            &self.config.storage.cron_jobs_dir,
-                            actor.cloned(),
-                            channel_target,
-                            admin_bypass,
-                            postgres,
-                        )
-                        .with_push_context(
-                            &self.config.storage.notif_prefs_dir,
-                            default_digest_slot_times.clone(),
-                        ),
-                    )
-                } else {
-                    Box::new(
-                        CronJobTool::new(
-                            &self.config.storage.cron_jobs_dir,
-                            actor.cloned(),
-                            channel_target,
-                            admin_bypass,
-                        )
-                        .with_push_context(
-                            &self.config.storage.notif_prefs_dir,
-                            default_digest_slot_times.clone(),
-                        ),
-                    )
-                };
+            let postgres = CloudPgRuntime::from_cloud_config(&self.config.cloud)
+                .expect("PostgreSQL must be configured for cron tool storage");
+            let cron_tool: Box<dyn hone_tools::Tool> = Box::new(
+                CronJobTool::new_cloud(
+                    &self.config.storage.cron_jobs_dir,
+                    actor.cloned(),
+                    channel_target,
+                    admin_bypass,
+                    postgres,
+                )
+                .with_push_context(
+                    &self.config.storage.notif_prefs_dir,
+                    default_digest_slot_times.clone(),
+                ),
+            );
             registry.register(cron_tool);
         } else {
             tracing::info!(
@@ -421,25 +397,15 @@ impl HoneBotCore {
                 .thresholds
                 .same_symbol_cooldown_minutes,
         };
-        if self.config.cloud.effective_mode().is_cloud_authoritative()
-            && self.config.cloud.postgres.is_configured()
-            && let Some(postgres) = CloudPgRuntime::from_cloud_config(&self.config.cloud)
-        {
-            registry.register(Box::new(hone_tools::NotificationPrefsTool::new_cloud(
-                &self.config.storage.notif_prefs_dir,
-                actor.cloned(),
-                &self.config.storage.cron_jobs_dir,
-                overview_defaults,
-                postgres,
-            )));
-        } else {
-            registry.register(Box::new(hone_tools::NotificationPrefsTool::new(
-                &self.config.storage.notif_prefs_dir,
-                actor.cloned(),
-                &self.config.storage.cron_jobs_dir,
-                overview_defaults,
-            )));
-        }
+        let postgres = CloudPgRuntime::from_cloud_config(&self.config.cloud)
+            .expect("PostgreSQL must be configured for notification preferences");
+        registry.register(Box::new(hone_tools::NotificationPrefsTool::new_cloud(
+            &self.config.storage.notif_prefs_dir,
+            actor.cloned(),
+            &self.config.storage.cron_jobs_dir,
+            overview_defaults,
+            postgres,
+        )));
 
         // 让用户通过 `/missed` 或自然语言查回 digest/router 主动筛掉的事件。
         // 与 event-engine 共用 PostgreSQL 权威表；actor 强制绑定调用方。
@@ -452,9 +418,8 @@ impl HoneBotCore {
 
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
-            if self.config.cloud.effective_mode().is_cloud_authoritative()
-                && let Some(oss) =
-                    hone_core::cloud_runtime::OssObjectStore::from_config(&self.config.cloud.oss)
+            if let Some(oss) =
+                hone_core::cloud_runtime::OssObjectStore::from_config(&self.config.cloud.oss)
             {
                 registry.register(Box::new(hone_tools::LocalListFilesTool::new_cloud(
                     sandbox_base.clone(),

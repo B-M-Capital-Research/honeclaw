@@ -5,7 +5,7 @@ use std::sync::Arc;
 use hone_channels::HoneBotCore;
 use hone_core::config::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
-    normalize_runtime_storage_rollout_settings, seed_canonical_config_from_source,
+    seed_canonical_config_from_source,
 };
 use hone_core::{HoneConfig, HoneResult};
 
@@ -110,7 +110,6 @@ pub(crate) fn normalize_runtime_rollout_and_generate_effective_config(
     canonical_config_path: &Path,
     effective_config_path: &Path,
 ) -> HoneResult<String> {
-    normalize_runtime_storage_rollout_settings(canonical_config_path)?;
     generate_effective_config(canonical_config_path, effective_config_path)
 }
 
@@ -164,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_effective_config_generation_normalizes_session_shadow_write() {
+    fn cli_effective_config_generation_preserves_runtime_config() {
         let root = temp_dir("hone_cli_runtime_rollout");
         let runtime_dir = root.join("data/runtime");
         std::fs::create_dir_all(&runtime_dir).unwrap();
@@ -174,7 +173,6 @@ mod tests {
             &canonical,
             r#"
 storage:
-  session_sqlite_shadow_write_enabled: false
   session_runtime_backend: "json"
 "#,
         )
@@ -185,10 +183,8 @@ storage:
                 .unwrap();
 
         assert!(!revision.is_empty());
-        let canonical_config = HoneConfig::from_file(&canonical).unwrap();
-        assert!(canonical_config.storage.session_sqlite_shadow_write_enabled);
         let effective_config = HoneConfig::from_file(&effective).unwrap();
-        assert!(effective_config.storage.session_sqlite_shadow_write_enabled);
+        assert_eq!(effective_config.storage.session_runtime_backend, "json");
 
         let _ = std::fs::remove_dir_all(root);
     }

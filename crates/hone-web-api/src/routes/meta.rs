@@ -121,13 +121,7 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         }
     })
     .await;
-    let cloud_storage_authoritative = state
-        .core
-        .config
-        .cloud
-        .effective_mode()
-        .is_cloud_authoritative()
-        && postgres_health.as_ref().is_some_and(|health| health.ok)
+    let cloud_storage_authoritative = postgres_health.as_ref().is_some_and(|health| health.ok)
         && oss_health.as_ref().is_some_and(|health| health.ok)
         && local_deps.is_empty();
     let value = json!(MetaInfo {
@@ -139,13 +133,7 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         capabilities: meta_capabilities(&state.core.config, &state.deployment_mode),
         deployment_mode: state.deployment_mode.clone(),
         language: state.core.config.language.as_str().to_string(),
-        cloud_mode: state
-            .core
-            .config
-            .cloud
-            .effective_mode()
-            .as_str()
-            .to_string(),
+        cloud_mode: "cloud".to_string(),
         runtime_role: runtime_role.as_str().to_string(),
         worker_leader: None,
         cloud_storage_authoritative,
@@ -292,9 +280,7 @@ fn meta_capabilities(config: &HoneConfig, deployment_mode: &str) -> Vec<String> 
     if deployment_mode == "local" {
         capabilities.push("local_file_proxy".to_string());
     }
-    if config.cloud.effective_enabled() {
-        capabilities.push("cloud_runtime".to_string());
-    }
+    capabilities.push("cloud_runtime".to_string());
     if config.cloud.postgres.is_configured() {
         capabilities.push("cloud_postgres".to_string());
     }

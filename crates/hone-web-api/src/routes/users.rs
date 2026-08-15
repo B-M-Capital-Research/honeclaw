@@ -26,14 +26,7 @@ const USERS_ROUTE_CACHE_TTL: Duration = Duration::from_secs(30);
 
 /// GET /api/users — 列出所有有会话记录的 session，按最后活跃时间降序
 pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    if state
-        .core
-        .config
-        .cloud
-        .effective_mode()
-        .is_cloud_authoritative()
-        && let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud)
-    {
+    if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
         if let Some(cached) = cached_cloud_users(false) {
             return Json(serde_json::to_value(&cached).unwrap_or(serde_json::json!([])));
         }

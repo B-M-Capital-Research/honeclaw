@@ -158,9 +158,7 @@ fn redact_session_new_mcp_env(payload: &mut Value) {
 fn safe_mcp_env_value_for_log(name: &str) -> bool {
     matches!(
         name,
-        "HONE_CLOUD_MODE"
-            | "HONE_CLOUD_ENABLED"
-            | "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE"
+        "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE"
             | "HONE_MCP_ALLOW_CRON"
             | "HONE_MCP_MAX_TOOL_CALLS"
             | "HONE_MCP_ALLOWED_TOOLS"
@@ -707,7 +705,7 @@ mod tests {
                     {
                         "name": "hone",
                         "env": [
-                            {"name": "HONE_CLOUD_MODE", "value": "cloud"},
+                            {"name": "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE", "value": "true"},
                             {"name": "HONE_POSTGRES_PASSWORD", "value": "pg-secret"},
                             {"name": "HONE_OSS_ACCESS_KEY_SECRET", "value": "oss-secret"},
                             {"name": "HONE_DATA_DIR", "value": "/private/tmp/hone-data"}
@@ -733,7 +731,10 @@ mod tests {
                 .and_then(|entry| entry["value"].as_str())
         };
 
-        assert_eq!(env_value("HONE_CLOUD_MODE"), Some("cloud"));
+        assert_eq!(
+            env_value("HONE_CLOUD_STRICT_NO_LOCAL_STORAGE"),
+            Some("true")
+        );
         assert_eq!(env_value("HONE_POSTGRES_PASSWORD"), Some(REDACTED_VALUE));
         assert_eq!(
             env_value("HONE_OSS_ACCESS_KEY_SECRET"),
@@ -772,7 +773,7 @@ mod tests {
                     "hone": {
                         "command": "hone-mcp",
                         "env": {
-                            "HONE_CLOUD_MODE": "cloud",
+                            "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE": "true",
                             "HONE_POSTGRES_PASSWORD": "pg-secret",
                             "HONE_OSS_ACCESS_KEY_SECRET": "oss-secret",
                             "HONE_DATA_DIR": "/private/tmp/hone-data"
@@ -794,9 +795,9 @@ mod tests {
 
         assert_eq!(
             env_entries
-                .get("HONE_CLOUD_MODE")
+                .get("HONE_CLOUD_STRICT_NO_LOCAL_STORAGE")
                 .and_then(|value| value.as_str()),
-            Some("cloud")
+            Some("true")
         );
         assert_eq!(
             env_entries

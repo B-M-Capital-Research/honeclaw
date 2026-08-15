@@ -502,8 +502,7 @@ storage:
   session_sqlite_db_path: "./data/sessions.sqlite3"
   # Keep JSON -> SQLite mirror writes enabled during the rollout, even when
   # session_runtime_backend stays "json".
-  session_sqlite_shadow_write_enabled: true
-  # Runtime session read backend: "json" (default) or "sqlite".
+  # Legacy migration compatibility only; runtime sessions are always PostgreSQL-backed.
   session_runtime_backend: "json"
   # Per-actor daily conversation quota files. Legacy conversation_quota_db_path
   # is still accepted as an alias, but new configs should use this directory key.
@@ -517,17 +516,10 @@ storage:
   notif_prefs_dir: "./data/notif_prefs"
 
 cloud:
-  # Storage runtime mode:
-  # - local: default; keep JSON/SQLite/std::fs local even if PG/OSS env exists.
-  # - cloud: require PG + OSS and use them for cloud runtime surfaces.
-  # - auto: development compatibility; env presence can enable cloud_runtime capability.
-  # HONE_CLOUD_MODE overrides this field.
-  mode: "local"
-  # Legacy cloud.enabled compatibility flag used only in cloud.mode=auto.
-  # HONE_CLOUD_ENABLED=true also only has effect in auto mode.
+  # PostgreSQL is the mandatory authoritative store in every deployment mode.
+  # OSS remains optional; without it, generated files use their local fallback path.
   # Keep real PG / OSS credentials in the process environment or local .env only.
-  enabled: false
-  # Set cloud.strict_no_local_storage true only after all storage backends have PG / OSS implementations.
+  # Set cloud.strict_no_local_storage=true to reject those optional local file fallbacks.
   # HONE_CLOUD_STRICT_NO_LOCAL_STORAGE=true has the same startup-fail effect.
   strict_no_local_storage: false
   # Private-R2 public-community delivery is opt-in. Keep `off` until the edge

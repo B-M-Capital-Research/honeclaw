@@ -214,9 +214,7 @@ pub(crate) fn finalize_agent_owned_interactive_response(
 }
 
 fn sync_company_profiles_to_cloud(core: &HoneBotCore, session_id: &str) {
-    if !core.config.cloud.effective_mode().is_cloud_authoritative()
-        || !core.config.cloud.postgres.is_configured()
-    {
+    if !core.config.cloud.postgres.is_configured() {
         return;
     }
     let Some(actor) = ActorIdentity::from_session_id(session_id) else {
@@ -947,8 +945,7 @@ fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) 
     let is_generated_image = source.starts_with(&gen_images_root);
     let is_sandbox_image = source.starts_with(&sandbox_root);
 
-    if core.config.cloud.effective_mode().is_cloud_authoritative()
-        && (is_generated_image || is_sandbox_image)
+    if (is_generated_image || is_sandbox_image)
         && let Some(oss) =
             hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
         && let Ok(bytes) = std::fs::read(source)

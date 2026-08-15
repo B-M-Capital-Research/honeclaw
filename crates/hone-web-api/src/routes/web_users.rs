@@ -34,14 +34,7 @@ pub(crate) async fn handle_list_invites(State(state): State<Arc<AppState>>) -> i
         return Json(json!({ "invites": cached_web_invites(true).unwrap_or_default() }));
     }
 
-    if state
-        .core
-        .config
-        .cloud
-        .effective_mode()
-        .is_cloud_authoritative()
-        && let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud)
-    {
+    if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
         let invites_result = tokio::time::timeout(
             Duration::from_secs(8),
             postgres.list_web_invite_user_records_cached(),

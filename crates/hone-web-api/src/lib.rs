@@ -1092,10 +1092,6 @@ fn report_cloud_runtime_storage_state(
     config: &HoneConfig,
     _data_dir: Option<&Path>,
 ) -> Result<(), String> {
-    if !config.cloud.effective_enabled() {
-        return Ok(());
-    }
-
     let local_dependencies = local_durable_dependencies(config);
     info!(
         cloud_postgres = config.cloud.postgres.is_configured(),

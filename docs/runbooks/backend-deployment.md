@@ -483,22 +483,15 @@ Use `HONE_PUBLIC_SECURE_COOKIE=true`, `1`, or `yes` when the backend origin cann
 
 Managed PG / OSS settings are runtime env configuration. Keep real values in the backend host environment, local ignored `.env`, or process supervisor, never in committed config or docs. `config.example.yaml` documents the env var names under `cloud.*` with empty credential fields.
 
-Storage authority mode:
+PostgreSQL runtime and deployment role:
 
 ```text
-HONE_CLOUD_MODE=local|cloud|auto
 HONE_RUNTIME_ROLE=web|worker|all
-```
-
-Use `HONE_CLOUD_MODE=local` for local fallback. Use `cloud` only when PG and OSS are both configured and intended to be authoritative. Use `auto` only for development compatibility with older env-presence behavior.
-
-Postgres migration target:
-
-```text
-HONE_CLOUD_MODE=cloud
 DATABASE_URL=<postgres-url>
 HONE_POSTGRES_PROXY=socks5://127.0.0.1:1082
 ```
+
+PostgreSQL is mandatory and authoritative in every deployment mode, including local development. `HONE_DEPLOYMENT_MODE=local` controls local-only product behavior but does not select a storage backend. Object storage is optional; omit `HONE_OSS_*` locally when only Docker PostgreSQL is available.
 
 Compatibility pieces accepted when `DATABASE_URL` is not set:
 
@@ -592,7 +585,7 @@ hone-cli cloud community-assets --manifest /path/to/verified-assets.json --apply
 
 Every promoted resource keeps the previous SHA, size, object URI, and access state under `raw_metadata.community_asset_backfill`. Immutable R2 objects are retained for rollback. If a backfill must be reverted, restore the previous row values from that audit metadata or a PG snapshot; do not delete the old or new object until the restored application path has been verified.
 
-The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, `conversation_quota/*.json` into PG, `runtime/skill_registry.json` into PG, `notif_prefs/*.json` into PG, `portfolio/*.json` into PG, `llm_audit.sqlite3` rows into PG, and actor-scoped `company_profiles/**/*.md` into PG `cloud_company_profile_files`; use `--session-only --apply`, `--web-auth-only --apply`, `--quota-only --apply`, `--skill-registry-only --apply`, `--notification-prefs-only --apply`, `--portfolio-only --apply`, `--llm-audit-only --apply`, or `--company-profiles-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. Historical SQLite files outside sessions / web auth / LLM audit are still counted by the broad migrator but are not current runtime hot-path dependencies. Sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles are PG-backed in `cloud.mode=cloud`; generated images, uploads, and attachment/document surfaces are OSS-backed where the runtime has actor/file context.
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, `conversation_quota/*.json` into PG, `runtime/skill_registry.json` into PG, `notif_prefs/*.json` into PG, `portfolio/*.json` into PG, `llm_audit.sqlite3` rows into PG, and actor-scoped `company_profiles/**/*.md` into PG `cloud_company_profile_files`; use `--session-only --apply`, `--web-auth-only --apply`, `--quota-only --apply`, `--skill-registry-only --apply`, `--notification-prefs-only --apply`, `--portfolio-only --apply`, `--llm-audit-only --apply`, or `--company-profiles-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. Historical SQLite files outside sessions / web auth / LLM audit are still counted by the broad migrator but are not current runtime hot-path dependencies. Sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles are always PG-backed; generated images, uploads, and attachment/document surfaces use OSS where configured and otherwise retain their explicit local file fallback.
 
 ## Public Community Private-R2 Edge Rollout
 

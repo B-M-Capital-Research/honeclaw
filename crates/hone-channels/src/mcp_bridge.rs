@@ -160,8 +160,6 @@ fn absolute_parent_dir(path: &str) -> Option<String> {
 
 fn push_runtime_env_vars_from_config(env_entries: &mut Vec<Value>, config_path: &str) {
     let mut names = vec![
-        "HONE_CLOUD_MODE".to_string(),
-        "HONE_CLOUD_ENABLED".to_string(),
         "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE".to_string(),
         "DATABASE_URL".to_string(),
         "HONE_POSTGRES_HOST".to_string(),
@@ -896,8 +894,6 @@ mod tests {
             "HONE_DATA_DIR",
             "HONE_SKILLS_DIR",
             "HONE_AGENT_SANDBOX_DIR",
-            "HONE_CLOUD_MODE",
-            "HONE_CLOUD_ENABLED",
             "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE",
             "DATABASE_URL",
             "HONE_OSS_PROVIDER",
@@ -1168,7 +1164,6 @@ mod tests {
             format!(
                 r#"
 cloud:
-  mode: cloud
   postgres:
     database_url_env: "{pg_url_env}"
   oss:
@@ -1182,7 +1177,6 @@ cloud:
         .expect("write config");
         unsafe {
             env::set_var("HONE_MCP_BIN", "/tmp/hone-mcp-custom");
-            env::set_var("HONE_CLOUD_MODE", "cloud");
             env::set_var(
                 &pg_url_env,
                 "postgres://user:pass@example.invalid:5432/hone",
@@ -1206,7 +1200,6 @@ cloud:
                 .map(|value| value.to_string())
         };
 
-        assert_eq!(env_value("HONE_CLOUD_MODE").as_deref(), Some("cloud"));
         assert_eq!(
             env_value(&pg_url_env).as_deref(),
             Some("postgres://user:pass@example.invalid:5432/hone")

@@ -159,11 +159,7 @@ pub async fn ingest_raw_attachments(
     }
 
     let mut out = Vec::with_capacity(request.attachments.len());
-    let cloud_oss = if core.config.cloud.effective_mode().is_cloud_authoritative() {
-        hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
-    } else {
-        None
-    };
+    let cloud_oss = hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss);
     for (index, attachment) in request.attachments.into_iter().enumerate() {
         let _storage_guard = attachment_storage_quota_lock().lock().await;
         let mut received =
@@ -430,9 +426,7 @@ async fn persist_attachment_manifest(
     };
     let manifest_json = serde_json::to_vec_pretty(&manifest)
         .map_err(|err| format!("序列化附件 manifest 失败: {err}"))?;
-    if core.config.cloud.effective_mode().is_cloud_authoritative()
-        && let Some(oss) =
-            hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
+    if let Some(oss) = hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
     {
         let key = oss.actor_upload_key(&actor, &session_id, "attachments.manifest.json");
         oss.put_object(&key, manifest_json, "application/json")

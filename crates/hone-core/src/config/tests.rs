@@ -340,7 +340,6 @@ fn assert_config_example_storage_defaults(config: &HoneConfig) {
         config.storage.session_sqlite_db_path,
         "./data/sessions.sqlite3"
     );
-    assert!(config.storage.session_sqlite_shadow_write_enabled);
     assert_eq!(config.storage.session_runtime_backend, "json");
     assert_eq!(
         config.storage.conversation_quota_dir,
@@ -440,7 +439,6 @@ fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     );
     assert!(yaml_has_key(storage, "sessions_dir"));
     assert!(yaml_has_key(storage, "session_sqlite_db_path"));
-    assert!(yaml_has_key(storage, "session_sqlite_shadow_write_enabled"));
     assert!(yaml_has_key(storage, "session_runtime_backend"));
     assert!(yaml_has_key(storage, "conversation_quota_dir"));
     assert!(yaml_has_key(storage, "gen_images_dir"));
@@ -619,8 +617,12 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
 
 fn assert_cloud_config_runtime_docs(label: &str, doc: &str) {
     assert!(
-        doc.contains("cloud.enabled") && doc.contains("HONE_CLOUD_ENABLED"),
-        "{label} should document effective cloud enablement"
+        (doc.contains("cloud.postgres") || doc.contains("postgres:")) && doc.contains("PostgreSQL"),
+        "{label} should document mandatory PostgreSQL storage"
+    );
+    assert!(
+        (doc.contains("cloud.oss") || doc.contains("oss:")) && doc.contains("optional"),
+        "{label} should document optional object storage"
     );
     assert!(
         doc.contains("cloud.strict_no_local_storage")
@@ -2019,31 +2021,17 @@ agent:
 }
 
 #[test]
-fn normalize_runtime_storage_rollout_settings_enables_session_shadow_write() {
-    let dir = temp_test_dir("runtime-storage-rollout");
-    let canonical = dir.join("config.yaml");
-    std::fs::write(
-        &canonical,
-        r#"
-storage:
-  session_sqlite_shadow_write_enabled: false
-  session_runtime_backend: "json"
-"#,
-    )
-    .unwrap();
-
-    let changed = normalize_runtime_storage_rollout_settings(&canonical).unwrap();
-    assert_eq!(
-        changed,
-        vec!["storage.session_sqlite_shadow_write_enabled".to_string()]
-    );
-
-    let config = HoneConfig::from_file(&canonical).unwrap();
-    assert!(config.storage.session_sqlite_shadow_write_enabled);
-
-    let second = normalize_runtime_storage_rollout_settings(&canonical).unwrap();
-    assert!(second.is_empty());
-    let _ = std::fs::remove_dir_all(dir);
+fn storage_config_no_longer_serializes_a_session_shadow_switch() {
+    let value = serde_yaml::to_value(HoneConfig::default()).expect("serialize config");
+    let storage = value
+        .as_mapping()
+        .and_then(|root| yaml_key(root, "storage"))
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("storage mapping");
+    assert!(!yaml_has_key(
+        storage,
+        "session_sqlite_shadow_write_enabled"
+    ));
 }
 
 #[test]

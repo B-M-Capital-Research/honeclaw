@@ -26,7 +26,7 @@ use crate::yaml_io::print_json;
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum CloudCommands {
-    /// 检查 cloud.mode、runtime role、PG、OSS、schema 和本地 durable 依赖。
+    /// 检查 runtime role、PG、可选 OSS、schema 和本地 durable 依赖。
     Doctor(CloudDoctorArgs),
     /// 从本机 data/ dry-run 或幂等导入 PG/OSS。
     Migrate(CloudMigrateArgs),
@@ -2718,8 +2718,8 @@ async fn run_doctor(config_path: Option<&Path>, args: CloudDoctorArgs) -> Result
     };
     let local_deps = local_durable_dependencies(&config);
     let report = CloudDoctorReport {
-        cloud_mode: config.cloud.effective_mode().as_str().to_string(),
-        cloud_enabled: config.cloud.effective_enabled(),
+        cloud_mode: "cloud".to_string(),
+        cloud_enabled: true,
         strict_no_local_storage: config.cloud.effective_strict_no_local_storage(),
         runtime_role: RuntimeRole::from_env().as_str().to_string(),
         postgres_configured: config.cloud.postgres.is_configured(),

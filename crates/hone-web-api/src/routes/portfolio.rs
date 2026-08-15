@@ -40,38 +40,13 @@ pub(crate) async fn handle_portfolio_actors(
             .into_response();
     }
 
-    let result = if state
-        .core
-        .config
-        .cloud
-        .effective_mode()
-        .is_cloud_authoritative()
+    let result = if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud)
     {
-        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
-            list_cloud_portfolio_actor_summaries(postgres).await
-        } else {
-            Ok(Vec::new())
-        }
+        list_cloud_portfolio_actor_summaries(postgres).await
     } else {
-        let storage = portfolio_storage(&state);
-        match tokio::time::timeout(
-            Duration::from_secs(8),
-            tokio::task::spawn_blocking(move || {
-                storage
-                    .list_all()
-                    .iter()
-                    .map(|(actor, portfolio)| portfolio_summary(actor, Some(portfolio)))
-                    .collect::<Vec<_>>()
-            }),
-        )
-        .await
-        {
-            Ok(Ok(summaries)) => Ok(summaries),
-            Ok(Err(error)) => Err(hone_core::HoneError::Config(error.to_string())),
-            Err(_) => Err(hone_core::HoneError::Config(
-                "portfolio actors list timed out".to_string(),
-            )),
-        }
+        Err(hone_core::HoneError::Config(
+            "PostgreSQL is not configured for portfolio actors".to_string(),
+        ))
     };
 
     let summaries = match result {

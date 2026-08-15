@@ -24,7 +24,7 @@ Confirm the active service inputs without printing secret values:
 sudo systemctl show hone-web \
   -p WorkingDirectory -p ExecStart -p EnvironmentFiles --no-pager
 sudo awk -F= \
-  '/^(HONE_CLOUD_MODE|DATABASE_URL|HONE_POSTGRES_[A-Z0-9_]+)=/ {print $1"=SET"}' \
+  '/^(DATABASE_URL|HONE_POSTGRES_[A-Z0-9_]+)=/ {print $1"=SET"}' \
   /etc/hone/runtime.env | sort
 ```
 

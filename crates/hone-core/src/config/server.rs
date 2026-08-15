@@ -398,8 +398,6 @@ pub struct StorageConfig {
     pub sessions_dir: String,
     #[serde(default = "default_session_sqlite_db_path")]
     pub session_sqlite_db_path: String,
-    #[serde(default = "default_true")]
-    pub session_sqlite_shadow_write_enabled: bool,
     #[serde(default = "default_session_runtime_backend")]
     pub session_runtime_backend: String,
     #[serde(
@@ -510,10 +508,6 @@ fn default_notif_prefs_dir() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CloudConfig {
-    #[serde(default = "default_cloud_mode")]
-    pub mode: String,
-    #[serde(default)]
-    pub enabled: bool,
     #[serde(default)]
     pub strict_no_local_storage: bool,
     #[serde(default)]
@@ -596,68 +590,16 @@ impl CommunityDeliveryConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CloudMode {
-    Local,
-    Cloud,
-    Auto,
-}
-
-impl CloudMode {
-    pub fn from_config_value(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "cloud" => Self::Cloud,
-            "auto" => Self::Auto,
-            _ => Self::Local,
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Local => "local",
-            Self::Cloud => "cloud",
-            Self::Auto => "auto",
-        }
-    }
-
-    pub fn is_cloud_authoritative(&self) -> bool {
-        matches!(self, Self::Cloud)
-    }
-}
-
 impl CloudConfig {
-    pub fn effective_mode(&self) -> CloudMode {
-        let env_mode = env_value("HONE_CLOUD_MODE");
-        if !env_mode.is_empty() {
-            return CloudMode::from_config_value(&env_mode);
-        }
-        CloudMode::from_config_value(&self.mode)
-    }
-
-    pub fn effective_enabled(&self) -> bool {
-        match self.effective_mode() {
-            CloudMode::Local => false,
-            CloudMode::Cloud => true,
-            CloudMode::Auto => {
-                self.enabled
-                    || env_bool("HONE_CLOUD_ENABLED")
-                    || self.postgres.is_configured()
-                    || self.oss.is_configured()
-            }
-        }
-    }
-
     pub fn effective_strict_no_local_storage(&self) -> bool {
         self.strict_no_local_storage || env_bool("HONE_CLOUD_STRICT_NO_LOCAL_STORAGE")
     }
 
     pub fn validate(&self) -> crate::HoneResult<()> {
-        if matches!(self.effective_mode(), CloudMode::Cloud)
-            && !(self.postgres.is_configured() && self.oss.is_configured())
-        {
+        if !self.postgres.is_configured() {
             return Err(crate::HoneError::Config(
-                "cloud.mode=cloud 需要同时配置 cloud.postgres 和 cloud.oss".to_string(),
+                "PostgreSQL 是必需存储：需要配置 cloud.postgres 的 database_url 或 host/user/password/database"
+                    .to_string(),
             ));
         }
         if self.postgres.is_partially_configured() && !self.postgres.is_configured() {
@@ -955,10 +897,6 @@ fn env_bool(env_name: &str) -> bool {
         env_value(env_name).to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
-}
-
-fn default_cloud_mode() -> String {
-    "local".to_string()
 }
 
 fn default_community_delivery_mode() -> String {
