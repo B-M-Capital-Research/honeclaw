@@ -1426,3 +1426,521 @@ fn sigma_adaptive_thresholds_regression() {
     );
     assert!(sndk_sigma <= 0.35, "SNDK σ 警报率 {sndk_sigma}");
 }
+
+/// 两周事件重放 → 新管线 → Discord 实弹推送(2026-08-15 用户要求的演示)。
+///
+/// 把过去 N 天的真实事件按新管线重建:评级重跑汇总文坍缩 + 目标价锚点,
+/// 价格按 σ-自适应阈值(fixture 日线逐日计算,无前视)重新过滤定级,再按
+/// 事件当日口径注入持仓行 / 30 日共识 / 财报倒计时 / 主线关联,按时间顺序
+/// 推到目标 Discord 用户。store 必须指向副本 —— 本测试只读查询,但绝不
+/// 允许指向生产库以防误用。
+///
+/// ```bash
+/// HONE_REPLAY_EVENTS_JSONL=$PWD/data/events.jsonl \
+/// HONE_REPLAY_STORE=/path/to/replay_events.db \
+/// HONE_REPLAY_PREFS_DIR=$PWD/data/notif_prefs \
+/// HONE_REPLAY_PORTFOLIO_DIR=$PWD/data/portfolio \
+/// HONE_REPLAY_OUT=/tmp/replay_dryrun.md \
+/// HONE_REPLAY_SEND=0 HONE_REPLAY_TARGET_USER=... HONE_REPLAY_DISCORD_TOKEN=... \
+///   cargo test -p hone-event-engine --lib replay_two_weeks_and_push -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore]
+async fn replay_two_weeks_and_push() {
+    use crate::digest::coalesce::coalesce_price_alerts;
+    use crate::pollers::analyst_grade::events_from_grades;
+    use crate::pollers::price::events_from_quotes_at;
+    use crate::prefs::{FilePrefsStorage, PrefsProvider};
+    use crate::renderer::{RenderFormat, render_immediate};
+    use crate::router::OutboundSink;
+    use crate::router::mainline_links::mainline_cross_links;
+    use crate::router::position::position_annotated_event;
+    use crate::sinks::DiscordSink;
+    use crate::store::EventStore;
+    use crate::subscription::SharedRegistry;
+    use crate::volatility::{SymbolThresholds, effective_thresholds, sigma_pct_from_closes};
+    use chrono::{Duration, Utc};
+    use hone_core::ActorIdentity;
+    use hone_core::config::PriceSigmaThresholds;
+    use std::collections::{BTreeMap, HashMap, HashSet};
+
+    let env = |k: &str| std::env::var(k).ok();
+    let (Some(jsonl), Some(store_path)) =
+        (env("HONE_REPLAY_EVENTS_JSONL"), env("HONE_REPLAY_STORE"))
+    else {
+        eprintln!("HONE_REPLAY_EVENTS_JSONL / HONE_REPLAY_STORE 未设置,跳过");
+        return;
+    };
+    assert!(
+        !store_path.contains("data/events.sqlite3"),
+        "HONE_REPLAY_STORE 不允许指向生产库,请用副本"
+    );
+    let prefs_dir = env("HONE_REPLAY_PREFS_DIR").expect("HONE_REPLAY_PREFS_DIR");
+    let portfolio_dir = env("HONE_REPLAY_PORTFOLIO_DIR").expect("HONE_REPLAY_PORTFOLIO_DIR");
+    let days: i64 = env("HONE_REPLAY_DAYS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(14);
+    let target_user = env("HONE_REPLAY_TARGET_USER").unwrap_or_default();
+    let do_send = env("HONE_REPLAY_SEND").as_deref() == Some("1");
+
+    let now = Utc::now();
+    let cutoff = now - Duration::days(days);
+    let store = EventStore::open(&store_path).expect("open store copy");
+    let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir);
+    let registry = registry.load();
+    let actor = ActorIdentity::new("discord", target_user.as_str(), None::<&str>)
+        .unwrap_or_else(|_| ActorIdentity::new("discord", "dryrun", None::<&str>).unwrap());
+    let prefs = FilePrefsStorage::new(&prefs_dir)
+        .expect("prefs dir")
+        .load(&actor);
+
+    // σ 表:committed fixture(2026-01-02..2026-08-14 日线)
+    let fixture: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/daily_closes_2026-01-02_2026-08-14.json"
+        ))
+        .expect("fixture"),
+    )
+    .unwrap();
+    let closes_by_symbol: HashMap<String, Vec<(String, f64)>> = fixture["closes"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(sym, rows)| {
+            (
+                sym.clone(),
+                rows.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| (r[0].as_str().unwrap().to_string(), r[1].as_f64().unwrap()))
+                    .collect(),
+            )
+        })
+        .collect();
+    let sigma_cfg = PriceSigmaThresholds::default();
+    let thresholds_for = |sym: &str, date: &str| -> (f64, f64, Option<f64>) {
+        let sigma = closes_by_symbol.get(sym).and_then(|rows| {
+            let closes: Vec<f64> = rows
+                .iter()
+                .filter(|(d, _)| d.as_str() < date)
+                .map(|(_, c)| *c)
+                .collect();
+            let tail = &closes[closes.len().saturating_sub(61)..];
+            sigma_pct_from_closes(tail, sigma_cfg.min_samples as usize)
+        });
+        let (low, high) = effective_thresholds(&sigma_cfg, sigma, 2.5, 6.0);
+        (low, high, sigma)
+    };
+
+    // ── 1. 读 events.jsonl,分池 ─────────────────────────────────
+    let mut grade_rows: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    let mut grade_row_seen: HashSet<String> = HashSet::new();
+    let mut price_pool: Vec<MarketEvent> = Vec::new();
+    let mut passthrough: Vec<MarketEvent> = Vec::new(); // extended / 52w / earnings_released
+    let mut raw_counts: HashMap<&'static str, usize> = HashMap::new();
+    for line in std::fs::read_to_string(&jsonl).expect("read jsonl").lines() {
+        let Ok(event) = serde_json::from_str::<MarketEvent>(line) else {
+            continue;
+        };
+        if event.occurred_at < cutoff || event.occurred_at > now {
+            continue;
+        }
+        let id = event.id.clone();
+        if id.starts_with("grade:") {
+            *raw_counts.entry("grade_raw").or_default() += 1;
+            let Some(symbol) = event.symbols.first() else {
+                continue;
+            };
+            let key = format!(
+                "{}|{}",
+                event
+                    .payload
+                    .get("publishedDate")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+                event
+                    .payload
+                    .get("gradingCompany")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+            );
+            if grade_row_seen.insert(format!("{symbol}|{key}")) {
+                grade_rows
+                    .entry(symbol.clone())
+                    .or_default()
+                    .push(event.payload.clone());
+            }
+        } else if id.starts_with("grade_roundup:") {
+            *raw_counts.entry("grade_roundup_stored").or_default() += 1;
+            let Some(symbol) = event.symbols.first() else {
+                continue;
+            };
+            if let Some(rows) = event.payload.get("rows").and_then(|v| v.as_array()) {
+                for row in rows {
+                    let key = format!(
+                        "{}|{}",
+                        row.get("publishedDate")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(""),
+                        row.get("gradingCompany")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                    );
+                    if grade_row_seen.insert(format!("{symbol}|{key}")) {
+                        grade_rows
+                            .entry(symbol.clone())
+                            .or_default()
+                            .push(row.clone());
+                    }
+                }
+            }
+        } else if id.starts_with("price_low:")
+            || id.starts_with("price_band:")
+            || id.starts_with("price_close:")
+            || id.starts_with("price:")
+        {
+            *raw_counts.entry("price_raw").or_default() += 1;
+            price_pool.push(event);
+        } else if id.starts_with("extended:") {
+            *raw_counts.entry("extended_raw").or_default() += 1;
+            passthrough.push(event);
+        } else if id.starts_with("52h:") || id.starts_with("52l:") {
+            *raw_counts.entry("week52_raw").or_default() += 1;
+            passthrough.push(event);
+        } else if matches!(event.kind, EventKind::EarningsReleased) {
+            *raw_counts.entry("earnings_released").or_default() += 1;
+            passthrough.push(event);
+        }
+    }
+
+    // ── 2. 评级重建(汇总文坍缩 + 目标价锚点) ─────────────────
+    let mut timeline: Vec<MarketEvent> = Vec::new();
+    for (symbol, rows) in &grade_rows {
+        let raw = serde_json::Value::Array(rows.clone());
+        timeline.extend(events_from_grades(&raw, symbol, cutoff));
+    }
+    let rebuilt_grades = timeline.len();
+
+    // ── 3. 价格重建(σ-自适应过滤 + 重定级) ───────────────────
+    let mut seen_price_ids: HashSet<String> = HashSet::new();
+    let mut sigma_suppressed = 0usize;
+    for event in price_pool {
+        let Some(symbol) = event.symbols.first().cloned() else {
+            continue;
+        };
+        let date_key = event.occurred_at.date_naive().to_string();
+        let (low_eff, high_eff, sigma) = thresholds_for(&symbol, &date_key);
+        let price = event.payload.get("hone_price").and_then(|v| v.as_f64());
+        let Some(pct) = event.payload.get("hone_price_pct").and_then(|v| v.as_f64()) else {
+            continue;
+        };
+        let quote = serde_json::json!([{
+            "symbol": symbol,
+            "price": price,
+            "changesPercentage": pct,
+            "timestamp": event.occurred_at.timestamp(),
+        }]);
+        let mut per_symbol = HashMap::new();
+        per_symbol.insert(
+            symbol.clone(),
+            SymbolThresholds {
+                low_pct: low_eff,
+                high_pct: high_eff,
+                sigma_pct: sigma,
+            },
+        );
+        let rebuilt = events_from_quotes_at(
+            &quote,
+            2.5,
+            6.0,
+            2.0,
+            0.001,
+            &per_symbol,
+            event.occurred_at + Duration::seconds(2),
+        );
+        if rebuilt.is_empty() {
+            sigma_suppressed += 1;
+            continue;
+        }
+        for rebuilt_event in rebuilt {
+            if seen_price_ids.insert(rebuilt_event.id.clone()) {
+                timeline.push(rebuilt_event);
+            }
+        }
+    }
+
+    // ── 4. extended / 52w / earnings 透传(extended 按 σ 过滤) ──
+    for mut event in passthrough {
+        if event.id.starts_with("extended:") {
+            let Some(symbol) = event.symbols.first().cloned() else {
+                continue;
+            };
+            let date_key = event.occurred_at.date_naive().to_string();
+            let (low_eff, high_eff, _) = thresholds_for(&symbol, &date_key);
+            let amp = event
+                .payload
+                .get("changesPercentage")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0)
+                .abs();
+            if amp < low_eff {
+                sigma_suppressed += 1;
+                continue;
+            }
+            event.severity = if amp >= high_eff {
+                Severity::High
+            } else {
+                Severity::Low
+            };
+        }
+        timeline.push(event);
+    }
+    timeline.sort_by_key(|e| e.occurred_at);
+
+    // ── 5. 路由决策(用户策略:±8% 直推 / min_severity=medium)+ 注入 ──
+    #[derive(PartialEq)]
+    enum Route {
+        Immediate,
+        Digest,
+    }
+    let route_for = |event: &MarketEvent| -> Option<Route> {
+        match &event.kind {
+            EventKind::PriceAlert { window, .. } => {
+                // 生产规则:price_close_direct_enabled=false → 收盘事件只进摘要
+                if window == "close" {
+                    return Some(Route::Digest);
+                }
+                let pct = event
+                    .payload
+                    .get("hone_price_pct")
+                    .or_else(|| event.payload.get("changesPercentage"))
+                    .and_then(|v| v.as_f64())?;
+                if pct.abs() >= 8.0 {
+                    Some(Route::Immediate)
+                } else if !matches!(event.severity, Severity::Low) {
+                    Some(Route::Digest)
+                } else {
+                    None
+                }
+            }
+            EventKind::AnalystGrade => match event.severity {
+                Severity::High => Some(Route::Immediate),
+                Severity::Medium => Some(Route::Digest),
+                Severity::Low => None,
+            },
+            EventKind::EarningsReleased => match event.severity {
+                Severity::High => Some(Route::Immediate),
+                _ => Some(Route::Digest),
+            },
+            EventKind::Weekly52High | EventKind::Weekly52Low => Some(Route::Digest),
+            _ => None,
+        }
+    };
+
+    let annotate = |mut event: MarketEvent| -> MarketEvent {
+        let occurred = event.occurred_at;
+        let Some(symbol) = event.symbols.first().cloned() else {
+            return event;
+        };
+        if matches!(event.kind, EventKind::AnalystGrade)
+            && let Ok(payloads) = store.list_analyst_grade_payloads_in_window(
+                &symbol,
+                occurred - Duration::days(30),
+                occurred,
+            )
+        {
+            let counts = crate::pollers::analyst_grade::consensus_counts_from_payloads(&payloads);
+            if counts.total() > 0
+                && let Some(obj) = event.payload.as_object_mut()
+            {
+                obj.insert(
+                    "hone_analyst_consensus_30d".into(),
+                    serde_json::json!({
+                        "down": counts.down, "up": counts.up,
+                        "initiated": counts.init, "reiterated": counts.reiter,
+                    }),
+                );
+            }
+        }
+        if matches!(
+            event.kind,
+            EventKind::PriceAlert { .. } | EventKind::Weekly52High | EventKind::Weekly52Low
+        ) && let Ok(Some(at)) = store.next_upcoming_earnings_for_symbol(&symbol, occurred, 14)
+        {
+            let days_to = (at.date_naive() - occurred.date_naive()).num_days().max(0);
+            if let Some(obj) = event.payload.as_object_mut() {
+                obj.insert(
+                    "hone_next_earnings_date".into(),
+                    serde_json::json!(at.date_naive().to_string()),
+                );
+                obj.insert("hone_days_to_earnings".into(), serde_json::json!(days_to));
+            }
+        }
+        if let Some(position) = registry.position_for(&actor, &symbol)
+            && let Some(annotated) = position_annotated_event(&event, position)
+        {
+            event = annotated;
+        }
+        if let Some(mainlines) = prefs.mainline_by_ticker.as_ref() {
+            let links = mainline_cross_links(&symbol, mainlines);
+            if !links.is_empty()
+                && let Some(obj) = event.payload.as_object_mut()
+            {
+                let links_json: Vec<serde_json::Value> = links
+                    .iter()
+                    .map(|l| serde_json::json!({"ticker": l.ticker, "excerpt": l.excerpt}))
+                    .collect();
+                obj.insert("hone_mainline_links".into(), serde_json::json!(links_json));
+            }
+        }
+        event
+    };
+
+    // ── 6. 组装消息:即时逐条,摘要按北京日合并 ──────────────
+    let beijing_day = |e: &MarketEvent| (e.occurred_at + Duration::hours(8)).date_naive();
+    let mut immediates: Vec<(chrono::NaiveDate, chrono::DateTime<Utc>, String)> = Vec::new();
+    let mut digest_by_day: BTreeMap<chrono::NaiveDate, Vec<MarketEvent>> = BTreeMap::new();
+    let (mut n_imm, mut n_dig) = (0usize, 0usize);
+    // 生产防护:同标的 60min 冷却 + 每日 High 上限 8(超出降入摘要)
+    let mut last_immediate_at: HashMap<String, chrono::DateTime<Utc>> = HashMap::new();
+    let mut daily_high_count: HashMap<chrono::NaiveDate, u32> = HashMap::new();
+    let mut cooled_or_capped = 0usize;
+    for event in timeline {
+        match route_for(&event) {
+            Some(Route::Immediate) => {
+                let symbol = event.symbols.first().cloned().unwrap_or_default();
+                let day = beijing_day(&event);
+                let cooled = last_immediate_at
+                    .get(&symbol)
+                    .is_some_and(|at| event.occurred_at - *at < Duration::minutes(60));
+                let capped = *daily_high_count.get(&day).unwrap_or(&0) >= 8;
+                if cooled || capped {
+                    cooled_or_capped += 1;
+                    let annotated = annotate(event);
+                    digest_by_day.entry(day).or_default().push(annotated);
+                    n_dig += 1;
+                    continue;
+                }
+                last_immediate_at.insert(symbol, event.occurred_at);
+                *daily_high_count.entry(day).or_default() += 1;
+                let annotated = annotate(event);
+                let stamp = (annotated.occurred_at + Duration::hours(8)).format("%m-%d %H:%M");
+                let body = render_immediate(&annotated, RenderFormat::DiscordMarkdown);
+                immediates.push((
+                    beijing_day(&annotated),
+                    annotated.occurred_at,
+                    format!("🔁 回放 {stamp}(北京)\n{body}"),
+                ));
+                n_imm += 1;
+            }
+            Some(Route::Digest) => {
+                let annotated = annotate(event);
+                digest_by_day
+                    .entry(beijing_day(&annotated))
+                    .or_default()
+                    .push(annotated);
+                n_dig += 1;
+            }
+            None => {}
+        }
+    }
+
+    eprintln!("[replay] 冷却/日上限降级 {cooled_or_capped} 条");
+    let mut digest_messages: BTreeMap<chrono::NaiveDate, String> = BTreeMap::new();
+    let mut coalesced_out = 0usize;
+    for (day, events) in digest_by_day {
+        let total = events.len();
+        let curated = coalesce_price_alerts(events);
+        coalesced_out += total - curated.kept.len();
+        let mut lines: Vec<String> = Vec::new();
+        for event in &curated.kept {
+            let summary_head: String = event
+                .summary
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(70)
+                .collect();
+            let sep = if summary_head.is_empty() { "" } else { " — " };
+            lines.push(format!("· {}{sep}{summary_head}", event.title));
+        }
+        let mut msg = format!("🗞 回放摘要 · {day}\n{}", lines.join("\n"));
+        if msg.chars().count() > 1700 {
+            msg = msg.chars().take(1700).collect::<String>() + "…(截断)";
+        }
+        digest_messages.insert(day, msg);
+    }
+
+    // 按日交错:每天先即时(按时刻),后摘要
+    immediates.sort_by_key(|(day, at, _)| (*day, *at));
+    let mut ordered: Vec<String> = Vec::new();
+    let mut all_days: Vec<chrono::NaiveDate> = immediates
+        .iter()
+        .map(|(d, _, _)| *d)
+        .chain(digest_messages.keys().copied())
+        .collect();
+    all_days.sort();
+    all_days.dedup();
+    for day in &all_days {
+        let mut first_of_day = true;
+        for (imm_day, _, body) in &immediates {
+            if imm_day == day {
+                let header = if first_of_day {
+                    format!("── 📅 {day} ──\n")
+                } else {
+                    String::new()
+                };
+                first_of_day = false;
+                ordered.push(format!("{header}{body}"));
+            }
+        }
+        if let Some(digest_msg) = digest_messages.get(day) {
+            let header = if first_of_day {
+                format!("── 📅 {day} ──\n")
+            } else {
+                String::new()
+            };
+            ordered.push(format!("{header}{digest_msg}"));
+        }
+    }
+
+    let stats = format!(
+        "🔁 回放统计:窗口 {} 天 | 原始:价格 {} + 盘后 {} + 评级 {}(含 {} 条汇总)+ 52周 {} + 财报 {}\n新管线:σ 静音 {} 条价格事件,评级重建为 {} 条,摘要阶梯再合流 {} 行\n最终:即时推送 {} 条,日摘要 {} 天,消息总数 {}",
+        days,
+        raw_counts.get("price_raw").unwrap_or(&0),
+        raw_counts.get("extended_raw").unwrap_or(&0),
+        raw_counts.get("grade_raw").unwrap_or(&0),
+        raw_counts.get("grade_roundup_stored").unwrap_or(&0),
+        raw_counts.get("week52_raw").unwrap_or(&0),
+        raw_counts.get("earnings_released").unwrap_or(&0),
+        sigma_suppressed,
+        rebuilt_grades,
+        coalesced_out,
+        n_imm,
+        digest_messages.len(),
+        ordered.len() + 1,
+    );
+
+    if let Some(out) = env("HONE_REPLAY_OUT") {
+        let dump = format!("{stats}\n\n====\n\n{}", ordered.join("\n\n====\n\n"));
+        std::fs::write(&out, &dump).unwrap();
+        eprintln!("{stats}\ndry-run 输出 → {out}");
+    }
+
+    if do_send {
+        let token = env("HONE_REPLAY_DISCORD_TOKEN").expect("HONE_REPLAY_DISCORD_TOKEN");
+        let sink = DiscordSink::new(token);
+        sink.send(&actor, &format!("{stats}\n\n👇 以下按时间顺序重放"))
+            .await
+            .expect("send stats");
+        for (message_index, message) in ordered.iter().enumerate() {
+            if let Err(error) = sink.send(&actor, message).await {
+                eprintln!("send #{message_index} failed: {error:#}");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        }
+        eprintln!("已发送 {} 条消息", ordered.len() + 1);
+    }
+}

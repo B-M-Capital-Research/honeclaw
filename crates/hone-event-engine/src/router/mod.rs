@@ -17,9 +17,9 @@
 mod classify;
 mod config;
 mod dispatch;
-mod mainline_links;
+pub(crate) mod mainline_links;
 mod policy;
-mod position;
+pub(crate) mod position;
 mod sink;
 mod stats;
 

@@ -247,7 +247,7 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
     )
 }
 
-fn events_from_quotes_at(
+pub(crate) fn events_from_quotes_at(
     raw: &Value,
     low_pct: f64,
     high_pct: f64,
