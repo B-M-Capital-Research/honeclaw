@@ -3801,6 +3801,14 @@ ON CONFLICT (job_key, due_key) DO NOTHING
         let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
         let is_started_row =
             input.execution_status == "running" && input.message_send_status == "pending";
+        // 下面四条终态 UPDATE 里的时间差一律写 `$1::text::timestamptz`,不能省成
+        // `$1::timestamptz`。`tokio_postgres::execute` 不声明参数类型,由服务端推断;
+        // `$1` 同时出现在 `executed_at = $1`(text 列)和这个显式 cast 上,直接写
+        // `::timestamptz` 会让 PG 在 parse 阶段就报
+        // `inconsistent types deduced for parameter $1: timestamp with time zone versus text`,
+        // 整条语句失败。先 `::text` 把参数类型钉成 text,再转时间。
+        // 2026-08-16 在 GCE 生产上踩过一次:cron 执行记录全部写不进去,
+        // 且僵尸行回收同样失败(调用点都是 `let _ =`,错误被吞掉,只在启动日志里留一行 WARN)。
         let response_preview = input.response_preview;
         let error_message = input.error_message;
         if input.execution_status != "running" && input.message_send_status != "pending" {
@@ -3820,7 +3828,7 @@ SET
     WHEN started_at IS NULL THEN NULL
     ELSE GREATEST(
       0,
-      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+      (EXTRACT(EPOCH FROM ($1::text::timestamptz - started_at::timestamptz)) * 1000)::bigint
     )
   END,
   execution_status = $2,
@@ -3882,7 +3890,7 @@ SET
     WHEN started_at IS NULL THEN NULL
     ELSE GREATEST(
       0,
-      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+      (EXTRACT(EPOCH FROM ($1::text::timestamptz - started_at::timestamptz)) * 1000)::bigint
     )
   END,
   execution_status = $2,
@@ -4008,7 +4016,7 @@ SET
     WHEN started_at IS NULL THEN NULL
     ELSE GREATEST(
       0,
-      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+      (EXTRACT(EPOCH FROM ($1::text::timestamptz - started_at::timestamptz)) * 1000)::bigint
     )
   END,
   execution_status = 'execution_failed',
@@ -4075,7 +4083,7 @@ SET
     WHEN started_at IS NULL THEN NULL
     ELSE GREATEST(
       0,
-      (EXTRACT(EPOCH FROM ($1::timestamptz - started_at::timestamptz)) * 1000)::bigint
+      (EXTRACT(EPOCH FROM ($1::text::timestamptz - started_at::timestamptz)) * 1000)::bigint
     )
   END,
   execution_status = 'execution_failed',
@@ -6456,6 +6464,37 @@ mod tests {
             .expect("timestamptz parameter encoding");
 
         assert!(!bytes.is_empty(), "timestamptz payload should not be empty");
+    }
+
+    /// `tokio_postgres::execute` 不声明参数类型,服务端要自己推断。四条 cron 终态
+    /// UPDATE 里 `$1` 同时用于 `SET executed_at = $1`(text 列)和时间差计算,
+    /// 若时间差直接写 `$1::timestamptz`,同一个 SET 列表内推断出两种类型,PG 在
+    /// parse 阶段就报 `inconsistent types deduced for parameter $1` ——整条语句
+    /// 根本没执行,不是返回 0 行。写成 `$1::text::timestamptz` 先把参数钉成 text 即可。
+    ///
+    /// 2026-08-16 GCE 生产回归:执行记录一条都写不进去、僵尸行回收也失败;
+    /// 所有调用点都是 `let _ =`,错误被吞掉,只在启动日志里露出一行 WARN。
+    ///
+    /// 注意区分:`($8::text IS NULL OR created_at >= $8::timestamptz)` 这类**两个都是
+    /// 显式 cast**的写法是安全的(实测推断为 text),不在本断言范围内。
+    #[test]
+    fn cron_duration_updates_pin_the_timestamp_parameter_to_text() {
+        let source = include_str!("cloud_runtime.rs");
+        // 拼接构造,避免这个断言自身成为被扫到的样本。
+        let bad = format!("{}{}", "($1::timestamptz - ", "started_at");
+        assert!(
+            !source.contains(&bad),
+            "cron 时间差必须写成 $1::text::timestamptz,否则与 `SET executed_at = $1` 推断冲突"
+        );
+        let good = format!(
+            "{}{}",
+            "($1::text::timestamptz - ", "started_at::timestamptz)"
+        );
+        assert_eq!(
+            source.matches(&good).count(),
+            4,
+            "四条终态 UPDATE 都必须用被钉成 text 的时间参数"
+        );
     }
 
     #[test]
