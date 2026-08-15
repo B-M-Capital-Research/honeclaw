@@ -1,8 +1,8 @@
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{ActorIdentity, HoneError, HoneResult, beijing_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -95,8 +95,7 @@ impl ConversationQuotaStorage {
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        let schema_postgres = postgres.clone();
-        run_cloud(async move { schema_postgres.ensure_schema().await })?;
+        ensure_cloud_schema_once(postgres.clone(), None)?;
         Ok(Self {
             backend: ConversationQuotaBackend::Cloud { postgres },
         })
@@ -307,19 +306,9 @@ impl ConversationQuotaStorage {
 fn run_cloud<T, F>(future: F) -> HoneResult<T>
 where
     T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime =
-                tokio::runtime::Runtime::new().map_err(|e| HoneError::Config(e.to_string()))?;
-            runtime.block_on(future)
-        })
-        .join()
-        .map_err(|_| HoneError::Storage("cloud quota worker panicked".to_string()))?;
-    }
-    let runtime = tokio::runtime::Runtime::new().map_err(|e| HoneError::Config(e.to_string()))?;
-    runtime.block_on(future)
+    run_cloud_sync(future, None, "cloud quota operation")
 }
 
 fn quota_date_today() -> String {
