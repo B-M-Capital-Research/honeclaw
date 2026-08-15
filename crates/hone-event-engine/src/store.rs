@@ -1022,6 +1022,28 @@ impl EventStore {
         Ok(ts.and_then(|t| DateTime::<Utc>::from_timestamp(t, 0)))
     }
 
+    /// 时间窗内 id 以 `id_prefix` 开头的事件数。周报用它统计防线拦截量
+    /// (如 `grade_roundup:` / `price_band:`)。
+    pub fn count_event_ids_in_window(
+        &self,
+        id_prefix: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> anyhow::Result<i64> {
+        let escaped = id_prefix.replace('%', "\\%").replace('_', "\\_");
+        let conn = self.conn.lock().unwrap();
+        let count = conn.query_row(
+            r#"
+            SELECT COUNT(*) FROM events
+            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
+              AND id LIKE ?3 ESCAPE '\'
+            "#,
+            params![start.timestamp(), end.timestamp(), format!("{escaped}%")],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
     /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
     /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。

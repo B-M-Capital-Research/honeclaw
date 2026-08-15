@@ -254,6 +254,14 @@ impl SubscriptionRegistry {
             .get(symbol.trim().to_ascii_uppercase().as_str())
     }
 
+    /// 该 actor 的全部持仓快照(SYMBOL → 快照)。周报等广播场景用。
+    pub fn positions_for(
+        &self,
+        actor: &ActorIdentity,
+    ) -> Option<&HashMap<String, PositionSnapshot>> {
+        self.positions.get(actor)
+    }
+
     pub fn len(&self) -> usize {
         self.subs.len()
     }

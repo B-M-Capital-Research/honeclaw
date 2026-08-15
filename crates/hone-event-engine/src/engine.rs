@@ -555,6 +555,45 @@ impl EventEngine {
             },
         ));
 
+        // WeeklyReport —— 本地周六 10:00,给每个有持仓的单聊 actor 推周度复盘
+        // (盈亏归因 / 评级净修正 / 推送质量 / 下周财报),同时落盘
+        // `data/weekly_reports/YYYY-MM-DD.md`。FMP 不可用时盈亏段自动省略。
+        {
+            let mut weekly = crate::weekly_report::WeeklyReport::new(
+                store.clone(),
+                registry.clone(),
+                self.sink.clone(),
+                self.daily_report_dir
+                    .parent()
+                    .map(|parent| parent.join("weekly_reports"))
+                    .unwrap_or_else(|| PathBuf::from("data/weekly_reports")),
+            )
+            .with_tz_offset_hours(tz_offset);
+            if fmp_available {
+                weekly = weekly.with_fmp_client(client.clone());
+            }
+            let weekly = Arc::new(weekly);
+            tokio::spawn(pipeline::cron_minute_tick(
+                "internal.weekly_report",
+                tz_offset,
+                task_runs_dir.clone(),
+                move |now, fired| {
+                    let weekly = weekly.clone();
+                    Box::pin(async move {
+                        let n = weekly.tick_once(now, fired).await?;
+                        if n > 0 {
+                            info!(
+                                task = "internal.weekly_report",
+                                sent = n,
+                                "weekly report fanout"
+                            );
+                        }
+                        Ok(())
+                    })
+                },
+            ));
+        }
+
         info!(
             watch_pool_size = registry.load().watch_pool().len(),
             "initial watch pool snapshot (price poller 每 tick 取最新)"
