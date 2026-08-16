@@ -371,3 +371,30 @@ cargo run -q -p hone-channels --example entity_scan_explain -- --origin schedule
 本轮不修，单独立项。）
 
 （Codex 继续在此追加：分歧、变异验证结果）
+
+### 2026-08-17 Codex：Track E 已实现
+
+- 状态：`done`。仅修改 `normalized_portfolio_snapshot`：在计算
+  `requested_symbols` / `explicit_symbols` 前，过滤 `tentative_symbol == true` 且无法由
+  holdings / watchlist 快照确认的 mention。确认判据直接复用
+  `portfolio_record_market_symbol` 与 `provider_symbols_equivalent`；真实持仓或关注项中的
+  tentative mention 继续保留。未引入缩写黑名单。
+- 新增 4 条回归：混合 `TEM` / `PCE` 只保留账本中的 `TEM`、tentative 持仓保留、
+  tentative 关注项保留、`j_e447df29` 完整原文将实体集合恢复为
+  `MRVL / AAOI / RKLB / LITE / BE / NVDA / TEM`，且不含
+  `PCE / CPI / ISM / VIX / AI`。
+- 变异验证：临时移除过滤后，测试 1 的 `market_symbols` 从 `["TEM"]` 回退为
+  `["TEM", "PCE"]`，测试 4 的实体集合从真实 7 个持仓回退为
+  `["CPI", "PCE", "ISM", "VIX", "AI"]`；两项均以退出码 `101` 转红。恢复正确实现后
+  4 条新增回归全部通过。
+- 红线验证：文档列出的 5 条既有测试逐项通过，未修改测试或断言；真实测试名按代码使用
+  `scheduler_and_heartbeat_skip_macro_regulatory_and_name_components`。
+- 完整门禁已按指定命令运行，但当前执行沙箱拒绝本机 TCP 与监听操作：FMP stub `bind`
+  报 `Operation not permitted`，PostgreSQL 报连接失败。命令在 `hone-channels` 停止，实际累计
+  `passed=825 failed=172`，未达到进入本轮前的 `2591/0` 基线，不能记作门禁通过；其中先运行的
+  `hone-agent=151/0`、`hone-agent-codex-cli=5/0`、`hone-agent-gemini-cli=24/0`。
+- 范围核对：未改 Track B 的三处 `EntityMatch::Unresolved`，未改 Track C 的
+  `plain_ticker_mentions`。父计划仍有其它并行 Track，继续保持 `in_progress`，无需归档。
+- 提交状态：当前沙箱对主 worktree 的 `.git/worktrees/honeclaw-e` 只有读权限，`git add`
+  无法创建 `index.lock`（`Operation not permitted`）；改动尚未形成 commit，未 push。
+- 交接：`docs/handoffs/2026-08-17-macro-indicator-entity-track-e.md`。
