@@ -426,3 +426,31 @@ cargo run -q -p hone-channels --example entity_scan_explain -- --origin schedule
   `/Users/zhangxuanren/Workspace/honeclaw/.git/worktrees/honeclaw-l2/`，创建
   `index.lock` 被拒绝（`Operation not permitted`）。当前没有已暂存文件、没有生成 commit、
   没有 push；需在可写 Git common dir 的环境执行 scoped commit。
+### Track A（2026-08-17）
+
+- A2 代码核对分歧：计划中的错误文案示意使用 ASCII 双引号，当前
+  `prepare_verified_investment_turn` 实际生成的是中文弯引号
+  `已识别证券代码“{}”，但当前数据供应商...`。该错误经既有
+  `Result<_, String>` / `AgentSessionError` / `ScheduledTaskExecution.error` 边界传到
+  `events.rs`，链路中没有结构化失败载体。为避免把 L0 可观测扩大成跨模块错误类型重构，
+  A2 采用 `events.rs` 侧对这条服务端固定前后缀的精确解析（不用正则），并将此实现视为
+  后续可由结构化错误替代的权宜方案。
+- 红线测试名核对分歧：计划写作
+  `scheduled_and_heartbeat_skip_macro_regulatory_and_name_components`，当前代码中的真实测试名是
+  `scheduler_and_heartbeat_skip_macro_regulatory_and_name_components`。Track A 不改该测试名或断言，
+  验证时按代码中的真实名称运行。
+- A1 对生产片段的实测：PCE 在计划片段中为 `comparison_binding=true`、
+  `bound_to_a_security=false`、`unsettled_without_a_reader=true`、`tentative_symbol=true`，最终
+  scope 为 `AgentToolDiscovery`。ETF 在完整持仓片段首次出现时同样
+  `bound_to_a_security=false`、`tentative_symbol=true`；`A股ETF` 中的第二次出现被
+  `scheduled_secondary_subject_without_rebinding` 丢弃，完整片段最终 scope 为 `Portfolio`。
+  因此计划列出的两个片段本身仍不能复现 `Securities` 促升，Track A 未据此改判定逻辑。
+- 变异验证：A1 临时注释 `MentionTrace.explicit_ticker_label` 赋值后，
+  `entity_scope_explain_reports_binding_facts_and_final_scope` 在对应断言转红；恢复后通过。
+  A2 临时注释最终 Web scheduler detail 构造中的失败诊断注入后，
+  `web_scheduler_detail_records_unresolved_entity_failure` 从预期
+  `entity_resolution_unresolved` 退回 `internal_error_suppressed` 并转红；恢复后通过。
+- 验证：红线 5 项既有测试逐项通过；A1/A2 定向回归与 A1 example 通过。完整门禁命令已执行，
+  但本执行沙箱禁止本地端口 / Unix socket 访问，`scripts/dev_pg.sh up` 报 Docker 不可访问，
+  测试内本地 FMP stub 也报 `bind: Operation not permitted`；门禁在 `hone-channels` 停止，
+  累计 `passed=822 failed=172`。失败集中为 PostgreSQL 连接和本地 bind 环境错误，不能记为门禁通过。

@@ -71,10 +71,12 @@ fn web_scheduler_delivery_status(_console_event_sent: bool) -> (String, bool) {
 }
 
 fn web_scheduler_delivery_detail(
-    scheduler_metadata: serde_json::Value,
+    mut scheduler_metadata: serde_json::Value,
     console_event_sent: bool,
     channel: &str,
+    error: Option<&str>,
 ) -> serde_json::Value {
+    add_scheduler_failure_diagnostics(&mut scheduler_metadata, error);
     json!({
         "scheduler": scheduler_metadata,
         "console_event_sent": console_event_sent,
@@ -82,6 +84,34 @@ fn web_scheduler_delivery_detail(
         "system_push_sent": false,
         "delivery_channel": channel,
     })
+}
+
+const UNRESOLVED_SECURITY_ERROR_PREFIX: &str = "已识别证券代码“";
+const UNRESOLVED_SECURITY_ERROR_SUFFIX: &str = "”，但当前数据供应商没有返回同代码行情覆盖。本轮不会将它映射到其它证券；请检查交易所后缀，或稍后重试。";
+
+fn unresolved_security_mention(error: &str) -> Option<&str> {
+    error.lines().find_map(|line| {
+        let mention = line
+            .trim()
+            .strip_prefix(UNRESOLVED_SECURITY_ERROR_PREFIX)?
+            .strip_suffix(UNRESOLVED_SECURITY_ERROR_SUFFIX)?
+            .trim();
+        (!mention.is_empty()).then_some(mention)
+    })
+}
+
+fn add_scheduler_failure_diagnostics(metadata: &mut serde_json::Value, error: Option<&str>) {
+    let Some(mention) = error.and_then(unresolved_security_mention) else {
+        return;
+    };
+    let Some(metadata) = metadata.as_object_mut() else {
+        return;
+    };
+    metadata.insert(
+        "failure_kind".to_string(),
+        json!("entity_resolution_unresolved"),
+    );
+    metadata.insert("unresolved_mention".to_string(), json!(mention));
 }
 
 fn build_web_scheduler_push_event(
@@ -309,6 +339,7 @@ pub(crate) async fn handle_scheduler_events(
                                         result.metadata.clone(),
                                         console_event_sent,
                                         &event.channel,
+                                        result.error.as_deref(),
                                     )
                                 } else {
                                     result.metadata.clone()
@@ -341,6 +372,7 @@ pub(crate) async fn handle_scheduler_events(
                 result.metadata.clone(),
                 console_event_sent,
                 &event.channel,
+                result.error.as_deref(),
             );
             if event.channel == "imessage" {
                 let url = format!(
@@ -407,8 +439,9 @@ pub(crate) async fn handle_scheduler_events(
                 } else {
                     message_send_status = "sent".to_string();
                 }
+                let scheduler_metadata = detail["scheduler"].clone();
                 detail = json!({
-                    "scheduler": result.metadata,
+                    "scheduler": scheduler_metadata,
                     "console_event_sent": console_event_sent,
                     "imessage_http_delivery": delivered,
                     "delivery_channel": event.channel.clone(),
@@ -701,12 +734,31 @@ mod tests {
 
     #[test]
     fn web_scheduler_detail_distinguishes_session_delivery_from_system_push() {
-        let detail = web_scheduler_delivery_detail(json!({"status": "triggered"}), false, "web");
+        let detail =
+            web_scheduler_delivery_detail(json!({"status": "triggered"}), false, "web", None);
 
         assert_eq!(detail["delivery_channel"], "web");
         assert_detail_bool(&detail, "console_event_sent", false);
         assert_detail_bool(&detail, "system_push_supported", false);
         assert_detail_bool(&detail, "system_push_sent", false);
+    }
+
+    #[test]
+    fn web_scheduler_detail_records_unresolved_entity_failure() {
+        let error = "数据时间：运行时时区 2026-08-17 20:01；数据口径：本轮查询时间\n\n\
+                     已识别证券代码“PCE”，但当前数据供应商没有返回同代码行情覆盖。本轮不会将它映射到其它证券；请检查交易所后缀，或稍后重试。";
+        let detail = web_scheduler_delivery_detail(
+            json!({"failure_kind": "internal_error_suppressed"}),
+            false,
+            "web",
+            Some(error),
+        );
+
+        assert_eq!(
+            detail["scheduler"]["failure_kind"],
+            "entity_resolution_unresolved"
+        );
+        assert_eq!(detail["scheduler"]["unresolved_mention"], "PCE");
     }
 
     #[test]
