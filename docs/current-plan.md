@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-16
-状态：有 13 个活跃任务
+状态：有 14 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Storage API 全面 async 化**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/storage-api-async-2026-08-16.md`
+  - 摘要：删除 PostgreSQL 运行时中遗留的通用 sync-to-async runtime/channel 桥接，将 memory、event-engine 及其跨 crate 调用链全面 async 化；保持 delivered push context 跨进程认领、EventStore schema once 守卫和现有 SQL 语义，并用重构前后事件重放逐条比对及全仓门禁验收
 
 - **调度与定时任务体系化整治**
   - 状态：`in_progress`
