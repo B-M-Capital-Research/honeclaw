@@ -7,6 +7,14 @@ pub mod attachments;
 pub mod bootstrap;
 pub mod core;
 pub mod core_traits;
+pub mod diagnostics {
+    use crate::AgentTurnOrigin;
+
+    /// Explain the deterministic entity scan without running provider lookups.
+    pub fn explain_entity_scope(input: &str, origin: AgentTurnOrigin) -> String {
+        crate::investment_response_guard::render_entity_scope_explain(input, origin)
+    }
+}
 pub(crate) mod execution;
 pub mod ingress;
 mod investment_response_guard;

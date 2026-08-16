@@ -228,6 +228,36 @@ enum EntityResolutionScope {
     PassThrough,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct MentionTrace {
+    mention: String,
+    normalized_symbol: String,
+    identifier_kind: Option<SecurityIdentifierKind>,
+    exact_input: bool,
+    explicit_ticker_label: bool,
+    explicit_ticker_binding: bool,
+    strong_exact_shape: bool,
+    direct_market_binding: bool,
+    chinese_analysis_binding: bool,
+    english_analysis_binding: bool,
+    comparison_binding: bool,
+    symbol_cluster_binding: bool,
+    clause_subject_binding: bool,
+    numeric_market: Option<NumericMarketHint>,
+    numeric_asset: Option<NumericAssetHint>,
+    bound_to_a_security: bool,
+    unsettled_without_a_reader: bool,
+    only_clause_subject_support: bool,
+    tentative_symbol: Option<bool>,
+    discard_reason: Option<&'static str>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ScopeExplain {
+    traces: Vec<MentionTrace>,
+    scope: EntityResolutionScope,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct AgentDiscoveredInvestment {
     pub(crate) contract: InvestmentResponseContract,
@@ -8057,12 +8087,22 @@ fn require_any(
 }
 
 fn extract_entity_scope(input: &str, origin: AgentTurnOrigin) -> EntityResolutionScope {
+    extract_entity_scope_with_trace(input, origin, None)
+}
+
+fn extract_entity_scope_with_trace(
+    input: &str,
+    origin: AgentTurnOrigin,
+    trace: Option<&mut Vec<MentionTrace>>,
+) -> EntityResolutionScope {
     if !should_run_entity_stage(input, origin) {
         return EntityResolutionScope::PassThrough;
     }
     let explicit = explicit_dollar_mentions(input);
-    let deterministic =
-        merge_entity_mentions(explicit.clone(), plain_ticker_mentions(input, origin));
+    let deterministic = merge_entity_mentions(
+        explicit.clone(),
+        plain_ticker_mentions_with_trace(input, origin, trace),
+    );
     // Interactive wording is intentionally not classified into a closed entity
     // set by server-side phrase grammar. The main agent receives structural
     // ticker seeds, reads the complete current query, and performs the first
@@ -8089,6 +8129,82 @@ fn extract_entity_scope(input: &str, origin: AgentTurnOrigin) -> EntityResolutio
         return EntityResolutionScope::Broad(kind);
     }
     EntityResolutionScope::AgentToolDiscovery(deterministic)
+}
+
+pub(crate) fn explain_entity_scope(input: &str, origin: AgentTurnOrigin) -> ScopeExplain {
+    let mut traces = Vec::new();
+    let scope = extract_entity_scope_with_trace(input, origin, Some(&mut traces));
+    ScopeExplain { traces, scope }
+}
+
+pub(crate) fn render_entity_scope_explain(input: &str, origin: AgentTurnOrigin) -> String {
+    let explain = explain_entity_scope(input, origin);
+    let mut output = String::new();
+    for (index, trace) in explain.traces.iter().enumerate() {
+        if index > 0 {
+            output.push('\n');
+        }
+        output.push_str(&format!(
+            "candidate={}\n\
+             mention={:?}\n\
+             normalized_symbol={:?}\n\
+             security_identifier_kind={}\n\
+             exact_input={}\n\
+             explicit_ticker_label={}\n\
+             explicit_ticker_binding={}\n\
+             strong_exact_shape={}\n\
+             direct_market_binding={}\n\
+             chinese_analysis_binding={}\n\
+             english_analysis_binding={}\n\
+             comparison_binding={}\n\
+             symbol_cluster_binding={}\n\
+             clause_subject_binding={}\n\
+             numeric_market={:?}\n\
+             numeric_asset={:?}\n\
+             bound_to_a_security={}\n\
+             unsettled_without_a_reader={}\n\
+             only_clause_subject_support={}\n\
+             tentative_symbol={}\n\
+             discard_reason={}",
+            index + 1,
+            trace.mention,
+            trace.normalized_symbol,
+            trace
+                .identifier_kind
+                .map_or_else(|| "not_evaluated".to_string(), |kind| format!("{kind:?}")),
+            trace.exact_input,
+            trace.explicit_ticker_label,
+            trace.explicit_ticker_binding,
+            trace.strong_exact_shape,
+            trace.direct_market_binding,
+            trace.chinese_analysis_binding,
+            trace.english_analysis_binding,
+            trace.comparison_binding,
+            trace.symbol_cluster_binding,
+            trace.clause_subject_binding,
+            trace.numeric_market,
+            trace.numeric_asset,
+            trace.bound_to_a_security,
+            trace.unsettled_without_a_reader,
+            trace.only_clause_subject_support,
+            trace
+                .tentative_symbol
+                .map_or_else(|| "not_evaluated".to_string(), |value| value.to_string()),
+            trace.discard_reason.unwrap_or("none"),
+        ));
+    }
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    output.push_str("scope=");
+    output.push_str(match explain.scope {
+        EntityResolutionScope::Securities(_) => "Securities",
+        EntityResolutionScope::AgentToolDiscovery(_) => "AgentToolDiscovery",
+        EntityResolutionScope::Portfolio(_) => "Portfolio",
+        EntityResolutionScope::Broad(_) => "Broad",
+        EntityResolutionScope::PassThrough => "PassThrough",
+    });
+    output
 }
 
 fn append_agent_entity_discovery_context(
@@ -8368,18 +8484,51 @@ fn explicit_dollar_mentions(input: &str) -> Vec<EntityMention> {
 }
 
 fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMention> {
+    plain_ticker_mentions_with_trace(input, origin, None)
+}
+
+fn mark_mention_trace_discard(
+    traces: Option<&mut Vec<MentionTrace>>,
+    trace_index: Option<usize>,
+    reason: &'static str,
+) {
+    if let (Some(traces), Some(trace_index)) = (traces, trace_index) {
+        traces[trace_index].discard_reason = Some(reason);
+    }
+}
+
+fn plain_ticker_mentions_with_trace(
+    input: &str,
+    origin: AgentTurnOrigin,
+    mut traces: Option<&mut Vec<MentionTrace>>,
+) -> Vec<EntityMention> {
     let scanned_identifiers = scan_security_identifiers(input);
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     let mut scheduled_subject_seen = false;
     let mut scheduled_condition_start = None;
     for identifier in scanned_identifiers.iter().cloned() {
+        let trace_index = traces.as_deref_mut().map(|traces| {
+            traces.push(MentionTrace {
+                mention: identifier.raw.clone(),
+                normalized_symbol: identifier.normalized.clone(),
+                identifier_kind: Some(identifier.kind),
+                ..MentionTrace::default()
+            });
+            traces.len() - 1
+        });
         if identifier.kind == SecurityIdentifierKind::Cashtag {
+            mark_mention_trace_discard(
+                traces.as_deref_mut(),
+                trace_index,
+                "cashtag_handled_by_explicit_scanner",
+            );
             continue;
         }
         let token = identifier.raw.as_str();
         let symbol = identifier.normalized.clone();
         if is_report_period_token(&symbol) {
+            mark_mention_trace_discard(traces.as_deref_mut(), trace_index, "report_period_token");
             continue;
         }
         if identifier_is_multiword_proper_name_tail(input, identifier.start, token)
@@ -8390,6 +8539,22 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             )
             || identifier_is_compact_ampersand_name_part(input, identifier.start, identifier.end)
         {
+            let reason = if traces.is_some()
+                && identifier_is_multiword_proper_name_tail(input, identifier.start, token)
+            {
+                "multiword_proper_name_tail"
+            } else if traces.is_some()
+                && identifier_is_multiword_proper_name_component(
+                    input,
+                    identifier.start,
+                    identifier.end,
+                )
+            {
+                "multiword_proper_name_component"
+            } else {
+                "compact_ampersand_name_part"
+            };
+            mark_mention_trace_discard(traces.as_deref_mut(), trace_index, reason);
             continue;
         }
         let exact_input = identifier_is_only_query_subject(input, identifier.start, identifier.end);
@@ -8472,6 +8637,23 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             || direct_market_binding;
         let unsettled_without_a_reader =
             origin != AgentTurnOrigin::Interactive && !bound_to_a_security;
+        if let (Some(traces), Some(trace_index)) = (traces.as_deref_mut(), trace_index) {
+            let trace = &mut traces[trace_index];
+            trace.exact_input = exact_input;
+            trace.explicit_ticker_label = explicit_ticker_label;
+            trace.explicit_ticker_binding = explicit_ticker_binding;
+            trace.strong_exact_shape = strong_exact_shape;
+            trace.direct_market_binding = direct_market_binding;
+            trace.chinese_analysis_binding = chinese_analysis_binding;
+            trace.english_analysis_binding = english_analysis_binding;
+            trace.comparison_binding = comparison_binding;
+            trace.symbol_cluster_binding = symbol_cluster_binding;
+            trace.clause_subject_binding = clause_subject_binding;
+            trace.numeric_market = numeric_market;
+            trace.numeric_asset = numeric_asset;
+            trace.bound_to_a_security = bound_to_a_security;
+            trace.unsettled_without_a_reader = unsettled_without_a_reader;
+        }
         if all_numeric
             && !numeric_identifier_has_security_binding(
                 input,
@@ -8490,6 +8672,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 numeric_asset,
             )
         {
+            mark_mention_trace_discard(
+                traces.as_deref_mut(),
+                trace_index,
+                "numeric_without_security_binding",
+            );
             continue;
         }
         let scope_context = explicit_ticker_label
@@ -8504,11 +8691,17 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             || numeric_market.is_some()
             || numeric_asset.is_some();
         if !scope_context {
+            mark_mention_trace_discard(traces.as_deref_mut(), trace_index, "missing_scope_context");
             continue;
         }
         let metadata_assignment =
             identifier_is_metadata_assignment(input, identifier.start, identifier.end);
         if metadata_assignment && !explicit_ticker_label && !explicit_ticker_binding {
+            mark_mention_trace_discard(
+                traces.as_deref_mut(),
+                trace_index,
+                "metadata_assignment_without_ticker_binding",
+            );
             continue;
         }
         if identifier_is_conceptual_use(&symbol, &local_context)
@@ -8516,6 +8709,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             && !explicit_ticker_label
             && !explicit_ticker_binding
         {
+            mark_mention_trace_discard(
+                traces.as_deref_mut(),
+                trace_index,
+                "conceptual_use_without_security_binding",
+            );
             continue;
         }
 
@@ -8549,12 +8747,27 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 && !explicit_ticker_label
                 && !explicit_ticker_binding
             {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "scheduled_mixed_case_without_ticker_binding",
+                );
                 continue;
             }
             if all_numeric && !explicit_context {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "numeric_without_explicit_context",
+                );
                 continue;
             }
             if symbol.len() == 1 && !explicit_context {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "single_character_without_explicit_context",
+                );
                 continue;
             }
             if uppercase
@@ -8563,6 +8776,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 && !explicit_ticker_label
                 && !is_compact_crypto_symbol(&symbol)
             {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "long_uppercase_bare_identifier",
+                );
                 continue;
             }
             if lowercase
@@ -8572,9 +8790,19 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                     || explicit_ticker_binding
                     || direct_market_binding)
             {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "plain_lowercase_non_ticker_token",
+                );
                 continue;
             }
             if (lowercase || mixed_case) && !explicit_context {
+                mark_mention_trace_discard(
+                    traces.as_deref_mut(),
+                    trace_index,
+                    "lowercase_or_mixed_case_without_explicit_context",
+                );
                 continue;
             }
 
@@ -8587,6 +8815,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                     || (!past_subject_boundary && !comparison_binding && !symbol_cluster_binding))
                     && !explicitly_rebound
                 {
+                    mark_mention_trace_discard(
+                        traces.as_deref_mut(),
+                        trace_index,
+                        "scheduled_secondary_subject_without_rebinding",
+                    );
                     continue;
                 }
             }
@@ -8624,6 +8857,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                             .chars()
                             .filter(|character| character.is_ascii_alphabetic())
                             .all(|character| character.is_ascii_uppercase()));
+            if let (Some(traces), Some(trace_index)) = (traces.as_deref_mut(), trace_index) {
+                let trace = &mut traces[trace_index];
+                trace.only_clause_subject_support = only_clause_subject_support;
+                trace.tentative_symbol = Some(tentative_symbol);
+            }
             candidates.push(EntityMention {
                 mention: identifier.raw,
                 search_query: symbol.clone(),
@@ -8640,6 +8878,12 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 scheduled_subject_seen = true;
                 scheduled_condition_start = scheduled_condition_clause_start(input, identifier.end);
             }
+        } else {
+            mark_mention_trace_discard(
+                traces.as_deref_mut(),
+                trace_index,
+                "duplicate_normalized_symbol",
+            );
         }
     }
     candidates
@@ -13799,6 +14043,50 @@ mod tests {
             mentions.iter().all(|mention| !mention.tentative_symbol),
             "an explicitly labelled ticker is settled, not tentative: {mentions:?}"
         );
+    }
+
+    #[test]
+    fn entity_scope_explain_reports_binding_facts_and_final_scope() {
+        let explicit =
+            super::explain_entity_scope("股票代码 AAPL 现在多少钱", AgentTurnOrigin::Scheduled);
+        let aapl = explicit
+            .traces
+            .iter()
+            .find(|trace| trace.normalized_symbol == "AAPL")
+            .expect("AAPL trace");
+        assert!(aapl.explicit_ticker_label);
+        assert!(aapl.bound_to_a_security);
+        assert_eq!(aapl.tentative_symbol, Some(false));
+        assert_eq!(aapl.discard_reason, None);
+        assert!(matches!(
+            explicit.scope,
+            EntityResolutionScope::Securities(_)
+        ));
+
+        let portfolio_prompt = super::explain_entity_scope(
+            "这是用户持有股票和ETF的每日新闻汇总与月度持仓复盘任务。",
+            AgentTurnOrigin::Scheduled,
+        );
+        let etf = portfolio_prompt
+            .traces
+            .iter()
+            .find(|trace| trace.normalized_symbol == "ETF")
+            .expect("ETF trace");
+        assert!(!etf.bound_to_a_security);
+        assert!(etf.unsettled_without_a_reader);
+        assert_eq!(etf.tentative_symbol, Some(true));
+        assert!(matches!(
+            portfolio_prompt.scope,
+            EntityResolutionScope::AgentToolDiscovery(_)
+        ));
+
+        let rendered = super::render_entity_scope_explain(
+            "股票代码 AAPL 现在多少钱",
+            AgentTurnOrigin::Scheduled,
+        );
+        assert!(rendered.contains("explicit_ticker_label=true"));
+        assert!(rendered.contains("tentative_symbol=false"));
+        assert!(rendered.ends_with("scope=Securities"));
     }
 
     #[test]
