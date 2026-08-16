@@ -70,39 +70,15 @@
   padding: 14px 26px;
 }
 
-.influencer-digest-body article {
-  position: relative;
-  margin-bottom: 10px;
-  padding: 15px 17px;
-  border: 1px solid var(--hone-line);
-  border-left: 3px solid var(--hone-coral-600);
-  border-radius: 14px;
-  background: var(--hone-surface-raised);
-}
-
-.influencer-digest-body article > div:first-child {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 7px;
+/* Posts read as a feed: `.research-feed` owns the row, the open body and the
+   fold. The retired card skin — a coral-edged white box with its own padding
+   and a 12px muted body — used to survive here and re-dress every feed item,
+   so the post was still styled as a caption instead of as the writing. Only
+   the index line inside the fold is this panel's own. */
+.influencer-analysis-terms {
   color: var(--hone-ink-500);
-  font-size: 11px;
-}
-
-.influencer-digest-body time {
-  margin-left: auto;
-}
-
-.influencer-digest-body h3 {
-  margin: 9px 0 6px;
-  font-size: 14px;
-}
-
-.influencer-digest-body p {
-  margin: 0;
-  color: var(--hone-ink-600);
+  font-family: var(--hone-font-label);
   font-size: 12px;
-  line-height: 1.7;
 }
 
 /* The post a reply answers, so the excerpt is not read out of context. */
