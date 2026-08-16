@@ -59,19 +59,12 @@ pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl Int
 
     let mut users: Vec<UserInfo> = Vec::new();
     let core = state.core.clone();
-    let sessions_result = tokio::time::timeout(
-        Duration::from_secs(8),
-        tokio::task::spawn_blocking(move || core.session_storage.list_sessions()),
-    )
-    .await;
+    let sessions_result =
+        tokio::time::timeout(Duration::from_secs(8), core.session_storage.list_sessions()).await;
     let sessions = match sessions_result {
-        Ok(Ok(Ok(sessions))) => sessions,
-        Ok(Ok(Err(error))) => {
-            warn!(%error, "failed to list sessions for users route");
-            return Json(serde_json::json!([]));
-        }
+        Ok(Ok(sessions)) => sessions,
         Ok(Err(error)) => {
-            warn!(%error, "users route session list worker failed");
+            warn!(%error, "failed to list sessions for users route");
             return Json(serde_json::json!([]));
         }
         Err(_) => {

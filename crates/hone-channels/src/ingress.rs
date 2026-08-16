@@ -179,7 +179,7 @@ fn prune_buffer(buffer: &mut VecDeque<BufferedGroupMessage>, max_age: Duration) 
     }
 }
 
-pub fn persist_buffered_group_messages(
+pub async fn persist_buffered_group_messages(
     storage: &SessionStorage,
     session_id: &str,
     messages: &[BufferedGroupMessage],
@@ -189,7 +189,7 @@ pub fn persist_buffered_group_messages(
     }
 
     let mut existing_message_ids = HashSet::new();
-    for message in storage.get_messages(session_id, None)? {
+    for message in storage.get_messages(session_id, None).await? {
         if let Some(message_id) = message
             .metadata
             .as_ref()
@@ -229,8 +229,9 @@ pub fn persist_buffered_group_messages(
             );
         }
 
-        let _ =
-            storage.add_message(session_id, "user", &message.rendered_text(), Some(metadata))?;
+        let _ = storage
+            .add_message(session_id, "user", &message.rendered_text(), Some(metadata))
+            .await?;
         persisted += 1;
     }
 
@@ -539,8 +540,8 @@ mod tests {
         drop(reopened);
     }
 
-    #[test]
-    fn persist_buffered_messages_deduplicates_by_channel_message_id() {
+    #[tokio::test]
+    async fn persist_buffered_messages_deduplicates_by_channel_message_id() {
         let root = make_temp_dir("hone_channels_buffered_persist");
         let storage = SessionStorage::new(&root);
         let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
@@ -551,6 +552,7 @@ mod tests {
                 Some(actor),
                 Some(session_identity),
             )
+            .await
             .expect("create session");
 
         let mut metadata = HashMap::new();
@@ -560,6 +562,7 @@ mod tests {
         );
         storage
             .add_message(&session_id, "user", "[a] existing", Some(metadata))
+            .await
             .expect("seed message");
 
         let persisted = persist_buffered_group_messages(
@@ -570,11 +573,13 @@ mod tests {
                 BufferedGroupMessage::new("discord", "m2", "b", "fresh"),
             ],
         )
+        .await
         .expect("persist buffered");
 
         assert_eq!(persisted, 1);
         let messages = storage
             .get_messages(&session_id, None)
+            .await
             .expect("get messages");
         assert_eq!(messages.len(), 2);
         assert_eq!(hone_memory::session_message_text(&messages[1]), "[b] fresh");

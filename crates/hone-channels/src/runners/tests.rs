@@ -380,8 +380,9 @@ impl FileMetadataCheckpoint {
     }
 }
 
+#[async_trait]
 impl AgentSessionMetadataCheckpoint for FileMetadataCheckpoint {
-    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
+    async fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
         if let Some(message) = self.failure.as_ref() {
             return Err(message.clone());
         }

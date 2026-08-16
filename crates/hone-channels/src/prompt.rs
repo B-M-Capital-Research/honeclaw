@@ -334,7 +334,7 @@ pub fn default_admin_prompt(project_root: &str) -> String {
     )
 }
 
-pub fn build_prompt_bundle(
+pub async fn build_prompt_bundle(
     config: &HoneConfig,
     storage: &SessionStorage,
     channel: &str,
@@ -352,9 +352,10 @@ pub fn build_prompt_bundle(
         hone_core::local_now(),
         true,
     )
+    .await
 }
 
-pub(crate) fn build_prompt_bundle_at(
+pub(crate) async fn build_prompt_bundle_at(
     config: &HoneConfig,
     storage: &SessionStorage,
     channel: &str,
@@ -448,6 +449,7 @@ pub(crate) fn build_prompt_bundle_at(
     let conversation_context = if include_conversation_context {
         storage
             .load_session(session_id)
+            .await
             .ok()
             .flatten()
             .and_then(|session| {
@@ -524,8 +526,8 @@ mod tests {
     use hone_memory::session::SessionPromptState;
     use std::fs;
 
-    #[test]
-    fn company_research_baseline_matches_chinese_alias_and_keeps_current_fact_boundary() {
+    #[tokio::test]
+    async fn company_research_baseline_matches_chinese_alias_and_keeps_current_fact_boundary() {
         let baseline = company_research_baseline("微软现在的护城河是否被 AI 削弱？")
             .expect("Microsoft should be covered by the historical corpus");
         assert!(baseline.contains("MSFT / Microsoft"));
@@ -536,22 +538,22 @@ mod tests {
         assert!(!baseline.contains("逐字稿文本"));
     }
 
-    #[test]
-    fn company_research_baseline_matches_multiple_explicit_short_symbols() {
+    #[tokio::test]
+    async fn company_research_baseline_matches_multiple_explicit_short_symbols() {
         let baseline = company_research_baseline("比较 APP 和 BE 的商业模式与护城河")
             .expect("explicit uppercase symbols should match");
         assert!(baseline.contains("APP / AppLovin"));
         assert!(baseline.contains("BE / Bloom Energy"));
     }
 
-    #[test]
-    fn company_research_baseline_does_not_match_short_tickers_inside_plain_words() {
+    #[tokio::test]
+    async fn company_research_baseline_does_not_match_short_tickers_inside_plain_words() {
         assert!(company_research_baseline("build an app and be concise").is_none());
         assert!(company_research_baseline("分析 NVDA 的护城河").is_none());
     }
 
-    #[test]
-    fn company_research_index_and_cards_cover_the_same_symbols() {
+    #[tokio::test]
+    async fn company_research_index_and_cards_cover_the_same_symbols() {
         let (corpus, index) = company_research_resources();
         let mut card_symbols = corpus
             .companies
@@ -569,8 +571,8 @@ mod tests {
         assert_eq!(card_symbols.len(), 52);
     }
 
-    #[test]
-    fn build_prompt_bundle_always_includes_finance_domain_policy() {
+    #[tokio::test]
+    async fn build_prompt_bundle_always_includes_finance_domain_policy() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-test-{}-{}",
             std::process::id(),
@@ -591,7 +593,8 @@ mod tests {
             "session-demo",
             &prompt_state,
             &PromptOptions::default(),
-        );
+        )
+        .await;
 
         assert!(bundle.system_prompt().contains("【领域边界与投研约束】"));
         assert!(
@@ -774,8 +777,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn build_prompt_bundle_includes_company_profile_memory_requirements() {
+    #[tokio::test]
+    async fn build_prompt_bundle_includes_company_profile_memory_requirements() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-company-profile-{}-{}",
             std::process::id(),
@@ -798,7 +801,8 @@ mod tests {
                 extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
                 ..PromptOptions::default()
             },
-        );
+        )
+        .await;
         let system_prompt = bundle.system_prompt();
 
         assert!(system_prompt.contains("用户自己的看法、偏好或约束"));
@@ -812,8 +816,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn build_prompt_bundle_includes_user_info_boundary_policy() {
+    #[tokio::test]
+    async fn build_prompt_bundle_includes_user_info_boundary_policy() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-user-info-{}-{}",
             std::process::id(),
@@ -836,7 +840,8 @@ mod tests {
                 extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
                 ..PromptOptions::default()
             },
-        );
+        )
+        .await;
         let system_prompt = bundle.system_prompt();
 
         assert!(system_prompt.contains("【用户信息汇总边界】"));
@@ -849,8 +854,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy() {
+    #[tokio::test]
+    async fn build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-portfolio-cron-{}-{}",
             std::process::id(),
@@ -873,7 +878,8 @@ mod tests {
                 extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
                 ..PromptOptions::default()
             },
-        );
+        )
+        .await;
         let system_prompt = bundle.system_prompt();
 
         assert!(system_prompt.contains("我的持仓 / 关注列表 / 定时任务 / 心跳任务"));
@@ -886,8 +892,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn telegram_format_guidance_mentions_supported_html_features() {
+    #[tokio::test]
+    async fn telegram_format_guidance_mentions_supported_html_features() {
         let guidance = channel_format_guidance("telegram");
         assert!(guidance.contains("parse_mode=HTML"));
         assert!(guidance.contains("tg-spoiler"));
@@ -896,16 +902,16 @@ mod tests {
         assert!(guidance.contains("&lt;、&gt;、&amp;"));
     }
 
-    #[test]
-    fn feishu_format_guidance_requires_standard_markdown_tables() {
+    #[tokio::test]
+    async fn feishu_format_guidance_requires_standard_markdown_tables() {
         let guidance = channel_format_guidance("feishu");
         assert!(guidance.contains("只写标准 Markdown 表格"));
         assert!(guidance.contains("不要手写飞书卡片标签"));
         assert!(guidance.contains("JSON 2.0 原生表格组件"));
     }
 
-    #[test]
-    fn dynamic_session_context_stays_out_of_system_prompt_prefix() {
+    #[tokio::test]
+    async fn dynamic_session_context_stays_out_of_system_prompt_prefix() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-dynamic-{}-{}",
             std::process::id(),
@@ -926,7 +932,8 @@ mod tests {
             "session-demo",
             &prompt_state,
             &PromptOptions::default(),
-        );
+        )
+        .await;
 
         assert!(!bundle.system_prompt().contains("【Session 上下文】"));
         assert!(
@@ -943,8 +950,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn current_turn_input_is_last_after_session_context() {
+    #[tokio::test]
+    async fn current_turn_input_is_last_after_session_context() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-session-order-{}-{}",
             std::process::id(),
@@ -964,7 +971,8 @@ mod tests {
             "session-demo",
             &SessionPromptState::default(),
             &PromptOptions::default(),
-        );
+        )
+        .await;
 
         let composed = bundle.compose_user_input("今天公布的非农数据怎么样");
         let input_pos = composed
@@ -979,8 +987,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn current_turn_input_is_last_after_historical_skill_context() {
+    #[tokio::test]
+    async fn current_turn_input_is_last_after_historical_skill_context() {
         let bundle = PromptBundle {
             static_system: String::new(),
             conversation_context: Some(
@@ -1007,8 +1015,8 @@ mod tests {
         assert!(composed.ends_with("AMD的电脑CPU是什么名字"));
     }
 
-    #[test]
-    fn session_context_uses_current_time_instead_of_frozen_prompt_time() {
+    #[tokio::test]
+    async fn session_context_uses_current_time_instead_of_frozen_prompt_time() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-current-time-{}-{}",
             std::process::id(),
@@ -1031,7 +1039,8 @@ mod tests {
             "session-demo",
             &prompt_state,
             &PromptOptions::default(),
-        );
+        )
+        .await;
 
         let composed = bundle.compose_user_input("今天公布的非农数据怎么样");
         assert!(!composed.contains("2026-03-17 22:01:00"));
@@ -1047,8 +1056,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn prompt_bundle_can_skip_compact_summary_loading_at_the_source() {
+    #[tokio::test]
+    async fn prompt_bundle_can_skip_compact_summary_loading_at_the_source() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-no-conversation-context-{}-{}",
             std::process::id(),
@@ -1060,6 +1069,7 @@ mod tests {
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let session_id = storage
             .create_session(Some("session-no-summary-load"), None, None)
+            .await
             .expect("create session");
         storage
             .add_message(
@@ -1068,6 +1078,7 @@ mod tests {
                 "【Compact Summary】\nsummary-that-must-stay-unloaded",
                 Some(hone_memory::build_compact_summary_metadata("auto")),
             )
+            .await
             .expect("add compact summary");
         let config = HoneConfig::default();
         let prompt_state = SessionPromptState::default();
@@ -1081,14 +1092,15 @@ mod tests {
             &PromptOptions::default(),
             hone_core::local_now(),
             false,
-        );
+        )
+        .await;
 
         assert!(bundle.conversation_context.is_none());
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn prompt_options_append_admin_language_and_extra_sections() {
+    #[tokio::test]
+    async fn prompt_options_append_admin_language_and_extra_sections() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-options-{}-{}",
             std::process::id(),
@@ -1119,7 +1131,8 @@ mod tests {
                 ],
                 include_format_guidance: true,
             },
-        );
+        )
+        .await;
 
         let system = bundle.system_prompt();
         assert!(system.contains("【管理员覆写】请先确认影响范围。"));
@@ -1132,8 +1145,8 @@ mod tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn prompt_can_skip_channel_format_guidance() {
+    #[tokio::test]
+    async fn prompt_can_skip_channel_format_guidance() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-no-format-{}-{}",
             std::process::id(),
@@ -1156,15 +1169,16 @@ mod tests {
                 include_format_guidance: false,
                 ..PromptOptions::default()
             },
-        );
+        )
+        .await;
 
         assert!(!bundle.system_prompt().contains("【输出格式-Telegram】"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[test]
-    fn repository_soul_keeps_full_investment_output_contract() {
+    #[tokio::test]
+    async fn repository_soul_keeps_full_investment_output_contract() {
         let soul = fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../soul.md"),
         )

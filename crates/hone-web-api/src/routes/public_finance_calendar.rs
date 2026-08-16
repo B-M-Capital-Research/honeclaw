@@ -207,10 +207,15 @@ pub(crate) async fn handle_send_finance_calendar(
         .core
         .session_storage
         .load_session(&session_id)
+        .await
         .ok()
         .flatten()
         .is_none()
-        && let Err(error) = state.core.session_storage.create_session_for_actor(&actor)
+        && let Err(error) = state
+            .core
+            .session_storage
+            .create_session_for_actor(&actor)
+            .await
     {
         return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -221,6 +226,7 @@ pub(crate) async fn handle_send_finance_calendar(
         .core
         .session_storage
         .add_message(&session_id, "assistant", &content, Some(metadata))
+        .await
     {
         Ok(true) => {}
         Ok(false) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "会话不可用"),

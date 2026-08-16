@@ -3020,7 +3020,7 @@ pub fn scheduled_task_failure_kind(execution: &ScheduledTaskExecution) -> Option
         .and_then(|value| value.as_str())
 }
 
-fn rollback_skipped_scheduler_assistant_turn(
+async fn rollback_skipped_scheduler_assistant_turn(
     storage: &hone_memory::SessionStorage,
     session_id: &str,
     content: &str,
@@ -3029,7 +3029,10 @@ fn rollback_skipped_scheduler_assistant_turn(
         return;
     }
 
-    match storage.remove_last_message_if_matches(session_id, "assistant", content) {
+    match storage
+        .remove_last_message_if_matches(session_id, "assistant", content)
+        .await
+    {
         Ok(true) => tracing::info!(
             "[SchedulerDiag] rolled back skipped assistant turn session_id={} chars={}",
             session_id,
@@ -3048,7 +3051,7 @@ fn rollback_skipped_scheduler_assistant_turn(
     }
 }
 
-fn persist_suppressed_scheduler_failure_turn(
+async fn persist_suppressed_scheduler_failure_turn(
     storage: &hone_memory::SessionStorage,
     session_id: &str,
     failure_kind: &str,
@@ -3057,7 +3060,7 @@ fn persist_suppressed_scheduler_failure_turn(
         return;
     }
 
-    match storage.get_messages(session_id, Some(1)) {
+    match storage.get_messages(session_id, Some(1)).await {
         Ok(messages) => {
             if messages.last().is_some_and(|message| {
                 message.role == "assistant"
@@ -3083,12 +3086,15 @@ fn persist_suppressed_scheduler_failure_turn(
         "failure_kind".to_string(),
         Value::String(failure_kind.to_string()),
     );
-    if let Err(err) = storage.add_message(
-        session_id,
-        "assistant",
-        SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
-        Some(metadata),
-    ) {
+    if let Err(err) = storage
+        .add_message(
+            session_id,
+            "assistant",
+            SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
+            Some(metadata),
+        )
+        .await
+    {
         tracing::warn!(
             "[SchedulerDiag] failed to persist scheduler failure transcript session_id={} err={}",
             session_id,
@@ -3604,7 +3610,7 @@ fn extract_all_ticker_hit_zones_from_source(source: &str) -> Vec<(String, String
     recovered
 }
 
-fn recover_watchlist_hit_zone_pairs(
+async fn recover_watchlist_hit_zone_pairs(
     core: &HoneBotCore,
     event: &SchedulerEvent,
 ) -> Vec<(String, String)> {
@@ -3616,6 +3622,7 @@ fn recover_watchlist_hit_zone_pairs(
     let Some(session) = core
         .session_storage
         .load_session(&session_id)
+        .await
         .ok()
         .flatten()
     else {
@@ -3658,8 +3665,12 @@ fn recover_watchlist_hit_zone_pairs(
     recovered
 }
 
-fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent) -> Vec<String> {
+async fn recover_watchlist_hit_zone_context(
+    core: &HoneBotCore,
+    event: &SchedulerEvent,
+) -> Vec<String> {
     recover_watchlist_hit_zone_pairs(core, event)
+        .await
         .into_iter()
         .map(|(ticker, zone)| format!("- {ticker}: {zone}"))
         .collect()
@@ -3685,12 +3696,12 @@ fn parse_watchlist_hit_zone_bounds(zone: &str) -> Option<(f64, f64)> {
     (lower.is_finite() && upper.is_finite() && lower <= upper).then_some((lower, upper))
 }
 
-fn watchlist_price_anchor_guard_zones(
+async fn watchlist_price_anchor_guard_zones(
     core: &HoneBotCore,
     event: &SchedulerEvent,
 ) -> BTreeMap<String, (String, f64, f64)> {
     let mut zones = BTreeMap::new();
-    for (ticker, zone) in recover_watchlist_hit_zone_pairs(core, event) {
+    for (ticker, zone) in recover_watchlist_hit_zone_pairs(core, event).await {
         let Some((lower, upper)) = parse_watchlist_hit_zone_bounds(&zone) else {
             continue;
         };
@@ -4185,12 +4196,12 @@ fn unstable_watchlist_price_metadata(
     })
 }
 
-fn build_scheduled_prompt_with_recovered_local_context(
+async fn build_scheduled_prompt_with_recovered_local_context(
     core: &HoneBotCore,
     event: &SchedulerEvent,
 ) -> String {
     let prompt = build_scheduled_prompt(event);
-    let recovered = recover_watchlist_hit_zone_context(core, event);
+    let recovered = recover_watchlist_hit_zone_context(core, event).await;
     if recovered.is_empty() {
         return prompt;
     }
@@ -4323,7 +4334,7 @@ pub async fn run_scheduled_task(
     prompt_options: PromptOptions,
     mut run_options: AgentRunOptions,
 ) -> AgentSessionResult {
-    let full_prompt = build_scheduled_prompt_with_recovered_local_context(&core, event);
+    let full_prompt = build_scheduled_prompt_with_recovered_local_context(&core, event).await;
     run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
     run_options.turn_origin = if event.heartbeat {
         AgentTurnOrigin::Heartbeat
@@ -4366,7 +4377,7 @@ pub async fn execute_scheduler_event_with_storage(
     mut run_options: AgentRunOptions,
     storage: &CronJobStorage,
 ) -> ScheduledTaskExecution {
-    let watchlist_guard_zones = watchlist_price_anchor_guard_zones(&core, event);
+    let watchlist_guard_zones = watchlist_price_anchor_guard_zones(&core, event).await;
     if !scheduler_event_is_active(storage, event) {
         tracing::info!(
             job_id = %event.job_id,
@@ -4418,7 +4429,8 @@ pub async fn execute_scheduler_event_with_storage(
                     &core.session_storage,
                     &session_id,
                     &response.content,
-                );
+                )
+                .await;
             }
             tracing::info!(
                 job_id = %event.job_id,
@@ -4458,7 +4470,8 @@ pub async fn execute_scheduler_event_with_storage(
                     &core.session_storage,
                     &session_id,
                     &sanitized,
-                );
+                )
+                .await;
                 ScheduledTaskExecution {
                     should_deliver: true,
                     content: String::new(),
@@ -4482,7 +4495,8 @@ pub async fn execute_scheduler_event_with_storage(
                     &core.session_storage,
                     &session_id,
                     &sanitized,
-                );
+                )
+                .await;
                 ScheduledTaskExecution {
                     should_deliver: false,
                     content: sanitized,
@@ -4508,7 +4522,8 @@ pub async fn execute_scheduler_event_with_storage(
                         &core.session_storage,
                         &session_id,
                         &sanitized,
-                    );
+                    )
+                    .await;
                     return ScheduledTaskExecution {
                         should_deliver: true,
                         content: String::new(),
@@ -4539,7 +4554,8 @@ pub async fn execute_scheduler_event_with_storage(
                         &core.session_storage,
                         &session_id,
                         &sanitized,
-                    );
+                    )
+                    .await;
                     return ScheduledTaskExecution {
                         should_deliver: true,
                         content: String::new(),
@@ -4681,7 +4697,8 @@ pub async fn execute_scheduler_event_with_storage(
                     &core.session_storage,
                     &session_id,
                     suppressed_failure_kind,
-                );
+                )
+                .await;
             }
             let should_deliver = sanitized_error.is_some();
             ScheduledTaskExecution {
@@ -4961,7 +4978,8 @@ async fn run_heartbeat_task(
         &transient_session_id,
         &Default::default(),
         &prompt_options,
-    );
+    )
+    .await;
     // 与 turn_builder::PromptTurnBuilder 保持一致：只有持久原生会话不需要
     // Hone 灌注 conversation_context。OpenCode fresh-session 路径仍由 Hone replay。
     if core
@@ -4990,7 +5008,7 @@ async fn run_heartbeat_task(
     loop {
         let prompt = match profile {
             HeartbeatExecutionProfile::Primary => {
-                build_scheduled_prompt_with_recovered_local_context(&core, event)
+                build_scheduled_prompt_with_recovered_local_context(&core, event).await
             }
             HeartbeatExecutionProfile::BudgetRecovery { reason } => {
                 build_heartbeat_recovery_prompt(event, reason)
@@ -6550,8 +6568,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn skip_signal_rolls_back_persisted_assistant_turn() {
+    #[tokio::test]
+    async fn skip_signal_rolls_back_persisted_assistant_turn() {
         let root = std::env::temp_dir().join(format!(
             "hone_scheduler_skip_rollback_{}",
             uuid::Uuid::new_v4()
@@ -6561,21 +6579,25 @@ mod tests {
         let actor = ActorIdentity::new("feishu", "ou_skip", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         let skipped_content =
             "TEM 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送";
 
         storage
             .add_message(&session_id, "user", "[定时任务触发] TEM", None)
+            .await
             .expect("add user");
         storage
             .add_message(&session_id, "assistant", skipped_content, None)
+            .await
             .expect("add assistant");
 
-        rollback_skipped_scheduler_assistant_turn(&storage, &session_id, skipped_content);
+        rollback_skipped_scheduler_assistant_turn(&storage, &session_id, skipped_content).await;
 
         let messages = storage
             .get_messages(&session_id, None)
+            .await
             .expect("get messages");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
@@ -6584,8 +6606,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn suppressed_scheduler_failure_persists_single_transcript_marker() {
+    #[tokio::test]
+    async fn suppressed_scheduler_failure_persists_single_transcript_marker() {
         let root = std::env::temp_dir().join(format!(
             "hone_scheduler_failure_marker_{}",
             uuid::Uuid::new_v4()
@@ -6595,24 +6617,29 @@ mod tests {
         let actor = ActorIdentity::new("feishu", "ou_failure", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
 
         storage
             .add_message(&session_id, "user", "[定时任务触发] 盘前复盘", None)
+            .await
             .expect("add user");
         persist_suppressed_scheduler_failure_turn(
             &storage,
             &session_id,
             "internal_error_suppressed",
-        );
+        )
+        .await;
         persist_suppressed_scheduler_failure_turn(
             &storage,
             &session_id,
             "internal_error_suppressed",
-        );
+        )
+        .await;
 
         let messages = storage
             .get_messages(&session_id, None)
+            .await
             .expect("get messages");
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
@@ -8394,8 +8421,8 @@ mod tests {
         assert!(prompt.contains("不得输出精确价格"));
     }
 
-    #[test]
-    fn scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary() {
+    #[tokio::test]
+    async fn scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary() {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_{}_{}",
             std::process::id(),
@@ -8409,6 +8436,7 @@ mod tests {
         let session_id = actor.session_id();
         core.session_storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         core.session_storage
             .append_session_messages(
@@ -8420,7 +8448,7 @@ mod tests {
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
-            .expect("append summary");
+            .await.expect("append summary");
 
         let event = SchedulerEvent {
             actor,
@@ -8444,15 +8472,15 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event).await;
         assert!(prompt.contains("【已恢复的本地击球区参考】"));
         assert!(prompt.contains("- MSFT: $335–$350"));
         assert!(prompt.contains("- TSM: 保守$290–$310 / 合理$320–$340 / 激进$345–$355"));
         assert!(prompt.contains("- LITE: 保守$520–$580 / 合理$600–$650 / 激进观察$680–$720"));
     }
 
-    #[test]
-    fn scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers() {
+    #[tokio::test]
+    async fn scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers() {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_all_{}_{}",
             std::process::id(),
@@ -8466,6 +8494,7 @@ mod tests {
         let session_id = actor.session_id();
         core.session_storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         core.session_storage
             .append_session_messages(
@@ -8477,7 +8506,7 @@ mod tests {
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
-            .expect("append summary");
+            .await.expect("append summary");
 
         let event = SchedulerEvent {
             actor,
@@ -8501,7 +8530,7 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event).await;
         assert!(prompt.contains("【已恢复的本地击球区参考】"));
         assert!(prompt.contains("- MSFT: $335-$350"));
         assert!(prompt.contains("- NVDA: $150-$165"));
@@ -8509,8 +8538,8 @@ mod tests {
         assert!(prompt.contains("- LITE: 保守$520-$580 / 合理$600-$650 / 激进观察$680-$720"));
     }
 
-    #[test]
-    fn scheduled_watchlist_prompt_recovers_compact_inline_hit_zones() {
+    #[tokio::test]
+    async fn scheduled_watchlist_prompt_recovers_compact_inline_hit_zones() {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_compact_{}_{}",
             std::process::id(),
@@ -8525,6 +8554,7 @@ mod tests {
         let session_id = actor.session_id();
         core.session_storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         core.session_storage
             .append_session_messages(
@@ -8536,7 +8566,7 @@ mod tests {
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
-            .expect("append summary");
+            .await.expect("append summary");
 
         let event = SchedulerEvent {
             actor,
@@ -8560,7 +8590,7 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event).await;
         assert!(prompt.contains("【已恢复的本地击球区参考】"));
         assert!(prompt.contains("- MSFT: $335-$350"));
         assert!(prompt.contains("- NVDA: $150-$165"));
@@ -8569,8 +8599,8 @@ mod tests {
         assert!(!prompt.contains("- LITE: 待确认"));
     }
 
-    #[test]
-    fn heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words() {
+    #[tokio::test]
+    async fn heartbeat_watchlist_prompt_recovers_hit_zones_without_explicit_hit_zone_words() {
         let root = std::env::temp_dir().join(format!(
             "scheduler_heartbeat_watchlist_prompt_{}_{}",
             std::process::id(),
@@ -8585,6 +8615,7 @@ mod tests {
         let session_id = actor.session_id();
         core.session_storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         core.session_storage
             .append_session_messages(
@@ -8596,6 +8627,7 @@ mod tests {
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
+            .await
             .expect("append summary");
 
         let event = SchedulerEvent {
@@ -8619,15 +8651,15 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event).await;
         assert!(prompt.contains("【已恢复的本地击球区参考】"));
         assert!(prompt.contains("- MU: $90-$115"));
         assert!(prompt.contains("- LITE: $52-$68"));
         assert!(prompt.contains("- RKLB: $18-$25"));
     }
 
-    #[test]
-    fn holdings_heartbeat_prompt_recovers_hit_zones_from_compact_summary() {
+    #[tokio::test]
+    async fn holdings_heartbeat_prompt_recovers_hit_zones_from_compact_summary() {
         let root = std::env::temp_dir().join(format!(
             "scheduler_holdings_heartbeat_prompt_{}_{}",
             std::process::id(),
@@ -8642,6 +8674,7 @@ mod tests {
         let session_id = actor.session_id();
         core.session_storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         core.session_storage
             .append_session_messages(
@@ -8653,6 +8686,7 @@ mod tests {
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
+            .await
             .expect("append summary");
 
         let event = SchedulerEvent {
@@ -8676,14 +8710,14 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event).await;
         assert!(prompt.contains("【已恢复的本地击球区参考】"));
         assert!(prompt.contains("- SNDK: $42-$55"));
         assert!(prompt.contains("- AAOI: $18-$28"));
     }
 
-    #[test]
-    fn sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch() {
+    #[tokio::test]
+    async fn sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch() {
         let zones = watchlist_guard_zones_from_source("观察池击球区：SNDK $42-$55；MU $90-$115。");
         let detected = detect_unstable_watchlist_price_anchor(
             "数据时间：运行时时区 2026-08-03 01:30；行情口径：SNDK $1,214.83 / MU $823.03（2026-07-31 纽约时间 16:00，来源 financialmodelingprep.com），最新可得、非逐笔。",

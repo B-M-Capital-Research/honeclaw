@@ -255,7 +255,7 @@ pub(crate) async fn handle_scheduler_events(
                     None
                 };
                 if let Some(response) = response.as_deref() {
-                    persist_web_scheduler_failure(&state_clone, &event, &result, response);
+                    persist_web_scheduler_failure(&state_clone, &event, &result, response).await;
                 }
                 let console_event_sent = response
                     .as_deref()
@@ -321,7 +321,7 @@ pub(crate) async fn handle_scheduler_events(
                 result.content.clone()
             };
             if result.error.is_some() {
-                persist_web_scheduler_failure(&state_clone, &event, &result, &response);
+                persist_web_scheduler_failure(&state_clone, &event, &result, &response).await;
             }
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
@@ -513,7 +513,7 @@ fn scheduler_failure_trace_required(result: &scheduler::ScheduledTaskExecution) 
             == Some("internal_error_suppressed")
 }
 
-fn persist_web_scheduler_failure(
+async fn persist_web_scheduler_failure(
     state: &AppState,
     event: &SchedulerEvent,
     result: &scheduler::ScheduledTaskExecution,
@@ -525,7 +525,12 @@ fn persist_web_scheduler_failure(
     let Some(session_id) = result.session_id.as_deref() else {
         return;
     };
-    match state.core.session_storage.get_messages(session_id, Some(1)) {
+    match state
+        .core
+        .session_storage
+        .get_messages(session_id, Some(1))
+        .await
+    {
         Ok(messages) => {
             if let Some(last) = messages.last() {
                 if last.role == "assistant" && session_message_text(last).trim() == response.trim()
@@ -556,11 +561,11 @@ fn persist_web_scheduler_failure(
     if let Some(error) = result.error.as_deref() {
         metadata.insert("error".to_string(), json!(error));
     }
-    if let Err(err) =
-        state
-            .core
-            .session_storage
-            .add_message(session_id, "assistant", response, Some(metadata))
+    if let Err(err) = state
+        .core
+        .session_storage
+        .add_message(session_id, "assistant", response, Some(metadata))
+        .await
     {
         warn!(
             "⏰ [Web] 定时任务失败提示落库失败: session={} job={} err={}",

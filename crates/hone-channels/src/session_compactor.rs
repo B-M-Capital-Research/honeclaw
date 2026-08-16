@@ -37,7 +37,7 @@ impl<'a> SessionCompactor<'a> {
         user_instructions: Option<&str>,
         filter_operational_history: bool,
     ) -> hone_core::HoneResult<CompactSessionOutcome> {
-        let Some(session) = self.core.session_storage.load_session(session_id)? else {
+        let Some(session) = self.core.session_storage.load_session(session_id).await? else {
             return Ok(CompactSessionOutcome {
                 compacted: false,
                 summary: None,
@@ -388,11 +388,14 @@ impl<'a> SessionCompactor<'a> {
             new_messages.push(message.clone());
         }
 
-        self.core.session_storage.replace_messages_with_summary(
-            session_id,
-            new_messages,
-            Some(SessionSummary::new(summary_to_store)),
-        )?;
+        self.core
+            .session_storage
+            .replace_messages_with_summary(
+                session_id,
+                new_messages,
+                Some(SessionSummary::new(summary_to_store)),
+            )
+            .await?;
         tracing::info!(
             "[HoneBotCore] Session {} compacted to boundary + summary + {} retained items.",
             session_id,

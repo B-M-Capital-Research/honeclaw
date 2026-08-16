@@ -183,22 +183,23 @@ fn stream_buffer_visible_final(text: &str) -> Option<String> {
     (!sanitized.is_empty()).then_some(sanitized)
 }
 
-fn persist_visible_assistant_message(
+async fn persist_visible_assistant_message(
     state: &Arc<AppState>,
     session_id: &str,
     content: &str,
     metadata: Option<HashMap<String, Value>>,
 ) {
-    if session_tail_assistant_matches(&state.core.session_storage, session_id, content) {
+    if session_tail_assistant_matches(&state.core.session_storage, session_id, content).await {
         return;
     }
     let _ = state
         .core
         .session_storage
-        .add_message(session_id, "assistant", content, metadata);
+        .add_message(session_id, "assistant", content, metadata)
+        .await;
 }
 
-fn session_tail_assistant_matches(
+async fn session_tail_assistant_matches(
     storage: &SessionStorage,
     session_id: &str,
     content: &str,
@@ -209,6 +210,7 @@ fn session_tail_assistant_matches(
     }
     storage
         .get_messages(session_id, Some(1))
+        .await
         .ok()
         .and_then(|messages| messages.into_iter().next())
         .is_some_and(|message| {
@@ -298,13 +300,13 @@ fn session_needs_restart_recovery(
     last_message_at > updated_after && last_message_at < updated_before
 }
 
-fn candidate_still_needs_restart_recovery(
+async fn candidate_still_needs_restart_recovery(
     storage: &SessionStorage,
     session_info: &hone_memory::InterruptedSessionInfo,
     updated_after: chrono::DateTime<chrono::Utc>,
     updated_before: chrono::DateTime<chrono::Utc>,
 ) -> bool {
-    let Ok(Some(session)) = storage.load_session(&session_info.session_id) else {
+    let Ok(Some(session)) = storage.load_session(&session_info.session_id).await else {
         return false;
     };
     session_needs_restart_recovery(
@@ -322,28 +324,32 @@ async fn recover_interrupted_sessions(state: &Arc<AppState>) {
     let updated_after = updated_after_at.to_rfc3339();
     let updated_before = updated_before_at.to_rfc3339();
 
-    let interrupted = match state.core.session_storage.find_interrupted_sessions(
-        "feishu",
-        &updated_after,
-        &updated_before,
-    ) {
+    let interrupted = match state
+        .core
+        .session_storage
+        .find_interrupted_sessions("feishu", &updated_after, &updated_before)
+        .await
+    {
         Ok(list) => list,
         Err(err) => {
             warn!("[Feishu] 启动恢复：查询中断会话失败: {err}");
             return;
         }
     };
-    let interrupted = recoverable_interrupted_sessions(interrupted, &state.session_locks)
-        .into_iter()
-        .filter(|session_info| {
-            candidate_still_needs_restart_recovery(
-                &state.core.session_storage,
-                session_info,
-                updated_after_at,
-                updated_before_at,
-            )
-        })
-        .collect::<Vec<_>>();
+    let mut still_interrupted = Vec::new();
+    for session_info in recoverable_interrupted_sessions(interrupted, &state.session_locks) {
+        if candidate_still_needs_restart_recovery(
+            &state.core.session_storage,
+            &session_info,
+            updated_after_at,
+            updated_before_at,
+        )
+        .await
+        {
+            still_interrupted.push(session_info);
+        }
+    }
+    let interrupted = still_interrupted;
 
     if interrupted.is_empty() {
         return;
@@ -365,12 +371,16 @@ async fn recover_interrupted_sessions(state: &Arc<AppState>) {
         } else {
             // Record the failure reply in the session so last_message_role
             // flips to 'assistant' and we don't re-notify on the next restart.
-            let _ = state.core.session_storage.add_message(
-                &session_info.session_id,
-                "assistant",
-                RESTART_RECOVERY_TEXT,
-                None,
-            );
+            let _ = state
+                .core
+                .session_storage
+                .add_message(
+                    &session_info.session_id,
+                    "assistant",
+                    RESTART_RECOVERY_TEXT,
+                    None,
+                )
+                .await;
             info!(
                 "[Feishu] 启动恢复：已补发失败提示: session_id={}",
                 session_info.session_id
@@ -731,6 +741,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         .core
         .session_storage
         .load_session(&session_id)
+        .await
         .ok()
         .flatten()
         .is_none()
@@ -738,7 +749,8 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         let _ = state
             .core
             .session_storage
-            .create_session_for_identity(&session_identity, Some(&actor));
+            .create_session_for_identity(&session_identity, Some(&actor))
+            .await;
     }
     let buffered_messages = if is_group && state.core.config.group_context.pretrigger_window_enabled
     {
@@ -754,6 +766,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         &session_id,
         &buffered_messages,
     )
+    .await
     .unwrap_or(0);
 
     let attachment_count = attachments.len();
@@ -1071,7 +1084,8 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             &session_id,
             &display,
             assistant_message_metadata.clone(),
-        );
+        )
+        .await;
         if let Some(ck) = &cardkit_session {
             ck.close(&preprocess_markdown_for_feishu(&display, true))
                 .await;
@@ -1132,7 +1146,8 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             &session_id,
             &fallback,
             assistant_message_metadata.clone(),
-        );
+        )
+        .await;
         if let Some(ck) = &cardkit_session {
             ck.close(&fallback).await;
             state.core.log_message_step(
@@ -1799,8 +1814,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn session_tail_assistant_matches_detects_duplicate_quota_reply() {
+    #[tokio::test]
+    async fn session_tail_assistant_matches_detects_duplicate_quota_reply() {
         let root =
             std::env::temp_dir().join(format!("hone_feishu_tail_match_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create root");
@@ -1808,31 +1823,22 @@ mod tests {
         let actor = ActorIdentity::new("feishu", "ou_quota", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
+            .await
             .expect("create session");
         let daily_limit_reply = "已达到今日对话上限（12/12，运行时时区 2026-06-07），请明天再试";
 
         storage
             .add_message(&session_id, "user", "继续", None)
+            .await
             .expect("add user");
-        assert!(!session_tail_assistant_matches(
-            &storage,
-            &session_id,
-            daily_limit_reply
-        ));
+        assert!(!session_tail_assistant_matches(&storage, &session_id, daily_limit_reply).await);
         storage
             .add_message(&session_id, "assistant", daily_limit_reply, None)
+            .await
             .expect("add assistant");
 
-        assert!(session_tail_assistant_matches(
-            &storage,
-            &session_id,
-            daily_limit_reply
-        ));
-        assert!(!session_tail_assistant_matches(
-            &storage,
-            &session_id,
-            "其它回复"
-        ));
+        assert!(session_tail_assistant_matches(&storage, &session_id, daily_limit_reply).await);
+        assert!(!session_tail_assistant_matches(&storage, &session_id, "其它回复").await);
 
         let _ = std::fs::remove_dir_all(root);
     }

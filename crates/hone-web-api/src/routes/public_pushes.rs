@@ -88,7 +88,7 @@ pub(crate) async fn handle_list_pushes(
         .unwrap_or(DEFAULT_PUSH_PAGE_SIZE)
         .clamp(1, MAX_PUSH_PAGE_SIZE);
     let storage = state.core.cron_job_storage();
-    if let Err(error) = backfill_legacy_web_pushes(&state, &actor) {
+    if let Err(error) = backfill_legacy_web_pushes(&state, &actor).await {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("整理历史推送失败: {error}"),
@@ -182,7 +182,7 @@ async fn public_web_actor(
         .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))
 }
 
-fn backfill_legacy_web_pushes(
+async fn backfill_legacy_web_pushes(
     state: &AppState,
     actor: &ActorIdentity,
 ) -> hone_core::HoneResult<usize> {
@@ -193,7 +193,8 @@ fn backfill_legacy_web_pushes(
     let messages = state
         .core
         .session_storage
-        .get_messages(&actor.session_id(), None)?;
+        .get_messages(&actor.session_id(), None)
+        .await?;
     storage.upsert_web_push_messages(actor, legacy_web_push_inputs(&messages))
 }
 

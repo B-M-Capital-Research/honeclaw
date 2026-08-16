@@ -85,12 +85,14 @@ struct PersistentSessionMetadataCheckpoint {
     session_id: String,
 }
 
+#[async_trait::async_trait]
 impl AgentSessionMetadataCheckpoint for PersistentSessionMetadataCheckpoint {
-    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
+    async fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
         match self
             .core
             .session_storage
             .update_metadata(&self.session_id, updates)
+            .await
         {
             Ok(true) => Ok(()),
             Ok(false) => Err(format!(
@@ -505,13 +507,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn persistent_metadata_checkpoint_updates_authoritative_session_storage() {
+    #[tokio::test]
+    async fn persistent_metadata_checkpoint_updates_authoritative_session_storage() {
         let root = temp_root("execution_persistent_metadata_checkpoint");
         let core = make_test_core(&root, "codex_cli");
         let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         core.session_storage
             .create_session(Some("session-1"), Some(actor.clone()), None)
+            .await
             .expect("create persistent session");
         let prepared = ExecutionService::new(core.clone())
             .prepare(make_request(
@@ -530,11 +533,13 @@ mod tests {
                 "codex_acp_session_id".to_string(),
                 Value::String("native-session-1".to_string()),
             )]))
+            .await
             .expect("checkpoint metadata");
 
         let stored = core
             .session_storage
             .load_session("session-1")
+            .await
             .expect("load session")
             .expect("session exists");
         assert_eq!(stored.metadata["codex_acp_session_id"], "native-session-1");

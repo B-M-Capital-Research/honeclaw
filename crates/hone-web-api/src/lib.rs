@@ -369,7 +369,7 @@ impl OutboundSink for WebBroadcastSink {
     }
 }
 
-fn build_event_engine_sink(
+async fn build_event_engine_sink(
     core_cfg: &HoneConfig,
     push_tx: broadcast::Sender<PushEvent>,
 ) -> Arc<dyn OutboundSink> {
@@ -391,7 +391,7 @@ fn build_event_engine_sink(
         && !core_cfg.feishu.app_id.trim().is_empty()
         && !core_cfg.feishu.app_secret.trim().is_empty()
     {
-        let direct_actor_targets = feishu_direct_actor_contact_targets(core_cfg);
+        let direct_actor_targets = feishu_direct_actor_contact_targets(core_cfg).await;
         multi = multi.with_channel(
             "feishu",
             Arc::new(
@@ -422,7 +422,7 @@ fn build_event_engine_sink(
     Arc::new(multi)
 }
 
-fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
+async fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
     let storage = match CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
         .ok_or_else(|| "PostgreSQL must be configured for cron contact lookup".to_string())
         .and_then(|postgres| CronJobStorage::new_cloud(postgres).map_err(|error| error.to_string()))
@@ -440,7 +440,7 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
                 .map_err(|error| error.to_string())
         });
     let sessions = match session_storage {
-        Ok(storage) => sessions_or_empty(storage.list_sessions()),
+        Ok(storage) => sessions_or_empty(storage.list_sessions().await),
         Err(error) => {
             warn!(%error, "failed to initialize PostgreSQL sessions for Feishu direct actor contacts");
             Vec::new()
@@ -912,7 +912,7 @@ pub async fn start_server(
         };
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
-        let sink = build_event_engine_sink(&state.core.config, state.push_tx.clone());
+        let sink = build_event_engine_sink(&state.core.config, state.push_tx.clone()).await;
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
         let sec_filings_enrichment = build_sec_filings_enrichment_llm(&state.core.config);
         if let Some(created) = &sec_filings_enrichment {

@@ -1167,7 +1167,7 @@ impl AgentSession {
         .with_registry_path(self.core.configured_skill_registry_path())
     }
 
-    fn restore_runtime_context(
+    async fn restore_runtime_context(
         &self,
         session_id: &str,
         persisted_user_input: &str,
@@ -1180,6 +1180,7 @@ impl AgentSession {
             .core
             .session_storage
             .load_session(session_id)
+            .await
             .ok()
             .flatten();
         let skill_runtime = self.build_skill_runtime();
@@ -1276,13 +1277,15 @@ impl AgentSession {
         let use_current_turn_only_context =
             restore_max_override == Some(CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT);
         let use_isolated_prior_history = options.isolate_prior_history;
-        let restored = self.restore_runtime_context(
-            session_id,
-            persisted_user_input,
-            restore_max_override,
-            options.turn_origin,
-            use_fast_interactive_context,
-        );
+        let restored = self
+            .restore_runtime_context(
+                session_id,
+                persisted_user_input,
+                restore_max_override,
+                options.turn_origin,
+                use_fast_interactive_context,
+            )
+            .await;
         let mut context = restored.context;
         if use_current_turn_only_context || use_isolated_prior_history {
             // A self-contained trusted workflow and the final overflow recovery
@@ -1324,7 +1327,8 @@ impl AgentSession {
                     && !use_current_turn_only_context
                     && !use_isolated_prior_history,
                 use_native_codex_turn_input,
-            );
+            )
+            .await;
         if options.dedicated_earnings_workflow {
             if !self.prompt_options.is_admin || options.runner_override.is_none() {
                 return Err((
@@ -1634,7 +1638,7 @@ impl AgentSession {
         );
     }
 
-    fn persist_assistant_text_turn(
+    async fn persist_assistant_text_turn(
         &self,
         session_id: &str,
         content: &str,
@@ -1663,16 +1667,20 @@ impl AgentSession {
             status: Some("completed".to_string()),
             metadata,
         };
-        let _ = self.core.session_storage.append_session_messages(
-            session_id,
-            vec![session_message_from_normalized(
-                &message,
-                hone_core::local_now_rfc3339(),
-            )],
-        );
+        let _ = self
+            .core
+            .session_storage
+            .append_session_messages(
+                session_id,
+                vec![session_message_from_normalized(
+                    &message,
+                    hone_core::local_now_rfc3339(),
+                )],
+            )
+            .await;
     }
 
-    fn persist_failed_assistant_turn_if_needed(
+    async fn persist_failed_assistant_turn_if_needed(
         &self,
         session_id: &str,
         kind: AgentSessionErrorKind,
@@ -1682,6 +1690,7 @@ impl AgentSession {
             .core
             .session_storage
             .get_messages(session_id, None)
+            .await
             .ok()
             .and_then(|messages| messages.last().cloned())
             .is_some_and(|message| message.role == "user");
@@ -1692,7 +1701,8 @@ impl AgentSession {
         let mut metadata = HashMap::new();
         metadata.insert("run_failed".to_string(), Value::Bool(true));
         metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));
-        self.persist_assistant_text_turn(session_id, message, metadata);
+        self.persist_assistant_text_turn(session_id, message, metadata)
+            .await;
         self.core.log_message_step(
             &self.actor.channel,
             &self.actor.user_id,
@@ -1807,31 +1817,34 @@ impl AgentSession {
         }
     }
 
-    fn ensure_session_exists(&self) -> hone_core::HoneResult<()> {
+    async fn ensure_session_exists(&self) -> hone_core::HoneResult<()> {
         let session_id = self.session_id();
         if self
             .core
             .session_storage
             .load_session(&session_id)
+            .await
             .ok()
             .flatten()
             .is_none()
         {
             self.core
                 .session_storage
-                .create_session_for_identity(&self.session_identity, Some(&self.actor))?;
+                .create_session_for_identity(&self.session_identity, Some(&self.actor))
+                .await?;
         }
         Ok(())
     }
 
-    fn update_session_metadata(&self) {
+    async fn update_session_metadata(&self) {
         let Some(metadata) = self.session_metadata.clone() else {
             return;
         };
         let _ = self
             .core
             .session_storage
-            .update_metadata(&self.session_id, metadata);
+            .update_metadata(&self.session_id, metadata)
+            .await;
     }
 
     fn claim_delivered_push_context(
@@ -1921,15 +1934,16 @@ impl AgentSession {
     }
 
     #[cfg(test)]
-    pub(super) fn resolve_prompt_input(
+    pub(super) async fn resolve_prompt_input(
         &self,
         session_id: &str,
         user_input: &str,
     ) -> (String, String, String) {
         self.resolve_prompt_input_at(session_id, user_input, hone_core::local_now(), true, false)
+            .await
     }
 
-    fn resolve_prompt_input_at(
+    async fn resolve_prompt_input_at(
         &self,
         session_id: &str,
         user_input: &str,
@@ -1950,7 +1964,8 @@ impl AgentSession {
             prompt_time_local,
             include_conversation_context,
             use_native_codex_turn_input,
-        );
+        )
+        .await;
         (
             turn.system_prompt,
             turn.runtime_input,
@@ -1986,7 +2001,7 @@ impl AgentSession {
         })
     }
 
-    fn persist_invoked_skill_prompt(
+    async fn persist_invoked_skill_prompt(
         &self,
         session_id: &str,
         skill_id: &str,
@@ -1995,7 +2010,8 @@ impl AgentSession {
         let existing = self
             .core
             .session_storage
-            .load_session(session_id)?
+            .load_session(session_id)
+            .await?
             .map(|session| session.metadata)
             .unwrap_or_default();
         let mut invoked = hone_memory::invoked_skills_from_metadata(&existing)
@@ -2024,11 +2040,12 @@ impl AgentSession {
         let _ = self
             .core
             .session_storage
-            .update_metadata(session_id, metadata)?;
+            .update_metadata(session_id, metadata)
+            .await?;
         Ok(())
     }
 
-    pub(super) fn forget_turn_scoped_skill_prompt(
+    pub(super) async fn forget_turn_scoped_skill_prompt(
         &self,
         session_id: &str,
         skill_id: &str,
@@ -2036,7 +2053,8 @@ impl AgentSession {
         let existing = self
             .core
             .session_storage
-            .load_session(session_id)?
+            .load_session(session_id)
+            .await?
             .map(|session| session.metadata)
             .unwrap_or_default();
         let invoked = hone_memory::invoked_skills_from_metadata(&existing);
@@ -2057,7 +2075,8 @@ impl AgentSession {
         let _ = self
             .core
             .session_storage
-            .update_metadata(session_id, metadata)?;
+            .update_metadata(session_id, metadata)
+            .await?;
         Ok(())
     }
 
@@ -2203,7 +2222,8 @@ impl AgentSession {
         message: String,
     ) -> AgentSessionResult {
         let persisted_message = user_visible_error_message(Some(message.as_str()));
-        self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+        self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+            .await;
         let error = AgentSessionError {
             kind,
             // Session error events cross channel/Web boundaries. Preserve the
@@ -2291,7 +2311,7 @@ impl AgentSession {
             let lock = get_session_run_lock(&session_id);
             lock.lock_owned().await
         };
-        if let Err(err) = self.ensure_session_exists() {
+        if let Err(err) = self.ensure_session_exists().await {
             return self
                 .fail_run(
                     session_id,
@@ -2301,7 +2321,7 @@ impl AgentSession {
                 .await;
         }
 
-        self.update_session_metadata();
+        self.update_session_metadata().await;
 
         if let Some(command) = self.parse_compact_command(user_input) {
             return self
@@ -2346,7 +2366,8 @@ impl AgentSession {
                 );
                 let mut metadata = HashMap::new();
                 metadata.insert("quota_rejected".to_string(), Value::Bool(true));
-                self.persist_assistant_text_turn(&session_id, &quota_message, metadata);
+                self.persist_assistant_text_turn(&session_id, &quota_message, metadata)
+                    .await;
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -2428,13 +2449,17 @@ impl AgentSession {
             if crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_id) {
                 // This also removes legacy earnings prompts that older builds
                 // persisted with both mode branches in one session snapshot.
-                let _ = self.forget_turn_scoped_skill_prompt(&session_id, &skill.skill_id);
+                let _ = self
+                    .forget_turn_scoped_skill_prompt(&session_id, &skill.skill_id)
+                    .await;
             } else {
-                let _ = self.persist_invoked_skill_prompt(
-                    &session_id,
-                    &skill.skill_id,
-                    &skill.invoked_prompt,
-                );
+                let _ = self
+                    .persist_invoked_skill_prompt(
+                        &session_id,
+                        &skill.skill_id,
+                        &skill.invoked_prompt,
+                    )
+                    .await;
             }
         }
         self.emit(AgentSessionEvent::UserMessage {
@@ -3040,7 +3065,8 @@ impl AgentSession {
                     "service_owned_initial_prefix".to_string(),
                     Value::Bool(service_owned_prefix),
                 );
-                self.persist_assistant_text_turn(&session_id, &visible_partial, metadata);
+                self.persist_assistant_text_turn(&session_id, &visible_partial, metadata)
+                    .await;
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -3069,14 +3095,16 @@ impl AgentSession {
                 }))
                 .await;
                 let persisted_message = failed_assistant_persisted_message(&response);
-                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+                    .await;
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),
                 })
                 .await;
             } else {
                 let persisted_message = failed_assistant_persisted_message(&response);
-                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+                    .await;
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),
                 })

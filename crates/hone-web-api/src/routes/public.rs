@@ -797,6 +797,7 @@ pub(crate) async fn handle_bootstrap(
         .core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .unwrap_or_default();
 
     let history = crate::routes::history::public_history_page_for_client(
@@ -835,6 +836,7 @@ pub(crate) async fn handle_history(
         .core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .unwrap_or_default();
 
     let history = crate::routes::history::public_history_page_for_client(

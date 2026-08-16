@@ -279,8 +279,16 @@ pub(crate) async fn handle_usage_report(
         .unwrap_or_default()
         .saturating_mul(USAGE_EXECUTION_LIMIT_PER_DAY);
     let state_for_worker = state.clone();
+    let sessions = match state.core.session_storage.list_sessions().await {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取会话统计失败: {error}"),
+            );
+        }
+    };
     let result = tokio::task::spawn_blocking(move || {
-        let sessions = state_for_worker.core.session_storage.list_sessions()?;
         let executions = state_for_worker
             .core
             .cron_job_storage()

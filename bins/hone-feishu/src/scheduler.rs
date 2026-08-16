@@ -389,7 +389,7 @@ fn spawn_scheduler_timeout_watchdog(
         if handler_completed.load(Ordering::SeqCst) {
             return;
         }
-        if mark_scheduler_handler_watchdog_timeout(&state, &event, timeout) {
+        if mark_scheduler_handler_watchdog_timeout(&state, &event, timeout).await {
             watchdog_recovered.store(true, Ordering::SeqCst);
             warn!(
                 "[Feishu] scheduler watchdog 已将超时定时任务收口为失败: job={} target={} timeout_secs={} delivery_key={}",
@@ -402,7 +402,7 @@ fn spawn_scheduler_timeout_watchdog(
     })
 }
 
-fn mark_scheduler_handler_watchdog_timeout(
+async fn mark_scheduler_handler_watchdog_timeout(
     state: &AppState,
     event: &SchedulerEvent,
     timeout: Duration,
@@ -426,7 +426,8 @@ fn mark_scheduler_handler_watchdog_timeout(
                 &state.core.session_storage,
                 &event.actor.session_id(),
                 "scheduler_handler_watchdog_timeout",
-            );
+            )
+            .await;
             true
         }
         Err(err) => {
@@ -450,7 +451,7 @@ fn recover_stale_started_rows(state: &AppState) {
     );
 }
 
-fn persist_scheduler_timeout_failure_turn(
+async fn persist_scheduler_timeout_failure_turn(
     storage: &hone_memory::SessionStorage,
     session_id: &str,
     failure_kind: &str,
@@ -458,7 +459,7 @@ fn persist_scheduler_timeout_failure_turn(
     if session_id.is_empty() {
         return;
     }
-    match storage.get_messages(session_id, Some(1)) {
+    match storage.get_messages(session_id, Some(1)).await {
         Ok(messages) => {
             if messages.last().is_some_and(|message| {
                 message.role == "assistant"
@@ -485,12 +486,15 @@ fn persist_scheduler_timeout_failure_turn(
         "failure_kind".to_string(),
         serde_json::Value::String(failure_kind.to_string()),
     );
-    if let Err(err) = storage.add_message(
-        session_id,
-        "assistant",
-        SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE,
-        Some(metadata),
-    ) {
+    if let Err(err) = storage
+        .add_message(
+            session_id,
+            "assistant",
+            SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE,
+            Some(metadata),
+        )
+        .await
+    {
         warn!(
             "[Feishu] scheduler timeout: failed to persist failure transcript session_id={} err={}",
             session_id, err
@@ -542,7 +546,8 @@ async fn run_scheduled_task(
                 &state.core.session_storage,
                 &session_id,
                 "scheduler_handler_timeout",
-            );
+            )
+            .await;
             scheduler::ScheduledTaskExecution {
                 should_deliver: false,
                 content: String::new(),
@@ -561,8 +566,8 @@ async fn run_scheduled_task(
 mod tests {
     use super::persist_scheduler_timeout_failure_turn;
 
-    #[test]
-    fn persist_scheduler_timeout_failure_turn_is_idempotent() {
+    #[tokio::test]
+    async fn persist_scheduler_timeout_failure_turn_is_idempotent() {
         let root = std::env::temp_dir().join(format!(
             "hone_feishu_scheduler_timeout_{}_{}",
             std::process::id(),
@@ -579,15 +584,22 @@ mod tests {
 
         storage
             .create_session(Some(&session_id), Some(actor.clone()), None)
+            .await
             .expect("create session");
         storage
             .add_message(&session_id, "user", "[定时任务触发] test", None)
+            .await
             .expect("add user");
 
-        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout");
-        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout");
+        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout")
+            .await;
+        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout")
+            .await;
 
-        let messages = storage.get_messages(&session_id, None).expect("messages");
+        let messages = storage
+            .get_messages(&session_id, None)
+            .await
+            .expect("messages");
         let assistant_messages = messages
             .iter()
             .filter(|message| message.role == "assistant")
