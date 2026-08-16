@@ -146,7 +146,7 @@ pub(crate) async fn handle_dev_login(
     };
 
     let mut response = Json(json!({
-        "user": to_public_auth_user(&state, &user.user_id, refreshed),
+        "user": to_public_auth_user(&state, &user.user_id, refreshed).await,
     }))
     .into_response();
     response.headers_mut().append(
@@ -435,7 +435,7 @@ pub(crate) async fn handle_sms_login(
     };
     let user_id = refreshed.user_id.clone();
     let mut response = Json(json!({
-        "user": to_public_auth_user(&state, &user_id, refreshed),
+        "user": to_public_auth_user(&state, &user_id, refreshed).await,
     }))
     .into_response();
     response.headers_mut().append(
@@ -643,7 +643,7 @@ pub(crate) async fn handle_email_login(
     state.public_auth_limiter.record_success(&ip_key);
     state.public_auth_limiter.record_success(&email_key);
     let mut response = Json(json!({
-        "user": to_public_auth_user(&state, &user_id, user),
+        "user": to_public_auth_user(&state, &user_id, user).await,
     }))
     .into_response();
     response.headers_mut().append(
@@ -763,7 +763,7 @@ pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: Heade
         Ok(user) => {
             let user_id = user.user_id.clone();
             Json(json!({
-                "user": to_public_auth_user(&state, &user_id, user),
+                "user": to_public_auth_user(&state, &user_id, user).await,
             }))
         }
         .into_response(),
@@ -809,7 +809,7 @@ pub(crate) async fn handle_bootstrap(
     let interrupted_run =
         active_run.is_none() && has_unanswered_interactive_turn(&history.messages);
     public_active_state_response(json!({
-        "user": to_public_auth_user(&state, &user_id, user),
+        "user": to_public_auth_user(&state, &user_id, user).await,
         "messages": history.messages,
         "history_start": history.start,
         "next_before": history.next_before,
@@ -2160,7 +2160,7 @@ fn has_unanswered_interactive_turn(messages: &[crate::types::HistoryMsg]) -> boo
         .is_some_and(|message| message.role == "user")
 }
 
-fn to_public_auth_user(
+async fn to_public_auth_user(
     state: &AppState,
     user_id: &str,
     user: hone_memory::WebInviteUser,
@@ -2176,14 +2176,17 @@ fn to_public_auth_user(
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::local_now().format("%F").to_string();
-    let snapshot = actor.as_ref().and_then(|actor| {
+    let snapshot = if let Some(actor) = actor.as_ref() {
         state
             .core
             .conversation_quota_storage
             .snapshot_for_date(actor, &quota_date)
+            .await
             .ok()
             .flatten()
-    });
+    } else {
+        None
+    };
     let success_count = snapshot
         .as_ref()
         .map(|value| value.success_count)

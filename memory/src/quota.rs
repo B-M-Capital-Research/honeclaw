@@ -1,5 +1,5 @@
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
+use hone_core::cloud_sync::ensure_cloud_schema_once;
 use hone_core::{ActorIdentity, HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -101,7 +101,7 @@ impl ConversationQuotaStorage {
         })
     }
 
-    pub fn try_reserve_daily_conversation(
+    pub async fn try_reserve_daily_conversation(
         &self,
         actor: &ActorIdentity,
         daily_limit: u32,
@@ -109,23 +109,24 @@ impl ConversationQuotaStorage {
     ) -> HoneResult<ConversationQuotaReserveResult> {
         let quota_date = quota_date_today();
         self.try_reserve_daily_conversation_for_date(actor, &quota_date, daily_limit, bypass)
+            .await
     }
 
-    pub fn commit_daily_conversation(
+    pub async fn commit_daily_conversation(
         &self,
         reservation: &ConversationQuotaReservation,
     ) -> HoneResult<()> {
-        self.finish_reservation(reservation, true)
+        self.finish_reservation(reservation, true).await
     }
 
-    pub fn release_daily_conversation(
+    pub async fn release_daily_conversation(
         &self,
         reservation: &ConversationQuotaReservation,
     ) -> HoneResult<()> {
-        self.finish_reservation(reservation, false)
+        self.finish_reservation(reservation, false).await
     }
 
-    fn try_reserve_daily_conversation_for_date(
+    async fn try_reserve_daily_conversation_for_date(
         &self,
         actor: &ActorIdentity,
         quota_date: &str,
@@ -139,15 +140,9 @@ impl ConversationQuotaStorage {
             let postgres = postgres.clone();
             let actor_storage_key = actor.storage_key();
             let quota_date_owned = quota_date.to_string();
-            let outcome = run_cloud(async move {
-                postgres
-                    .try_reserve_conversation_quota(
-                        &actor_storage_key,
-                        &quota_date_owned,
-                        daily_limit,
-                    )
-                    .await
-            })?;
+            let outcome = postgres
+                .try_reserve_conversation_quota(&actor_storage_key, &quota_date_owned, daily_limit)
+                .await?;
             if outcome.reserved {
                 return Ok(ConversationQuotaReserveResult::Reserved(
                     ConversationQuotaReservation {
@@ -196,7 +191,7 @@ impl ConversationQuotaStorage {
         ))
     }
 
-    fn finish_reservation(
+    async fn finish_reservation(
         &self,
         reservation: &ConversationQuotaReservation,
         committed: bool,
@@ -205,11 +200,9 @@ impl ConversationQuotaStorage {
             let postgres = postgres.clone();
             let actor_storage_key = reservation.actor.storage_key();
             let quota_date = reservation.quota_date.clone();
-            return run_cloud(async move {
-                postgres
-                    .finish_conversation_quota(&actor_storage_key, &quota_date, committed)
-                    .await
-            });
+            return postgres
+                .finish_conversation_quota(&actor_storage_key, &quota_date, committed)
+                .await;
         }
         let lock = get_quota_lock(&quota_lock_key(&reservation.actor, &reservation.quota_date));
         let _guard = lock.lock().map_err(lock_err)?;
@@ -228,7 +221,7 @@ impl ConversationQuotaStorage {
         Ok(())
     }
 
-    pub fn snapshot_for_date(
+    pub async fn snapshot_for_date(
         &self,
         actor: &ActorIdentity,
         quota_date: &str,
@@ -237,19 +230,17 @@ impl ConversationQuotaStorage {
             let postgres = postgres.clone();
             let actor_storage_key = actor.storage_key();
             let quota_date = quota_date.to_string();
-            return run_cloud(async move {
-                postgres
-                    .conversation_quota_snapshot(&actor_storage_key, &quota_date)
-                    .await
-            })
-            .map(|snapshot| {
-                snapshot.map(|snapshot| ConversationQuotaSnapshot {
-                    quota_date: snapshot.quota_date,
-                    success_count: snapshot.success_count,
-                    in_flight: snapshot.in_flight,
-                    limit: snapshot.limit,
-                })
-            });
+            return postgres
+                .conversation_quota_snapshot(&actor_storage_key, &quota_date)
+                .await
+                .map(|snapshot| {
+                    snapshot.map(|snapshot| ConversationQuotaSnapshot {
+                        quota_date: snapshot.quota_date,
+                        success_count: snapshot.success_count,
+                        in_flight: snapshot.in_flight,
+                        limit: snapshot.limit,
+                    })
+                });
         }
         Ok(self
             .read_quota_file(actor, quota_date)?
@@ -303,14 +294,6 @@ impl ConversationQuotaStorage {
     }
 }
 
-fn run_cloud<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud quota operation")
-}
-
 fn quota_date_today() -> String {
     hone_core::local_now().format("%F").to_string()
 }
@@ -336,8 +319,8 @@ mod tests {
         ActorIdentity::new(channel, user_id, channel_scope).expect("actor")
     }
 
-    #[test]
-    fn quota_is_isolated_by_actor() {
+    #[tokio::test]
+    async fn quota_is_isolated_by_actor() {
         let root = make_temp_dir("hone_quota_actor");
         let storage = ConversationQuotaStorage::new(&root).expect("storage");
         let date = "2026-03-17";
@@ -346,6 +329,7 @@ mod tests {
 
         let left_res = match storage
             .try_reserve_daily_conversation_for_date(&left, date, 20, false)
+            .await
             .expect("reserve left")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -353,21 +337,24 @@ mod tests {
         };
         storage
             .commit_daily_conversation(&left_res)
+            .await
             .expect("commit left");
 
         let left_snapshot = storage
             .snapshot_for_date(&left, date)
+            .await
             .expect("left snapshot")
             .expect("left row");
         let right_snapshot = storage
             .snapshot_for_date(&right, date)
+            .await
             .expect("right snapshot");
         assert_eq!(left_snapshot.success_count, 1);
         assert!(right_snapshot.is_none());
     }
 
-    #[test]
-    fn quota_resets_on_new_local_day() {
+    #[tokio::test]
+    async fn quota_resets_on_new_local_day() {
         let root = make_temp_dir("hone_quota_day_reset");
         let storage = ConversationQuotaStorage::new(&root).expect("storage");
         let actor = actor("telegram", "alice", None);
@@ -376,6 +363,7 @@ mod tests {
 
         let reservation = match storage
             .try_reserve_daily_conversation_for_date(&actor, first_day, 20, false)
+            .await
             .expect("reserve")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -383,10 +371,12 @@ mod tests {
         };
         storage
             .commit_daily_conversation(&reservation)
+            .await
             .expect("commit");
 
         let next_day = storage
             .try_reserve_daily_conversation_for_date(&actor, second_day, 20, false)
+            .await
             .expect("reserve second day");
         assert!(matches!(
             next_day,
@@ -394,8 +384,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn reservation_commit_and_release_update_counts() {
+    #[tokio::test]
+    async fn reservation_commit_and_release_update_counts() {
         let root = make_temp_dir("hone_quota_reserve");
         let storage = ConversationQuotaStorage::new(&root).expect("storage");
         let actor = actor("discord", "alice", Some("g:1:c:2"));
@@ -403,6 +393,7 @@ mod tests {
 
         let committed = match storage
             .try_reserve_daily_conversation_for_date(&actor, date, 20, false)
+            .await
             .expect("reserve committed")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -410,10 +401,12 @@ mod tests {
         };
         storage
             .commit_daily_conversation(&committed)
+            .await
             .expect("commit");
 
         let released = match storage
             .try_reserve_daily_conversation_for_date(&actor, date, 20, false)
+            .await
             .expect("reserve released")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -421,18 +414,20 @@ mod tests {
         };
         storage
             .release_daily_conversation(&released)
+            .await
             .expect("release");
 
         let snapshot = storage
             .snapshot_for_date(&actor, date)
+            .await
             .expect("snapshot")
             .expect("row");
         assert_eq!(snapshot.success_count, 1);
         assert_eq!(snapshot.in_flight, 0);
     }
 
-    #[test]
-    fn concurrent_reservations_cap_at_daily_limit() {
+    #[tokio::test]
+    async fn concurrent_reservations_cap_at_daily_limit() {
         let root = make_temp_dir("hone_quota_concurrent");
         let storage = Arc::new(ConversationQuotaStorage::new(&root).expect("storage"));
         let actor = actor("discord", "alice", None);
@@ -445,14 +440,16 @@ mod tests {
             .map(|_| {
                 let storage = storage.clone();
                 let actor = actor.clone();
-                std::thread::spawn(move || {
+                tokio::spawn(async move {
                     match storage
                         .try_reserve_daily_conversation_for_date(&actor, date, 20, false)
+                        .await
                         .expect("reserve")
                     {
                         ConversationQuotaReserveResult::Reserved(reservation) => {
                             storage
                                 .commit_daily_conversation(&reservation)
+                                .await
                                 .expect("commit");
                             true
                         }
@@ -463,14 +460,16 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let committed = handles
-            .into_iter()
-            .map(|handle| handle.join().expect("join"))
-            .filter(|success| *success)
-            .count();
+        let mut committed = 0;
+        for handle in handles {
+            if handle.await.expect("join") {
+                committed += 1;
+            }
+        }
 
         let snapshot = storage
             .snapshot_for_date(&actor, date)
+            .await
             .expect("snapshot")
             .expect("row");
         assert_eq!(committed, 20);
@@ -478,8 +477,8 @@ mod tests {
         assert_eq!(snapshot.in_flight, 0);
     }
 
-    #[test]
-    fn bypass_skips_quota_tracking() {
+    #[tokio::test]
+    async fn bypass_skips_quota_tracking() {
         let root = make_temp_dir("hone_quota_bypass");
         let storage = ConversationQuotaStorage::new(&root).expect("storage");
         let actor = actor("discord", "admin", None);
@@ -487,11 +486,13 @@ mod tests {
 
         let result = storage
             .try_reserve_daily_conversation_for_date(&actor, date, 20, true)
+            .await
             .expect("reserve");
         assert!(matches!(result, ConversationQuotaReserveResult::Bypassed));
         assert!(
             storage
                 .snapshot_for_date(&actor, date)
+                .await
                 .expect("snapshot")
                 .is_none()
         );

@@ -6648,6 +6648,7 @@ async fn run_success_commits_daily_conversation_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, 1);
@@ -6692,6 +6693,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         let reservation = match core
             .conversation_quota_storage
             .try_reserve_daily_conversation(&actor, daily_limit, false)
+            .await
             .expect("reserve")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -6699,6 +6701,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         };
         core.conversation_quota_storage
             .commit_daily_conversation(&reservation)
+            .await
             .expect("commit");
     }
 
@@ -6747,6 +6750,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, daily_limit);
@@ -10174,6 +10178,7 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert!(snapshot.is_none());
     let _ = std::fs::remove_dir_all(root);
@@ -10212,6 +10217,7 @@ async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer(
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert_eq!(
         snapshot
@@ -10743,6 +10749,7 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert!(snapshot.is_none());
 
@@ -10940,6 +10947,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
         let reservation = match core
             .conversation_quota_storage
             .try_reserve_daily_conversation(&actor, daily_limit, false)
+            .await
             .expect("reserve")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -10947,6 +10955,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
         };
         core.conversation_quota_storage
             .commit_daily_conversation(&reservation)
+            .await
             .expect("commit");
     }
 
@@ -10965,6 +10974,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, daily_limit);

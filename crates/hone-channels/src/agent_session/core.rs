@@ -2235,7 +2235,7 @@ impl AgentSession {
         }
     }
 
-    fn reserve_conversation_quota(
+    async fn reserve_conversation_quota(
         &self,
         quota_mode: AgentRunQuotaMode,
     ) -> hone_core::HoneResult<Option<ConversationQuotaReservation>> {
@@ -2252,7 +2252,8 @@ impl AgentSession {
         match self
             .core
             .conversation_quota_storage
-            .try_reserve_daily_conversation(&self.actor, daily_limit, is_admin)?
+            .try_reserve_daily_conversation(&self.actor, daily_limit, is_admin)
+            .await?
         {
             ConversationQuotaReserveResult::Reserved(reservation) => Ok(Some(reservation)),
             ConversationQuotaReserveResult::Bypassed => Ok(None),
@@ -2310,7 +2311,7 @@ impl AgentSession {
 
         // 配额预留；后续任何失败分支都靠 guard 在 drop 时自动把预留释放掉,
         // 不再需要每处都手写 release_daily_conversation。
-        let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
+        let quota_guard = match self.reserve_conversation_quota(options.quota_mode).await {
             Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
                 let raw_error = err.to_string();
@@ -2909,7 +2910,7 @@ impl AgentSession {
             self.complete_delivered_push_context(&delivered_push_turn_id);
             // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
             // 后续 drop 再执行 release。
-            quota_guard.commit();
+            quota_guard.commit().await;
             if defer_validated_output {
                 if let Some(prefix) = committed_visible_prefix.as_deref() {
                     // The Agent already committed this exact canonical prefix
