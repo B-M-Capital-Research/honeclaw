@@ -130,6 +130,15 @@ pub struct NotificationPrefs {
     /// 用于前端提示"这些持仓还没有画像或最近一次蒸馏失败"。
     #[serde(default, alias = "thesis_distill_skipped")]
     pub mainline_distill_skipped: Vec<String>,
+    /// 每个 ticker 当前主线的蒸馏来源哈希(profile.md 内容 sha256 hex)。
+    /// 增量蒸馏依据:内容哈希未变的 ticker 直接沿用旧主线,不再发 LLM。
+    /// `None` = 旧数据,下一轮全量蒸一次后进入增量。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mainline_source_hashes: Option<HashMap<String, String>>,
+    /// 上次蒸馏时的 distiller 指纹(模型 + prompt 模板的哈希)。指纹不匹配 ⇒
+    /// 全量重蒸——模型/prompt 升级后旧主线必须能被系统性刷新,增量不能堵死这条路。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mainline_distill_fingerprint: Option<String>,
     /// 勿扰时段 —— 用户希望"晚 X 点后别推、早 Y 点合并发我"。`None` = 不启用。
     /// 区间内：所有 immediate sink 推送被 hold 写 `delivery_log.status='quiet_held'`，
     /// digest fire 也跳过；`to` 时刻触发 `quiet_flush` 把 hold 住的事件 + buffer 里
@@ -168,6 +177,8 @@ impl Default for NotificationPrefs {
             mainline_by_ticker: None,
             last_mainline_distilled_at: None,
             mainline_distill_skipped: Vec::new(),
+            mainline_source_hashes: None,
+            mainline_distill_fingerprint: None,
             quiet_hours: None,
         }
     }
@@ -1109,6 +1120,12 @@ mod tests {
             }),
             last_mainline_distilled_at: Some("2026-04-26T09:00:00Z".into()),
             mainline_distill_skipped: vec!["XYZ".into()],
+            mainline_source_hashes: Some({
+                let mut hashes = HashMap::new();
+                hashes.insert("AAPL".into(), "deadbeef".into());
+                hashes
+            }),
+            mainline_distill_fingerprint: Some("fp-v1".into()),
             quiet_hours: Some(QuietHours {
                 from: "23:00".into(),
                 to: "07:00".into(),
@@ -1145,6 +1162,18 @@ mod tests {
         assert_eq!(loaded.price_realert_step_pct_override, Some(4.0));
         assert_eq!(loaded.large_position_weight_pct, Some(20.0));
         assert_eq!(loaded.mainline_style.as_deref(), Some("长期叙事派"));
+        assert_eq!(
+            loaded
+                .mainline_source_hashes
+                .as_ref()
+                .and_then(|m| m.get("AAPL"))
+                .map(String::as_str),
+            Some("deadbeef")
+        );
+        assert_eq!(
+            loaded.mainline_distill_fingerprint.as_deref(),
+            Some("fp-v1")
+        );
         assert_eq!(
             loaded
                 .mainline_by_ticker

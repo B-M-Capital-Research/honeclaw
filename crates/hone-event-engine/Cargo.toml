@@ -21,6 +21,7 @@ scraper = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
 futures = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

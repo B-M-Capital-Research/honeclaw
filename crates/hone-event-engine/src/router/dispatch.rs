@@ -660,6 +660,26 @@ impl NotificationRouter {
 
     /// High 即时推送的完整出站路径:render → polish → send → 审计日志 →
     /// 财报卡 supersede。从 `dispatch` 的 High arm 原样抽出,行为不变;
+    /// 共享润色:按 `(event.id, 通用正文哈希)` 记忆化。哈希兜底的是"通用正文
+    /// 其实并非跨 actor 恒定"的意外情况——真发生时只是退化为逐 actor 润色,
+    /// 不会发生串体(拿到别人正文)。dispatch 对 actor 是顺序遍历,无并发穿透。
+    async fn polish_core_shared(&self, event: &MarketEvent, core: &str) -> Option<String> {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        core.hash(&mut hasher);
+        let key = (event.id.clone(), hasher.finish());
+        if let Some(cached) = self.polish_memo.lock().unwrap().get(&key) {
+            return cached.clone();
+        }
+        let polished = self.polisher.polish(event, core).await;
+        let mut memo = self.polish_memo.lock().unwrap();
+        if memo.len() >= super::config::POLISH_MEMO_CAP {
+            memo.clear();
+        }
+        memo.insert(key, polished.clone());
+        polished
+    }
+
     /// `flush_dispatch_batch` 的「小于合并阈值逐条发」也复用这条路径。
     /// 返回是否成功送达。
     async fn deliver_high_immediate(
@@ -673,8 +693,15 @@ impl NotificationRouter {
         let mainline = actor_mainline_for_event(event, user_prefs);
         let default_body = renderer::render_immediate_with_mainline(event, fmt, mainline);
         let body = if matches!(fmt, RenderFormat::Plain) && !is_structured_earnings_review(event) {
-            match self.polisher.polish(event, &default_body).await {
-                Some(polished) => polished,
+            // 润色只吃跨 actor 恒定的通用正文,同一事件全部持有人共享一次 LLM 调用;
+            // 仓位/主线等个性化行由模板拼在润色输出之后。副作用是这些行不再参与
+            // 140 字压缩——以前它们经常被压没,现在必然保留。
+            let core = renderer::render_immediate_core(event, fmt);
+            match self.polish_core_shared(event, &core).await {
+                Some(polished) => match renderer::render_immediate_appendix(event, fmt) {
+                    Some(appendix) => format!("{polished}\n\n{appendix}"),
+                    None => polished,
+                },
                 None => default_body,
             }
         } else {

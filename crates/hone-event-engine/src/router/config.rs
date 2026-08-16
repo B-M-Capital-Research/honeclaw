@@ -78,7 +78,15 @@ pub struct NotificationRouter {
     /// `PRICE_BURST_MIN_MERGE` 条合成一条汇总消息,更少则照旧逐条发送。
     /// `None` = 批模式未激活(直接调 `dispatch` 的调用方维持逐条即时行为)。
     pub(super) price_burst: Mutex<Option<PriceBurstBuffer>>,
+    /// 共享润色 memo:`(event.id, 通用正文哈希) → 润色结果`。同一条 High 事件的
+    /// 全部持有人只发一次润色 LLM(生产实测 RKLB 被 32 人持有 ⇒ 32 次降 1 次)。
+    /// 失败(None)同样记忆——同一输入重试没有意义,只会把成本放大回 O(持有人)。
+    pub(super) polish_memo: Mutex<HashMap<(String, u64), Option<String>>>,
 }
+
+/// 共享润色 memo 容量上限。事件在时间上成簇,满了整体清空即可,
+/// 代价至多是每个活跃事件多润色一次;不值得为此上 LRU。
+pub(super) const POLISH_MEMO_CAP: usize = 256;
 
 /// actor_key → (actor, 本批暂存的盘中 band High 及其原始 severity)。
 pub(super) type PriceBurstBuffer = HashMap<String, (ActorIdentity, Vec<(MarketEvent, Severity)>)>;
@@ -121,6 +129,7 @@ impl NotificationRouter {
             default_importance_prompt: DEFAULT_IMPORTANCE_PROMPT.to_string(),
             news_upgrade_tick_stats: Arc::new(Mutex::new(NewsUpgradeTickStats::default())),
             price_burst: Mutex::new(None),
+            polish_memo: Mutex::new(HashMap::new()),
         }
     }
 
