@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-16 22:02-2026-08-17 02:04 CST（UTC 2026-08-16 14:02-18:04）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:30 / 01:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；01:00 CST 转为 NVIDIA 的主要客户与商业关系说明；02:00 CST 转为特朗普关税政策梳理及对 NVDA 的影响，未稳定执行原 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 22:30 CST deliver preview 主体转为当前静音、即时推、心跳任务和 kinds 配置说明；02:00 CST 同 job 又因 OpenAI-compatible 协议错位跳过发送，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-16 14:00-18:02 CST（UTC 2026-08-16 06:00-10:02）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 14:00 / 14:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；15:30 CST 转为 BE 律所提醒和单项触发，16:30 / 18:00 CST 又围绕 BE 律所重复提醒收口，未稳定执行原 AI / 科技持仓观察列表关键事件核验。

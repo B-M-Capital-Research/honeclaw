@@ -14,13 +14,24 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，当前复发证据不是 P1。
 
 ## 修复记录
+
+### 2026-08-17 02:04 CST 运行态回退
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 22:02-2026-08-17 02:04 CST。
+  - 02:00 CST Web heartbeat `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d` 在 function-calling runner 中失败。
+  - 底层错误继续为 OpenAI-compatible `upstream HTTP 400: invalid params, tool call result does not follow tool call (2013)`，日志归类为 `failure_kind=provider_http_error`，随后 Web scheduler 记录“定时任务执行失败，跳过发送”。
+  - 同窗 `HeartbeatDiag` 相关信号 433 条、heartbeat deliver 38 条、`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是 scheduler / source runtime / event-engine 整体停摆；失败集中在单轮 provider tool-call transcript 协议错位。
+- 判断：
+  - 该样本与 2026-08-10、2026-08-13 样本为同一 Web heartbeat / OpenAI-compatible tool-call 协议错位链路，不新建重复缺陷。
+  - 用户侧未见原始 provider 错误外泄，错误由调度层跳过发送承接；但该轮 heartbeat 没有生成用户期望的 AAPL / NVDA / BE 关键事件监控结果。状态回退为 `P2 / New`，非 P1，不创建 GitHub Issue。
 
 ### 2026-08-13 代码级修复
 
