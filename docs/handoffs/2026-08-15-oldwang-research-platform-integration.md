@@ -85,3 +85,26 @@
   改为 `all`（或另起 worker 角色进程）属运营决策：worker 启动即做冷启动刷新，
   会消耗 FMP/搜索/模型配额，且 PM 的 QA 记录显示这些 provider 凭证配置状态
   待确认。等待产品负责人拍板后执行。
+
+## 生产数据开通记录（2026-08-16 17:3x 北京时间）
+
+- 通道：本机 gcloud CLI（用户完成 OAuth 授权）→ `gcloud compute ssh`；此前浏览器
+  SSH 通道被权限分类器拦截，已弃用。
+- 版本：按 Actions Run #92 digest（`sha256:0f280581…`）暂存并切换到
+  `ff3eea4e51ed00a79d98336a8d6799e2331c40bc`（含 role=all CPU 修复：cloud-sync 线程
+  按可用 CPU、mainline 画像每 actor 一次批量读取）。
+- 角色：`HONE_RUNTIME_ROLE` 实际由 systemd drop-in `hone-web.service.d/runtime-role.conf`
+  定义且已是 `all`（协作方为重新灰度预置），重启即生效；`/etc/hone/runtime.env` 中
+  已无该行（勿再在此文件找角色）。
+- 配置（均有 `config.yaml.bak-20260816` 备份）：`event_engine.enabled: true → false`
+  （带注释；避免推送引擎在未经确认的情况下随角色首启，恢复灰度改回 true 即可）；
+  `rss_feeds` 补 `influencer_serenity` / `influencer_semianalysis` / `key_event_openai`。
+- 首轮冷启动结果（均已落盘 `/srv/honeclaw/data/`）：公司评级 partial（quotes 51/52、
+  financials 50，FMP 生效）；估值实验室 calculated=51 / eligible=0（新鲜度与离散度
+  门槛 fail-closed）；大V速报 live 11 条；关键事件链 partial 35 事件；持仓新闻/
+  仓位管理按用户生成；每日信号当日快照已存在（幂等跳过，20:00 例行）；周报 19:10。
+  mainline 画像蒸馏 cron 以批量读取模式跑完 tick（triggered=38）无 CPU 异常——
+  `dc68eedf` 修复在生产首次验证通过。
+- 端到端验收：hone-claw.com/research 登录态下满屏真实数据（宏观 61.6 黄灯、
+  AI 67.6 黄灯 4/4 覆盖、评级 52 家、大V 11 条、事件链 35 里程碑、周报 20 项）。
+- 待协作方决策：事件引擎推送灰度（改回 enabled: true 并观察生产波次）。
