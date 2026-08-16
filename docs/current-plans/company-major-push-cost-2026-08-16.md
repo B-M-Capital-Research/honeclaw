@@ -1,9 +1,15 @@
 # 推送/蒸馏成本整治：消灭重复计算 + 按公司共享润色
 
-- status: `planned`
+- status: `in_progress`（P0/P1 已上线生产,role=all 灰度观察中;P2 待决策）
 - created_at: `2026-08-16`
-- owner: `Claude`（协调）+ `Codex`（实现）
+- updated_at: `2026-08-16`
+- owner: `Claude`（实现 P0/P1）
 - 执行范围：**P0 + P1**（用户 2026-08-16 决策）；P2 为已设计、待决策的后续项
+- 落地记录：P0=`10d48dc4`、P1=`0b9cf78c`,经 `2f6ceee6` 合并（含 track-B 存储 async 化）
+  上线本地与 GCE。门禁:workspace 2591/0、hone-memory ignored 93/0、regression 22 脚本
+  exit 0、web 486/0、`replay_push_quality_audit` 与重构前逐项一致;四处变异验证全部
+  被对应测试击杀。生产可观测判定（mainline_short 日调用量降到个位数）待 role=all
+  稳定后按 `cloud_llm_audit_records` 对账。
 - related_files:
   - `crates/hone-event-engine/src/global_digest/mainline_cron.rs`
   - `crates/hone-event-engine/src/global_digest/mainline_distill.rs`
