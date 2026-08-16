@@ -394,8 +394,8 @@ impl DataFetchTool {
         )
     }
 
-    /// Every aggregate data type is a list of `(key, path)` pairs against the
-    /// stable API. Adding a capability means adding a row to
+    /// Every aggregate data type is a list of `(key, URL)` provider requests.
+    /// Adding a capability means adding a row to
     /// `stable_bundle_components`, not another hand-written `tokio::join!` and
     /// another coverage map — the reason earlier gaps were closed one endpoint
     /// at a time is that each one cost a dispatcher change.
@@ -504,16 +504,29 @@ impl DataFetchTool {
                 components
             }
             // Macro context is symbol-independent.
-            "macro" => vec![
-                ("treasury_rates", s("treasury-rates")),
-                ("gdp", s("economic-indicators?name=GDP")),
-                ("cpi", s("economic-indicators?name=CPI")),
-                (
-                    "unemployment",
-                    s("economic-indicators?name=unemploymentRate"),
-                ),
-                ("federal_funds", s("economic-indicators?name=federalFunds")),
-            ],
+            "macro" => {
+                let today = chrono::Utc::now().date_naive();
+                let to = today + Duration::days(7);
+                vec![
+                    ("treasury_rates", s("treasury-rates")),
+                    ("gdp", s("economic-indicators?name=GDP")),
+                    ("cpi", s("economic-indicators?name=CPI")),
+                    (
+                        "unemployment",
+                        s("economic-indicators?name=unemploymentRate"),
+                    ),
+                    ("federal_funds", s("economic-indicators?name=federalFunds")),
+                    (
+                        "economic_calendar",
+                        format!(
+                            "{}/v3/economic_calendar?from={}&to={}",
+                            self.base_url,
+                            today.format("%Y-%m-%d"),
+                            to.format("%Y-%m-%d")
+                        ),
+                    ),
+                ]
+            }
             "market_hours" => vec![("all_exchange_market_hours", s("all-exchange-market-hours"))],
             _ => return None,
         })
@@ -2137,6 +2150,7 @@ impl Tool for DataFetchTool {
                     "snapshot".into(),
                     "earnings_outlook".into(),
                     "financials".into(),
+                    "macro".into(),
                     "news".into(),
                     "gainers_losers".into(),
                     "sector_performance".into(),
@@ -3091,6 +3105,21 @@ mod tests {
                 .any(|parameter| parameter.name == "supersedes_query")
         );
         assert!(tool.description().contains("必须先用 search"));
+    }
+
+    #[test]
+    fn macro_is_exposed_in_tool_schema() {
+        let tool = tool_with_test_key();
+        let parameters = tool.parameters();
+        let data_type = parameters
+            .iter()
+            .find(|parameter| parameter.name == "data_type")
+            .expect("data_type parameter");
+        let enum_values = data_type.r#enum.as_ref().expect("enum values");
+
+        // TODO: require every branch supported by data_fetch once the other
+        // existing schema gaps are intentionally exposed to the model.
+        assert!(enum_values.iter().any(|value| value == "macro"));
     }
 
     #[test]
@@ -4127,6 +4156,29 @@ mod tests {
         assert!(data_fetch_data_type_uses_security_target("valuation"));
         assert!(data_fetch_data_type_uses_security_target("segments"));
         assert!(data_fetch_data_type_uses_security_target("peers"));
+    }
+
+    #[test]
+    fn macro_bundle_includes_the_next_seven_days_economic_calendar() {
+        let tool = tool_with_test_key();
+        let today = chrono::Utc::now().date_naive();
+        let to = today + Duration::days(7);
+        let components = tool
+            .stable_bundle_components("macro", "", &json!({}))
+            .expect("macro bundle components");
+        let economic_calendar_url = components
+            .iter()
+            .find_map(|(key, url)| (*key == "economic_calendar").then_some(url))
+            .expect("economic_calendar component");
+
+        assert_eq!(
+            economic_calendar_url,
+            &format!(
+                "https://example.com/api/v3/economic_calendar?from={}&to={}",
+                today.format("%Y-%m-%d"),
+                to.format("%Y-%m-%d")
+            )
+        );
     }
 
     /// A 45.57bn market cap was published as 4557 亿 — ten times too large —
