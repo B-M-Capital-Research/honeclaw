@@ -284,10 +284,17 @@ export function InfluencerDigestPanel(props: Props) {
                         <For each={item.media_urls}>
                           {(url) => (
                             <a href={url} target="_blank" rel="noreferrer">
+                              {/* Deliberately not `loading="lazy"`. The panel
+                                  pins the page with `body { position: fixed }`
+                                  for its iOS-safe scroll lock, and Chrome then
+                                  stops resolving the viewport intersection for
+                                  images inside this portal — they sit visible
+                                  and never request. The panel mounts on open
+                                  and holds at most a day of posts, so decoding
+                                  off the main thread is enough. */}
                               <img
                                 src={url}
                                 alt={`${item.author_name} 原文配图`}
-                                loading="lazy"
                                 decoding="async"
                                 referrerpolicy="no-referrer"
                               />
