@@ -10386,11 +10386,6 @@ fn normalized_portfolio_snapshot(
     max_chars: usize,
 ) -> PortfolioSnapshotEvidence {
     let body = portfolio.get("portfolio").unwrap_or(portfolio);
-    let requested_symbols = explicit_mentions
-        .iter()
-        .filter_map(|mention| mention.explicit_symbol.as_deref())
-        .map(str::to_ascii_uppercase)
-        .collect::<Vec<_>>();
     let mut holdings = body
         .get("holdings")
         .and_then(Value::as_array)
@@ -10406,6 +10401,25 @@ fn normalized_portfolio_snapshot(
         .unwrap_or_default()
         .into_iter()
         .map(|record| normalized_portfolio_record(&record))
+        .collect::<Vec<_>>();
+    let explicit_mentions = explicit_mentions
+        .iter()
+        .filter(|mention| {
+            !mention.tentative_symbol
+                || mention.explicit_symbol.as_deref().is_some_and(|symbol| {
+                    holdings.iter().chain(watchlist.iter()).any(|record| {
+                        portfolio_record_market_symbol(record).is_some_and(|candidate| {
+                            provider_symbols_equivalent(symbol, &candidate)
+                        })
+                    })
+                })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let requested_symbols = explicit_mentions
+        .iter()
+        .filter_map(|mention| mention.explicit_symbol.as_deref())
+        .map(str::to_ascii_uppercase)
         .collect::<Vec<_>>();
     holdings.sort_by_key(|record| {
         !portfolio_record_market_symbol(record).is_some_and(|symbol| {
@@ -14099,6 +14113,127 @@ mod tests {
                     || membership["in_watchlist"].as_bool() == Some(true),
                 "{membership}"
             );
+        }
+    }
+
+    #[test]
+    fn portfolio_snapshot_drops_tentative_mentions_outside_the_real_ledger() {
+        let explicit = ["TEM", "PCE"]
+            .into_iter()
+            .map(|symbol| EntityMention {
+                mention: symbol.into(),
+                search_query: symbol.into(),
+                explicit_symbol: Some(symbol.into()),
+                tentative_symbol: true,
+                context: EntityMentionContext::default(),
+            })
+            .collect::<Vec<_>>();
+        let snapshot = normalized_portfolio_snapshot(
+            &json!({"portfolio": {
+                "holdings": [{"symbol":"TEM","asset_type":"stock"}],
+                "watchlist": []
+            }}),
+            &explicit,
+            6_000,
+        );
+
+        assert_eq!(snapshot.value["market_symbols"], json!(["TEM"]));
+        assert_eq!(
+            snapshot
+                .security_mentions
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            vec!["TEM"]
+        );
+    }
+
+    #[test]
+    fn portfolio_snapshot_keeps_a_tentative_symbol_confirmed_by_holdings() {
+        let explicit = [EntityMention {
+            mention: "TEM".into(),
+            search_query: "TEM".into(),
+            explicit_symbol: Some("TEM".into()),
+            tentative_symbol: true,
+            context: EntityMentionContext::default(),
+        }];
+        let snapshot = normalized_portfolio_snapshot(
+            &json!({"portfolio": {
+                "holdings": [{"symbol":"TEM","asset_type":"stock"}],
+                "watchlist": []
+            }}),
+            &explicit,
+            6_000,
+        );
+
+        assert_eq!(snapshot.security_mentions, explicit);
+        assert_eq!(
+            snapshot.value["requested_symbol_membership"][0]["in_holdings"],
+            true
+        );
+    }
+
+    #[test]
+    fn portfolio_snapshot_keeps_a_tentative_symbol_confirmed_by_watchlist() {
+        let explicit = [EntityMention {
+            mention: "BRK.B".into(),
+            search_query: "BRK.B".into(),
+            explicit_symbol: Some("BRK.B".into()),
+            tentative_symbol: true,
+            context: EntityMentionContext::default(),
+        }];
+        let snapshot = normalized_portfolio_snapshot(
+            &json!({"portfolio": {
+                "holdings": [],
+                "watchlist": [{"symbol":"BRK-B","asset_type":"stock"}]
+            }}),
+            &explicit,
+            6_000,
+        );
+
+        assert_eq!(snapshot.security_mentions, explicit);
+        assert_eq!(
+            snapshot.value["requested_symbol_membership"][0]["in_watchlist"],
+            true
+        );
+    }
+
+    #[test]
+    fn production_portfolio_prompt_uses_real_holdings_instead_of_tentative_acronyms() {
+        let input = "每天北京时间20:00整理并发送美股盘前要闻摘要。必须先明确当前北京时间日期和美股交易日状态。内容包括：1. 当日/近期重要宏观数据与预期差：就业、非农、初请、CPI、PCE、ISM、零售销售等；2. 美联储和利率相关：Fed官员表态、降息/加息概率、FedWatch或可得市场定价、2年/10年期美债收益率及收益率曲线变化；3. 美股盘前主要指数期货、美元、原油、黄金、VIX等风险偏好信号；4. AI、半导体、光通信、航天、能源/电力等与用户长期关注主题相关的关键新闻；5. 重点关注用户持仓/关注标的 MRVL、AAOI、RKLB、LITE、BE、NVDA、TEM 的重要投行研究报告、评级变化、目标价调整、财报/指引、SEC文件、重大订单、产品发布、监管/指数纳入事件和盘前/盘后异动；6. 用“事实/推断/动作观察/证伪条件”四层输出，避免情绪化结论；7. 对价格和评级等实时数据必须标注数据口径与时间，若盘前/盘后实时价不可得，必须说明未覆盖扩展时段实时价；8. 最后给出当日风险重点和需要盯盘的2-5个触发条件。";
+        let explicit_mentions = match extract_entity_scope(input, AgentTurnOrigin::Scheduled) {
+            EntityResolutionScope::Portfolio(mentions) => mentions,
+            scope => panic!("expected portfolio scope, got {scope:?}"),
+        };
+        assert!(
+            explicit_mentions
+                .iter()
+                .all(|mention| mention.tentative_symbol),
+            "production scanner survivors must remain tentative: {explicit_mentions:?}"
+        );
+
+        let expected = ["MRVL", "AAOI", "RKLB", "LITE", "BE", "NVDA", "TEM"];
+        let snapshot = normalized_portfolio_snapshot(
+            &json!({"portfolio": {
+                "holdings": expected
+                    .iter()
+                    .map(|symbol| json!({"symbol": symbol, "asset_type": "stock"}))
+                    .collect::<Vec<_>>(),
+                "watchlist": []
+            }}),
+            &explicit_mentions,
+            12_000,
+        );
+        let resolved = snapshot
+            .security_mentions
+            .iter()
+            .filter_map(|mention| mention.explicit_symbol.as_deref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(resolved, expected);
+        assert_eq!(snapshot.value["market_symbols"], json!(expected));
+        for false_candidate in ["PCE", "CPI", "ISM", "VIX", "AI"] {
+            assert!(!resolved.contains(&false_candidate), "{false_candidate}");
         }
     }
 
