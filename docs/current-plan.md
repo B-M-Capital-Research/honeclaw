@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-16
-状态：有 14 个活跃任务
+状态：有 13 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **运行时时区去硬编码**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/runtime-timezone-2026-08-16.md`
-  - 摘要：建立配置、`HONE_TIMEZONE`、机器时区、UTC 的唯一运行时区优先级，迁移北京时间原语与运行时字面量，让 cron、日期键、用户文案及 PostgreSQL TEXT 时间比较在 DST 和历史跨偏移数据下按真实时刻工作
 
 - **调度与定时任务体系化整治**
   - 状态：`in_progress`

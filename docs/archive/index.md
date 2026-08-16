@@ -1,6 +1,27 @@
 # Archive Index
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
+
+## 2026-08-16
+
+### Runtime Timezone Without Geographic Defaults
+
+- Status: done locally; no push and no historical database rewrite
+- Date: 2026-08-16
+- Plan: `docs/archive/plans/runtime-timezone-2026-08-16.md`
+- Handoff: intentionally omitted per task contract
+- Related PRs / commits: local `7ca42198`, `23208d2c`, `87ec8536`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; non-`+08:00`
+  cron/date/render regression; full workspace tests; PostgreSQL ignored integration tests;
+  CI-safe regression suite; Web tests; hardcoded-timezone closing grep
+- Current conclusion: the process timezone now resolves from top-level config, then
+  `HONE_TIMEZONE`, host IANA/current offset, and finally UTC. Cron, date keys, rendering,
+  prompts and generic runtime clocks no longer assume Beijing; IANA DST is evaluated per
+  instant. Offset-bearing TEXT timestamps compare as `timestamptz` without rewriting the
+  existing `+08:00` rows.
+- Next entry point: set top-level `timezone` explicitly in every production container; actor
+  notification zones and exchange-calendar zones remain explicit domain overrides rather than
+  process defaults.
 
 ## 2026-08-15
 
