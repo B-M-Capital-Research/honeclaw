@@ -47,6 +47,39 @@ pub struct DistilledMainlines {
     pub last_distilled_at: Option<DateTime<Utc>>,
     /// 蒸馏中跳过的 ticker(LLM 失败 / 画像缺失等),便于诊断。
     pub skipped_tickers: Vec<String>,
+    /// `by_ticker` 中每条主线的来源画像内容哈希。增量蒸馏的判据,随主线一起持久化。
+    #[serde(default)]
+    pub source_hashes: HashMap<String, String>,
+    /// 本轮 distiller 指纹。`None` = 空轮(无画像),不更新存量指纹。
+    #[serde(default)]
+    pub fingerprint: Option<String>,
+}
+
+/// 上一轮蒸馏的持久化状态视图,驱动增量决策。全 `None` = 无历史 ⇒ 全量蒸馏,
+/// 这也保证 [`distill_for_actor`] 等无 prefs 上下文的入口行为与历史版本一致。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PriorMainlines<'a> {
+    pub by_ticker: Option<&'a HashMap<String, String>>,
+    pub source_hashes: Option<&'a HashMap<String, String>>,
+    pub fingerprint: Option<&'a str>,
+}
+
+impl<'a> PriorMainlines<'a> {
+    pub fn from_prefs(prefs: &'a crate::prefs::NotificationPrefs) -> Self {
+        Self {
+            by_ticker: prefs.mainline_by_ticker.as_ref(),
+            source_hashes: prefs.mainline_source_hashes.as_ref(),
+            fingerprint: prefs.mainline_distill_fingerprint.as_deref(),
+        }
+    }
+}
+
+/// profile.md 内容哈希。持久化在 prefs 里跨进程/跨后端比较,必须是稳定算法,
+/// 不能用 `std::hash`(其输出不保证跨版本稳定)。
+pub fn profile_content_hash(markdown: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(markdown.as_bytes());
+    format!("{digest:x}")
 }
 
 /// 蒸馏抽象,生产实现走 LLM,测试可注入 stub。
@@ -54,6 +87,11 @@ pub struct DistilledMainlines {
 pub trait MainlineDistiller: Send + Sync {
     async fn distill_mainline(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String>;
     async fn distill_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String>;
+    /// 输出语义指纹(模型 + prompt 模板)。指纹变化 ⇒ 增量失效、全量重蒸,
+    /// 保证模型/prompt 升级能刷新存量主线。默认空串:stub 恒定 ⇒ 恒定指纹。
+    fn fingerprint(&self) -> String {
+        String::new()
+    }
 }
 
 /// LLM 实现 —— 默认走当前 OpenRouter 可用的 grok 级模型。
@@ -104,6 +142,10 @@ const STYLE_PROMPT: &str = "下面是同一个用户对 {{N}} 只持仓的长期
 
 #[async_trait]
 impl MainlineDistiller for LlmMainlineDistiller {
+    fn fingerprint(&self) -> String {
+        profile_content_hash(&format!("{}\n{DISTILL_PROMPT}\n{STYLE_PROMPT}", self.model))
+    }
+
     async fn distill_mainline(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String> {
         let prompt = DISTILL_PROMPT
             .replace("{{TICKER}}", ticker)
@@ -308,13 +350,14 @@ pub async fn distill_for_actor(
     holdings: &[String],
 ) -> DistilledMainlines {
     let profiles = scan_profiles(sandbox_root, Some(holdings));
-    distill_from_profiles(distiller, profiles, holdings).await
+    distill_from_profiles(distiller, profiles, holdings, PriorMainlines::default()).await
 }
 
 pub async fn distill_from_profiles(
     distiller: &dyn MainlineDistiller,
     profiles: Vec<ProfileSource>,
     holdings: &[String],
+    prior: PriorMainlines<'_>,
 ) -> DistilledMainlines {
     if profiles.is_empty() {
         return DistilledMainlines {
@@ -322,29 +365,67 @@ pub async fn distill_from_profiles(
             style: None,
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: holdings.to_vec(),
+            source_hashes: HashMap::new(),
+            fingerprint: None,
         };
     }
 
+    // 增量决策:指纹一致时,内容哈希未变且已覆盖的 ticker 沿用旧主线,不发 LLM。
+    // 生产常态是"持仓有缺画像的 ticker ⇒ 每 6h 触发一次",没有这层判断时每次
+    // 触发都会把全部未变化画像重蒸一遍(实测 ~2000 次/天的纯重复调用)。
+    let current_fingerprint = distiller.fingerprint();
+    let fingerprint_matches = prior.fingerprint == Some(current_fingerprint.as_str());
+    let hashed: Vec<(ProfileSource, String)> = profiles
+        .iter()
+        .map(|profile| (profile.clone(), profile_content_hash(&profile.markdown)))
+        .collect();
+
+    let mut by_ticker: HashMap<String, String> = HashMap::new();
+    let mut source_hashes: HashMap<String, String> = HashMap::new();
+    let mut to_distill: Vec<(ProfileSource, String)> = Vec::new();
+    for (profile, content_hash) in hashed {
+        let reusable = fingerprint_matches
+            && prior
+                .source_hashes
+                .and_then(|hashes| hashes.get(&profile.ticker))
+                == Some(&content_hash);
+        let prior_text = reusable.then(|| {
+            prior
+                .by_ticker
+                .and_then(|map| map.get(&profile.ticker))
+                .cloned()
+        });
+        match prior_text.flatten() {
+            Some(text) => {
+                by_ticker.insert(profile.ticker.clone(), text);
+                source_hashes.insert(profile.ticker, content_hash);
+            }
+            None => to_distill.push((profile, content_hash)),
+        }
+    }
+    let anything_changed = !to_distill.is_empty();
+
     // 并发蒸主线(每个独立 LLM call)
     use futures::stream::{self, StreamExt};
-    let ticker_distill_results: Vec<(String, anyhow::Result<String>)> =
-        stream::iter(profiles.iter().cloned())
-            .map(|profile| async move {
+    let ticker_distill_results: Vec<(String, String, anyhow::Result<String>)> =
+        stream::iter(to_distill)
+            .map(|(profile, content_hash)| async move {
                 let distill_result = distiller
                     .distill_mainline(&profile.ticker, &profile.markdown)
                     .await;
-                (profile.ticker, distill_result)
+                (profile.ticker, content_hash, distill_result)
             })
             .buffer_unordered(6)
             .collect()
             .await;
 
-    let mut by_ticker: HashMap<String, String> = HashMap::new();
     let mut skipped_tickers: Vec<String> = Vec::new();
-    for (ticker, distill_result) in ticker_distill_results {
+    for (ticker, content_hash, distill_result) in ticker_distill_results {
         match distill_result {
             Ok(mainline) => {
-                by_ticker.insert(ticker, mainline);
+                by_ticker.insert(ticker.clone(), mainline);
+                // 失败的 ticker 不落 hash ⇒ 下轮触发时仍会重试,与历史重试语义一致。
+                source_hashes.insert(ticker, content_hash);
             }
             Err(e) => {
                 tracing::warn!(ticker = %ticker, "mainline distill failed: {e}");
@@ -363,12 +444,27 @@ pub async fn distill_from_profiles(
         }
     }
 
-    let style = match distiller.distill_style(&profiles).await {
-        Ok(s) => Some(s),
-        Err(e) => {
-            tracing::warn!("mainline style distill failed: {e}");
-            None
+    // style 覆盖全部画像:有新蒸的、或画像集合本身变了(增删/改动)才需要重算;
+    // 否则返回 None,merge 侧语义是"保留旧 style"。
+    let hash_set_changed = prior
+        .source_hashes
+        .map(|prior_hashes| {
+            prior_hashes.len() != source_hashes.len()
+                || source_hashes
+                    .iter()
+                    .any(|(ticker, hash)| prior_hashes.get(ticker) != Some(hash))
+        })
+        .unwrap_or(true);
+    let style = if anything_changed || hash_set_changed || !fingerprint_matches {
+        match distiller.distill_style(&profiles).await {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!("mainline style distill failed: {e}");
+                None
+            }
         }
+    } else {
+        None
     };
 
     DistilledMainlines {
@@ -376,6 +472,8 @@ pub async fn distill_from_profiles(
         style,
         last_distilled_at: Some(Utc::now()),
         skipped_tickers,
+        source_hashes,
+        fingerprint: Some(current_fingerprint),
     }
 }
 
@@ -431,11 +529,23 @@ pub async fn distill_and_persist_one(
     holdings: &[String],
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
     let profiles = scan_profiles_for_actor(sandbox_base, actor, Some(holdings));
-    let distilled_mainlines = distill_from_profiles(distiller, profiles, holdings).await;
-    merge_into_prefs(prefs_storage, actor, distilled_mainlines)
+    // prefs 只 load 一次:既做增量蒸馏的先验,也做 merge 的底稿。
+    let mut prefs = prefs_storage.load(actor);
+    let distilled_mainlines = distill_from_profiles(
+        distiller,
+        profiles,
+        holdings,
+        PriorMainlines::from_prefs(&prefs),
+    )
+    .await;
+    apply_distilled(&mut prefs, distilled_mainlines);
+    prefs_storage
+        .save(actor, &prefs)
+        .map_err(|e| anyhow::anyhow!("save prefs: {e}"))?;
+    Ok(prefs)
 }
 
-/// 把蒸馏结果合并写回 actor 的 NotificationPrefs 文件。
+/// 把蒸馏结果合并进 prefs(纯内存,调用方负责持久化)。
 ///
 /// 行为:
 /// - 如果 `by_ticker` 非空 → 覆盖整个 `mainline_by_ticker` 字段(系统全权管)。
@@ -444,16 +554,15 @@ pub async fn distill_and_persist_one(
 /// - `style` 同样:有就覆盖,无就保留旧的。
 /// - `last_mainline_distilled_at` 只在结果携带时间戳时更新;`mainline_distill_skipped`
 ///   每次 merge 都替换为本轮 skipped 列表。
-///
-/// 返回写入后的 prefs 副本。
-pub fn merge_into_prefs(
-    prefs_storage: &dyn crate::prefs::PrefsProvider,
-    actor: &ActorIdentity,
-    distilled: DistilledMainlines,
-) -> anyhow::Result<crate::prefs::NotificationPrefs> {
-    let mut prefs = prefs_storage.load(actor);
+pub fn apply_distilled(prefs: &mut crate::prefs::NotificationPrefs, distilled: DistilledMainlines) {
     if !distilled.by_ticker.is_empty() {
         prefs.mainline_by_ticker = Some(distilled.by_ticker);
+        prefs.mainline_source_hashes = Some(distilled.source_hashes);
+        // 指纹只随成功产物一起前进:全失败轮保留旧 map 时若写入新指纹,
+        // 下一轮会把旧模型的产物误判为已刷新,升级通道就断了。
+        if let Some(fingerprint) = distilled.fingerprint {
+            prefs.mainline_distill_fingerprint = Some(fingerprint);
+        }
     }
     if distilled.style.is_some() {
         prefs.mainline_style = distilled.style;
@@ -461,12 +570,8 @@ pub fn merge_into_prefs(
     prefs.last_mainline_distilled_at = distilled
         .last_distilled_at
         .map(|t| t.to_rfc3339())
-        .or(prefs.last_mainline_distilled_at);
+        .or(prefs.last_mainline_distilled_at.take());
     prefs.mainline_distill_skipped = distilled.skipped_tickers;
-    prefs_storage
-        .save(actor, &prefs)
-        .map_err(|e| anyhow::anyhow!("save prefs: {e}"))?;
-    Ok(prefs)
 }
 
 #[cfg(test)]
@@ -724,7 +829,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merge_into_prefs_overwrites_mainlines_and_style_when_present() {
+    async fn apply_distilled_overwrites_mainlines_and_style_when_present() {
         use crate::prefs::{FilePrefsStorage, PrefsProvider};
         let dir = tempdir().unwrap();
         let storage = FilePrefsStorage::new(dir.path()).unwrap();
@@ -738,8 +843,11 @@ mod tests {
             style: Some("style text".into()),
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["AAPL".into()],
+            ..Default::default()
         };
-        let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
+        let mut prefs = storage.load(&actor);
+        apply_distilled(&mut prefs, distilled);
+        storage.save(&actor, &prefs).unwrap();
         assert_eq!(prefs.mainline_by_ticker.as_ref().unwrap().len(), 2);
         assert_eq!(prefs.mainline_style.as_deref(), Some("style text"));
         assert!(prefs.last_mainline_distilled_at.is_some());
@@ -751,7 +859,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merge_into_prefs_preserves_old_mainlines_when_distilled_empty() {
+    async fn apply_distilled_preserves_old_mainlines_when_distilled_empty() {
         use crate::prefs::PrefsProvider;
         use crate::prefs::{FilePrefsStorage, NotificationPrefs};
         let dir = tempdir().unwrap();
@@ -772,8 +880,11 @@ mod tests {
             style: None,
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["MU".into()],
+            ..Default::default()
         };
-        let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
+        let mut prefs = storage.load(&actor);
+        apply_distilled(&mut prefs, distilled);
+        storage.save(&actor, &prefs).unwrap();
         // 旧主线应保留(防止误删历史)
         assert_eq!(
             prefs.mainline_by_ticker.as_ref().unwrap()["MU"],
@@ -801,6 +912,201 @@ mod tests {
         assert!(prompt.contains("long profile content"));
         assert!(!prompt.contains("{{TICKER}}")); // template var 应已替换
         assert!(!prompt.contains("{{PROFILE}}"));
+    }
+
+    /// 增量蒸馏专用 stub:计数 + 可配置指纹。
+    struct IncrementalDistiller {
+        mainline_calls: AtomicUsize,
+        style_calls: AtomicUsize,
+        fingerprint: String,
+    }
+    impl IncrementalDistiller {
+        fn new(fingerprint: &str) -> Self {
+            Self {
+                mainline_calls: AtomicUsize::new(0),
+                style_calls: AtomicUsize::new(0),
+                fingerprint: fingerprint.to_string(),
+            }
+        }
+    }
+    #[async_trait]
+    impl MainlineDistiller for IncrementalDistiller {
+        async fn distill_mainline(&self, ticker: &str, _profile: &str) -> anyhow::Result<String> {
+            let n = self.mainline_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("mainline for {ticker} (call {n})"))
+        }
+        async fn distill_style(&self, profiles: &[ProfileSource]) -> anyhow::Result<String> {
+            let n = self.style_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("style over {} profiles (call {n})", profiles.len()))
+        }
+        fn fingerprint(&self) -> String {
+            self.fingerprint.clone()
+        }
+    }
+
+    fn write_actor_profile(
+        sandbox_base: &Path,
+        actor: &ActorIdentity,
+        dir_name: &str,
+        content: &str,
+    ) {
+        let dir = actor_sandbox_dir(sandbox_base, actor)
+            .join("company_profiles")
+            .join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("profile.md"), content).unwrap();
+    }
+
+    fn incremental_fixture() -> (
+        tempfile::TempDir,
+        crate::prefs::FilePrefsStorage,
+        ActorIdentity,
+    ) {
+        let dir = tempdir().unwrap();
+        let storage = crate::prefs::FilePrefsStorage::new(dir.path().join("prefs")).unwrap();
+        let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
+        (dir, storage, actor)
+    }
+
+    #[tokio::test]
+    async fn second_run_with_unchanged_profiles_makes_zero_llm_calls() {
+        let (dir, storage, actor) = incremental_fixture();
+        let sandbox = dir.path().join("sandbox");
+        write_actor_profile(&sandbox, &actor, "mu", "ticker: MU\n# Micron\n看 NAND 稀缺");
+        write_actor_profile(
+            &sandbox,
+            &actor,
+            "rklb",
+            "ticker: RKLB\n# Rocket Lab\n看发射节奏",
+        );
+        let distiller = IncrementalDistiller::new("fp-a");
+        let holdings = vec!["MU".to_string(), "RKLB".to_string()];
+
+        let first = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        assert_eq!(first.mainline_by_ticker.as_ref().unwrap().len(), 2);
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 1);
+
+        let second = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        // 内容未变 ⇒ 第二轮零 LLM 调用,主线与 style 原样保留
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(second.mainline_by_ticker, first.mainline_by_ticker);
+        assert_eq!(second.mainline_style, first.mainline_style);
+        // 时间戳仍要前进:cron 的节流依赖它
+        assert!(second.last_mainline_distilled_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn editing_one_profile_redistills_only_that_ticker() {
+        let (dir, storage, actor) = incremental_fixture();
+        let sandbox = dir.path().join("sandbox");
+        write_actor_profile(&sandbox, &actor, "mu", "ticker: MU\n初版内容");
+        write_actor_profile(&sandbox, &actor, "rklb", "ticker: RKLB\n初版内容");
+        let distiller = IncrementalDistiller::new("fp-a");
+        let holdings = vec!["MU".to_string(), "RKLB".to_string()];
+
+        let first = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        let mu_before = first.mainline_by_ticker.as_ref().unwrap()["MU"].clone();
+
+        write_actor_profile(&sandbox, &actor, "rklb", "ticker: RKLB\n改过的内容");
+        let second = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        // 恰好多 1 次主线调用(RKLB),MU 主线文本原样;画像集变了 ⇒ style 重算
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 3);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(second.mainline_by_ticker.as_ref().unwrap()["MU"], mu_before);
+        assert_ne!(
+            second.mainline_by_ticker.as_ref().unwrap()["RKLB"],
+            first.mainline_by_ticker.as_ref().unwrap()["RKLB"]
+        );
+    }
+
+    #[tokio::test]
+    async fn fingerprint_change_forces_full_redistill() {
+        let (dir, storage, actor) = incremental_fixture();
+        let sandbox = dir.path().join("sandbox");
+        write_actor_profile(&sandbox, &actor, "mu", "ticker: MU\n内容");
+        write_actor_profile(&sandbox, &actor, "rklb", "ticker: RKLB\n内容");
+        let holdings = vec!["MU".to_string(), "RKLB".to_string()];
+
+        let distiller_v1 = IncrementalDistiller::new("fp-v1");
+        distill_and_persist_one(&distiller_v1, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        assert_eq!(distiller_v1.mainline_calls.load(Ordering::SeqCst), 2);
+
+        // 模型/prompt 升级 ⇒ 指纹变化 ⇒ 内容没变也要全量重蒸
+        let distiller_v2 = IncrementalDistiller::new("fp-v2");
+        distill_and_persist_one(&distiller_v2, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        assert_eq!(distiller_v2.mainline_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(distiller_v2.style_calls.load(Ordering::SeqCst), 1);
+
+        // 升级完成后回到增量:同指纹再跑一轮 ⇒ 0 调用
+        let distiller_v2_again = IncrementalDistiller::new("fp-v2");
+        distill_and_persist_one(&distiller_v2_again, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        assert_eq!(distiller_v2_again.mainline_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(distiller_v2_again.style_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn uncovered_holding_does_not_trigger_redistill_of_covered_tickers() {
+        // 生产常态:持仓里有永远没画像的 ticker(6h 重试永动机的根源)。
+        // 已覆盖 ticker 不得因此被反复重蒸。
+        let (dir, storage, actor) = incremental_fixture();
+        let sandbox = dir.path().join("sandbox");
+        write_actor_profile(&sandbox, &actor, "mu", "ticker: MU\n内容");
+        let distiller = IncrementalDistiller::new("fp-a");
+        let holdings = vec!["MU".to_string(), "AAPL".to_string()];
+
+        for _ in 0..3 {
+            let prefs = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+                .await
+                .unwrap();
+            assert!(prefs.mainline_distill_skipped.contains(&"AAPL".to_string()));
+        }
+        // 3 轮下来 MU 只蒸了第一轮那 1 次
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn legacy_prefs_without_hashes_full_distill_once_then_incremental() {
+        let (dir, storage, actor) = incremental_fixture();
+        let sandbox = dir.path().join("sandbox");
+        write_actor_profile(&sandbox, &actor, "mu", "ticker: MU\n内容");
+        // 老数据:有主线、无 source_hashes / fingerprint
+        use crate::prefs::PrefsProvider;
+        let mut legacy = crate::prefs::NotificationPrefs::default();
+        legacy.mainline_by_ticker = Some(HashMap::from([("MU".to_string(), "旧主线".to_string())]));
+        assert!(legacy.mainline_source_hashes.is_none());
+        storage.save(&actor, &legacy).unwrap();
+
+        let distiller = IncrementalDistiller::new("fp-a");
+        let holdings = vec!["MU".to_string()];
+        let first = distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        // 无先验哈希 ⇒ 首轮全量蒸(旧主线被替换)
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 1);
+        assert_ne!(first.mainline_by_ticker.as_ref().unwrap()["MU"], "旧主线");
+
+        distill_and_persist_one(&distiller, &storage, &sandbox, &actor, &holdings)
+            .await
+            .unwrap();
+        // 之后进入增量
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
