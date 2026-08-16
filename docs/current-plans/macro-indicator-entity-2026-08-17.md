@@ -272,4 +272,71 @@ TTL 跟随既有 `ttl_for_data_type` 的宏观档位。
 
 ## 实施记录
 
-（Codex 在此追加：分歧、实测到的真凶促升路径、变异验证结果）
+### 2026-08-17 Claude：真凶已定位 —— `Portfolio` scope 完全绕过 tentative 刹车
+
+**这条推翻了背景章节里"真凶未知"的说法，也改变了 L1/L2 的测试要求。**
+
+取到两个失败任务的完整 `task_prompt` 后，按代码逐行核对：
+
+1. `PCE` 在 `j_e447df29` 里的绑定是 **`identifier_has_comparison_binding`**——
+   它两侧是 `、`（`…CPI、PCE、ISM、…`），而 `、` 在该函数（~:9197）的比较标记表里。
+   于是 `scope_context = true`，PCE 成为候选。
+2. 但 `bound_to_a_security`（~:8469）**为 false**（无 exact_input / ticker_label /
+   ticker_binding / direct_market_binding）⇒ `unsettled_without_a_reader = true`
+   ⇒ **`tentative_symbol = true`**。刹车本来是踩住了的。
+3. **刹车被 `extract_entity_scope`（~:8059）的分支顺序绕过**：
+
+   ```rust
+   if is_portfolio_scope_request(input) {
+       return EntityResolutionScope::Portfolio(deterministic);   // ← :8076，不看 tentative
+   }
+   if deterministic_ticker_scope_is_complete(...)
+       && !deterministic.iter().any(|m| m.tentative_symbol) {    // ← :8081，才是刹车
+       return EntityResolutionScope::Securities(deterministic);
+   }
+   ```
+
+   `is_portfolio_scope_request`（:9859）命中 `关注列表` / `持仓列表` / `我的持仓` 等标记。
+   **两个失败任务都是持仓任务**：`j_047f5da6` 有「持仓与**关注列表**」，
+   `j_e447df29` 有「用户**持仓**/关注标的」。
+4. `Portfolio` 分支（:3494）把 mentions 交给
+   `normalized_portfolio_snapshot`（:9973）。当文本点名了任何 ticker 时
+   （`explicit_symbols` 非空），`security_mentions` **原样返回 scanner 的
+   `explicit_mentions`，`tentative_symbol` 一路带着但从没人看它**（:10068-10082）。
+   对照同函数另一分支（:10056-10066）：从持仓派生的 symbol 反而显式写了
+   `tentative_symbol: true`——**代码知道这个概念，只是在这条分支上没踩刹车。**
+5. 这些 mention 直接进精确行情探测 ⇒ `EntityMatch::Unresolved` ⇒ `:3723` `return Err`
+   ⇒ 整轮失败，错误文案当报告推给客户。
+
+**这完美解释了生产比例 171:2**：绝大多数任务走 `AgentToolDiscovery`（:3492 `return Ok(None)`，
+根本不做精确探测）；**只有持仓类任务会漏**，因为只有它们绕过刹车。
+
+### 对各 track 的影响
+
+- **Track B（L1）**：结论不变，仍是正确的止血层，而且更重要——
+  它是唯一能兜住这条漏的通用防线。**但测试必须补一条走 `Portfolio` scope 的用例**
+  （输入含「关注列表」+ 一个真 ticker + 一个查无此物的 token）。
+- **Track C（L2）**：宏观词典把 PCE 标 tentative **不够**——Portfolio 分支不看 tentative。
+  C 的钩子仍然要做（它对 `Securities` 路径有效），但**必须配合 Track E**。
+- **新增 Track E（见下）**，这是真正的根因修复。
+
+### Track E —— Portfolio 路径必须尊重 tentative（worktree `../honeclaw-l1`，接在 Track B 之后）
+
+`normalized_portfolio_snapshot`（`investment_response_guard.rs:10068-10082`）
+的 `explicit_symbols` 非空分支，把 scanner 的 tentative 候选当成已确定证券传下去。
+
+改法：该分支过滤掉 `tentative_symbol == true` 且**未出现在真实持仓/关注快照中**的 mention。
+- 判据用同函数已有的 `provider_symbols_equivalent` 与 `portfolio_record_market_symbol`
+  比对 holdings / watchlist，**不要新造匹配逻辑**。
+- 语义：出现在用户真实持仓里的候选，持仓本身就是"绑定到证券"的最强证据，保留；
+  仅凭弱语法信号出现在文本里、又不在持仓里的（PCE、ETF），不得进入精确行情探测。
+- **仍然不删候选做黑名单**——这里过滤的依据是"用户真实持仓账本"这个事实来源，
+  不是缩写词表，不违反 `docs/invariants.md:93`。
+
+回归测试：
+1. 输入含「关注列表」+ 持仓中的 `TEM` + 文本里的 `PCE` ⇒ 只有 `TEM` 进实体集合，
+   `PCE` 不进精确探测，不产生 `Err`。
+2. 输入含「我的持仓」+ 持仓中的 `TEM`（tentative）⇒ `TEM` **保留**（持仓即绑定）。
+3. 变异验证：去掉过滤，测试 1 必须转红。
+
+（Codex 继续在此追加：分歧、变异验证结果）
