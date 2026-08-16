@@ -1,7 +1,7 @@
 # Storage API 全面 async 化
 
 - title: Storage API 全面 async 化并删除通用 sync-to-async 桥接
-- status: in_progress
+- status: done
 - created_at: 2026-08-16
 - updated_at: 2026-08-16
 - owner: Codex
@@ -21,6 +21,18 @@
   - `docs/invariants.md`
   - `docs/repo-map.md`
   - `docs/archive/index.md`
+- related_commits:
+  - `7e3f0731`
+  - `55c8eeb9`
+  - `05b657de`
+  - `e0564b0f`
+  - `189bdec1`
+  - `ab4b34e3`
+  - `f1478ef3`
+  - `53c292a7`
+  - `e60ddeaa`
+  - `e184efe7`
+  - `afd25eaf`
 
 ## Goal
 
@@ -31,6 +43,21 @@ without changing SQL or product behavior.
 
 Preserve the PostgreSQL cross-process delivered-push-context claim protocol and
 the process-local one-time `EventStore::ensure_schema` guard.
+
+## Outcome
+
+- Deleted `crates/hone-core/src/cloud_sync.rs`; all four bridge symbol families
+  have zero Rust occurrences.
+- Converted PostgreSQL storage operations, constructors, traits, EventStore,
+  public collectors/sources, scheduler/tools/channels/web routes and ordinary
+  runtime entry points to async.
+- Preserved the delivered-push-context SQL claim protocol and moved schema-once
+  coordination to an async `AtomicBool` plus Tokio mutex with retry after failure.
+- Left only three documented synchronous boundaries: two test-only `Drop`
+  cleanups for isolated PostgreSQL schemas, and the one-time synchronous channel
+  bootstrap retained because this task explicitly forbids editing
+  `bins/hone-imessage`.
+- No SQL semantics changed; the only SQL-looking diff was indentation.
 
 ## Scope
 
@@ -82,6 +109,18 @@ cargo fmt --all -- --check
 The post-refactor replay output must match the pre-refactor push results item by
 item, ignoring build/test harness timing noise.
 
+Final results:
+
+- Workspace all-target tests: exit 0.
+- `hone-memory` ignored PostgreSQL tests: 93 passed, 0 failed.
+- CI-safe regression suite: exit 0 after installing the lockfile-pinned Bun
+  dependencies missing from this worktree.
+- Web tests: 486 passed, 0 failed.
+- Event-engine lib tests: 639 passed, 0 failed, 15 ignored.
+- Delivered-push cross-connection claim regression: 1 passed.
+- Real event replay output diff: exit 0 for all emitted audit result lines.
+- Bridge closing grep: no output.
+
 ## Documentation Sync
 
 - Track the active task in `docs/current-plan.md` and this file because the work
@@ -98,9 +137,12 @@ item, ignoring build/test harness timing noise.
 - `EventStore::claim_delivered_push_context*` must retain its transaction and
   `FOR UPDATE SKIP LOCKED` semantics across separate connections.
 - `EventStore::ensure_schema` must remain process-local once-only on hot paths.
-- Async propagation may cross exported collector/source APIs and trait boundaries;
-  any irreducible synchronous entry point must be minimal, documented in code,
-  and listed in the final report.
-- Tests may rely on deterministic local file fallbacks even though runtime storage
-  is PostgreSQL-only; preserve test semantics while changing signatures.
+- Exported collector/source APIs, notification preference traits, bot-core
+  initialization and channel/web/CLI callers now expose the async boundary.
+- Test isolation keeps deterministic PostgreSQL namespaces. Test-only `Drop`
+  cleanup remains synchronous because Rust destructors cannot await and the
+  memory lease must hold its namespace lock until schema deletion completes.
+- The synchronous channel bootstrap wrapper remains only for the prohibited
+  `bins/hone-imessage` call site; async-capable channel binaries use the new async
+  bootstrap directly.
 - Do not combine SQL cleanup or storage behavior changes with this refactor.

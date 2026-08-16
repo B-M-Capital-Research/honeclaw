@@ -4,6 +4,25 @@ Last updated: 2026-08-16
 
 ## 2026-08-16
 
+### PostgreSQL Storage API Async Conversion
+
+- Status: done locally; no push
+- Date: 2026-08-16
+- Plan: `docs/archive/plans/storage-api-async-2026-08-16.md`
+- Handoff: intentionally omitted per task contract
+- Related PRs / commits: local module sequence `7e3f0731` through `afd25eaf`; no PR,
+  release, tag, or deployment
+- Related runbooks / regressions: full workspace all-target tests; 93 ignored
+  PostgreSQL memory tests; CI-safe regression suite; 486 Web tests; delivered-push
+  cross-connection claim regression; real `events.jsonl` replay diff
+- Current conclusion: runtime PostgreSQL storage operations and constructors are async through
+  memory, event-engine, scheduler, tools, channels, web API and runtime entry points. The shared
+  sync-to-async runtime/channel bridge was deleted, schema initialization remains once-per-process
+  with retry after failure, and event replay output is unchanged.
+- Next entry point: keep the three documented synchronous boundaries narrow: two test-only
+  PostgreSQL cleanup destructors and the one-time channel bootstrap retained solely because this
+  task prohibited editing `bins/hone-imessage`.
+
 ### Runtime Timezone Without Geographic Defaults
 
 - Status: done locally; no push and no historical database rewrite
