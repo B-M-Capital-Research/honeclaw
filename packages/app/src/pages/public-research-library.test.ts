@@ -17,7 +17,8 @@ const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
 describe("unified research library", () => {
   test("has a discoverable signed-in route and chat entry", () => {
     expect(app).toContain('path="/research-library"');
-    expect(chat).toContain('navigate("/research-library")');
+    // Reachable from the conversation through the composer tools menu.
+    expect(chat).toContain('href: "/research-library"');
     expect(page).toContain("我的知识源");
     expect(me).toContain('navigate("/research-library")');
   });

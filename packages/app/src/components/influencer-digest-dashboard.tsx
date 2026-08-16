@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicInfluencerDigest } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { InfluencerDigestSnapshot } from "@/lib/types";
@@ -27,6 +27,18 @@ const statusLabel = (v: string) =>
     data_unavailable: "来源读取失败",
     stale: "上次成功快照",
   }[v] ?? "等待数据");
+
+/** Traffic light for the panel head: green only when sources and model both ran. */
+const statusSignal = (v: string) =>
+  ({
+    live: "green",
+    partial: "yellow",
+    source_only: "yellow",
+    no_updates: "yellow",
+    stale: "yellow",
+    source_unconfigured: "orange",
+    data_unavailable: "red",
+  }[v] ?? "yellow");
 
 export function InfluencerDigestPanel(props: Props) {
   const [snapshot, setSnapshot] = createSignal<InfluencerDigestSnapshot>();
@@ -59,6 +71,25 @@ export function InfluencerDigestPanel(props: Props) {
       ? snapshot()?.items ?? []
       : (snapshot()?.items ?? []).filter((item) => item.author_id === author()),
   );
+
+  // Provenance collapses into one secondary line: report day, author coverage,
+  // refresh clock, run timezone and model version used to sit in a separate
+  // metadata strip that pushed the actual posts below the fold on phones.
+  const metaLine = createMemo(() => {
+    const current = snapshot();
+    if (!current) return undefined;
+    return [
+      `报告日 ${current.report_date}`,
+      `已配置作者 ${current.coverage.configured}/${current.coverage.authors}`,
+      "每日 19:50 更新",
+      current.generated_at_local
+        ? [current.generated_at_local, current.timezone].filter(Boolean).join(" ")
+        : undefined,
+      `模型 ${current.model_version}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  });
 
   const send = () => {
     const current = snapshot();
@@ -133,21 +164,22 @@ export function InfluencerDigestPanel(props: Props) {
       dialogClass="influencer-digest-dialog"
     >
       <>
-        <header>
-          <div>
-            <p>先看来源，再看观点</p>
-            <h2 id="influencer-title">大V速报</h2>
-            <span>原作者观点 × HONE 摘要 × 反方提醒 · 每日 19:50 更新</span>
-          </div>
-          <button aria-label="关闭大V速报" onClick={() => props.onClose()}>×</button>
-        </header>
-
-        <div class="influencer-digest-meta">
-          <b>{statusLabel(snapshot()?.status ?? "")}</b>
-          <span>报告日 {snapshot()?.report_date ?? "—"}</span>
-          <span>{snapshot()?.generated_at_local ?? "—"} {snapshot()?.timezone}</span>
-          <button onClick={() => void load()}>重新读取</button>
-        </div>
+        <ResearchPanelHead
+          id="influencer-title"
+          kicker="先看来源，再看观点"
+          title="大V速报"
+          headline={snapshot() ? `${visible().length} 条原文` : undefined}
+          signal={snapshot() ? statusSignal(snapshot()!.status) : undefined}
+          signalLabel={snapshot() ? statusLabel(snapshot()!.status) : undefined}
+          summary={snapshot()?.summary}
+          meta={metaLine()}
+          onClose={props.onClose}
+          action={
+            <button type="button" disabled={loading()} onClick={() => void load()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
 
         <div class="influencer-authors">
           <button classList={{ active: author() === "all" }} onClick={() => setAuthor("all")}>全部</button>
@@ -178,7 +210,7 @@ export function InfluencerDigestPanel(props: Props) {
                 <ResearchState
                   kind="empty"
                   message="当前没有可展示的原文更新"
-                  detail={snapshot()?.summary}
+                  detail="换一位作者或稍后重新读取；未配置来源不会被补造内容。"
                 />
               }
             >

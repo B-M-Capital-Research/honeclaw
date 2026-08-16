@@ -244,7 +244,7 @@ describe("public chat visual contract", () => {
     ]) {
       expect(chat).not.toContain(legacyMount);
     }
-    expect(chat).toContain('class="chat-research-entry"');
+    expect(chat).toContain("<ChatToolsMenu />");
     expect(researchPage).toContain('<DailySignalPanel kind="macro"');
     expect(researchPage).toContain('<DailySignalPanel kind="ai"');
     expect(researchPage).toContain("<CompanyRatingPanel");

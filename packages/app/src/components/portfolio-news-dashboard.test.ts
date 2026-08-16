@@ -20,6 +20,19 @@ describe("portfolio news dashboard contract", () => {
     expect(component).not.toContain('from "solid-js/web"');
   });
 
+  test("leads with the verdict instead of a title-then-metadata preamble", () => {
+    // Count, status light and one sentence sit in the shared head; the old
+    // bespoke header and the metadata strip under it are gone, and the count
+    // tiles no longer repeat the total or the summary the head carries.
+    expect(component).toContain("ResearchPanelHead");
+    expect(component).toContain('id="portfolio-news-title"');
+    expect(component).toContain("provenanceLine");
+    expect(component).not.toContain("portfolio-news-meta");
+    expect(component).not.toContain("<span>重点新闻</span>");
+    expect(styles).not.toContain(".portfolio-news-meta");
+    expect(styles).not.toContain("> header");
+  });
+
   test("delegates modal behaviour and states to the shared research shell", () => {
     // ESC / aria-modal / scroll lock live in ResearchPanel, not here.
     expect(component).not.toContain('aria-modal="true"');
@@ -63,5 +76,7 @@ describe("portfolio news dashboard contract", () => {
     expect(styles).not.toContain("portfolio-news-launcher");
     expect(styles).toContain('[data-theme="dark"]');
     expect(styles).toContain("@media (max-width: 768px)");
+    // Sheet mode: chrome between the head and the first article is squeezed.
+    expect(styles).toContain("@media (max-width: 760px)");
   });
 });

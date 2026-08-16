@@ -32,6 +32,42 @@ describe("weekly brief dashboard", () => {
     expect(styles).not.toContain("@media(max-width:800px)");
   });
 
+  it("opens on the verdict through the shared head, not a header plus meta strip plus hero", () => {
+    expect(component).toContain("ResearchPanelHead");
+    // The head id has to stay the dialog's accessible name.
+    expect(component).toContain('id="weekly-brief-title"');
+    expect(component).toContain('labelledBy="weekly-brief-title"');
+    expect(component).toContain('kicker="每周决策日程"');
+    expect(component).toContain('title="周度简报"');
+    // Conclusion first: next week's load, the coverage light, one sentence.
+    expect(component).toContain("headline={report() ? `下周 ${report()!.next_week_items.length} 件`");
+    expect(component).toContain("statusSignal");
+    expect(component).toContain('"财报覆盖待补齐"');
+    expect(component).toContain("summary={report()?.summary}");
+    // Report day, generation clock and tracked scope are one secondary line;
+    // the metadata strip and the hero card that repeated them are gone.
+    expect(component).toContain("meta={metaLine()}");
+    expect(component).toContain("跟踪 ${current.earnings_scope_count} 家公司");
+    expect(component).not.toContain("weekly-brief-meta");
+    expect(component).not.toContain("weekly-brief-hero");
+    expect(component).not.toContain("weekly-brief-dialog-head");
+    expect(styles).not.toContain("weekly-brief-meta");
+    expect(styles).not.toContain("weekly-brief-hero");
+    expect(styles).not.toContain("weekly-brief-dialog-head");
+    // Coverage gaps keep their specific detail but not a second status label.
+    expect(component).not.toContain("财报覆盖未完全就绪");
+  });
+
+  it("keeps methodology inside the scroll container instead of fixed chrome", () => {
+    const method = component.indexOf('class="weekly-brief-method"');
+    const contentOpen = component.indexOf('<main class="weekly-brief-content">');
+    const contentClose = component.indexOf("</main>");
+    expect(contentOpen).toBeGreaterThan(-1);
+    expect(method).toBeGreaterThan(contentOpen);
+    expect(method).toBeLessThan(contentClose);
+    expect(styles).not.toContain(".weekly-brief-method {\n  flex: 0 0 auto;");
+  });
+
   it("passes a bounded saved report into follow-up chat", () => {
     expect(component).toContain("buildSavedReportPrompt");
     expect(component).toContain('marker: "HONE_SAVED_WEEKLY_BRIEF"');

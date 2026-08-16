@@ -10,7 +10,10 @@ import {
   getPublicDailySignal,
   getPublicDailySignalHistory,
 } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
@@ -96,6 +99,45 @@ function deltaLabel(value?: number | null) {
 
 function scoreLabel(value?: number | null) {
   return value == null ? "—" : value.toFixed(1);
+}
+
+/**
+ * The head shows one sentence; the body shows whatever else the summary said.
+ *
+ * Report summaries are not always a single line — the AI report opens with a
+ * verdict and then spends five more sentences on coverage caveats. Truncating
+ * would hide the caveats, and printing the whole paragraph in the head is what
+ * made the panel read as undifferentiated. So the lead sentence goes above and
+ * the remainder stays in the hero, each shown exactly once.
+ */
+function leadSentence(summary: string) {
+  return summary.match(/^[\s\S]*?[。！？!?]/)?.[0].trim() ?? summary.trim();
+}
+
+function trailingDetail(summary: string) {
+  return summary.slice(leadSentence(summary).length).trim();
+}
+
+/**
+ * Provenance collapsed onto one line. The panel used to spend a whole strip on
+ * five dates that nobody reads before the verdict; they belong under it.
+ *
+ * A field the snapshot did not carry is dropped rather than printed as a hole:
+ * an absent timestamp is not the same claim as an unknown one.
+ */
+function provenanceLine(report: DailySignalReport) {
+  return [
+    `报告日 ${report.report_date}`,
+    `市场日 ${report.market_date ?? "—"}`,
+    `数据截止 ${report.data_cutoff ?? "—"}`,
+    report.generated_at_local
+      ? `生成 ${[report.generated_at_local, report.timezone].filter(Boolean).join(" ")}`
+      : "",
+    report.model_version,
+    report.stale ? "数据已过期" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function Sparkline(props: { points: DailySignalTrendPoint[] }) {
@@ -248,22 +290,29 @@ export function DailySignalPanel(props: Props) {
       dialogClass={`daily-signal-dialog is-${kind()}`}
     >
       <>
-                <header class="daily-signal-header">
-                  <div>
-                    <p>{KIND_COPY[kind()].kicker}</p>
-                    <h2 id="daily-signal-title">{KIND_COPY[kind()].title}</h2>
-                    <span>{KIND_COPY[kind()].description}</span>
-                  </div>
-                  <button type="button" aria-label="关闭" onClick={() => props.onClose()}>
-                    <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  </button>
-                </header>
+                <ResearchPanelHead
+                  id="daily-signal-title"
+                  kicker={KIND_COPY[kind()].kicker}
+                  title={KIND_COPY[kind()].title}
+                  headline={report() ? scoreLabel(report()!.score) : undefined}
+                  signal={report()?.signal}
+                  signalLabel={report() ? signalLabel(report()!.signal) : undefined}
+                  summary={
+                    report() ? leadSentence(report()!.summary) : KIND_COPY[kind()].description
+                  }
+                  meta={report() ? provenanceLine(report()!) : undefined}
+                  onClose={props.onClose}
+                  action={
+                    <button type="button" class="daily-signal-reread" disabled={loading()} onClick={() => void load()}>
+                      {loading() ? "读取中…" : "重新读取快照"}
+                    </button>
+                  }
+                />
 
                 <nav class="daily-signal-tabs" aria-label="报告视图">
                   <For each={[["overview", "概览"], ["history", "历史"], ["sources", "证据与口径"]] as const}>
                     {([value, label]) => <button classList={{ active: tab() === value }} onClick={() => openTab(value)}>{label}</button>}
                   </For>
-                  <button class="daily-signal-reread" disabled={loading()} onClick={() => void load()}>{loading() ? "读取中…" : "重新读取快照"}</button>
                 </nav>
 
                 <div class="daily-signal-body">
@@ -281,11 +330,12 @@ export function DailySignalPanel(props: Props) {
                             <Gauge report={current()} />
                             <div class="daily-signal-hero__summary">
                               <div class="daily-signal-badges">
-                                <b>{signalLabel(current().signal)}</b>
                                 <span>{current().phase}</span>
                                 <span class={`is-${effectiveStatus(current())}`}>{statusLabel(effectiveStatus(current()))}</span>
                               </div>
-                              <p>{current().summary}</p>
+                              <Show when={trailingDetail(current().summary)}>
+                                {(detail) => <p>{detail()}</p>}
+                              </Show>
                               <dl>
                                 <div><dt>较昨日</dt><dd>{deltaLabel(current().comparison_yesterday)}</dd></div>
                                 <div><dt>较一周</dt><dd>{deltaLabel(current().comparison_week)}</dd></div>
@@ -293,15 +343,6 @@ export function DailySignalPanel(props: Props) {
                               </dl>
                             </div>
                           </section>
-
-                          <div class="daily-signal-meta">
-                            <span>报告日 {current().report_date}</span>
-                            <span>市场日 {current().market_date ?? "—"}</span>
-                            <span>数据截止 {current().data_cutoff ?? "—"}</span>
-                            <span>生成时间 {current().generated_at_local} {current().timezone}</span>
-                            <span>{current().model_version}</span>
-                            <Show when={current().stale}><b>数据已过期</b></Show>
-                          </div>
 
                           <Show when={current().alerts.length}>
                             <section class="daily-signal-alerts"><strong>触发提醒</strong><For each={current().alerts}>{(alert) => <p>{alert}</p>}</For></section>

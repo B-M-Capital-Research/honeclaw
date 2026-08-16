@@ -26,73 +26,38 @@
   box-shadow: 0 38px 100px #070d0c52;
 }
 
-.key-chain-dialog header {
-  display: flex;
-  justify-content: space-between;
-  padding: 22px 26px 16px;
-  border-bottom: 1px solid var(--hone-line);
-}
-
-.key-chain-dialog header p {
-  margin: 0;
-  color: var(--hone-signal-green);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.key-chain-dialog h2 {
-  margin: 4px 0 0;
-  font-size: 26px;
-}
-
-.key-chain-dialog header span {
-  color: var(--hone-ink-500);
-  font-size: 12px;
-}
-
-.key-chain-dialog header button {
-  width: 36px;
-  height: 36px;
+/* Head chrome (kicker, title, verdict, provenance) belongs to
+   ResearchPanelHead in research.css; only the refresh control is skinned here. */
+.key-chain-dialog .research-panel__head-action button {
+  padding: 5px 12px;
   border: 1px solid var(--hone-line);
-  border-radius: 11px;
+  border-radius: 999px;
   background: var(--hone-surface-raised);
-  color: var(--hone-ink-800);
-  font-size: 22px;
-}
-
-.key-chain-meta {
-  padding: 8px 26px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  border-bottom: 1px solid var(--hone-line);
-  color: var(--hone-ink-500);
-  font-size: 10px;
-}
-
-.key-chain-meta b {
-  padding: 4px 8px;
-  border-radius: 99px;
-  background: var(--hone-signal-green-soft);
   color: var(--hone-signal-green);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.key-chain-meta button {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: var(--hone-signal-green);
+.key-chain-dialog .research-panel__head-action button:disabled {
+  opacity: 0.5;
 }
 
-/* First-principles topic map. */
+/* First-principles topic map: one scrollable row, never a wrapped block that
+   would push the timeline off a phone's first screen. */
 .key-chain-topics {
   display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 10px 26px;
   border-bottom: 1px solid var(--hone-line);
   overflow-x: auto;
-  scrollbar-width: thin;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.key-chain-topics::-webkit-scrollbar {
+  display: none;
 }
 
 .key-chain-topics button {
@@ -378,18 +343,9 @@
     border-radius: 22px 22px 0 0;
   }
 
-  .key-chain-dialog header {
-    padding: 18px 16px 13px;
-  }
-
-  .key-chain-meta,
   .key-chain-topics {
     padding-left: 16px;
     padding-right: 16px;
-  }
-
-  .key-chain-meta span:nth-of-type(2) {
-    display: none;
   }
 
   .key-chain-body {

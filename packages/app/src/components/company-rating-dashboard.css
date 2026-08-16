@@ -18,7 +18,6 @@
 .company-rating-dialog .is-unknown { --rating-color: var(--hone-signal-neutral); }
 .company-rating-light { background: var(--rating-color); }
 
-.company-rating-dialog__header button svg,
 .company-rating-toolbar label svg,
 .company-rating-chevron {
   width: 18px;
@@ -55,80 +54,33 @@
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-.company-rating-dialog__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 24px 26px 18px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.09);
-}
-
-.company-rating-eyebrow {
-  margin: 0 0 5px;
-  color: var(--hone-coral-600);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.company-rating-dialog__header h2 {
-  margin: 0;
-  font-size: 26px;
-  letter-spacing: -0.035em;
-}
-
-.company-rating-dialog__header p:not(.company-rating-eyebrow) {
-  margin: 6px 0 0;
-  color: #67716e;
-  font-size: 13px;
-}
-
-.company-rating-dialog__header > button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid rgba(35, 48, 45, 0.1);
-  border-radius: 11px;
-  background: white;
-  color: #52605b;
-  cursor: pointer;
-}
-
-.company-rating-meta {
-  min-height: 40px;
-  padding: 8px 26px;
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.07);
-  color: #6b7672;
-  font-size: 11px;
-}
-
-.company-rating-meta > span:first-child {
-  padding: 4px 8px;
+/* Refresh control, hosted by the shared head's action slot. */
+.company-rating-reread {
+  padding: 5px 12px;
+  border: 1px solid var(--hone-line-strong);
   border-radius: 999px;
-  background: #edf1ee;
-  color: #45534f;
-  font-weight: 700;
-}
-
-.company-rating-meta > span.is-live { background: var(--hone-signal-green-soft); color: var(--hone-signal-green); }
-.company-rating-meta > span.is-partial { background: var(--hone-signal-yellow-soft); color: var(--hone-signal-yellow); }
-.company-rating-meta > span.is-stale,
-.company-rating-meta > span.is-transcript_only { background: #f5e8e3; color: #985044; }
-
-.company-rating-meta button {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: #c65440;
+  background: var(--hone-control-surface);
+  color: var(--hone-link);
   font: inherit;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.company-rating-reread:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Chrome around the single scroll container. Without an explicit basis these
+   flex siblings shrink against the body's huge content height — the collapsed
+   methodology bar rendered 6px tall on a phone. The body keeps `flex: 1 1 auto`
+   from the shared shell and stays the only scroller. */
+.company-rating-methodology,
+.company-rating-simulation-note,
+.company-rating-toolbar,
+.company-rating-dialog > footer {
+  flex: 0 0 auto;
 }
 
 .company-rating-methodology {
@@ -420,7 +372,6 @@
   font-size: 10px;
   line-height: 1.5;
 }
-.company-rating-simulation-note strong { color: var(--hone-signal-yellow); white-space: nowrap; }
 
 .company-rating-dialog footer {
   padding: 11px 26px;
@@ -433,10 +384,7 @@
 [data-theme="dark"] .company-rating-dialog,
 [data-theme="dark"] .company-rating-row,
 [data-theme="dark"] .company-rating-toolbar > label,
-[data-theme="dark"] .company-rating-dialog__header > button,
 [data-theme="dark"] .company-rating-filters button.is-active { background: #111a28; color: #ecf2ef; border-color: #263347; }
-[data-theme="dark"] .company-rating-dialog__header,
-[data-theme="dark"] .company-rating-meta,
 [data-theme="dark"] .company-rating-toolbar,
 [data-theme="dark"] .company-rating-detail { border-color: #263347; }
 [data-theme="dark"] .company-rating-list__head { background: rgba(15, 22, 35, 0.96); }
@@ -467,11 +415,6 @@
     height: min(92dvh, 860px);
     border-radius: 22px 22px 0 0;
   }
-  .company-rating-dialog__header { padding: 19px 16px 14px; }
-  .company-rating-dialog__header h2 { font-size: 22px; }
-  .company-rating-dialog__header p:not(.company-rating-eyebrow) { max-width: 300px; font-size: 11px; }
-  .company-rating-meta { padding: 8px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
-  .company-rating-meta span:nth-child(2) { display: none; }
   .company-rating-methodology { margin: 8px 16px 0; }
   .company-rating-methodology > div { grid-template-columns: 1fr; }
   .company-rating-methodology summary strong { display: none; }
@@ -491,4 +434,15 @@
   .company-rating-dimensions { grid-template-columns: 1fr; }
   .company-rating-detail__grid { grid-template-columns: 1fr; gap: 13px; }
   .company-rating-dialog footer { padding: 9px 14px; }
+}
+
+/* Sheet mode: the head owns the verdict, so everything between it and the
+   first company row is chrome and gets squeezed to keep rows above the fold. */
+@media (max-width: 760px) {
+  .company-rating-methodology { margin: 7px 12px 0; }
+  .company-rating-methodology summary { min-height: 34px; padding: 6px 11px; }
+  .company-rating-toolbar { padding: 8px 12px; gap: 7px; }
+  .company-rating-toolbar > label { padding: 7px 10px; }
+  /* The row scrolls sideways; without this the chips squeeze into two lines. */
+  .company-rating-filters button { flex: 0 0 auto; min-height: 30px; padding: 4px 9px; }
 }

@@ -19,6 +19,19 @@ describe("position management dashboard contract", () => {
     expect(component).not.toContain('from "solid-js/web"');
   });
 
+  it("leads with the verdict instead of a title-then-metadata preamble", () => {
+    // How many positions need handling, the evidence-completeness light and
+    // one sentence sit in the shared head; the bespoke header, the metadata
+    // strip and the duplicated summary paragraph are gone.
+    expect(component).toContain("ResearchPanelHead");
+    expect(component).toContain('id="position-management-title"');
+    expect(component).toContain("provenanceLine");
+    expect(component).toContain("项待处理");
+    expect(component).not.toContain("position-management-meta");
+    expect(styles).not.toContain(".position-management-meta");
+    expect(styles).not.toContain("> header");
+  });
+
   it("delegates modal behaviour and states to the shared research shell", () => {
     // ESC / aria-modal / scroll lock live in ResearchPanel, not here.
     expect(component).not.toContain('aria-modal="true"');
@@ -60,6 +73,8 @@ describe("position management dashboard contract", () => {
     expect(styles).not.toContain("#28785b");
     expect(styles).not.toContain("position-management-launcher");
     expect(styles).toContain("@media (max-width: 768px)");
+    // Sheet mode: both count strips collapse so advice rows clear the fold.
+    expect(styles).toContain("@media (max-width: 760px)");
     expect(styles).toContain('[data-theme="dark"]');
     expect(styles).toContain("94dvh");
   });

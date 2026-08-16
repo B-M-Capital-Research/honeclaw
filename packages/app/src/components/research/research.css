@@ -1,6 +1,6 @@
 /* Shared chrome for research surfaces: the modal shell every detail panel
-   mounts into and the unified loading/error/empty state. Tokens only — no
-   literal colors in this layer. */
+   mounts into, its head, and the unified loading/error/empty state.
+   Tokens only — no literal colors in this layer. */
 
 .research-panel-backdrop {
   position: fixed;
@@ -28,18 +28,191 @@
   box-shadow: var(--hone-shadow-md);
 }
 
+/* Exactly one scroll container per panel. Each of these owns the remaining
+   height, and contains its overscroll so a touch drag at either end never
+   chains into the page behind the sheet — the reason phones felt stuck. */
+.research-panel > :is(
+  .daily-signal-body,
+  .company-rating-dialog__body,
+  .portfolio-news-body,
+  .position-management-body,
+  .influencer-digest-body,
+  .weekly-brief-content,
+  .key-chain-body,
+  .research-panel__scroll
+) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Phones get a full-screen sheet: no wasted gutter, no rounded gap that
+   invites a mis-tap onto the backdrop mid-scroll.
+   The selectors carry one extra step of specificity on purpose — each panel
+   skin still ships its own `…-dialog` geometry from before the shared shell
+   existed, and the shell has to win the cascade for sheet sizing. */
 @media (max-width: 760px) {
-  .research-panel-backdrop {
+  div.research-panel-backdrop {
     padding: 0;
-    align-items: flex-end;
+    align-items: stretch;
   }
 
-  .research-panel {
+  .research-panel-backdrop > .research-panel {
     width: 100%;
-    max-height: calc(100dvh - 40px);
-    border-radius: var(--hone-radius-lg) var(--hone-radius-lg) 0 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .research-panel > :is(
+    .daily-signal-footer,
+    .portfolio-news-footer,
+    .position-management-footer,
+    .influencer-digest-footer,
+    .weekly-brief-footer,
+    .key-chain-footer
+  ) {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* ── Panel head ─────────────────────────────────────────────────────────── */
+
+.research-panel__head {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+}
+
+.research-panel__head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.research-panel__kicker {
+  margin: 0;
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hone-ink-500);
+}
+
+.research-panel__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px 0 0;
+  border: 1px solid var(--hone-line);
+  border-radius: 50%;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+}
+
+.research-panel__close svg {
+  width: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.research-panel__headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.research-panel__headline h2 {
+  margin: 0;
+  font-family: var(--hone-font-display);
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.research-panel__headline b {
+  font-family: var(--hone-font-label);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--hone-ink-800);
+}
+
+.research-panel__signal {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.research-panel__head.is-green .research-panel__signal {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.research-panel__head.is-yellow .research-panel__signal {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.research-panel__head.is-orange .research-panel__signal {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange);
+}
+
+.research-panel__head.is-red .research-panel__signal {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red);
+}
+
+.research-panel__summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+.research-panel__meta {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--hone-ink-400);
+}
+
+.research-panel__head-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .research-panel__head {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+
+  .research-panel__headline h2 {
+    font-size: 20px;
+  }
+
+  .research-panel__summary {
+    font-size: 13.5px;
+  }
+}
+
+/* ── Shared state ───────────────────────────────────────────────────────── */
 
 .research-state {
   display: flex;

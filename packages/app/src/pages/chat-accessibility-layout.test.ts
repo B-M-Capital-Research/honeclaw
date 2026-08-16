@@ -27,19 +27,22 @@ const translatedSurfaces = [
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 describe("chat accessibility layout", () => {
-  it("keeps the conversation page a conversation: one slim research doorway, no data-fetching dashboards", () => {
-    // The daily research products live on /research. The chat page keeps a
-    // pure-navigation entry strip and must never re-grow eager-fetching
-    // dashboard mounts or the old launcher rail.
-    expect(chat).toContain('class="chat-research-entry"');
+  it("keeps the conversation page a conversation: one tool row, no data-fetching dashboards", () => {
+    // The daily research products live on /research. The chat page keeps one
+    // tool row and must never re-grow eager-fetching dashboard mounts or the
+    // old launcher rail.
+    expect(chat).toContain("<ChatToolsMenu />");
     expect(chat).toContain('navigate("/research")');
     expect(chat).not.toContain("chat-feature-rail");
     expect(chat).not.toContain("Dashboard onAsk=");
     expect(chat).not.toContain("<DailySignalDashboard");
-    expect(css).toContain(".chat-research-entry");
+    // Destinations belong in the menu. A second chip row that navigates away
+    // at the same visual weight as the in-chat actions is the thing this
+    // replaced, so it must not come back.
+    expect(chat).not.toContain('class="chat-research-entry"');
+    expect(css).toContain(".chat-tools__menu");
     expect(css).not.toContain("chat-feature-rail");
-    // The entry strip is navigation chrome, not a component zoo: it styles
-    // with tokens and needs no !important overrides.
+    // The row is chrome, not a component zoo: tokens, no layout !important.
     expect(css).toContain("var(--hone-line)");
     expect(css).not.toContain("width: 144px !important");
   });

@@ -70,7 +70,15 @@ describe("research desk contract", () => {
     expect(panelShell).toContain('aria-modal="true"');
     expect(panelShell).toContain('role="dialog"');
     expect(panelShell).toContain('event.key === "Escape"');
-    expect(panelShell).toContain('document.body.style.overflow = "hidden"');
-    expect(panelShell).toContain("previousOverflow");
+    // The lock has to survive iOS Safari, which ignores overflow:hidden for
+    // touch scrolling — the page is pinned and its offset restored on close.
+    expect(panelShell).toContain('body.style.overflow = "hidden"');
+    expect(panelShell).toContain('body.style.position = "fixed"');
+    expect(panelShell).toContain("window.scrollTo(0, scrollY)");
+    // Exactly one scroll container per panel, and it must not chain its
+    // overscroll into the page behind the sheet.
+    expect(shellCss).toContain("overscroll-behavior: contain");
+    expect(shellCss).toContain("min-height: 0");
+    expect(shellCss).toContain("max-height: 100dvh");
   });
 });

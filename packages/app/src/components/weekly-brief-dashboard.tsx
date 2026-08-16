@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicWeeklyBrief } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { WeeklyBriefItem, WeeklyBriefPayload } from "@/lib/types";
@@ -36,6 +36,13 @@ const statusLabel = (value: string) => ({
   partial: "部分数据待补齐",
   empty: "本期暂无可核验事件",
 }[value] ?? "读取中");
+
+/** Traffic light for the panel head: earnings coverage gates the green light. */
+function statusSignal(report: WeeklyBriefPayload) {
+  if (report.earnings_status !== "ok") return "yellow";
+  if (report.status === "empty") return "orange";
+  return report.status === "live" ? "green" : "yellow";
+}
 
 function groupByDate(items: readonly WeeklyBriefItem[]) {
   const grouped = new Map<string, WeeklyBriefItem[]>();
@@ -157,6 +164,23 @@ export function WeeklyBriefPanel(props: Props) {
   onMount(() => void load());
   onCleanup(() => controller?.abort());
 
+  // Report day, generation clock and tracked-company scope used to occupy a
+  // metadata strip plus a hero card above the tabs; they are provenance, so
+  // they collapse into the head's secondary line.
+  const metaLine = createMemo(() => {
+    const current = report();
+    if (!current) return undefined;
+    return [
+      `报告日 ${current.report_date}`,
+      current.generated_at_local
+        ? [current.generated_at_local, current.timezone].filter(Boolean).join(" ")
+        : undefined,
+      `跟踪 ${current.earnings_scope_count} 家公司`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  });
+
   const ask = () => {
     const current = report();
     const query = question().trim();
@@ -197,14 +221,28 @@ export function WeeklyBriefPanel(props: Props) {
       dialogClass="weekly-brief-dialog"
     >
       <>
-        <header class="weekly-brief-dialog-head">
-          <div>
-            <p>每周决策日程</p>
-            <h2 id="weekly-brief-title">周度简报</h2>
-            <span>按时间看清上周变化、下周风险与未来 30 天 AI 节点</span>
-          </div>
-          <button aria-label="关闭周度简报" onClick={() => props.onClose()}>×</button>
-        </header>
+        <ResearchPanelHead
+          id="weekly-brief-title"
+          kicker="每周决策日程"
+          title="周度简报"
+          headline={report() ? `下周 ${report()!.next_week_items.length} 件` : undefined}
+          signal={report() ? statusSignal(report()!) : undefined}
+          signalLabel={
+            report()
+              ? report()!.earnings_status === "ok"
+                ? statusLabel(report()!.status)
+                : "财报覆盖待补齐"
+              : undefined
+          }
+          summary={report()?.summary}
+          meta={metaLine()}
+          onClose={props.onClose}
+          action={
+            <button type="button" disabled={loading()} onClick={() => void load()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
         <Show
           when={report()}
           fallback={
@@ -220,27 +258,8 @@ export function WeeklyBriefPanel(props: Props) {
         >
           {(current) => (
             <>
-              <div class="weekly-brief-meta">
-                <b>{statusLabel(current().status)}</b>
-                <span>报告日 {current().report_date}</span>
-                <span>{current().generated_at_local} {current().timezone}</span>
-                <button onClick={() => void load()} disabled={loading()}>
-                  {loading() ? "读取中…" : "重新读取"}
-                </button>
-              </div>
-              <section class="weekly-brief-hero">
-                <div>
-                  <span>本期判断</span>
-                  <h3>{current().summary}</h3>
-                </div>
-                <aside>
-                  <strong>跟踪公司</strong>
-                  <b>{current().earnings_scope_count}</b>
-                </aside>
-              </section>
               <Show when={current().earnings_status !== "ok"}>
                 <div class="weekly-brief-coverage" role="status">
-                  <strong>财报覆盖未完全就绪</strong>
                   <span>{current().errors[0] ?? "当前数据源没有返回全部重点公司财报日期；缺失日期不会被猜测补全。"}</span>
                 </div>
               </Show>
@@ -286,11 +305,13 @@ export function WeeklyBriefPanel(props: Props) {
                     items={current().ai_outlook_items}
                   />
                 </Show>
+                {/* Methodology is a footnote, not chrome: it scrolls with the
+                    agenda instead of holding a fixed band above the composer. */}
+                <div class="weekly-brief-method">
+                  <strong>口径：</strong>
+                  {current().methodology_note}
+                </div>
               </main>
-              <div class="weekly-brief-method">
-                <strong>口径：</strong>
-                {current().methodology_note}
-              </div>
               <Show when={props.onAsk}>
                 <footer class="weekly-brief-footer">
                   <p>{current().disclaimer}</p>

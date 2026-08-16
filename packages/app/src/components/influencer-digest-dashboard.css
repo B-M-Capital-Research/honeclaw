@@ -25,71 +25,38 @@
   box-shadow: 0 38px 100px #070d0c52;
 }
 
-.influencer-digest-dialog header {
-  display: flex;
-  justify-content: space-between;
-  padding: 22px 26px 16px;
-  border-bottom: 1px solid var(--hone-line);
-}
-
-.influencer-digest-dialog header p {
-  margin: 0;
-  color: var(--hone-coral-600);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.influencer-digest-dialog h2 {
-  margin: 4px 0 0;
-  font-size: 26px;
-}
-
-.influencer-digest-dialog header span {
-  color: var(--hone-ink-500);
-  font-size: 12px;
-}
-
-.influencer-digest-dialog header button {
-  width: 36px;
-  height: 36px;
+/* Head chrome (kicker, title, verdict, provenance) belongs to
+   ResearchPanelHead in research.css; only the refresh control is skinned here. */
+.influencer-digest-dialog .research-panel__head-action button {
+  padding: 5px 12px;
   border: 1px solid var(--hone-line);
-  border-radius: 11px;
+  border-radius: 999px;
   background: var(--hone-surface-raised);
-  color: var(--hone-ink-800);
-  font-size: 22px;
-}
-
-.influencer-digest-meta {
-  padding: 8px 26px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  border-bottom: 1px solid var(--hone-line);
-  color: var(--hone-ink-500);
-  font-size: 10px;
-}
-
-.influencer-digest-meta b {
-  padding: 4px 8px;
-  border-radius: 99px;
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-}
-
-.influencer-digest-meta button {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
   color: var(--hone-coral-600);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
+.influencer-digest-dialog .research-panel__head-action button:disabled {
+  opacity: 0.5;
+}
+
+/* One scrollable row of authors: on a phone the wrapped grid used to cost
+   three lines before any post was visible. */
 .influencer-authors {
   padding: 10px 26px;
   display: flex;
+  flex-wrap: nowrap;
   gap: 7px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--hone-line);
+}
+
+.influencer-authors::-webkit-scrollbar {
+  display: none;
 }
 
 .influencer-authors button {
@@ -237,18 +204,9 @@
     border-radius: 22px 22px 0 0;
   }
 
-  .influencer-digest-dialog header {
-    padding: 18px 16px 13px;
-  }
-
-  .influencer-digest-meta,
   .influencer-authors {
     padding-left: 16px;
     padding-right: 16px;
-  }
-
-  .influencer-digest-meta span:nth-of-type(2) {
-    display: none;
   }
 
   .influencer-digest-body {

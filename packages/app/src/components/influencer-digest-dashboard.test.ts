@@ -41,6 +41,35 @@ describe("influencer digest dashboard", () => {
     expect(styles).not.toContain("influencer-digest-launcher");
   });
 
+  it("opens on the verdict through the shared head, not a bespoke header plus meta strip", () => {
+    expect(component).toContain("ResearchPanelHead");
+    // The head id has to stay the dialog's accessible name.
+    expect(component).toContain('id="influencer-title"');
+    expect(component).toContain('labelledBy="influencer-title"');
+    expect(component).toContain('kicker="先看来源，再看观点"');
+    expect(component).toContain('title="大V速报"');
+    // Conclusion first: how many posts, and whether sources actually ran.
+    expect(component).toContain("headline={snapshot() ? `${visible().length} 条原文`");
+    expect(component).toContain("statusSignal");
+    expect(component).toContain("summary={snapshot()?.summary}");
+    // Provenance is one secondary line, no longer its own strip.
+    expect(component).toContain("meta={metaLine()}");
+    expect(component).not.toContain("influencer-digest-meta");
+    expect(styles).not.toContain("influencer-digest-meta");
+    expect(styles).not.toContain(".influencer-digest-dialog header");
+    // The summary must not be printed a second time in the body.
+    expect(component).not.toContain("detail={snapshot()?.summary}");
+  });
+
+  it("keeps the author filter a single scrollable row on phones", () => {
+    expect(styles).toContain(".influencer-authors {");
+    expect(styles).toContain("flex-wrap: nowrap");
+    expect(styles).toContain("overflow-x: auto");
+    expect(styles).toContain("scrollbar-width: none");
+    // The shared shell owns the panel's only scroll container.
+    expect(styles).toContain(".influencer-digest-body {");
+  });
+
   it("routes states and the ask prompt through the shared research kit", () => {
     expect(component).toContain("ResearchState");
     expect(component).toContain('kind="error"');

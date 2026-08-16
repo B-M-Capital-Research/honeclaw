@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicKeyEventChains } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { KeyEventChainSnapshot } from "@/lib/types";
@@ -22,6 +22,17 @@ const statusLabel = (value: string) => ({
   data_unavailable: "来源读取失败",
   stale: "上次成功快照",
 }[value] ?? "等待数据");
+
+/** Traffic light for the panel head: green only once impact analysis ran. */
+const statusSignal = (value: string) => ({
+  live: "green",
+  partial: "yellow",
+  source_only: "yellow",
+  no_updates: "yellow",
+  stale: "yellow",
+  source_unconfigured: "orange",
+  data_unavailable: "red",
+}[value] ?? "yellow");
 
 const changeLabel = (value: string) => ({
   schedule: "时间表 / 路线图",
@@ -90,6 +101,34 @@ export function KeyEventChainPanel(props: Props) {
   const topic = createMemo(
     () => snapshot()?.topics.find((item) => item.id === topicId()) ?? snapshot()?.topics[0],
   );
+  // Panel-level verdict: how much moved across every industry line, and how
+  // much of it is first-hand rather than a clue.
+  const totals = createMemo(() => {
+    const topics = snapshot()?.topics ?? [];
+    return {
+      topics: topics.length,
+      events: topics.reduce((sum, item) => sum + item.event_count, 0),
+      confirmed: topics.reduce((sum, item) => sum + (item.confirmed_count ?? 0), 0),
+    };
+  });
+  const metaLine = createMemo(() => {
+    const current = snapshot();
+    if (!current) return undefined;
+    // Provenance is fail-closed: a field the snapshot did not carry is
+    // dropped rather than printed as an `undefined` hole.
+    return [
+      `报告日 ${current.report_date}`,
+      `近 ${current.lookback_days} 天`,
+      `${totals().topics} 条产业主线`,
+      `一手确认 ${totals().confirmed}`,
+      "每日 19:55 更新",
+      current.generated_at_local
+        ? [current.generated_at_local, current.timezone].filter(Boolean).join(" ")
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  });
   const visibleEvents = createMemo(() => {
     const events = topic()?.events ?? [];
     return evidenceFilter() === "confirmed"
@@ -136,23 +175,24 @@ export function KeyEventChainPanel(props: Props) {
       dialogClass="key-chain-dialog"
     >
       <>
-        <header>
-          <div>
-            <p>第一性原理产业图谱</p>
-            <h2 id="key-chain-title">关键事件链</h2>
-            <span>模型 → 应用 → 数据中心 → 算力 → 光互连 → 存储 → 电力 · 每日 19:55 更新</span>
-          </div>
-          <button aria-label="关闭关键事件链" onClick={() => props.onClose()}>×</button>
-        </header>
+        <ResearchPanelHead
+          id="key-chain-title"
+          kicker="第一性原理产业图谱"
+          title="关键事件链"
+          headline={snapshot() ? `${totals().events} 条变化` : undefined}
+          signal={snapshot() ? statusSignal(snapshot()!.status) : undefined}
+          signalLabel={snapshot() ? statusLabel(snapshot()!.status) : undefined}
+          summary={snapshot()?.summary}
+          meta={metaLine()}
+          onClose={props.onClose}
+          action={
+            <button type="button" disabled={loading()} onClick={() => void load()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
 
-        <div class="key-chain-meta">
-          <b>{statusLabel(snapshot()?.status ?? "")}</b>
-          <span>近 {snapshot()?.lookback_days ?? 30} 天</span>
-          <span>{snapshot()?.generated_at_local ?? "—"} {snapshot()?.timezone}</span>
-          <button onClick={() => void load()}>重新读取</button>
-        </div>
-
-        <nav class="key-chain-topics">
+        <nav class="key-chain-topics" aria-label="产业主线：模型 → 应用 → 数据中心 → 算力 → 光互连 → 存储 → 电力">
           <For each={snapshot()?.topics ?? []}>
             {(item) => (
               <button classList={{ active: topicId() === item.id }} onClick={() => setTopicId(item.id)}>

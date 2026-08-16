@@ -13,7 +13,10 @@ import {
   ratingCounts,
   type CompanyRatingFilter,
 } from "@/lib/company-rating-model";
-import { ResearchPanel } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import type { CompanyRating, CompanyRatingSnapshot } from "@/lib/types";
 import "./company-rating-dashboard.css";
@@ -105,6 +108,22 @@ function FundamentalMetrics(props: { item: CompanyRating }) {
       </Show>
     </section>
   );
+}
+
+/**
+ * Provenance collapsed to one line under the verdict. A field the snapshot did
+ * not carry is dropped rather than printed as a hole.
+ */
+function provenanceLine(snapshot: CompanyRatingSnapshot) {
+  return [
+    coverageLabel(snapshot),
+    snapshot.generated_at_local
+      ? `${[snapshot.generated_at_local, snapshot.timezone].filter(Boolean).join(" ")} 更新`
+      : "",
+    snapshot.methodology_version,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function valuationSyncMessage(snapshot: CompanyRatingSnapshot) {
@@ -207,38 +226,27 @@ export function CompanyRatingPanel(props: Props) {
       dialogClass="company-rating-dialog"
     >
       <>
-        <header class="company-rating-dialog__header">
-          <div>
-            <p class="company-rating-eyebrow">HONE 研究信号</p>
-            <h2 id="company-rating-title">每日公司评级</h2>
-            <p>
-              结构质量、财务兑现、前瞻能见度、估值与时点确认的八因子研究分；缺失数据不填零，也不自动给中性分。
-            </p>
-          </div>
-          <button type="button" aria-label="关闭评级" onClick={() => props.onClose()}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </header>
-
-        <Show when={snapshot()}>
-          {(value) => (
-            <div class="company-rating-meta">
-              <span class={`is-${value().data_status}`}>
-                {coverageLabel(value())}
-              </span>
-              <span>{value().timezone} {value().generated_at_local} 更新</span>
-              <button type="button" disabled={loading()} onClick={() => void load()}>
-                {loading() ? "刷新中…" : "重新读取"}
-              </button>
-            </div>
-          )}
-        </Show>
+        <ResearchPanelHead
+          id="company-rating-title"
+          kicker="HONE 研究信号"
+          title="每日公司评级"
+          headline={snapshot() ? `${snapshot()!.coverage.companies} 家` : undefined}
+          summary={
+            snapshot()
+              ? `绿灯 ${counts().green} · 黄灯 ${counts().yellow} · 红灯 ${counts().red} · 研究基线 ${counts().unknown}。`
+              : "结构质量、财务兑现、前瞻能见度、估值与时点确认的八因子研究分；缺失数据不填零，也不自动给中性分。"
+          }
+          meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
+          onClose={props.onClose}
+          action={
+            <button type="button" class="company-rating-reread" disabled={loading()} onClick={() => void load()}>
+              {loading() ? "刷新中…" : "重新读取"}
+            </button>
+          }
+        />
 
         <Show when={snapshot()?.data_status === "simulation"}>
           <div class="company-rating-simulation-note">
-            <strong>模拟预览</strong>
             <span>{snapshot()?.simulation_note}</span>
           </div>
         </Show>

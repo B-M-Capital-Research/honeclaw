@@ -7,7 +7,10 @@ import {
   onMount,
 } from "solid-js";
 import { getPublicPortfolioNews } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
@@ -56,6 +59,48 @@ function statusLabel(status: string) {
   if (status === "stale") return "上次成功快照";
   if (status === "data_unavailable") return "等待新闻数据源";
   return "数据暂不可用";
+}
+
+/**
+ * The head shows one sentence; the count strip shows whatever else the summary
+ * said. Truncating would hide coverage caveats, and printing a whole paragraph
+ * in the head is what made the panel read as undifferentiated — so the lead
+ * sentence goes above and the remainder stays below, each shown exactly once.
+ */
+function leadSentence(summary: string) {
+  return summary.match(/^[\s\S]*?[。！？!?]/)?.[0].trim() ?? summary.trim();
+}
+
+function trailingDetail(summary: string) {
+  return summary.slice(leadSentence(summary).length).trim();
+}
+
+/** Traffic-light key for the status badge the head now carries. */
+function statusSignal(status: string) {
+  if (status === "live" || status === "no_material_news") return "green";
+  if (status === "partial" || status === "source_only" || status === "portfolio_changed") {
+    return "yellow";
+  }
+  if (status === "stale" || status === "data_unavailable") return "orange";
+  return undefined;
+}
+
+/**
+ * Provenance collapsed to one line under the verdict. A field the snapshot did
+ * not carry is dropped rather than printed as a hole.
+ */
+function provenanceLine(snapshot: PortfolioNewsSnapshot) {
+  return [
+    `报告日 ${snapshot.report_date}`,
+    snapshot.generated_at_local
+      ? `生成 ${[snapshot.generated_at_local, snapshot.timezone].filter(Boolean).join(" ")}`
+      : "",
+    `持仓 ${snapshot.holdings_count}`,
+    snapshot.lookback_hours ? `回溯 ${snapshot.lookback_hours} 小时` : "",
+    snapshot.model_version,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
@@ -158,35 +203,32 @@ export function PortfolioNewsPanel(props: Props) {
       dialogClass="portfolio-news-dialog"
     >
       <>
-        <header>
-          <div>
-            <p>持仓情报分析</p>
-            <h2 id="portfolio-news-title">持仓重点新闻分析</h2>
-            <span>近 48 小时可信来源 · 模型影响判断 · 每日 20:00 更新</span>
-          </div>
-          <button type="button" aria-label="关闭持仓新闻" onClick={() => props.onClose()}>
-            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </header>
-
-        <Show when={snapshot()}>
-          {(value) => (
-            <div class="portfolio-news-meta">
-              <b class={`is-${value().status}`}>{statusLabel(value().status)}</b>
-              <span>报告日 {value().report_date}</span>
-              <span>{value().generated_at_local} {value().timezone}</span>
-              <span>持仓 {value().holdings_count}</span>
-              <button type="button" onClick={() => void load()} disabled={loading()}>
-                {loading() ? "读取中…" : "重新读取"}
-              </button>
-            </div>
-          )}
-        </Show>
+        <ResearchPanelHead
+          id="portfolio-news-title"
+          kicker="持仓情报分析"
+          title="持仓重点新闻分析"
+          headline={
+            // With no holdings there is nothing to have found; "0 条" would
+            // read as a scanned-and-clear result rather than an empty portfolio.
+            snapshot()?.holdings_count ? `${snapshot()!.counts.total} 条` : undefined
+          }
+          signal={snapshot() ? statusSignal(snapshot()!.status) : undefined}
+          signalLabel={snapshot() ? statusLabel(snapshot()!.status) : undefined}
+          summary={
+            snapshot()
+              ? leadSentence(snapshot()!.summary)
+              : "近 48 小时可信来源 · 模型影响判断 · 每日 20:00 更新"
+          }
+          meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
+          onClose={props.onClose}
+          action={
+            <button type="button" class="portfolio-news-reread" onClick={() => void load()} disabled={loading()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
 
         <div class="portfolio-news-summary">
-          <div>
-            <strong>{snapshot()?.counts.total ?? 0}</strong><span>重点新闻</span>
-          </div>
           <div class="is-negative">
             <strong>{snapshot()?.counts.negative ?? 0}</strong><span>负面</span>
           </div>
@@ -196,7 +238,9 @@ export function PortfolioNewsPanel(props: Props) {
           <div class="is-review">
             <strong>{snapshot()?.counts.immediate_review ?? 0}</strong><span>立即复核</span>
           </div>
-          <p>{snapshot()?.summary ?? (error() || "正在读取当天快照…")}</p>
+          <Show when={snapshot() && trailingDetail(snapshot()!.summary)}>
+            {(detail) => <p>{detail()}</p>}
+          </Show>
         </div>
 
         <div class="portfolio-news-filters" role="group" aria-label="按新闻影响筛选">
