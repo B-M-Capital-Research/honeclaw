@@ -23,6 +23,17 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-16 14:00-18:02 CST（UTC 2026-08-16 06:00-10:02）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 14:00 / 14:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；15:30 CST 转为 BE 律所提醒和单项触发，16:30 / 18:00 CST 又围绕 BE 律所重复提醒收口，未稳定执行原 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_3c52d213` / `job=持仓财报与重大新闻心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 17:00 / 18:00 CST deliver preview 转为 NVLink / NVSwitch 技术定位与投资机会框架，偏离持仓财报与重大新闻筛查。
+  - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
+  - 15:30 CST deliver preview 转为 AI 推理芯片格局和关键标的框架，未稳定围绕配置持仓重大事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 16:00 CST deliver preview 转为 SMCI 财报后估值修复长文，17:30 CST 转为 VIX / VXX 波动率交易说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-16 10:01-14:02 CST（UTC 2026-08-16 02:01-06:02）。
   - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
   - 10:30 / 12:30 CST deliver preview 转为“当前对话中还没有收到具体投研问题”的直聊澄清，11:30 CST 转为美国芯片出口管制与中美科技博弈长文，12:00 / 14:00 CST 又只围绕 NVDA 拟向 SB Energy 投资单项展开，未稳定执行 NVDA 关键事件心跳筛查收口。
