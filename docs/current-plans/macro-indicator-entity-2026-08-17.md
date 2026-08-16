@@ -339,4 +339,35 @@ TTL 跟随既有 `ttl_for_data_type` 的宏观档位。
 2. 输入含「我的持仓」+ 持仓中的 `TEM`（tentative）⇒ `TEM` **保留**（持仓即绑定）。
 3. 变异验证：去掉过滤，测试 1 必须转红。
 
+#### 2026-08-17 Claude 用 Track A 的 example 实测 `j_e447df29` 完整原文
+
+```
+cargo run -q -p hone-channels --example entity_scan_explain -- --origin scheduled "<完整 task_prompt>"
+```
+
+结果 `scope=Portfolio`，15 个候选里**存活的只有 5 个，全是 tentative、全不是证券**：
+
+| 存活（进 Portfolio 分支） | 被丢弃 |
+|---|---|
+| `CPI` `PCE` `ISM` `VIX` `AI` | `MRVL` `AAOI` `RKLB` `LITE` `BE` `NVDA` `TEM` `SEC`（`scheduled_secondary_subject_without_rebinding`）、`Fed`（`missing_scope_context`）、`FedWatch`（`scheduled_mixed_case_without_ticker_binding`） |
+
+**实体集合是反的**：用户全部真实持仓被丢，只剩宏观/行业缩写。
+随后 `normalized_portfolio_snapshot` 因 `explicit_symbols` 非空，把 `market_symbols`
+收窄为**恰好这 5 个**（:10038-10051）⇒ 真实持仓一个都不取行情，反而拿 `PCE` 查股价 ⇒
+`Unresolved` ⇒ `:3723` `return Err`。
+
+**⚠ 因此 Track E 的过滤必须放在 `explicit_symbols` 计算之前（~:10029），
+不能只过滤 `security_mentions`（~:10068）**——否则 `market_symbols` 的收窄逻辑仍按
+错误的 5 个执行。过滤后 `explicit_symbols` 变空，自动落到 `portfolio_symbols` 分支
+（:10056-10066，那里已经正确地写了 `tentative_symbol: true`），
+**同一个过滤既止血又把实体集合修回正确的**。
+
+补充回归测试：
+4. 用 `j_e447df29` 完整原文 ⇒ 实体集合等于用户真实持仓快照，不含 `PCE`/`CPI`/`ISM`/`VIX`/`AI`。
+
+（另记：`scheduled_secondary_subject_without_rebinding` 把 `MRVL`/`NVDA`/`TEM` 这些
+真代码全丢掉，是更深一层的问题——它们 `comparison_binding=true`、
+`symbol_cluster_binding=true` 却因 `past_subject_boundary` 被切掉。
+本轮不修，单独立项。）
+
 （Codex 继续在此追加：分歧、变异验证结果）
