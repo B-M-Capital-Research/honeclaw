@@ -121,7 +121,7 @@ pub async fn distill_tick(
             skipped_count += 1;
             continue;
         }
-        let stored_prefs = prefs.load(&actor);
+        let stored_prefs = prefs.load(&actor).await;
         let reason = match should_trigger(&stored_prefs, &holdings, now) {
             Some(r) => r,
             None => {
@@ -340,7 +340,7 @@ mod tests {
         )
         .await;
         assert_eq!(triggered_count, 1, "actor 应被触发蒸馏");
-        let stored_prefs = prefs.load(&actor);
+        let stored_prefs = prefs.load(&actor).await;
         assert!(stored_prefs.last_mainline_distilled_at.is_some());
         assert_eq!(stored_prefs.mainline_by_ticker.as_ref().unwrap().len(), 2);
     }
@@ -365,7 +365,7 @@ mod tests {
         stored_prefs.mainline_by_ticker = Some(by_ticker);
         stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::minutes(5)).to_rfc3339());
-        prefs.save(&actor, &stored_prefs).unwrap();
+        prefs.save(&actor, &stored_prefs).await.unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
@@ -406,7 +406,7 @@ mod tests {
         stored_prefs.mainline_by_ticker = Some(by_ticker);
         stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::hours(12)).to_rfc3339());
-        prefs.save(&actor, &stored_prefs).unwrap();
+        prefs.save(&actor, &stored_prefs).await.unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
@@ -448,7 +448,7 @@ mod tests {
         stored_prefs.mainline_distill_skipped = vec!["AAPL".to_string()];
         stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::hours(1)).to_rfc3339());
-        prefs.save(&actor, &stored_prefs).unwrap();
+        prefs.save(&actor, &stored_prefs).await.unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
@@ -485,7 +485,7 @@ mod tests {
         stored_prefs.mainline_by_ticker = Some(by_ticker);
         stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::days(8)).to_rfc3339());
-        prefs.save(&actor, &stored_prefs).unwrap();
+        prefs.save(&actor, &stored_prefs).await.unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
@@ -566,7 +566,7 @@ mod tests {
 
         let mut stored_prefs = NotificationPrefs::default();
         stored_prefs.last_mainline_distilled_at = Some("not-a-date".into());
-        prefs.save(&actor, &stored_prefs).unwrap();
+        prefs.save(&actor, &stored_prefs).await.unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
@@ -582,7 +582,7 @@ mod tests {
         .await;
         assert_eq!(triggered_count, 1, "无效时间戳应按 due 处理");
         // 蒸馏后 last_distilled_at 应被覆盖成合法 RFC3339
-        let reloaded = prefs.load(&actor);
+        let reloaded = prefs.load(&actor).await;
         assert!(
             DateTime::parse_from_rfc3339(reloaded.last_mainline_distilled_at.as_ref().unwrap())
                 .is_ok()

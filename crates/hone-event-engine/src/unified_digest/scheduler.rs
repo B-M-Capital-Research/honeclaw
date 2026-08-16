@@ -277,7 +277,7 @@ impl UnifiedDigestScheduler {
                 let _ = self.buffer.drain_actor(&actor);
                 continue;
             }
-            let user_prefs = self.prefs.load(&actor);
+            let user_prefs = self.prefs.load(&actor).await;
             let focus_symbols =
                 actor_focus_symbols(&self.portfolio_storage, &actor, &user_prefs).await;
             let effective_tz = EffectiveTz::from_actor_prefs(

@@ -291,6 +291,7 @@ mod tests {
                         ..NotificationPrefs::default()
                     },
                 )
+                .await
                 .unwrap();
         }
         let sink = Arc::new(CapturingSink::default());

@@ -27,10 +27,10 @@
 //! ```
 
 use std::collections::{HashMap, HashSet};
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
+use async_trait::async_trait;
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::quiet::local_time_in_quiet_window;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -735,10 +735,11 @@ where
 }
 
 /// Prefs 加载抽象——router / scheduler 按 actor 查。
+#[async_trait]
 pub trait PrefsProvider: Send + Sync {
-    fn load(&self, actor: &ActorIdentity) -> NotificationPrefs;
+    async fn load(&self, actor: &ActorIdentity) -> NotificationPrefs;
     /// 可选保存；文件/数据库后端可实现，内存 stub 可返回 `Err`。
-    fn save(&self, _actor: &ActorIdentity, _prefs: &NotificationPrefs) -> anyhow::Result<()> {
+    async fn save(&self, _actor: &ActorIdentity, _prefs: &NotificationPrefs) -> anyhow::Result<()> {
         anyhow::bail!("this PrefsProvider is read-only")
     }
 }
@@ -746,8 +747,9 @@ pub trait PrefsProvider: Send + Sync {
 /// 默认放行所有事件。用于未配置 prefs 目录时的 fallback。
 pub struct AllowAllPrefs;
 
+#[async_trait]
 impl PrefsProvider for AllowAllPrefs {
-    fn load(&self, _actor: &ActorIdentity) -> NotificationPrefs {
+    async fn load(&self, _actor: &ActorIdentity) -> NotificationPrefs {
         NotificationPrefs::default()
     }
 }
@@ -776,15 +778,14 @@ impl FilePrefsStorage {
         self.dir.join(format!("{}.json", actor_slug(actor)))
     }
 
-    pub fn load_many(&self, actors: &[ActorIdentity]) -> Vec<NotificationPrefs> {
+    pub async fn load_many(&self, actors: &[ActorIdentity]) -> Vec<NotificationPrefs> {
         if let Some(postgres) = self.cloud.clone() {
             let actor_storage_keys = actors.iter().map(actor_slug).collect::<Vec<_>>();
             let query_keys = actor_storage_keys.clone();
-            match run_cloud_notification_prefs(async move {
-                postgres
-                    .get_notification_prefs_many_cached(&query_keys)
-                    .await
-            }) {
+            match postgres
+                .get_notification_prefs_many_cached(&query_keys)
+                .await
+            {
                 Ok(records) => {
                     return actor_storage_keys
                         .iter()
@@ -815,17 +816,20 @@ impl FilePrefsStorage {
             }
         }
 
-        actors.iter().map(|actor| self.load(actor)).collect()
+        let mut prefs = Vec::with_capacity(actors.len());
+        for actor in actors {
+            prefs.push(self.load(actor).await);
+        }
+        prefs
     }
 }
 
+#[async_trait]
 impl PrefsProvider for FilePrefsStorage {
-    fn load(&self, actor: &ActorIdentity) -> NotificationPrefs {
+    async fn load(&self, actor: &ActorIdentity) -> NotificationPrefs {
         if let Some(postgres) = self.cloud.clone() {
             let actor_storage_key = actor_slug(actor);
-            match run_cloud_notification_prefs(async move {
-                postgres.get_notification_prefs(&actor_storage_key).await
-            }) {
+            match postgres.get_notification_prefs(&actor_storage_key).await {
                 Ok(Some(value)) => match serde_json::from_value::<NotificationPrefs>(value) {
                     Ok(prefs) => return prefs,
                     Err(err) => {
@@ -862,16 +866,14 @@ impl PrefsProvider for FilePrefsStorage {
         }
     }
 
-    fn save(&self, actor: &ActorIdentity, prefs: &NotificationPrefs) -> anyhow::Result<()> {
+    async fn save(&self, actor: &ActorIdentity, prefs: &NotificationPrefs) -> anyhow::Result<()> {
         if let Some(postgres) = self.cloud.clone() {
             let actor_storage_key = actor_slug(actor);
             let value = serde_json::to_value(prefs)?;
-            return run_cloud_notification_prefs(async move {
-                postgres
-                    .upsert_notification_prefs(&actor_storage_key, value)
-                    .await
-            })
-            .map_err(anyhow::Error::from);
+            return postgres
+                .upsert_notification_prefs(&actor_storage_key, value)
+                .await
+                .map_err(anyhow::Error::from);
         }
 
         let path = self.path_for(actor);
@@ -882,19 +884,6 @@ impl PrefsProvider for FilePrefsStorage {
         std::fs::write(&path, text)?;
         Ok(())
     }
-}
-
-/// 通知偏好读写是推送链路的热路径,和 memory/ 那七个模块用同一个共享长驻 runtime。
-///
-/// 此前这里是「每次调用 `std::thread::spawn` + 内部再 `Runtime::new()`」的反模式,
-/// 与 `62d0c889` 修掉的 cloud cron 完全同形——生产实测那个写法让进程 26 分钟烧掉
-/// 47 CPU 分钟。多 agent 审计只扫了 `memory/`,漏掉了 event-engine 这一处。
-fn run_cloud_notification_prefs<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: Future<Output = HoneResult<T>> + Send + 'static,
-{
-    hone_core::cloud_sync::run_cloud_sync(future, None, "cloud notification prefs operation")
 }
 
 fn actor_slug(a: &ActorIdentity) -> String {
@@ -1084,13 +1073,13 @@ mod tests {
         )));
     }
 
-    #[test]
-    fn file_storage_roundtrip() {
+    #[tokio::test]
+    async fn file_storage_roundtrip() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
         let actor_id = actor_identity_fixture();
         // 缺失文件 → 默认
-        let loaded = store.load(&actor_id);
+        let loaded = store.load(&actor_id).await;
         assert!(loaded.enabled);
         // 写入 → 读回
         let prefs = NotificationPrefs {
@@ -1126,8 +1115,8 @@ mod tests {
                 exempt_kinds: vec!["earnings_released".into()],
             }),
         };
-        store.save(&actor_id, &prefs).unwrap();
-        let loaded = store.load(&actor_id);
+        store.save(&actor_id, &prefs).await.unwrap();
+        let loaded = store.load(&actor_id).await;
         assert!(!loaded.enabled);
         assert!(loaded.portfolio_only);
         assert_eq!(loaded.min_severity, Severity::High);
@@ -1288,8 +1277,8 @@ mod tests {
         assert_eq!(prefs.mainline_distill_skipped, vec!["XYZ".to_string()]);
     }
 
-    #[test]
-    fn new_per_actor_fields_missing_in_old_json_fall_back() {
+    #[tokio::test]
+    async fn new_per_actor_fields_missing_in_old_json_fall_back() {
         // 老 prefs 文件没有这 4 个字段;serde(default) 应让加载继续走默认。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
@@ -1299,7 +1288,7 @@ mod tests {
             r#"{"enabled":true,"portfolio_only":false,"min_severity":"low","blocked_kinds":[]}"#,
         )
         .unwrap();
-        let loaded = store.load(&actor_id);
+        let loaded = store.load(&actor_id).await;
         assert!(loaded.timezone.is_none());
         assert!(loaded.digest_slots.is_none());
         assert!(loaded.price_high_pct_override.is_none());
@@ -1333,14 +1322,14 @@ mod tests {
         assert!(!prefs.should_deliver(&event));
     }
 
-    #[test]
-    fn file_storage_missing_fields_fall_back_to_default() {
+    #[tokio::test]
+    async fn file_storage_missing_fields_fall_back_to_default() {
         // 用户只写了 enabled=false，其他字段缺失；serde(default) 保证兼容。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
         let actor_id = actor_identity_fixture();
         std::fs::write(store.path_for(&actor_id), r#"{"enabled": false}"#).unwrap();
-        let loaded = store.load(&actor_id);
+        let loaded = store.load(&actor_id).await;
         assert!(!loaded.enabled);
         assert_eq!(loaded.min_severity, Severity::Low);
         assert!(!loaded.portfolio_only);
@@ -1430,13 +1419,13 @@ mod tests {
         assert!(loaded.enabled);
     }
 
-    #[test]
-    fn malformed_json_falls_back_without_panic() {
+    #[tokio::test]
+    async fn malformed_json_falls_back_without_panic() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
         let actor_id = actor_identity_fixture();
         std::fs::write(store.path_for(&actor_id), "not json").unwrap();
-        let loaded = store.load(&actor_id);
+        let loaded = store.load(&actor_id).await;
         assert!(
             loaded.enabled,
             "解析失败时应回到默认（放行），不影响推送链路"

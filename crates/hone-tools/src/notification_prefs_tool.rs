@@ -85,12 +85,12 @@ impl NotificationPrefsTool {
     }
 }
 
-pub fn load_notification_quiet_hours(
+pub async fn load_notification_quiet_hours(
     prefs_dir: impl Into<PathBuf>,
     actor: &ActorIdentity,
 ) -> Option<(QuietHours, Option<String>)> {
     let storage = FilePrefsStorage::new(prefs_dir).ok()?;
-    let prefs = storage.load(actor);
+    let prefs = storage.load(actor).await;
     Some((prefs.quiet_hours?, prefs.timezone))
 }
 
@@ -569,7 +569,7 @@ impl Tool for NotificationPrefsTool {
             .to_string();
         let value = args.get("value").cloned().unwrap_or(Value::Null);
 
-        let mut prefs = storage.load(&actor);
+        let mut prefs = storage.load(&actor).await;
         match action.as_str() {
             "get" => {
                 return Ok(json!({ "status": "ok", "prefs": prefs_to_json(&prefs) }));
@@ -588,6 +588,7 @@ impl Tool for NotificationPrefsTool {
                         &actor,
                         &self.overview_defaults,
                     )
+                    .await
                 } else {
                     crate::schedule_view::build_overview(
                         &self.prefs_dir,
@@ -620,6 +621,7 @@ impl Tool for NotificationPrefsTool {
                 prefs.digest_slots = Some(Vec::new());
                 storage
                     .save(&actor, &prefs)
+                    .await
                     .map_err(|e| HoneError::Tool(format!("保存 prefs 失败: {e}")))?;
                 return Ok(json!({
                     "status": "ok",
@@ -814,6 +816,7 @@ impl Tool for NotificationPrefsTool {
 
         storage
             .save(&actor, &prefs)
+            .await
             .map_err(|e| HoneError::Tool(format!("保存 prefs 失败: {e}")))?;
         Ok(json!({ "status": "ok", "prefs": prefs_to_json(&prefs) }))
     }

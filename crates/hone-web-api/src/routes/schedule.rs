@@ -66,6 +66,7 @@ pub(crate) async fn handle_schedule(
     let cron_jobs = state.core.cron_job_storage().list_jobs(&actor).await;
 
     let overview = build_overview_with_cron_jobs(prefs_dir, cron_jobs, &actor, &overview_defaults)
+        .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,

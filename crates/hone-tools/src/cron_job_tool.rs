@@ -84,14 +84,14 @@ impl CronJobTool {
     /// store; event pushes and daily digests live in notification prefs and
     /// keep firing after every cron job is deleted. Reporting only the cron
     /// store is what lets an honest tool result become a false "已全部关闭".
-    fn remaining_automatic_push_sources(
+    async fn remaining_automatic_push_sources(
         &self,
         actor: &ActorIdentity,
         remaining_cron_jobs: usize,
     ) -> Option<Value> {
         let prefs_dir = self.notif_prefs_dir.as_ref()?;
         let storage = FilePrefsStorage::new(prefs_dir).ok()?;
-        let prefs = storage.load(actor);
+        let prefs = storage.load(actor).await;
 
         let (digest_source, digest_times) = match prefs.effective_digest_slots() {
             Some(slots) if slots.is_empty() => ("disabled", Vec::new()),
@@ -302,7 +302,10 @@ impl Tool for CronJobTool {
                     "action": "list",
                     "jobs": serde_json::to_value(&jobs).unwrap_or_default()
                 });
-                if let Some(sources) = self.remaining_automatic_push_sources(actor, jobs.len()) {
+                if let Some(sources) = self
+                    .remaining_automatic_push_sources(actor, jobs.len())
+                    .await
+                {
                     result["automatic_push"] = sources;
                 }
                 Ok(result)
@@ -443,7 +446,7 @@ impl Tool for CronJobTool {
                     // nothing pushes any more; `automatic_push` says that.
                     "remaining_count": 0,
                 });
-                if let Some(sources) = self.remaining_automatic_push_sources(actor, 0) {
+                if let Some(sources) = self.remaining_automatic_push_sources(actor, 0).await {
                     result["automatic_push"] = sources;
                 }
                 Ok(result)
@@ -819,6 +822,7 @@ mod tests {
                     ..Default::default()
                 },
             )
+            .await
             .expect("save prefs");
 
         let tool = CronJobTool::new(&data_dir, Some(actor), "ou_full_stop", false)

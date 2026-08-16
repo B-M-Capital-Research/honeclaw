@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
     let mut failed = 0;
 
     for actor in &actors {
-        let prefs = storage.load(actor);
+        let prefs = storage.load(actor).await;
         let scope_display = actor.channel_scope.as_deref().unwrap_or("-");
         let would_deliver = prefs.should_deliver(&event);
 

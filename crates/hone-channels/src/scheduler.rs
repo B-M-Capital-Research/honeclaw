@@ -1556,11 +1556,11 @@ fn normalize_heartbeat_local_trigger_time(
 
 /// 通过 cloud-aware notification prefs 后端读 actor 的 quiet_hours + timezone。
 /// 第二个返回值是 actor 的 timezone（IANA 名），用于 `quiet_window_active` 解释 from/to。
-fn load_actor_quiet_hours(
+async fn load_actor_quiet_hours(
     core: &HoneBotCore,
     actor: &hone_core::ActorIdentity,
 ) -> Option<(hone_core::quiet::QuietHours, Option<String>)> {
-    hone_tools::load_notification_quiet_hours(&core.config.storage.notif_prefs_dir, actor)
+    hone_tools::load_notification_quiet_hours(&core.config.storage.notif_prefs_dir, actor).await
 }
 
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
@@ -4390,7 +4390,7 @@ pub async fn execute_scheduler_event_with_storage(
     // quiet_hours 拦截:除非任务显式 bypass,否则在用户的勿扰区间内全部跳过执行,
     // 避免 cron 任务在半夜把模型唤醒推送。落 metadata.skipped='quiet_hours' 供巡检。
     if !event.bypass_quiet_hours
-        && let Some((qh, tz_name)) = load_actor_quiet_hours(&core, &event.actor)
+        && let Some((qh, tz_name)) = load_actor_quiet_hours(&core, &event.actor).await
         && hone_core::quiet::quiet_window_active(
             tz_name.as_deref(),
             8,
@@ -8880,17 +8880,17 @@ mod tests {
             .expect("persist scheduler event job");
     }
 
-    #[test]
-    fn load_actor_quiet_hours_returns_none_when_file_absent() {
+    #[tokio::test]
+    async fn load_actor_quiet_hours_returns_none_when_file_absent() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
         let core = make_test_core(&prefs_dir);
         let actor = ActorIdentity::new("imessage", "ghost", None::<String>).unwrap();
-        assert!(load_actor_quiet_hours(&core, &actor).is_none());
+        assert!(load_actor_quiet_hours(&core, &actor).await.is_none());
     }
 
-    #[test]
-    fn load_actor_quiet_hours_reads_field_correctly() {
+    #[tokio::test]
+    async fn load_actor_quiet_hours_reads_field_correctly() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
         let core = make_test_core(&prefs_dir);
@@ -8904,7 +8904,9 @@ mod tests {
                 exempt_kinds: vec!["earnings_released".into()],
             },
         );
-        let (qh, tz) = load_actor_quiet_hours(&core, &actor).expect("present");
+        let (qh, tz) = load_actor_quiet_hours(&core, &actor)
+            .await
+            .expect("present");
         assert_eq!(qh.from, "23:00");
         assert_eq!(qh.to, "07:00");
         assert_eq!(qh.exempt_kinds, vec!["earnings_released".to_string()]);

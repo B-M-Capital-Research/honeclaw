@@ -170,12 +170,14 @@ async fn reviewed_earnings_uses_each_actors_own_mainline() {
             &actor("long-term"),
             &prefs_for("AI 数据层扩容与企业级 SSD 客户采用"),
         )
+        .await
         .unwrap();
     prefs_storage
         .save(
             &actor("cycle"),
             &prefs_for("NAND ASP、库存与供给纪律的周期拐点"),
         )
+        .await
         .unwrap();
 
     let router = NotificationRouter::new(
@@ -856,6 +858,7 @@ async fn actor_price_ladder_enforces_first_threshold_and_four_point_realerts() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -915,6 +918,7 @@ async fn actor_price_policy_filters_against_effective_not_shared_event_severity(
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -962,6 +966,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1088,6 +1093,7 @@ async fn disabled_prefs_skip_send_and_enqueue() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1149,6 +1155,7 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1756,6 +1763,7 @@ async fn per_actor_importance_prompt_overrides_default() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let captured = Arc::new(Mutex::new(Vec::new()));
     let router = NotificationRouter::new(
@@ -2065,6 +2073,7 @@ async fn per_actor_price_threshold_below_system_floor_stays_digest() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2120,6 +2129,7 @@ async fn large_position_can_use_sensitive_price_threshold() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2179,6 +2189,7 @@ async fn directional_price_thresholds_use_move_direction() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2238,6 +2249,7 @@ async fn price_close_direct_disabled_keeps_closing_move_in_digest() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2290,6 +2302,7 @@ async fn price_close_direct_enabled_allows_closing_move_promotion() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2345,6 +2358,7 @@ async fn per_actor_immediate_kinds_promotes_weekly52_high() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2410,6 +2424,7 @@ async fn per_actor_immediate_kinds_does_not_resurrect_low_signal_news() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2459,6 +2474,7 @@ async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2513,6 +2529,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2620,7 +2637,7 @@ fn quiet_hours_around_now() -> crate::prefs::QuietHours {
     }
 }
 
-fn router_with_quiet_hours_for_aapl(
+async fn router_with_quiet_hours_for_aapl(
     qh: crate::prefs::QuietHours,
 ) -> (
     NotificationRouter,
@@ -2643,7 +2660,9 @@ fn router_with_quiet_hours_for_aapl(
     prefs.quiet_hours = Some(qh);
     // 测试统一用 UTC 解释 quiet 区间,避免 router 默认 CST 偏移让 around_now 窗口失准
     prefs.timezone = Some("UTC".into());
-    crate::prefs::PrefsProvider::save(&prefs_storage, &actor("u1"), &prefs).unwrap();
+    crate::prefs::PrefsProvider::save(&prefs_storage, &actor("u1"), &prefs)
+        .await
+        .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
         sink.clone(),
@@ -2657,7 +2676,7 @@ fn router_with_quiet_hours_for_aapl(
 #[tokio::test]
 async fn quiet_held_logs_status_and_skips_sink() {
     let qh = quiet_hours_around_now();
-    let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let mut event = earnings_event_with_severity(Severity::High);
     event.id = "earnings_in_quiet".into();
     store.insert_event(&event).unwrap();
@@ -2684,7 +2703,7 @@ async fn quiet_held_logs_status_and_skips_sink() {
 async fn exempt_kind_bypasses_quiet_hold() {
     let mut qh = quiet_hours_around_now();
     qh.exempt_kinds = vec!["earnings_released".into()];
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::High); // EarningsReleased
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "exempt kind must still go to sink during quiet");
@@ -2703,7 +2722,7 @@ async fn quiet_outside_window_does_not_hold() {
         to: format!("{:02}:00", to_h),
         exempt_kinds: Vec::new(),
     };
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::High);
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1);
@@ -2714,7 +2733,7 @@ async fn quiet_outside_window_does_not_hold() {
 async fn quiet_does_not_hold_medium_to_digest() {
     // 验证 quiet_hours 只拦 High,Medium 仍走 digest enqueue
     let qh = quiet_hours_around_now();
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::Medium);
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
@@ -2869,6 +2888,7 @@ async fn position_context_is_injected_and_rendered_for_held_symbol() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -3120,6 +3140,7 @@ async fn cross_ticker_mainline_link_is_rendered() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),

@@ -1495,7 +1495,8 @@ async fn replay_two_weeks_and_push() {
         .unwrap_or_else(|_| ActorIdentity::new("discord", "dryrun", None::<&str>).unwrap());
     let prefs = FilePrefsStorage::new(&prefs_dir)
         .expect("prefs dir")
-        .load(&actor);
+        .load(&actor)
+        .await;
 
     // σ 表:committed fixture(2026-01-02..2026-08-14 日线)
     let fixture: serde_json::Value = serde_json::from_str(

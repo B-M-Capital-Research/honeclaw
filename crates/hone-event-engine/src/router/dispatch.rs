@@ -80,7 +80,7 @@ impl NotificationRouter {
         let mut sent = 0u32;
         let mut pending = 0u32;
         for (actor, sev) in hits {
-            let user_prefs = self.prefs.load(&actor);
+            let user_prefs = self.prefs.load(&actor).await;
             let price_policy = user_prefs.effective_price_alert_policy(self.price_policy_defaults);
             // LLM 仲裁:不确定来源的 Low NewsCritical,按 actor 重要性 prompt
             // 决定是否升 Medium。结果只影响本 actor 的本次分发,不污染原 event。
@@ -751,7 +751,7 @@ impl NotificationRouter {
         let mut sent = 0u32;
         for (_key, (actor, items)) in map {
             if items.len() < super::config::PRICE_BURST_MIN_MERGE {
-                let user_prefs = self.prefs.load(&actor);
+                let user_prefs = self.prefs.load(&actor).await;
                 for (event, sev) in items {
                     if self
                         .deliver_high_immediate(&actor, &event, sev, &user_prefs)

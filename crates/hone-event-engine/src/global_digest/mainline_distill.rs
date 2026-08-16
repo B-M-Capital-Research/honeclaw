@@ -435,7 +435,7 @@ pub async fn distill_and_persist_one(
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
     let profiles = scan_profiles_for_actor(sandbox_base, actor, Some(holdings)).await;
     let distilled_mainlines = distill_from_profiles(distiller, profiles, holdings).await;
-    merge_into_prefs(prefs_storage, actor, distilled_mainlines)
+    merge_into_prefs(prefs_storage, actor, distilled_mainlines).await
 }
 
 /// 把蒸馏结果合并写回 actor 的 NotificationPrefs 文件。
@@ -449,12 +449,12 @@ pub async fn distill_and_persist_one(
 ///   每次 merge 都替换为本轮 skipped 列表。
 ///
 /// 返回写入后的 prefs 副本。
-pub fn merge_into_prefs(
+pub async fn merge_into_prefs(
     prefs_storage: &dyn crate::prefs::PrefsProvider,
     actor: &ActorIdentity,
     distilled: DistilledMainlines,
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
-    let mut prefs = prefs_storage.load(actor);
+    let mut prefs = prefs_storage.load(actor).await;
     if !distilled.by_ticker.is_empty() {
         prefs.mainline_by_ticker = Some(distilled.by_ticker);
     }
@@ -468,6 +468,7 @@ pub fn merge_into_prefs(
     prefs.mainline_distill_skipped = distilled.skipped_tickers;
     prefs_storage
         .save(actor, &prefs)
+        .await
         .map_err(|e| anyhow::anyhow!("save prefs: {e}"))?;
     Ok(prefs)
 }
@@ -742,14 +743,14 @@ mod tests {
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["AAPL".into()],
         };
-        let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
+        let prefs = merge_into_prefs(&storage, &actor, distilled).await.unwrap();
         assert_eq!(prefs.mainline_by_ticker.as_ref().unwrap().len(), 2);
         assert_eq!(prefs.mainline_style.as_deref(), Some("style text"));
         assert!(prefs.last_mainline_distilled_at.is_some());
         assert_eq!(prefs.mainline_distill_skipped, vec!["AAPL".to_string()]);
 
         // 重新加载验证落盘
-        let reloaded = storage.load(&actor);
+        let reloaded = storage.load(&actor).await;
         assert_eq!(reloaded.mainline_by_ticker.as_ref().unwrap().len(), 2);
     }
 
@@ -767,7 +768,7 @@ mod tests {
         old_by_ticker.insert("MU".into(), "old MU mainline".into());
         old.mainline_by_ticker = Some(old_by_ticker);
         old.mainline_style = Some("old style".into());
-        storage.save(&actor, &old).unwrap();
+        storage.save(&actor, &old).await.unwrap();
 
         // 蒸馏失败 → 空主线 + 空 style
         let distilled = DistilledMainlines {
@@ -776,7 +777,7 @@ mod tests {
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["MU".into()],
         };
-        let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
+        let prefs = merge_into_prefs(&storage, &actor, distilled).await.unwrap();
         // 旧主线应保留(防止误删历史)
         assert_eq!(
             prefs.mainline_by_ticker.as_ref().unwrap()["MU"],

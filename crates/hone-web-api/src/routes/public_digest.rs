@@ -60,7 +60,7 @@ pub(crate) async fn handle_get_digest_context(
         }
     };
     use hone_event_engine::prefs::PrefsProvider;
-    let prefs = prefs_storage.load(&actor);
+    let prefs = prefs_storage.load(&actor).await;
 
     // 持仓(用于显示哪些 ticker 应该有投资主线但没有)
     let portfolio_storage =
@@ -126,7 +126,7 @@ pub(crate) async fn handle_get_settings(
         }
     };
     use hone_event_engine::prefs::PrefsProvider;
-    let prefs = prefs_storage.load(&actor);
+    let prefs = prefs_storage.load(&actor).await;
     Json(json!({
         "style": prefs.effective_mainline_style(),
         "distilled_style": prefs.mainline_style,
@@ -172,9 +172,9 @@ pub(crate) async fn handle_put_investor_style(
         }
     };
     use hone_event_engine::prefs::PrefsProvider;
-    let mut prefs = prefs_storage.load(&actor);
+    let mut prefs = prefs_storage.load(&actor).await;
     prefs.mainline_style_user = style;
-    if let Err(error) = prefs_storage.save(&actor, &prefs) {
+    if let Err(error) = prefs_storage.save(&actor, &prefs).await {
         return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("保存偏好失败: {error}"),

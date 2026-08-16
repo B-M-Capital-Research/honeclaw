@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         // 验证写入
-        let reloaded = prefs_storage.load(&actor);
+        let reloaded = prefs_storage.load(&actor).await;
         println!(
             "  verify: prefs.mainline_by_ticker has {} entries; last_at = {:?}",
             reloaded

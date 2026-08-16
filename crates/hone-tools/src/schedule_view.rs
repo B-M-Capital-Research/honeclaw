@@ -137,17 +137,17 @@ pub async fn build_overview(
 ) -> anyhow::Result<ScheduleOverview> {
     let cron_storage = CronJobStorage::new(cron_jobs_dir);
     let jobs = cron_storage.list_jobs(actor).await;
-    build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults)
+    build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults).await
 }
 
-pub fn build_overview_with_cron_jobs(
+pub async fn build_overview_with_cron_jobs(
     prefs_dir: &Path,
     jobs: Vec<CronJob>,
     actor: &ActorIdentity,
     defaults: &NotificationOverviewDefaults,
 ) -> anyhow::Result<ScheduleOverview> {
     let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
-    let prefs = prefs_storage.load(actor);
+    let prefs = prefs_storage.load(actor).await;
 
     let actor_key = schedule_actor_key(actor);
     let timezone = prefs
@@ -801,7 +801,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        prefs_storage.save(&actor_fixture(), &prefs).unwrap();
+        prefs_storage.save(&actor_fixture(), &prefs).await.unwrap();
 
         let cron_storage = CronJobStorage::new(&cron_dir);
         // 02:00 触发 → 在 quiet 内
@@ -970,6 +970,7 @@ mod tests {
                     ..Default::default()
                 },
             )
+            .await
             .unwrap();
 
         let overview = build_overview(

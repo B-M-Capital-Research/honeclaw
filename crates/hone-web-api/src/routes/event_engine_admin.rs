@@ -353,7 +353,7 @@ pub(crate) async fn handle_get_mainline_context(
         }
     };
     use hone_event_engine::prefs::PrefsProvider;
-    let prefs = prefs_storage.load(&actor);
+    let prefs = prefs_storage.load(&actor).await;
 
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
