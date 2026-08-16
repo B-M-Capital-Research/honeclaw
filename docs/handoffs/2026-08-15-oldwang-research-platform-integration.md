@@ -108,3 +108,27 @@
 - 端到端验收：hone-claw.com/research 登录态下满屏真实数据（宏观 61.6 黄灯、
   AI 67.6 黄灯 4/4 覆盖、评级 52 家、大V 11 条、事件链 35 里程碑、周报 20 项）。
 - 待协作方决策：事件引擎推送灰度（改回 enabled: true 并观察生产波次）。
+
+## 生产部署记录（2026-08-16 20:2x 北京时间，UI 二轮 + 大V采集增强）
+
+- 版本：`683a71d6cec03d749443ff6a99598c6bf0e02501`（Runtime Image run #95，
+  digest `sha256:b738e34d8b6472b4f2d0d48a0e884df5044916f9ed8864a6f8aac7c2676dbc71`）。
+- 流程：GHCR 私有包 → 主机 `/root/.docker/config.json` 既有凭证仍有效（无需新 token）
+  → 磁盘门槛 2.42GiB ≥ 2GiB → `stage_ghcr_runtime.sh` 按 digest 暂存 `[PASS]` →
+  两次 active-chat-runs `{"count":0}` → 原子符号链接切换 → systemd 重启 →
+  `/api/meta` 精确 `683a71d6…` / `role: all`。
+- 保留回滚：`27a53c69`（上一版）、`2f6ceee6`。
+- 冷启动重跑结果：`serenity feed filtered received=200 in_window=200 kept=195
+  filtered=5`（当日窗口 13 → 12）；`influencer digest refreshed status=live items=12`；
+  快照 12 条全部带 `source_text_cn`，3 条带 `media_urls`，8 条带 `reply_context`。
+  关键事件链同步重跑 `status=partial events=35`。
+- 重启后零 panic / 零启动失败。日志中的 `persistent_tool_failure` 与
+  「定时任务执行失败」为用户定时任务的既有失败（部署前 6 小时同类已出现 3 次），
+  非本次回归。
+- **部署后发现并修复的前端缺陷**：大V速报图片 `loading="lazy"` 但 CSS 未给固有
+  尺寸，加载前高度塌成 0，零面积元素永远满足不了浏览器可见性判定 → 生产实测
+  3 张图 0 张加载。已用 `aspect-ratio: 16 / 10` 预留盒子（`90dd8b0e`），随 Pages
+  构建上线。
+- 注意：研究快照是 `/srv/honeclaw/data/` 下的 JSON 文件（277MB），不在 PostgreSQL；
+  PG 只存用户/会话/邀请/持仓/账单。新增字段需要新后端 + 一次 worker 刷新才会出现，
+  仅发布前端不会让原文与图片生效。
