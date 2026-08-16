@@ -6055,11 +6055,9 @@ async fn successful_context_messages_persist_only_final_text_and_tool_metadata()
         },
     ];
 
-    session.persist_successful_assistant_turn(
-        &actor.session_id(),
-        &response,
-        Some(&context_messages),
-    );
+    session
+        .persist_successful_assistant_turn(&actor.session_id(), &response, Some(&context_messages))
+        .await;
 
     let messages = core
         .session_storage

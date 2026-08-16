@@ -1609,7 +1609,7 @@ impl AgentSession {
         Ok((execution, investment_context))
     }
 
-    pub(super) fn persist_successful_assistant_turn(
+    pub(super) async fn persist_successful_assistant_turn(
         &self,
         session_id: &str,
         response: &AgentResponse,
@@ -1629,13 +1629,17 @@ impl AgentSession {
             return;
         };
 
-        let _ = self.core.session_storage.append_session_messages(
-            session_id,
-            vec![session_message_from_normalized(
-                &message,
-                hone_core::local_now_rfc3339(),
-            )],
-        );
+        let _ = self
+            .core
+            .session_storage
+            .append_session_messages(
+                session_id,
+                vec![session_message_from_normalized(
+                    &message,
+                    hone_core::local_now_rfc3339(),
+                )],
+            )
+            .await;
     }
 
     async fn persist_assistant_text_turn(
@@ -2345,12 +2349,16 @@ impl AgentSession {
             Err(err) => {
                 let raw_error = err.to_string();
                 let quota_message = user_visible_error_message(Some(raw_error.as_str()));
-                let _ = self.core.session_storage.add_message(
-                    &session_id,
-                    "user",
-                    user_input,
-                    self.message_metadata.user.clone(),
-                );
+                let _ = self
+                    .core
+                    .session_storage
+                    .add_message(
+                        &session_id,
+                        "user",
+                        user_input,
+                        self.message_metadata.user.clone(),
+                    )
+                    .await;
                 self.emit(AgentSessionEvent::UserMessage {
                     content: user_input.to_string(),
                 })
@@ -2449,12 +2457,11 @@ impl AgentSession {
 
         // ── Fast Persist: 立即写入用户消息 ──
         // 确保 ensureHistory 轮询时 DB 里已有此消息，避免前端因为竞态丢失消息显示
-        let _ = self.core.session_storage.add_message(
-            &session_id,
-            "user",
-            persisted_user_input,
-            user_metadata,
-        );
+        let _ = self
+            .core
+            .session_storage
+            .add_message(&session_id, "user", persisted_user_input, user_metadata)
+            .await;
         if let Some(skill) = &slash_skill {
             if crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_id) {
                 // This also removes legacy earnings prompts that older builds
@@ -2632,7 +2639,8 @@ impl AgentSession {
                 let _ = self
                     .core
                     .session_storage
-                    .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
+                    .update_metadata(&session_id, runner_result.session_metadata_updates.clone())
+                    .await;
             }
             context_messages = runner_result.context_messages;
             response = runner_result.response;
@@ -2998,7 +3006,8 @@ impl AgentSession {
                 &session_id,
                 &response,
                 context_messages.as_deref(),
-            );
+            )
+            .await;
             self.core.log_message_step(
                 &self.actor.channel,
                 &self.actor.user_id,
