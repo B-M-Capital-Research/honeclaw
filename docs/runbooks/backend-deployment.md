@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-12
+Last updated: 2026-08-16
 
 ## When to Use
 
@@ -77,6 +77,27 @@ For SPA routes, keep `packages/app/public/_redirects` in the public build:
 Keep `packages/app/public/asset-recovery-sw.js` and `packages/app/public/_worker.js` in the public build too. They prevent stale JavaScript chunk requests after a frontend deploy from staying on a `text/html` asset response; the app also auto-reloads once when it detects this stale-asset condition.
 
 ## Backend Origin Update
+
+### Runtime timezone is mandatory in production
+
+Set the top-level `timezone` in the deployed `config.yaml` to an explicit IANA
+name, for example:
+
+```yaml
+timezone: "Asia/Shanghai"
+```
+
+The resolution order is top-level `timezone`, `HONE_TIMEZONE`, the host IANA
+timezone, the host's current UTC offset, then UTC. The environment variable is
+therefore an override for host detection when the config field is absent; it
+does not override an explicit config value.
+
+Managed Linux containers commonly report UTC regardless of the operator's
+workstation timezone. Never rely on host detection for production scheduling.
+Before a restart, verify the effective config contains the intended IANA name
+without printing unrelated secrets. After restart, check runtime logs/report
+metadata and one scheduled date/time projection. A timezone change affects new
+timestamps, cron/date keys, and rendering only; do not rewrite historical rows.
 
 The backend origin runs the public API surface used by the Pages frontend:
 
