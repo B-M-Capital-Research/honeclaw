@@ -1627,6 +1627,27 @@ CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
   local_date DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 运行时时区改造把这一列从 `beijing_date` 改名为 `local_date`,但 `CREATE TABLE
+-- IF NOT EXISTS` 对**已存在**的表是空操作 —— 老库里列名不会变,紧接着的
+-- CREATE INDEX 引用 `local_date` 就会报 `column "local_date" does not exist`,
+-- 导致整个 `ensure_schema` 失败、服务起不来。必须显式改名,且要幂等。
+-- `table_schema = current_schema()` 不能省:测试用 `pg_temp` 隔离 schema。
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'cloud_web_admin_actions'
+      AND column_name = 'beijing_date'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'cloud_web_admin_actions'
+      AND column_name = 'local_date'
+  ) THEN
+    ALTER TABLE cloud_web_admin_actions RENAME COLUMN beijing_date TO local_date;
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_cloud_web_admin_actions_daily
   ON cloud_web_admin_actions(admin_user_id, local_date, action);
 CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
