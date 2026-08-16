@@ -23,6 +23,24 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-16 22:02-2026-08-17 02:04 CST（UTC 2026-08-16 14:02-18:04）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:30 / 01:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；01:00 CST 转为 NVIDIA 的主要客户与商业关系说明；02:00 CST 转为特朗普关税政策梳理及对 NVDA 的影响，未稳定执行原 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 22:30 CST deliver preview 主体转为当前静音、即时推、心跳任务和 kinds 配置说明；02:00 CST 同 job 又因 OpenAI-compatible 协议错位跳过发送，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-16 14:00-18:02 CST（UTC 2026-08-16 06:00-10:02）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 14:00 / 14:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；15:30 CST 转为 BE 律所提醒和单项触发，16:30 / 18:00 CST 又围绕 BE 律所重复提醒收口，未稳定执行原 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_3c52d213` / `job=持仓财报与重大新闻心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 17:00 / 18:00 CST deliver preview 转为 NVLink / NVSwitch 技术定位与投资机会框架，偏离持仓财报与重大新闻筛查。
+  - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
+  - 15:30 CST deliver preview 转为 AI 推理芯片格局和关键标的框架，未稳定围绕配置持仓重大事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 16:00 CST deliver preview 转为 SMCI 财报后估值修复长文，17:30 CST 转为 VIX / VXX 波动率交易说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路仍可收口，这些样本只影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：未见触发、runner、出站投递整体失败，也未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-16 10:01-14:02 CST（UTC 2026-08-16 02:01-06:02）。
   - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
   - 10:30 / 12:30 CST deliver preview 转为“当前对话中还没有收到具体投研问题”的直聊澄清，11:30 CST 转为美国芯片出口管制与中美科技博弈长文，12:00 / 14:00 CST 又只围绕 NVDA 拟向 SB Energy 投资单项展开，未稳定执行 NVDA 关键事件心跳筛查收口。
@@ -383,6 +401,18 @@ New
   - `光模块板块关键事件心跳提醒` / `存储板块关键事件心跳提醒` / `持仓财报与重大新闻心跳提醒` 多轮继续围绕 NVIDIA 与 SK Hynix 是否投资、HBM 供应关系和供应链叙事组织正文，而不是严格收口各自关键事件。
   - `NBIS关键事件心跳提醒` 多轮转向 Nebius 与 Y Combinator 的关系解释；`光迅科技关键事件心跳提醒` 一轮转向 GXO 估值分析；`中际旭创关键事件心跳提醒` 一轮在工具受限后转向 SK Hynix HBM4 新闻。
   - 同窗仍有 `deliver=67`、`duplicate_suppressed=29`，说明调度和投递主链路未整体阻断。
+- 本轮判断
+  - 最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。
+  - 为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+
+## 最新运行态复核（2026-08-16 22:04 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 18:01-22:04 CST。
+  - 19:00 / 19:30 / 21:30 CST `AI与科技持仓观察关键事件心跳提醒` 多轮转为“跌 20% 是否买入”的通用投资方法论；22:00 CST 又转为 NVIDIA 与 TSMC foundry 关系解释。
+  - 19:30 / 20:00 / 22:00 CST `AAPL + NVDA + BE 关键事件提醒` 多轮转为推送日程、即时推阈值、静音时段等配置说明，而不是稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - 19:30 / 21:30 CST `NVDA 关键事件心跳提醒` 输出“未附带具体投研问题”或提示用户选择研究维度；19:00 CST 同任务转向 DeepScaler 传闻核验。上述样本均偏离 heartbeat 任务的自主关键事件检查。
+  - 同窗仍有 `deliver=29`、`duplicate_suppressed=15`，说明调度和投递主链路未整体阻断。
 - 本轮判断
   - 最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。
   - 为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。

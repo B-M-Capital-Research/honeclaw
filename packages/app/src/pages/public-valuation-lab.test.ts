@@ -10,7 +10,8 @@ const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
 describe("daily valuation lab", () => {
   test("is reachable from signed-in HONE", () => {
     expect(app).toContain('path="/valuation-lab"');
-    expect(chat).toContain('navigate("/valuation-lab")');
+    // Reachable from the conversation through the composer tools menu.
+    expect(chat).toContain('href: "/valuation-lab"');
   });
 
   test("lives in the research navigation section", () => {

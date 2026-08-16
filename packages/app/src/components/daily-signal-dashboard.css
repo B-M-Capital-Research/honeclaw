@@ -109,55 +109,19 @@
   color: var(--hone-ink-950);
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.34);
 }
-.daily-signal-header {
-  padding: 21px 25px 16px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+/* The refresh control is skinned once, in research.css. */
+/* Chrome around the single scroll container. Without an explicit basis these
+   flex siblings shrink against the body's content height. The body keeps
+   `flex: 1 1 auto` from the shared shell and stays the only scroller. */
+.daily-signal-tabs,
+.daily-signal-footer {
+  flex: 0 0 auto;
 }
-.daily-signal-header p {
-  margin: 0 0 4px;
-  color: #cf5d48;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-.daily-signal-header h2 {
-  margin: 0;
-  font-size: 27px;
-  letter-spacing: -0.04em;
-}
-.daily-signal-header span {
-  display: block;
-  margin-top: 5px;
-  color: #67716e;
-  font-size: 12px;
-}
-.daily-signal-header > button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(35, 48, 45, 0.1);
-  border-radius: 11px;
-  background: #fff;
-  color: #52605b;
-  cursor: pointer;
-}
-.daily-signal-header svg {
-  width: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-}
+
+/* `.research-scroller` owns the sideways overflow and the right-edge fade. */
 .daily-signal-tabs {
   min-height: 42px;
   padding: 0 25px;
-  display: flex;
   align-items: flex-end;
   gap: 20px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
@@ -177,10 +141,6 @@
   border-color: var(--hone-coral-600);
   color: #1f2b28;
   font-weight: 750;
-}
-.daily-signal-tabs .daily-signal-reread {
-  margin-left: auto;
-  color: #c65440;
 }
 .daily-signal-body {
   flex: 1;
@@ -216,6 +176,7 @@
   color: white;
 }
 .daily-signal-hero {
+  margin-bottom: 14px;
   padding: 18px 22px;
   display: grid;
   grid-template-columns: 240px 1fr;
@@ -276,19 +237,16 @@
   color: #52605b;
   font-size: 10px;
 }
-.daily-signal-badges b {
-  background: color-mix(in srgb, var(--signal-color) 12%, white);
-  color: var(--signal-color);
-}
+/* Whatever the summary said beyond its lead sentence, which is in the head. */
 .daily-signal-hero__summary > p {
-  margin: 12px 0 13px;
+  margin: 10px 0 0;
   max-width: 650px;
-  color: #45514d;
-  font-size: 13px;
-  line-height: 1.65;
+  color: var(--hone-ink-600);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .daily-signal-hero dl {
-  margin: 0;
+  margin: 12px 0 0;
   display: flex;
   gap: 24px;
 }
@@ -304,17 +262,6 @@
   margin: 0;
   font-size: 14px;
   font-weight: 750;
-}
-.daily-signal-meta {
-  padding: 10px 2px 15px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px 14px;
-  color: #7b8581;
-  font-size: 10px;
-}
-.daily-signal-meta b {
-  color: #b45242;
 }
 .daily-signal-alerts {
   margin-bottom: 14px;
@@ -399,7 +346,10 @@
   display: grid;
   gap: 6px;
 }
-.daily-signal-card p {
+/* The folded reason inherits from `.research-longform`, so the two-line
+   preview and the expanded text read identically. */
+.daily-signal-card p,
+.daily-signal-card .research-longform {
   margin: 0;
   color: #52605b;
   font-size: 11px;
@@ -512,10 +462,18 @@
   color: #7c8783;
   line-height: 1.45;
 }
-.daily-signal-sources > p {
+/* The full report body is the longest text in the panel; past four lines it
+   arrives folded rather than pushing the data sources off the screen. */
+.daily-signal-sources > p,
+.daily-signal-sources > .research-longform {
   color: #55625e;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.daily-signal-sources > p,
+.daily-signal-sources .research-longform__full {
+  white-space: pre-wrap;
 }
 .daily-signal-sources > a {
   padding: 11px 0;
@@ -597,18 +555,9 @@
     height: min(92dvh, 900px);
     border-radius: 22px 22px 0 0;
   }
-  .daily-signal-header {
-    padding: 17px 17px 13px;
-  }
-  .daily-signal-header h2 {
-    font-size: 23px;
-  }
   .daily-signal-tabs {
     padding: 0 17px;
     gap: 15px;
-  }
-  .daily-signal-tabs .daily-signal-reread {
-    display: none;
   }
   .daily-signal-body {
     padding: 15px 13px 24px;
@@ -626,9 +575,6 @@
   .daily-signal-hero dl {
     justify-content: center;
   }
-  .daily-signal-hero__summary > p {
-    font-size: 12px;
-  }
   .daily-signal-grid,
   .daily-company-grid {
     grid-template-columns: 1fr;
@@ -644,6 +590,50 @@
   }
 }
 
+/* Sheet mode. The head already carries score, signal and one sentence, so the
+   hero only has to fit the gauge and the deltas the head cannot show — both
+   have to clear the fold without a scroll. */
+@media (max-width: 760px) {
+  .daily-signal-hero {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    gap: 2px;
+  }
+  .daily-signal-gauge {
+    height: 84px;
+  }
+  .daily-signal-gauge svg {
+    width: 150px;
+    height: 83px;
+  }
+  .daily-signal-gauge__copy {
+    inset: 35px 0 auto;
+    width: 150px;
+  }
+  .daily-signal-gauge__copy strong {
+    font-size: 24px;
+  }
+  .daily-signal-badges > * {
+    padding: 3px 8px;
+  }
+  .daily-signal-hero dl {
+    margin-top: 8px;
+    gap: 14px;
+  }
+  .daily-signal-hero__summary > p {
+    margin-top: 8px;
+    font-size: 11.5px;
+  }
+  .daily-signal-hero dl div {
+    grid-template-columns: auto auto;
+    align-items: baseline;
+    gap: 5px;
+  }
+  .daily-signal-hero dd {
+    font-size: 12px;
+  }
+}
+
 [data-theme="dark"] .daily-signal-launcher {
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(31, 38, 36, 0.9);
@@ -653,12 +643,10 @@
   border-color: rgba(255, 255, 255, 0.1);
   background: #181f1d;
 }
-[data-theme="dark"] .daily-signal-header,
 [data-theme="dark"] .daily-signal-tabs,
 [data-theme="dark"] .daily-signal-footer {
   border-color: rgba(255, 255, 255, 0.08);
 }
-[data-theme="dark"] .daily-signal-header > button,
 [data-theme="dark"] .daily-signal-card,
 [data-theme="dark"] .daily-company-card,
 [data-theme="dark"] .daily-hardware-item {
@@ -670,9 +658,10 @@
   background: color-mix(in srgb, var(--signal-color) 7%, #202725);
   border-color: color-mix(in srgb, var(--signal-color) 20%, #343d3a);
 }
-[data-theme="dark"] .daily-signal-hero__summary > p,
 [data-theme="dark"] .daily-signal-card p,
-[data-theme="dark"] .daily-signal-sources > p {
+[data-theme="dark"] .daily-signal-card .research-longform,
+[data-theme="dark"] .daily-signal-sources > p,
+[data-theme="dark"] .daily-signal-sources > .research-longform {
   color: #b7c0bc;
 }
 [data-theme="dark"] .daily-signal-gauge__track {

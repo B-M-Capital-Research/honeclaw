@@ -12,6 +12,7 @@ const startup = readFileSync(
 const css = readFileSync(new URL("./public-workspace.css", import.meta.url), "utf8");
 const community = readFileSync(new URL("./public-community.tsx", import.meta.url), "utf8");
 const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
+const research = readFileSync(new URL("./public-research.tsx", import.meta.url), "utf8");
 const pushes = readFileSync(new URL("./public-pushes.tsx", import.meta.url), "utf8");
 const pushInbox = readFileSync(
   new URL("../components/public-push-inbox.tsx", import.meta.url),
@@ -65,9 +66,12 @@ describe("public workspace page contract", () => {
   });
 
   it("shows whitelist management only for server-authoritative administrators", () => {
+    // 用户端管理能力集中在研究台「管理」分类，仍由服务端 is_admin 把关。
     expect(me).toContain("<Show when={props.user.is_admin}>");
-    expect(me).toContain("<PublicAdminUsagePanel />");
-    expect(me).toContain("<PublicAdminWhitelistPanel />");
+    expect(research).toContain("isAdmin()");
+    expect(research).toContain("<PublicAdminUsagePanel />");
+    expect(research).toContain("<PublicAdminWhitelistPanel />");
+    expect(research).toContain('activeGroup() === "admin" && isAdmin()');
     expect(css).toContain(".public-admin-panel");
     expect(css).toContain(".public-admin-live-summary");
     expect(css).toContain(".public-admin-table td::before");

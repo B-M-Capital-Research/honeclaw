@@ -7,7 +7,12 @@ import {
   onMount,
 } from "solid-js";
 import { getPublicPortfolioNews } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+  shortLocalTimestamp,
+} from "@/components/research/research-panel";
+import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
@@ -45,6 +50,40 @@ const HORIZON_LABEL: Record<PortfolioNewsItem["horizon"], string> = {
   unknown: "期限待定",
 };
 
+const THESIS_LABEL: Record<PortfolioNewsItem["thesis_effect"], string> = {
+  strengthens: "强化持仓逻辑",
+  unchanged: "不改变持仓逻辑",
+  weakens: "削弱持仓逻辑",
+  unassessed: "对逻辑的影响待判断",
+};
+
+const CONFIDENCE_LABEL: Record<PortfolioNewsItem["confidence"], string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+
+/**
+ * The news in the source's own words: headline, then the source's own text.
+ * `summary` is our 60-character digest of it, so it is commentary and belongs
+ * in the fold — printing it here made every item read as HONE talking about
+ * news rather than as the news. The headline is dropped when the source text
+ * already opens with it.
+ */
+function newsText(item: PortfolioNewsItem) {
+  const title = item.title.trim();
+  const source = (item.source_summary || "").trim();
+  if (!source) return title;
+  return source.startsWith(title) ? source : [title, source].filter(Boolean).join("\n");
+}
+
+/** One left edge per item, carrying the impact call and nothing else. */
+function impactAccent(impact: PortfolioNewsImpact) {
+  if (impact === "positive") return "green";
+  if (impact === "negative") return "red";
+  return "neutral";
+}
+
 function statusLabel(status: string) {
   if (status === "live") return "数据与模型已更新";
   if (status === "partial") return "部分新闻已分析";
@@ -56,6 +95,48 @@ function statusLabel(status: string) {
   if (status === "stale") return "上次成功快照";
   if (status === "data_unavailable") return "等待新闻数据源";
   return "数据暂不可用";
+}
+
+/**
+ * The head shows one sentence; the count strip shows whatever else the summary
+ * said. Truncating would hide coverage caveats, and printing a whole paragraph
+ * in the head is what made the panel read as undifferentiated — so the lead
+ * sentence goes above and the remainder stays below, each shown exactly once.
+ */
+function leadSentence(summary: string) {
+  return summary.match(/^[\s\S]*?[。！？!?]/)?.[0].trim() ?? summary.trim();
+}
+
+function trailingDetail(summary: string) {
+  return summary.slice(leadSentence(summary).length).trim();
+}
+
+/** Traffic-light key for the status badge the head now carries. */
+function statusSignal(status: string) {
+  if (status === "live" || status === "no_material_news") return "green";
+  if (status === "partial" || status === "source_only" || status === "portfolio_changed") {
+    return "yellow";
+  }
+  if (status === "stale" || status === "data_unavailable") return "orange";
+  return undefined;
+}
+
+/**
+ * Provenance collapsed to one line under the verdict. A field the snapshot did
+ * not carry is dropped rather than printed as a hole.
+ */
+function provenanceLine(snapshot: PortfolioNewsSnapshot) {
+  return [
+    `报告日 ${snapshot.report_date}`,
+    snapshot.generated_at_local
+      ? `生成 ${[snapshot.generated_at_local, snapshot.timezone].filter(Boolean).join(" ")}`
+      : "",
+    `持仓 ${snapshot.holdings_count}`,
+    snapshot.lookback_hours ? `回溯 ${snapshot.lookback_hours} 小时` : "",
+    snapshot.model_version,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
@@ -158,35 +239,32 @@ export function PortfolioNewsPanel(props: Props) {
       dialogClass="portfolio-news-dialog"
     >
       <>
-        <header>
-          <div>
-            <p>持仓情报分析</p>
-            <h2 id="portfolio-news-title">持仓重点新闻分析</h2>
-            <span>近 48 小时可信来源 · 模型影响判断 · 每日 20:00 更新</span>
-          </div>
-          <button type="button" aria-label="关闭持仓新闻" onClick={() => props.onClose()}>
-            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </header>
-
-        <Show when={snapshot()}>
-          {(value) => (
-            <div class="portfolio-news-meta">
-              <b class={`is-${value().status}`}>{statusLabel(value().status)}</b>
-              <span>报告日 {value().report_date}</span>
-              <span>{value().generated_at_local} {value().timezone}</span>
-              <span>持仓 {value().holdings_count}</span>
-              <button type="button" onClick={() => void load()} disabled={loading()}>
-                {loading() ? "读取中…" : "重新读取"}
-              </button>
-            </div>
-          )}
-        </Show>
+        <ResearchPanelHead
+          id="portfolio-news-title"
+          kicker="持仓情报分析"
+          title="持仓重点新闻分析"
+          headline={
+            // With no holdings there is nothing to have found; "0 条" would
+            // read as a scanned-and-clear result rather than an empty portfolio.
+            snapshot()?.holdings_count ? `${snapshot()!.counts.total} 条` : undefined
+          }
+          signal={snapshot() ? statusSignal(snapshot()!.status) : undefined}
+          signalLabel={snapshot() ? statusLabel(snapshot()!.status) : undefined}
+          summary={
+            snapshot()
+              ? leadSentence(snapshot()!.summary)
+              : "近 48 小时可信来源 · 模型影响判断 · 每日 20:00 更新"
+          }
+          meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
+          onClose={props.onClose}
+          action={
+            <button type="button" onClick={() => void load()} disabled={loading()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
 
         <div class="portfolio-news-summary">
-          <div>
-            <strong>{snapshot()?.counts.total ?? 0}</strong><span>重点新闻</span>
-          </div>
           <div class="is-negative">
             <strong>{snapshot()?.counts.negative ?? 0}</strong><span>负面</span>
           </div>
@@ -196,10 +274,12 @@ export function PortfolioNewsPanel(props: Props) {
           <div class="is-review">
             <strong>{snapshot()?.counts.immediate_review ?? 0}</strong><span>立即复核</span>
           </div>
-          <p>{snapshot()?.summary ?? (error() || "正在读取当天快照…")}</p>
+          <Show when={snapshot() && trailingDetail(snapshot()!.summary)}>
+            {(detail) => <p>{detail()}</p>}
+          </Show>
         </div>
 
-        <div class="portfolio-news-filters" role="group" aria-label="按新闻影响筛选">
+        <div class="portfolio-news-filters research-scroller" role="group" aria-label="按新闻影响筛选">
           <For each={FILTERS}>
             {(item) => (
               <button
@@ -241,30 +321,56 @@ export function PortfolioNewsPanel(props: Props) {
                 />
               }
             >
-              <div class="portfolio-news-list">
+              <ResearchFeed>
                 <For each={visible()}>
                   {(item) => (
-                    <article class={`is-${item.impact}`}>
-                      <div class="portfolio-news-item__top">
-                        <b>{item.symbol}</b>
-                        <span class={`is-${item.impact}`}>{IMPACT_LABEL[item.impact]}</span>
-                        <span>{HORIZON_LABEL[item.horizon]}</span>
-                        <time>{item.published_at_local} {snapshot()?.timezone}</time>
-                      </div>
-                      <h3>{item.title}</h3>
-                      <p class="portfolio-news-item__summary">{item.summary}</p>
-                      <p class="portfolio-news-item__why"><strong>为什么重要：</strong>{item.why_it_matters}</p>
-                      <div class="portfolio-news-item__foot">
-                        <span classList={{ "is-urgent": item.attention === "立即复核" }}>{item.attention}</span>
-                        <span>置信度 {item.confidence === "high" ? "高" : item.confidence === "medium" ? "中" : "低"}</span>
-                        <Show when={item.source_url} fallback={<span>{item.source}</span>}>
-                          <a href={item.source_url} target="_blank" rel="noreferrer">{item.source} · 查看原文</a>
-                        </Show>
-                      </div>
-                    </article>
+                    <ResearchFeedItem
+                      author={item.symbol}
+                      handle={item.source}
+                      // The run timezone is already in the head's provenance line.
+                      time={shortLocalTimestamp(item.published_at_local)}
+                      accent={impactAccent(item.impact)}
+                      links={
+                        item.source_url
+                          ? [{ href: item.source_url, label: "查看原文" }]
+                          : undefined
+                      }
+                      analysisLabel="HONE 解读"
+                      analysis={
+                        item.analysis_status === "model_analyzed" ? (
+                          <>
+                            <p>
+                              <b>影响判断：</b>
+                              {[
+                                IMPACT_LABEL[item.impact],
+                                HORIZON_LABEL[item.horizon],
+                                THESIS_LABEL[item.thesis_effect],
+                              ].join(" · ")}
+                            </p>
+                            <Show when={item.summary.trim()}>
+                              <p>{item.summary}</p>
+                            </Show>
+                            <Show when={item.why_it_matters.trim()}>
+                              <p>
+                                <b>为什么重要：</b>
+                                {item.why_it_matters}
+                              </p>
+                            </Show>
+                            <p class="portfolio-news-analysis-terms">
+                              {item.attention} · 置信度 {CONFIDENCE_LABEL[item.confidence]}
+                            </p>
+                          </>
+                        ) : undefined
+                      }
+                    >
+                      {/* The news itself, open. Our digest, the impact call and
+                          the attention flag used to sit around it at the same
+                          weight, so the item read as chrome with a headline. */}
+                      <p>{newsText(item)}</p>
+                    </ResearchFeedItem>
                   )}
                 </For>
-              </div>
+              </ResearchFeed>
             </Show>
           </Show>
         </div>

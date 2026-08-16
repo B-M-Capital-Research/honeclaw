@@ -1,3 +1,7 @@
+/* 持仓重点新闻 panel — controlled ResearchPanel content.
+   Surfaces and accents use --hone-* tokens so dark mode adapts without a
+   bespoke dark-theme override block. */
+
 .portfolio-news-backdrop {
   position: fixed;
   inset: 0;
@@ -15,142 +19,61 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 24px;
-  background: #fbfaf7;
+  background: var(--hone-paper-50);
   color: var(--hone-ink-950);
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-.portfolio-news-dialog header svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+/* The refresh control is skinned once, in research.css. */
+
+/* Chrome around the single scroll container. Without an explicit basis these
+   flex siblings shrink against the body's content height. The body keeps
+   `flex: 1 1 auto` from the shared shell and stays the only scroller. */
+.portfolio-news-summary,
+.portfolio-news-filters,
+.portfolio-news-dialog > footer {
+  flex: 0 0 auto;
 }
 
-.portfolio-news-dialog > header {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 24px 26px 18px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.09);
-}
-
-.portfolio-news-dialog > header p {
-  margin: 0 0 5px;
-  color: var(--hone-coral-600);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.portfolio-news-dialog > header h2 {
-  margin: 0;
-  font-size: 26px;
-  letter-spacing: -0.035em;
-}
-
-.portfolio-news-dialog > header span {
-  display: block;
-  margin-top: 6px;
-  color: #67716e;
-  font-size: 13px;
-}
-
-.portfolio-news-dialog > header button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(35, 48, 45, 0.1);
-  border-radius: 11px;
-  background: white;
-  color: #52605b;
-  cursor: pointer;
-}
-
-.portfolio-news-meta {
-  min-height: 40px;
-  padding: 8px 26px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.07);
-  color: #6b7672;
-  font-size: 11px;
-}
-
-.portfolio-news-meta b {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
-}
-
-.portfolio-news-meta b.is-data_unavailable,
-.portfolio-news-meta b.is-no_portfolio,
-.portfolio-news-meta b.is-waiting_refresh {
-  background: var(--hone-signal-neutral-soft);
-  color: var(--hone-signal-neutral);
-}
-
-.portfolio-news-meta b.is-source_only,
-.portfolio-news-meta b.is-partial,
-.portfolio-news-meta b.is-portfolio_changed {
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-}
-
-.portfolio-news-meta b.is-stale { background: #f5e8e3; color: #985044; }
-
-.portfolio-news-meta button {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: #c65440;
-  font: inherit;
-  font-weight: 750;
-  cursor: pointer;
-}
-
+/* Impact breakdown only — the total and the one-line verdict live in the head. */
 .portfolio-news-summary {
-  padding: 14px 26px;
+  padding: 10px 26px;
   display: grid;
-  grid-template-columns: repeat(4, 88px) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 104px));
   gap: 9px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .portfolio-news-summary > div {
   padding: 9px 10px;
   display: grid;
   border-radius: 11px;
-  background: #f2f1ed;
+  background: var(--hone-paper-100);
 }
 
 .portfolio-news-summary strong { font-size: 18px; }
-.portfolio-news-summary span { color: #7c8682; font-size: 9px; }
+.portfolio-news-summary span { color: var(--hone-ink-500); font-size: 9px; }
 .portfolio-news-summary .is-negative strong { color: var(--hone-signal-red); }
 .portfolio-news-summary .is-positive strong { color: var(--hone-signal-green); }
 .portfolio-news-summary .is-review strong { color: var(--hone-signal-orange); }
 
+/* Whatever the summary said beyond its lead sentence, which is in the head. */
 .portfolio-news-summary p {
-  margin: 0;
-  align-self: center;
-  color: #52605b;
-  font-size: 12px;
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--hone-ink-600);
+  font-size: 11.5px;
   line-height: 1.6;
 }
 
+/* `.research-scroller` owns the sideways overflow and the right-edge fade, so
+   the chip row stops cutting off mid-word at the container edge. */
 .portfolio-news-filters {
   padding: 9px 26px;
-  display: flex;
+  align-items: center;
   gap: 6px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .portfolio-news-filters button {
@@ -165,8 +88,8 @@
 }
 
 .portfolio-news-filters button.is-active {
-  border-color: rgba(35, 48, 45, 0.1);
-  background: white;
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
   box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
 }
@@ -178,63 +101,18 @@
   padding: 14px 26px 20px;
 }
 
-.portfolio-news-list { display: grid; gap: 10px; }
-
-.portfolio-news-list article {
-  padding: 15px 17px;
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-left: 3px solid #8a9490;
-  border-radius: 14px;
-  background: white;
+/* News reads as a feed: `.research-feed` owns the row, the open body, the
+   impact accent on the left edge and the fold. Only the index line at the
+   bottom of that fold is this panel's own. */
+.portfolio-news-analysis-terms {
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: 12px;
 }
-
-.portfolio-news-list article.is-positive { border-left-color: var(--hone-signal-green); }
-.portfolio-news-list article.is-negative { border-left-color: var(--hone-signal-red); }
-.portfolio-news-list article.is-neutral { border-left-color: var(--hone-signal-yellow); }
-
-.portfolio-news-item__top {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #7a8581;
-  font-size: 10px;
-}
-
-.portfolio-news-item__top b { color: var(--hone-ink-950); font-size: 13px; }
-.portfolio-news-item__top span { padding: 3px 6px; border-radius: 999px; background: #f1f0ec; }
-.portfolio-news-item__top span.is-positive { background: var(--hone-signal-green-soft); color: var(--hone-signal-green); }
-.portfolio-news-item__top span.is-negative { background: var(--hone-signal-red-soft); color: var(--hone-signal-red); }
-.portfolio-news-item__top span.is-neutral { background: var(--hone-signal-yellow-soft); color: var(--hone-signal-yellow); }
-.portfolio-news-item__top time { margin-left: auto; }
-
-.portfolio-news-list h3 { margin: 10px 0 6px; font-size: 14px; line-height: 1.45; }
-
-.portfolio-news-item__summary,
-.portfolio-news-item__why {
-  margin: 0;
-  color: #58645f;
-  font-size: 11px;
-  line-height: 1.65;
-}
-
-.portfolio-news-item__why { margin-top: 5px; }
-.portfolio-news-item__why strong { color: #34413d; }
-
-.portfolio-news-item__foot {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #84908b;
-  font-size: 9px;
-}
-
-.portfolio-news-item__foot span.is-urgent { color: var(--hone-signal-red); font-weight: 800; }
-.portfolio-news-item__foot a { margin-left: auto; color: #b95745; text-decoration: none; }
 
 .portfolio-news-dialog > footer {
   padding: 11px 26px;
-  border-top: 1px solid rgba(35, 48, 45, 0.08);
+  border-top: 1px solid var(--hone-line);
 }
 
 .portfolio-news-dialog > footer > div { display: flex; gap: 9px; }
@@ -243,20 +121,22 @@
   min-width: 0;
   flex: 1;
   padding: 10px 12px;
-  border: 1px solid rgba(35, 48, 45, 0.12);
+  border: 1px solid var(--hone-line);
   border-radius: 11px;
-  background: white;
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
   font: inherit;
   font-size: 12px;
 }
 
+/* Action tokens, not literal white: in dark mode coral is a light peach and
+   white type on it is unreadable. */
 .portfolio-news-dialog > footer button {
   padding: 8px 14px;
   border: 0;
   border-radius: 10px;
-  background: var(--hone-coral-600);
-  color: white;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
   font-size: 11px;
   font-weight: 750;
   cursor: pointer;
@@ -266,48 +146,26 @@
 
 .portfolio-news-dialog > footer p {
   margin: 6px 0 0;
-  color: #858f8b;
+  color: var(--hone-ink-500);
   font-size: 9px;
   text-align: center;
 }
 
-[data-theme="dark"] .portfolio-news-dialog,
-[data-theme="dark"] .portfolio-news-list article,
-[data-theme="dark"] .portfolio-news-dialog > header button,
-[data-theme="dark"] .portfolio-news-filters button.is-active,
-[data-theme="dark"] .portfolio-news-dialog > footer input {
-  background: #111a28;
-  color: #ecf2ef;
-  border-color: #263347;
-}
-
-[data-theme="dark"] .portfolio-news-summary > div,
-[data-theme="dark"] .portfolio-news-item__top span { background: #172231; }
-
-[data-theme="dark"] .portfolio-news-dialog > header,
-[data-theme="dark"] .portfolio-news-meta,
-[data-theme="dark"] .portfolio-news-summary,
-[data-theme="dark"] .portfolio-news-filters,
-[data-theme="dark"] .portfolio-news-dialog > footer { border-color: #263347; }
-
-[data-theme="dark"] .portfolio-news-item__top b,
-[data-theme="dark"] .portfolio-news-list h3,
-[data-theme="dark"] .portfolio-news-item__why strong { color: #e9f0ed; }
-
 @media (max-width: 768px) {
   .portfolio-news-backdrop { padding: 0; place-items: end center; }
   .portfolio-news-dialog { width: 100%; height: min(92dvh, 860px); border-radius: 22px 22px 0 0; }
-  .portfolio-news-dialog > header { padding: 19px 16px 14px; }
-  .portfolio-news-dialog > header h2 { font-size: 22px; }
-  .portfolio-news-dialog > header span { max-width: 280px; font-size: 11px; }
-  .portfolio-news-meta { padding: 8px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
-  .portfolio-news-meta span:nth-of-type(2), .portfolio-news-meta span:nth-of-type(3) { display: none; }
-  .portfolio-news-summary { padding: 11px 16px; grid-template-columns: repeat(4, 1fr); }
-  .portfolio-news-summary p { grid-column: 1 / -1; }
-  .portfolio-news-filters { padding: 8px 16px; overflow-x: auto; }
+  .portfolio-news-summary { padding: 11px 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .portfolio-news-filters { padding: 8px 16px; }
   .portfolio-news-body { padding: 12px 12px 16px; }
-  .portfolio-news-item__top time { display: none; }
-  .portfolio-news-item__foot { flex-wrap: wrap; }
-  .portfolio-news-item__foot a { width: 100%; margin-left: 0; }
   .portfolio-news-dialog > footer { padding: 9px 12px; }
+}
+
+/* Sheet mode: head, one compact count row, filters — then news, above the fold. */
+@media (max-width: 760px) {
+  .portfolio-news-summary { padding: 8px 12px; gap: 6px; }
+  .portfolio-news-summary > div { padding: 6px 8px; border-radius: 9px; }
+  .portfolio-news-summary strong { font-size: 15px; }
+  .portfolio-news-filters { padding: 6px 12px; }
+  .portfolio-news-filters button { padding: 5px 9px; }
+  .portfolio-news-body { padding: 10px 12px 16px; }
 }

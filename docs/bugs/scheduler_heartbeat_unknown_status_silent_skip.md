@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-08-17 02:04 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-16 22:02-2026-08-17 02:01 CST 近窗统计 `HeartbeatDiag/相关异常匹配=433`、关键 heartbeat 行 382、`deliver=38`。
+    - 近窗 parse / raw 信号继续分裂：`PlainTextTriggered=76`、`JsonNoop=16`、`PlainTextSuppressed=6`、`PlainTextNoop=2`；38 条 heartbeat deliver 中 31 条命中 `noop / 无新增 / 无新触发 / hone_quote_time / 工具调用上限 / 行情未完成核验 / 跌 20% / 当前配置 / No New Trigger` 等静默、工具口径、行情锚或目标漂移语义。
+    - 23:00 / 23:30 CST 多条 heartbeat 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送；02:00 CST `AAPL + NVDA + BE 关键事件提醒` 又因 OpenAI-compatible provider 协议错位跳过发送，说明同窗不是单纯内容质量波动，而是结构化收口、失败归因和送达判定仍不稳定。
+  - `data/sessions.sqlite3`
+    - 本地 `sessions.updated_at`、`sessions.last_message_at`、`session_messages.timestamp` 仍停在 `2026-08-01T14:13:46+08:00`，`session_messages.imported_at` 仍停在 `2026-08-02T20:59:58+08:00`；一次 `.tables` 查询遇到 `database is locked`。本轮运行态证据仍主要依赖 source log。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-16 18:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-16 14:00-18:01 CST 近窗统计 `HeartbeatDiag=268`、`run_start=72`、`run_finish=72`、`deliver=34`、`duplicate_suppressed=17`。
+    - 近窗仍有 `execution_failed=3`、`heartbeat 输出不是结构化 JSON=2`、function-calling 工具预算拒绝相关信号 49 条；parse / raw 信号继续分裂：`PlainTextTriggered=66`、`JsonNoop=33`、`JsonMalformed=2`、`JsonTriggered=2`、`PlainTextSuppressed=2`、`JsonEmptyStatus=1`。
+    - 34 条 heartbeat deliver 中继续命中 `noop / 无新增 / 无新触发 / hone_quote_time / 工具额度 / 工具调用上限 / 跌20% / NVLink / NVSwitch / VIX / AI 推理芯片 / SMCI` 等静默、工具口径、上下文污染或目标漂移语义；14:00-18:00 CST 多条 `PlainTextTriggered` 仍发送 `noop`、工具限流或非监控正文。
+  - `data/sessions.sqlite3`
+    - 本地 `cron_job_runs` 仍停在 `2026-08-01T14:00:52.724451+08:00`，未记录这些 live source run；本轮运行态证据只能从 source log 复核。
+  - 判断：最新证据仍是 heartbeat 结构化状态输出退化与后置归类漂移；它影响 heartbeat 监控判断、失败 / 跳过归因和送达语义，严重等级维持 `P2`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-15 22:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-15 18:02-22:01 CST 近窗统计 `HeartbeatDiag=260`、`run_start=72`、`run_finish=72`、`deliver=31`、`duplicate_suppressed=11`。
@@ -7416,4 +7434,15 @@
   - 35 条 deliver 中继续命中 `noop / 无新增 / 无触发 / hone_quote_time / data_fetch / 工具调用上限 / VIX / 跌20% / SpaceX / fenced JSON` 等静默语义、上下文污染、工具口径、目标漂移或协议外泄信号。
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、JSON malformed、非结构化失败跳过、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-16 22:04 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 18:01-22:04 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=58`、`JsonNoop=23`、`PlainTextSuppressed=8`、`PlainTextNoop=4`、`JsonEmptyStatus=1`。
+  - 同窗还有 `HeartbeatDiag=238`、`run_start=64`、`run_finish=65`、`deliver=29`、`duplicate_suppressed=15`、`execution_failed=8`、`heartbeat 输出不是结构化 JSON=8`、工具预算拒绝 106 条。
+  - 29 条 deliver 中继续命中 `noop / 无新增 / 无新触发 / hone_quote_time / quote_short / 工具调用上限 / 跌 20% / TSMC / 配置已确认` 等静默语义、行情锚、工具口径或目标漂移信号。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、空状态、非结构化失败跳过、静默语义 deliver 与 duplicate suppression 并存。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

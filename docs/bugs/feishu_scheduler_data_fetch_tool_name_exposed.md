@@ -22,6 +22,12 @@ Fixed
 
 ## 最新进展
 
+- 2026-08-16 18:02 CST 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
+  - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：14:00-18:01 CST `hone_quote_time` 命中 22 条；代表样本包括多条 heartbeat 写出 `hone_quote_time.beijing`、`工具调用已达上限`、`工具额度已耗尽` 或“行情未完成核验”。
+  - 当前未见 runtime 重启 / revision 切换或确认加载 2026-08-15 共享净化层修复的证据，因此仅作为待部署复核样本，不回退代码级 `Fixed`。
+  - 这些 heartbeat 消息业务主体已执行并进入送达候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 - 2026-08-15 23:40 CST `bug-2` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/runtime.rs` 的共享净化层新增覆盖 `hone_quote_time(.beijing)` / `provider timestamp` 句式，以及 `data_fetch quote`、`quote_short`、`工具调用已达上限`、`工具额度已耗尽`、`行情未完成核验` 等 heartbeat 常见内部口径；这些表达现在会改写为用户态的“最新可得公开行情整理”或“本轮行情核验受限”。
   - 同轮新增回归 `sanitize_user_visible_output_rewrites_market_time_field_and_limit_copy`，并由 `sanitize_scheduler_delivery_text(...)` 复用到 scheduler / heartbeat 出站路径。

@@ -1,6 +1,9 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicPositionManagement } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
@@ -45,6 +48,46 @@ function concentrationLabel(level: string) {
 
 function formatPrice(value?: number | null) {
   return value == null ? "—" : `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * The head shows one sentence; the count strip shows whatever else the summary
+ * said. Truncating would hide evidence caveats, and printing a whole paragraph
+ * in the head is what made the panel read as undifferentiated — so the lead
+ * sentence goes above and the remainder stays below, each shown exactly once.
+ */
+function leadSentence(summary: string) {
+  return summary.match(/^[\s\S]*?[。！？!?]/)?.[0].trim() ?? summary.trim();
+}
+
+function trailingDetail(summary: string) {
+  return summary.slice(leadSentence(summary).length).trim();
+}
+
+/** Traffic-light key for the evidence-completeness badge the head carries. */
+function statusSignal(status: string) {
+  if (status === "live") return "green";
+  if (status === "partial" || status === "portfolio_changed") return "yellow";
+  if (status === "stale" || status === "data_unavailable") return "orange";
+  return undefined;
+}
+
+/**
+ * Provenance collapsed to one line under the verdict. A field the snapshot did
+ * not carry is dropped rather than printed as a hole.
+ */
+function provenanceLine(snapshot: PositionManagementSnapshot) {
+  return [
+    `报告日 ${snapshot.report_date}`,
+    snapshot.generated_at_local
+      ? `生成 ${[snapshot.generated_at_local, snapshot.timezone].filter(Boolean).join(" ")}`
+      : "",
+    `持仓 ${snapshot.holdings_count}`,
+    snapshot.framework_version,
+    snapshot.model_version,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function savedReportContext(snapshot: PositionManagementSnapshot, question: string) {
@@ -137,28 +180,32 @@ export function PositionManagementPanel(props: Props) {
       dialogClass="position-management-dialog"
     >
       <>
-        <header>
-          <div>
-            <p>HARI 仓位纪律</p>
-            <h2 id="position-management-title">仓位管理建议</h2>
-            <span>组合结构 × 公司质量 × 当日估值 × 宏观与重点新闻 · 每日 20:00 更新</span>
-          </div>
-          <button type="button" aria-label="关闭仓位建议" onClick={() => props.onClose()}>
-            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </header>
-
-        <Show when={snapshot()}>
-          {(value) => (
-            <div class="position-management-meta">
-              <b class={`is-${value().status}`}>{statusLabel(value().status)}</b>
-              <span>报告日 {value().report_date}</span>
-              <span>{value().generated_at_local} {value().timezone}</span>
-              <span>{value().framework_version}</span>
-              <button type="button" onClick={() => void load()} disabled={loading()}>{loading() ? "读取中…" : "重新读取"}</button>
-            </div>
-          )}
-        </Show>
+        <ResearchPanelHead
+          id="position-management-title"
+          kicker="HARI 仓位纪律"
+          title="仓位管理建议"
+          headline={
+            // No holdings means nothing to act on; "0 项待处理" would read as a
+            // clean bill of health rather than an empty portfolio.
+            snapshot()?.items.length
+              ? `${snapshot()!.counts.review + snapshot()!.counts.reduce} 项待处理`
+              : undefined
+          }
+          signal={snapshot() ? statusSignal(snapshot()!.status) : undefined}
+          signalLabel={snapshot() ? statusLabel(snapshot()!.status) : undefined}
+          summary={
+            snapshot()
+              ? leadSentence(snapshot()!.summary)
+              : "组合结构 × 公司质量 × 当日估值 × 宏观与重点新闻 · 每日 20:00 更新"
+          }
+          meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
+          onClose={props.onClose}
+          action={
+            <button type="button" onClick={() => void load()} disabled={loading()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
 
         <div class="position-management-overview">
           <div><strong>{snapshot()?.total_weight.toFixed(1) ?? "0.0"}%</strong><span>已配置仓位</span></div>
@@ -172,10 +219,12 @@ export function PositionManagementPanel(props: Props) {
           <div class="is-reduce"><strong>{snapshot()?.counts.reduce ?? 0}</strong><span>降低暴露</span></div>
           <div class="is-increase_candidate"><strong>{snapshot()?.counts.increase_candidate ?? 0}</strong><span>加仓候选</span></div>
           <div class="is-hold"><strong>{snapshot()?.counts.hold ?? 0}</strong><span>持有</span></div>
-          <p>{snapshot()?.summary ?? (error() || "正在读取当天快照…")}</p>
+          <Show when={snapshot() && trailingDetail(snapshot()!.summary)}>
+            {(detail) => <p>{detail()}</p>}
+          </Show>
         </div>
 
-        <div class="position-management-filters" role="group" aria-label="按仓位建议筛选">
+        <div class="position-management-filters research-scroller" role="group" aria-label="按仓位建议筛选">
           <For each={FILTERS}>{(item) => (
             <button type="button" classList={{ "is-active": filter() === item.id }} aria-pressed={filter() === item.id} onClick={() => setFilter(item.id)}>{item.label}</button>
           )}</For>

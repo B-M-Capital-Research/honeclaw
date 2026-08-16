@@ -1,6 +1,6 @@
 /* Shared chrome for research surfaces: the modal shell every detail panel
-   mounts into and the unified loading/error/empty state. Tokens only — no
-   literal colors in this layer. */
+   mounts into, its head, and the unified loading/error/empty state.
+   Tokens only — no literal colors in this layer. */
 
 .research-panel-backdrop {
   position: fixed;
@@ -28,18 +28,341 @@
   box-shadow: var(--hone-shadow-md);
 }
 
+/* Exactly one scroll container per panel. Each of these owns the remaining
+   height, and contains its overscroll so a touch drag at either end never
+   chains into the page behind the sheet — the reason phones felt stuck. */
+.research-panel > :is(
+  .daily-signal-body,
+  .company-rating-dialog__body,
+  .portfolio-news-body,
+  .position-management-body,
+  .influencer-digest-body,
+  .weekly-brief-content,
+  .key-chain-body,
+  .research-panel__scroll
+) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Phones get a full-screen sheet: no wasted gutter, no rounded gap that
+   invites a mis-tap onto the backdrop mid-scroll.
+   The selectors carry one extra step of specificity on purpose — each panel
+   skin still ships its own `…-dialog` geometry from before the shared shell
+   existed, and the shell has to win the cascade for sheet sizing. */
 @media (max-width: 760px) {
-  .research-panel-backdrop {
+  div.research-panel-backdrop {
     padding: 0;
-    align-items: flex-end;
+    align-items: stretch;
   }
 
-  .research-panel {
+  .research-panel-backdrop > .research-panel {
     width: 100%;
-    max-height: calc(100dvh - 40px);
-    border-radius: var(--hone-radius-lg) var(--hone-radius-lg) 0 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .research-panel > :is(
+    .daily-signal-footer,
+    .portfolio-news-footer,
+    .position-management-footer,
+    .influencer-digest-footer,
+    .weekly-brief-footer,
+    .key-chain-footer
+  ) {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* ── Panel head ─────────────────────────────────────────────────────────── */
+
+.research-panel__head {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+}
+
+/* Kicker on the left, refresh and close on the right — one band, not two.
+   The action used to sit on its own row below the meta line, which cost a
+   whole row of height for one secondary control. */
+.research-panel__head-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.research-panel__kicker {
+  min-width: 0;
+  margin: 0 auto 0 0;
+  overflow: hidden;
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hone-ink-500);
+}
+
+/* One refresh control for every panel. Each skin used to define its own —
+   green here, coral there, link-coloured in four more — so the same button
+   changed colour as you moved between panels. */
+.research-panel__head-action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.research-panel__head-action button {
+  padding: 5px 12px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: 999px;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-600);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
+}
+
+.research-panel__head-action button:hover:not(:disabled) {
+  border-color: var(--hone-ink-600);
+  color: var(--hone-ink-800);
+}
+
+.research-panel__head-action button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.research-panel__close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-right: -6px;
+  border: 1px solid var(--hone-line);
+  border-radius: 50%;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+}
+
+.research-panel__close svg {
+  width: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.research-panel__headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.research-panel__headline h2 {
+  margin: 0;
+  font-family: var(--hone-font-display);
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.research-panel__headline b {
+  font-family: var(--hone-font-label);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--hone-ink-800);
+}
+
+.research-panel__signal {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.research-panel__head.is-green .research-panel__signal {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.research-panel__head.is-yellow .research-panel__signal {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.research-panel__head.is-orange .research-panel__signal {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange);
+}
+
+.research-panel__head.is-red .research-panel__signal {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red);
+}
+
+.research-panel__summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+.research-panel__meta {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--hone-ink-400);
+}
+
+@media (max-width: 760px) {
+  .research-panel__head {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+
+  .research-panel__headline h2 {
+    font-size: 20px;
+  }
+
+  .research-panel__summary {
+    font-size: 13.5px;
+  }
+
+  /* The band still has to hold kicker + refresh + close at 375px. */
+  .research-panel__head-action button {
+    padding: 4px 10px;
+    font-size: 10.5px;
+  }
+}
+
+/* ── Horizontal scrollers ───────────────────────────────────────────────── */
+
+/* Every filter / topic row in every panel. They used to cut off mid-card at
+   the container edge with no gradient and no scrollbar, which read as a
+   rendering bug rather than "there is more to the right".
+
+   The fade is an alpha mask, not a coloured overlay: an overlay would have to
+   know each panel's surface colour (they differ) and would scroll away with
+   the content, since the scroller is its own scroll container. `currentColor`
+   is used purely for its full alpha — a mask samples alpha, never hue — so
+   this stays a token-only sheet and adapts to dark mode for free. */
+.research-scroller {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    currentColor 0,
+    currentColor calc(100% - 28px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    currentColor 0,
+    currentColor calc(100% - 28px),
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.research-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* Keyboard focus must never land inside the faded edge. */
+.research-scroller:focus-within {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.research-scroller > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+/* ── Folded source text ─────────────────────────────────────────────────── */
+
+.research-longform {
+  min-width: 0;
+}
+
+/* The toggle sits at the end of the clamped block, not floating beside its
+   first line. */
+.research-longform > summary {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.research-longform > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Two lines, then an explicit way to read the rest — never a dead ellipsis. */
+.research-longform__preview {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.research-longform[open] .research-longform__preview {
+  display: none;
+}
+
+.research-longform__full {
+  margin: 0;
+}
+
+.research-longform__toggle {
+  flex: 0 0 auto;
+  color: var(--hone-link);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.research-longform__toggle::after {
+  content: "展开原文";
+}
+
+.research-longform[open] .research-longform__toggle::after {
+  content: "收起原文";
+}
+
+.research-longform[open] > summary {
+  justify-content: flex-end;
+}
+
+/* ── Shared state ───────────────────────────────────────────────────────── */
 
 .research-state {
   display: flex;

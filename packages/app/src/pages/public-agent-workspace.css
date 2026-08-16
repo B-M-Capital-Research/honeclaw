@@ -286,6 +286,9 @@
   .agent-workspace-mobile-nav button > span { height: 14px; display: flex; grid-row: 2; align-items: center; justify-content: center; margin: 0; line-height: 14px; }
   .agent-workspace-mobile-nav button > svg { width: 19px; height: 19px; grid-row: 1; align-self: center; }
   .agent-workspace-mobile-has-dot i { width: 5px; height: 5px; position: absolute; top: 5px; left: calc(50% + 8px); border-radius: 50%; background: #f04f3d; }
+  /* 中间格是核心动作，图标坐在实心底盘上，让「进对话」在五格里一眼可认。 */
+  .agent-workspace-mobile-primary > svg { width: 34px; height: 34px; padding: 7px; border-radius: 12px; background: var(--hone-paper-200); color: var(--hone-ink-800); }
+  .agent-workspace-mobile-primary.is-active > svg { background: var(--hone-inverse-bg); color: var(--hone-inverse-fg); }
   .public-chat-page--ready .public-chat-shell { width: 100%; height: 100% !important; }
   .agent-workspace-overview { width: 100%; padding: 22px 20px 18px; }
   .agent-workspace-title-row { display: none; }

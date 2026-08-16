@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicWeeklyBrief } from "@/lib/api";
-import { ResearchPanel } from "@/components/research/research-panel";
+import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { WeeklyBriefItem, WeeklyBriefPayload } from "@/lib/types";
@@ -37,6 +37,13 @@ const statusLabel = (value: string) => ({
   empty: "本期暂无可核验事件",
 }[value] ?? "读取中");
 
+/** Traffic light for the panel head: earnings coverage gates the green light. */
+function statusSignal(report: WeeklyBriefPayload) {
+  if (report.earnings_status !== "ok") return "yellow";
+  if (report.status === "empty") return "orange";
+  return report.status === "live" ? "green" : "yellow";
+}
+
 function groupByDate(items: readonly WeeklyBriefItem[]) {
   const grouped = new Map<string, WeeklyBriefItem[]>();
   for (const item of items) {
@@ -52,21 +59,23 @@ function shortDate(value: string) {
   return `${Number(month)}月${Number(day)}日`;
 }
 
-function AgendaPanel(props: {
-  title: string;
-  range: string;
-  kicker: string;
-  tone: "review" | "outlook" | "ai";
-  items: WeeklyBriefItem[];
-}) {
+/**
+ * A week of dated events.
+ *
+ * Deliberately not a social feed: these rows have no author and no authored
+ * text, and the reader's index into them is the date — which day CPI lands,
+ * which day a company reports. Feeding them would force the event title into
+ * the author slot and repeat the date on every row instead of once per day.
+ * So the agenda keeps its date column and loses its chrome instead.
+ */
+function AgendaPanel(props: { title: string; range: string; items: WeeklyBriefItem[] }) {
   const groups = createMemo(() => groupByDate(props.items));
   return (
-    <section class="weekly-brief-week" data-tone={props.tone}>
+    <section class="weekly-brief-week">
+      {/* The tab bar above already names this view, so the header is the
+          title and the dates it covers — the flavour kicker is gone. */}
       <header>
-        <div>
-          <span>{props.kicker}</span>
-          <h3>{props.title}</h3>
-        </div>
+        <h3>{props.title}</h3>
         <time>{props.range}</time>
       </header>
       <Show
@@ -90,24 +99,33 @@ function AgendaPanel(props: {
                 <div class="weekly-brief-events">
                   <For each={group.events}>
                     {(item) => (
-                      <article data-category={item.category} data-importance={item.importance}>
-                        <div class="weekly-brief-event-meta">
-                          <span>{categoryLabel(item.category)}</span>
-                          <Show when={item.importance === "high"}><b>重点</b></Show>
-                          <em>{evidenceLabel(item.evidence_status)}</em>
-                        </div>
+                      <article>
                         <h4>
                           <Show when={item.ticker}><code>{item.ticker}</code></Show>
                           {item.title}
                         </h4>
+                        {/* Whether it matters, how well it is evidenced and
+                            what kind of event it is used to be three badges of
+                            competing weight plus a coloured left bar. They are
+                            one quiet line; only 重点 keeps a marker. */}
+                        <p class="weekly-brief-event-meta">
+                          <Show when={item.importance === "high"}><b>重点</b></Show>
+                          <span>
+                            {[evidenceLabel(item.evidence_status), categoryLabel(item.category)]
+                              .join(" · ")}
+                          </span>
+                        </p>
                         <Show when={item.subtitle}>
                           <p class="weekly-brief-subtitle">{item.subtitle}</p>
                         </Show>
+                        {/* Never folded and never clipped: the reading of the
+                            event is two sentences, and a disclosure control
+                            around two sentences is chrome nobody asked for. */}
                         <p class="weekly-brief-analysis">{item.analysis}</p>
-                        <aside>
+                        <p class="weekly-brief-attention">
                           <strong>提醒关注：</strong>
                           {item.attention}
-                        </aside>
+                        </p>
                         <div class="weekly-brief-evidence">
                           <span>{item.evidence_note}</span>
                           <Show when={item.source_url} fallback={<small>{item.source_name}</small>}>
@@ -157,6 +175,23 @@ export function WeeklyBriefPanel(props: Props) {
   onMount(() => void load());
   onCleanup(() => controller?.abort());
 
+  // Report day, generation clock and tracked-company scope used to occupy a
+  // metadata strip plus a hero card above the tabs; they are provenance, so
+  // they collapse into the head's secondary line.
+  const metaLine = createMemo(() => {
+    const current = report();
+    if (!current) return undefined;
+    return [
+      `报告日 ${current.report_date}`,
+      current.generated_at_local
+        ? [current.generated_at_local, current.timezone].filter(Boolean).join(" ")
+        : undefined,
+      `跟踪 ${current.earnings_scope_count} 家公司`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  });
+
   const ask = () => {
     const current = report();
     const query = question().trim();
@@ -197,14 +232,28 @@ export function WeeklyBriefPanel(props: Props) {
       dialogClass="weekly-brief-dialog"
     >
       <>
-        <header class="weekly-brief-dialog-head">
-          <div>
-            <p>每周决策日程</p>
-            <h2 id="weekly-brief-title">周度简报</h2>
-            <span>按时间看清上周变化、下周风险与未来 30 天 AI 节点</span>
-          </div>
-          <button aria-label="关闭周度简报" onClick={() => props.onClose()}>×</button>
-        </header>
+        <ResearchPanelHead
+          id="weekly-brief-title"
+          kicker="每周决策日程"
+          title="周度简报"
+          headline={report() ? `下周 ${report()!.next_week_items.length} 件` : undefined}
+          signal={report() ? statusSignal(report()!) : undefined}
+          signalLabel={
+            report()
+              ? report()!.earnings_status === "ok"
+                ? statusLabel(report()!.status)
+                : "财报覆盖待补齐"
+              : undefined
+          }
+          summary={report()?.summary}
+          meta={metaLine()}
+          onClose={props.onClose}
+          action={
+            <button type="button" disabled={loading()} onClick={() => void load()}>
+              {loading() ? "读取中…" : "重新读取"}
+            </button>
+          }
+        />
         <Show
           when={report()}
           fallback={
@@ -220,27 +269,8 @@ export function WeeklyBriefPanel(props: Props) {
         >
           {(current) => (
             <>
-              <div class="weekly-brief-meta">
-                <b>{statusLabel(current().status)}</b>
-                <span>报告日 {current().report_date}</span>
-                <span>{current().generated_at_local} {current().timezone}</span>
-                <button onClick={() => void load()} disabled={loading()}>
-                  {loading() ? "读取中…" : "重新读取"}
-                </button>
-              </div>
-              <section class="weekly-brief-hero">
-                <div>
-                  <span>本期判断</span>
-                  <h3>{current().summary}</h3>
-                </div>
-                <aside>
-                  <strong>跟踪公司</strong>
-                  <b>{current().earnings_scope_count}</b>
-                </aside>
-              </section>
               <Show when={current().earnings_status !== "ok"}>
                 <div class="weekly-brief-coverage" role="status">
-                  <strong>财报覆盖未完全就绪</strong>
                   <span>{current().errors[0] ?? "当前数据源没有返回全部重点公司财报日期；缺失日期不会被猜测补全。"}</span>
                 </div>
               </Show>
@@ -263,8 +293,6 @@ export function WeeklyBriefPanel(props: Props) {
                   <AgendaPanel
                     title="上周重要事项"
                     range={`${current().previous_week.start} — ${current().previous_week.end}`}
-                    kicker="发生了什么变化"
-                    tone="review"
                     items={current().last_week_items}
                   />
                 </Show>
@@ -272,8 +300,6 @@ export function WeeklyBriefPanel(props: Props) {
                   <AgendaPanel
                     title="下周重要事件点"
                     range={`${current().next_week.start} — ${current().next_week.end}`}
-                    kicker="需要关注什么"
-                    tone="outlook"
                     items={current().next_week_items}
                   />
                 </Show>
@@ -281,16 +307,16 @@ export function WeeklyBriefPanel(props: Props) {
                   <AgendaPanel
                     title="重要 AI 公司财报与产业会议"
                     range={`${current().ai_outlook.start} — ${current().ai_outlook.end}`}
-                    kicker="AI 财报与产业事件"
-                    tone="ai"
                     items={current().ai_outlook_items}
                   />
                 </Show>
+                {/* Methodology is a footnote, not chrome: it scrolls with the
+                    agenda instead of holding a fixed band above the composer. */}
+                <div class="weekly-brief-method">
+                  <strong>口径：</strong>
+                  {current().methodology_note}
+                </div>
               </main>
-              <div class="weekly-brief-method">
-                <strong>口径：</strong>
-                {current().methodology_note}
-              </div>
               <Show when={props.onAsk}>
                 <footer class="weekly-brief-footer">
                   <p>{current().disclaimer}</p>

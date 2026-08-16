@@ -22,98 +22,16 @@
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-.position-management-dialog header svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+/* The refresh control is skinned once, in research.css. */
 
-.position-management-dialog > header {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 22px 26px 16px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.09);
-}
-
-.position-management-dialog > header p {
-  margin: 0 0 5px;
-  color: var(--hone-signal-green);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.position-management-dialog > header h2 {
-  margin: 0;
-  font-size: 26px;
-  letter-spacing: -0.035em;
-}
-
-.position-management-dialog > header span {
-  display: block;
-  margin-top: 6px;
-  color: #67716e;
-  font-size: 13px;
-}
-
-.position-management-dialog > header button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(35, 48, 45, 0.1);
-  border-radius: 11px;
-  background: white;
-  color: #52605b;
-  cursor: pointer;
-}
-
-.position-management-meta {
-  min-height: 40px;
-  padding: 8px 26px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.07);
-  color: #6b7672;
-  font-size: 11px;
-}
-
-.position-management-meta b {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
-}
-
-.position-management-meta b.is-partial,
-.position-management-meta b.is-portfolio_changed {
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-}
-
-.position-management-meta b.is-data_unavailable,
-.position-management-meta b.is-no_portfolio,
-.position-management-meta b.is-waiting_refresh {
-  background: var(--hone-signal-neutral-soft);
-  color: var(--hone-signal-neutral);
-}
-
-.position-management-meta b.is-stale { background: #f5e8e3; color: #985044; }
-
-.position-management-meta button {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: var(--hone-signal-green);
-  font: inherit;
-  font-weight: 750;
-  cursor: pointer;
+/* Chrome around the single scroll container. Without an explicit basis these
+   flex siblings shrink against the body's content height. The body keeps
+   `flex: 1 1 auto` from the shared shell and stays the only scroller. */
+.position-management-overview,
+.position-management-summary,
+.position-management-filters,
+.position-management-dialog > footer {
+  flex: 0 0 auto;
 }
 
 .position-management-overview {
@@ -138,10 +56,11 @@
 .position-management-overview .is-elevated strong { color: var(--hone-signal-yellow); }
 .position-management-overview .is-balanced strong { color: var(--hone-signal-green); }
 
+/* Action breakdown only — the aggregate and the verdict sentence are in the head. */
 .position-management-summary {
-  padding: 11px 26px;
+  padding: 9px 26px;
   display: grid;
-  grid-template-columns: repeat(4, 78px) minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 92px));
   gap: 8px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
 }
@@ -159,17 +78,20 @@
 .position-management-summary .is-reduce strong { color: var(--hone-signal-red); }
 .position-management-summary .is-increase_candidate strong { color: var(--hone-signal-green); }
 
+/* Whatever the summary said beyond its lead sentence, which is in the head. */
 .position-management-summary p {
-  margin: 0;
-  align-self: center;
-  color: #52605b;
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--hone-ink-600);
   font-size: 11px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
+/* `.research-scroller` owns the sideways overflow and the right-edge fade, so
+   the six chips stop cutting off mid-word at the container edge. */
 .position-management-filters {
   padding: 8px 26px;
-  display: flex;
+  align-items: center;
   gap: 6px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
 }
@@ -346,7 +268,6 @@
 
 [data-theme="dark"] .position-management-dialog,
 [data-theme="dark"] .position-management-list details,
-[data-theme="dark"] .position-management-dialog > header button,
 [data-theme="dark"] .position-management-filters button.is-active,
 [data-theme="dark"] .position-management-dialog > footer input {
   background: #111a28;
@@ -358,8 +279,6 @@
 [data-theme="dark"] .position-management-summary > div,
 [data-theme="dark"] .position-management-facts span { background: #172231; }
 
-[data-theme="dark"] .position-management-dialog > header,
-[data-theme="dark"] .position-management-meta,
 [data-theme="dark"] .position-management-overview,
 [data-theme="dark"] .position-management-summary,
 [data-theme="dark"] .position-management-filters,
@@ -371,19 +290,35 @@
 @media (max-width: 768px) {
   .position-management-backdrop { padding: 0; place-items: end center; }
   .position-management-dialog { width: 100%; height: min(94dvh, 880px); border-radius: 22px 22px 0 0; }
-  .position-management-dialog > header { padding: 18px 16px 13px; }
-  .position-management-dialog > header h2 { font-size: 22px; }
-  .position-management-dialog > header span { max-width: 300px; font-size: 10px; }
-  .position-management-meta { padding: 7px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
-  .position-management-meta span:nth-of-type(2), .position-management-meta span:nth-of-type(3) { display: none; }
-  .position-management-overview { padding: 10px 16px; grid-template-columns: 1fr 1fr; }
-  .position-management-summary { padding: 9px 16px; grid-template-columns: repeat(4, 1fr); }
-  .position-management-summary p { grid-column: 1 / -1; }
-  .position-management-filters { padding: 7px 16px; overflow-x: auto; }
+  .position-management-overview { padding: 10px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .position-management-summary { padding: 9px 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .position-management-filters { padding: 7px 16px; }
   .position-management-body { padding: 11px 12px 15px; }
   .position-management-list summary { grid-template-columns: 82px minmax(100px, 1fr) 64px 16px; }
   .position-management-list summary > span:nth-of-type(4) { display: none; }
   .position-management-columns { grid-template-columns: 1fr; }
   .position-management-dialog > footer { padding: 8px 12px; }
   .position-management-dialog > footer .position-management-method { display: none; }
+}
+
+/* Sheet mode: two count strips sat between the head and the first advice row
+   and pushed it off the fold. Both collapse to one compact four-up line. */
+@media (max-width: 760px) {
+  .position-management-overview,
+  .position-management-summary {
+    padding: 7px 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .position-management-overview > div,
+  .position-management-summary > div {
+    padding: 6px 8px;
+    border-radius: 9px;
+  }
+  .position-management-overview strong,
+  .position-management-summary strong { font-size: 13px; }
+  .position-management-overview span,
+  .position-management-summary span { font-size: 8.5px; }
+  .position-management-filters { padding: 6px 12px; }
+  .position-management-body { padding: 10px 12px 14px; }
 }

@@ -1633,14 +1633,23 @@ fn topic_specific_change(topic_id: &str, event: &KeyEventItem) -> String {
     if topic.keywords.iter().any(|keyword| title.contains(keyword)) {
         return event.title.clone();
     }
-    event
+    // The excerpt this splits was itself capped upstream, so its final segment
+    // can be a sentence cut mid-word. A headline that ends in a dangling "…"
+    // is worse than a shorter complete one, so prefer whole segments and fall
+    // back to the title rather than surfacing the stub.
+    let matches_topic = |part: &str| {
+        let lowered = part.to_lowercase();
+        topic.keywords.iter().any(|keyword| lowered.contains(keyword))
+    };
+    let segments = event
         .excerpt
         .split(['\n', '。', '！', '？'])
         .map(str::trim)
-        .find(|part| {
-            let part = part.to_lowercase();
-            topic.keywords.iter().any(|keyword| part.contains(keyword))
-        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    segments
+        .iter()
+        .find(|part| !part.ends_with('…') && matches_topic(part))
         .map(|part| truncate_chars(part, 180))
         .unwrap_or_else(|| event.title.clone())
 }

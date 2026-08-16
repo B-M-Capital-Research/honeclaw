@@ -22,6 +22,24 @@
 
 ## 最新进展
 
+- 2026-08-17 02:04 CST 运行态复核：代码级修复继续保留 `Fixed / P0`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-16 22:02-2026-08-17 02:04 CST。
+    - 近窗多条 heartbeat deliver 仍携带 `hone_quote_time`、历史缓存、配额耗尽或精确行情锚：22:30-02:00 CST 多轮 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`持仓重大事件心跳提醒` 引用 `SNDK $1,641.11`、`AAOI $150.28`、`MU $971.66`、`SPCX $140.00`、`DRAM $57.32`、`STX $973.44` 等精确行情锚；多条正文同时写明工具调用已达上限、行情未完成核验或报价沿用旧轮次。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 2026-08-10 `stale_market_data_fallback` 补强修复的证据。
+  - 判断：
+    - 最新样本仍可作为“旧 live runtime 尚需自然部署复核”的候选，但本轮没有同轮独立 quote 冲突、公司行动口径冲突或 provider 解析错位证据，也不能证明修复后的代码仍失效。
+    - 因此本缺陷继续保持代码级 `Fixed / P0`，不回退；后续若确认 live 已加载修复 revision 后仍外发“降级文案 + 精确价格锚”，再改回运行态 `New/P0`。
+
+- 2026-08-16 18:02 CST 运行态复核：代码级修复继续保留 `Fixed / P0`，等待自然部署复核。
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-16 14:00-18:01 CST。
+    - 近窗多条 heartbeat deliver 仍携带 `hone_quote_time`、历史缓存、配额耗尽或精确行情锚：14:00-18:00 CST 多轮 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`持仓重大事件心跳提醒` 引用 `SNDK $1,641.11`、`AAOI $150.28`、`MU $971.66`、`SPCX $140.00`、`DRAM $57.32` 等精确行情锚；多条正文同时写明工具调用已达上限、行情未完成核验或报价沿用旧轮次。
+    - source log 未见 runtime 重启 / revision 切换或确认加载 2026-08-10 `stale_market_data_fallback` 补强修复的证据。
+  - 判断：
+    - 最新样本仍可作为“旧 live runtime 尚需自然部署复核”的候选，但本轮没有同轮独立 quote 冲突、公司行动口径冲突或 provider 解析错位证据，也不能证明修复后的代码仍失效。
+    - 因此本缺陷继续保持代码级 `Fixed / P0`，不回退；后续若确认 live 已加载修复 revision 后仍外发“降级文案 + 精确价格锚”，再改回运行态 `New/P0`。
+
 - 2026-08-16 14:02 CST 运行态复核：代码级修复继续保留 `Fixed / P0`，等待自然部署复核。
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-16 10:01-14:02 CST。
@@ -2389,3 +2407,15 @@
 - 本轮判断
   - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 `37043d01` 已部署后仍复发。
   - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载 `37043d01` 后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
+
+## 最新运行态复核（2026-08-16 22:04 CST）
+
+- `git log`
+  - 最近四小时无非文档代码提交；未见 runtime 重启、revision 切换或确认加载 2026-08-10 补强修复的日志证据。
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 18:01-22:04 CST。
+  - 18:30-22:00 CST `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`持仓重大事件心跳提醒` 多轮继续使用 `SNDK $1,641.11`、`AAOI $150.28`、`SPCX $140.00`、`DRAM $57.32`、`hone_quote_time.beijing`、`quote_short`、工具调用上限或 quote 核验受限语境下的精确报价锚。
+  - 同窗多条 heartbeat deliver / duplicate suppression 候选仍携带工具限额、旧报价锚或未能完整复核行情的语义；source log 未见当前 runtime 已加载行情锚 fail-closed 修复的证据。
+- 本轮判断
+  - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 2026-08-10 补强修复已部署后仍复发。
+  - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载最新行情锚 fail-closed 修复后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。

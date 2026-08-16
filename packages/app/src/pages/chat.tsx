@@ -2147,6 +2147,88 @@ function FinanceCalendarQuickAction(props: {
   );
 }
 
+/**
+ * The composer's single tool affordance.
+ *
+ * The dock used to carry two visually identical chip rows — one that
+ * navigated away, one that acted on the conversation — so neither read as
+ * primary. Destinations now collapse into this menu and the row beside it
+ * keeps only actions that stay in the chat.
+ */
+function ChatToolsMenu() {
+  const navigate = useNavigate();
+  const [open, setOpen] = createSignal(false);
+  let wrapRef: HTMLDivElement | undefined;
+
+  createEffect(() => {
+    if (!open()) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (wrapRef && !wrapRef.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
+
+  const go = (href: string) => {
+    setOpen(false);
+    navigate(href);
+  };
+
+  const destinations = [
+    {
+      href: "/research",
+      title: CONTENT.chat_page.workspace.research_desk_entry,
+      desc: CONTENT.chat_page.workspace.tools_research_desc,
+    },
+    {
+      href: "/valuation-lab",
+      title: CONTENT.chat_page.workspace.valuation_lab_title,
+      desc: CONTENT.chat_page.workspace.valuation_lab_subtitle,
+    },
+    {
+      href: "/research-library",
+      title: CONTENT.chat_page.workspace.research_library_title,
+      desc: CONTENT.chat_page.workspace.research_library_subtitle,
+    },
+  ];
+
+  return (
+    <div class="chat-tools" ref={wrapRef}>
+      <button
+        type="button"
+        class="chat-tools__trigger"
+        aria-haspopup="menu"
+        aria-expanded={open()}
+        {...routePrefetchHandlers("research")}
+        onClick={() => setOpen(!open())}
+      >
+        <AgentWorkspaceIcon name="research" size={15} />
+        <span>{CONTENT.chat_page.workspace.tools_label}</span>
+      </button>
+      <Show when={open()}>
+        <div class="chat-tools__menu" role="menu">
+          <p class="chat-tools__group">{CONTENT.chat_page.workspace.tools_group_research}</p>
+          <For each={destinations}>
+            {(item) => (
+              <button type="button" role="menuitem" onClick={() => go(item.href)}>
+                <b>{item.title}</b>
+                <small>{item.desc}</small>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 function CommunityQuickAction(props: { unread: boolean; onOpen: () => void }) {
   return (
     <button
@@ -2266,6 +2348,7 @@ function Composer(props: {
       }}
     >
       <div class="public-chat-proactive-tip-wrap">
+        <ChatToolsMenu />
         <ProactiveModeTips openRequest={props.trackingOpenRequest} />
         <Show when={props.isAdmin}>
           <EarningsResearchQuickAction
@@ -3859,19 +3942,6 @@ export default function PublicChatPage() {
                             </div>
                           </div>
                       <div class="public-chat-composer-dock" style={{ position: "relative" }}>
-                        <Show when={authState() === "ready"}>
-                          {/* 研究产品有自己的家（/research）。这里只留一条纯导航
-                              入口，不取数、不弹窗，把版面还给对话本身。 */}
-                          <nav class="chat-research-entry" aria-label={CONTENT.chat_page.workspace.daily_tools_aria}>
-                            <button type="button" class="chat-research-entry__primary" {...routePrefetchHandlers("research")} onClick={() => navigate("/research")}>
-                              <AgentWorkspaceIcon name="research" size={15} />
-                              <span>{CONTENT.chat_page.workspace.research_desk_entry}</span>
-                              <i aria-hidden="true">›</i>
-                            </button>
-                            <button type="button" onClick={() => navigate("/valuation-lab")}>{CONTENT.chat_page.workspace.valuation_lab_title}</button>
-                            <button type="button" onClick={() => navigate("/research-library")}>{CONTENT.chat_page.workspace.research_library_title}</button>
-                          </nav>
-                        </Show>
                         <Show when={awayFromBottom()}>
                           <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>

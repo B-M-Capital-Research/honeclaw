@@ -1,8 +1,9 @@
 /* 周度简报 panel — controlled ResearchPanel content.
    The old all-amber card theme was decorative amber (deprecated); the panel
    accent is now coral + neutral tokens, and --hone-signal-yellow is reserved
-   for genuine "yellow light / warning" semantics (coverage gaps, 重点 badge,
-   policy/inflation markers). */
+   for genuine "yellow light / warning" semantics — coverage gaps and the 重点
+   badge, and nothing else. Every colour here is a token, so dark mode needs no
+   override block of its own. */
 
 .weekly-brief-backdrop {
   --card-bg: var(--hone-surface-raised);
@@ -36,122 +37,14 @@
   box-shadow: 0 32px 100px rgba(0, 0, 0, 0.38);
 }
 
-.weekly-brief-dialog-head {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 20px 26px 15px;
-  border-bottom: 1px solid var(--border-color);
-}
+/* Head chrome — kicker, title, verdict, provenance and the refresh control —
+   all belongs to ResearchPanelHead in research.css. */
 
-.weekly-brief-dialog-head p {
-  margin: 0 0 5px;
-  color: var(--hone-coral-600);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.15em;
-}
-
-.weekly-brief-dialog-head h2 {
-  margin: 0;
-  font-size: 26px;
-  letter-spacing: -0.03em;
-}
-
-.weekly-brief-dialog-head span {
-  display: block;
-  margin-top: 4px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.weekly-brief-dialog-head > button {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border-color);
-  border-radius: 11px;
-  background: var(--card-bg);
-  color: var(--text-primary);
-  font-size: 23px;
-  cursor: pointer;
-}
-
-.weekly-brief-meta {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 26px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.weekly-brief-meta b {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
-}
-
-.weekly-brief-meta button {
-  margin-left: auto;
-  border: 0;
-  background: none;
-  color: var(--hone-coral-600);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.weekly-brief-hero {
-  flex: 0 0 auto;
-  margin: 14px 26px 10px;
-  padding: 13px 16px;
-  border: 1px solid color-mix(in srgb, var(--hone-coral-500) 35%, var(--border-color));
-  border-radius: 15px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--hone-coral-500) 9%, var(--card-bg)), var(--card-bg));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.weekly-brief-hero span {
-  font-size: 10px;
-  color: var(--hone-coral-600);
-  font-weight: 800;
-}
-
-.weekly-brief-hero h3 {
-  margin: 4px 0 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.weekly-brief-hero aside {
-  min-width: 118px;
-  padding-left: 16px;
-  border-left: 1px solid var(--border-color);
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 9px;
-}
-
-.weekly-brief-hero aside strong {
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-.weekly-brief-hero aside b {
-  font-size: 22px;
-  color: var(--hone-coral-600);
-}
-
+/* Warning band: the head already names the yellow light, so this only carries
+   the specific gap. */
 .weekly-brief-coverage {
   flex: 0 0 auto;
-  margin: 0 26px 10px;
+  margin: 10px 26px 0;
   padding: 9px 12px;
   border-radius: 11px;
   background: var(--hone-signal-yellow-soft);
@@ -159,11 +52,6 @@
   gap: 8px;
   font-size: 10px;
   line-height: 1.45;
-}
-
-.weekly-brief-coverage strong {
-  color: var(--hone-signal-yellow);
-  white-space: nowrap;
 }
 
 .weekly-brief-coverage span {
@@ -175,7 +63,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 7px;
-  margin: 0 26px 10px;
+  margin: 10px 26px;
   padding: 4px;
   border-radius: 13px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
@@ -205,7 +93,7 @@
 }
 
 .weekly-brief-tabs button.active {
-  border-color: var(--border-color);
+  border-color: color-mix(in srgb, var(--hone-coral-500) 35%, var(--border-color));
   background: var(--card-bg);
   color: var(--text-primary);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--text-primary) 7%, transparent);
@@ -228,34 +116,15 @@
 
 .weekly-brief-week > header {
   display: flex;
-  align-items: end;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 17px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.weekly-brief-week > header span {
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.13em;
-  color: var(--text-secondary);
-}
-
-.weekly-brief-week[data-tone="review"] > header span {
-  color: var(--hone-signal-green);
-}
-
-.weekly-brief-week[data-tone="outlook"] > header span {
-  color: var(--hone-coral-600);
-}
-
-.weekly-brief-week[data-tone="ai"] > header span {
-  color: #765fc0;
-}
-
 .weekly-brief-week > header h3 {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 17px;
 }
 
@@ -303,66 +172,33 @@
 }
 
 .weekly-brief-events article {
-  position: relative;
   padding: 12px 14px;
   border: 1px solid var(--border-color);
   border-radius: 13px;
   background: color-mix(in srgb, var(--bg-primary) 56%, var(--card-bg));
-  overflow: hidden;
 }
 
-.weekly-brief-events article:before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--hone-signal-neutral);
-}
-
-.weekly-brief-events article[data-category="earnings"]:before {
-  background: #7a67d8;
-}
-
-.weekly-brief-events article[data-category="industry"]:before,
-.weekly-brief-events article[data-category="ai_conference"]:before {
-  background: var(--hone-signal-green);
-}
-
-.weekly-brief-events article[data-category="policy"]:before,
-.weekly-brief-events article[data-category="inflation"]:before {
-  background: var(--hone-signal-yellow);
-}
-
+/* Importance, evidence quality and category on one line. Only 重点 is a
+   marker; the rest is a label, so it does not compete with the title. */
 .weekly-brief-event-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-}
-
-.weekly-brief-event-meta span,
-.weekly-brief-event-meta b,
-.weekly-brief-event-meta em {
-  font-size: 8px;
-  font-style: normal;
-  border-radius: 999px;
-  padding: 3px 6px;
-  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  gap: 6px;
+  align-items: baseline;
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 .weekly-brief-event-meta b {
+  border-radius: 999px;
+  padding: 2px 7px;
   color: var(--hone-signal-yellow);
   background: var(--hone-signal-yellow-soft);
 }
 
-.weekly-brief-event-meta em {
-  color: var(--text-secondary);
-}
-
 .weekly-brief-events h4 {
-  margin: 8px 0 0;
+  margin: 0;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -371,35 +207,39 @@
   margin-right: 7px;
   padding: 2px 5px;
   border-radius: 5px;
-  background: #e9e5ff;
-  color: #5141a8;
-  font-family: inherit;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--hone-font-label);
   font-size: 10px;
 }
 
-.weekly-brief-subtitle {
-  margin: 4px 0 0 !important;
-  color: var(--text-secondary) !important;
-  font-size: 10px !important;
-}
-
-.weekly-brief-analysis {
-  margin: 9px 0 0;
-  line-height: 1.58;
+/* The card's three paragraphs — subtitle, analysis, follow-up — each scope
+   themselves under `.weekly-brief-events` so they read as one ladder rather
+   than three rules fighting over the same element. */
+.weekly-brief-events .weekly-brief-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
-.weekly-brief-events aside {
-  margin-top: 7px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: var(--hone-signal-yellow-soft);
-  font-size: 10px;
-  line-height: 1.55;
+/* The reading of the event, in full. It used to arrive inside a disclosure
+   whose closed state clipped the first sentence. */
+.weekly-brief-events .weekly-brief-analysis {
+  margin: 9px 0 0;
+  line-height: 1.65;
+  font-size: 12px;
+}
+
+/* Follow-up guidance. It used to sit in a yellow box, which read as a warning
+   it never was; yellow here is reserved for coverage gaps and 重点. */
+.weekly-brief-events .weekly-brief-attention {
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
-.weekly-brief-events aside strong {
+.weekly-brief-events .weekly-brief-attention strong {
   color: var(--text-primary);
 }
 
@@ -410,8 +250,8 @@
   gap: 10px;
   margin-top: 8px;
   color: var(--text-secondary);
-  font-size: 8px;
-  line-height: 1.4;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .weekly-brief-evidence span {
@@ -425,8 +265,7 @@
 }
 
 .weekly-brief-method {
-  flex: 0 0 auto;
-  margin: 0 26px 9px;
+  margin: 12px 0 0;
   padding: 9px 12px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
@@ -481,12 +320,6 @@
   opacity: 0.45;
 }
 
-/* Purple ticker chips have no token equivalent; they keep their own dark skin. */
-[data-theme="dark"] .weekly-brief-events code {
-  background: #28243d;
-  color: #c1b5ff;
-}
-
 @media (max-width: 800px) {
   .weekly-brief-backdrop {
     padding: 0;
@@ -500,50 +333,13 @@
     border-radius: 22px 22px 0 0;
   }
 
-  .weekly-brief-dialog-head {
-    padding: 17px 16px 13px;
-  }
-
-  .weekly-brief-dialog-head h2 {
-    font-size: 23px;
-  }
-
-  .weekly-brief-dialog-head span {
-    font-size: 11px;
-  }
-
-  .weekly-brief-meta {
-    padding: 8px 16px;
-    gap: 8px;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-
-  .weekly-brief-meta span:nth-of-type(2) {
-    display: none;
-  }
-
-  .weekly-brief-hero {
-    margin: 12px 16px 9px;
-    padding: 11px 12px;
-  }
-
-  .weekly-brief-hero h3 {
-    font-size: 12px;
-  }
-
-  .weekly-brief-hero aside {
-    min-width: 80px;
-    padding-left: 10px;
-  }
-
   .weekly-brief-coverage {
-    margin: 0 16px 9px;
+    margin: 9px 16px 0;
     display: grid;
   }
 
   .weekly-brief-tabs {
-    margin: 0 16px 9px;
+    margin: 9px 16px;
   }
 
   .weekly-brief-tabs button {
@@ -565,7 +361,7 @@
 
   .weekly-brief-week > header time {
     display: block;
-    margin-top: 5px;
+    margin-top: 4px;
   }
 
   .weekly-brief-agenda {
@@ -596,7 +392,7 @@
   }
 
   .weekly-brief-method {
-    margin: 0 12px 8px;
+    margin: 10px 0 0;
   }
 
   .weekly-brief-footer {

@@ -29,6 +29,14 @@ const MODEL_VERSION: &str = "hone-influencer-digest-v1";
 const MAX_ITEMS: usize = 24;
 const MAX_SERENITY_BYTES: usize = 2_000_000;
 const SERENITY_AGGREGATION_URL: &str = "https://aichainmap.com/serenity/";
+/// Author text is kept whole so readers see the post, not a stub. The bound is
+/// only a defensive ceiling: the widest observed source post is ~1.4k chars.
+const MAX_SOURCE_TEXT_CHARS: usize = 4_000;
+const MAX_REPLY_CONTEXT_CHARS: usize = 400;
+const MAX_MEDIA_PER_ITEM: usize = 4;
+/// Only Twitter's own media CDN is rendered. Anything else is dropped rather
+/// than proxied, so an upstream field change cannot point browsers elsewhere.
+const ALLOWED_MEDIA_PREFIX: &str = "https://pbs.twimg.com/";
 
 #[derive(Debug, Clone, Copy)]
 struct AuthorDef {
@@ -89,6 +97,18 @@ pub(crate) struct InfluencerDigestItem {
     pub aggregation_url: Option<String>,
     pub post_kind: String,
     pub source_excerpt: String,
+    /// Full author text, untruncated at reading length. `source_excerpt` stays
+    /// as the short form older clients already render.
+    #[serde(default)]
+    pub source_text_cn: String,
+    #[serde(default)]
+    pub source_text_en: String,
+    #[serde(default)]
+    pub media_urls: Vec<String>,
+    #[serde(default)]
+    pub reply_context: Option<InfluencerReplyContext>,
+    #[serde(default)]
+    pub metrics: InfluencerMetrics,
     pub summary: String,
     pub stance: String,
     pub horizon: String,
@@ -97,6 +117,19 @@ pub(crate) struct InfluencerDigestItem {
     pub tickers: Vec<String>,
     pub counterpoint: String,
     pub analysis_status: String,
+}
+
+/// The post this reply answers, so a reply is not shown without its question.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct InfluencerReplyContext {
+    pub author: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+pub(crate) struct InfluencerMetrics {
+    pub views: u64,
+    pub likes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -134,6 +167,11 @@ struct FetchedItem {
     published_at: DateTime<Utc>,
     url: String,
     excerpt: String,
+    text_cn: String,
+    text_en: String,
+    media_urls: Vec<String>,
+    reply_context: Option<InfluencerReplyContext>,
+    metrics: InfluencerMetrics,
     aggregation_source: Option<String>,
     aggregation_url: Option<String>,
     post_kind: String,
@@ -161,7 +199,7 @@ struct SerenityFeed {
     tweets: Vec<SerenityTweet>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct SerenityTweet {
     id: String,
     url: String,
@@ -170,11 +208,64 @@ struct SerenityTweet {
     #[serde(default)]
     text_cn: String,
     #[serde(default)]
+    lang: String,
+    #[serde(default)]
+    media: Vec<SerenityMedia>,
+    #[serde(default)]
+    metrics: SerenityMetrics,
+    #[serde(default)]
+    reply_to: Option<SerenityRefTweet>,
+    #[serde(default)]
+    quote: Option<SerenityRefTweet>,
+    #[serde(default)]
     is_retweet: bool,
     #[serde(default)]
     is_quote: bool,
     #[serde(default)]
     is_reply: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct SerenityMedia {
+    #[serde(default, rename = "type")]
+    media_type: String,
+    #[serde(default)]
+    url: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+struct SerenityMetrics {
+    #[serde(default)]
+    views: u64,
+    #[serde(default)]
+    likes: u64,
+    // Captured so the upstream contract is documented in one place; only reach
+    // and likes are published, the rest stay available for future ranking.
+    #[allow(dead_code)]
+    #[serde(default)]
+    retweets: u64,
+    #[allow(dead_code)]
+    #[serde(default)]
+    replies: u64,
+    #[allow(dead_code)]
+    #[serde(default)]
+    quotes: u64,
+    #[allow(dead_code)]
+    #[serde(default)]
+    bookmarks: u64,
+}
+
+/// The quoted or replied-to post carried alongside a tweet.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct SerenityRefTweet {
+    #[serde(default)]
+    user: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    text_cn: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -474,12 +565,34 @@ async fn poll_serenity_feed(
         "Serenity feed is larger than allowed"
     );
     let feed = serde_json::from_slice::<SerenityFeed>(&bytes)?;
-    Ok(feed
-        .tweets
-        .into_iter()
-        .filter_map(|tweet| fetched_from_serenity(author, tweet, now, lookback_hours))
-        .take(200)
-        .collect())
+    let received = feed.tweets.len();
+    let mut items = Vec::new();
+    let mut in_window = 0usize;
+    for tweet in feed.tweets {
+        if !within_lookback(tweet.posted_at, now, lookback_hours) {
+            continue;
+        }
+        in_window += 1;
+        if let Some(item) = fetched_from_serenity(author, tweet, now, lookback_hours) {
+            items.push(item);
+        }
+        if items.len() >= 200 {
+            break;
+        }
+    }
+    info!(
+        received,
+        in_window,
+        kept = items.len(),
+        filtered = in_window.saturating_sub(items.len()),
+        "serenity feed filtered"
+    );
+    Ok(items)
+}
+
+fn within_lookback(posted_at: DateTime<Utc>, now: DateTime<Utc>, lookback_hours: i64) -> bool {
+    posted_at >= now - chrono::Duration::hours(lookback_hours)
+        && posted_at <= now + chrono::Duration::minutes(5)
 }
 
 fn fetched_from_serenity(
@@ -488,9 +601,7 @@ fn fetched_from_serenity(
     now: DateTime<Utc>,
     lookback_hours: i64,
 ) -> Option<FetchedItem> {
-    if tweet.posted_at < now - chrono::Duration::hours(lookback_hours)
-        || tweet.posted_at > now + chrono::Duration::minutes(5)
-    {
+    if !within_lookback(tweet.posted_at, now, lookback_hours) {
         return None;
     }
     let parsed = url::Url::parse(&tweet.url).ok()?;
@@ -501,16 +612,34 @@ fn fetched_from_serenity(
     {
         return None;
     }
-    let display = if tweet.text_cn.trim().is_empty() {
-        &tweet.text
-    } else {
-        &tweet.text_cn
-    };
-    let excerpt = truncate_chars(display.trim(), 600);
-    if excerpt.is_empty() {
+    let media_urls = allowed_media_urls(&tweet.media);
+    if is_low_signal_post(&tweet, &media_urls) {
         return None;
     }
-    let title = excerpt
+    let text_en = truncate_chars(tweet.text.trim(), MAX_SOURCE_TEXT_CHARS);
+    let text_cn = truncate_chars(tweet.text_cn.trim(), MAX_SOURCE_TEXT_CHARS);
+    // A Chinese-language post carries the same string twice; showing it as a
+    // separate "original English" fold would only duplicate the body.
+    let text_en = if text_en == text_cn || tweet.lang.eq_ignore_ascii_case("zh") {
+        String::new()
+    } else {
+        text_en
+    };
+    let display = if text_cn.is_empty() {
+        &text_en
+    } else {
+        &text_cn
+    };
+    let display = if display.is_empty() {
+        truncate_chars(tweet.text.trim(), MAX_SOURCE_TEXT_CHARS)
+    } else {
+        display.clone()
+    };
+    if display.is_empty() && media_urls.is_empty() {
+        return None;
+    }
+    let excerpt = truncate_chars(&display, 600);
+    let title = display
         .lines()
         .find(|line| !line.trim().is_empty())
         .unwrap_or("Serenity 更新");
@@ -523,6 +652,12 @@ fn fetched_from_serenity(
     } else {
         "original"
     };
+    // A bare reply reads as half a conversation; carry the post it answers.
+    let reply_context = tweet
+        .reply_to
+        .as_ref()
+        .or(tweet.quote.as_ref())
+        .and_then(reply_context_of);
     Some(FetchedItem {
         id: format!("serenity:{}", tweet.id),
         author,
@@ -530,10 +665,92 @@ fn fetched_from_serenity(
         published_at: tweet.posted_at,
         url: tweet.url,
         excerpt,
+        text_cn,
+        text_en,
+        media_urls,
+        reply_context,
+        metrics: InfluencerMetrics {
+            views: tweet.metrics.views,
+            likes: tweet.metrics.likes,
+        },
         aggregation_source: Some("AI产业链地图·白毛速报".to_string()),
         aggregation_url: Some(SERENITY_AGGREGATION_URL.to_string()),
         post_kind: post_kind.to_string(),
     })
+}
+
+fn reply_context_of(reference: &SerenityRefTweet) -> Option<InfluencerReplyContext> {
+    let author = if reference.user.trim().is_empty() {
+        reference.name.trim().to_string()
+    } else {
+        format!("@{}", reference.user.trim())
+    };
+    let text = if reference.text_cn.trim().is_empty() {
+        reference.text.trim()
+    } else {
+        reference.text_cn.trim()
+    };
+    if author.is_empty() && text.is_empty() {
+        return None;
+    }
+    Some(InfluencerReplyContext {
+        author,
+        text: truncate_chars(text, MAX_REPLY_CONTEXT_CHARS),
+    })
+}
+
+/// Photos served by Twitter's own CDN only. An upstream field change must not
+/// be able to point reader browsers at an arbitrary host.
+fn allowed_media_urls(media: &[SerenityMedia]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    media
+        .iter()
+        .filter(|entry| entry.media_type.eq_ignore_ascii_case("photo"))
+        .map(|entry| entry.url.trim().to_string())
+        .filter(|url| url.starts_with(ALLOWED_MEDIA_PREFIX) && seen.insert(url.clone()))
+        .take(MAX_MEDIA_PER_ITEM)
+        .collect()
+}
+
+/// Strips mentions, links and whitespace so length reflects what the post
+/// actually says rather than who it was addressed to.
+fn signal_text(value: &str) -> String {
+    value
+        .split_whitespace()
+        .filter(|token| {
+            !token.starts_with('@')
+                && !token.starts_with("http://")
+                && !token.starts_with("https://")
+        })
+        .collect::<String>()
+}
+
+fn mentions_cashtag(value: &str) -> bool {
+    value.split('$').skip(1).any(|rest| {
+        rest.chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphabetic())
+    })
+}
+
+/// Drops greeting-and-banter replies that carry no readable content. The rule
+/// is deliberately timid: anything with a cashtag, a number or an image stays,
+/// because a missed filter costs one noisy row while a false drop loses a post.
+fn is_low_signal_post(tweet: &SerenityTweet, media_urls: &[String]) -> bool {
+    if !media_urls.is_empty() {
+        return false;
+    }
+    let cn = signal_text(&tweet.text_cn);
+    let en = signal_text(&tweet.text);
+    let length = cn.chars().count().max(en.chars().count());
+    // A symbol, a figure or an image is enough signal on its own, however short.
+    if mentions_cashtag(&cn)
+        || mentions_cashtag(&en)
+        || cn.chars().chain(en.chars()).any(|ch| ch.is_ascii_digit())
+    {
+        return false;
+    }
+    length < 25 || (tweet.is_reply && length < 40)
 }
 
 fn fetched_from_event(
@@ -551,13 +768,19 @@ fn fetched_from_event(
     if url.is_empty() || event.title.trim().is_empty() {
         return None;
     }
+    let body = strip_html(&event.summary);
     Some(FetchedItem {
         id: event.id,
         author,
         title: truncate_chars(event.title.trim(), 180),
         published_at: event.occurred_at,
         url,
-        excerpt: truncate_chars(&strip_html(&event.summary), 600),
+        excerpt: truncate_chars(&body, 600),
+        text_cn: truncate_chars(&body, MAX_SOURCE_TEXT_CHARS),
+        text_en: String::new(),
+        media_urls: Vec::new(),
+        reply_context: None,
+        metrics: InfluencerMetrics::default(),
         aggregation_source: None,
         aggregation_url: None,
         post_kind: "article".to_string(),
@@ -738,6 +961,11 @@ fn public_item(item: &FetchedItem, analysis: Option<&AnalysisItem>) -> Influence
         aggregation_url: item.aggregation_url.clone(),
         post_kind: item.post_kind.clone(),
         source_excerpt: item.excerpt.clone(),
+        source_text_cn: item.text_cn.clone(),
+        source_text_en: item.text_en.clone(),
+        media_urls: item.media_urls.clone(),
+        reply_context: item.reply_context.clone(),
+        metrics: item.metrics,
         summary,
         stance,
         horizon,
@@ -927,9 +1155,25 @@ mod tests {
             published_at: Utc::now(),
             url: format!("https://x.com/a/status/{id}"),
             excerpt: "author says $MU HBM supply remains tight".into(),
+            text_cn: "author says $MU HBM supply remains tight".into(),
+            text_en: String::new(),
+            media_urls: vec![],
+            reply_context: None,
+            metrics: InfluencerMetrics::default(),
             aggregation_source: None,
             aggregation_url: None,
             post_kind: "original".into(),
+        }
+    }
+
+    fn tweet(text_cn: &str, text: &str) -> SerenityTweet {
+        SerenityTweet {
+            id: "123".into(),
+            url: "https://x.com/aleabitoreddit/status/123".into(),
+            posted_at: Utc::now(),
+            text: text.into(),
+            text_cn: text_cn.into(),
+            ..Default::default()
         }
     }
 
@@ -955,20 +1199,147 @@ mod tests {
         assert!(!is_serenity_json_feed(
             "http://serenity-webhook.pages.dev/feed"
         ));
-        let tweet = SerenityTweet {
-            id: "123".into(),
-            url: "https://x.com/aleabitoreddit/status/123".into(),
-            posted_at: Utc::now(),
-            text: "English $NVDA".into(),
-            text_cn: "中文 $NVDA".into(),
-            is_retweet: false,
-            is_quote: false,
-            is_reply: true,
+        let mut source = tweet(
+            "中文 $NVDA 供给紧张的判断依旧成立",
+            "English $NVDA supply stays tight",
+        );
+        source.is_reply = true;
+        source.media = vec![
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "https://pbs.twimg.com/media/ok.jpg".into(),
+            },
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "https://evil.example.com/x.jpg".into(),
+            },
+        ];
+        source.metrics = SerenityMetrics {
+            views: 940,
+            likes: 4,
+            ..Default::default()
         };
-        let item = fetched_from_serenity(AUTHORS[0], tweet, Utc::now(), LOOKBACK_HOURS).unwrap();
+        source.reply_to = Some(SerenityRefTweet {
+            user: "_stockResearch".into(),
+            name: "Luminara Stocks".into(),
+            text: "原问题".into(),
+            text_cn: "原问题中文".into(),
+        });
+        let item = fetched_from_serenity(AUTHORS[0], source, Utc::now(), LOOKBACK_HOURS).unwrap();
         assert_eq!(item.post_kind, "reply");
         assert_eq!(item.url, "https://x.com/aleabitoreddit/status/123");
         assert!(item.excerpt.contains("中文"));
+        assert!(item.text_cn.contains("中文"));
+        assert!(item.text_en.contains("English"));
+        assert_eq!(item.media_urls, vec!["https://pbs.twimg.com/media/ok.jpg"]);
+        assert_eq!(item.metrics.views, 940);
+        let context = item.reply_context.unwrap();
+        assert_eq!(context.author, "@_stockResearch");
+        assert_eq!(context.text, "原问题中文");
+    }
+
+    #[test]
+    fn full_author_text_survives_instead_of_a_600_char_stub() {
+        let long = "供给".repeat(3_000);
+        let item = fetched_from_serenity(AUTHORS[0], tweet(&long, ""), Utc::now(), LOOKBACK_HOURS)
+            .unwrap();
+        assert_eq!(item.text_cn.chars().count(), MAX_SOURCE_TEXT_CHARS + 1);
+        assert_eq!(item.excerpt.chars().count(), 601);
+    }
+
+    #[test]
+    fn chinese_posts_do_not_duplicate_themselves_as_english_original() {
+        let same = "白毛：这轮 HBM 涨价还没结束，供给端没有松动迹象。";
+        let item = fetched_from_serenity(AUTHORS[0], tweet(same, same), Utc::now(), LOOKBACK_HOURS)
+            .unwrap();
+        assert_eq!(item.text_cn, same);
+        assert!(item.text_en.is_empty());
+    }
+
+    #[test]
+    fn media_is_limited_to_the_twitter_cdn() {
+        let media = vec![
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "https://pbs.twimg.com/media/a.jpg".into(),
+            },
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "https://pbs.twimg.com.evil.test/media/a.jpg".into(),
+            },
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "http://pbs.twimg.com/media/b.jpg".into(),
+            },
+            SerenityMedia {
+                media_type: "video".into(),
+                url: "https://pbs.twimg.com/media/c.mp4".into(),
+            },
+            SerenityMedia {
+                media_type: "photo".into(),
+                url: "https://pbs.twimg.com/media/a.jpg".into(),
+            },
+        ];
+        assert_eq!(
+            allowed_media_urls(&media),
+            vec!["https://pbs.twimg.com/media/a.jpg"]
+        );
+    }
+
+    #[test]
+    fn noise_filter_drops_banter_but_keeps_anything_informative() {
+        let mut banter = tweet("@bianokx_momo 我朋友也常这么跟我说", "");
+        banter.is_reply = true;
+        assert!(is_low_signal_post(&banter, &[]));
+
+        let mut agreement = tweet("@HenilPatel20864 是的", "Yes");
+        agreement.is_reply = true;
+        assert!(is_low_signal_post(&agreement, &[]));
+
+        // Short but carries a symbol, a number, or an image: always kept.
+        let mut ticker = tweet("@a $NVDA 见顶", "");
+        ticker.is_reply = true;
+        assert!(!is_low_signal_post(&ticker, &[]));
+        let mut number = tweet("@a 这批 HBM 报价涨了 30% 左右，比上季度更狠一点", "");
+        number.is_reply = true;
+        assert!(!is_low_signal_post(&number, &[]));
+        let mut with_photo = tweet("@a 哈哈哈", "");
+        with_photo.is_reply = true;
+        assert!(!is_low_signal_post(
+            &with_photo,
+            &["https://pbs.twimg.com/media/a.jpg".to_string()]
+        ));
+
+        // A long reply without symbols or numbers is still substance.
+        let mut essay = tweet(
+            "@a 我不认同这个看法，模型推理成本下降的速度比大多数人预期的更快，长期看会重塑整条供给链的利润分配。",
+            "",
+        );
+        essay.is_reply = true;
+        assert!(!is_low_signal_post(&essay, &[]));
+
+        // The same short banter as an original post is dropped too.
+        assert!(is_low_signal_post(&tweet("我们快到了……", ""), &[]));
+        // Mentions and links never count toward the readable length.
+        assert!(is_low_signal_post(
+            &tweet("@a @b @c https://t.co/abcdefg 同意", ""),
+            &[]
+        ));
+        // English-only posts are measured on their own text.
+        assert!(!is_low_signal_post(
+            &tweet(
+                "",
+                "Memory pricing is re-rating faster than the sell side models it"
+            ),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn low_signal_posts_never_reach_the_public_snapshot() {
+        let mut banter = tweet("@bianokx_momo 我朋友也常这么跟我说", "");
+        banter.is_reply = true;
+        assert!(fetched_from_serenity(AUTHORS[0], banter, Utc::now(), LOOKBACK_HOURS).is_none());
     }
 
     #[test]

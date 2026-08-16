@@ -547,11 +547,13 @@ export function AgentWorkspaceMobileNav(props: {
   onPushesTab?: () => void;
   onAccount: () => void;
 }) {
+  // 投资助手是本产品的核心动作，放在五格的正中间：拇指最容易够到的位置，
+  // 两侧分别是内容（研究 / 洞察）与个人（推送 / 我的）。
   return <nav class="agent-workspace-mobile-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
-    <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>投资助手</span></button>
     <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} classList={{ "is-active": props.activeSection === "research" }} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
-    <Show when={props.onPushesTab}>{(onPushesTab) => <button type="button" {...routePrefetchHandlers("pushes")} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushesTab()}><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={props.unreadPushCount > 0}><i /></Show></button>}</Show>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
+    <button type="button" class="agent-workspace-mobile-primary" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><AgentWorkspaceIcon name="agent" /><span>投资助手</span></button>
+    <Show when={props.onPushesTab}>{(onPushesTab) => <button type="button" {...routePrefetchHandlers("pushes")} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushesTab()}><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={props.unreadPushCount > 0}><i /></Show></button>}</Show>
     <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
   </nav>;
 }

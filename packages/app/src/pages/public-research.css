@@ -13,11 +13,7 @@
 .public-research-main {
   width: min(1080px, 100%);
   margin: 0 auto;
-  padding: 28px 20px 48px;
-}
-
-.public-research-header {
-  margin-bottom: 20px;
+  padding: 26px 20px 48px;
 }
 
 .public-research-header h1 {
@@ -30,16 +26,63 @@
 
 .public-research-header p {
   margin: 0;
-  max-width: 46em;
+  max-width: 48em;
   font-size: 13.5px;
   line-height: 1.65;
   color: var(--hone-ink-500);
 }
 
+.public-research-header b {
+  font-weight: 600;
+  color: var(--hone-ink-800);
+}
+
+/* ── Category switcher ──────────────────────────────────────────────────── */
+
+.public-research-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 18px 0 14px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.public-research-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.public-research-tabs button {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border: 1px solid var(--hone-line);
+  border-radius: 999px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease),
+    background 0.15s var(--hone-ease);
+}
+
+.public-research-tabs button:hover {
+  border-color: var(--hone-line-strong);
+  color: var(--hone-ink-950);
+}
+
+.public-research-tabs button.is-active {
+  border-color: transparent;
+  background: var(--hone-inverse-bg);
+  color: var(--hone-inverse-fg);
+  font-weight: 600;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
 .public-research-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 @media (max-width: 980px) {
@@ -49,16 +92,19 @@
 }
 
 @media (max-width: 620px) {
+  .public-research-main {
+    padding: 20px 14px 40px;
+  }
+
   .public-research-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 .public-research-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
+  display: grid;
+  gap: 9px;
+  padding: 15px 17px;
   text-align: left;
   cursor: pointer;
   border: 1px solid var(--hone-line);
@@ -74,12 +120,54 @@
   transform: translateY(-1px);
 }
 
+/* A section with nothing to show today recedes: no shadow, no headline
+   number, muted type. The point is to make "有数据 / 没数据" legible from
+   across the grid instead of buried in a status chip. */
+.public-research-card.is-state-waiting,
+.public-research-card.is-state-empty {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.public-research-card.is-state-waiting .public-research-card__title strong,
+.public-research-card.is-state-empty .public-research-card__title strong {
+  color: var(--hone-ink-600);
+}
+
+.public-research-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .public-research-card__kicker {
   font-family: var(--hone-font-label);
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--hone-ink-500);
+}
+
+.public-research-card__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--hone-ink-400);
+}
+
+.public-research-card.is-state-ready .public-research-card__state {
+  color: var(--hone-signal-green);
+}
+
+.public-research-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .public-research-card__title {
@@ -96,80 +184,89 @@
 .public-research-card__title b {
   margin-left: auto;
   font-family: var(--hone-font-label);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--hone-ink-800);
 }
 
-.public-research-card__light {
-  align-self: center;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--hone-signal-neutral);
+.public-research-card__signal {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral);
+  font-size: 11px;
+  font-style: normal;
 }
 
-.public-research-card.is-green .public-research-card__light { background: var(--hone-signal-green); }
-.public-research-card.is-yellow .public-research-card__light { background: var(--hone-signal-yellow); }
-.public-research-card.is-orange .public-research-card__light { background: var(--hone-signal-orange); }
-.public-research-card.is-red .public-research-card__light { background: var(--hone-signal-red); }
+.public-research-card.is-green .public-research-card__signal {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green);
+}
+
+.public-research-card.is-yellow .public-research-card__signal {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+}
+
+.public-research-card.is-orange .public-research-card__signal {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange);
+}
+
+.public-research-card.is-red .public-research-card__signal {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red);
+}
 
 .public-research-card__summary {
   display: -webkit-box;
   overflow: hidden;
   min-height: 2.9em;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.55;
   color: var(--hone-ink-600);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-.public-research-card__meta {
+.public-research-card__foot {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  min-height: 22px;
+  gap: 8px;
+  min-height: 20px;
+  font-size: 11.5px;
+  color: var(--hone-ink-500);
 }
 
-.public-research-card__meta em {
-  font-style: normal;
-  font-size: 12.5px;
-  color: var(--hone-link);
+.public-research-card__metric {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--hone-paper-100);
 }
 
-.public-research-card__meta time {
-  margin-left: auto;
+.public-research-card__hint {
+  color: var(--hone-ink-400);
+}
+
+.public-research-card__foot time {
   font-family: var(--hone-font-label);
   font-size: 11px;
   color: var(--hone-ink-400);
 }
 
-.public-research-card__chip {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--hone-paper-100);
-  font-size: 11.5px;
-  color: var(--hone-ink-600);
+.public-research-card__go {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 16px;
+  color: var(--hone-ink-400);
 }
 
-.public-research-card.is-green .public-research-card__chip.is-signal {
-  background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
-}
+/* ── Administration ─────────────────────────────────────────────────────── */
 
-.public-research-card.is-yellow .public-research-card__chip.is-signal {
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-}
-
-.public-research-card.is-orange .public-research-card__chip.is-signal {
-  background: var(--hone-signal-orange-soft);
-  color: var(--hone-signal-orange);
-}
-
-.public-research-card.is-red .public-research-card__chip.is-signal {
-  background: var(--hone-signal-red-soft);
-  color: var(--hone-signal-red);
+/* Wide data tables, so these stack inline instead of being crammed into a
+   modal sheet like the daily research panels. */
+.public-research-admin {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
 }

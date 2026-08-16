@@ -7,8 +7,6 @@ import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
 import { PublicSettingsPanel } from "@/components/public-settings-panel";
-import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
-import { PublicAdminUsagePanel } from "@/components/public-admin-usage-panel";
 import {
   createStripePortal,
   getPublicAuthMe,
@@ -215,16 +213,16 @@ function AccountView(props: {
           <PublicHoldingsPanel />
           <PublicSettingsPanel />
         </Show>
-        <section class="public-workspace-panel public-account-card">
-          <h2>我的知识源</h2>
-          <p class="public-account-note">导入你自己的知识星球、iMA、研报和会议纪要；个人资料只服务你的 HONE，投稿经管理员核验后才可能进入官方研究库。</p>
-          <div class="public-account-actions">
-            <button type="button" onClick={() => navigate("/research-library")}>管理知识源</button>
-          </div>
-        </section>
+        {/* 知识源与用户端管理模块已集中到研究台的「管理」分类，这里只留一个
+            指路卡，避免同一能力在两处各有一份入口。 */}
         <Show when={props.user.is_admin}>
-          <PublicAdminUsagePanel />
-          <PublicAdminWhitelistPanel />
+          <section class="public-workspace-panel public-account-card">
+            <h2>管理</h2>
+            <p class="public-account-note">知识源与投稿核验、使用统计、白名单邀请已集中到研究台的「管理」分类。</p>
+            <div class="public-account-actions">
+              <button type="button" onClick={() => navigate("/research?group=admin")}>打开管理</button>
+            </div>
+          </section>
         </Show>
         <MembershipCard
           user={props.user}

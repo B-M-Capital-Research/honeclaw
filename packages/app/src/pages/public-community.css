@@ -559,19 +559,22 @@
   margin-bottom: 16px;
 }
 
+/* These used to reference a `--public-*` set that is defined nowhere in the
+   repo, so every declaration below was invalid at computed-value time: the
+   border vanished and the surface fell through to transparent. */
 .public-community-view-tabs button {
   display: grid;
   gap: 3px;
   padding: 13px 15px;
-  border: 1px solid var(--public-border);
+  border: 1px solid var(--hone-line);
   border-radius: 14px;
-  background: var(--public-surface);
-  color: var(--public-muted);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-500);
   text-align: left;
 }
 
 .public-community-view-tabs button strong {
-  color: var(--public-text);
+  color: var(--hone-ink-950);
   font-size: 13px;
 }
 
@@ -580,12 +583,12 @@
 }
 
 .public-community-view-tabs button.active {
-  border-color: var(--public-accent);
-  background: color-mix(in srgb, var(--public-accent) 8%, var(--public-surface));
+  border-color: var(--hone-coral-600);
+  background: color-mix(in srgb, var(--hone-coral-600) 8%, var(--hone-surface-raised));
 }
 
 .public-community-view-tabs button.active strong {
-  color: var(--public-accent);
+  color: var(--hone-coral-600);
 }
 
 @media (max-width: 640px) {
