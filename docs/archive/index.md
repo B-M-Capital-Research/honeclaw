@@ -1,6 +1,24 @@
 # Archive Index
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
+
+## 2026-08-17
+
+### Macro Indicator First-Class Entity Track C
+
+- Status: implementation done locally; PostgreSQL gate and commit blocked by the current sandbox; no push
+- Date: 2026-08-17
+- Plan: `docs/current-plans/macro-indicator-entity-2026-08-17.md` (overall multi-track plan remains active)
+- Handoff: `docs/handoffs/2026-08-17-macro-indicator-entity-track-c.md`
+- Related PRs / commits: none; linked-worktree Git metadata is read-only in the current sandbox
+- Related runbooks / regressions: macro dictionary scanner; ADP label collision; cluster-quorum and
+  forced-tentative mutation checks; two production scheduler prompt paths; five protected ticker tests
+- Current conclusion: `hone-core` now owns an independent bilingual macro-indicator dictionary and
+  scanner. Channels use it only to lower candidate confidence and remove macro spans from symbol-cluster
+  quorum; candidates are never denied, explicit ticker labels win, and `SecurityIdentifierKind` is unchanged.
+- Next entry point: rerun the full workspace test gate with the documented PostgreSQL service live,
+  create the scoped Track C commit from a Git-writable environment, then merge it into the still-active
+  multi-track plan.
 
 ## 2026-08-16
 

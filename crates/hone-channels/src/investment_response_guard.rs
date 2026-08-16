@@ -5,6 +5,7 @@ use chrono::{Datelike, Duration, NaiveDateTime, TimeZone, Weekday};
 use futures::future::join_all;
 use hone_core::ActorIdentity;
 use hone_core::agent::ToolCallMade;
+use hone_core::macro_indicator::{MacroMention, scan as scan_macro_indicators};
 use hone_llm::Message;
 use regex::Regex;
 use serde::Deserialize;
@@ -8369,6 +8370,7 @@ fn explicit_dollar_mentions(input: &str) -> Vec<EntityMention> {
 
 fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMention> {
     let scanned_identifiers = scan_security_identifiers(input);
+    let macro_mentions = scan_macro_indicators(input);
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     let mut scheduled_subject_seen = false;
@@ -8402,11 +8404,16 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             identifier_analysis_bindings(input, identifier.start, identifier.end);
         let comparison_binding =
             identifier_has_comparison_binding(input, identifier.start, identifier.end);
+        // Macro context may lower confidence, but it must never erase this
+        // security-shaped candidate. Several aliases are also real listings.
+        let macro_indicator_binding =
+            macro_mention_covers_span(&macro_mentions, identifier.start, identifier.end);
         let symbol_cluster_binding = identifier_has_symbol_cluster_binding(
             input,
             identifier.start,
             identifier.end,
             &scanned_identifiers,
+            &macro_mentions,
         );
         let clause_subject_binding = identifier_has_clause_subject_binding(
             input,
@@ -8615,6 +8622,7 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 && numeric_market.is_none()
                 && numeric_asset.is_none();
             let tentative_symbol = unsettled_without_a_reader
+                || macro_indicator_binding && !explicit_ticker_label
                 || identifier.kind == SecurityIdentifierKind::Bare
                     && !explicit_ticker_label
                     && !explicit_ticker_binding
@@ -8643,6 +8651,12 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         }
     }
     candidates
+}
+
+fn macro_mention_covers_span(macro_mentions: &[MacroMention], start: usize, end: usize) -> bool {
+    macro_mentions
+        .iter()
+        .any(|mention| mention.start <= start && end <= mention.end)
 }
 
 fn scheduled_condition_clause_start(input: &str, subject_end: usize) -> Option<usize> {
@@ -9240,6 +9254,7 @@ fn identifier_has_symbol_cluster_binding(
     start: usize,
     end: usize,
     identifiers: &[crate::security_identifier::SecurityIdentifier],
+    macro_mentions: &[MacroMention],
 ) -> bool {
     let (clause_start, clause_end) = identifier_clause_bounds(input, start, end);
     let clause = input[clause_start..clause_end].to_ascii_lowercase();
@@ -9279,6 +9294,7 @@ fn identifier_has_symbol_cluster_binding(
         .filter(|candidate| {
             candidate.start >= clause_start
                 && candidate.end <= clause_end
+                && !macro_mention_covers_span(macro_mentions, candidate.start, candidate.end)
                 && candidate.kind == SecurityIdentifierKind::Bare
                 && candidate
                     .raw
@@ -13855,6 +13871,62 @@ mod tests {
         );
         assert!(matches!(
             extract_entity_scope("Oracle 大事件监控", AgentTurnOrigin::Heartbeat),
+            EntityResolutionScope::AgentToolDiscovery(_)
+        ));
+    }
+
+    #[test]
+    fn macro_indicator_collision_respects_explicit_ticker_label() {
+        let macro_input = "ADP 就业数据低于预期";
+        let macro_mentions = plain_ticker_mentions(macro_input, AgentTurnOrigin::Scheduled);
+        let macro_adp = macro_mentions
+            .iter()
+            .find(|mention| mention.explicit_symbol.as_deref() == Some("ADP"))
+            .expect("ADP must survive as a candidate");
+        assert!(macro_adp.tentative_symbol, "{macro_mentions:?}");
+        assert!(matches!(
+            extract_entity_scope(macro_input, AgentTurnOrigin::Scheduled),
+            EntityResolutionScope::AgentToolDiscovery(_)
+        ));
+
+        let labelled_input = "股票代码 ADP 的财报";
+        let labelled_mentions = plain_ticker_mentions(labelled_input, AgentTurnOrigin::Scheduled);
+        let labelled_adp = labelled_mentions
+            .iter()
+            .find(|mention| mention.explicit_symbol.as_deref() == Some("ADP"))
+            .expect("explicitly labelled ADP must survive");
+        assert!(!labelled_adp.tentative_symbol, "{labelled_mentions:?}");
+        assert!(matches!(
+            extract_entity_scope(labelled_input, AgentTurnOrigin::Scheduled),
+            EntityResolutionScope::Securities(_)
+        ));
+    }
+
+    #[test]
+    fn macro_indicator_does_not_complete_symbol_cluster_quorum() {
+        let input = "美股持仓 NVDA PCE 新闻";
+        let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+        let nvda = mentions
+            .iter()
+            .find(|mention| mention.explicit_symbol.as_deref() == Some("NVDA"))
+            .expect("the real listing must survive");
+        assert!(
+            nvda.tentative_symbol,
+            "one macro token must not satisfy a two-symbol quorum: {mentions:?}"
+        );
+    }
+
+    #[test]
+    fn macro_indicator_binding_forces_tentative_without_dropping_candidate() {
+        let input = "PCE 新闻";
+        let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
+        let pce = mentions
+            .iter()
+            .find(|mention| mention.explicit_symbol.as_deref() == Some("PCE"))
+            .expect("macro matches lower confidence; they never erase candidates");
+        assert!(pce.tentative_symbol, "{mentions:?}");
+        assert!(matches!(
+            extract_entity_scope(input, AgentTurnOrigin::Scheduled),
             EntityResolutionScope::AgentToolDiscovery(_)
         ));
     }

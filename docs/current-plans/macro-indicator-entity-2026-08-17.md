@@ -2,6 +2,7 @@
 
 - status: `in_progress`
 - created_at: `2026-08-17`
+- updated_at: `2026-08-17`
 - owner: Claude（计划/协调/验收）、Codex（实现）
 - base revision: `32d3295c`
 - 并行方式：4 条独立 git worktree，各自一个 commit，最后由 Claude 合并
@@ -272,4 +273,29 @@ TTL 跟随既有 `ttl_for_data_type` 的宏观档位。
 
 ## 实施记录
 
-（Codex 在此追加：分歧、实测到的真凶促升路径、变异验证结果）
+- Track C 实施前核对：红线测试在本文写作
+  `scheduled_and_heartbeat_skip_macro_regulatory_and_name_components`，代码中的
+  实际函数名是 `scheduler_and_heartbeat_skip_macro_regulatory_and_name_components`。测试内容与
+  保护语义一致；Track C 不修改该既有测试，验收时按代码中的真实名称运行。
+- Track C 已实现 C1/C2/C3：`hone-core::macro_indicator` 保留共享词典、字节区间与
+  上市代码冲突标志；`plain_ticker_mentions` 仅把命中宏观的 span 从 symbol-cluster
+  `>= 2` 人数中剔除，并在无显式 `ticker` / `股票代码` 标注时强制
+  `tentative_symbol=true`。`SecurityIdentifierKind` 仍是原有 6 个变体，本轮没有新增任何
+  宏观命中后的 `continue` 或否决表。
+- Track C 变异验证：单独禁用 (a) 后
+  `macro_indicator_does_not_complete_symbol_cluster_quorum` 为 `passed=0 failed=1`，
+  `NVDA` 从 tentative 错变为 settled；恢复 (a) 并单独禁用 (b) 后
+  `macro_indicator_binding_forces_tentative_without_dropping_candidate` 为
+  `passed=0 failed=1`，`PCE` 候选仍保留但 tentative 错变为 false。两处已恢复，绿色基线为
+  新增纯逻辑测试 `passed=4 failed=0`，不可修改红线测试 `passed=5 failed=0`。
+- Track C 门禁：`cargo check --workspace --all-targets --exclude hone-desktop --exclude
+  hone-user-app` 通过。精确 `cargo test` 门禁完成编译，但当前受限环境无法连接
+  Docker socket，Homebrew PostgreSQL 也因沙箱禁止 `shmget` 无法启动；命令运行到
+  `hone-channels` 时累计 `passed=824 failed=173 ignored=1`，其中该测试二进制原始尾部为
+  `644 passed; 173 failed; 1 ignored`，失败栈均是隔离 PostgreSQL schema 初始化时的
+  `Postgres 连接失败`。需在可用 5433 PostgreSQL 的环境重跑全门禁及第 5 条生产入口回归。
+- Track C 提交阻塞：已按审阅后的 9 个 Track C 文件显式执行 `git add`，但该
+  linked worktree 的真实 Git 索引在只读的主 worktree
+  `/Users/zhangxuanren/Workspace/honeclaw/.git/worktrees/honeclaw-l2/`，创建
+  `index.lock` 被拒绝（`Operation not permitted`）。当前没有已暂存文件、没有生成 commit、
+  没有 push；需在可写 Git common dir 的环境执行 scoped commit。
