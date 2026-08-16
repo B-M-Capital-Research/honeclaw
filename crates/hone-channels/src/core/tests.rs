@@ -48,6 +48,9 @@ fn runtime_admin_override_requires_whitelisted_actor_and_configured_passphrase()
 #[test]
 fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.discord_user_ids = vec!["alice".to_string()];
     let core = HoneBotCore::new(config.clone());
     let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
@@ -71,6 +74,9 @@ fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
 #[test]
 fn runtime_admin_override_is_scoped_to_actor_identity() {
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.discord_user_ids = vec!["alice".to_string()];
     config.admins.runtime_admin_registration_passphrase = "secret".to_string();
     let core = HoneBotCore::new(config);
@@ -102,6 +108,9 @@ fn runtime_admin_override_is_scoped_to_actor_identity() {
 #[test]
 fn telegram_admin_allowlist_is_honored() {
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.telegram_user_ids = vec!["8039067465".to_string()];
     let core = HoneBotCore::new(config);
 
@@ -115,6 +124,9 @@ fn telegram_admin_allowlist_is_honored() {
 #[test]
 fn effective_context_owner_follows_actor_runner_route() {
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.agent.runner = "codex_acp".to_string();
     config.admins.discord_user_ids = vec!["admin".to_string()];
     let core = HoneBotCore::new(config);

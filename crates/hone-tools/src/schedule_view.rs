@@ -714,6 +714,17 @@ pub(crate) fn time_in_quiet(local_hhmm: &str, quiet_hours: Option<&QuietHours>) 
 
 #[cfg(test)]
 mod tests {
+
+    /// 钉住运行时时区。改造之后 `runtime_timezone()` 会回退到**宿主时区**,而下面这些
+    /// 断言（行情时间换算、纽约/本地双时区展示、调度视图渲染）是按北京时间写的:
+    /// 不钉住则本地 (Asia/Shanghai) 能过、CI (UTC) 必挂。
+    /// 用 `Once` 是因为时区是进程级全局,重复设置无意义且会放大测试间干扰。
+    fn pin_test_timezone() {
+        static PIN: std::sync::Once = std::sync::Once::new();
+        PIN.call_once(|| {
+            let _ = hone_core::configure_runtime_timezone(Some("Asia/Shanghai"));
+        });
+    }
     use super::*;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use hone_event_engine::prefs::{NotificationPrefs, QuietHours as QH};
@@ -907,6 +918,7 @@ mod tests {
 
     #[test]
     fn render_overview_discord_uses_codeblock_table() {
+        pin_test_timezone();
         let overview = make_overview();
         let rendered = render_overview(&overview, RenderFormat::DiscordMarkdown);
         assert_text_contains_all(

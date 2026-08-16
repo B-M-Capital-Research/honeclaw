@@ -16592,6 +16592,7 @@ mod tests {
 
     #[test]
     fn pre_turn_web_query_carries_both_market_dates() {
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let query = super::pre_turn_web_query("nbis最近怎么看", "2026-08-04 09:31");
 
         assert!(query.starts_with("2026-08-04"), "{query}");

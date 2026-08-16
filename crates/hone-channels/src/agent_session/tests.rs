@@ -873,6 +873,12 @@ fn make_test_core_with_config(
     configure: impl FnOnce(&mut HoneConfig),
 ) -> Arc<HoneBotCore> {
     let mut config = HoneConfig::default();
+    // 钉住运行时时区。改造之后 `runtime_timezone()` 会回退到**宿主时区**,而涉及
+    // "本地墙钟 → 美东交易日"换算的断言是按北京时间写的;不钉住则本地
+    // (Asia/Shanghai) 能过、CI (UTC) 必挂。注意必须设在 config 上而不是调
+    // `configure_runtime_timezone`:`HoneBotCore::new`(bot_core.rs:114)会用
+    // config 里的时区再配置一次,把进程级的设置覆盖掉。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.agent.runner = "hone_cloud".to_string();
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
     config.storage.conversation_quota_dir = root
@@ -904,6 +910,9 @@ fn make_strict_tool_loop_test_core_with_config(
     configure: impl FnOnce(&mut HoneConfig),
 ) -> Arc<HoneBotCore> {
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.agent.runner = "codex_acp".to_string();
     config.fmp.timeout = 5;
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
@@ -6777,6 +6786,9 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     let root = make_temp_dir("hone_channels_guard_fail_persist");
     std::fs::create_dir_all(&root).expect("create root");
     let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
     config.agent.runner = "codex_acp".to_string();
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
     config.storage.conversation_quota_dir = root

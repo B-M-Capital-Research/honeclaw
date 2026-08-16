@@ -2532,6 +2532,17 @@ impl Tool for DataFetchTool {
 
 #[cfg(test)]
 mod tests {
+
+    /// 钉住运行时时区。改造之后 `runtime_timezone()` 会回退到**宿主时区**,而下面这些
+    /// 断言（行情时间换算、纽约/本地双时区展示、调度视图渲染）是按北京时间写的:
+    /// 不钉住则本地 (Asia/Shanghai) 能过、CI (UTC) 必挂。
+    /// 用 `Once` 是因为时区是进程级全局,重复设置无意义且会放大测试间干扰。
+    fn pin_test_timezone() {
+        static PIN: std::sync::Once = std::sync::Once::new();
+        PIN.call_once(|| {
+            let _ = hone_core::configure_runtime_timezone(Some("Asia/Shanghai"));
+        });
+    }
     use super::{
         DataFetchTool, chinese_scaled_money, data_fetch_data_type_uses_security_target,
         effective_data_fetch_data_type, effective_data_fetch_security_target,
@@ -2566,6 +2577,7 @@ mod tests {
 
     #[test]
     fn quote_timestamp_metadata_exposes_unambiguous_new_york_and_local_times() {
+        pin_test_timezone();
         let timestamp = DateTime::parse_from_rfc3339("2026-07-17T20:00:00Z")
             .expect("valid quote timestamp")
             .timestamp();
@@ -3563,6 +3575,7 @@ mod tests {
 
     #[tokio::test]
     async fn authentication_statuses_still_fall_back_to_later_keys() {
+        pin_test_timezone();
         let (addr, request_count) = spawn_scripted_http_server(vec![
             ("401 Unauthorized", "not-json"),
             ("403 Forbidden", "still-not-json"),
@@ -3605,6 +3618,7 @@ mod tests {
 
     #[tokio::test]
     async fn quote_short_and_crypto_quote_convert_time_without_inventing_sessions() {
+        pin_test_timezone();
         let (addr, request_count) = spawn_scripted_http_server(vec![
             (
                 "200 OK",
@@ -3959,6 +3973,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_snapshot_reuses_child_fetch_cache() {
+        pin_test_timezone();
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind test server");

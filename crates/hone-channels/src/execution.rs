@@ -411,6 +411,9 @@ mod tests {
     fn make_test_core(root: &Path, runner: &str) -> Arc<HoneBotCore> {
         std::fs::create_dir_all(root).expect("create temp root");
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.runner = runner.to_string();
         config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
         config.storage.conversation_quota_dir = root

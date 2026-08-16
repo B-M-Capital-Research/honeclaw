@@ -1315,6 +1315,9 @@ mod tests {
     #[test]
     fn codex_acp_admin_skips_redundant_local_image_ocr() {
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.runner = "codex_acp".to_string();
         config.admins.discord_user_ids = vec!["admin".to_string()];
         let core = HoneBotCore::new(config);

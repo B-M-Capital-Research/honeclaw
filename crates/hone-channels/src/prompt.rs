@@ -581,6 +581,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState::default();
 
@@ -786,6 +789,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
@@ -824,6 +830,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
@@ -861,6 +870,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
@@ -916,6 +928,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState::default();
 
@@ -955,6 +970,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
@@ -1019,6 +1037,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState {
             frozen_time_local: "2026-03-17T22:01:00+08:00".to_string(),
@@ -1099,6 +1120,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
@@ -1144,6 +1168,9 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions"));
         let mut config = HoneConfig::default();
+        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+        config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
 
         let bundle = build_prompt_bundle(
