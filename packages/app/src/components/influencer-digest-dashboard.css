@@ -206,6 +206,12 @@
   display: block;
   width: 100%;
   max-width: 100%;
+  /* Reserve the box before the bytes arrive. A lazy image with no intrinsic
+     size collapses to 0px tall, and a zero-area element never satisfies the
+     loader's visibility check — so the picture would wait forever to be
+     "scrolled into view" it already was. */
+  aspect-ratio: 16 / 10;
+  height: auto;
   max-height: 320px;
   object-fit: cover;
   background: var(--hone-paper-100);
