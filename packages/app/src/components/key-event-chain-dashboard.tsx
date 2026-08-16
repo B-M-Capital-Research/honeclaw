@@ -1,11 +1,11 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicKeyEventChains } from "@/lib/api";
 import {
-  ResearchLongform,
   ResearchPanel,
   ResearchPanelHead,
   shortLocalTimestamp,
 } from "@/components/research/research-panel";
+import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { KeyEventChainSnapshot } from "@/lib/types";
@@ -71,6 +71,21 @@ const sourceTierLabel = (value: string) => ({
 }[value] ?? "来源待分类");
 
 const verificationLabel = (value: string) => (value === "confirmed" ? "一手确认" : "待核实线索");
+
+type KeyEvent = NonNullable<KeyEventChainSnapshot["topics"][number]["events"]>[number];
+
+/**
+ * The event as its source published it: headline, then the source's own text.
+ * They are one block of writing rather than a heading plus a folded body, so
+ * the change reads at a glance instead of asking for two clicks. The headline
+ * is dropped when the excerpt already opens with it.
+ */
+const eventText = (event: KeyEvent) => {
+  const title = event.title.trim();
+  const excerpt = event.excerpt.trim();
+  if (!excerpt) return title;
+  return excerpt.startsWith(title) ? excerpt : [title, excerpt].filter(Boolean).join("\n");
+};
 
 export function KeyEventChainPanel(props: Props) {
   const [snapshot, setSnapshot] = createSignal<KeyEventChainSnapshot>();
@@ -265,54 +280,60 @@ export function KeyEventChainPanel(props: Props) {
                     />
                   }
                 >
-                  <div class="key-chain-timeline">
+                  <ResearchFeed>
                     <For each={visibleEvents()}>
                       {(event) => (
-                        <article data-verification={event.verification_status}>
-                          {/* The head's meta line already names the run timezone;
-                              repeating it per row bought a wide column and no
-                              information. */}
-                          <time>{shortLocalTimestamp(event.published_at_local)}</time>
-                          <div>
-                            {/* Two chips, both load-bearing: is it first-hand,
-                                and which way does it cut. Change type and source
-                                tier were the same weight as those and overlapped
-                                each other, so they read as the byline they are. */}
-                            <div class="key-chain-event-meta">
-                              <span data-verification={event.verification_status}>
-                                {verificationLabel(event.verification_status)}
-                              </span>
-                              <span data-direction={event.direction}>{directionLabel(event.direction)}</span>
-                              <small>
-                                {event.source_name} · {changeLabel(event.change_type)} ·{" "}
-                                {sourceTierLabel(event.source_tier)}
-                              </small>
-                            </div>
-                            <h4>{event.title}</h4>
-                            <ResearchLongform text={event.excerpt} />
-                            <aside class="key-chain-verification">
-                              <strong>证据口径</strong>
-                              <span>{event.verification_note}</span>
-                            </aside>
-                            <aside>
-                              <strong>影响：</strong>
-                              {event.impact}
-                            </aside>
-                            <aside>
-                              <strong>下一验证点：</strong>
-                              {event.next_watch}
-                            </aside>
-                            <div class="key-chain-tickers">
-                              <For each={event.tickers}>{(ticker) => <span>${ticker}</span>}</For>
-                            </div>
-                            <a href={event.source_url} target="_blank" rel="noreferrer">
-                              {event.verification_status === "confirmed" ? "查看一手原文" : "查看线索原文"} ↗
-                            </a>
-                          </div>
-                        </article>
+                        <ResearchFeedItem
+                          author={event.source_name}
+                          meta={[changeLabel(event.change_type), directionLabel(event.direction)]}
+                          // The head's meta line already names the run timezone;
+                          // repeating it per row bought width and no information.
+                          time={shortLocalTimestamp(event.published_at_local)}
+                          // Green only for a first-hand confirmation; a clue
+                          // stays yellow. One edge, no chip row.
+                          accent={event.verification_status === "confirmed" ? "green" : "yellow"}
+                          links={[
+                            {
+                              href: event.source_url,
+                              label:
+                                event.verification_status === "confirmed"
+                                  ? "查看一手原文"
+                                  : "查看线索原文",
+                            },
+                          ]}
+                          analysisLabel="HONE 解读"
+                          analysis={
+                            <>
+                              <p>
+                                <b>证据口径：</b>
+                                {verificationLabel(event.verification_status)} ·{" "}
+                                {event.verification_note}
+                              </p>
+                              <p>
+                                <b>影响：</b>
+                                {event.impact}
+                              </p>
+                              <p>
+                                <b>下一验证点：</b>
+                                {event.next_watch}
+                              </p>
+                              <p class="key-chain-analysis-terms">
+                                {[
+                                  sourceTierLabel(event.source_tier),
+                                  ...event.tickers.map((ticker) => `$${ticker}`),
+                                ].join(" · ")}
+                              </p>
+                            </>
+                          }
+                        >
+                          {/* The change in the source's own words, open. It used
+                              to sit folded under a restated headline, below the
+                              chips and above three of our own paragraphs. */}
+                          <p>{eventText(event)}</p>
+                        </ResearchFeedItem>
                       )}
                     </For>
-                  </div>
+                  </ResearchFeed>
                 </Show>
               </>
             )}

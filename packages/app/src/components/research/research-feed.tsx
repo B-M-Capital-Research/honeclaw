@@ -39,6 +39,15 @@ export function ResearchFeedItem(props: {
   analysisLabel?: string;
   /** Left-edge accent, e.g. a verification or impact state. */
   accent?: string;
+  /**
+   * Controls that act on the post — like, comment, report, moderate.
+   *
+   * Interaction is not commentary, so it must not be folded into `analysis`;
+   * it is also not part of the post, so it must not sit in `children` above the
+   * pictures and the source links. It closes the item instead, the way a
+   * social feed puts its action row under everything it is acting on.
+   */
+  footer?: JSX.Element;
 }) {
   return (
     <article class={`research-feed-item${props.accent ? ` is-${props.accent}` : ""}`}>
@@ -110,6 +119,8 @@ export function ResearchFeedItem(props: {
           </For>
         </div>
       </Show>
+
+      {props.footer}
     </article>
   );
 }

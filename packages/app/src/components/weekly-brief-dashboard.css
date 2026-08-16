@@ -1,8 +1,9 @@
 /* 周度简报 panel — controlled ResearchPanel content.
    The old all-amber card theme was decorative amber (deprecated); the panel
    accent is now coral + neutral tokens, and --hone-signal-yellow is reserved
-   for genuine "yellow light / warning" semantics (coverage gaps, 重点 badge,
-   policy/inflation markers). */
+   for genuine "yellow light / warning" semantics — coverage gaps and the 重点
+   badge, and nothing else. Every colour here is a token, so dark mode needs no
+   override block of its own. */
 
 .weekly-brief-backdrop {
   --card-bg: var(--hone-surface-raised);
@@ -115,34 +116,15 @@
 
 .weekly-brief-week > header {
   display: flex;
-  align-items: end;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 17px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.weekly-brief-week > header span {
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.13em;
-  color: var(--text-secondary);
-}
-
-.weekly-brief-week[data-tone="review"] > header span {
-  color: var(--hone-signal-green);
-}
-
-.weekly-brief-week[data-tone="outlook"] > header span {
-  color: var(--hone-coral-600);
-}
-
-.weekly-brief-week[data-tone="ai"] > header span {
-  color: #765fc0;
-}
-
 .weekly-brief-week > header h3 {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 17px;
 }
 
@@ -190,72 +172,33 @@
 }
 
 .weekly-brief-events article {
-  position: relative;
   padding: 12px 14px;
   border: 1px solid var(--border-color);
   border-radius: 13px;
   background: color-mix(in srgb, var(--bg-primary) 56%, var(--card-bg));
-  overflow: hidden;
 }
 
-.weekly-brief-events article:before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--hone-signal-neutral);
-}
-
-.weekly-brief-events article[data-category="earnings"]:before {
-  background: #7a67d8;
-}
-
-.weekly-brief-events article[data-category="industry"]:before,
-.weekly-brief-events article[data-category="ai_conference"]:before {
-  background: var(--hone-signal-green);
-}
-
-.weekly-brief-events article[data-category="policy"]:before,
-.weekly-brief-events article[data-category="inflation"]:before {
-  background: var(--hone-signal-yellow);
-}
-
+/* Importance, evidence quality and category on one line. Only 重点 is a
+   marker; the rest is a label, so it does not compete with the title. */
 .weekly-brief-event-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: baseline;
-}
-
-.weekly-brief-event-meta b,
-.weekly-brief-event-meta em {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
   font-size: 10px;
-  font-style: normal;
-  border-radius: 999px;
-  padding: 3px 8px;
-  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
 .weekly-brief-event-meta b {
+  border-radius: 999px;
+  padding: 2px 7px;
   color: var(--hone-signal-yellow);
   background: var(--hone-signal-yellow-soft);
 }
 
-.weekly-brief-event-meta em {
-  color: var(--text-secondary);
-}
-
-/* The category already colours the card's left bar; it is a label, not a
-   third badge of the same weight. */
-.weekly-brief-event-meta small {
-  color: var(--text-secondary);
-  font-size: 10px;
-}
-
 .weekly-brief-events h4 {
-  margin: 8px 0 0;
+  margin: 0;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -264,39 +207,39 @@
   margin-right: 7px;
   padding: 2px 5px;
   border-radius: 5px;
-  background: #e9e5ff;
-  color: #5141a8;
-  font-family: inherit;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--hone-font-label);
   font-size: 10px;
 }
 
-/* One extra step of specificity instead of three `!important`s: the only rule
-   this has to beat is `.weekly-brief-events article p`. */
+/* The card's three paragraphs — subtitle, analysis, follow-up — each scope
+   themselves under `.weekly-brief-events` so they read as one ladder rather
+   than three rules fighting over the same element. */
 .weekly-brief-events .weekly-brief-subtitle {
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: 11px;
 }
 
-/* Analysis can run past four lines, in which case it arrives folded — the
-   details element carries the type scale so both states match. */
-.weekly-brief-analysis {
+/* The reading of the event, in full. It used to arrive inside a disclosure
+   whose closed state clipped the first sentence. */
+.weekly-brief-events .weekly-brief-analysis {
   margin: 9px 0 0;
   line-height: 1.65;
   font-size: 12px;
 }
 
-.weekly-brief-events aside {
-  margin-top: 7px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: var(--hone-signal-yellow-soft);
-  font-size: 10px;
-  line-height: 1.55;
+/* Follow-up guidance. It used to sit in a yellow box, which read as a warning
+   it never was; yellow here is reserved for coverage gaps and 重点. */
+.weekly-brief-events .weekly-brief-attention {
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
-.weekly-brief-events aside strong {
+.weekly-brief-events .weekly-brief-attention strong {
   color: var(--text-primary);
 }
 
@@ -377,12 +320,6 @@
   opacity: 0.45;
 }
 
-/* Purple ticker chips have no token equivalent; they keep their own dark skin. */
-[data-theme="dark"] .weekly-brief-events code {
-  background: #28243d;
-  color: #c1b5ff;
-}
-
 @media (max-width: 800px) {
   .weekly-brief-backdrop {
     padding: 0;
@@ -424,7 +361,7 @@
 
   .weekly-brief-week > header time {
     display: block;
-    margin-top: 5px;
+    margin-top: 4px;
   }
 
   .weekly-brief-agenda {

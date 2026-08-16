@@ -11,7 +11,9 @@ import {
   reportCommunityForumPost,
   toggleCommunityForumLike,
 } from "@/lib/api";
-import type { CommunityForumPost } from "@/lib/types";
+import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
+import { shortLocalTimestamp } from "@/components/research/research-panel";
+import type { CommunityForumAttachment, CommunityForumPost } from "@/lib/types";
 
 import "./community-forum.css";
 
@@ -27,11 +29,50 @@ function formatLocal(value: string) {
   }).format(new Date(value));
 }
 
+/** `created_at` is a UTC instant, so it is localised before being shortened. */
+function postTime(value: string) {
+  return shortLocalTimestamp(formatLocal(value));
+}
+
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/** Moderation state, as one label plus the item's single left accent. */
+function moderationState(status: string) {
+  if (status === "pending_review") return { label: "待管理员复核", accent: "yellow" };
+  if (status === "hidden") return { label: "已隐藏", accent: "orange" };
+  if (status === "deleted") return { label: "已删除", accent: "red" };
+  return undefined;
+}
+
+/**
+ * The composer asks for a title and for the post; most members answer both with
+ * the same sentence. Printing it twice — once as a heading, once as the opening
+ * line — is the restatement this feed exists to drop, so the title survives only
+ * when it actually says something the first line does not.
+ */
+function leadTitle(post: CommunityForumPost) {
+  const title = post.title.trim();
+  if (!title) return "";
+  const firstLine = post.body.trim().split("\n")[0]?.trim() ?? "";
+  const strip = (value: string) => value.replace(/[\s，。、,.:：;；!！?？~—－-]/g, "");
+  const a = strip(title);
+  const b = strip(firstLine);
+  if (!a || !b) return title;
+  return a.includes(b) || b.includes(a) ? "" : title;
+}
+
+/** Author-typed index terms. One quiet line, not a dozen equal-weight chips. */
+function indexTerms(post: CommunityForumPost) {
+  return [...post.tickers.map((ticker) => `$${ticker}`), ...post.topics.map((topic) => `#${topic}`)]
+    .join(" · ");
+}
+
+const isImage = (attachment: CommunityForumAttachment) =>
+  attachment.content_type.startsWith("image/");
 
 export function CommunityForum(props: { query: string }) {
   const [posts, setPosts] = createSignal<CommunityForumPost[]>([]);
@@ -181,52 +222,90 @@ export function CommunityForum(props: { query: string }) {
       <Show when={loading()}><div class="public-workspace-state" role="status">正在读取讨论…</div></Show>
       <Show when={!loading() && visiblePosts().length === 0}><div class="public-workspace-state">还没有匹配的讨论。可以发布第一篇，但请尽量附原始来源。</div></Show>
 
-      <div class="community-forum-list">
+      <ResearchFeed>
         <For each={visiblePosts()}>{(post) => (
-          <article class="community-forum-post" data-status={post.moderation_status}>
-            <header><div class="community-forum-avatar" aria-hidden="true">研</div><div><strong>{post.author_label}</strong><time>{formatLocal(post.created_at)} 本地时间</time></div><Show when={post.moderation_status !== "visible"}><em>{post.moderation_status === "pending_review" ? "待管理员复核" : post.moderation_status === "deleted" ? "已删除" : "已隐藏"}</em></Show></header>
-            <h3>{post.title}</h3>
-            <p class="community-forum-body">{post.body}</p>
-            <div class="community-forum-tags"><For each={post.tickers}>{(ticker) => <span>${ticker}</span>}</For><For each={post.topics}>{(topic) => <span>#{topic}</span>}</For></div>
-            <Show when={post.source_url}><a class="community-forum-source" href={post.source_url!} target="_blank" rel="noreferrer">查看原始来源 ↗</a></Show>
-            <Show when={post.attachment}>{(attachment) => <a class="community-forum-attachment" href={communityForumAttachmentUrl(post.id, attachment().id)} target="_blank" rel="noreferrer"><span>▧</span><span><strong>{attachment().filename}</strong><small>{formatBytes(attachment().byte_size)} · 用户上传，未经 HONE 核验</small></span></a>}</Show>
-            <div class="community-forum-actions">
-              <button type="button" classList={{ active: post.liked_by_me }} disabled={!!working()} onClick={() => void runPostAction(post.id, "like", () => toggleCommunityForumLike(post.id))}>♡ {post.like_count || "赞"}</button>
-              <button type="button" onClick={() => setCommentOpen(commentOpen() === post.id ? null : post.id)}>评论 {post.comments.length || ""}</button>
-              <Show when={!post.can_delete && post.moderation_status === "visible"}><button type="button" onClick={() => setReportOpen(reportOpen() === post.id ? null : post.id)}>举报</button></Show>
-              <Show when={post.can_delete}>
-                <Show
-                  when={deleteConfirm() === post.id}
-                  fallback={<button type="button" onClick={() => setDeleteConfirm(post.id)}>删除</button>}
-                >
-                  <span class="community-forum-delete-confirm" role="group" aria-label="确认删除这篇帖子">
-                    <button
-                      type="button"
-                      class="is-danger"
-                      disabled={!!working()}
-                      onClick={() => {
-                        setDeleteConfirm(null);
-                        void runPostAction(post.id, "delete", () => deleteCommunityForumPost(post.id));
-                      }}
+          <ResearchFeedItem
+            author={post.author_label}
+            time={postTime(post.created_at)}
+            // Reach, moderation state and — for admins — the report tally are
+            // facts about the post, so they read once here instead of being
+            // stamped onto the action buttons a second time.
+            meta={[
+              moderationState(post.moderation_status)?.label,
+              post.like_count ? `${post.like_count} 赞` : undefined,
+              post.comments.length ? `${post.comments.length} 评论` : undefined,
+              isAdmin() && post.report_count ? `${post.report_count} 举报` : undefined,
+            ].filter(Boolean) as string[]}
+            accent={moderationState(post.moderation_status)?.accent}
+            // Only picture attachments are pictures; a PDF is a link.
+            media={
+              post.attachment && isImage(post.attachment)
+                ? [communityForumAttachmentUrl(post.id, post.attachment.id)]
+                : undefined
+            }
+            mediaAlt={`${post.author_label} 上传的附件图片`}
+            links={[
+              ...(post.source_url ? [{ href: post.source_url, label: "查看原始来源" }] : []),
+              ...(post.attachment
+                ? [
+                    {
+                      href: communityForumAttachmentUrl(post.id, post.attachment.id),
+                      label: `${post.attachment.filename} · ${formatBytes(post.attachment.byte_size)} · 用户上传，未经 HONE 核验`,
+                    },
+                  ]
+                : []),
+            ]}
+            footer={
+              <>
+                <div class="community-forum-actions">
+                  <button type="button" classList={{ active: post.liked_by_me }} disabled={!!working()} onClick={() => void runPostAction(post.id, "like", () => toggleCommunityForumLike(post.id))}>{post.liked_by_me ? "♥ 已赞" : "♡ 赞"}</button>
+                  <button type="button" onClick={() => setCommentOpen(commentOpen() === post.id ? null : post.id)}>{commentOpen() === post.id ? "收起评论" : "评论"}</button>
+                  <Show when={!post.can_delete && post.moderation_status === "visible"}><button type="button" onClick={() => setReportOpen(reportOpen() === post.id ? null : post.id)}>举报</button></Show>
+                  <Show when={post.can_delete}>
+                    <Show
+                      when={deleteConfirm() === post.id}
+                      fallback={<button type="button" onClick={() => setDeleteConfirm(post.id)}>删除</button>}
                     >
-                      确认删除
-                    </button>
-                    <button type="button" onClick={() => setDeleteConfirm(null)}>取消</button>
-                  </span>
+                      <span class="community-forum-delete-confirm" role="group" aria-label="确认删除这篇帖子">
+                        <button
+                          type="button"
+                          class="is-danger"
+                          disabled={!!working()}
+                          onClick={() => {
+                            setDeleteConfirm(null);
+                            void runPostAction(post.id, "delete", () => deleteCommunityForumPost(post.id));
+                          }}
+                        >
+                          确认删除
+                        </button>
+                        <button type="button" onClick={() => setDeleteConfirm(null)}>取消</button>
+                      </span>
+                    </Show>
+                  </Show>
+                  <Show when={isAdmin()}><button type="button" onClick={() => void runPostAction(post.id, "moderate", () => moderateCommunityForumPost(post.id, post.moderation_status === "visible" ? "hide" : "restore"))}>{post.moderation_status === "visible" ? "管理员隐藏" : "管理员恢复"}</button></Show>
+                </div>
+                <Show when={reportOpen() === post.id}><div class="community-forum-report"><span>请选择举报原因</span><For each={REPORT_REASONS}>{(reason) => <button type="button" onClick={() => { setReportOpen(null); void runPostAction(post.id, "report", () => reportCommunityForumPost(post.id, reason)); }}>{reason}</button>}</For></div></Show>
+                <Show when={commentOpen() === post.id}>
+                  <div class="community-forum-comments">
+                    <For each={post.comments}>{(comment) => <article data-status={comment.moderation_status}><header><strong>{comment.author_label}</strong><time>{postTime(comment.created_at)}</time><Show when={comment.can_delete}><button type="button" onClick={() => void runPostAction(post.id, "delete-comment", () => deleteCommunityForumComment(post.id, comment.id))}>删除</button></Show></header><p>{comment.moderation_status === "deleted" ? "该评论已删除" : comment.body}</p></article>}</For>
+                    <div class="community-forum-comment-box"><textarea aria-label={`评论 ${post.title}`} rows={2} maxLength={1000} value={commentDrafts()[post.id] ?? ""} onInput={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.currentTarget.value }))} placeholder="回应观点，尽量说明依据…" /><button type="button" disabled={!commentDrafts()[post.id]?.trim() || !!working()} onClick={() => submitComment(post)}>发送评论</button></div>
+                  </div>
                 </Show>
-              </Show>
-              <Show when={isAdmin()}><button type="button" onClick={() => void runPostAction(post.id, "moderate", () => moderateCommunityForumPost(post.id, post.moderation_status === "visible" ? "hide" : "restore"))}>{post.moderation_status === "visible" ? "管理员隐藏" : "管理员恢复"}{post.report_count ? ` · ${post.report_count} 举报` : ""}</button></Show>
-            </div>
-            <Show when={reportOpen() === post.id}><div class="community-forum-report"><span>请选择举报原因</span><For each={REPORT_REASONS}>{(reason) => <button type="button" onClick={() => { setReportOpen(null); void runPostAction(post.id, "report", () => reportCommunityForumPost(post.id, reason)); }}>{reason}</button>}</For></div></Show>
-            <Show when={commentOpen() === post.id}>
-              <div class="community-forum-comments">
-                <For each={post.comments}>{(comment) => <article data-status={comment.moderation_status}><header><strong>{comment.author_label}</strong><time>{formatLocal(comment.created_at)}</time><Show when={comment.can_delete}><button type="button" onClick={() => void runPostAction(post.id, "delete-comment", () => deleteCommunityForumComment(post.id, comment.id))}>删除</button></Show></header><p>{comment.moderation_status === "deleted" ? "该评论已删除" : comment.body}</p></article>}</For>
-                <div class="community-forum-comment-box"><textarea aria-label={`评论 ${post.title}`} rows={2} maxLength={1000} value={commentDrafts()[post.id] ?? ""} onInput={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.currentTarget.value }))} placeholder="回应观点，尽量说明依据…" /><button type="button" disabled={!commentDrafts()[post.id]?.trim() || !!working()} onClick={() => submitComment(post)}>发送评论</button></div>
-              </div>
+              </>
+            }
+          >
+            {/* The post, expanded, with its own line breaks. It used to sit
+                under a heading that repeated its first sentence. */}
+            <Show when={leadTitle(post)}>
+              <p class="community-forum-lead">{leadTitle(post)}</p>
             </Show>
-          </article>
+            <p>{post.body}</p>
+            <Show when={indexTerms(post)}>
+              <p class="community-forum-terms">{indexTerms(post)}</p>
+            </Show>
+          </ResearchFeedItem>
         )}</For>
-      </div>
+      </ResearchFeed>
 
       <p class="community-forum-boundary">社区讨论不构成投资建议。需要进入 HONE 官方研究资料库的内容，请在<a href="/research-library">“我的知识源”</a>提交，并等待管理员核验与采纳。</p>
     </section>

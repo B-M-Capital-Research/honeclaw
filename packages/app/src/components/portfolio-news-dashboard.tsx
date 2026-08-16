@@ -8,11 +8,11 @@ import {
 } from "solid-js";
 import { getPublicPortfolioNews } from "@/lib/api";
 import {
-  ResearchLongform,
   ResearchPanel,
   ResearchPanelHead,
   shortLocalTimestamp,
 } from "@/components/research/research-panel";
+import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
@@ -49,6 +49,40 @@ const HORIZON_LABEL: Record<PortfolioNewsItem["horizon"], string> = {
   long: "长期",
   unknown: "期限待定",
 };
+
+const THESIS_LABEL: Record<PortfolioNewsItem["thesis_effect"], string> = {
+  strengthens: "强化持仓逻辑",
+  unchanged: "不改变持仓逻辑",
+  weakens: "削弱持仓逻辑",
+  unassessed: "对逻辑的影响待判断",
+};
+
+const CONFIDENCE_LABEL: Record<PortfolioNewsItem["confidence"], string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+
+/**
+ * The news in the source's own words: headline, then the source's own text.
+ * `summary` is our 60-character digest of it, so it is commentary and belongs
+ * in the fold — printing it here made every item read as HONE talking about
+ * news rather than as the news. The headline is dropped when the source text
+ * already opens with it.
+ */
+function newsText(item: PortfolioNewsItem) {
+  const title = item.title.trim();
+  const source = (item.source_summary || "").trim();
+  if (!source) return title;
+  return source.startsWith(title) ? source : [title, source].filter(Boolean).join("\n");
+}
+
+/** One left edge per item, carrying the impact call and nothing else. */
+function impactAccent(impact: PortfolioNewsImpact) {
+  if (impact === "positive") return "green";
+  if (impact === "negative") return "red";
+  return "neutral";
+}
 
 function statusLabel(status: string) {
   if (status === "live") return "数据与模型已更新";
@@ -287,33 +321,56 @@ export function PortfolioNewsPanel(props: Props) {
                 />
               }
             >
-              <div class="portfolio-news-list">
+              <ResearchFeed>
                 <For each={visible()}>
                   {(item) => (
-                    <article class={`is-${item.impact}`}>
-                      {/* One chip — the impact call. Horizon is a qualifier of
-                          that call, not a peer of it, and the run timezone is
-                          already in the head's provenance line. */}
-                      <div class="portfolio-news-item__top">
-                        <b>{item.symbol}</b>
-                        <span class={`is-${item.impact}`}>{IMPACT_LABEL[item.impact]}</span>
-                        <small>{HORIZON_LABEL[item.horizon]}</small>
-                        <time>{shortLocalTimestamp(item.published_at_local)}</time>
-                      </div>
-                      <h3>{item.title}</h3>
-                      <ResearchLongform class="portfolio-news-item__summary" text={item.summary} />
-                      <p class="portfolio-news-item__why"><strong>为什么重要：</strong>{item.why_it_matters}</p>
-                      <div class="portfolio-news-item__foot">
-                        <span classList={{ "is-urgent": item.attention === "立即复核" }}>{item.attention}</span>
-                        <span>置信度 {item.confidence === "high" ? "高" : item.confidence === "medium" ? "中" : "低"}</span>
-                        <Show when={item.source_url} fallback={<span>{item.source}</span>}>
-                          <a href={item.source_url} target="_blank" rel="noreferrer">{item.source} · 查看原文</a>
-                        </Show>
-                      </div>
-                    </article>
+                    <ResearchFeedItem
+                      author={item.symbol}
+                      handle={item.source}
+                      // The run timezone is already in the head's provenance line.
+                      time={shortLocalTimestamp(item.published_at_local)}
+                      accent={impactAccent(item.impact)}
+                      links={
+                        item.source_url
+                          ? [{ href: item.source_url, label: "查看原文" }]
+                          : undefined
+                      }
+                      analysisLabel="HONE 解读"
+                      analysis={
+                        item.analysis_status === "model_analyzed" ? (
+                          <>
+                            <p>
+                              <b>影响判断：</b>
+                              {[
+                                IMPACT_LABEL[item.impact],
+                                HORIZON_LABEL[item.horizon],
+                                THESIS_LABEL[item.thesis_effect],
+                              ].join(" · ")}
+                            </p>
+                            <Show when={item.summary.trim()}>
+                              <p>{item.summary}</p>
+                            </Show>
+                            <Show when={item.why_it_matters.trim()}>
+                              <p>
+                                <b>为什么重要：</b>
+                                {item.why_it_matters}
+                              </p>
+                            </Show>
+                            <p class="portfolio-news-analysis-terms">
+                              {item.attention} · 置信度 {CONFIDENCE_LABEL[item.confidence]}
+                            </p>
+                          </>
+                        ) : undefined
+                      }
+                    >
+                      {/* The news itself, open. Our digest, the impact call and
+                          the attention flag used to sit around it at the same
+                          weight, so the item read as chrome with a headline. */}
+                      <p>{newsText(item)}</p>
+                    </ResearchFeedItem>
                   )}
                 </For>
-              </div>
+              </ResearchFeed>
             </Show>
           </Show>
         </div>

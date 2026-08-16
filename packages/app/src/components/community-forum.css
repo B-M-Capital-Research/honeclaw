@@ -1,3 +1,8 @@
+/* 投资讨论区 — a member feed, not a wall of cards.
+   Posts are rendered by the shared ResearchFeed / ResearchFeedItem, so this
+   file only owns the composer, the per-post action row and the boundary note.
+   Surfaces ride --hone-* tokens, so dark mode needs no override block. */
+
 .community-forum {
   display: grid;
   gap: 16px;
@@ -8,19 +13,19 @@
   justify-content: space-between;
   gap: 20px;
   padding: 22px 24px;
-  border: 1px solid var(--public-border);
-  border-radius: 20px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-lg);
   background: linear-gradient(
     135deg,
-    var(--public-surface),
-    color-mix(in srgb, var(--public-accent) 8%, var(--public-surface))
+    var(--hone-surface-raised),
+    color-mix(in srgb, var(--hone-coral-600) 8%, var(--hone-surface-raised))
   );
 }
 .community-forum-intro span {
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.14em;
-  color: var(--public-accent);
+  color: var(--hone-coral-600);
 }
 .community-forum-intro h2 {
   margin: 5px 0 3px;
@@ -29,7 +34,7 @@
 .community-forum-intro p {
   margin: 0;
   max-width: 680px;
-  color: var(--public-muted);
+  color: var(--hone-ink-600);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -38,22 +43,22 @@
   padding: 11px 16px;
   border: 0;
   border-radius: 12px;
-  background: var(--public-accent);
-  color: white;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
   font-weight: 800;
 }
 .community-forum-composer {
   display: grid;
   gap: 13px;
   padding: 20px;
-  border: 1px solid var(--public-border);
-  border-radius: 18px;
-  background: var(--public-surface);
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
 }
 .community-forum-composer label {
   display: grid;
   gap: 6px;
-  color: var(--public-text);
+  color: var(--hone-ink-950);
   font-size: 12px;
   font-weight: 800;
 }
@@ -62,10 +67,10 @@
 .community-forum-comment-box textarea {
   box-sizing: border-box;
   width: 100%;
-  border: 1px solid var(--public-border);
+  border: 1px solid var(--hone-line);
   border-radius: 11px;
-  background: var(--public-surface);
-  color: var(--public-text);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
   font: inherit;
   line-height: 1.55;
   padding: 10px 12px;
@@ -77,7 +82,7 @@
   gap: 12px;
 }
 .community-forum-file small {
-  color: var(--public-muted);
+  color: var(--hone-ink-600);
   font-weight: 500;
 }
 .community-forum-composer-actions {
@@ -88,17 +93,17 @@
 .community-forum-composer-actions button,
 .community-forum-comment-box button {
   padding: 9px 14px;
-  border: 1px solid var(--public-border);
+  border: 1px solid var(--hone-line);
   border-radius: 10px;
   background: transparent;
-  color: var(--public-text);
+  color: var(--hone-ink-950);
   font-weight: 800;
 }
 .community-forum-composer-actions button:last-child,
 .community-forum-comment-box button {
-  border-color: var(--public-accent);
-  background: var(--public-accent);
-  color: white;
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
 }
 .community-forum-error {
   margin: 0;
@@ -107,116 +112,27 @@
   background: var(--hone-signal-red-soft);
   color: var(--hone-error-600);
 }
-.community-forum-list {
-  display: grid;
-  gap: 12px;
+
+/* A title that is not simply the post's opening line again. It leads the post
+   rather than sitting above it as a separate heading block. */
+.community-forum-lead {
+  font-weight: 700;
 }
-.community-forum-post {
-  padding: 20px 22px;
-  border: 1px solid var(--public-border);
-  border-radius: 18px;
-  background: var(--public-surface);
-  box-shadow: 0 8px 24px #15261e08;
+
+/* Tickers and topics the author typed. One quiet line, not a chip cluster. */
+.community-forum-terms {
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  color: var(--hone-ink-500);
 }
-.community-forum-post[data-status="pending_review"],
-.community-forum-post[data-status="hidden"],
-.community-forum-post[data-status="deleted"] {
-  opacity: 0.7;
-}
-.community-forum-post > header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.community-forum-post > header > div:nth-child(2) {
-  display: grid;
-  gap: 2px;
-}
-.community-forum-post header time {
-  color: var(--public-muted);
-  font-size: 10px;
-}
-.community-forum-post header em {
-  margin-left: auto;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-  font-size: 10px;
-  font-style: normal;
-}
-.community-forum-avatar {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--public-accent) 14%, var(--public-surface));
-  color: var(--public-accent);
-  font-weight: 900;
-}
-.community-forum-post h3 {
-  margin: 15px 0 8px;
-  font-size: 18px;
-}
-.community-forum-body {
-  margin: 0;
-  color: var(--public-text);
-  font-size: 14px;
-  line-height: 1.75;
-  white-space: pre-wrap;
-}
-.community-forum-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 13px;
-}
-.community-forum-tags span {
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--public-accent) 9%, var(--public-surface));
-  color: var(--public-accent);
-  font-size: 10px;
-  font-weight: 800;
-}
-.community-forum-source {
-  display: inline-block;
-  margin-top: 12px;
-  color: var(--public-accent);
-  font-size: 11px;
-  text-decoration: none;
-}
-.community-forum-attachment {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 13px;
-  padding: 10px 12px;
-  border: 1px solid var(--public-border);
-  border-radius: 12px;
-  color: var(--public-text);
-  text-decoration: none;
-}
-.community-forum-attachment > span:first-child {
-  font-size: 22px;
-  color: var(--public-accent);
-}
-.community-forum-attachment > span:last-child {
-  display: grid;
-  gap: 2px;
-}
-.community-forum-attachment small {
-  color: var(--public-muted);
-  font-size: 9px;
-}
+
+/* The action row and everything it opens are grid rows of the feed item, so
+   the item's own gap spaces them — no stacked margins. */
 .community-forum-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 15px;
-  padding-top: 12px;
-  border-top: 1px solid var(--public-border);
+  margin-left: -9px;
 }
 .community-forum-actions button,
 .community-forum-report button,
@@ -225,13 +141,14 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--public-muted);
-  font-size: 11px;
+  color: var(--hone-ink-500);
+  font-size: 12px;
+  cursor: pointer;
 }
 .community-forum-actions button:hover,
 .community-forum-actions button.active {
-  background: color-mix(in srgb, var(--public-accent) 10%, var(--public-surface));
-  color: var(--public-accent);
+  background: color-mix(in srgb, var(--hone-coral-600) 10%, transparent);
+  color: var(--hone-coral-600);
 }
 /* Inline second-step delete confirmation (replaces window.confirm). */
 .community-forum-delete-confirm {
@@ -258,45 +175,51 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
   padding: 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--hone-coral-600) 7%, var(--public-surface));
+  border-radius: var(--hone-radius-sm);
+  background: color-mix(in srgb, var(--hone-coral-600) 7%, transparent);
 }
 .community-forum-report span {
-  font-size: 10px;
-  color: var(--public-muted);
+  font-size: 11px;
+  color: var(--hone-ink-500);
 }
 .community-forum-report button {
-  background: var(--public-surface);
-  border: 1px solid var(--public-border);
+  background: var(--hone-surface-raised);
+  border: 1px solid var(--hone-line);
 }
 .community-forum-comments {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
   padding: 12px;
   border-radius: 13px;
-  background: color-mix(in srgb, var(--public-text) 3%, var(--public-surface));
+  background: var(--hone-paper-100);
 }
 .community-forum-comments article {
   padding: 9px 10px;
   border-radius: 10px;
-  background: var(--public-surface);
+  background: var(--hone-surface-raised);
+}
+.community-forum-comments article[data-status="deleted"] {
+  opacity: 0.7;
 }
 .community-forum-comments article header {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 12.5px;
 }
 .community-forum-comments article header time {
   margin-left: auto;
+  font-family: var(--hone-font-label);
+  font-size: 11.5px;
+  color: var(--hone-ink-400);
 }
 .community-forum-comments article p {
   margin: 5px 0 0;
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.6;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .community-forum-comment-box {
   display: grid;
@@ -309,12 +232,12 @@
   padding: 12px 14px;
   border-left: 3px solid var(--hone-signal-yellow);
   background: var(--hone-signal-yellow-soft);
-  color: var(--public-muted);
+  color: var(--hone-ink-600);
   font-size: 11px;
   line-height: 1.6;
 }
 .community-forum-boundary a {
-  color: var(--public-accent);
+  color: var(--hone-link);
   font-weight: 800;
   text-decoration: none;
 }
@@ -333,19 +256,10 @@
   .community-forum-composer-grid {
     grid-template-columns: 1fr;
   }
-  .community-forum-post {
-    padding: 16px;
-  }
   .community-forum-comment-box {
     grid-template-columns: 1fr;
   }
   .community-forum-comment-box button {
     width: 100%;
   }
-}
-[data-theme="dark"] .community-forum-post,
-[data-theme="dark"] .community-forum-composer,
-[data-theme="dark"] .community-forum-attachment,
-[data-theme="dark"] .community-forum-comments article {
-  box-shadow: none;
 }

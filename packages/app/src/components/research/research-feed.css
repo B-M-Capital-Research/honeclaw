@@ -182,6 +182,12 @@
   color: var(--hone-ink-800);
 }
 
+/* The fold owns its own rhythm: the grid gap sets the spacing, so paragraphs
+   inside must not stack a UA margin on top of it. */
+.research-feed-item__analysis > div p {
+  margin: 0;
+}
+
 .research-feed-item__links {
   display: flex;
   flex-wrap: wrap;

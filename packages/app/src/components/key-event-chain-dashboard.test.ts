@@ -7,6 +7,15 @@ const shellStyles = readFileSync(
   new URL("./research/research.css", import.meta.url),
   "utf8",
 );
+const feed = readFileSync(new URL("./research/research-feed.tsx", import.meta.url), "utf8");
+const feedStyles = readFileSync(new URL("./research/research-feed.css", import.meta.url), "utf8");
+
+/** The one feed item, from its opening tag to its close. */
+const feedItem = () =>
+  component.slice(
+    component.indexOf("<ResearchFeedItem"),
+    component.indexOf("</ResearchFeedItem>"),
+  );
 
 describe("key event chain dashboard", () => {
   it("renders the first-principles industry chain", () => {
@@ -25,8 +34,19 @@ describe("key event chain dashboard", () => {
     expect(component).toContain('verification_status === "confirmed"');
     expect(component).toContain("查看一手原文");
     expect(component).toContain("查看线索原文");
-    expect(styles).toContain('data-verification="confirmed"');
-    expect(styles).toContain('data-verification="clue"');
+    // One left edge carries the state — green for a first-hand confirmation,
+    // yellow for a clue — instead of a chip row per event.
+    expect(component).toContain(
+      'accent={event.verification_status === "confirmed" ? "green" : "yellow"}',
+    );
+    expect(feedStyles).toContain(".research-feed-item.is-green");
+    expect(feedStyles).toContain(".research-feed-item.is-yellow");
+    // The label itself stays readable as text inside the fold, so the state is
+    // never carried by color alone.
+    expect(feedItem()).toContain("verificationLabel(event.verification_status)");
+    // The bespoke verification / direction chips are gone with the timeline.
+    expect(styles).not.toContain("data-verification");
+    expect(styles).not.toContain("data-direction");
   });
 
   it("opens on the verdict through the shared head, not a bespoke header plus meta strip", () => {
@@ -67,22 +87,53 @@ describe("key event chain dashboard", () => {
     expect(styles).toContain(".key-chain-body {");
   });
 
-  it("gives each event two chips, a folded excerpt and a bare timestamp", () => {
-    // 观点变化 / 观点线索 / 待核实线索 / 中性 used to be four chips of equal
-    // weight. Verification and direction stay; change type and source tier
-    // read as the byline they are.
-    expect(component).toContain("verificationLabel(event.verification_status)");
-    expect(component).toContain("directionLabel(event.direction)");
-    expect(component).toContain("<small>");
-    expect(component).toContain("changeLabel(event.change_type)");
-    expect(component).not.toContain("<span>{changeLabel(event.change_type)}</span>");
-    expect(component).not.toContain("<span>{sourceTierLabel(event.source_tier)}</span>");
-    // Full source text folds instead of stretching the timeline.
-    expect(component).toContain("<ResearchLongform text={event.excerpt} />");
-    expect(component).not.toContain("<p>{event.excerpt}</p>");
-    // The head's meta line already prints the run timezone once.
-    expect(component).toContain("shortLocalTimestamp(event.published_at_local)");
+  it("reads each change as a feed post, the event itself never folded", () => {
+    expect(component).toContain("<ResearchFeed>");
+    expect(component).toContain("<ResearchFeedItem");
+    // Byline: who published it, what kind of change, which way it cuts. The
+    // chip row and the timeline rail that carried these are gone.
+    expect(component).toContain("author={event.source_name}");
+    expect(component).toContain(
+      "meta={[changeLabel(event.change_type), directionLabel(event.direction)]}",
+    );
+    expect(component).toContain("time={shortLocalTimestamp(event.published_at_local)}");
     expect(component).not.toContain("{event.published_at_local} {snapshot()?.timezone}");
+    // The source's own text is the body: open, whole, original line breaks.
+    expect(component).toContain("<p>{eventText(event)}</p>");
+    expect(component).toContain("const eventText");
+    expect(feedStyles).toContain("white-space: pre-wrap");
+    // Not folded, not clamped, and not preceded by a restated headline.
+    expect(component).not.toContain("ResearchLongform");
+    expect(component).not.toContain("<h4>{event.title}</h4>");
+    expect(feedItem().slice(feedItem().indexOf("<p>{eventText(event)}</p>"))).not.toContain(
+      "<details",
+    );
+    expect(styles).not.toContain("key-chain-timeline");
+    expect(styles).not.toContain("key-chain-event-meta");
+  });
+
+  it("folds every HONE inference behind one line", () => {
+    const item = feedItem();
+    // Everything the model derived sits inside `analysis`, which the shared
+    // feed renders as a closed <details>.
+    const analysis = item.slice(item.indexOf("analysis={"), item.indexOf("<p>{eventText"));
+    for (const inference of [
+      "证据口径",
+      "影响：",
+      "下一验证点：",
+      "sourceTierLabel(event.source_tier)",
+      "event.tickers.map((ticker) => `$${ticker}`)",
+    ]) {
+      expect(analysis).toContain(inference);
+    }
+    expect(component).toContain('analysisLabel="HONE 解读"');
+    expect(feed).toContain('<details class="research-feed-item__analysis">');
+    // Ticker chips and the standalone impact / next-watch blocks are gone.
+    expect(component).not.toContain("key-chain-tickers");
+    expect(styles).not.toContain("key-chain-tickers");
+    expect(styles).not.toContain("key-chain-verification");
+    // The source link stays outside the fold: it is a source fact.
+    expect(component).toContain("href: event.source_url");
   });
 
   it("preserves evidence and action boundaries", () => {
@@ -120,12 +171,16 @@ describe("key event chain dashboard", () => {
   it("uses traffic-light tokens in readable multi-line CSS for mobile and dark", () => {
     expect(styles).toContain("@media (max-width: 768px)");
     expect(styles).not.toContain("@media(max-width:768px)");
+    expect(styles).not.toContain("!important");
     expect(styles).toContain("var(--hone-signal-green)");
     expect(styles).toContain("var(--hone-signal-green-soft)");
-    expect(styles).toContain("var(--hone-signal-yellow)");
-    expect(styles).toContain("var(--hone-signal-yellow-soft)");
-    expect(styles).toContain("var(--hone-signal-red)");
     expect(styles).toContain("var(--hone-paper-50)");
+    expect(styles).toContain("var(--hone-line)");
+    // The per-event traffic light moved to the shared feed accent, which is
+    // token-backed there rather than re-declared here.
+    expect(feedStyles).toContain("var(--hone-signal-green)");
+    expect(feedStyles).toContain("var(--hone-signal-yellow)");
+    expect(feedStyles).toContain("var(--hone-signal-red)");
     // Dark mode rides the tokens; the old slate dark skin is gone.
     expect(styles).not.toContain("[data-theme=dark]");
     expect(styles).not.toContain("#111a28");

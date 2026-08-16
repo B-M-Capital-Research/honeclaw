@@ -32,6 +32,44 @@ describe("weekly brief dashboard", () => {
     expect(styles).not.toContain("@media(max-width:800px)");
   });
 
+  it("stays a dated agenda rather than a social feed", () => {
+    // These rows have no author and no authored text, and the reader's index
+    // into them is the date — so the date column stays and ResearchFeedItem,
+    // whose head is author + handle + time, is deliberately not used.
+    expect(component).not.toContain("ResearchFeedItem");
+    expect(component).toContain("weekly-brief-day");
+    expect(component).toContain("shortDate(group.date)");
+    expect(styles).toContain(".weekly-brief-day {");
+  });
+
+  it("prints each event's analysis in full instead of folding or clipping it", () => {
+    // The reading of an event is two sentences; a disclosure around two
+    // sentences is chrome, and its closed state clipped the first one.
+    expect(component).toContain('<p class="weekly-brief-analysis">{item.analysis}</p>');
+    expect(component).not.toContain("ResearchLongform");
+    expect(styles).not.toContain("-webkit-line-clamp");
+    // 提醒关注 is guidance, not a warning, so it lost its yellow box.
+    expect(component).toContain("weekly-brief-attention");
+    expect(component).not.toContain("<aside>");
+    expect(styles).not.toContain(".weekly-brief-events aside");
+  });
+
+  it("collapses the three event badges and the tone chrome into one quiet line", () => {
+    // One line: 重点 marker, evidence quality, category.
+    expect(component).toContain("weekly-brief-event-meta");
+    expect(component).toContain(
+      "[evidenceLabel(item.evidence_status), categoryLabel(item.category)]",
+    );
+    // The category no longer paints a left bar, and the panel-level tone
+    // kickers duplicated the tab labels above them.
+    expect(component).not.toContain("data-category");
+    expect(component).not.toContain("data-tone");
+    expect(component).not.toContain("kicker=\"发生了什么变化\"");
+    expect(styles).not.toContain("data-category");
+    expect(styles).not.toContain("data-tone");
+    expect(styles).not.toContain("article:before");
+  });
+
   it("opens on the verdict through the shared head, not a header plus meta strip plus hero", () => {
     expect(component).toContain("ResearchPanelHead");
     // The head id has to stay the dialog's accessible name.
@@ -117,8 +155,15 @@ describe("weekly brief dashboard", () => {
     expect(styles).toContain("var(--hone-signal-yellow)");
     expect(styles).toContain("var(--hone-signal-yellow-soft)");
     expect(styles).toContain("var(--hone-signal-green)");
-    // Dark mode rides the tokens; only the purple ticker chip keeps a skin.
-    expect(styles.match(/\[data-theme="dark"\]/g)?.length).toBe(1);
+    // Dark mode rides the tokens end to end: the purple ticker chip and the
+    // purple earnings bar were the last literals, and both are gone.
+    expect(styles).not.toContain('[data-theme="dark"]');
     expect(styles).not.toContain("#111a28");
+    expect(styles).not.toContain("#7a67d8");
+    expect(styles).not.toContain("#765fc0");
+    expect(styles).not.toContain("#e9e5ff");
+    expect(styles).not.toContain("#5141a8");
+    expect(styles).not.toContain("#28243d");
+    expect(styles).not.toContain("#c1b5ff");
   });
 });

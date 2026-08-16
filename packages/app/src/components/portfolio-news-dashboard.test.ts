@@ -3,6 +3,15 @@ import { readFileSync } from "node:fs";
 
 const component = readFileSync(new URL("./portfolio-news-dashboard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./portfolio-news-dashboard.css", import.meta.url), "utf8");
+const feed = readFileSync(new URL("./research/research-feed.tsx", import.meta.url), "utf8");
+const feedStyles = readFileSync(new URL("./research/research-feed.css", import.meta.url), "utf8");
+
+/** The one feed item, from its opening tag to its close. */
+const feedItem = () =>
+  component.slice(
+    component.indexOf("<ResearchFeedItem"),
+    component.indexOf("</ResearchFeedItem>"),
+  );
 
 describe("portfolio news dashboard contract", () => {
   test("exposes the cached report as a controlled research panel", () => {
@@ -44,6 +53,53 @@ describe("portfolio news dashboard contract", () => {
     expect(component).toContain('kind="empty"');
   });
 
+  test("reads each item as a feed post, the news itself never folded", () => {
+    expect(component).toContain("<ResearchFeed>");
+    expect(component).toContain("<ResearchFeedItem");
+    // Header carries source facts only: which holding, who published it, when.
+    expect(component).toContain("author={item.symbol}");
+    expect(component).toContain("handle={item.source}");
+    expect(component).toContain("time={shortLocalTimestamp(item.published_at_local)}");
+    // The news in the source's own words is the body — open, whole, original
+    // line breaks — not our 60-character digest inside a disclosure.
+    expect(component).toContain("<p>{newsText(item)}</p>");
+    expect(component).toContain("item.source_summary");
+    expect(component).not.toContain("ResearchLongform");
+    expect(component).not.toContain("<h3>{item.title}</h3>");
+    expect(feedStyles).toContain("white-space: pre-wrap");
+    expect(feedItem().slice(feedItem().indexOf("<p>{newsText(item)}</p>"))).not.toContain(
+      "<details",
+    );
+    // One left edge for the impact call; the chip row and card skin are gone.
+    expect(component).toContain("accent={impactAccent(item.impact)}");
+    expect(feedStyles).toContain(".research-feed-item.is-green");
+    expect(feedStyles).toContain(".research-feed-item.is-red");
+    expect(styles).not.toContain("portfolio-news-item__");
+    expect(styles).not.toContain(".portfolio-news-list");
+  });
+
+  test("folds every HONE judgement behind one line", () => {
+    const item = feedItem();
+    const analysis = item.slice(item.indexOf("analysis={"), item.indexOf("<p>{newsText"));
+    for (const judgement of [
+      "IMPACT_LABEL[item.impact]",
+      "HORIZON_LABEL[item.horizon]",
+      "THESIS_LABEL[item.thesis_effect]",
+      "item.summary",
+      "item.why_it_matters",
+      "item.attention",
+      "CONFIDENCE_LABEL[item.confidence]",
+    ]) {
+      expect(analysis).toContain(judgement);
+    }
+    expect(component).toContain('analysisLabel="HONE 解读"');
+    expect(feed).toContain('<details class="research-feed-item__analysis">');
+    // Nothing to fold when the model has not run on an item.
+    expect(component).toContain('item.analysis_status === "model_analyzed" ?');
+    // The source link stays outside the fold: it is a source fact.
+    expect(component).toContain("href: item.source_url");
+  });
+
   test("keeps provenance, analysis status and fail-closed states visible", () => {
     expect(component).toContain("item.source_url");
     expect(component).toContain("published_at_local");
@@ -65,18 +121,28 @@ describe("portfolio news dashboard contract", () => {
   test("uses hone design tokens with dark and mobile layouts", () => {
     expect(styles).toContain("var(--hone-ink-950)");
     expect(styles).toContain("var(--hone-ink-500)");
-    expect(styles).toContain("var(--hone-coral-600)");
+    expect(styles).toContain("var(--hone-paper-50)");
+    expect(styles).toContain("var(--hone-line)");
     expect(styles).toContain("var(--hone-signal-green)");
     expect(styles).toContain("var(--hone-signal-red)");
-    expect(styles).toContain("var(--hone-signal-yellow");
-    expect(styles).toContain("var(--hone-signal-red-soft)");
+    expect(styles).toContain("var(--hone-signal-orange)");
+    // Action tokens: dark-mode coral is a light peach, so white type on it
+    // would be unreadable.
+    expect(styles).toContain("var(--hone-action-bg)");
+    expect(styles).toContain("var(--hone-action-fg)");
+    expect(styles).not.toContain("!important");
     expect(styles).not.toContain("#d3544a");
     expect(styles).not.toContain("#23845a");
     expect(styles).not.toContain("#d69c18");
     expect(styles).not.toContain("portfolio-news-launcher");
-    expect(styles).toContain('[data-theme="dark"]');
+    // Dark mode rides the tokens; the bespoke slate override block is gone.
+    expect(styles).not.toContain('[data-theme="dark"]');
+    expect(styles).not.toContain("#111a28");
     expect(styles).toContain("@media (max-width: 768px)");
     // Sheet mode: chrome between the head and the first article is squeezed.
     expect(styles).toContain("@media (max-width: 760px)");
+    // Per-item impact colors are the shared feed's accent, token-backed there.
+    expect(feedStyles).toContain("var(--hone-signal-red)");
+    expect(feedStyles).toContain("var(--hone-signal-neutral)");
   });
 });
