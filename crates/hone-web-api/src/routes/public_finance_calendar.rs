@@ -253,7 +253,7 @@ async fn build_finance_calendar_payload(
     month: &MonthSpec,
 ) -> FinanceCalendarPayload {
     let mut events = macro_events_for_month(month);
-    let holdings = portfolio_calendar_symbols(state, actor);
+    let holdings = portfolio_calendar_symbols(state, actor).await;
     let mut errors = Vec::new();
     let mut earnings_status = "ok".to_string();
 
@@ -593,10 +593,13 @@ fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
     .collect()
 }
 
-pub(crate) fn portfolio_calendar_symbols(state: &AppState, actor: &ActorIdentity) -> Vec<String> {
+pub(crate) async fn portfolio_calendar_symbols(
+    state: &AppState,
+    actor: &ActorIdentity,
+) -> Vec<String> {
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let Ok(Some(portfolio)) = portfolio_storage.load(actor) else {
+    let Ok(Some(portfolio)) = portfolio_storage.load(actor).await else {
         return Vec::new();
     };
     calendar_symbols_from_holdings(&portfolio.holdings)

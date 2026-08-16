@@ -136,7 +136,7 @@ pub(crate) async fn handle_get_position_management(
         }
     };
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = storage.load(&actor).ok().flatten();
+    let portfolio = storage.load(&actor).await.ok().flatten();
     let positions = portfolio.as_ref().map(real_positions).unwrap_or_default();
     if positions.is_empty() {
         return Json(empty_snapshot(
@@ -185,7 +185,7 @@ pub(crate) async fn overview_card(
     use crate::routes::research_overview::{OverviewCard, short_summary};
     let mut card = OverviewCard::waiting("position-management", "仓位管理", "评分 × 宏观 × 新闻");
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = storage.load(actor).ok().flatten();
+    let portfolio = storage.load(actor).await.ok().flatten();
     let positions = portfolio.as_ref().map(real_positions).unwrap_or_default();
     if positions.is_empty() {
         card.summary = Some(short_summary(
@@ -226,6 +226,7 @@ pub(crate) async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
     let portfolios = storage
         .list_all()
+        .await
         .into_iter()
         .filter(|(_, portfolio)| !real_positions(portfolio).is_empty())
         .collect::<Vec<_>>();

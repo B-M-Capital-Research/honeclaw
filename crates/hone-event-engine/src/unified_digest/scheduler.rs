@@ -251,7 +251,7 @@ impl UnifiedDigestScheduler {
         }
         // 还要把所有有 portfolio 的 direct actor 拉进来 —— 即使本 tick 没 buffer
         // 没 synth,他们仍可能命中 slot 拿到 global news 推送。
-        for (actor, _) in self.portfolio_storage.list_all() {
+        for (actor, _) in self.portfolio_storage.list_all().await {
             if actor.is_direct() {
                 actors.insert(actor);
             }
@@ -278,7 +278,8 @@ impl UnifiedDigestScheduler {
                 continue;
             }
             let user_prefs = self.prefs.load(&actor);
-            let focus_symbols = actor_focus_symbols(&self.portfolio_storage, &actor, &user_prefs);
+            let focus_symbols =
+                actor_focus_symbols(&self.portfolio_storage, &actor, &user_prefs).await;
             let effective_tz = EffectiveTz::from_actor_prefs(
                 user_prefs.timezone.as_deref(),
                 &self.runtime_timezone,
@@ -1114,13 +1115,13 @@ fn quiet_flush_label(
         .unwrap_or_else(|| format!("晨间静音合集 · {quiet_to}"))
 }
 
-fn actor_focus_symbols(
+async fn actor_focus_symbols(
     storage: &PortfolioStorage,
     actor: &ActorIdentity,
     prefs: &NotificationPrefs,
 ) -> HashSet<String> {
     let mut symbols = HashSet::new();
-    if let Ok(Some(portfolio)) = storage.load(actor) {
+    if let Ok(Some(portfolio)) = storage.load(actor).await {
         for holding in portfolio.holdings {
             insert_symbol(&mut symbols, &holding.symbol);
             if let Some(underlying) = holding.underlying.as_deref() {
@@ -1201,23 +1202,23 @@ mod tests {
         }
     }
 
-    #[test]
-    fn actor_focus_symbols_include_portfolio_and_theses() {
+    #[tokio::test]
+    async fn actor_focus_symbols_include_portfolio_and_theses() {
         let temp_dir = tempdir().unwrap();
         let storage = PortfolioStorage::new(temp_dir.path());
         let actor = actor();
-        storage.upsert_watch(&actor, "AAPL", "stock").unwrap();
+        storage.upsert_watch(&actor, "AAPL", "stock").await.unwrap();
         let mut prefs = NotificationPrefs::default();
         prefs.mainline_by_ticker = Some(HashMap::from([("MU".to_string(), "memory".to_string())]));
 
-        let symbols = actor_focus_symbols(&storage, &actor, &prefs);
+        let symbols = actor_focus_symbols(&storage, &actor, &prefs).await;
 
         assert!(symbols.contains("AAPL"));
         assert!(symbols.contains("MU"));
     }
 
-    #[test]
-    fn quiet_flush_uses_actor_slot_label_at_same_time() {
+    #[tokio::test]
+    async fn quiet_flush_uses_actor_slot_label_at_same_time() {
         let prefs = NotificationPrefs {
             digest_slots: Some(vec![DigestSlot {
                 id: "postmarket".into(),
@@ -1232,8 +1233,8 @@ mod tests {
         assert_eq!(quiet_flush_label(&prefs, &defaults, "07:30"), "盘后要闻");
     }
 
-    #[test]
-    fn quiet_flush_uses_standard_slot_fallback_when_same_time_has_no_label() {
+    #[tokio::test]
+    async fn quiet_flush_uses_standard_slot_fallback_when_same_time_has_no_label() {
         let prefs = NotificationPrefs {
             digest_slots: Some(vec![DigestSlot::from_legacy_window("07:30")]),
             ..Default::default()
@@ -1242,8 +1243,8 @@ mod tests {
         assert_eq!(quiet_flush_label(&prefs, &[], "07:30"), "定时摘要 · 07:30");
     }
 
-    #[test]
-    fn quiet_flush_keeps_generic_label_without_same_time_slot() {
+    #[tokio::test]
+    async fn quiet_flush_keeps_generic_label_without_same_time_slot() {
         let prefs = NotificationPrefs {
             digest_slots: Some(vec![DigestSlot {
                 id: "premarket".into(),
@@ -1260,8 +1261,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn mark_as_overnight_recap_prepends_marker_and_preserves_other_fields() {
+    #[tokio::test]
+    async fn mark_as_overnight_recap_prepends_marker_and_preserves_other_fields() {
         let original = MarketEvent {
             id: "price_band:GOOGL:2026-04-30:up:600".into(),
             kind: EventKind::PriceAlert {
@@ -1296,8 +1297,8 @@ mod tests {
         assert_eq!(recap.occurred_at, original.occurred_at);
     }
 
-    #[test]
-    fn mark_as_overnight_recap_is_idempotent_for_already_marked() {
+    #[tokio::test]
+    async fn mark_as_overnight_recap_is_idempotent_for_already_marked() {
         // 防御性:即便上游错误地重复 mark,标记前缀稳定可识别(不强求只 mark 一次,
         // 但 grep "🌙 凌晨曾过" 时数量与原始批次条数对齐)。
         let event = MarketEvent {
@@ -1320,8 +1321,8 @@ mod tests {
         assert!(marked_again.title.starts_with("🌙 凌晨曾过 · "));
     }
 
-    #[test]
-    fn global_pick_focus_filter_drops_non_focus_symbol_news() {
+    #[tokio::test]
+    async fn global_pick_focus_filter_drops_non_focus_symbol_news() {
         let focus = HashSet::from(["AAPL".to_string(), "MU".to_string()]);
 
         assert!(!global_pick_matches_actor_focus(

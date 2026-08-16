@@ -1,7 +1,6 @@
 //! 持仓存储 — local 模式使用 JSON 文件，cloud 模式使用 PG（按 actor 隔离）
 
 use hone_core::cloud_runtime::{CloudPgRuntime, CloudPortfolioRecord};
-use hone_core::cloud_sync::run_cloud_sync;
 use hone_core::{ActorIdentity, HoneError, HoneResult, compare_rfc3339};
 use serde::{Deserialize, Serialize};
 
@@ -232,14 +231,10 @@ impl PortfolioStorage {
     }
 
     /// 加载 actor 持仓
-    pub fn load(&self, actor: &ActorIdentity) -> HoneResult<Option<Portfolio>> {
+    pub async fn load(&self, actor: &ActorIdentity) -> HoneResult<Option<Portfolio>> {
         if let Some(postgres) = self.cloud.clone() {
             let actor_storage_key = actor.storage_key();
-            let Some(record) =
-                run_cloud_portfolio(
-                    async move { postgres.get_portfolio(&actor_storage_key).await },
-                )?
-            else {
+            let Some(record) = postgres.get_portfolio(&actor_storage_key).await? else {
                 return Ok(None);
             };
             let mut portfolio: Portfolio = serde_json::from_value(record.portfolio)
@@ -262,7 +257,7 @@ impl PortfolioStorage {
     }
 
     /// 保存 actor 持仓
-    pub fn save(&self, actor: &ActorIdentity, portfolio: &Portfolio) -> HoneResult<()> {
+    pub async fn save(&self, actor: &ActorIdentity, portfolio: &Portfolio) -> HoneResult<()> {
         if let Some(postgres) = self.cloud.clone() {
             let mut payload = portfolio.clone();
             payload.actor = Some(actor.clone());
@@ -276,7 +271,7 @@ impl PortfolioStorage {
                 actor: actor_value,
                 portfolio: portfolio_value,
             };
-            return run_cloud_portfolio(async move { postgres.upsert_portfolio(record).await });
+            return postgres.upsert_portfolio(record).await;
         }
 
         let path = self.actor_path(actor);
@@ -289,8 +284,12 @@ impl PortfolioStorage {
         Ok(())
     }
 
-    pub fn upsert_holding(&self, actor: &ActorIdentity, holding: Holding) -> HoneResult<Portfolio> {
-        let mut portfolio = self.load(actor)?.unwrap_or_else(|| Portfolio {
+    pub async fn upsert_holding(
+        &self,
+        actor: &ActorIdentity,
+        holding: Holding,
+    ) -> HoneResult<Portfolio> {
+        let mut portfolio = self.load(actor).await?.unwrap_or_else(|| Portfolio {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
             holdings: Vec::new(),
@@ -308,15 +307,14 @@ impl PortfolioStorage {
         }
 
         portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-        self.save(actor, &portfolio)?;
+        self.save(actor, &portfolio).await?;
         Ok(portfolio)
     }
 
     /// 列出所有有持仓数据的 actor（扫描目录中的 portfolio_*.json 文件）
-    pub fn list_all(&self) -> Vec<(ActorIdentity, Portfolio)> {
+    pub async fn list_all(&self) -> Vec<(ActorIdentity, Portfolio)> {
         if let Some(postgres) = self.cloud.clone() {
-            let records = match run_cloud_portfolio(async move { postgres.list_portfolios().await })
-            {
+            let records = match postgres.list_portfolios().await {
                 Ok(records) => records,
                 Err(error) => {
                     tracing::warn!("cloud portfolio list failed: {error}");
@@ -395,13 +393,13 @@ impl PortfolioStorage {
     }
 
     /// 加入关注列表。symbol 已存在时保持现有记录不变,返回完整 Portfolio。
-    pub fn upsert_watch(
+    pub async fn upsert_watch(
         &self,
         actor: &ActorIdentity,
         symbol: &str,
         asset_type: &str,
     ) -> HoneResult<Portfolio> {
-        let mut portfolio = self.load(actor)?.unwrap_or_else(|| Portfolio {
+        let mut portfolio = self.load(actor).await?.unwrap_or_else(|| Portfolio {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
             holdings: Vec::new(),
@@ -431,7 +429,7 @@ impl PortfolioStorage {
                 tracking_only: Some(true),
             });
             portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-            self.save(actor, &portfolio)?;
+            self.save(actor, &portfolio).await?;
         }
 
         Ok(portfolio)
@@ -442,7 +440,7 @@ impl PortfolioStorage {
     /// - `was_watchlist=true` 表示这条确实来自关注列表,调用方可据此向用户汇报"已自动转为持仓"；
     /// - `was_watchlist=false` 表示本就是真实持仓,只是做了一次正常 upsert；
     /// - `Ok(None)` 表示该 actor 尚无任何持仓/关注记录,调用方应当走普通 upsert 路径。
-    pub fn promote_to_holding(
+    pub async fn promote_to_holding(
         &self,
         actor: &ActorIdentity,
         symbol: &str,
@@ -450,7 +448,7 @@ impl PortfolioStorage {
         shares: f64,
         avg_cost: f64,
     ) -> HoneResult<Option<(Portfolio, bool)>> {
-        let Some(mut portfolio) = self.load(actor)? else {
+        let Some(mut portfolio) = self.load(actor).await? else {
             return Ok(None);
         };
 
@@ -468,16 +466,16 @@ impl PortfolioStorage {
         existing.tracking_only = None;
 
         portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-        self.save(actor, &portfolio)?;
+        self.save(actor, &portfolio).await?;
         Ok(Some((portfolio, was_watchlist)))
     }
 
-    pub fn remove_holding(
+    pub async fn remove_holding(
         &self,
         actor: &ActorIdentity,
         symbol: &str,
     ) -> HoneResult<Option<Portfolio>> {
-        let Some(mut portfolio) = self.load(actor)? else {
+        let Some(mut portfolio) = self.load(actor).await? else {
             return Ok(None);
         };
 
@@ -490,17 +488,9 @@ impl PortfolioStorage {
         }
 
         portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-        self.save(actor, &portfolio)?;
+        self.save(actor, &portfolio).await?;
         Ok(Some(portfolio))
     }
-}
-
-fn run_cloud_portfolio<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud portfolio operation")
 }
 
 #[cfg(test)]
@@ -522,8 +512,8 @@ mod tests {
         ActorIdentity::new(channel, user_id, channel_scope).expect("actor")
     }
 
-    #[test]
-    fn configure_cloud_portfolio_storage_accepts_none() {
+    #[tokio::test]
+    async fn configure_cloud_portfolio_storage_accepts_none() {
         configure_cloud_portfolio_storage(None);
         let dir = make_temp_dir("hone_portfolio_storage_config");
         let storage = PortfolioStorage::new(&dir);
@@ -531,13 +521,13 @@ mod tests {
         assert!(dir.exists());
     }
 
-    #[test]
-    fn portfolio_storage_roundtrip() {
+    #[tokio::test]
+    async fn portfolio_storage_roundtrip() {
         let dir = make_temp_dir("hone_portfolio_storage");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("imessage", "User_test", None);
 
-        let empty = storage.load(&actor).expect("load empty");
+        let empty = storage.load(&actor).await.expect("load empty");
         assert!(empty.is_none());
 
         let portfolio = Portfolio {
@@ -563,8 +553,8 @@ mod tests {
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        storage.save(&actor, &portfolio).expect("save");
-        let loaded = storage.load(&actor).expect("load").expect("exists");
+        storage.save(&actor, &portfolio).await.expect("save");
+        let loaded = storage.load(&actor).await.expect("load").expect("exists");
         assert_eq!(loaded.user_id, actor.user_id);
         assert_eq!(loaded.actor, Some(actor));
         assert_eq!(loaded.holdings.len(), 1);
@@ -581,8 +571,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn portfolio_storage_holding_crud() {
+    #[tokio::test]
+    async fn portfolio_storage_holding_crud() {
         let dir = make_temp_dir("hone_portfolio_storage_crud");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("imessage", "User_test", None);
@@ -608,6 +598,7 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("upsert add");
         assert_eq!(portfolio.holdings.len(), 1);
 
@@ -632,6 +623,7 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("upsert update");
         assert_eq!(portfolio.holdings.len(), 1);
         assert_eq!(portfolio.holdings[0].shares, 12.0);
@@ -647,13 +639,14 @@ mod tests {
 
         let portfolio = storage
             .remove_holding(&actor, "AAPL")
+            .await
             .expect("remove")
             .expect("portfolio");
         assert!(portfolio.holdings.is_empty());
     }
 
-    #[test]
-    fn portfolio_storage_isolated_by_actor() {
+    #[tokio::test]
+    async fn portfolio_storage_isolated_by_actor() {
         let dir = make_temp_dir("hone_portfolio_storage_actor");
         let storage = PortfolioStorage::new(&dir);
         let left = actor("imessage", "alice", None);
@@ -680,6 +673,7 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("left save");
         storage
             .upsert_holding(
@@ -702,14 +696,17 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("right save");
 
         let left_loaded = storage
             .load(&left)
+            .await
             .expect("left load")
             .expect("left exists");
         let right_loaded = storage
             .load(&right)
+            .await
             .expect("right load")
             .expect("right exists");
 
@@ -717,8 +714,8 @@ mod tests {
         assert_eq!(right_loaded.holdings[0].symbol, "TSLA");
     }
 
-    #[test]
-    fn portfolio_storage_supports_option_holdings() {
+    #[tokio::test]
+    async fn portfolio_storage_supports_option_holdings() {
         let dir = make_temp_dir("hone_portfolio_storage_option");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("imessage", "User_option", None);
@@ -744,6 +741,7 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("upsert option");
 
         assert_eq!(portfolio.holdings.len(), 1);
@@ -765,8 +763,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn portfolio_storage_supports_negative_avg_cost_and_strategy_metadata() {
+    #[tokio::test]
+    async fn portfolio_storage_supports_negative_avg_cost_and_strategy_metadata() {
         let dir = make_temp_dir("hone_portfolio_storage_negative_avg_cost");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("discord", "credit_trade", None);
@@ -792,6 +790,7 @@ mod tests {
                     tracking_only: None,
                 },
             )
+            .await
             .expect("upsert negative avg cost");
 
         assert_eq!(portfolio.holdings[0].avg_cost, -2.35);
@@ -801,8 +800,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normalize_holding_horizon_accepts_common_aliases() {
+    #[tokio::test]
+    async fn normalize_holding_horizon_accepts_common_aliases() {
         assert_eq!(
             normalize_holding_horizon("长持").as_deref(),
             Some(HOLDING_HORIZON_LONG_TERM)
@@ -815,14 +814,15 @@ mod tests {
         assert_eq!(normalize_holding_horizon("event-driven"), None);
     }
 
-    #[test]
-    fn holding_tracking_only_roundtrip() {
+    #[tokio::test]
+    async fn holding_tracking_only_roundtrip() {
         let dir = make_temp_dir("hone_portfolio_storage_watchlist");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("imessage", "watcher", None);
 
         let portfolio = storage
             .upsert_watch(&actor, "NVDA", "stock")
+            .await
             .expect("upsert watch");
         assert_eq!(portfolio.holdings.len(), 1);
         assert_eq!(portfolio.holdings[0].symbol, "NVDA");
@@ -830,17 +830,18 @@ mod tests {
         assert_eq!(portfolio.holdings[0].avg_cost, 0.0);
         assert_eq!(portfolio.holdings[0].tracking_only, Some(true));
 
-        let loaded = storage.load(&actor).expect("load").expect("exists");
+        let loaded = storage.load(&actor).await.expect("load").expect("exists");
         assert_eq!(loaded.holdings[0].tracking_only, Some(true));
 
         let again = storage
             .upsert_watch(&actor, "NVDA", "stock")
+            .await
             .expect("idempotent watch");
         assert_eq!(again.holdings.len(), 1);
     }
 
-    #[test]
-    fn legacy_json_without_tracking_only_deserializes_as_none() {
+    #[tokio::test]
+    async fn legacy_json_without_tracking_only_deserializes_as_none() {
         let legacy = r#"{
             "user_id": "legacy",
             "holdings": [
@@ -856,18 +857,20 @@ mod tests {
         assert!(!serialized.contains("tracking_only"));
     }
 
-    #[test]
-    fn upsert_watch_and_promote() {
+    #[tokio::test]
+    async fn upsert_watch_and_promote() {
         let dir = make_temp_dir("hone_portfolio_storage_promote");
         let storage = PortfolioStorage::new(&dir);
         let actor = actor("telegram", "promoter", None);
 
         storage
             .upsert_watch(&actor, "TSLA", "stock")
+            .await
             .expect("watch");
 
         let (portfolio, was_watchlist) = storage
             .promote_to_holding(&actor, "TSLA", "stock", 50.0, 120.0)
+            .await
             .expect("promote")
             .expect("record exists");
         assert!(was_watchlist);
@@ -878,6 +881,7 @@ mod tests {
 
         let promote_again = storage
             .promote_to_holding(&actor, "TSLA", "stock", 60.0, 115.0)
+            .await
             .expect("second promote")
             .expect("record exists");
         assert!(!promote_again.1);

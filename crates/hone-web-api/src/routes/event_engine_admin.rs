@@ -357,7 +357,7 @@ pub(crate) async fn handle_get_mainline_context(
 
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let holdings: Vec<String> = match portfolio_storage.load(&actor) {
+    let holdings: Vec<String> = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p.holdings.iter().map(|h| h.symbol.clone()).collect(),
         _ => Vec::new(),
     };
@@ -477,7 +477,7 @@ pub(crate) async fn handle_distill_mainline_now(
     // portfolio + holdings
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = match portfolio_storage.load(&actor) {
+    let portfolio = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p,
         Ok(None) => {
             return json_error(

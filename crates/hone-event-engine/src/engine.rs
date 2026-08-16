@@ -330,11 +330,14 @@ impl EventEngine {
         // 基于持仓构建订阅注册中心，封装在 SharedRegistry 里支持运行时热刷新。
         // 初次读盘在 start() 内完成；之后后台任务每 60s 重建一次（下面 spawn）。
         let registry = Arc::new(match self.company_profile_dir.as_ref() {
-            Some(profile_dir) => SharedRegistry::from_portfolio_and_company_profiles(
-                &self.portfolio_dir,
-                profile_dir,
-            ),
-            None => SharedRegistry::from_portfolio_dir(&self.portfolio_dir),
+            Some(profile_dir) => {
+                SharedRegistry::from_portfolio_and_company_profiles(
+                    &self.portfolio_dir,
+                    profile_dir,
+                )
+                .await
+            }
+            None => SharedRegistry::from_portfolio_dir(&self.portfolio_dir).await,
         });
         info!(
             subscribers = registry.load().len(),
@@ -350,7 +353,7 @@ impl EventEngine {
                 let mut last_size = registry_bg.load().len();
                 loop {
                     ticker.tick().await;
-                    if let Some(new_size) = registry_bg.refresh()
+                    if let Some(new_size) = registry_bg.refresh().await
                         && new_size != last_size
                     {
                         info!(

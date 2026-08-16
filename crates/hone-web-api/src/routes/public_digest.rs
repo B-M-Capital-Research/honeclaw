@@ -62,7 +62,7 @@ pub(crate) async fn handle_get_digest_context(
     // 持仓(用于显示哪些 ticker 应该有投资主线但没有)
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let holdings: Vec<String> = match portfolio_storage.load(&actor) {
+    let holdings: Vec<String> = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p.holdings.iter().map(|h| h.symbol.clone()).collect(),
         _ => Vec::new(),
     };
@@ -233,7 +233,7 @@ pub(crate) async fn handle_refresh_digest_context(
 
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = match portfolio_storage.load(&actor) {
+    let portfolio = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p,
         Ok(None) => {
             return json_error(

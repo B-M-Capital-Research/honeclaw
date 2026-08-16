@@ -107,7 +107,7 @@ pub async fn distill_tick(
 ) -> (u32, u32) {
     let mut triggered_count = 0u32;
     let mut skipped_count = 0u32;
-    for (actor, portfolio) in portfolio_storage.list_all() {
+    for (actor, portfolio) in portfolio_storage.list_all().await {
         if !actor.is_direct() {
             skipped_count += 1;
             continue;
@@ -321,6 +321,7 @@ mod tests {
                 &actor,
                 &portfolio_fixture(actor.clone(), vec!["MU", "RKLB"]),
             )
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -352,6 +353,7 @@ mod tests {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
             .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -391,6 +393,7 @@ mod tests {
                 &actor,
                 &portfolio_fixture(actor.clone(), vec!["MU", "RKLB"]),
             )
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -431,6 +434,7 @@ mod tests {
                 &actor,
                 &portfolio_fixture(actor.clone(), vec!["MU", "AAPL"]),
             )
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -469,6 +473,7 @@ mod tests {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
             .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -497,8 +502,8 @@ mod tests {
         assert_eq!(triggered_count, 1, "全覆盖 + 8 天前蒸过 → 周更新触发");
     }
 
-    #[test]
-    fn should_trigger_first_run_when_no_timestamp() {
+    #[tokio::test]
+    async fn should_trigger_first_run_when_no_timestamp() {
         let prefs = NotificationPrefs::default();
         let holdings = vec!["MU".to_string()];
         assert_eq!(
@@ -507,8 +512,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_trigger_missing_holdings_after_min_retry() {
+    #[tokio::test]
+    async fn should_trigger_missing_holdings_after_min_retry() {
         let mut prefs = NotificationPrefs::default();
         prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::hours(7)).to_rfc3339());
@@ -520,8 +525,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_trigger_none_when_full_coverage_within_weekly() {
+    #[tokio::test]
+    async fn should_trigger_none_when_full_coverage_within_weekly() {
         let mut prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         by_ticker.insert("MU".to_string(), "x".to_string());
@@ -532,8 +537,8 @@ mod tests {
         assert_eq!(should_trigger(&prefs, &holdings, Utc::now()), None);
     }
 
-    #[test]
-    fn should_trigger_case_insensitive_ticker_match() {
+    #[tokio::test]
+    async fn should_trigger_case_insensitive_ticker_match() {
         let mut prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         // map 里大写
@@ -554,6 +559,7 @@ mod tests {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
             .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
+            .await
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");

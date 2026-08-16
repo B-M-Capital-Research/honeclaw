@@ -93,6 +93,7 @@ pub(crate) async fn handle_get_portfolio(
     };
     let holdings = storage(&state)
         .load(&actor)
+        .await
         .ok()
         .flatten()
         .map(|portfolio| portfolio.holdings)
@@ -118,6 +119,7 @@ pub(crate) async fn handle_create_holding(
     let store = storage(&state);
     let existing = store
         .load(&actor)
+        .await
         .ok()
         .flatten()
         .map(|portfolio| portfolio.holdings)
@@ -138,7 +140,7 @@ pub(crate) async fn handle_create_holding(
         Ok(holding) => holding,
         Err(response) => return response,
     };
-    match store.upsert_holding(&actor, holding) {
+    match store.upsert_holding(&actor, holding).await {
         Ok(portfolio) => {
             (StatusCode::CREATED, portfolio_response(&portfolio.holdings)).into_response()
         }
@@ -165,6 +167,7 @@ pub(crate) async fn handle_update_holding(
     let store = storage(&state);
     let existing = store
         .load(&actor)
+        .await
         .ok()
         .flatten()
         .map(|portfolio| portfolio.holdings)
@@ -177,7 +180,7 @@ pub(crate) async fn handle_update_holding(
         Ok(holding) => holding,
         Err(response) => return response,
     };
-    match store.upsert_holding(&actor, holding) {
+    match store.upsert_holding(&actor, holding).await {
         Ok(portfolio) => portfolio_response(&portfolio.holdings),
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
@@ -195,12 +198,13 @@ pub(crate) async fn handle_delete_holding(
     };
     let symbol = normalize_symbol(&symbol);
     let store = storage(&state);
-    match store.remove_holding(&actor, &symbol) {
+    match store.remove_holding(&actor, &symbol).await {
         // 已经不存在时返回当前列表即可 —— 删除是幂等的。
         Ok(Some(portfolio)) => portfolio_response(&portfolio.holdings),
         Ok(None) => {
             let holdings = store
                 .load(&actor)
+                .await
                 .ok()
                 .flatten()
                 .map(|portfolio| portfolio.holdings)

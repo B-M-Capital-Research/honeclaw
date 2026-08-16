@@ -85,7 +85,7 @@ impl<'a> AudienceBuilder<'a> {
 
     /// 收集 direct actor 的 ticker 并集 + notes,返回 AudienceContext。
     pub async fn build(&self) -> AudienceContext {
-        let (tickers, notes_by_ticker) = self.collect_tickers_and_notes();
+        let (tickers, notes_by_ticker) = self.collect_tickers_and_notes().await;
         if tickers.is_empty() {
             return AudienceContext { briefs: Vec::new() };
         }
@@ -123,11 +123,11 @@ impl<'a> AudienceBuilder<'a> {
         AudienceContext { briefs }
     }
 
-    fn collect_tickers_and_notes(&self) -> (Vec<String>, HashMap<String, Vec<String>>) {
+    async fn collect_tickers_and_notes(&self) -> (Vec<String>, HashMap<String, Vec<String>>) {
         let mut tickers: Vec<String> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         let mut notes_by_ticker: HashMap<String, Vec<String>> = HashMap::new();
-        for (actor, portfolio) in self.portfolio_storage.list_all() {
+        for (actor, portfolio) in self.portfolio_storage.list_all().await {
             if !actor.is_direct() {
                 continue;
             }
@@ -291,15 +291,15 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn extract_one_liner_returns_full_text_when_short() {
+    #[tokio::test]
+    async fn extract_one_liner_returns_full_text_when_short() {
         let description = "Apple designs phones.";
         let one_liner = extract_one_liner(description, 100);
         assert_eq!(one_liner, "Apple designs phones.");
     }
 
-    #[test]
-    fn extract_one_liner_truncates_at_period_when_long() {
+    #[tokio::test]
+    async fn extract_one_liner_truncates_at_period_when_long() {
         let description = "Apple designs and sells phones, computers, tablets, watches, and services. \
                     The company also operates a chip business. Other ventures include AR/VR.";
         let one_liner = extract_one_liner(description, 80);
@@ -311,22 +311,22 @@ mod tests {
         assert!(one_liner.chars().count() <= 100);
     }
 
-    #[test]
-    fn extract_one_liner_handles_empty_desc() {
+    #[tokio::test]
+    async fn extract_one_liner_handles_empty_desc() {
         assert_eq!(extract_one_liner("", 200), "(无 profile)");
         assert_eq!(extract_one_liner("   ", 200), "(无 profile)");
     }
 
-    #[test]
-    fn extract_one_liner_truncates_with_ellipsis_when_no_period() {
+    #[tokio::test]
+    async fn extract_one_liner_truncates_with_ellipsis_when_no_period() {
         let description = "a".repeat(300);
         let one_liner = extract_one_liner(&description, 50);
         assert!(one_liner.ends_with('…'));
         assert_eq!(one_liner.chars().count(), 51);
     }
 
-    #[test]
-    fn profile_to_brief_falls_back_when_no_profile() {
+    #[tokio::test]
+    async fn profile_to_brief_falls_back_when_no_profile() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
         let fmp_config = hone_core::config::FmpConfig::default();
@@ -339,8 +339,8 @@ mod tests {
         assert_eq!(brief.source, BriefSource::Empty);
     }
 
-    #[test]
-    fn profile_to_brief_extracts_fmp_fields() {
+    #[tokio::test]
+    async fn profile_to_brief_extracts_fmp_fields() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
         let fmp_config = hone_core::config::FmpConfig::default();
@@ -362,8 +362,8 @@ mod tests {
         assert_eq!(brief.source, BriefSource::FmpDescription);
     }
 
-    #[test]
-    fn collect_tickers_dedupes_across_actors_and_collects_notes() {
+    #[tokio::test]
+    async fn collect_tickers_dedupes_across_actors_and_collects_notes() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
         // actor A: AAPL + AMD
@@ -409,7 +409,7 @@ mod tests {
             ],
             updated_at: Utc::now().to_rfc3339(),
         };
-        storage.save(&actor_a, &portfolio_a).unwrap();
+        storage.save(&actor_a, &portfolio_a).await.unwrap();
         // actor B: AAPL again (重复) + GOOGL,AAPL 带不同 notes
         let actor_b = hone_core::ActorIdentity::new("telegram", "222", None::<&str>).unwrap();
         let portfolio_b = hone_memory::portfolio::Portfolio {
@@ -453,12 +453,12 @@ mod tests {
             ],
             updated_at: Utc::now().to_rfc3339(),
         };
-        storage.save(&actor_b, &portfolio_b).unwrap();
+        storage.save(&actor_b, &portfolio_b).await.unwrap();
 
         let fmp_config = hone_core::config::FmpConfig::default();
         let fmp = FmpClient::from_config(&fmp_config);
         let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
-        let (tickers, notes) = builder.collect_tickers_and_notes();
+        let (tickers, notes) = builder.collect_tickers_and_notes().await;
         // dedupe AAPL, 顺序保留(A 先,所以 AAPL/AMD/GOOGL)
         assert_eq!(tickers.len(), 3);
         assert!(tickers.contains(&"AAPL".to_string()));
@@ -471,8 +471,8 @@ mod tests {
         assert!(aapl_notes.iter().any(|n| n.contains("Services")));
     }
 
-    #[test]
-    fn cache_roundtrip_within_ttl() {
+    #[tokio::test]
+    async fn cache_roundtrip_within_ttl() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
         let fmp_config = hone_core::config::FmpConfig::default();
@@ -488,8 +488,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn cache_expires_after_ttl() {
+    #[tokio::test]
+    async fn cache_expires_after_ttl() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
         let fmp_config = hone_core::config::FmpConfig::default();

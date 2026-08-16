@@ -1101,7 +1101,7 @@ async fn live_social_engine_e2e() {
         }],
         updated_at: "2026-04-22".into(),
     };
-    storage.save(&actor, &portfolio).unwrap();
+    storage.save(&actor, &portfolio).await.unwrap();
 
     // 关掉所有 FMP poller,只开社交
     let mut engine_cfg = EventEngineConfig::default();
@@ -1489,7 +1489,7 @@ async fn replay_two_weeks_and_push() {
     let now = Utc::now();
     let cutoff = now - Duration::days(days);
     let store = EventStore::open(&store_namespace).expect("open isolated PostgreSQL store");
-    let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir);
+    let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir).await;
     let registry = registry.load();
     let actor = ActorIdentity::new("discord", target_user.as_str(), None::<&str>)
         .unwrap_or_else(|_| ActorIdentity::new("discord", "dryrun", None::<&str>).unwrap());

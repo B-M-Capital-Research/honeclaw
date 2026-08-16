@@ -73,7 +73,7 @@ pub(crate) async fn handle_portfolio(
         Err(error) => return error,
     };
     let storage = portfolio_storage(&state);
-    match storage.load(&actor) {
+    match storage.load(&actor).await {
         Ok(portfolio) => Json(json!({
             "portfolio": portfolio,
             "summary": portfolio_summary(&actor, portfolio.as_ref())
@@ -101,30 +101,34 @@ pub(crate) async fn handle_create_holding(
     let avg_cost = req.cost_basis.or(req.avg_cost).unwrap_or(0.0);
     let storage = portfolio_storage(&state);
 
-    match storage.upsert_holding(
-        &actor,
-        Holding {
-            symbol,
-            asset_type,
-            shares,
-            avg_cost,
-            underlying: normalize_optional_string(req.underlying).map(|value| value.to_uppercase()),
-            option_type: normalize_optional_option_type(req.option_type),
-            strike_price: req.strike_price,
-            expiration_date: normalize_optional_string(req.expiration_date),
-            contract_multiplier: req.contract_multiplier,
-            holding_horizon: normalize_optional_holding_horizon(req.holding_horizon),
-            strategy_notes: normalize_optional_string(req.strategy_notes),
-            notes: normalize_optional_string(req.notes),
-            weight: None,
-            name: None,
-            tracking_only: if req.tracking_only.unwrap_or(false) {
-                Some(true)
-            } else {
-                None
+    match storage
+        .upsert_holding(
+            &actor,
+            Holding {
+                symbol,
+                asset_type,
+                shares,
+                avg_cost,
+                underlying: normalize_optional_string(req.underlying)
+                    .map(|value| value.to_uppercase()),
+                option_type: normalize_optional_option_type(req.option_type),
+                strike_price: req.strike_price,
+                expiration_date: normalize_optional_string(req.expiration_date),
+                contract_multiplier: req.contract_multiplier,
+                holding_horizon: normalize_optional_holding_horizon(req.holding_horizon),
+                strategy_notes: normalize_optional_string(req.strategy_notes),
+                notes: normalize_optional_string(req.notes),
+                weight: None,
+                name: None,
+                tracking_only: if req.tracking_only.unwrap_or(false) {
+                    Some(true)
+                } else {
+                    None
+                },
             },
-        },
-    ) {
+        )
+        .await
+    {
         Ok(portfolio) => {
             clear_portfolio_actors_cache();
             (
@@ -153,7 +157,7 @@ pub(crate) async fn handle_update_holding(
     let symbol = normalize_symbol(&symbol);
     let asset_type = normalize_asset_type(req.asset_type.as_deref());
     let storage = portfolio_storage(&state);
-    let existing_portfolio = match storage.load(&actor) {
+    let existing_portfolio = match storage.load(&actor).await {
         Ok(portfolio) => portfolio,
         Err(error) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
@@ -196,26 +200,29 @@ pub(crate) async fn handle_update_holding(
         None => existing_holding.tracking_only,
     };
 
-    match storage.upsert_holding(
-        &actor,
-        Holding {
-            symbol,
-            asset_type,
-            shares,
-            avg_cost,
-            underlying: normalize_optional_string(underlying).map(|value| value.to_uppercase()),
-            option_type: normalize_optional_option_type(option_type),
-            strike_price,
-            expiration_date: normalize_optional_string(expiration_date),
-            contract_multiplier,
-            holding_horizon: normalize_optional_holding_horizon(holding_horizon),
-            strategy_notes: normalize_optional_string(strategy_notes),
-            notes: normalize_optional_string(notes),
-            weight: existing_holding.weight,
-            name: existing_holding.name,
-            tracking_only,
-        },
-    ) {
+    match storage
+        .upsert_holding(
+            &actor,
+            Holding {
+                symbol,
+                asset_type,
+                shares,
+                avg_cost,
+                underlying: normalize_optional_string(underlying).map(|value| value.to_uppercase()),
+                option_type: normalize_optional_option_type(option_type),
+                strike_price,
+                expiration_date: normalize_optional_string(expiration_date),
+                contract_multiplier,
+                holding_horizon: normalize_optional_holding_horizon(holding_horizon),
+                strategy_notes: normalize_optional_string(strategy_notes),
+                notes: normalize_optional_string(notes),
+                weight: existing_holding.weight,
+                name: existing_holding.name,
+                tracking_only,
+            },
+        )
+        .await
+    {
         Ok(portfolio) => {
             clear_portfolio_actors_cache();
             Json(json!({
@@ -241,7 +248,7 @@ pub(crate) async fn handle_delete_holding(
     let storage = portfolio_storage(&state);
     let symbol = normalize_symbol(&symbol);
 
-    match storage.remove_holding(&actor, &symbol) {
+    match storage.remove_holding(&actor, &symbol).await {
         Ok(Some(portfolio)) => {
             clear_portfolio_actors_cache();
             Json(json!({

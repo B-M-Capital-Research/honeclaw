@@ -60,7 +60,7 @@ pub(crate) async fn handle_get_quotes(
         }
     };
 
-    let symbols = portfolio_calendar_symbols(&state, &actor);
+    let symbols = portfolio_calendar_symbols(&state, &actor).await;
     let pool = state.core.config.fmp.effective_key_pool();
     if symbols.is_empty() || pool.keys().is_empty() {
         return Json(json!({ "available": false, "quotes": [] })).into_response();
