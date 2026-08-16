@@ -1639,7 +1639,10 @@ fn topic_specific_change(topic_id: &str, event: &KeyEventItem) -> String {
     // back to the title rather than surfacing the stub.
     let matches_topic = |part: &str| {
         let lowered = part.to_lowercase();
-        topic.keywords.iter().any(|keyword| lowered.contains(keyword))
+        topic
+            .keywords
+            .iter()
+            .any(|keyword| lowered.contains(keyword))
     };
     let segments = event
         .excerpt
