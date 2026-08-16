@@ -229,7 +229,7 @@ pub(crate) async fn handle_get_daily_signal(
     headers: HeaderMap,
     AxumPath(kind): AxumPath<String>,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers) {
+    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
     }
     let Some(kind) = ReportKind::parse(&kind) else {
@@ -247,7 +247,7 @@ pub(crate) async fn handle_get_daily_signal_history(
     AxumPath(kind): AxumPath<String>,
     Query(query): Query<HistoryQuery>,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers) {
+    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
     }
     let Some(kind) = ReportKind::parse(&kind) else {

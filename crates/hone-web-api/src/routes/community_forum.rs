@@ -174,7 +174,7 @@ pub(crate) async fn handle_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -200,7 +200,7 @@ pub(crate) async fn handle_create_post(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -480,7 +480,7 @@ pub(crate) async fn handle_attachment(
     headers: HeaderMap,
     AxumPath((post_id, attachment_id)): AxumPath<(String, String)>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -540,7 +540,7 @@ async fn mutate_post<F>(state: &AppState, headers: &HeaderMap, post_id: &str, mu
 where
     F: FnOnce(&mut ForumPostRecord, &str, bool, DateTime<Utc>) -> Result<(), (StatusCode, String)>,
 {
-    let user = match crate::routes::public::require_public_user(state, headers) {
+    let user = match crate::routes::public::require_public_user(state, headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };

@@ -24,8 +24,11 @@ use crate::routes::json_error;
 use crate::state::AppState;
 
 /// 公开用户的 actor 推导。复用 public.rs 的 session 鉴权逻辑(channel="web",user_id 来自 session)。
-fn require_public_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
-    let user = crate::routes::public::require_public_user(state, headers)?;
+async fn require_public_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<ActorIdentity, Response> {
+    let user = crate::routes::public::require_public_user(state, headers).await?;
     ActorIdentity::new("web", &user.user_id, Option::<String>::None).map_err(|e| {
         json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -39,7 +42,7 @@ pub(crate) async fn handle_get_digest_context(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match require_public_actor(&state, &headers) {
+    let actor = match require_public_actor(&state, &headers).await {
         Ok(a) => a,
         Err(resp) => return resp,
     };
@@ -107,7 +110,7 @@ pub(crate) async fn handle_get_settings(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match require_public_actor(&state, &headers) {
+    let actor = match require_public_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -141,7 +144,7 @@ pub(crate) async fn handle_put_investor_style(
     headers: HeaderMap,
     Json(request): Json<InvestorStyleRequest>,
 ) -> Response {
-    let actor = match require_public_actor(&state, &headers) {
+    let actor = match require_public_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -192,7 +195,7 @@ pub(crate) async fn handle_get_company_profile(
     headers: HeaderMap,
     Query(params): Query<ProfileQuery>,
 ) -> Response {
-    let actor = match require_public_actor(&state, &headers) {
+    let actor = match require_public_actor(&state, &headers).await {
         Ok(a) => a,
         Err(resp) => return resp,
     };
@@ -228,7 +231,7 @@ pub(crate) async fn handle_refresh_digest_context(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match require_public_actor(&state, &headers) {
+    let actor = match require_public_actor(&state, &headers).await {
         Ok(a) => a,
         Err(resp) => return resp,
     };

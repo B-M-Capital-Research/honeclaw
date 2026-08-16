@@ -242,7 +242,7 @@ pub(crate) async fn handle_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -279,7 +279,7 @@ pub(crate) async fn handle_submit_candidate(
     headers: HeaderMap,
     AxumPath(id): AxumPath<String>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -299,7 +299,7 @@ pub(crate) async fn handle_review_candidate(
     AxumPath(id): AxumPath<String>,
     Json(request): Json<ReviewResearchItemRequest>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -321,7 +321,7 @@ pub(crate) async fn handle_upload(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -409,7 +409,7 @@ pub(crate) async fn handle_update(
     AxumPath(id): AxumPath<String>,
     Json(request): Json<UpdateResearchItemRequest>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -428,7 +428,7 @@ pub(crate) async fn handle_delete(
     headers: HeaderMap,
     AxumPath(id): AxumPath<String>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -445,7 +445,7 @@ pub(crate) async fn handle_download(
     headers: HeaderMap,
     AxumPath(id): AxumPath<String>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };

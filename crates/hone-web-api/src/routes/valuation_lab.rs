@@ -305,7 +305,7 @@ pub(crate) async fn handle_get_valuation_lab(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers) {
+    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
     }
     let snapshot = read_snapshot(&state)

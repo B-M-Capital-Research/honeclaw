@@ -319,7 +319,7 @@ pub(crate) async fn handle_stripe_webhook(
             }
         },
     };
-    if let Err(error) = state.billing.record_webhook_event(webhook) {
+    if let Err(error) = state.billing.record_webhook_event(webhook).await {
         return crate::routes::json_error(
             StatusCode::CONFLICT,
             format!("Stripe webhook 收件失败: {error}"),
@@ -359,7 +359,7 @@ pub(crate) async fn handle_create_checkout(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let entitlements = match state.billing.list_user_entitlements(&user.user_id) {
+    let entitlements = match state.billing.list_user_entitlements(&user.user_id).await {
         Ok(value) => value,
         Err(error) => {
             return crate::routes::json_error(
@@ -530,7 +530,7 @@ pub(crate) async fn handle_create_portal(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let entitlements = match state.billing.list_user_entitlements(&user.user_id) {
+    let entitlements = match state.billing.list_user_entitlements(&user.user_id).await {
         Ok(value) => value,
         Err(error) => {
             return crate::routes::json_error(
@@ -931,6 +931,7 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
             let claimed = match state
                 .billing
                 .claim_webhook_event(BILLING_PROVIDER_STRIPE, &event_id)
+                .await
             {
                 Ok(value) => value,
                 Err(error) => {
@@ -947,23 +948,30 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
                     Ok(value) => value,
                     Err(error) => {
                         let message = format!("Stripe 标准事件反序列化失败: {error}");
-                        let _ = state.billing.finish_webhook_event(
-                            BILLING_PROVIDER_STRIPE,
-                            &event_id,
-                            claim_attempt,
-                            Err(&message),
-                        );
+                        let _ = state
+                            .billing
+                            .finish_webhook_event(
+                                BILLING_PROVIDER_STRIPE,
+                                &event_id,
+                                claim_attempt,
+                                Err(&message),
+                            )
+                            .await;
                         return;
                     }
                 };
-            match apply_stripe_entitlement(&state, &event) {
+            match apply_stripe_entitlement(&state, &event).await {
                 Ok(outcome) => {
-                    match state.billing.finish_webhook_event(
-                        BILLING_PROVIDER_STRIPE,
-                        &event_id,
-                        claim_attempt,
-                        Ok(()),
-                    ) {
+                    match state
+                        .billing
+                        .finish_webhook_event(
+                            BILLING_PROVIDER_STRIPE,
+                            &event_id,
+                            claim_attempt,
+                            Ok(()),
+                        )
+                        .await
+                    {
                         Err(error) => {
                             warn!(%event_id, %error, "Stripe billing event completion failed");
                         }
@@ -977,12 +985,15 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
                     return;
                 }
                 Err(error) => {
-                    let _ = state.billing.finish_webhook_event(
-                        BILLING_PROVIDER_STRIPE,
-                        &event_id,
-                        claim_attempt,
-                        Err(&error),
-                    );
+                    let _ = state
+                        .billing
+                        .finish_webhook_event(
+                            BILLING_PROVIDER_STRIPE,
+                            &event_id,
+                            claim_attempt,
+                            Err(&error),
+                        )
+                        .await;
                     if attempt == 3 {
                         warn!(%event_id, %error, "Stripe billing event exhausted retries");
                         return;
@@ -994,7 +1005,7 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
     });
 }
 
-fn apply_stripe_entitlement(
+async fn apply_stripe_entitlement(
     state: &AppState,
     event: &StripeEntitlementEvent,
 ) -> Result<BillingEntitlementUpsertOutcome, String> {
@@ -1030,6 +1041,7 @@ fn apply_stripe_entitlement(
     let existing = state
         .billing
         .find_entitlement(BILLING_PROVIDER_STRIPE, &event.provider_reference_id)
+        .await
         .map_err(|error| error.to_string())?;
     if existing
         .as_ref()
@@ -1105,6 +1117,7 @@ fn apply_stripe_entitlement(
                 .unwrap_or_else(|| event.event_at.clone()),
             updated_at: now,
         })
+        .await
         .map_err(|error| error.to_string())
 }
 

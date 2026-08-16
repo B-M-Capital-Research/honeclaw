@@ -43,8 +43,11 @@ fn serialize_subscription(job: &CronJob) -> serde_json::Value {
     })
 }
 
-fn public_web_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
-    let user = require_public_user(state, headers)?;
+async fn public_web_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<ActorIdentity, Response> {
+    let user = require_public_user(state, headers).await?;
     ActorIdentity::new("web", user.user_id, None::<String>)
         .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))
 }
@@ -53,7 +56,7 @@ pub(crate) async fn handle_list_subscriptions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -91,7 +94,7 @@ pub(crate) async fn handle_update_subscription(
     Path(job_id): Path<String>,
     Json(request): Json<SubscriptionUpdateRequest>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -154,7 +157,7 @@ pub(crate) async fn handle_unsubscribe_subscription(
     headers: HeaderMap,
     Path(job_id): Path<String>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };

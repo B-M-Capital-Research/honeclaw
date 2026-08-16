@@ -120,7 +120,7 @@ pub(crate) async fn handle_get_finance_calendar(
     headers: HeaderMap,
     Query(query): Query<FinanceCalendarQuery>,
 ) -> Response {
-    let (actor, _) = match require_public_actor(&state, &headers) {
+    let (actor, _) = match require_public_actor(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -142,7 +142,7 @@ pub(crate) async fn handle_send_finance_calendar(
     headers: HeaderMap,
     Json(request): Json<FinanceCalendarSendRequest>,
 ) -> Response {
-    let (actor, user_id) = match require_public_actor(&state, &headers) {
+    let (actor, user_id) = match require_public_actor(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -310,11 +310,11 @@ fn event_kind_sort_key(kind: &str) -> u8 {
     }
 }
 
-fn require_public_actor(
+async fn require_public_actor(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<(ActorIdentity, String), Response> {
-    let user = crate::routes::public::require_public_user(state, headers)?;
+    let user = crate::routes::public::require_public_user(state, headers).await?;
     let user_id = user.user_id.clone();
     let actor = ActorIdentity::new("web", &user_id, Option::<String>::None).map_err(|e| {
         json_error(

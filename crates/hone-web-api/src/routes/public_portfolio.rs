@@ -37,8 +37,8 @@ pub(crate) struct PublicHoldingRequest {
     pub notes: Option<String>,
 }
 
-fn require_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
-    let user = crate::routes::public::require_public_user(state, headers)?;
+async fn require_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
+    let user = crate::routes::public::require_public_user(state, headers).await?;
     ActorIdentity::new("web", &user.user_id, Option::<String>::None)
         .map_err(|error| json_error(StatusCode::BAD_REQUEST, error.to_string()))
 }
@@ -87,7 +87,7 @@ pub(crate) async fn handle_get_portfolio(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match require_actor(&state, &headers) {
+    let actor = match require_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -107,7 +107,7 @@ pub(crate) async fn handle_create_holding(
     headers: HeaderMap,
     Json(request): Json<PublicHoldingRequest>,
 ) -> Response {
-    let actor = match require_actor(&state, &headers) {
+    let actor = match require_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -155,7 +155,7 @@ pub(crate) async fn handle_update_holding(
     Path(symbol): Path<String>,
     Json(request): Json<PublicHoldingRequest>,
 ) -> Response {
-    let actor = match require_actor(&state, &headers) {
+    let actor = match require_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -192,7 +192,7 @@ pub(crate) async fn handle_delete_holding(
     headers: HeaderMap,
     Path(symbol): Path<String>,
 ) -> Response {
-    let actor = match require_actor(&state, &headers) {
+    let actor = match require_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };

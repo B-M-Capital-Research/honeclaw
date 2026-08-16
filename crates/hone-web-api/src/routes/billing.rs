@@ -108,7 +108,7 @@ pub(crate) async fn handle_billing_status(
         Ok(user) => user,
         Err(response) => return response,
     };
-    match public_billing_summary(&state, &user) {
+    match public_billing_summary(&state, &user).await {
         Ok(summary) => Json(json!({
             "billing": summary,
             "config": PublicBillingConfig::from_env(&headers),
@@ -129,7 +129,7 @@ pub(crate) async fn handle_billing_entitlements(
         Ok(user) => user,
         Err(response) => return response,
     };
-    match public_billing_summary(&state, &user) {
+    match public_billing_summary(&state, &user).await {
         Ok(summary) => Json(json!({ "entitlements": summary.entitlements })).into_response(),
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -138,7 +138,7 @@ pub(crate) async fn handle_billing_entitlements(
     }
 }
 
-pub(crate) fn user_has_product_access(
+pub(crate) async fn user_has_product_access(
     state: &AppState,
     user: &WebInviteUser,
 ) -> Result<bool, String> {
@@ -151,18 +151,20 @@ pub(crate) fn user_has_product_access(
         WEB_IDENTITY_INTERNATIONAL_EMAIL => state
             .billing
             .user_has_paid_access(&user.user_id)
+            .await
             .map_err(|error| error.to_string()),
         _ => Ok(false),
     }
 }
 
-pub(crate) fn public_billing_summary(
+pub(crate) async fn public_billing_summary(
     state: &AppState,
     user: &WebInviteUser,
 ) -> Result<PublicBillingSummary, String> {
     let entitlements = state
         .billing
         .list_user_entitlements(&user.user_id)
+        .await
         .map_err(|error| error.to_string())?;
     let active_recurring_count = entitlements
         .iter()
@@ -171,7 +173,7 @@ pub(crate) fn public_billing_summary(
                 && value.grants_paid_access()
         })
         .count();
-    let access_granted = user_has_product_access(state, user)?;
+    let access_granted = user_has_product_access(state, user).await?;
     Ok(PublicBillingSummary {
         access_granted,
         has_duplicate_active_subscriptions: active_recurring_count > 1,
@@ -210,6 +212,7 @@ pub(crate) fn spawn_billing_recovery_worker(state: Arc<AppState>) -> tokio::task
             let event_ids = match state
                 .billing
                 .claimable_webhook_event_ids(BILLING_PROVIDER_STRIPE, 100)
+                .await
             {
                 Ok(value) => value,
                 Err(error) => {

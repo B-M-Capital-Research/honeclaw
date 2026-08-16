@@ -577,7 +577,7 @@ pub(crate) async fn handle_get_key_event_chains(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers) {
+    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
     }
     let mut snapshot = read_snapshot(&state).await.unwrap_or_else(empty_snapshot);

@@ -784,7 +784,7 @@ pub(crate) async fn handle_bootstrap(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -823,7 +823,7 @@ pub(crate) async fn handle_history(
     headers: HeaderMap,
     Query(query): Query<PublicHistoryQuery>,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -860,7 +860,7 @@ pub(crate) async fn handle_chat(
     headers: HeaderMap,
     Json(request): Json<PublicChatRequest>,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1107,7 +1107,7 @@ pub(crate) async fn handle_openai_chat_completions(
     headers: HeaderMap,
     Json(request): Json<OpenAiChatCompletionRequest>,
 ) -> Response {
-    let user = match require_public_api_key_user(&state, &headers) {
+    let user = match require_public_api_key_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1158,7 +1158,7 @@ pub(crate) async fn handle_upload(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1553,7 +1553,7 @@ pub(crate) async fn handle_public_image(
     headers: HeaderMap,
     mut query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1572,7 +1572,7 @@ pub(crate) async fn handle_public_file(
     headers: HeaderMap,
     mut query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1656,7 +1656,7 @@ pub(crate) async fn handle_events(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -1698,12 +1698,12 @@ fn filter_public_push(
     }
 }
 
-pub(crate) fn require_public_user(
+pub(crate) async fn require_public_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
     let user = require_public_session_user(state, headers)?;
-    require_user_paid_access(state, &user)?;
+    require_user_paid_access(state, &user).await?;
     Ok(user)
 }
 
@@ -1755,11 +1755,11 @@ pub(crate) fn require_public_session_user(
     }
 }
 
-fn require_user_paid_access(
+async fn require_user_paid_access(
     state: &AppState,
     user: &hone_memory::WebInviteUser,
 ) -> Result<(), Response> {
-    match crate::routes::billing::user_has_product_access(state, user) {
+    match crate::routes::billing::user_has_product_access(state, user).await {
         Ok(true) => Ok(()),
         Ok(false) => Err(crate::routes::json_error(
             StatusCode::PAYMENT_REQUIRED,
@@ -1772,7 +1772,7 @@ fn require_user_paid_access(
     }
 }
 
-fn require_public_api_key_user(
+async fn require_public_api_key_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
@@ -1784,7 +1784,7 @@ fn require_public_api_key_user(
     };
     match state.web_auth.find_invite_user_by_api_key(&api_key) {
         Ok(Some(user)) => {
-            require_user_paid_access(state, &user)?;
+            require_user_paid_access(state, &user).await?;
             Ok(user)
         }
         Ok(None) => Err(crate::routes::json_error(
@@ -2166,13 +2166,13 @@ async fn to_public_auth_user(
     user: hone_memory::WebInviteUser,
 ) -> PublicAuthUserInfo {
     let external_profile = state.web_auth.external_profile(user_id).unwrap_or_default();
-    let billing = crate::routes::billing::public_billing_summary(state, &user).unwrap_or(
-        crate::types::PublicBillingSummary {
+    let billing = crate::routes::billing::public_billing_summary(state, &user)
+        .await
+        .unwrap_or(crate::types::PublicBillingSummary {
             access_granted: false,
             entitlements: Vec::new(),
             has_duplicate_active_subscriptions: false,
-        },
-    );
+        });
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::local_now().format("%F").to_string();
