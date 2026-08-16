@@ -4386,7 +4386,8 @@ WHERE run_id = (
     AND execution_status = 'running'
     AND message_send_status = 'pending'
     AND detail->>'phase' = 'started'
-    AND executed_at >= $15
+    -- 同上按真实时刻比较:此处 `$15` 目前也是北京时间(碰巧与列一致),但不要依赖这个巧合。
+    AND executed_at::timestamptz >= $15::text::timestamptz
   ORDER BY executed_at DESC, run_id DESC
   LIMIT 1
 )
@@ -4571,7 +4572,15 @@ WHERE actor_channel = $4
   AND execution_status = 'running'
   AND message_send_status = 'pending'
   AND detail->>'phase' = 'started'
-  AND executed_at < $5
+  -- 必须按**真实时刻**比较,不能用文本字典序。`executed_at` 是 TEXT,写入时用北京时间
+  -- (`beijing_now_rfc3339()`,偏移 `+08:00`),而调用方的 `stale_before` 是
+  -- `Utc::now().to_rfc3339()`(偏移 `+00:00`,见 hone-scheduler/src/lib.rs:74)。
+  -- 字典序只比墙钟数字、完全无视偏移,于是一条北京时间的行会显得比 UTC 阈值"新"
+  -- 最多 8 小时,回收因此被推迟同样长的时间。
+  -- 2026-08-16 生产实测:一条已经 613 分钟未收口的行,文本比较判 false、
+  -- 时刻比较判 true;`recovered_stale_pending` 自 2026-08-11 起再未新增,
+  -- 同时积压了 55 行僵尸 running。
+  AND executed_at::timestamptz < $5::text::timestamptz
 "#,
                 &[
                     &interrupted_at,
@@ -4603,8 +4612,10 @@ SELECT
   execution_status, message_send_status,
   should_deliver, delivered, response_preview, error_message, detail
 FROM cloud_cron_job_runs
-WHERE ($1::text IS NULL OR executed_at >= $1)
-  AND ($2::text IS NULL OR executed_at <= $2)
+-- 同上:按真实时刻比较。`since` / `until` 由调用方给,偏移不保证与列的 `+08:00` 一致,
+-- 文本字典序会在跨时区时给出错误结果。
+WHERE ($1::text IS NULL OR executed_at::timestamptz >= $1::text::timestamptz)
+  AND ($2::text IS NULL OR executed_at::timestamptz <= $2::text::timestamptz)
   AND ($3::text IS NULL OR actor_channel = $3)
   AND ($4::text IS NULL OR actor_user_id = $4)
   AND ($5::text IS NULL OR job_id = $5)
