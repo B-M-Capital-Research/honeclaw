@@ -61,30 +61,15 @@ pub(crate) async fn handle_list_invites(State(state): State<Arc<AppState>>) -> i
         return Json(json!({ "invites": invites }));
     }
 
-    let state_for_worker = state.clone();
-    let invites_result = tokio::time::timeout(
-        Duration::from_secs(8),
-        tokio::task::spawn_blocking(move || {
-            state_for_worker
-                .web_auth
-                .list_invite_users()
-                .map(|invites| {
-                    invites
-                        .into_iter()
-                        .map(|invite| to_invite_info_summary(&state_for_worker, invite))
-                        .collect::<Vec<_>>()
-                })
-        }),
-    )
-    .await;
+    let invites_result =
+        tokio::time::timeout(Duration::from_secs(8), state.web_auth.list_invite_users()).await;
     let invites = match invites_result {
-        Ok(Ok(Ok(invites))) => invites,
-        Ok(Ok(Err(error))) => {
-            warn!(%error, "failed to list web invite users");
-            Vec::new()
-        }
+        Ok(Ok(invites)) => invites
+            .into_iter()
+            .map(|invite| to_invite_info_summary(&state, invite))
+            .collect(),
         Ok(Err(error)) => {
-            warn!(%error, "web invite list worker failed");
+            warn!(%error, "failed to list web invite users");
             Vec::new()
         }
         Err(_) => {
@@ -107,7 +92,7 @@ pub(crate) async fn handle_create_invite(
         Err(response) => return response,
     };
 
-    match state.web_auth.create_invite_user(&phone_number) {
+    match state.web_auth.create_invite_user(&phone_number).await {
         Ok(invite) => {
             clear_web_invites_cache();
             let user_id = invite.user_id.clone();
@@ -128,7 +113,7 @@ pub(crate) async fn handle_disable_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.set_invite_revoked(&user_id, true) {
+    match state.web_auth.set_invite_revoked(&user_id, true).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
@@ -152,7 +137,7 @@ pub(crate) async fn handle_enable_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.set_invite_revoked(&user_id, false) {
+    match state.web_auth.set_invite_revoked(&user_id, false).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
@@ -176,7 +161,7 @@ pub(crate) async fn handle_reset_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.reset_invite_code(&user_id) {
+    match state.web_auth.reset_invite_code(&user_id).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
@@ -200,7 +185,7 @@ pub(crate) async fn handle_get_api_key(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.ensure_api_key_for_user(&user_id) {
+    match state.web_auth.ensure_api_key_for_user(&user_id).await {
         Ok(Some(invite)) => {
             clear_web_invites_cache();
             Json(json!({
@@ -223,7 +208,7 @@ pub(crate) async fn handle_reset_api_key(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.reset_api_key_for_user(&user_id) {
+    match state.web_auth.reset_api_key_for_user(&user_id).await {
         Ok(Some(invite)) => {
             clear_web_invites_cache();
             Json(json!({
@@ -310,6 +295,7 @@ async fn to_invite_info(
     let active_session_count = state
         .web_auth
         .count_active_sessions_for_user(user_id)
+        .await
         .unwrap_or(0);
     let enabled = invite.revoked_at.is_none();
 

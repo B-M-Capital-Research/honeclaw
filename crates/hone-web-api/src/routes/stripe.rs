@@ -351,11 +351,11 @@ pub(crate) async fn handle_create_checkout(
     if let Err(response) = require_browser_mutation(&headers, &config.public_base_url) {
         return response;
     }
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let profile = match verified_checkout_profile(&state, &user.user_id) {
+    let profile = match verified_checkout_profile(&state, &user.user_id).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -526,7 +526,7 @@ pub(crate) async fn handle_create_portal(
     if let Err(response) = require_browser_mutation(&headers, &config.public_base_url) {
         return response;
     }
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -1012,6 +1012,7 @@ async fn apply_stripe_entitlement(
     let user = state
         .web_auth
         .find_invite_user(&event.user_id)
+        .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "Stripe webhook 对应的 HONE 用户不存在".to_string())?;
     if user.revoked_at.is_some() {
@@ -1020,6 +1021,7 @@ async fn apply_stripe_entitlement(
     let profile = state
         .web_auth
         .external_profile(&user.user_id)
+        .await
         .map_err(|error| error.to_string())?;
     if profile.identity_kind != WEB_IDENTITY_INTERNATIONAL_EMAIL {
         return Err("Stripe webhook 只能绑定国际邮箱身份".to_string());
@@ -1161,16 +1163,20 @@ fn stripe_access_state(
     }
 }
 
-fn verified_checkout_profile(
+async fn verified_checkout_profile(
     state: &AppState,
     user_id: &str,
 ) -> Result<hone_memory::WebUserExternalProfile, Response> {
-    let profile = state.web_auth.external_profile(user_id).map_err(|error| {
-        crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("读取邮箱身份失败: {error}"),
-        )
-    })?;
+    let profile = state
+        .web_auth
+        .external_profile(user_id)
+        .await
+        .map_err(|error| {
+            crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取邮箱身份失败: {error}"),
+            )
+        })?;
     if profile.identity_kind != WEB_IDENTITY_INTERNATIONAL_EMAIL
         || profile.email_address.is_none()
         || profile.email_verified_at.is_none()

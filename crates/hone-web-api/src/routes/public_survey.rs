@@ -148,7 +148,7 @@ pub(crate) async fn handle_admin_survey_report(
     Query(query): Query<AdminSurveyQuery>,
 ) -> Response {
     if let Err(response) =
-        crate::routes::public_admin::require_public_admin_for_read(&state, &headers)
+        crate::routes::public_admin::require_public_admin_for_read(&state, &headers).await
     {
         return response;
     }

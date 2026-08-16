@@ -104,7 +104,7 @@ pub(crate) async fn handle_billing_status(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -125,7 +125,7 @@ pub(crate) async fn handle_billing_entitlements(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -145,6 +145,7 @@ pub(crate) async fn user_has_product_access(
     let profile = state
         .web_auth
         .external_profile(&user.user_id)
+        .await
         .map_err(|error| error.to_string())?;
     match profile.identity_kind.as_str() {
         WEB_IDENTITY_DOMESTIC_INVITE => Ok(true),

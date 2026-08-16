@@ -246,7 +246,11 @@ pub(crate) async fn handle_list(
         Ok(user) => user,
         Err(response) => return response,
     };
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     match list_for_library(&state, &user.user_id, is_admin) {
         Ok(items) => Json(serde_json::json!({
             "items": items.into_iter().map(ResearchLibraryItem::from).collect::<Vec<_>>(),
@@ -303,7 +307,12 @@ pub(crate) async fn handle_review_candidate(
         Ok(user) => user,
         Err(response) => return response,
     };
-    if !state.web_auth.is_web_admin(&user.user_id).unwrap_or(false) {
+    if !state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false)
+    {
         return crate::routes::json_error(StatusCode::FORBIDDEN, "只有管理员可以审核社区投稿");
     }
     match review_candidate(&state, &id, request) {
@@ -375,7 +384,11 @@ pub(crate) async fn handle_upload(
         return crate::routes::json_error(StatusCode::PAYLOAD_TOO_LARGE, "单个资料最大 20 MB");
     }
     let scope = ResearchScope::parse(&input.scope);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     if matches!(scope, ResearchScope::HoneGlobal) && !is_admin {
         return crate::routes::json_error(
             StatusCode::FORBIDDEN,
@@ -413,7 +426,11 @@ pub(crate) async fn handle_update(
         Ok(user) => user,
         Err(response) => return response,
     };
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     match update_item(&state, &user.user_id, is_admin, &id, request) {
         Ok(Some(item)) => {
             Json(serde_json::json!({ "item": ResearchLibraryItem::from(item) })).into_response()
@@ -432,7 +449,11 @@ pub(crate) async fn handle_delete(
         Ok(user) => user,
         Err(response) => return response,
     };
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     match delete_item(&state, &user.user_id, is_admin, &id) {
         Ok(true) => Json(serde_json::json!({ "deleted": true })).into_response(),
         Ok(false) => crate::routes::json_error(StatusCode::NOT_FOUND, "资料不存在"),
@@ -449,7 +470,11 @@ pub(crate) async fn handle_download(
         Ok(user) => user,
         Err(response) => return response,
     };
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     let item = match find_visible(&state, &user.user_id, is_admin, &id) {
         Ok(Some(item)) => item,
         Ok(None) => return crate::routes::json_error(StatusCode::NOT_FOUND, "资料不存在"),

@@ -179,7 +179,11 @@ pub(crate) async fn handle_list(
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     match read_store(&state).await {
         Ok(store) => Json(ForumPage {
             items: visible_posts(&store, &actor_key, is_admin),
@@ -485,7 +489,11 @@ pub(crate) async fn handle_attachment(
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     let store = match read_store(&state).await {
         Ok(value) => value,
         Err(error) => return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
@@ -545,7 +553,11 @@ where
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     let _guard = FORUM_WRITE_LOCK.lock().await;
     let mut store = match read_store(state).await {
         Ok(value) => value,

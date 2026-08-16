@@ -83,9 +83,14 @@ pub(crate) async fn handle_dev_login(
     let user = match state
         .web_auth
         .find_active_invite_user_by_phone(LOCAL_DEV_LOGIN_PHONE)
+        .await
     {
         Ok(Some(user)) => user,
-        Ok(None) => match state.web_auth.create_invite_user(LOCAL_DEV_LOGIN_PHONE) {
+        Ok(None) => match state
+            .web_auth
+            .create_invite_user(LOCAL_DEV_LOGIN_PHONE)
+            .await
+        {
             Ok(user) => user,
             Err(error) => {
                 return crate::routes::json_error(
@@ -105,6 +110,7 @@ pub(crate) async fn handle_dev_login(
     if let Err(error) = state
         .web_auth
         .record_tos_acceptance(&user.user_id, TOS_VERSION)
+        .await
     {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -114,6 +120,7 @@ pub(crate) async fn handle_dev_login(
     let session = match state
         .web_auth
         .create_session_for_user(&user.user_id, SESSION_TTL_DAYS_LONG)
+        .await
     {
         Ok(Some(session)) => session,
         Ok(None) => {
@@ -129,7 +136,7 @@ pub(crate) async fn handle_dev_login(
             );
         }
     };
-    let refreshed = match state.web_auth.find_invite_user(&user.user_id) {
+    let refreshed = match state.web_auth.find_invite_user(&user.user_id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return crate::routes::json_error(
@@ -294,7 +301,7 @@ pub(crate) async fn handle_sms_send_code(
         }
     }
 
-    let should_send = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
+    let should_send = match find_active_invite_user_by_sms_phone(&state, &phone_number).await {
         Ok(value) => value.is_some(),
         Err(error) => {
             return crate::routes::json_error(
@@ -370,7 +377,7 @@ pub(crate) async fn handle_sms_login(
         return sms_login_failed(&state, &ip_key, &phone_key);
     }
 
-    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
+    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return sms_login_failed(&state, &ip_key, &phone_key);
@@ -386,6 +393,7 @@ pub(crate) async fn handle_sms_login(
     if let Err(error) = state
         .web_auth
         .record_tos_acceptance(&user.user_id, TOS_VERSION)
+        .await
     {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -406,6 +414,7 @@ pub(crate) async fn handle_sms_login(
     let session = match state
         .web_auth
         .create_session_for_user(&user.user_id, ttl_days)
+        .await
     {
         Ok(Some(session)) => session,
         Ok(None) => {
@@ -421,7 +430,7 @@ pub(crate) async fn handle_sms_login(
 
     state.public_auth_limiter.record_success(&ip_key);
     state.public_auth_limiter.record_success(&phone_key);
-    let refreshed = match state.web_auth.find_invite_user(&session.user_id) {
+    let refreshed = match state.web_auth.find_invite_user(&session.user_id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
@@ -493,6 +502,7 @@ pub(crate) async fn handle_email_send_code(
         if let Err(error) = state
             .web_auth
             .ensure_international_email_user(&email_address)
+            .await
         {
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -500,7 +510,11 @@ pub(crate) async fn handle_email_send_code(
             );
         }
     }
-    let code = match state.web_auth.begin_email_verification(&email_address, 10) {
+    let code = match state
+        .web_auth
+        .begin_email_verification(&email_address, 10)
+        .await
+    {
         Ok(value) => value,
         Err(error) if error.to_string().contains("邮箱格式不合法") => {
             return crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法");
@@ -575,6 +589,7 @@ pub(crate) async fn handle_email_login(
     let user_id = match state
         .web_auth
         .verify_email_code(&email_address, &verify_code)
+        .await
     {
         Ok(hone_memory::EmailVerificationResult::Verified { user_id }) => user_id,
         Ok(hone_memory::EmailVerificationResult::Expired) => {
@@ -600,7 +615,11 @@ pub(crate) async fn handle_email_login(
             );
         }
     };
-    if let Err(error) = state.web_auth.record_tos_acceptance(&user_id, TOS_VERSION) {
+    if let Err(error) = state
+        .web_auth
+        .record_tos_acceptance(&user_id, TOS_VERSION)
+        .await
+    {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("记录协议接受失败: {error}"),
@@ -616,7 +635,11 @@ pub(crate) async fn handle_email_login(
     } else {
         WEB_SESSION_MAX_AGE_SHORT_SECS
     };
-    let session = match state.web_auth.create_session_for_user(&user_id, ttl_days) {
+    let session = match state
+        .web_auth
+        .create_session_for_user(&user_id, ttl_days)
+        .await
+    {
         Ok(Some(session)) => session,
         Ok(None) => {
             return crate::routes::json_error(StatusCode::UNAUTHORIZED, "账号不可用，请联系管理员");
@@ -628,7 +651,7 @@ pub(crate) async fn handle_email_login(
             );
         }
     };
-    let user = match state.web_auth.find_invite_user(&user_id) {
+    let user = match state.web_auth.find_invite_user(&user_id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
@@ -676,14 +699,15 @@ fn strip_china_country_code(phone_number: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn find_active_invite_user_by_sms_phone(
+async fn find_active_invite_user_by_sms_phone(
     state: &AppState,
     phone_number: &str,
 ) -> Result<Option<hone_memory::WebInviteUser>, HoneError> {
     for candidate in public_sms_phone_candidates(phone_number) {
         if let Some(user) = state
             .web_auth
-            .find_active_invite_user_by_phone(&candidate)?
+            .find_active_invite_user_by_phone(&candidate)
+            .await?
         {
             return Ok(Some(user));
         }
@@ -741,7 +765,7 @@ pub(crate) async fn handle_logout(
     headers: HeaderMap,
 ) -> Response {
     if let Some(token) = read_session_token(&headers) {
-        let _ = state.web_auth.delete_session(&token);
+        let _ = state.web_auth.delete_session(&token).await;
     }
 
     logout_success_response(&headers)
@@ -759,7 +783,7 @@ fn logout_success_response(headers: &HeaderMap) -> Response {
 }
 
 pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    match require_public_session_user(&state, &headers) {
+    match require_public_session_user(&state, &headers).await {
         Ok(user) => {
             let user_id = user.user_id.clone();
             Json(json!({
@@ -884,7 +908,7 @@ pub(crate) async fn handle_chat(
     let earnings_request =
         requested_workflow.is_some() || is_earnings_research_skill_command(&message);
     let earnings_admin = if earnings_request {
-        match state.web_auth.is_web_admin(&user.user_id) {
+        match state.web_auth.is_web_admin(&user.user_id).await {
             Ok(value) => value,
             Err(error) => {
                 return crate::routes::json_error(
@@ -1704,12 +1728,12 @@ pub(crate) async fn require_public_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
-    let user = require_public_session_user(state, headers)?;
+    let user = require_public_session_user(state, headers).await?;
     require_user_paid_access(state, &user).await?;
     Ok(user)
 }
 
-pub(crate) fn require_public_session_user(
+pub(crate) async fn require_public_session_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
@@ -1720,7 +1744,7 @@ pub(crate) fn require_public_session_user(
             "未登录",
         ));
     };
-    match state.web_auth.authenticate_session_detailed(&token) {
+    match state.web_auth.authenticate_session_detailed(&token).await {
         Ok(WebSessionAuthResult::Authenticated(user)) => Ok(user),
         Ok(WebSessionAuthResult::Missing) => {
             warn!("public auth rejected: session token not found");
@@ -1784,7 +1808,7 @@ async fn require_public_api_key_user(
             "缺少 Authorization: Bearer API Key",
         ));
     };
-    match state.web_auth.find_invite_user_by_api_key(&api_key) {
+    match state.web_auth.find_invite_user_by_api_key(&api_key).await {
         Ok(Some(user)) => {
             require_user_paid_access(state, &user).await?;
             Ok(user)
@@ -2167,7 +2191,11 @@ async fn to_public_auth_user(
     user_id: &str,
     user: hone_memory::WebInviteUser,
 ) -> PublicAuthUserInfo {
-    let external_profile = state.web_auth.external_profile(user_id).unwrap_or_default();
+    let external_profile = state
+        .web_auth
+        .external_profile(user_id)
+        .await
+        .unwrap_or_default();
     let billing = crate::routes::billing::public_billing_summary(state, &user)
         .await
         .unwrap_or(crate::types::PublicBillingSummary {
@@ -2217,7 +2245,7 @@ async fn to_public_auth_user(
             .as_deref()
             .map(mask_email_address),
         billing,
-        is_admin: state.web_auth.is_web_admin(user_id).unwrap_or(false),
+        is_admin: state.web_auth.is_web_admin(user_id).await.unwrap_or(false),
     }
 }
 
