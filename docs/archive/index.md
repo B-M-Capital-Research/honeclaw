@@ -10,7 +10,7 @@ Last updated: 2026-08-16
 - Date: 2026-08-16
 - Plan: `docs/archive/plans/storage-api-async-2026-08-16.md`
 - Handoff: intentionally omitted per task contract
-- Related PRs / commits: local module sequence `7e3f0731` through `afd25eaf`; no PR,
+- Related PRs / commits: local module sequence `7e3f0731` through `c58e8991`; no PR,
   release, tag, or deployment
 - Related runbooks / regressions: full workspace all-target tests; 93 ignored
   PostgreSQL memory tests; CI-safe regression suite; 486 Web tests; delivered-push
