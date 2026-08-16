@@ -895,14 +895,14 @@ mod terminal_stream_tests {
         );
 
         observer.on_final_content_delta(" \n\t").await;
-        observer.on_final_content_delta("数据时间：北京").await;
+        observer.on_final_content_delta("数据时间：运行时").await;
         observer
-            .on_final_content_delta("时间 2026-07-18 21:05；行情口径：报价源时间：北京")
+            .on_final_content_delta("时区 2026-07-18 21:05；行情口径：报价源时间：运行时")
             .await;
         assert!(emitter.events.lock().expect("captured events").is_empty());
 
         observer
-            .on_final_content_delta("时间 2026-07-18 04:00（最新可得，非逐笔）\n\n## 结论")
+            .on_final_content_delta("时区 2026-07-18 04:00（最新可得，非逐笔）\n\n## 结论")
             .await;
         observer
             .on_final_content_delta("\nCRWV 与英伟达关系紧密。")

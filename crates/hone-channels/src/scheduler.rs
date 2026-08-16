@@ -1345,7 +1345,10 @@ fn heartbeat_reference_now_english_text(reference_now: DateTime<FixedOffset>) ->
 }
 
 fn heartbeat_reference_now_iso_text(reference_now: DateTime<FixedOffset>) -> String {
-    reference_now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
+    reference_now
+        .with_second(0)
+        .expect("zero seconds is valid")
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
 }
 
 fn normalize_heartbeat_current_time_context(
@@ -5644,9 +5647,10 @@ mod tests {
         assert!(execution.should_deliver);
         assert!(execution.error.is_none());
         assert!(
-            execution
-                .content
-                .contains("系统当前时间：2026年7月7日 23:00 运行时时区"),
+            execution.content.contains(&format!(
+                "系统当前时间：2026年7月7日 23:00 {} 时间",
+                hone_core::runtime_timezone_name()
+            )),
             "{}",
             execution.content
         );

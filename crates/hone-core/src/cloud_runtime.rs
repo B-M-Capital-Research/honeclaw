@@ -1563,10 +1563,6 @@ CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_time
   ON cloud_cron_job_runs(job_id, executed_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_time
   ON cloud_cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_instant
-  ON cloud_cron_job_runs(job_id, (executed_at::timestamptz) DESC, run_id DESC);
-CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_instant
-  ON cloud_cron_job_runs(actor_channel, actor_user_id, (executed_at::timestamptz) DESC);
 CREATE TABLE IF NOT EXISTS cloud_web_push_messages (
   actor_storage_key TEXT NOT NULL,
   push_id TEXT NOT NULL,
@@ -1580,8 +1576,6 @@ CREATE TABLE IF NOT EXISTS cloud_web_push_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_web_push_actor_time
   ON cloud_web_push_messages(actor_storage_key, created_at DESC, push_id DESC);
-CREATE INDEX IF NOT EXISTS idx_cloud_web_push_actor_instant
-  ON cloud_web_push_messages(actor_storage_key, (created_at::timestamptz) DESC, push_id DESC);
 CREATE TABLE IF NOT EXISTS cloud_sessions (
   session_id TEXT PRIMARY KEY,
   actor_storage_key TEXT NOT NULL,
@@ -1704,15 +1698,6 @@ CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_processing
   ON billing_webhook_events(processing_state, received_at);
 CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
   ON billing_webhook_events(provider, processing_state, processing_started_at, received_at);
-CREATE INDEX IF NOT EXISTS idx_billing_entitlements_updated_instant
-  ON billing_entitlements(user_id, (updated_at::timestamptz) DESC, entitlement_id DESC);
-CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry_instant
-  ON billing_webhook_events(
-    provider,
-    processing_state,
-    (processing_started_at::timestamptz),
-    (received_at::timestamptz)
-  );
 CREATE TABLE IF NOT EXISTS cloud_llm_audit_records (
   id TEXT PRIMARY KEY,
   actor_storage_key TEXT,

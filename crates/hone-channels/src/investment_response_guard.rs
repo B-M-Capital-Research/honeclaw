@@ -8271,13 +8271,19 @@ fn nearest_past_or_current_weekday(date: chrono::NaiveDate, weekday: Weekday) ->
 }
 
 fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<String> {
+    market_move_temporal_context_in(user_input, answer_time, &hone_core::runtime_timezone())
+}
+
+fn market_move_temporal_context_in(
+    user_input: &str,
+    answer_time: &str,
+    runtime_timezone: &hone_core::RuntimeTimezone,
+) -> Option<String> {
     if !is_time_sensitive_price_move_question(user_input) {
         return None;
     }
     let naive = NaiveDateTime::parse_from_str(answer_time, "%Y-%m-%d %H:%M").ok()?;
-    let local = hone_core::runtime_timezone()
-        .from_local_datetime(&naive)
-        .earliest()?;
+    let local = runtime_timezone.from_local_datetime(&naive).earliest()?;
     let (market_timezone, explicit_market_scope) = market_calendar_scope(user_input);
     let market_timezone_name = market_timezone.name();
     let market_local = local.with_timezone(&market_timezone);
@@ -8320,7 +8326,7 @@ fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<S
          涨跌归因必须先锁定“对象 / 市场范围 + 用户所指目标时段”，再核验该对象在目标时段是否真的发生用户所说的跌幅，最后才搜索同一绝对市场本地日期的事件原因。用户明确说出的日期、星期或时段优先，不能因为最新 quote 属于另一日期，就把问题静默改答成前一日、后一日或别的波动。\n\
          大盘题先用当前轮代表指数或 ETF 区分整体、成长/科技、小盘与具体板块；需要直接取代表 ETF 行情时，按 DataFetch 真实 schema 使用 data_type=\"quote\" + symbol（或 ticker）字段，不要把 SPY / QQQ / DIA / IWM 放进仅用于 search 的 query 字段。单股题使用同代码证据。latest quote 的涨跌幅只证明其自身 provider timestamp 对应的快照，不能证明另一个历史交易日。若用户说“大跌”而宽基指数不支持，应明确指出“宽基与用户观察范围不一致”，继续核验板块/个股范围或做最小澄清，不能擅自挑另一天的大跌来替换问题。\n\
          原因结论只使用明确覆盖同一对象与目标日期的当前 Web/news/公告原文；标题相关但日期、对象或方向不一致时不算因果证据。证据不足仍要先回答已核验的实际涨跌与范围，并写“原因本轮未完全核验”，不得只返回通用失败，也不得把推断写成已确认触发因素。",
-        hone_core::runtime_timezone_name(),
+        runtime_timezone.name(),
         local.format("%Y-%m-%d %H:%M"),
         chinese_weekday(local.weekday()),
         scope_note,
@@ -11589,8 +11595,8 @@ mod tests {
         has_matching_symbol_data, investment_contract_failure_message,
         investment_preflight_failure_message, is_portfolio_scope_request,
         is_strict_quote_only_request, market_benchmark_symbols, market_move_temporal_context,
-        market_search_date_at, matching_quote_fact, matching_symbol_objects_or_error,
-        missing_deep_crypto_sections, missing_deep_fund_sections,
+        market_move_temporal_context_in, market_search_date_at, matching_quote_fact,
+        matching_symbol_objects_or_error, missing_deep_crypto_sections, missing_deep_fund_sections,
         missing_deep_single_stock_sections, missing_investment_response_sections,
         normalized_company_financial_evidence, normalized_dated_event_evidence,
         normalized_fund_holdings_evidence, normalized_portfolio_snapshot, numeric_probe_symbols,
@@ -13514,12 +13520,20 @@ mod tests {
 
     #[test]
     fn market_move_context_anchors_weekend_and_named_weekday_without_claiming_a_session() {
-        let context = market_move_temporal_context("美股周五为什么暴跌", "2026-07-26 06:15")
-            .expect("time-sensitive move context");
+        let runtime_timezone =
+            hone_core::RuntimeTimezone::parse_iana("America/Los_Angeles").unwrap();
+        let context = market_move_temporal_context_in(
+            "美股周五为什么暴跌",
+            "2026-07-26 06:15",
+            &runtime_timezone,
+        )
+        .expect("time-sensitive move context");
 
-        assert!(context.contains("Session 运行时时区：2026-07-26 06:15 周日"));
+        assert!(
+            context.contains("Session 运行时时区（America/Los_Angeles）：2026-07-26 06:15 周日")
+        );
         assert!(context.contains("当前原话明确指向 America/New_York"));
-        assert!(context.contains("对应市场本地民用时间：2026-07-25 18:15 周六"));
+        assert!(context.contains("对应市场本地民用时间：2026-07-26 09:15 周日"));
         assert!(context.contains("2026-07-24 周五"));
         assert!(context.contains("2026-07-23 周四"));
         assert!(context.contains("当前原话提到周五"));

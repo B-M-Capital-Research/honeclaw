@@ -1,6 +1,6 @@
 use super::*;
 use crate::event::{EventKind, MarketEvent, Severity};
-use chrono::{FixedOffset, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use hone_core::ActorIdentity;
 use tempfile::tempdir;
 
@@ -339,11 +339,13 @@ fn render_digest_includes_macro_time_when_values_are_missing() {
         crate::renderer::RenderFormat::Plain,
     );
 
-    let expected_time = occurred_at
-        .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap())
+    let expected_time = hone_core::local_time_at(occurred_at)
         .format("%m-%d %H:%M")
         .to_string();
-    let needle = format!("[US] ISM Manufacturing PMI (Apr) · 待公布 {expected_time} UTC+8");
+    let needle = format!(
+        "[US] ISM Manufacturing PMI (Apr) · 待公布 {expected_time} {}",
+        hone_core::runtime_timezone_name()
+    );
     assert!(body.contains(&needle), "body = {body}");
 }
 

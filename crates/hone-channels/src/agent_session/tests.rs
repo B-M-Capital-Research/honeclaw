@@ -8974,9 +8974,10 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
             let prefix = configured.content.as_str();
             assert!(prefix.starts_with("数据时间：运行时时区 "), "{prefix}");
             assert!(
-                prefix.ends_with(
-                    "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
-                ),
+                prefix.ends_with(&format!(
+                    "；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
+                    hone_core::runtime_timezone_name()
+                )),
                 "{prefix}"
             );
         } else {
@@ -9077,9 +9078,10 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
         configured.content
     );
     assert!(
-        configured
-            .content
-            .ends_with("；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"),
+        configured.content.ends_with(&format!(
+            "；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
+            hone_core::runtime_timezone_name()
+        )),
         "{}",
         configured.content
     );
