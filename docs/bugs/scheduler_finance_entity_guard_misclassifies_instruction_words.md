@@ -3,8 +3,25 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed（代码级，待部署复核）
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 代码级修复（2026-08-16 CST）
+
+- 本轮 `bug-2` 补齐了 scheduler / heartbeat 任务正文里仍会漏网的概念词语境：
+  - `13F` 现在在非显式 ticker 语境下统一按披露表单处理，不再进入证券解析。
+  - `AI`、`SSD`、`NAND`、`DRAM`、`HBM`、`GPU`、`CPU`、`ASIC`、`CPO`、`PCB` 在 `flash / storage / infrastructure / supply chain / 产业链 / 行业动态 / 主题 / 日报 / 要闻 / 观察 / 赛道` 等产品、主题或行业语境下不再被当成证券代码。
+  - `PCE`、`GDP`、`FOMC`、`PMI`、`NFP`、`SEC`、`FDA`、`NASA`、`PDUFA` 在 `13F / disclosure / filing / 宏观 / 公开披露 / 公告 / 操作 / 纪要 / 降息 / 概率` 等披露或宏观语境下继续保持非证券解释。
+- 新增回归覆盖：
+  - `scheduler_storage_chain_prompt_does_not_promote_theme_acronyms_to_tickers`
+  - `scheduler_disclosure_prompt_does_not_treat_13f_as_a_security`
+- 验证通过：
+  - `cargo test -p hone-channels scheduler_storage_chain_prompt_does_not_promote_theme_acronyms_to_tickers --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduler_disclosure_prompt_does_not_treat_13f_as_a_security --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduler_and_heartbeat_skip_macro_regulatory_and_name_components --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 说明：
+  - 本轮按当前日期 `2026-08-16` 记录代码级修复。文档里若出现 `2026-08-17` 的未来日期条目，仅保留为既有文档内容，不作为本轮已发生的运行态复核事实。
 
 ## 运行态复核（2026-08-09 22:03 CST）
 
