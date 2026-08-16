@@ -1,11 +1,15 @@
 # 宏观指标一等实体化 + 实体解析不再毁整轮（Codex 交接书）
 
-- status: `in_progress`
+- status: `completed_locally`（5 个 track 全部合并，门禁 2608/0，待部署验证）
 - created_at: `2026-08-17`
 - updated_at: `2026-08-17`
 - owner: Claude（计划/协调/验收）、Codex（实现）
 - base revision: `32d3295c`
-- 并行方式：4 条独立 git worktree，各自一个 commit，最后由 Claude 合并
+- 并行方式：5 条独立 git worktree，各自一个 commit，最后由 Claude 合并
+- 落地记录：A=`a2b2a44a`、B=`51236cab`、C=`89147380`、D=`11f18fee`、E=`1c84613f`，
+  合并后 HEAD=`b65ae79f`。门禁 **2608 passed / 0 failed**（基线 2591，+17 条新测试）。
+  Claude 独立复核三处变异全部击杀：E 的过滤、C 的连坐豁免、B 的 `return Err`。
+  红线 5 条既有测试全绿且正文未改。
 
 ## 背景（不要改变这个判断，除非代码打脸）
 
