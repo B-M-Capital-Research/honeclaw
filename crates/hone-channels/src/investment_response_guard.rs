@@ -114,6 +114,7 @@ pub(crate) enum DeepAnalysisKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InvestmentResponseContract {
     pub entities: Vec<ResolvedSecurityEntity>,
+    pub unverified_mentions: Vec<String>,
     pub verified_web_sources: Vec<String>,
     pub verified_dated_web_sources: Vec<VerifiedDatedSource>,
     pub deep_analysis: DeepAnalysisKind,
@@ -425,10 +426,28 @@ impl InvestmentResponseContract {
         }
     }
 
+    fn unverified_mentions_disclosure(&self) -> String {
+        if self.unverified_mentions.is_empty() {
+            return String::new();
+        }
+        let mentions = self
+            .unverified_mentions
+            .iter()
+            .map(|mention| safe_markdown_inline(mention, 64))
+            .collect::<Vec<_>>()
+            .join("、");
+        format!("\n本轮未能核验的候选：{mentions}（无同代码行情覆盖，未按证券处理）")
+    }
+
+    fn with_unverified_mentions_disclosure(&self, block: String) -> String {
+        format!("{block}{}", self.unverified_mentions_disclosure())
+    }
+
     pub(crate) fn canonical_fact_block(&self) -> String {
         format!(
-            "\n\n【本轮服务端规范事实（最高优先级）】\n{}\n以上时间、实体、代码、币种、现价、涨跌幅和报价源时间均由服务端从本轮精确核验结果生成。最终答案不得改写这些字段，不得把 profile、旧新闻或历史对话中的其它价格称为现价。",
-            self.server_verified_snapshot_block()
+            "\n\n【本轮服务端规范事实（最高优先级）】\n{}{}\n以上时间、实体、代码、币种、现价、涨跌幅和报价源时间均由服务端从本轮精确核验结果生成。最终答案不得改写这些字段，不得把 profile、旧新闻或历史对话中的其它价格称为现价。",
+            self.server_verified_snapshot_block(),
+            self.unverified_mentions_disclosure()
         )
     }
 
@@ -540,59 +559,59 @@ impl InvestmentResponseContract {
 
     pub(crate) fn retry_block(&self, missing: &[&'static str]) -> String {
         if self.deep_analysis == DeepAnalysisKind::Market {
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版市场草稿需修复】缺失或不合格项：{}。基于上一版草稿保留合格内容，返回完整五节；不得从零改写，不得声称没有行情。",
                 missing.join("、")
-            );
+            ));
         }
         if self.deep_analysis == DeepAnalysisKind::Sector {
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版板块草稿需修复】缺失或不合格项：{}。基于上一版草稿保留合格内容，返回完整九节并逐一使用本轮代表证券行情；不得从零改写。",
                 missing.join("、")
-            );
+            ));
         }
         if self.comparison {
             if !self.deep_comparison {
-                return format!(
+                return self.with_unverified_mentions_disclosure(format!(
                     "\n\n【上一版多标的行情草稿已被代码级完整性检查拒绝】\n缺失或不合格项：{}。首行时间由服务端统一写入，模型正文不得重复。重新生成并逐一覆盖 {}，每个标的单独一行写出本轮同代码现价；不得解释检查过程。",
                     missing.join("、"),
                     self.symbols().join("、")
-                );
+                ));
             }
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版多标的比较草稿已被代码级完整性检查拒绝】\n缺失或不合格项：{}。首行时间由服务端统一写入，模型正文不得重复。重新生成完整比较，必须逐一覆盖 {}；使用独立 `### SYMBOL` 小节，在对应小节写出本轮同代码现价与适配资产类型的证据，并区分事实、推断、动作和证伪条件；不得解释检查过程。",
                 missing.join("、"),
                 self.symbols().join("、")
-            );
+            ));
         }
         if self.deep_analysis == DeepAnalysisKind::Fund {
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版 ETF / 基金草稿已被代码级完整性检查拒绝】\n缺失或不合格章节：{}。首行时间由服务端统一写入，模型正文不得生成或重复时间。重新生成完整最终答案，严格使用 ETF / 基金九个编号章节，并在第 1 节写出本轮已核验同代码现价；不得解释检查过程，不得虚构持仓、费用、规模或公司财务，不得用追问持仓成本代替动作建议。",
                 missing.join("、")
-            );
+            ));
         }
         if self.deep_analysis == DeepAnalysisKind::Crypto {
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版加密资产草稿已被代码级完整性检查拒绝】\n缺失或不合格章节：{}。首行时间由服务端统一写入，模型正文不得生成或重复时间。重新生成完整最终答案，严格使用加密资产九个编号章节，并在第 1 节写出本轮已核验同代码现价；不得解释检查过程，不得调用或引用公司财务、公司财报日历或 ETF 持仓。",
                 missing.join("、")
-            );
+            ));
         }
         if self.deep_analysis == DeepAnalysisKind::None {
             if !self.requires_verified_price {
-                return format!(
+                return self.with_unverified_mentions_disclosure(format!(
                     "\n\n【上一版证券草稿已被代码级数据检查拒绝】\n缺失或不合格项：{}。重新回答时严格使用本轮已核验实体与资产类型；ETF / 基金不得调用或引用公司财务与公司财报日历；不得解释检查过程。",
                     missing.join("、")
-                );
+                ));
             }
-            return format!(
+            return self.with_unverified_mentions_disclosure(format!(
                 "\n\n【上一版证券行情草稿已被代码级数据检查拒绝】\n缺失或不合格项：{}。首行时间由服务端统一写入，模型正文不得重复。重新回答时使用“现价”或“当前价”明确写出本轮已核验同代码价格；不得解释检查过程。",
                 missing.join("、")
-            );
+            ));
         }
-        format!(
+        self.with_unverified_mentions_disclosure(format!(
             "\n\n【上一版草稿已被代码级完整性检查拒绝】\n缺失或不合格章节：{}。首行时间由服务端统一写入，模型正文不得生成或重复时间。重新生成完整最终答案，严格使用九个编号章节，并在第 1 节写出本轮已核验同代码现价；不得解释检查过程，不得用追问持仓成本代替动作建议。",
             missing.join("、")
-        )
+        ))
     }
 }
 
@@ -1785,6 +1804,7 @@ pub(crate) fn build_agent_discovered_investment(
     }
     let contract = InvestmentResponseContract {
         entities,
+        unverified_mentions: Vec::new(),
         verified_web_sources,
         verified_dated_web_sources,
         deep_analysis,
@@ -2809,6 +2829,7 @@ async fn prepare_verified_broad_investment_turn(
     }
     let contract = InvestmentResponseContract {
         entities,
+        unverified_mentions: Vec::new(),
         verified_web_sources,
         verified_dated_web_sources: Vec::new(),
         deep_analysis: kind,
@@ -3451,6 +3472,188 @@ async fn run_pre_turn_enrichment(
     PreTurnEnrichment { calls, block }
 }
 
+fn accept_numeric_entity_match(
+    mention: EntityMention,
+    entity_match: EntityMatch,
+    entities: &mut Vec<ResolvedSecurityEntity>,
+    seen_symbols: &mut HashSet<String>,
+    unresolved_mentions: &mut Vec<EntityMention>,
+) -> Result<(), String> {
+    let requested = mention
+        .explicit_symbol
+        .as_deref()
+        .expect("numeric resolution requires an explicit symbol");
+    match entity_match {
+        EntityMatch::Resolved(entity) => {
+            tracing::info!(
+                requested_symbol = requested,
+                resolved_symbol = entity.symbol,
+                "numeric security resolved from complete exact candidate probe"
+            );
+            if seen_symbols.insert(entity.symbol.clone()) {
+                entities.push(entity);
+            }
+            Ok(())
+        }
+        EntityMatch::Ambiguous(candidates) => {
+            let choices = candidates
+                .iter()
+                .take(8)
+                .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
+                .collect::<Vec<_>>()
+                .join("、");
+            Err(format!(
+                "已识别代码“{}”，但本轮精确行情同时确认了多个市场实体：{}。请补充交易所后缀，或说明市场/指数/个股。",
+                mention.mention, choices
+            ))
+        }
+        EntityMatch::Unresolved => {
+            unresolved_mentions.push(mention);
+            Ok(())
+        }
+    }
+}
+
+fn accept_explicit_entity_match(
+    mention: EntityMention,
+    entity_match: EntityMatch,
+    entities: &mut Vec<ResolvedSecurityEntity>,
+    seen_symbols: &mut HashSet<String>,
+    unresolved_mentions: &mut Vec<EntityMention>,
+) -> Result<(), String> {
+    let requested = mention
+        .explicit_symbol
+        .as_deref()
+        .expect("explicit resolution requires an explicit symbol");
+    match entity_match {
+        EntityMatch::Resolved(entity) => {
+            tracing::info!(
+                requested_symbol = requested,
+                resolved_symbol = entity.symbol,
+                "explicit security resolved from shared exact quote probe"
+            );
+            if seen_symbols.insert(entity.symbol.clone()) {
+                entities.push(entity);
+            }
+            Ok(())
+        }
+        EntityMatch::Ambiguous(candidates) => {
+            let choices = candidates
+                .iter()
+                .take(4)
+                .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
+                .collect::<Vec<_>>()
+                .join("、");
+            Err(format!(
+                "已识别代码“{}”，但本轮精确核验仍对应多个实体：{}。请补充交易所后缀或公司全名。",
+                mention.mention, choices
+            ))
+        }
+        EntityMatch::Unresolved => {
+            unresolved_mentions.push(mention);
+            Ok(())
+        }
+    }
+}
+
+fn accept_named_entity_match(
+    mention: EntityMention,
+    entity_match: EntityMatch,
+    entities: &mut Vec<ResolvedSecurityEntity>,
+    seen_symbols: &mut HashSet<String>,
+    unresolved_mentions: &mut Vec<EntityMention>,
+) -> Result<(), String> {
+    match entity_match {
+        EntityMatch::Resolved(entity) => {
+            tracing::info!(
+                named_query = mention.search_query,
+                resolved_symbol = entity.symbol,
+                "named security resolved from semantic provider search"
+            );
+            if seen_symbols.insert(entity.symbol.clone()) {
+                entities.push(entity);
+            }
+            Ok(())
+        }
+        EntityMatch::Ambiguous(candidates) => {
+            let choices = candidates
+                .iter()
+                .take(4)
+                .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
+                .collect::<Vec<_>>()
+                .join("、");
+            Err(format!(
+                "你提到的“{}”对应多个可能的证券实体：{}。请补充公司全名或确认 ticker。",
+                mention.mention, choices
+            ))
+        }
+        EntityMatch::Unresolved => {
+            unresolved_mentions.push(mention);
+            Ok(())
+        }
+    }
+}
+
+fn unresolved_entity_fallback_scope(
+    entities: &[ResolvedSecurityEntity],
+    unresolved_mentions: &[EntityMention],
+) -> Option<EntityResolutionScope> {
+    if entities.is_empty() && !unresolved_mentions.is_empty() {
+        Some(EntityResolutionScope::AgentToolDiscovery(
+            unresolved_mentions.to_vec(),
+        ))
+    } else {
+        None
+    }
+}
+
+fn unverified_mention_labels(unresolved_mentions: &[EntityMention]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    unresolved_mentions
+        .iter()
+        .filter_map(|mention| {
+            let key = mention.mention.to_ascii_lowercase();
+            seen.insert(key).then(|| mention.mention.clone())
+        })
+        .collect()
+}
+
+async fn prepare_agent_tool_discovery_context(
+    core: &Arc<HoneBotCore>,
+    actor: &ActorIdentity,
+    channel_target: &str,
+    allow_cron: bool,
+    user_input: &str,
+    origin: AgentTurnOrigin,
+    seed_mentions: &[EntityMention],
+    answer_time_local: &str,
+    runtime_input: &mut String,
+    preloaded_evidence_calls: &mut u32,
+    progress: Option<&PreTurnProgressSink>,
+) {
+    append_agent_entity_discovery_context(
+        runtime_input,
+        user_input,
+        seed_mentions,
+        answer_time_local,
+    );
+    if origin == AgentTurnOrigin::Interactive {
+        let enrichment = run_pre_turn_enrichment(
+            core,
+            actor,
+            channel_target,
+            allow_cron,
+            user_input,
+            seed_mentions,
+            answer_time_local,
+            progress,
+        )
+        .await;
+        runtime_input.push_str(&enrichment.block);
+        *preloaded_evidence_calls = enrichment.calls;
+    }
+}
+
 pub(crate) async fn prepare_verified_investment_turn(
     core: &Arc<HoneBotCore>,
     actor: &ActorIdentity,
@@ -3468,27 +3671,20 @@ pub(crate) async fn prepare_verified_investment_turn(
     let mentions = match scope {
         EntityResolutionScope::Securities(mentions) => mentions,
         EntityResolutionScope::AgentToolDiscovery(seed_mentions) => {
-            append_agent_entity_discovery_context(
-                runtime_input,
+            prepare_agent_tool_discovery_context(
+                core,
+                actor,
+                channel_target,
+                allow_cron,
                 user_input,
+                origin,
                 &seed_mentions,
                 answer_time_local,
-            );
-            if origin == AgentTurnOrigin::Interactive {
-                let enrichment = run_pre_turn_enrichment(
-                    core,
-                    actor,
-                    channel_target,
-                    allow_cron,
-                    user_input,
-                    &seed_mentions,
-                    answer_time_local,
-                    progress,
-                )
-                .await;
-                runtime_input.push_str(&enrichment.block);
-                *preloaded_evidence_calls = enrichment.calls;
-            }
+                runtime_input,
+                preloaded_evidence_calls,
+                progress,
+            )
+            .await;
             return Ok(None);
         }
         EntityResolutionScope::Portfolio(explicit_mentions) => {
@@ -3630,6 +3826,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     }
     let mut entities = Vec::new();
     let mut seen_symbols = HashSet::new();
+    let mut unresolved_mentions = Vec::new();
     for mention in mentions {
         if let Some(requested) = mention
             .explicit_symbol
@@ -3652,39 +3849,17 @@ pub(crate) async fn prepare_verified_investment_turn(
             let probe = exact_quote_probe
                 .as_ref()
                 .expect("numeric candidates populate the exact quote probe");
-            match resolve_numeric_probe_result(&mention, probe) {
-                EntityMatch::Resolved(entity) => {
-                    tracing::info!(
-                        requested_symbol = requested,
-                        resolved_symbol = entity.symbol,
-                        "numeric security resolved from complete exact candidate probe"
-                    );
-                    if seen_symbols.insert(entity.symbol.clone()) {
-                        entities.push(entity);
-                    }
-                }
-                EntityMatch::Ambiguous(candidates) => {
-                    let choices = candidates
-                        .iter()
-                        .take(8)
-                        .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
-                        .collect::<Vec<_>>()
-                        .join("、");
-                    return Err(format!(
-                        "已识别代码“{}”，但本轮精确行情同时确认了多个市场实体：{}。请补充交易所后缀，或说明市场/指数/个股。",
-                        mention.mention, choices
-                    ));
-                }
-                EntityMatch::Unresolved => {
-                    return Err(format!(
-                        "已识别代码“{}”，但当前数据源在本轮已审计交易市场中没有返回精确同代码行情。请补充交易所后缀；本轮不会映射到其它证券。",
-                        mention.mention
-                    ));
-                }
-            }
+            let entity_match = resolve_numeric_probe_result(&mention, probe);
+            accept_numeric_entity_match(
+                mention,
+                entity_match,
+                &mut entities,
+                &mut seen_symbols,
+                &mut unresolved_mentions,
+            )?;
             continue;
         }
-        if let Some(requested) = mention.explicit_symbol.as_deref() {
+        if mention.explicit_symbol.is_some() {
             let probe = exact_quote_probe
                 .as_ref()
                 .expect("explicit identifiers populate the exact quote probe");
@@ -3697,36 +3872,13 @@ pub(crate) async fn prepare_verified_investment_turn(
                     .expect("tentative identifier search is prefetched");
                 entity_match = reconcile_tentative_entity_match(&mention, entity_match, search)?;
             }
-            match entity_match {
-                EntityMatch::Resolved(entity) => {
-                    tracing::info!(
-                        requested_symbol = requested,
-                        resolved_symbol = entity.symbol,
-                        "explicit security resolved from shared exact quote probe"
-                    );
-                    if seen_symbols.insert(entity.symbol.clone()) {
-                        entities.push(entity);
-                    }
-                }
-                EntityMatch::Ambiguous(candidates) => {
-                    let choices = candidates
-                        .iter()
-                        .take(4)
-                        .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
-                        .collect::<Vec<_>>()
-                        .join("、");
-                    return Err(format!(
-                        "已识别代码“{}”，但本轮精确核验仍对应多个实体：{}。请补充交易所后缀或公司全名。",
-                        mention.mention, choices
-                    ));
-                }
-                EntityMatch::Unresolved => {
-                    return Err(format!(
-                        "已识别证券代码“{}”，但当前数据供应商没有返回同代码行情覆盖。本轮不会将它映射到其它证券；请检查交易所后缀，或稍后重试。",
-                        mention.mention
-                    ));
-                }
-            }
+            accept_explicit_entity_match(
+                mention,
+                entity_match,
+                &mut entities,
+                &mut seen_symbols,
+                &mut unresolved_mentions,
+            )?;
             continue;
         }
         let search = semantic_searches
@@ -3735,40 +3887,37 @@ pub(crate) async fn prepare_verified_investment_turn(
             .map(|(_, value)| value)
             .expect("named entity search is prefetched");
         let entity_match = resolve_entity_match(&mention, search);
-        match entity_match {
-            EntityMatch::Resolved(entity) => {
-                tracing::info!(
-                    named_query = mention.search_query,
-                    resolved_symbol = entity.symbol,
-                    "named security resolved from semantic provider search"
-                );
-                if seen_symbols.insert(entity.symbol.clone()) {
-                    entities.push(entity);
-                }
-            }
-            EntityMatch::Ambiguous(candidates) => {
-                let choices = candidates
-                    .iter()
-                    .take(4)
-                    .map(|c| format!("{}（{}）", c.name, c.symbol))
-                    .collect::<Vec<_>>()
-                    .join("、");
-                return Err(format!(
-                    "你提到的“{}”对应多个可能的证券实体：{}。请补充公司全名或确认 ticker。",
-                    mention.mention, choices
-                ));
-            }
-            EntityMatch::Unresolved => {
-                return Err(format!(
-                    "我暂时无法确认你提到的“{}”对应哪家上市公司或证券。请补充公司全名或 ticker。",
-                    mention.mention
-                ));
-            }
-        }
+        accept_named_entity_match(
+            mention,
+            entity_match,
+            &mut entities,
+            &mut seen_symbols,
+            &mut unresolved_mentions,
+        )?;
+    }
+    if let Some(EntityResolutionScope::AgentToolDiscovery(seed_mentions)) =
+        unresolved_entity_fallback_scope(&entities, &unresolved_mentions)
+    {
+        prepare_agent_tool_discovery_context(
+            core,
+            actor,
+            channel_target,
+            allow_cron,
+            user_input,
+            origin,
+            &seed_mentions,
+            answer_time_local,
+            runtime_input,
+            preloaded_evidence_calls,
+            progress,
+        )
+        .await;
+        return Ok(None);
     }
     if entities.is_empty() {
         return Ok(None);
     }
+    let unverified_mentions = unverified_mention_labels(&unresolved_mentions);
     let (keyword_deep_intent, needs_outlook_evidence) = response_intent(user_input);
     let deep_intent = keyword_deep_intent
         || (origin == AgentTurnOrigin::Interactive && !is_strict_quote_only_request(user_input));
@@ -3789,6 +3938,7 @@ pub(crate) async fn prepare_verified_investment_turn(
         comparison,
         origin,
         entities,
+        unverified_mentions,
         verified_web_sources: Vec::new(),
         verified_dated_web_sources: Vec::new(),
     };
@@ -11584,10 +11734,12 @@ mod tests {
         AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention, EntityMentionContext,
         EntityResolutionScope, InvestmentResponseContract, NumericAssetHint, NumericMarketHint,
         PORTFOLIO_MARKET_SYMBOL_LIMIT, ResolvedSecurityEntity, UNTRUSTED_WEB_EVIDENCE_INSTRUCTION,
-        VerifiedDatedSource, VerifiedFundHoldingFact, append_agent_entity_discovery_context,
-        apply_verified_index_route, asset_evidence_route, bounded_evidence_json,
-        bounded_symbol_batches, broad_analysis_kind, complete_entity_extraction_with_auxiliary,
-        contract_failure_message, dated_market_searches_at, deterministic_sector_symbols,
+        VerifiedDatedSource, VerifiedFundHoldingFact, accept_explicit_entity_match,
+        accept_named_entity_match, accept_numeric_entity_match,
+        append_agent_entity_discovery_context, apply_verified_index_route, asset_evidence_route,
+        bounded_evidence_json, bounded_symbol_batches, broad_analysis_kind,
+        complete_entity_extraction_with_auxiliary, contract_failure_message,
+        dated_market_searches_at, deterministic_sector_symbols,
         deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
         entity_is_fund, explicit_dollar_mentions, extract_entity_scope,
         filter_entity_news_evidence, forbidden_investment_tool_calls, has_data_time_context,
@@ -11606,13 +11758,15 @@ mod tests {
         resolve_numeric_probe_result, response_intent, response_requires_verified_price,
         set_verified_asset_type, should_fetch_earnings_outlook, should_run_entity_stage,
         text_contains_source_domain, ticker_mentions_cover_request,
-        unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
+        unresolved_entity_fallback_scope, unsupported_financial_fact_claims,
+        unverified_mention_labels, verified_dated_sources, verified_financial_facts,
         web_source_markers,
     };
     use crate::agent_session::AgentTurnOrigin;
     use chrono::{TimeZone, Utc};
     use hone_core::agent::ToolCallMade;
     use serde_json::{Value, json};
+    use std::collections::HashSet;
 
     fn recorded_tool_call(name: &str, id: &str, arguments: Value, result: Value) -> ToolCallMade {
         ToolCallMade {
@@ -13914,6 +14068,156 @@ mod tests {
     }
 
     #[test]
+    fn one_unresolved_explicit_candidate_keeps_two_verified_entities_and_discloses_the_gap() {
+        let mut resolved_entities = Vec::new();
+        let mut seen_symbols = HashSet::new();
+        let mut unresolved_mentions = Vec::new();
+        for (symbol, entity_match) in [
+            ("AAPL", EntityMatch::Resolved(entities(&["AAPL"]).remove(0))),
+            ("PCE", EntityMatch::Unresolved),
+            ("MSFT", EntityMatch::Resolved(entities(&["MSFT"]).remove(0))),
+        ] {
+            accept_explicit_entity_match(
+                EntityMention {
+                    mention: symbol.into(),
+                    search_query: symbol.into(),
+                    explicit_symbol: Some(symbol.into()),
+                    tentative_symbol: false,
+                    context: EntityMentionContext::default(),
+                },
+                entity_match,
+                &mut resolved_entities,
+                &mut seen_symbols,
+                &mut unresolved_mentions,
+            )
+            .expect("one unresolved candidate must not fail the entity set");
+        }
+
+        assert_eq!(
+            resolved_entities
+                .iter()
+                .map(|entity| entity.symbol.as_str())
+                .collect::<Vec<_>>(),
+            ["AAPL", "MSFT"]
+        );
+        assert!(
+            unresolved_entity_fallback_scope(&resolved_entities, &unresolved_mentions).is_none(),
+            "a partial success must keep the deterministic contract"
+        );
+        let contract = InvestmentResponseContract {
+            entities: resolved_entities,
+            unverified_mentions: unverified_mention_labels(&unresolved_mentions),
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::None,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: true,
+            origin: AgentTurnOrigin::Scheduled,
+        };
+        let disclosure = "本轮未能核验的候选：PCE（无同代码行情覆盖，未按证券处理）";
+        assert_eq!(contract.unverified_mentions, ["PCE"]);
+        assert!(contract.canonical_fact_block().contains(disclosure));
+        assert!(contract.retry_block(&["逐标的覆盖"]).contains(disclosure));
+        assert!(
+            contract
+                .entities
+                .iter()
+                .all(|entity| entity.symbol != "PCE"),
+            "an unresolved code must never be mapped to another security"
+        );
+    }
+
+    #[test]
+    fn all_unresolved_candidates_fall_back_to_agent_tool_discovery() {
+        let mut resolved_entities = Vec::new();
+        let mut seen_symbols = HashSet::new();
+        let mut unresolved_mentions = Vec::new();
+        for symbol in ["PCE", "ETF"] {
+            accept_explicit_entity_match(
+                EntityMention {
+                    mention: symbol.into(),
+                    search_query: symbol.into(),
+                    explicit_symbol: Some(symbol.into()),
+                    tentative_symbol: false,
+                    context: EntityMentionContext::default(),
+                },
+                EntityMatch::Unresolved,
+                &mut resolved_entities,
+                &mut seen_symbols,
+                &mut unresolved_mentions,
+            )
+            .expect("an unresolved candidate must not fail the whole turn");
+        }
+
+        assert!(resolved_entities.is_empty());
+        assert!(matches!(
+            unresolved_entity_fallback_scope(&resolved_entities, &unresolved_mentions),
+            Some(EntityResolutionScope::AgentToolDiscovery(seed_mentions))
+                if seed_mentions
+                    .iter()
+                    .map(|mention| mention.mention.as_str())
+                    .collect::<Vec<_>>() == ["PCE", "ETF"]
+        ));
+    }
+
+    #[test]
+    fn unresolved_numeric_candidate_is_removed_without_error_or_remapping() {
+        let mut resolved_entities = Vec::new();
+        let mut seen_symbols = HashSet::new();
+        let mut unresolved_mentions = Vec::new();
+        accept_numeric_entity_match(
+            EntityMention {
+                mention: "512690".into(),
+                search_query: "512690".into(),
+                explicit_symbol: Some("512690".into()),
+                tentative_symbol: false,
+                context: EntityMentionContext {
+                    numeric_market_hint: Some(NumericMarketHint::Shanghai),
+                    ..EntityMentionContext::default()
+                },
+            },
+            EntityMatch::Unresolved,
+            &mut resolved_entities,
+            &mut seen_symbols,
+            &mut unresolved_mentions,
+        )
+        .expect("an unresolved numeric code must not fail the whole turn");
+
+        assert!(resolved_entities.is_empty());
+        assert_eq!(unverified_mention_labels(&unresolved_mentions), ["512690"]);
+    }
+
+    #[test]
+    fn unresolved_named_candidate_is_removed_without_error_or_remapping() {
+        let mut resolved_entities = Vec::new();
+        let mut seen_symbols = HashSet::new();
+        let mut unresolved_mentions = Vec::new();
+        accept_named_entity_match(
+            EntityMention {
+                mention: "示例公司".into(),
+                search_query: "Example Company".into(),
+                explicit_symbol: None,
+                tentative_symbol: false,
+                context: EntityMentionContext::default(),
+            },
+            EntityMatch::Unresolved,
+            &mut resolved_entities,
+            &mut seen_symbols,
+            &mut unresolved_mentions,
+        )
+        .expect("an unresolved company name must not fail the whole turn");
+
+        assert!(resolved_entities.is_empty());
+        assert_eq!(
+            unverified_mention_labels(&unresolved_mentions),
+            ["示例公司"]
+        );
+    }
+
+    #[test]
     fn exact_profile_can_resolve_a_semantic_empty_or_derivative_only_search() {
         let mention = EntityMention {
             mention: "RKLB".into(),
@@ -14060,6 +14364,7 @@ mod tests {
         }
         let contract = InvestmentResponseContract {
             entities: comparison_entities,
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14091,6 +14396,7 @@ mod tests {
     fn quote_only_contract_rejects_missing_wrong_or_conflicting_current_price() {
         let contract = InvestmentResponseContract {
             entities: entities(&["NBIS"]),
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14243,6 +14549,7 @@ mod tests {
     fn shallow_multi_quote_contract_validates_each_symbol_locally() {
         let contract = InvestmentResponseContract {
             entities: entities(&["AMD", "NVDA"]),
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14288,6 +14595,7 @@ mod tests {
         mixed[1].annual_financials_verified = Some(true);
         let contract = InvestmentResponseContract {
             entities: mixed,
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14317,6 +14625,7 @@ mod tests {
         mixed[1].annual_financials_verified = Some(true);
         let contract = InvestmentResponseContract {
             entities: mixed,
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14340,6 +14649,7 @@ mod tests {
     fn scheduler_contract_uses_typed_origin_not_envelope_text() {
         let contract = InvestmentResponseContract {
             entities: entities(&["NBIS"]),
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -14389,6 +14699,7 @@ mod tests {
         rmbs.verified_price = Some("102.89".into());
         let contract = InvestmentResponseContract {
             entities: vec![rmbs],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -14546,6 +14857,7 @@ mod tests {
 
         let contract = InvestmentResponseContract {
             entities: vec![entity],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Crypto,
@@ -14583,6 +14895,7 @@ mod tests {
         crypto.profile_verified = true;
         let contract = InvestmentResponseContract {
             entities: vec![crypto],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Crypto,
@@ -14707,6 +15020,7 @@ mod tests {
         }];
         let contract = InvestmentResponseContract {
             entities: vec![fund_entity.clone()],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Fund,
@@ -14845,6 +15159,7 @@ mod tests {
         fund.profile_verified = true;
         let contract = InvestmentResponseContract {
             entities: vec![fund],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Fund,
@@ -14919,6 +15234,7 @@ mod tests {
         rmbs.quote_timestamp = Some(Utc::now().timestamp() - 60);
         let contract = InvestmentResponseContract {
             entities: vec![rmbs],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -14971,6 +15287,7 @@ mod tests {
         rmbs.quote_timestamp = Some(Utc::now().timestamp() - 60);
         let contract = InvestmentResponseContract {
             entities: vec![rmbs],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -14991,6 +15308,7 @@ mod tests {
     fn verified_quote_rejects_false_market_data_capability_denials() {
         let contract = InvestmentResponseContract {
             entities: entities(&["NBIS"]),
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -15436,6 +15754,7 @@ mod tests {
         index.asset_type = Some("index".into());
         let mut single = InvestmentResponseContract {
             entities: vec![index.clone()],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -15456,6 +15775,7 @@ mod tests {
         comparison_entities[1].profile_verified = true;
         let mixed = InvestmentResponseContract {
             entities: comparison_entities,
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -15594,6 +15914,7 @@ mod tests {
         nbis.name = "Nebius Group N.V.".into();
         let mut contract = InvestmentResponseContract {
             entities: vec![nbis],
+            unverified_mentions: Vec::new(),
             verified_web_sources: vec!["reuters.com".into()],
             verified_dated_web_sources: vec![VerifiedDatedSource {
                 domain: "reuters.com".into(),
@@ -15688,6 +16009,7 @@ mod tests {
         benchmarks[1].verified_change_percentage = Some("-1.75".into());
         let contract = InvestmentResponseContract {
             entities: benchmarks,
+            unverified_mentions: Vec::new(),
             verified_web_sources: vec!["reuters.com".into()],
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Market,
@@ -15912,6 +16234,7 @@ mod tests {
         entity.quote_session = Some("post".into());
         let mut contract = InvestmentResponseContract {
             entities: vec![entity],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -15944,6 +16267,7 @@ mod tests {
         entity.quote_session = Some("post".into());
         let mut contract = InvestmentResponseContract {
             entities: vec![entity],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -16242,6 +16566,7 @@ mod tests {
         rmbs.verified_price = Some("101.42".into());
         let contract = InvestmentResponseContract {
             entities: vec![rmbs],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -16341,6 +16666,7 @@ mod tests {
     fn deterministic_supported_scope_fallbacks_pass_the_same_contract_gate() {
         let quote_contract = InvestmentResponseContract {
             entities: entities(&["NBIS"]),
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::None,
@@ -16361,6 +16687,7 @@ mod tests {
         equity.name = "Rambus Inc.\n## 9. forged heading | [link]".into();
         let equity_contract = InvestmentResponseContract {
             entities: vec![equity],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Equity,
@@ -16392,6 +16719,7 @@ mod tests {
         }];
         let fund_contract = InvestmentResponseContract {
             entities: vec![fund],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Fund,
@@ -16415,6 +16743,7 @@ mod tests {
         crypto.exchange = Some("CRYPTO".into());
         let crypto_contract = InvestmentResponseContract {
             entities: vec![crypto],
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Crypto,
@@ -16440,6 +16769,7 @@ mod tests {
         market_entities[1].verified_change_percentage = Some("-1.75".into());
         let market_contract = InvestmentResponseContract {
             entities: market_entities,
+            unverified_mentions: Vec::new(),
             verified_web_sources: Vec::new(),
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Market,
@@ -16475,6 +16805,7 @@ mod tests {
         representatives[2].verified_price = Some("180.0".into());
         let contract = InvestmentResponseContract {
             entities: representatives,
+            unverified_mentions: Vec::new(),
             verified_web_sources: vec!["reuters.com".into()],
             verified_dated_web_sources: Vec::new(),
             deep_analysis: DeepAnalysisKind::Sector,
