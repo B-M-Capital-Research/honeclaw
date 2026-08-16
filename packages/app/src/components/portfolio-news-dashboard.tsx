@@ -61,7 +61,7 @@ function statusLabel(status: string) {
 function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
   const compact = {
     reportDate: snapshot.report_date,
-    generatedAtBJT: snapshot.generated_at_beijing,
+    generatedAtLocal: snapshot.generated_at_local,
     status: snapshot.status,
     lookbackHours: snapshot.lookback_hours,
     summary: snapshot.summary,
@@ -70,7 +70,7 @@ function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
     items: snapshot.items.map((item) => ({
       symbol: item.symbol,
       title: item.title,
-      publishedAtBJT: item.published_at_beijing,
+      publishedAtLocal: item.published_at_local,
       source: item.source,
       sourceUrl: item.source_url,
       impact: item.impact,
@@ -90,7 +90,7 @@ function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
     question,
     rules: [
       "只使用上述快照和当前对话",
-      "引用新闻时附来源链接和北京时间",
+      "引用新闻时附来源链接和运行时时区",
       "明确区分来源事实与模型影响判断",
       "待分析项目不得补造结论",
       "数据截止时间之后的内容先说明未覆盖",
@@ -174,7 +174,7 @@ export function PortfolioNewsPanel(props: Props) {
             <div class="portfolio-news-meta">
               <b class={`is-${value().status}`}>{statusLabel(value().status)}</b>
               <span>报告日 {value().report_date}</span>
-              <span>{value().generated_at_beijing} 北京时间</span>
+              <span>{value().generated_at_local} {value().timezone}</span>
               <span>持仓 {value().holdings_count}</span>
               <button type="button" onClick={() => void load()} disabled={loading()}>
                 {loading() ? "读取中…" : "重新读取"}
@@ -249,7 +249,7 @@ export function PortfolioNewsPanel(props: Props) {
                         <b>{item.symbol}</b>
                         <span class={`is-${item.impact}`}>{IMPACT_LABEL[item.impact]}</span>
                         <span>{HORIZON_LABEL[item.horizon]}</span>
-                        <time>{item.published_at_beijing} 北京时间</time>
+                        <time>{item.published_at_local} {snapshot()?.timezone}</time>
                       </div>
                       <h3>{item.title}</h3>
                       <p class="portfolio-news-item__summary">{item.summary}</p>

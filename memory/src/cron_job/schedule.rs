@@ -4,8 +4,7 @@
 //! `CronJobStorage` 自身状态。`storage.rs` 会基于这里的判定实现完整的
 //! `get_due_jobs` / `add_job` / `validate` 管线。
 
-use chrono::{Datelike, NaiveDate};
-use hone_core::beijing_offset;
+use chrono::{Datelike, Duration, LocalResult, NaiveDate};
 
 use super::types::CronJob;
 
@@ -163,31 +162,55 @@ pub(super) fn is_holiday(day: NaiveDate) -> bool {
     !is_workday(day) || is_market_holiday(day)
 }
 
-/// 把 `(day, hour, minute)` 解释成 +08:00 时区的具体时刻。
-/// 专供 `get_due_jobs` 的 catch-up 判定和测试断言使用。
-pub(crate) fn beijing_slot_time(
+/// 把 `(day, hour, minute)` 解释成运行时时区的具体时刻。
+///
+/// DST 回拨产生两个同名墙钟时刻时选第一次；DST 跳时产生不存在的墙钟时刻时，
+/// 向前寻找第一个有效分钟，让“错过后补跑”仍有一个可比较的真实时刻。
+#[cfg(test)]
+pub(crate) fn runtime_slot_time(
     day: NaiveDate,
     hour: u32,
     minute: u32,
 ) -> chrono::DateTime<chrono::FixedOffset> {
-    day.and_hms_opt(hour, minute, 0)
-        .expect("valid cron slot time")
-        .and_local_timezone(beijing_offset())
-        .single()
-        .expect("fixed offset slot")
+    runtime_slot_time_in(&hone_core::runtime_timezone(), day, hour, minute)
+}
+
+pub(crate) fn runtime_slot_time_in(
+    timezone: &hone_core::RuntimeTimezone,
+    day: NaiveDate,
+    hour: u32,
+    minute: u32,
+) -> chrono::DateTime<chrono::FixedOffset> {
+    let local = day
+        .and_hms_opt(hour, minute, 0)
+        .expect("valid cron slot time");
+    match timezone.from_local_datetime(&local) {
+        LocalResult::Single(value) | LocalResult::Ambiguous(value, _) => value,
+        LocalResult::None => (1..=180)
+            .find_map(|minutes| {
+                timezone
+                    .from_local_datetime(&(local + Duration::minutes(minutes)))
+                    .earliest()
+            })
+            .expect("runtime timezone must have a valid local instant within three hours"),
+    }
 }
 
 /// 任务是否在当天的计划时刻之前就已经存在：用于判断某个已经过了 `hh:mm`
 /// 的任务是「今天漏跑需要补」还是「今天才刚创建，不补跑」。
 /// 缺失 / 无法解析 `created_at` 时按「存在」处理，保持向后兼容。
-pub(super) fn job_existed_before_slot(job: &CronJob, day: NaiveDate) -> bool {
+pub(super) fn job_existed_before_slot_in(
+    job: &CronJob,
+    day: NaiveDate,
+    timezone: &hone_core::RuntimeTimezone,
+) -> bool {
     let Some(created_at) = job.created_at.as_deref() else {
         return true;
     };
     let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created_at) else {
         return true;
     };
-    created_dt <= beijing_slot_time(day, job.schedule.hour, job.schedule.minute)
+    created_dt <= runtime_slot_time_in(timezone, day, job.schedule.hour, job.schedule.minute)
 }
 
 /// 把落在周末的节假日挪到最近的工作日（周六→周五，周日→周一），

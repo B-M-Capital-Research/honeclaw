@@ -199,7 +199,7 @@ export default function PublicValuationLabPage() {
               </Show>
 
               <footer class="valuation-lab-footer">
-                <span>报告日 {snapshot()?.report_date} · 北京时间 {snapshot()?.generated_at_beijing} 更新</span>
+                <span>报告日 {snapshot()?.report_date} · {snapshot()?.timezone} {snapshot()?.generated_at_local} 更新</span>
                 <p>{snapshot()?.disclaimer}</p>
               </footer>
             </main>

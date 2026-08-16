@@ -66,7 +66,7 @@ export function InfluencerDigestPanel(props: Props) {
     if (!current || !query || !props.onAsk) return;
     const report = {
       reportDate: current.report_date,
-      generatedAtBJT: current.generated_at_beijing,
+      generatedAtLocal: current.generated_at_local,
       status: current.status,
       authors: current.authors,
       items: current.items.map(
@@ -74,7 +74,7 @@ export function InfluencerDigestPanel(props: Props) {
           author_name,
           public_handle,
           title,
-          published_at_beijing,
+          published_at_local,
           source_url,
           aggregation_source,
           aggregation_url,
@@ -91,7 +91,7 @@ export function InfluencerDigestPanel(props: Props) {
           author_name,
           public_handle,
           title,
-          published_at_beijing,
+          published_at_local,
           source_url,
           aggregation_source,
           aggregation_url,
@@ -115,7 +115,7 @@ export function InfluencerDigestPanel(props: Props) {
         question: query,
         rules: [
           "作者观点不等于事实或 HONE 结论",
-          "附原文链接与北京时间",
+          "附原文链接与运行时时区",
           "聚合翻译不是独立事实来源",
           "不得补造未配置作者内容，不得把观点直接转换为买卖或仓位动作",
         ],
@@ -145,7 +145,7 @@ export function InfluencerDigestPanel(props: Props) {
         <div class="influencer-digest-meta">
           <b>{statusLabel(snapshot()?.status ?? "")}</b>
           <span>报告日 {snapshot()?.report_date ?? "—"}</span>
-          <span>{snapshot()?.generated_at_beijing ?? "—"} 北京时间</span>
+          <span>{snapshot()?.generated_at_local ?? "—"} {snapshot()?.timezone}</span>
           <button onClick={() => void load()}>重新读取</button>
         </div>
 
@@ -189,7 +189,7 @@ export function InfluencerDigestPanel(props: Props) {
                       <b>{item.author_name}</b>
                       <span>{item.public_handle}</span>
                       <span>{postKindLabel(item.post_kind)}</span>
-                      <time>{item.published_at_beijing} 北京时间</time>
+                      <time>{item.published_at_local} {snapshot()?.timezone}</time>
                     </div>
                     <h3>{item.title}</h3>
                     <p>{item.summary || item.source_excerpt}</p>

@@ -50,7 +50,7 @@ pub enum MainlineRelation {
 }
 
 /// 用户自定义的 digest 触发槽位。一条 slot = 一次 push;`time` 按
-/// `prefs.timezone`(回退全局 `digest.timezone`)解释为本地时刻。
+/// `prefs.timezone`（回退进程运行时时区）解释为本地时刻。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DigestSlot {
     /// 稳定 ID,用于在 NL tool 里指定要改哪个 slot(例 `"premarket"` / `"postmarket"`)。

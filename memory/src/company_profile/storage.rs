@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 use chrono::Utc;
-use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::{CloudCompanyProfileFileRecord, CloudPgRuntime};
 use hone_core::cloud_sync::run_cloud_sync;
+use hone_core::{ActorIdentity, compare_rfc3339};
 
 use super::markdown::{
     build_initial_sections, create_profile_body, extract_title_from_markdown,
@@ -171,8 +171,7 @@ impl CompanyProfileStorage {
         }
 
         profiles.sort_by(|a, b| {
-            b.updated_at
-                .cmp(&a.updated_at)
+            compare_rfc3339(&b.updated_at, &a.updated_at)
                 .then_with(|| a.company_name.cmp(&b.company_name))
         });
         profiles
@@ -829,9 +828,7 @@ impl CompanyProfileStorage {
         }
 
         events.sort_by(|a, b| {
-            b.metadata
-                .occurred_at
-                .cmp(&a.metadata.occurred_at)
+            compare_rfc3339(&b.metadata.occurred_at, &a.metadata.occurred_at)
                 .then_with(|| b.filename.cmp(&a.filename))
         });
         Ok(events)
@@ -1052,9 +1049,7 @@ impl CompanyProfileStorage {
             )?);
         }
         events.sort_by(|a, b| {
-            b.metadata
-                .occurred_at
-                .cmp(&a.metadata.occurred_at)
+            compare_rfc3339(&b.metadata.occurred_at, &a.metadata.occurred_at)
                 .then_with(|| b.filename.cmp(&a.filename))
         });
         Ok(Some(CompanyProfileDocument {
@@ -1146,8 +1141,7 @@ impl CompanyProfileStorage {
             });
         }
         profiles.sort_by(|a, b| {
-            b.updated_at
-                .cmp(&a.updated_at)
+            compare_rfc3339(&b.updated_at, &a.updated_at)
                 .then_with(|| a.company_name.cmp(&b.company_name))
         });
         profiles
@@ -1216,7 +1210,10 @@ impl CompanyProfileStorage {
                 continue;
             }
             let updated_at = if raw {
-                files.iter().map(|file| file.updated_at.clone()).max()
+                files
+                    .iter()
+                    .map(|file| file.updated_at.clone())
+                    .max_by(|left, right| compare_rfc3339(left, right))
             } else {
                 files
                     .iter()
@@ -1230,7 +1227,7 @@ impl CompanyProfileStorage {
                         .ok()
                         .map(|metadata| metadata.updated_at)
                     })
-                    .max()
+                    .max_by(|left, right| compare_rfc3339(left, right))
             };
             spaces.push(ProfileSpaceSummary {
                 channel: actor.channel,
@@ -1241,12 +1238,12 @@ impl CompanyProfileStorage {
             });
         }
         spaces.sort_by(|a, b| {
-            b.updated_at
-                .as_deref()
-                .unwrap_or_default()
-                .cmp(a.updated_at.as_deref().unwrap_or_default())
-                .then_with(|| a.channel.cmp(&b.channel))
-                .then_with(|| a.user_id.cmp(&b.user_id))
+            compare_rfc3339(
+                b.updated_at.as_deref().unwrap_or_default(),
+                a.updated_at.as_deref().unwrap_or_default(),
+            )
+            .then_with(|| a.channel.cmp(&b.channel))
+            .then_with(|| a.user_id.cmp(&b.user_id))
         });
         spaces
     }

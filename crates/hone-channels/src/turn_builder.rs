@@ -21,7 +21,7 @@ pub(crate) struct SlashSkillExpansion {
 pub(crate) struct PromptTurnInput {
     pub(crate) system_prompt: String,
     pub(crate) runtime_input: String,
-    pub(crate) answer_time_beijing: String,
+    pub(crate) answer_time_local: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,7 +159,7 @@ impl<'a> PromptTurnBuilder<'a> {
     pub(crate) fn resolve_prompt_input_at(
         &self,
         user_input: &str,
-        prompt_time_beijing: DateTime<FixedOffset>,
+        prompt_time_local: DateTime<FixedOffset>,
         include_conversation_context: bool,
         use_native_codex_turn_input: bool,
     ) -> PromptTurnInput {
@@ -204,7 +204,7 @@ impl<'a> PromptTurnBuilder<'a> {
             self.session_id,
             &Default::default(),
             &prompt_options,
-            prompt_time_beijing,
+            prompt_time_local,
             include_conversation_context,
         );
         if use_native_codex_turn_input {
@@ -238,11 +238,11 @@ impl<'a> PromptTurnBuilder<'a> {
         PromptTurnInput {
             system_prompt: bundle.system_prompt(),
             runtime_input: if use_native_codex_turn_input {
-                compose_native_codex_turn_input(prompt_time_beijing, user_input)
+                compose_native_codex_turn_input(prompt_time_local, user_input)
             } else {
                 compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra)
             },
-            answer_time_beijing: bundle.answer_time_beijing,
+            answer_time_local: bundle.answer_time_local,
         }
     }
 
@@ -368,12 +368,12 @@ pub(crate) fn compose_runtime_input(
 /// new for this turn: the current clock and the normalized user content
 /// (including any attachment/image material embedded by channel ingestion).
 pub(crate) fn compose_native_codex_turn_input(
-    prompt_time_beijing: DateTime<FixedOffset>,
+    prompt_time_local: DateTime<FixedOffset>,
     user_input: &str,
 ) -> String {
     format!(
-        "【当前时间】\n{} (北京时间)\n\n【本轮用户输入】\n{}",
-        prompt_time_beijing.format("%Y-%m-%d %H:%M:%S"),
+        "【当前时间】\n{} (运行时时区)\n\n【本轮用户输入】\n{}",
+        prompt_time_local.format("%Y-%m-%d %H:%M:%S"),
         user_input.trim()
     )
 }
@@ -440,7 +440,7 @@ mod tests {
                 "【历史会话总结】\n旧 LITE stock_research 上下文".to_string(),
             ),
             session_context: "【Session 上下文】\n当前时间：2026-05-01 12:00:00".to_string(),
-            answer_time_beijing: "2026-05-01 12:00".to_string(),
+            answer_time_local: "2026-05-01 12:00".to_string(),
         };
 
         let input = compose_runtime_input(
@@ -462,14 +462,14 @@ mod tests {
     #[test]
     fn native_codex_turn_input_contains_only_current_time_and_user_content() {
         let prompt_time =
-            DateTime::parse_from_rfc3339("2026-07-31T09:15:27+08:00").expect("valid Beijing time");
+            DateTime::parse_from_rfc3339("2026-07-31T09:15:27+08:00").expect("valid Local time");
         let user_input = "看一下这张图\n\n【图片文字提取】\nCRWV | 72.07";
 
         let input = compose_native_codex_turn_input(prompt_time, user_input);
 
         assert_eq!(
             input,
-            "【当前时间】\n2026-07-31 09:15:27 (北京时间)\n\n\
+            "【当前时间】\n2026-07-31 09:15:27 (运行时时区)\n\n\
              【本轮用户输入】\n看一下这张图\n\n【图片文字提取】\nCRWV | 72.07"
         );
         for redundant in [

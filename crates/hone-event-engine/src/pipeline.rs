@@ -112,7 +112,7 @@ pub(crate) async fn run_once(
 /// 的 internal task。
 ///
 /// `on_tick` 回调拿到 `now` 和可写的 `fired` HashSet:
-/// - 自己用 `digest::in_window(now, hhmm, tz_offset)` 判断窗口
+/// - 自己用运行时时区判断窗口
 /// - 用 `format!("{date}@{label}@{hhmm}")` 当 fired key,`fired.insert` 返回 false
 ///   说明本窗口本日已触发,跳过(可参考 `digest::scheduler::tick_once` 现有写法)
 ///
@@ -124,7 +124,7 @@ pub(crate) async fn run_once(
 /// future trait object 里——Rust async closure 借用 `&mut` 参数的标准模式。
 pub(crate) async fn cron_minute_tick<F>(
     name: &'static str,
-    tz_offset: i32,
+    timezone: hone_core::RuntimeTimezone,
     task_runs_dir: Option<Arc<PathBuf>>,
     mut on_tick: F,
 ) where
@@ -143,7 +143,7 @@ pub(crate) async fn cron_minute_tick<F>(
     loop {
         ticker.tick().await;
         let now = Utc::now();
-        let today = digest::local_date_key(now, tz_offset);
+        let today = digest::local_date_key_timezone(now, &timezone);
         if today != last_date {
             fired.clear();
             last_date = today;

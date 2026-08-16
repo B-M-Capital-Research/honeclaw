@@ -12,7 +12,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
 use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage, holdings_with_weights};
 use serde::{Deserialize, Serialize};
@@ -91,7 +90,8 @@ pub(crate) struct PositionAdviceItem {
 pub(crate) struct PositionManagementSnapshot {
     pub report_date: String,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub model_version: String,
@@ -298,10 +298,7 @@ fn build_snapshot(
     let counts = action_counts(&items);
     let total_weight = round1(positions.iter().map(|item| item.weight).sum::<f64>());
     let macro_current = macro_context.report_date
-        == Utc::now()
-            .with_timezone(&Shanghai)
-            .format("%Y-%m-%d")
-            .to_string()
+        == hone_core::local_now().format("%Y-%m-%d").to_string()
         && !matches!(macro_context.status.as_str(), "stale" | "framework_only");
     let status = if counts.insufficient_data == items.len() {
         "data_unavailable"
@@ -312,14 +309,13 @@ fn build_snapshot(
     };
     let now = Utc::now();
     PositionManagementSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         model_version: MODEL_VERSION.to_string(),
         framework_version: FRAMEWORK_VERSION.to_string(),
         status: status.to_string(),
@@ -365,10 +361,7 @@ fn advise_position(
             && (item.thesis_effect == "weakens" || item.attention == "立即复核")
     });
     let macro_current = macro_context.report_date
-        == Utc::now()
-            .with_timezone(&Shanghai)
-            .format("%Y-%m-%d")
-            .to_string()
+        == hone_core::local_now().format("%Y-%m-%d").to_string()
         && !matches!(macro_context.status.as_str(), "stale" | "framework_only");
     let macro_supportive = macro_current && macro_context.signal == "green";
     let valuation_high = rating
@@ -673,14 +666,13 @@ fn empty_snapshot(
 ) -> PositionManagementSnapshot {
     let now = Utc::now();
     PositionManagementSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         model_version: MODEL_VERSION.to_string(),
         framework_version: FRAMEWORK_VERSION.to_string(),
         status: status.to_string(),
@@ -745,7 +737,7 @@ async fn write_snapshot(
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, 20, 0)
+    crate::routes::research_store::next_local_refresh(now, 20, 0)
 }
 
 fn round1(value: f64) -> f64 {
@@ -842,7 +834,7 @@ mod tests {
     fn valuation(current: f64, base: f64, bull: f64) -> DailyValuation {
         DailyValuation {
             as_of: "2026-08-11".to_string(),
-            generated_at_beijing: "2026-08-11 19:30".to_string(),
+            generated_at_local: "2026-08-11 19:30".to_string(),
             currency: "USD".to_string(),
             bear_case: 70.0,
             base_case: base,
@@ -870,12 +862,9 @@ mod tests {
             signal: signal.to_string(),
             score: Some(score),
             phase: "phase".to_string(),
-            // advise_position only trusts a macro report dated today (Beijing);
+            // advise_position only trusts a macro report dated today (Local);
             // a fixed date here turns every green-macro test into a time bomb.
-            report_date: Utc::now()
-                .with_timezone(&Shanghai)
-                .format("%Y-%m-%d")
-                .to_string(),
+            report_date: hone_core::local_now().format("%Y-%m-%d").to_string(),
             status: "live".to_string(),
         }
     }
@@ -1041,7 +1030,7 @@ mod tests {
             symbol: "NVDA".into(),
             title: "title".into(),
             published_at: Utc::now(),
-            published_at_beijing: "08-11 10:00".into(),
+            published_at_local: "08-11 10:00".into(),
             source: "Reuters".into(),
             source_url: "https://reuters.com/n".into(),
             source_summary: "summary".into(),

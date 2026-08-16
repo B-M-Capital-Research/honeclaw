@@ -1,6 +1,6 @@
 import { historyToTimeline } from "./messages";
 import { CONTENT } from "./public-content";
-import { formatShanghaiDateTime } from "./time";
+import { formatLocalDateTime } from "./time";
 import type {
   HistoryAttachment,
   HistoryFinanceCalendar,
@@ -122,7 +122,7 @@ export function publicChatRunStartedAtLabel(
   startedAt: number | undefined,
 ): string | undefined {
   if (!validEpochMs(startedAt)) return undefined;
-  return `查询开始：北京时间 ${formatShanghaiDateTime(
+  return `查询开始：本地时间 ${formatLocalDateTime(
     new Date(startedAt).toISOString(),
     { second: undefined },
   )}`;

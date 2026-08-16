@@ -1028,7 +1028,7 @@ export type CompanyRatingMetrics = {
 
 export type CompanyDailyValuation = {
   as_of: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   currency: string;
   bear_case: number;
   base_case: number;
@@ -1078,9 +1078,9 @@ export type CompanyRating = {
 
 export type CompanyRatingSnapshot = {
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   next_refresh_at: string;
-  timezone: "Asia/Shanghai" | string;
+  timezone: string;
   data_status: CompanyRatingDataStatus;
   methodology_version: string;
   simulation_note?: string;
@@ -1174,7 +1174,7 @@ export type ValuationLabItem = {
 export type ValuationLabSnapshot = {
   report_date: string;
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   next_refresh_at: string;
   timezone: string;
   methodology_version: string;
@@ -1201,7 +1201,7 @@ export type PortfolioNewsItem = {
   symbol: string;
   title: string;
   published_at: string;
-  published_at_beijing: string;
+  published_at_local: string;
   source: string;
   source_url: string;
   source_summary: string;
@@ -1220,9 +1220,9 @@ export type PortfolioNewsItem = {
 export type PortfolioNewsSnapshot = {
   report_date: string;
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   next_refresh_at: string;
-  timezone: "Asia/Shanghai" | string;
+  timezone: string;
   model_version: string;
   status:
     | "live"
@@ -1288,9 +1288,9 @@ export type PositionAdviceItem = {
 export type PositionManagementSnapshot = {
   report_date: string;
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   next_refresh_at: string;
-  timezone: "Asia/Shanghai" | string;
+  timezone: string;
   model_version: string;
   framework_version: string;
   status: string;
@@ -1322,9 +1322,9 @@ export type PositionManagementSnapshot = {
 export type InfluencerDigestSnapshot = {
   report_date: string;
   generated_at: string;
-  generated_at_beijing: string;
-  next_refresh_at: string;
+  generated_at_local: string;
   timezone: string;
+  next_refresh_at: string;
   lookback_hours: number;
   model_version: string;
   status: string;
@@ -1353,7 +1353,7 @@ export type InfluencerDigestSnapshot = {
     public_handle: string;
     title: string;
     published_at: string;
-    published_at_beijing: string;
+    published_at_local: string;
     source_url: string;
     aggregation_source?: string | null;
     aggregation_url?: string | null;
@@ -1374,7 +1374,7 @@ export type InfluencerDigestSnapshot = {
 export type KeyEventChainSnapshot = {
   report_date: string;
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   next_refresh_at: string;
   timezone: string;
   lookback_days: number;
@@ -1398,7 +1398,7 @@ export type KeyEventChainSnapshot = {
       id: string;
       topic_id: string;
       published_at: string;
-      published_at_beijing: string;
+      published_at_local: string;
       source_name: string;
       source_url: string;
       source_tier: string;
@@ -1420,7 +1420,7 @@ export type KeyEventChainSnapshot = {
     review_end: string;
     outlook_start: string;
     outlook_end: string;
-    previous_generated_at_beijing?: string | null;
+    previous_generated_at_local?: string | null;
     status: string;
     summary: string;
     version_summary: string;
@@ -1484,7 +1484,7 @@ export type WeeklyBriefItem = {
 
 export type WeeklyBriefPayload = {
   report_date: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
   timezone: string;
   status: "live" | "partial" | "empty" | string;
   summary: string;
@@ -1629,7 +1629,8 @@ export type DailySignalReport = {
   market_date?: string | null;
   data_cutoff?: string | null;
   generated_at: string;
-  generated_at_beijing: string;
+  generated_at_local: string;
+  timezone: string;
   next_refresh_at: string;
   model_version: string;
   status: DailySignalStatus;
@@ -1655,7 +1656,7 @@ export type DailySignalReport = {
 export type DailySignalHistoryItem = Pick<
   DailySignalReport,
   | "report_date"
-  | "generated_at_beijing"
+  | "generated_at_local"
   | "status"
   | "score"
   | "raw_score"

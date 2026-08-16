@@ -12,7 +12,7 @@
 //! `event_category` / …)—— 它们既被本文件用,也被 `dispatch.rs` 频繁引用,
 //! 集中放这里能让 dispatch 主流程的 import 简短。
 
-use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 
 use crate::event::{
     EventKind, MarketEvent, Severity, is_analyst_roundup_summary, is_noop_analyst_grade,
@@ -247,16 +247,9 @@ pub(super) fn event_category(event: &MarketEvent) -> &'static str {
 
 /// 按给定 tz 偏移求本地当日 00:00 对应的 UTC 时刻。用作
 /// `count_high_sent_since` 的 cutoff,保证跨时区一致。
-pub(super) fn local_day_start(now: DateTime<Utc>, offset_hours: i32) -> DateTime<Utc> {
-    let offset =
-        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
-    let midnight = local
-        .date_naive()
-        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-    offset
-        .from_local_datetime(&midnight)
-        .single()
-        .map(|l| l.with_timezone(&Utc))
-        .unwrap_or(now)
+pub(super) fn local_day_start(
+    now: DateTime<Utc>,
+    timezone: &hone_core::RuntimeTimezone,
+) -> DateTime<Utc> {
+    timezone.local_day_start_utc(now)
 }

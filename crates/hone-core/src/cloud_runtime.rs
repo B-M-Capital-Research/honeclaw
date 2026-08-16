@@ -61,7 +61,7 @@ SELECT
   is_admin
 FROM cloud_web_invite_users
 WHERE phone_number <> ''
-ORDER BY COALESCE(NULLIF(record->>'created_at', ''), updated_at::text) DESC,
+ORDER BY COALESCE(NULLIF(record->>'created_at', '')::timestamptz, updated_at) DESC,
          user_id
 "#;
 
@@ -69,7 +69,7 @@ const WEB_ADMIN_CREATE_COUNT_SQL: &str = r#"
 SELECT count(*)::bigint
 FROM cloud_web_admin_actions
 WHERE admin_user_id = $1
-  AND beijing_date = $2::text::date
+  AND local_date = $2::text::date
   AND action = 'create'
 "#;
 
@@ -1563,6 +1563,10 @@ CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_time
   ON cloud_cron_job_runs(job_id, executed_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_time
   ON cloud_cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_instant
+  ON cloud_cron_job_runs(job_id, (executed_at::timestamptz) DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_instant
+  ON cloud_cron_job_runs(actor_channel, actor_user_id, (executed_at::timestamptz) DESC);
 CREATE TABLE IF NOT EXISTS cloud_web_push_messages (
   actor_storage_key TEXT NOT NULL,
   push_id TEXT NOT NULL,
@@ -1576,6 +1580,8 @@ CREATE TABLE IF NOT EXISTS cloud_web_push_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_web_push_actor_time
   ON cloud_web_push_messages(actor_storage_key, created_at DESC, push_id DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_web_push_actor_instant
+  ON cloud_web_push_messages(actor_storage_key, (created_at::timestamptz) DESC, push_id DESC);
 CREATE TABLE IF NOT EXISTS cloud_sessions (
   session_id TEXT PRIMARY KEY,
   actor_storage_key TEXT NOT NULL,
@@ -1624,11 +1630,11 @@ CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
   admin_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
   target_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
   action TEXT NOT NULL CHECK (action IN ('create', 'disable')),
-  beijing_date DATE NOT NULL,
+  local_date DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_web_admin_actions_daily
-  ON cloud_web_admin_actions(admin_user_id, beijing_date, action);
+  ON cloud_web_admin_actions(admin_user_id, local_date, action);
 CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
   session_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -1698,6 +1704,15 @@ CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_processing
   ON billing_webhook_events(processing_state, received_at);
 CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry
   ON billing_webhook_events(provider, processing_state, processing_started_at, received_at);
+CREATE INDEX IF NOT EXISTS idx_billing_entitlements_updated_instant
+  ON billing_entitlements(user_id, (updated_at::timestamptz) DESC, entitlement_id DESC);
+CREATE INDEX IF NOT EXISTS idx_billing_webhook_events_retry_instant
+  ON billing_webhook_events(
+    provider,
+    processing_state,
+    (processing_started_at::timestamptz),
+    (received_at::timestamptz)
+  );
 CREATE TABLE IF NOT EXISTS cloud_llm_audit_records (
   id TEXT PRIMARY KEY,
   actor_storage_key TEXT,
@@ -2264,8 +2279,10 @@ WHERE resource_id = $1
         source: &str,
         external_id: &str,
         candidates: &[CloudCommunityReconcileCandidate],
+        source_timezone: &str,
         apply: bool,
     ) -> HoneResult<CloudCommunityReconcileReport> {
+        crate::RuntimeTimezone::parse_iana(source_timezone).map_err(HoneError::Config)?;
         let planned = plan_community_reconcile_candidates(source, candidates)?;
         let source_file_positions = planned
             .iter()
@@ -2422,6 +2439,7 @@ ORDER BY content_id
             };
             let raw_metadata = serde_json::json!({
                 "captured_from": "full_timeline_reconciliation",
+                "source_timezone": source_timezone,
                 "source_topic_index": candidate.source_topic_index,
                 "source_file_position": candidate.source_file_position,
                 "feed_position": candidate.source_file_position,
@@ -2438,7 +2456,7 @@ INSERT INTO community_contents(
 )
 VALUES (
   $1, $2, $3, $4, $5,
-  $6::text::timestamp AT TIME ZONE 'Asia/Shanghai', $6, 'post', $7, $8,
+  $6::text::timestamp AT TIME ZONE $10::text, $6, 'post', $7, $8,
   $9, $3, 'complete'
 )
 RETURNING content_id
@@ -2453,6 +2471,7 @@ RETURNING content_id
                         &candidate.body_text,
                         &body_blocks,
                         &raw_metadata,
+                        &source_timezone,
                     ],
                 )
                 .await
@@ -3125,7 +3144,8 @@ FROM (
   WHERE s.user_id IS NULL
     AND NULLIF(u.record #>> '{external_state,email_address}', '') = $1
 ) matched
-ORDER BY source_priority, record->>'created_at' DESC
+ORDER BY source_priority,
+         NULLIF(record->>'created_at', '')::timestamptz DESC NULLS LAST
 LIMIT 1
 "#,
                 &[&email_address],
@@ -3139,7 +3159,7 @@ LIMIT 1
         let client = self.connect_client().await?;
         let rows = client
             .query(
-                "SELECT record FROM cloud_web_invite_users ORDER BY record->>'created_at' DESC",
+                "SELECT record FROM cloud_web_invite_users ORDER BY NULLIF(record->>'created_at', '')::timestamptz DESC NULLS LAST",
                 &[],
             )
             .await
@@ -3151,7 +3171,7 @@ LIMIT 1
         let client = self.connect_cached_client().await?;
         let rows = client
             .query(
-                "SELECT record FROM cloud_web_invite_users ORDER BY record->>'created_at' DESC",
+                "SELECT record FROM cloud_web_invite_users ORDER BY NULLIF(record->>'created_at', '')::timestamptz DESC NULLS LAST",
                 &[],
             )
             .await
@@ -3236,9 +3256,11 @@ DO UPDATE SET
   last_event_created_at = EXCLUDED.last_event_created_at,
   updated_at = EXCLUDED.updated_at,
   record = EXCLUDED.record
-WHERE EXCLUDED.last_event_created_at > billing_entitlements.last_event_created_at
+WHERE EXCLUDED.last_event_created_at::timestamptz
+        > billing_entitlements.last_event_created_at::timestamptz
    OR (
-     EXCLUDED.last_event_created_at = billing_entitlements.last_event_created_at
+     EXCLUDED.last_event_created_at::timestamptz
+       = billing_entitlements.last_event_created_at::timestamptz
      AND EXCLUDED.last_event_id > billing_entitlements.last_event_id
    )
 "#,
@@ -3284,7 +3306,7 @@ WHERE provider = $1 AND provider_reference_id = $2
 SELECT record
 FROM billing_entitlements
 WHERE user_id = $1
-ORDER BY updated_at DESC, entitlement_id DESC
+ORDER BY updated_at::timestamptz DESC, entitlement_id DESC
 "#,
                 &[&user_id],
             )
@@ -3376,7 +3398,10 @@ WHERE provider = $1
     processing_state IN ('received', 'failed')
     OR (
       processing_state = 'processing'
-      AND (processing_started_at IS NULL OR processing_started_at <= $3)
+      AND (
+        processing_started_at IS NULL
+        OR processing_started_at::timestamptz <= $3::text::timestamptz
+      )
     )
   )
 "#,
@@ -3416,10 +3441,13 @@ WHERE provider = $1
     processing_state IN ('received', 'failed')
     OR (
       processing_state = 'processing'
-      AND (processing_started_at IS NULL OR processing_started_at <= $2)
+      AND (
+        processing_started_at IS NULL
+        OR processing_started_at::timestamptz <= $2::text::timestamptz
+      )
     )
   )
-ORDER BY received_at, event_id
+ORDER BY received_at::timestamptz, event_id
 LIMIT $4
 "#,
                 &[&provider, &stale_before, &max_attempts, &limit],
@@ -3572,11 +3600,11 @@ WHERE user_id = $1
     pub async fn web_admin_create_count_for_date(
         &self,
         admin_user_id: &str,
-        beijing_date: &str,
+        local_date: &str,
     ) -> HoneResult<u32> {
         let client = self.connect_client().await?;
         let row = client
-            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &beijing_date])
+            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &local_date])
             .await
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
@@ -3590,7 +3618,7 @@ WHERE user_id = $1
         target_user_id: &str,
         phone_number: &str,
         record: serde_json::Value,
-        beijing_date: &str,
+        local_date: &str,
         daily_limit: u32,
     ) -> HoneResult<CloudWebAdminCreateOutcome> {
         let mut client = self.connect_new_client().await?;
@@ -3650,7 +3678,7 @@ FOR UPDATE
         }
 
         let used_today = transaction
-            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &beijing_date])
+            .query_one(WEB_ADMIN_CREATE_COUNT_SQL, &[&admin_user_id, &local_date])
             .await
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web admin 当日新增计数失败: {err}"))
@@ -3680,11 +3708,11 @@ VALUES ($1, $2, FALSE, $3)
             .execute(
                 r#"
 INSERT INTO cloud_web_admin_actions(
-  admin_user_id, target_user_id, action, beijing_date
+  admin_user_id, target_user_id, action, local_date
 )
 VALUES ($1, $2, 'create', $3::text::date)
 "#,
-                &[&admin_user_id, &target_user_id, &beijing_date],
+                &[&admin_user_id, &target_user_id, &local_date],
             )
             .await
             .map_err(|err| {
@@ -3703,7 +3731,7 @@ VALUES ($1, $2, 'create', $3::text::date)
         admin_user_id: &str,
         target_user_id: &str,
         revoked_at: &str,
-        beijing_date: &str,
+        local_date: &str,
     ) -> HoneResult<CloudWebAdminDisableOutcome> {
         let mut client = self.connect_new_client().await?;
         let transaction = client.transaction().await.map_err(|err| {
@@ -3803,11 +3831,11 @@ RETURNING record
             .execute(
                 r#"
 INSERT INTO cloud_web_admin_actions(
-  admin_user_id, target_user_id, action, beijing_date
+  admin_user_id, target_user_id, action, local_date
 )
 VALUES ($1, $2, 'disable', $3::text::date)
 "#,
-                &[&admin_user_id, &target_user_id, &beijing_date],
+                &[&admin_user_id, &target_user_id, &local_date],
             )
             .await
             .map_err(|err| {
@@ -3900,7 +3928,7 @@ DO UPDATE SET
         let client = self.connect_client().await?;
         client
             .execute(
-                "DELETE FROM cloud_web_auth_sessions WHERE record->>'expires_at' <= $1",
+                "DELETE FROM cloud_web_auth_sessions WHERE expires_at <= $1::text::timestamptz",
                 &[&now],
             )
             .await
@@ -3915,7 +3943,7 @@ DO UPDATE SET
         let client = self.connect_client().await?;
         let row = client
             .query_one(
-                "SELECT count(*)::bigint FROM cloud_web_auth_sessions WHERE user_id = $1 AND record->>'expires_at' > $2",
+                "SELECT count(*)::bigint FROM cloud_web_auth_sessions WHERE user_id = $1 AND expires_at > $2::text::timestamptz",
                 &[&user_id, &now],
             )
             .await
@@ -4271,8 +4299,8 @@ ON CONFLICT (job_key, due_key) DO NOTHING
     ) -> HoneResult<()> {
         let client = self.connect_cached_client().await?;
         let input = normalize_cloud_cron_execution_input_for_storage(actor, input);
-        let executed_at = crate::beijing_now_rfc3339();
-        let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
+        let executed_at = crate::local_now_rfc3339();
+        let started_threshold = (crate::local_now() - chrono::Duration::hours(2)).to_rfc3339();
         let is_started_row =
             input.execution_status == "running" && input.message_send_status == "pending";
         // 下面四条终态 UPDATE 里的时间差一律写 `$1::text::timestamptz`,不能省成
@@ -4324,7 +4352,7 @@ WHERE run_id = (
     AND execution_status = 'running'
     AND message_send_status = 'pending'
     AND detail->>'delivery_key' = $15
-  ORDER BY executed_at DESC, run_id DESC
+  ORDER BY executed_at::timestamptz DESC, run_id DESC
   LIMIT 1
 )
 "#,
@@ -4386,9 +4414,9 @@ WHERE run_id = (
     AND execution_status = 'running'
     AND message_send_status = 'pending'
     AND detail->>'phase' = 'started'
-    -- 同上按真实时刻比较:此处 `$15` 目前也是北京时间(碰巧与列一致),但不要依赖这个巧合。
+    -- 同上按真实时刻比较:此处 `$15` 目前也是运行时时区(碰巧与列一致),但不要依赖这个巧合。
     AND executed_at::timestamptz >= $15::text::timestamptz
-  ORDER BY executed_at DESC, run_id DESC
+  ORDER BY executed_at::timestamptz DESC, run_id DESC
   LIMIT 1
 )
 "#,
@@ -4474,7 +4502,7 @@ INSERT INTO cloud_cron_job_runs (
         reason: &str,
     ) -> HoneResult<usize> {
         let client = self.connect_cached_client().await?;
-        let recovered_at = crate::beijing_now_rfc3339();
+        let recovered_at = crate::local_now_rfc3339();
         let detail = serde_json::json!({
             "phase": "scheduler_handler_watchdog_timeout",
             "recovered_at": recovered_at,
@@ -4542,7 +4570,7 @@ WHERE job_id = $4
         reason: &str,
     ) -> HoneResult<usize> {
         let client = self.connect_cached_client().await?;
-        let interrupted_at = crate::beijing_now_rfc3339();
+        let interrupted_at = crate::local_now_rfc3339();
         let detail = serde_json::json!({
             "phase": "recovered_stale_pending",
             "recovered_at": interrupted_at,
@@ -4572,10 +4600,10 @@ WHERE actor_channel = $4
   AND execution_status = 'running'
   AND message_send_status = 'pending'
   AND detail->>'phase' = 'started'
-  -- 必须按**真实时刻**比较,不能用文本字典序。`executed_at` 是 TEXT,写入时用北京时间
-  -- (`beijing_now_rfc3339()`,偏移 `+08:00`),而调用方的 `stale_before` 是
+  -- 必须按**真实时刻**比较,不能用文本字典序。`executed_at` 是 TEXT,历史行包含
+  -- `+08:00`,新行则由 `local_now_rfc3339()` 写入当前运行时区；调用方的 `stale_before` 是
   -- `Utc::now().to_rfc3339()`(偏移 `+00:00`,见 hone-scheduler/src/lib.rs:74)。
-  -- 字典序只比墙钟数字、完全无视偏移,于是一条北京时间的行会显得比 UTC 阈值"新"
+  -- 字典序只比墙钟数字、完全无视偏移,于是一条运行时时区的行会显得比 UTC 阈值"新"
   -- 最多 8 小时,回收因此被推迟同样长的时间。
   -- 2026-08-16 生产实测:一条已经 613 分钟未收口的行,文本比较判 false、
   -- 时刻比较判 true;`recovered_stale_pending` 自 2026-08-11 起再未新增,
@@ -4612,7 +4640,7 @@ SELECT
   execution_status, message_send_status,
   should_deliver, delivered, response_preview, error_message, detail
 FROM cloud_cron_job_runs
--- 同上:按真实时刻比较。`since` / `until` 由调用方给,偏移不保证与列的 `+08:00` 一致,
+-- 同上:按真实时刻比较。`since` / `until` 由调用方给,偏移不保证与历史行的 `+08:00` 一致,
 -- 文本字典序会在跨时区时给出错误结果。
 WHERE ($1::text IS NULL OR executed_at::timestamptz >= $1::text::timestamptz)
   AND ($2::text IS NULL OR executed_at::timestamptz <= $2::text::timestamptz)
@@ -4622,7 +4650,7 @@ WHERE ($1::text IS NULL OR executed_at::timestamptz >= $1::text::timestamptz)
   AND ($6::text IS NULL OR execution_status = $6)
   AND ($7::text IS NULL OR message_send_status = $7)
   AND ($8::boolean IS NULL OR heartbeat = $8)
-ORDER BY executed_at DESC, run_id DESC
+ORDER BY executed_at::timestamptz DESC, run_id DESC
 LIMIT $9
 "#,
                 &[
@@ -4806,13 +4834,13 @@ FROM cloud_web_push_messages
 WHERE actor_storage_key = $1
   AND (
     $2::text IS NULL
-    OR (created_at, push_id) < (
-      SELECT created_at, push_id
+    OR (created_at::timestamptz, push_id) < (
+      SELECT created_at::timestamptz, push_id
       FROM cloud_web_push_messages
       WHERE actor_storage_key = $1 AND push_id = $2
     )
   )
-ORDER BY created_at DESC, push_id DESC
+ORDER BY created_at::timestamptz DESC, push_id DESC
 LIMIT $3
 "#,
                 &[&actor_storage_key, &before_push_id, &limit],
@@ -4873,8 +4901,8 @@ UPDATE cloud_web_push_messages
 SET read_at = $3
 WHERE actor_storage_key = $1
   AND read_at IS NULL
-  AND created_at <= (
-    SELECT created_at
+  AND created_at::timestamptz <= (
+    SELECT created_at::timestamptz
     FROM cloud_web_push_messages
     WHERE actor_storage_key = $1 AND push_id = $2
   )
@@ -5086,7 +5114,8 @@ WHERE actor_storage_key = $1
                 r#"
 SELECT actor_storage_key, actor, portfolio
 FROM cloud_portfolios
-ORDER BY COALESCE(portfolio->>'updated_at', '') DESC, updated_at DESC
+ORDER BY NULLIF(portfolio->>'updated_at', '')::timestamptz DESC NULLS LAST,
+         updated_at DESC
 "#,
                 &[],
             )
@@ -5300,7 +5329,7 @@ INSERT INTO cloud_company_profile_files(
   content,
   updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
+VALUES ($1, $2, $3, $4, $5, $6::text::timestamptz)
 ON CONFLICT(actor_storage_key, profile_id, relative_path)
 DO UPDATE SET
   actor = EXCLUDED.actor,
@@ -5479,8 +5508,8 @@ WHERE ($1::text IS NULL OR record->'actor'->>'channel' = $1)
   AND ($5::boolean IS NULL OR (record->>'success')::boolean = $5)
   AND ($6::text IS NULL OR record->>'source' = $6)
   AND ($7::text IS NULL OR record->>'provider' = $7)
-  AND ($8::text IS NULL OR created_at >= $8::timestamptz)
-  AND ($9::text IS NULL OR created_at <= $9::timestamptz)
+  AND ($8::text IS NULL OR created_at >= $8::text::timestamptz)
+  AND ($9::text IS NULL OR created_at <= $9::text::timestamptz)
 "#,
                 &[
                     &filter.actor_channel,
@@ -5509,8 +5538,8 @@ WHERE ($1::text IS NULL OR record->'actor'->>'channel' = $1)
   AND ($5::boolean IS NULL OR (record->>'success')::boolean = $5)
   AND ($6::text IS NULL OR record->>'source' = $6)
   AND ($7::text IS NULL OR record->>'provider' = $7)
-  AND ($8::text IS NULL OR created_at >= $8::timestamptz)
-  AND ($9::text IS NULL OR created_at <= $9::timestamptz)
+  AND ($8::text IS NULL OR created_at >= $8::text::timestamptz)
+  AND ($9::text IS NULL OR created_at <= $9::text::timestamptz)
 ORDER BY created_at DESC, id DESC
 LIMIT $10 OFFSET $11
 "#,
@@ -6885,8 +6914,7 @@ mod tests {
     /// 2026-08-16 GCE 生产回归:执行记录一条都写不进去、僵尸行回收也失败;
     /// 所有调用点都是 `let _ =`,错误被吞掉,只在启动日志里露出一行 WARN。
     ///
-    /// 注意区分:`($8::text IS NULL OR created_at >= $8::timestamptz)` 这类**两个都是
-    /// 显式 cast**的写法是安全的(实测推断为 text),不在本断言范围内。
+    /// 其它 RFC 3339 字符串参数也统一先 cast 到 text,再 cast 到 timestamptz。
     #[test]
     fn cron_duration_updates_pin_the_timestamp_parameter_to_text() {
         let source = include_str!("cloud_runtime.rs");

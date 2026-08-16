@@ -116,7 +116,7 @@ function eventLabel(event: FinanceCalendarEvent) {
 
 function eventTime(event: FinanceCalendarEvent) {
   return event.subtitle
-    ?.replace("北京时间 ", "")
+    ?.replace("运行时时区 ", "")
     .split(" · ")[0]
     ?.trim() || CONTENT.chat_page.calendar.pending;
 }
@@ -162,7 +162,7 @@ function drawCover(
   context.fillText("HONE / 财经日历", 34, 44);
   context.fillStyle = "#ff7a5d";
   context.textAlign = "right";
-  context.fillText(`${CONTENT.chat_page.calendar.beijing_time} · ${year}`, 716, 44);
+  context.fillText(`${CONTENT.chat_page.calendar.local_time} · ${year}`, 716, 44);
   context.textAlign = "left";
 
   context.fillStyle = "#ff7052";

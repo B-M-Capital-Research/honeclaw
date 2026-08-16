@@ -362,7 +362,7 @@ impl DataFetchTool {
     }
 
     fn resolve_earnings_window(&self, args: &Value) -> Result<(NaiveDate, NaiveDate), String> {
-        let today = hone_core::beijing_now().date_naive();
+        let today = hone_core::local_now().date_naive();
         let default_to = today + Duration::days(14);
 
         let from = if let Some(value) = args.get("from").and_then(|v| v.as_str()) {
@@ -1099,7 +1099,7 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         summaries.push(summary);
     }
 
-    let now_new_york = hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York);
+    let now_new_york = hone_core::local_now().with_timezone(&chrono_tz::America::New_York);
     Ok(serde_json::json!({
         "symbol": ticker.trim().to_ascii_uppercase(),
         "price": latest.3,
@@ -1178,15 +1178,16 @@ fn attach_quote_timestamp_metadata(value: &mut Value) {
         return;
     };
     let new_york = utc.with_timezone(&chrono_tz::America::New_York);
-    let beijing = utc.with_timezone(&chrono_tz::Asia::Shanghai);
+    let local = hone_core::local_time_at(utc);
     fields.insert(
         "hone_quote_time".to_string(),
         serde_json::json!({
             "unix_seconds": timestamp,
             "new_york": new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
-            "beijing": beijing.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "local": local.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "local_timezone": hone_core::runtime_timezone_name(),
             "market_date_new_york": new_york.format("%Y-%m-%d").to_string(),
-            "source": "provider Unix timestamp converted by Hone; use `beijing` for the user-visible quote time; this metadata does not establish a market session"
+            "source": "provider Unix timestamp converted by Hone; use `local` for the user-visible quote time; this metadata does not establish a market session"
         }),
     );
 }
@@ -2118,7 +2119,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2208,7 +2209,7 @@ impl Tool for DataFetchTool {
                 name: "from".to_string(),
                 param_type: "string".to_string(),
                 description:
-                    "仅 earnings_calendar 使用的开始日期，格式 YYYY-MM-DD；默认当前北京时间日期"
+                    "仅 earnings_calendar 使用的开始日期，格式 YYYY-MM-DD；默认当前运行时时区日期"
                         .to_string(),
                 required: false,
                 r#enum: None,
@@ -2564,7 +2565,7 @@ mod tests {
     }
 
     #[test]
-    fn quote_timestamp_metadata_exposes_unambiguous_new_york_and_beijing_times() {
+    fn quote_timestamp_metadata_exposes_unambiguous_new_york_and_local_times() {
         let timestamp = DateTime::parse_from_rfc3339("2026-07-17T20:00:00Z")
             .expect("valid quote timestamp")
             .timestamp();
@@ -2577,7 +2578,7 @@ mod tests {
 
         assert_eq!(quote_time["unix_seconds"], timestamp);
         assert_eq!(quote_time["new_york"], "2026-07-17 16:00:00 -04:00");
-        assert_eq!(quote_time["beijing"], "2026-07-18 04:00:00 +08:00");
+        assert_eq!(quote_time["local"], "2026-07-18 04:00:00 +08:00");
         assert_eq!(quote_time["market_date_new_york"], "2026-07-17");
         assert!(
             quote_time.get("session").is_none(),
@@ -3380,7 +3381,7 @@ mod tests {
         let (from, to) = tool
             .resolve_earnings_window(&json!({ "data_type": "earnings_calendar" }))
             .expect("default earnings window");
-        let today = hone_core::beijing_now().date_naive();
+        let today = hone_core::local_now().date_naive();
         assert_eq!(from, today);
         assert_eq!(to, today + Duration::days(14));
     }
@@ -3591,7 +3592,7 @@ mod tests {
         assert_eq!(payload["data"][0]["symbol"], "AAPL");
         assert_eq!(payload["data"][0]["price"], 100.0);
         assert_eq!(
-            payload["data"][0]["hone_quote_time"]["beijing"],
+            payload["data"][0]["hone_quote_time"]["local"],
             "2026-07-18 04:00:00 +08:00"
         );
         assert!(
@@ -3632,7 +3633,7 @@ mod tests {
 
         for payload in [&quote_short, &crypto_quote] {
             assert_eq!(
-                payload["data"][0]["hone_quote_time"]["beijing"],
+                payload["data"][0]["hone_quote_time"]["local"],
                 "2026-07-18 04:00:00 +08:00"
             );
             assert!(
@@ -4009,7 +4010,7 @@ mod tests {
 
         assert_eq!(first["data"]["quote"][0]["symbol"], "AAPL");
         assert_eq!(
-            first["data"]["quote"][0]["hone_quote_time"]["beijing"],
+            first["data"]["quote"][0]["hone_quote_time"]["local"],
             "2026-07-18 04:00:00 +08:00"
         );
         assert!(

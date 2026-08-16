@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use chrono::{Datelike, FixedOffset, NaiveDate, Timelike};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Timelike, Utc};
 use hone_core::cloud_runtime::CloudCronJobRecord;
 use hone_core::{ActorIdentity, HoneError};
 use tracing::warn;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::CronJobStorage;
 use super::run_cloud_cron;
 use super::schedule::{
-    DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot,
+    DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot_in,
     normalize_schedule_date, normalized_repeat, normalized_tags, prompt_schedule_conflict,
     validate_schedule, validate_schedule_date,
 };
@@ -29,7 +29,20 @@ fn push_unique(values: &mut Vec<String>, value: &str) {
 
 fn newer_optional_string(left: Option<String>, right: Option<String>) -> Option<String> {
     match (left, right) {
-        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(left), Some(right)) => {
+            let left_instant = DateTime::parse_from_rfc3339(&left).ok();
+            let right_instant = DateTime::parse_from_rfc3339(&right).ok();
+            match (left_instant, right_instant) {
+                (Some(left_instant), Some(right_instant)) => {
+                    Some(if left_instant >= right_instant {
+                        left
+                    } else {
+                        right
+                    })
+                }
+                _ => Some(left.max(right)),
+            }
+        }
         (Some(left), None) => Some(left),
         (None, Some(right)) => Some(right),
         (None, None) => None,
@@ -83,19 +96,26 @@ fn scheduled_job_due_in_current_window(
     job: &CronJob,
     current_total: i32,
     current_day: NaiveDate,
+    timezone: &hone_core::RuntimeTimezone,
 ) -> bool {
     let job_total = (job.schedule.hour as i32) * 60 + (job.schedule.minute as i32);
     let due_in_window =
         current_total - DUE_WINDOW_MINUTES <= job_total && job_total <= current_total;
-    let due_by_catch_up = current_total > job_total && job_existed_before_slot(job, current_day);
+    let due_by_catch_up =
+        current_total > job_total && job_existed_before_slot_in(job, current_day, timezone);
     due_in_window || due_by_catch_up
 }
 
-fn job_due_in_current_window(job: &CronJob, current_total: i32, current_day: NaiveDate) -> bool {
+fn job_due_in_current_window(
+    job: &CronJob,
+    current_total: i32,
+    current_day: NaiveDate,
+    timezone: &hone_core::RuntimeTimezone,
+) -> bool {
     if job.is_heartbeat() {
         heartbeat_due_in_current_window(job, current_total)
     } else {
-        scheduled_job_due_in_current_window(job, current_total, current_day)
+        scheduled_job_due_in_current_window(job, current_total, current_day, timezone)
     }
 }
 
@@ -132,6 +152,7 @@ fn already_ran_in_current_period(
     repeat_kind: &str,
     now: chrono::DateTime<FixedOffset>,
     current_total: i32,
+    timezone: &hone_core::RuntimeTimezone,
 ) -> bool {
     let Some(last_run) = job.last_run_at.as_deref() else {
         return false;
@@ -140,18 +161,19 @@ fn already_ran_in_current_period(
         return false;
     };
 
+    let last_local = timezone.at_utc(last_dt.with_timezone(&Utc));
     match repeat_kind {
         "heartbeat" => {
             let current_slot_start_minute = (current_total / 30) * 30;
             let current_slot_hour = current_slot_start_minute / 60;
             let current_slot_minute = current_slot_start_minute % 60;
-            last_dt.date_naive() == now.date_naive()
-                && last_dt.hour() as i32 == current_slot_hour
-                && (last_dt.minute() as i32 / 30) == (current_slot_minute / 30)
+            last_local.date_naive() == now.date_naive()
+                && last_local.hour() as i32 == current_slot_hour
+                && (last_local.minute() as i32 / 30) == (current_slot_minute / 30)
         }
-        "weekly" => last_dt.iso_week() == now.iso_week() && last_dt.year() == now.year(),
+        "weekly" => last_local.iso_week() == now.iso_week() && last_local.year() == now.year(),
         "once" => true,
-        _ => last_dt.date_naive() == now.date_naive(),
+        _ => last_local.date_naive() == now.date_naive(),
     }
 }
 
@@ -424,7 +446,7 @@ impl CronJobStorage {
         }
 
         let job_id = format!("j_{}", &Uuid::new_v4().to_string()[..8]);
-        let now = hone_core::beijing_now_rfc3339();
+        let now = hone_core::local_now_rfc3339();
 
         let job = CronJob {
             id: job_id,
@@ -596,7 +618,7 @@ impl CronJobStorage {
     /// 标记任务已执行
     pub fn mark_job_run(&self, actor: &ActorIdentity, job_id: &str) {
         let mut data = self.load_jobs(actor);
-        let now = hone_core::beijing_now_rfc3339();
+        let now = hone_core::local_now_rfc3339();
         for job in &mut data.jobs {
             if job.id == job_id {
                 job.last_run_at = Some(now.clone());
@@ -619,18 +641,19 @@ impl CronJobStorage {
     /// 4. 按 `repeat` 过滤星期/工作日/交易日/假日
     /// 5. `last_run_at` 未命中当前周期（heartbeat 以半点槽，weekly 以 ISO 周，once 只跑一次）
     /// 6. 跨文件去重（同一 `channel:job_id:target` 只返回一次）
-    pub fn get_due_jobs(
+    pub fn get_due_jobs_at(
         &self,
-        current_hour: i32,
-        current_minute: i32,
-        current_weekday: u32,
+        now: DateTime<FixedOffset>,
         channels: &[&str],
     ) -> Vec<(ActorIdentity, CronJob)> {
         let mut due = Vec::new();
         let mut seen_due_keys = HashSet::new();
-        let now = hone_core::beijing_now();
         let current_day = now.date_naive();
+        let current_hour = now.hour() as i32;
+        let current_minute = now.minute() as i32;
+        let current_weekday = now.weekday().num_days_from_monday();
         let current_total = current_hour * 60 + current_minute;
+        let timezone = hone_core::runtime_timezone();
 
         let postgres = self.postgres.clone();
         let owner_id = cron_owner_id();
@@ -656,7 +679,7 @@ impl CronJobStorage {
                 continue;
             }
 
-            if !job_due_in_current_window(&job, current_total, current_day) {
+            if !job_due_in_current_window(&job, current_total, current_day, &timezone) {
                 continue;
             }
 
@@ -665,7 +688,7 @@ impl CronJobStorage {
                 continue;
             }
 
-            if already_ran_in_current_period(&job, repeat_kind, now, current_total) {
+            if already_ran_in_current_period(&job, repeat_kind, now, current_total, &timezone) {
                 continue;
             }
 
@@ -702,6 +725,23 @@ impl CronJobStorage {
             }
         }
         return due;
+    }
+
+    #[cfg(test)]
+    pub fn get_due_jobs(
+        &self,
+        current_hour: i32,
+        current_minute: i32,
+        current_weekday: u32,
+        channels: &[&str],
+    ) -> Vec<(ActorIdentity, CronJob)> {
+        let now = hone_core::local_now()
+            .with_hour(current_hour as u32)
+            .and_then(|value| value.with_minute(current_minute as u32))
+            .and_then(|value| value.with_second(0))
+            .expect("valid test-local cron time");
+        debug_assert_eq!(now.weekday().num_days_from_monday(), current_weekday);
+        self.get_due_jobs_at(now, channels)
     }
 
     fn mutate_job<F>(
@@ -833,4 +873,64 @@ fn repair_prompt_schedule_mismatch(job: &mut CronJob) -> bool {
     job.schedule.hour = declared_hour;
     job.schedule.minute = declared_minute;
     true
+}
+
+#[cfg(test)]
+mod timezone_regression_tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+
+    fn job(id: &str, hour: u32, minute: u32, repeat: &str) -> CronJob {
+        CronJob {
+            id: id.to_string(),
+            name: "timezone regression".to_string(),
+            schedule: CronSchedule {
+                hour,
+                minute,
+                repeat: repeat.to_string(),
+                weekday: None,
+                date: None,
+            },
+            task_prompt: "test".to_string(),
+            push: serde_json::Value::Null,
+            enabled: true,
+            channel: "test".to_string(),
+            channel_scope: None,
+            channel_target: "test".to_string(),
+            tags: (repeat == "heartbeat")
+                .then(|| vec!["heartbeat".to_string()])
+                .unwrap_or_default(),
+            created_at: Some("2026-01-15T02:00:00Z".to_string()),
+            last_run_at: None,
+            bypass_quiet_hours: false,
+        }
+    }
+
+    #[test]
+    fn non_eight_timezone_drives_cron_date_key_and_rendering() {
+        let timezone = hone_core::RuntimeTimezone::parse_iana("America/New_York").unwrap();
+        let instant = Utc.with_ymd_and_hms(2026, 1, 15, 4, 32, 0).unwrap();
+        let local = timezone.at_utc(instant);
+
+        assert_eq!(local.date_naive().to_string(), "2026-01-14");
+        assert_eq!(local.format("%H:%M").to_string(), "23:32");
+        assert!(local.to_rfc3339().ends_with("-05:00"));
+
+        let current_total = local.hour() as i32 * 60 + local.minute() as i32;
+        assert!(scheduled_job_due_in_current_window(
+            &job("daily", 23, 30, "daily"),
+            current_total,
+            local.date_naive(),
+            &timezone,
+        ));
+
+        let heartbeat = job("heartbeat", 0, 0, "heartbeat");
+        let heartbeat_total = local.hour() as i32 * 60 + 33;
+        assert!(heartbeat_due_in_current_window(&heartbeat, heartbeat_total));
+        assert_eq!(
+            cron_claim_due_key(&heartbeat, "heartbeat", heartbeat_total, local.date_naive(),),
+            "heartbeat:2026-01-14:1410"
+        );
+    }
 }

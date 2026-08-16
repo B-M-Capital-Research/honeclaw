@@ -16,8 +16,8 @@ use hone_event_engine::{DeliveryLogFilter, DeliveryLogRecord, EventStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use hone_core::beijing_offset;
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::local_offset;
 use hone_memory::cron_job::{CronJobExecutionRecord, ExecutionFilter};
 
 use crate::state::AppState;
@@ -111,7 +111,7 @@ pub(crate) async fn handle_notifications(
     let storage = state.core.cron_job_storage();
 
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    let now_bj = Utc::now().with_timezone(&beijing_offset());
+    let now_bj = Utc::now().with_timezone(&local_offset());
     let default_since = (now_bj - ChronoDuration::hours(HISTOGRAM_HOURS)).to_rfc3339();
     let since = q.since.clone().unwrap_or(default_since);
 
@@ -469,7 +469,7 @@ fn build_histogram(
         let Ok(executed) = DateTime::parse_from_rfc3339(&record.executed_at) else {
             continue;
         };
-        let executed_bj = executed.with_timezone(&beijing_offset());
+        let executed_bj = executed.with_timezone(&local_offset());
         let diff_hours = (current_hour - executed_bj).num_hours();
         if diff_hours < 0 || diff_hours >= HISTOGRAM_HOURS {
             continue;

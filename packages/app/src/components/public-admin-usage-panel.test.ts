@@ -87,7 +87,7 @@ describe("public admin usage panel", () => {
     expect(publicAdminUsageDateIsAvailable(usage, "2026-07-19")).toBe(false);
   });
 
-  it("keeps all rows or filters one Beijing date", () => {
+  it("keeps all rows or filters one runtime-local date", () => {
     expect(filterPublicAdminUsageRows(rows, "all")).toHaveLength(3);
     expect(filterPublicAdminUsageRows(rows, "2026-08-02").map((item) => item.user_id)).toEqual([
       "u2",

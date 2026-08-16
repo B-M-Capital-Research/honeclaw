@@ -262,7 +262,7 @@ enum NumericMarketHint {
     ChinaA,
     Shanghai,
     Shenzhen,
-    Beijing,
+    Local,
     Japan,
     Korea,
     Taiwan,
@@ -313,7 +313,7 @@ struct RepresentativeSymbolsPayload {
 struct DatedMarketSearch {
     scope: &'static str,
     local_date: String,
-    timezone: &'static str,
+    timezone: String,
 }
 
 impl InvestmentResponseContract {
@@ -325,29 +325,29 @@ impl InvestmentResponseContract {
     }
 
     pub(crate) fn data_time_line(&self) -> String {
-        let generated_at = hone_core::beijing_now();
+        let generated_at = hone_core::local_now();
         let mut provider_times = self
             .entities
             .iter()
             .filter_map(|entity| entity.quote_timestamp)
             .filter_map(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
-            .map(|time| time.with_timezone(&hone_core::beijing_offset()))
+            .map(|time| time.with_timezone(&hone_core::local_offset()))
             .collect::<Vec<_>>();
         provider_times.sort_unstable();
         let quote_scope = match (provider_times.first(), provider_times.last()) {
             (Some(first), Some(last)) if first != last => format!(
-                "报价源时间：北京时间 {} 至 {}（最新可得，非逐笔）",
+                "报价源时间：运行时时区 {} 至 {}（最新可得，非逐笔）",
                 first.format("%Y-%m-%d %H:%M"),
                 last.format("%Y-%m-%d %H:%M")
             ),
             (Some(time), _) => format!(
-                "报价源时间：北京时间 {}（最新可得，非逐笔）",
+                "报价源时间：运行时时区 {}（最新可得，非逐笔）",
                 time.format("%Y-%m-%d %H:%M")
             ),
             _ => "数据源未提供可解析的报价时间戳；以下时间仅为本轮查询时间（非逐笔）".to_string(),
         };
         format!(
-            "数据时间：北京时间 {}；行情口径：{}",
+            "数据时间：运行时时区 {}；行情口径：{}",
             generated_at.format("%Y-%m-%d %H:%M"),
             quote_scope
         )
@@ -380,8 +380,8 @@ impl InvestmentResponseContract {
             .and_then(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
             .map(|time| {
                 format!(
-                    "北京时间 {}",
-                    time.with_timezone(&hone_core::beijing_offset())
+                    "运行时时区 {}",
+                    time.with_timezone(&hone_core::local_offset())
                         .format("%Y-%m-%d %H:%M")
                 )
             })
@@ -627,8 +627,8 @@ fn safe_markdown_inline(value: &str, max_chars: usize) -> String {
 
 pub(crate) fn current_investment_data_time_line() -> String {
     format!(
-        "数据时间：北京时间 {}；数据口径：本轮查询时间（仅下方明确标注的字段已完成核验）",
-        hone_core::beijing_now().format("%Y-%m-%d %H:%M")
+        "数据时间：运行时时区 {}；数据口径：本轮查询时间（仅下方明确标注的字段已完成核验）",
+        hone_core::local_now().format("%Y-%m-%d %H:%M")
     )
 }
 
@@ -1055,8 +1055,8 @@ fn deterministic_market_fallback(contract: &InvestmentResponseContract) -> Optio
             .and_then(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
             .map(|time| {
                 format!(
-                    "北京时间 {}",
-                    time.with_timezone(&hone_core::beijing_offset())
+                    "运行时时区 {}",
+                    time.with_timezone(&hone_core::local_offset())
                         .format("%Y-%m-%d %H:%M")
                 )
             })
@@ -1072,7 +1072,7 @@ fn deterministic_market_fallback(contract: &InvestmentResponseContract) -> Optio
         .any(|entity| matches!(entity.symbol.as_str(), "ASHR" | "KBA" | "EWJ"))
         .then_some("\n- 口径说明：ASHR、KBA 或 EWJ 属于美股交易的 ETF 代理（proxy）；代理与当地指数处于跨时区、不同交易时段，不能当作同一交易时点横比。")
         .unwrap_or("");
-    let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    let today = hone_core::local_now().format("%Y-%m-%d").to_string();
     let source_lines = if contract.verified_web_sources.is_empty() {
         format!(
             "截至 {today}，本轮网页新闻与事件来源未完成核验；具体新闻事实本轮未核验。\n- 推断：指数同步变化可能同时受利率预期、风险偏好与仓位调整影响，但本轮不把该框架当成已核验归因。"
@@ -2483,14 +2483,14 @@ fn verified_dated_sources(value: &Value) -> Vec<VerifiedDatedSource> {
 fn market_search_date_at(
     input: &str,
     now: chrono::DateTime<chrono::FixedOffset>,
-) -> (String, &'static str) {
+) -> (String, String) {
     let normalized = input.to_ascii_lowercase();
     if normalized.contains("港股") || normalized.contains("香港") {
         return (
             now.with_timezone(&chrono_tz::Asia::Hong_Kong)
                 .format("%Y-%m-%d")
                 .to_string(),
-            "Asia/Hong_Kong",
+            chrono_tz::Asia::Hong_Kong.name().to_string(),
         );
     }
     if normalized.contains("a股") || normalized.contains("中国") {
@@ -2498,7 +2498,7 @@ fn market_search_date_at(
             now.with_timezone(&chrono_tz::Asia::Shanghai)
                 .format("%Y-%m-%d")
                 .to_string(),
-            "Asia/Shanghai",
+            chrono_tz::Asia::Shanghai.name().to_string(),
         );
     }
     if normalized.contains("日股") || normalized.contains("日本") {
@@ -2506,7 +2506,7 @@ fn market_search_date_at(
             now.with_timezone(&chrono_tz::Asia::Tokyo)
                 .format("%Y-%m-%d")
                 .to_string(),
-            "Asia/Tokyo",
+            chrono_tz::Asia::Tokyo.name().to_string(),
         );
     }
     if normalized.contains("欧股") || normalized.contains("欧洲") {
@@ -2514,7 +2514,7 @@ fn market_search_date_at(
             now.with_timezone(&chrono_tz::Europe::Berlin)
                 .format("%Y-%m-%d")
                 .to_string(),
-            "Europe/Berlin",
+            chrono_tz::Europe::Berlin.name().to_string(),
         );
     }
     if normalized.contains("币圈")
@@ -2526,31 +2526,31 @@ fn market_search_date_at(
             now.with_timezone(&chrono_tz::UTC)
                 .format("%Y-%m-%d")
                 .to_string(),
-            "UTC",
+            chrono_tz::UTC.name().to_string(),
         );
     }
     (
         now.with_timezone(&chrono_tz::America::New_York)
             .format("%Y-%m-%d")
             .to_string(),
-        "America/New_York",
+        chrono_tz::America::New_York.name().to_string(),
     )
 }
 
-fn market_search_date(input: &str) -> (String, &'static str) {
-    market_search_date_at(input, hone_core::beijing_now())
+fn market_search_date(input: &str) -> (String, String) {
+    market_search_date_at(input, hone_core::local_now())
 }
 
 fn push_dated_market_search(
     searches: &mut Vec<DatedMarketSearch>,
     scope: &'static str,
-    timezone: &'static str,
+    timezone: impl Into<String>,
     local_date: String,
 ) {
     searches.push(DatedMarketSearch {
         scope,
         local_date,
-        timezone,
+        timezone: timezone.into(),
     });
 }
 
@@ -2564,7 +2564,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "China A",
-            "Asia/Shanghai",
+            chrono_tz::Asia::Shanghai.name(),
             now.with_timezone(&chrono_tz::Asia::Shanghai)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2574,7 +2574,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "Hong Kong",
-            "Asia/Hong_Kong",
+            chrono_tz::Asia::Hong_Kong.name(),
             now.with_timezone(&chrono_tz::Asia::Hong_Kong)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2584,7 +2584,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "Japan",
-            "Asia/Tokyo",
+            chrono_tz::Asia::Tokyo.name(),
             now.with_timezone(&chrono_tz::Asia::Tokyo)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2594,7 +2594,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "Europe",
-            "Europe/Berlin",
+            chrono_tz::Europe::Berlin.name(),
             now.with_timezone(&chrono_tz::Europe::Berlin)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2604,7 +2604,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "Crypto",
-            "UTC",
+            chrono_tz::UTC.name(),
             now.with_timezone(&chrono_tz::UTC)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2624,7 +2624,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "US",
-            "America/New_York",
+            chrono_tz::America::New_York.name(),
             now.with_timezone(&chrono_tz::America::New_York)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2635,7 +2635,7 @@ fn dated_market_searches_at(
         push_dated_market_search(
             &mut searches,
             "Global",
-            "UTC",
+            chrono_tz::UTC.name(),
             now.with_timezone(&chrono_tz::UTC)
                 .format("%Y-%m-%d")
                 .to_string(),
@@ -2708,7 +2708,7 @@ async fn prepare_verified_broad_investment_turn(
 ) -> Result<InvestmentResponseContract, String> {
     let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
     let dated_searches = if kind == DeepAnalysisKind::Market {
-        dated_market_searches_at(user_input, hone_core::beijing_now())
+        dated_market_searches_at(user_input, hone_core::local_now())
     } else {
         let (local_date, timezone) = market_search_date(user_input);
         vec![DatedMarketSearch {
@@ -2914,8 +2914,8 @@ const PRETURN_EVIDENCE_BRANCH_DEADLINE: std::time::Duration = std::time::Duratio
 const PRETURN_WEB_QUERY_CHAR_LIMIT: usize = 400;
 
 /// Anchor the pre-turn search on absolute dates. The target market's local date
-/// has to travel with it: a Beijing morning is still the previous New York
-/// session, so a Beijing-only anchor points at a US date that has not happened
+/// has to travel with it: a Local morning is still the previous New York
+/// session, so a Local-only anchor points at a US date that has not happened
 /// yet and pulls nothing or the wrong day.
 /// The user's own words reach the coverage written in the user's language. A
 /// Chinese question about a US listing therefore misses the English reporting
@@ -2939,36 +2939,36 @@ fn identity_anchored_web_query(
     )
 }
 
-fn pre_turn_web_query(user_input: &str, answer_time_beijing: &str) -> String {
-    let beijing_date = answer_time_beijing
+fn pre_turn_web_query(user_input: &str, answer_time_local: &str) -> String {
+    let local_date = answer_time_local
         .split_whitespace()
         .next()
-        .unwrap_or(answer_time_beijing);
-    let new_york_date = answer_time_in_new_york(answer_time_beijing)
+        .unwrap_or(answer_time_local);
+    let new_york_date = answer_time_in_new_york(answer_time_local)
         .format("%Y-%m-%d")
         .to_string();
-    let prefix = if new_york_date == beijing_date {
-        format!("{beijing_date} ")
+    let prefix = if new_york_date == local_date {
+        format!("{local_date} ")
     } else {
-        format!("{beijing_date} ({new_york_date} ET) ")
+        format!("{local_date} ({new_york_date} ET) ")
     };
     let remaining = PRETURN_WEB_QUERY_CHAR_LIMIT.saturating_sub(prefix.chars().count());
     format!("{prefix}{}", truncate_chars(user_input, remaining))
 }
 
-fn answer_time_in_new_york(answer_time_beijing: &str) -> chrono::DateTime<chrono_tz::Tz> {
+fn answer_time_in_new_york(answer_time_local: &str) -> chrono::DateTime<chrono_tz::Tz> {
     for format in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"] {
-        let Ok(local) = NaiveDateTime::parse_from_str(answer_time_beijing.trim(), format) else {
+        let Ok(local) = NaiveDateTime::parse_from_str(answer_time_local.trim(), format) else {
             continue;
         };
-        if let Some(beijing) = chrono_tz::Asia::Shanghai
+        if let Some(local) = hone_core::runtime_timezone()
             .from_local_datetime(&local)
-            .single()
+            .earliest()
         {
-            return beijing.with_timezone(&chrono_tz::America::New_York);
+            return local.with_timezone(&chrono_tz::America::New_York);
         }
     }
-    hone_core::beijing_now().with_timezone(&chrono_tz::America::New_York)
+    hone_core::local_now().with_timezone(&chrono_tz::America::New_York)
 }
 
 fn us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> Option<&'static str> {
@@ -2996,7 +2996,7 @@ fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
 
 /// Full session label including the overnight and weekend gaps. The regular
 /// quote reports a completed prior session in every non-`regular` window, so
-/// the enrichment must carry extended data in all of them — a Beijing
+/// the enrichment must carry extended data in all of them — a Local
 /// afternoon is the New York overnight right after the post session where
 /// "昨晚盘后为什么跌" happened.
 pub(crate) fn us_session_at(at: chrono::DateTime<chrono_tz::Tz>) -> &'static str {
@@ -3047,7 +3047,7 @@ async fn run_pre_turn_enrichment(
     allow_cron: bool,
     user_input: &str,
     seed_mentions: &[EntityMention],
-    answer_time_beijing: &str,
+    answer_time_local: &str,
     progress: Option<&PreTurnProgressSink>,
 ) -> PreTurnEnrichment {
     let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
@@ -3057,7 +3057,7 @@ async fn run_pre_turn_enrichment(
         .take(PRETURN_ENRICHMENT_MAX_CANDIDATES)
         .collect::<Vec<_>>();
 
-    let web_query = pre_turn_web_query(user_input, answer_time_beijing);
+    let web_query = pre_turn_web_query(user_input, answer_time_local);
     let identity_lookups = candidates.iter().map(|candidate| {
         registry.execute_tool(
             "data_fetch",
@@ -3076,7 +3076,7 @@ async fn run_pre_turn_enrichment(
             json!({"data_type": "snapshot", "ticker": symbol}),
         )
     });
-    let answer_time_new_york = answer_time_in_new_york(answer_time_beijing);
+    let answer_time_new_york = answer_time_in_new_york(answer_time_local);
     let extended_session = us_extended_session(answer_time_new_york);
     let now_session = us_session_at(answer_time_new_york);
     report_preturn_progress(
@@ -3458,7 +3458,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     allow_cron: bool,
     user_input: &str,
     origin: AgentTurnOrigin,
-    answer_time_beijing: &str,
+    answer_time_local: &str,
     runtime_input: &mut String,
     preloaded_evidence_calls: &mut u32,
     progress: Option<&PreTurnProgressSink>,
@@ -3472,7 +3472,7 @@ pub(crate) async fn prepare_verified_investment_turn(
                 runtime_input,
                 user_input,
                 &seed_mentions,
-                answer_time_beijing,
+                answer_time_local,
             );
             if origin == AgentTurnOrigin::Interactive {
                 let enrichment = run_pre_turn_enrichment(
@@ -3482,7 +3482,7 @@ pub(crate) async fn prepare_verified_investment_turn(
                     allow_cron,
                     user_input,
                     &seed_mentions,
-                    answer_time_beijing,
+                    answer_time_local,
                     progress,
                 )
                 .await;
@@ -3886,7 +3886,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     let mut evidence = vec![
         (
             "服务端数据核验时间",
-            json!({"beijing_retrieved_at": hone_core::beijing_now().to_rfc3339()}),
+            json!({"local_retrieved_at": hone_core::local_now().to_rfc3339()}),
         ),
         ("最新行情（含数据源 timestamp）", quote),
     ];
@@ -3986,7 +3986,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     if contract.deep_analysis == DeepAnalysisKind::Equity {
         let symbol = contract.entities[0].symbol.clone();
         let entity_name = contract.entities[0].name.clone();
-        let search_local_date = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+        let search_local_date = hone_core::local_now().format("%Y-%m-%d").to_string();
         let web_query = format!(
             "{} {} ({}) latest company or security news evidence {}",
             search_local_date,
@@ -4091,7 +4091,7 @@ pub(crate) async fn prepare_verified_investment_turn(
             "单一证券网页查询口径（查询日期不是事件发生或发布日期）",
             json!({
                 "search_local_date": search_local_date,
-                "timezone": "Asia/Shanghai",
+                "timezone": hone_core::runtime_timezone_name(),
                 "query": web_query,
                 "warning": "search_local_date is retrieval context only and must never be cited as an event date"
             }),
@@ -4805,7 +4805,7 @@ pub(crate) fn missing_investment_response_sections(
     if !content
         .lines()
         .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.trim_start().starts_with("数据时间：北京时间"))
+        .is_some_and(|line| line.trim_start().starts_with("数据时间：运行时时区"))
     {
         push_missing(&mut common_missing, "首行数据时间");
     }
@@ -4943,7 +4943,7 @@ pub(crate) fn missing_investment_response_sections(
     let lower = content.to_ascii_lowercase();
     require_any(
         &lower,
-        &["数据时间", "北京时间", "美东时间"],
+        &["数据时间", "运行时时区", "美东时间"],
         "数据时间",
         &mut missing,
     );
@@ -5440,7 +5440,7 @@ fn claim_has_past_absolute_date(claim: &str) -> bool {
         r"(?i)(20\d{2})\s*(?:[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})|年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日)",
     )
     .expect("historical price date regex");
-    let today = hone_core::beijing_now().date_naive();
+    let today = hone_core::local_now().date_naive();
     pattern.captures_iter(claim).any(|captures| {
         let year = captures
             .get(1)
@@ -7747,7 +7747,7 @@ fn has_data_time_context(content: &str) -> bool {
         .map(|matched| &content[..matched.start()])
         .unwrap_or(&content[..fallback_end]);
     let lower = scope.to_ascii_lowercase();
-    if ["数据时间", "北京时间", "美东时间", "data time"]
+    if ["数据时间", "运行时时区", "美东时间", "data time"]
         .iter()
         .any(|marker| lower.contains(marker))
     {
@@ -8127,7 +8127,7 @@ fn append_agent_entity_discovery_context(
     }
     // Session alignment is server clock arithmetic, injected every turn: the
     // reported failure quoted a completed regular session for an after-hours
-    // question because nothing told the Agent which US session Beijing time
+    // question because nothing told the Agent which US session Local time
     // mapped to. This states the mapping; it interprets no user wording.
     {
         let new_york = answer_time_in_new_york(answer_time);
@@ -8138,7 +8138,7 @@ fn append_agent_entity_discovery_context(
             _ => "闭市（隔夜或周末）",
         };
         runtime_input.push_str(&format!(
-            "\n\n【美股时段对齐：服务端时钟事实】当前北京时间 {answer_time}，对应纽约时间 {}，美股此刻处于{session_label}。换算：盘前=纽约 04:00-09:30（北京 16:00-21:30），常规=09:30-16:00（北京 21:30-04:00），盘后=16:00-20:00（北京 04:00-08:00），其余闭市。普通 quote 的 price/changesPercentage 只反映最近一个已完成或进行中的常规时段（纽约日历日见 market_date_new_york）；闭市、盘前或盘后期间它不包含当前变动，这些时段的价格与涨跌必须用 `data_fetch(extended_hours)`，其 `hone_session_summaries` 按 纽约日期+时段 给出开盘/收盘/高低与相对上一时段收盘的涨跌幅。用户说的\u{201c}盘后/盘前\u{201d}指上述纽约时段；\u{201c}夜盘/昨晚/今晚\u{201d}通常指北京夜间对应的美股时段——先按上面的当前时刻换算出目标纽约日期与时段再取数，不要凭直觉猜日期。若用户点名的对象经本轮工具核验并非上市证券（例如私营公司），直接说明这一点并列出最接近的上市候选（附公司全名）请用户确认；不得把近似 ticker 的行情直接当作该对象的答案发布。",
+            "\n\n【美股时段对齐：服务端时钟事实】当前运行时时区 {answer_time}，对应纽约时间 {}，美股此刻处于{session_label}。换算：盘前=纽约 04:00-09:30（北京 16:00-21:30），常规=09:30-16:00（北京 21:30-04:00），盘后=16:00-20:00（北京 04:00-08:00），其余闭市。普通 quote 的 price/changesPercentage 只反映最近一个已完成或进行中的常规时段（纽约日历日见 market_date_new_york）；闭市、盘前或盘后期间它不包含当前变动，这些时段的价格与涨跌必须用 `data_fetch(extended_hours)`，其 `hone_session_summaries` 按 纽约日期+时段 给出开盘/收盘/高低与相对上一时段收盘的涨跌幅。用户说的\u{201c}盘后/盘前\u{201d}指上述纽约时段；\u{201c}夜盘/昨晚/今晚\u{201d}通常指北京夜间对应的美股时段——先按上面的当前时刻换算出目标纽约日期与时段再取数，不要凭直觉猜日期。若用户点名的对象经本轮工具核验并非上市证券（例如私营公司），直接说明这一点并列出最接近的上市候选（附公司全名）请用户确认；不得把近似 ticker 的行情直接当作该对象的答案发布。",
             new_york.format("%Y-%m-%d %H:%M %Z"),
         ));
     }
@@ -8149,8 +8149,8 @@ fn append_agent_entity_discovery_context(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
-         本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。"
+         本轮回答的时间锚点固定为运行时时区 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：运行时时区 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
+         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.local，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。"
     ));
 }
 
@@ -8194,11 +8194,11 @@ fn is_time_sensitive_price_move_question(input: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
-fn market_calendar_scope(input: &str) -> (chrono_tz::Tz, &'static str, bool) {
+fn market_calendar_scope(input: &str) -> (chrono_tz::Tz, bool) {
     let normalized = input.to_ascii_lowercase();
     if normalized.contains("港股") || normalized.contains("香港") || normalized.contains(".hk")
     {
-        return (chrono_tz::Asia::Hong_Kong, "Asia/Hong_Kong", true);
+        return (chrono_tz::Asia::Hong_Kong, true);
     }
     if normalized.contains("a股")
         || normalized.contains("中国股市")
@@ -8206,17 +8206,17 @@ fn market_calendar_scope(input: &str) -> (chrono_tz::Tz, &'static str, bool) {
         || normalized.contains(".ss")
         || normalized.contains(".sz")
     {
-        return (chrono_tz::Asia::Shanghai, "Asia/Shanghai", true);
+        return (chrono_tz::Asia::Shanghai, true);
     }
     if normalized.contains("日股")
         || normalized.contains("日本股市")
         || normalized.contains(".t ")
         || normalized.ends_with(".t")
     {
-        return (chrono_tz::Asia::Tokyo, "Asia/Tokyo", true);
+        return (chrono_tz::Asia::Tokyo, true);
     }
     if normalized.contains("欧股") || normalized.contains("欧洲股市") {
-        return (chrono_tz::Europe::Berlin, "Europe/Berlin", true);
+        return (chrono_tz::Europe::Berlin, true);
     }
     let explicit_us = [
         "美股",
@@ -8229,11 +8229,7 @@ fn market_calendar_scope(input: &str) -> (chrono_tz::Tz, &'static str, bool) {
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
-    (
-        chrono_tz::America::New_York,
-        "America/New_York",
-        explicit_us,
-    )
+    (chrono_tz::America::New_York, explicit_us)
 }
 
 fn chinese_weekday(weekday: Weekday) -> &'static str {
@@ -8279,11 +8275,12 @@ fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<S
         return None;
     }
     let naive = NaiveDateTime::parse_from_str(answer_time, "%Y-%m-%d %H:%M").ok()?;
-    let beijing_offset = chrono::FixedOffset::east_opt(8 * 60 * 60)?;
-    let beijing = beijing_offset.from_local_datetime(&naive).single()?;
-    let (market_timezone, market_timezone_name, explicit_market_scope) =
-        market_calendar_scope(user_input);
-    let market_local = beijing.with_timezone(&market_timezone);
+    let local = hone_core::runtime_timezone()
+        .from_local_datetime(&naive)
+        .earliest()?;
+    let (market_timezone, explicit_market_scope) = market_calendar_scope(user_input);
+    let market_timezone_name = market_timezone.name();
+    let market_local = local.with_timezone(&market_timezone);
     let recent_dates = (0..8)
         .map(|days_back| {
             let date = market_local.date_naive() - Duration::days(days_back);
@@ -8316,15 +8313,16 @@ fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<S
 
     Some(format!(
         "\n\n【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
-         Session 北京时间：{} {}；{}；对应市场本地民用时间：{} {}。\n\
+         Session 运行时时区（{}）：{} {}；{}；对应市场本地民用时间：{} {}。\n\
          最近八个市场本地民用日期：{}。\n\
          {}\
          上述日期与星期由 Session 时钟确定，只证明民用日历，不证明开市、休市、半日市、盘前/盘中/盘后、收盘或实际涨跌。\n\
          涨跌归因必须先锁定“对象 / 市场范围 + 用户所指目标时段”，再核验该对象在目标时段是否真的发生用户所说的跌幅，最后才搜索同一绝对市场本地日期的事件原因。用户明确说出的日期、星期或时段优先，不能因为最新 quote 属于另一日期，就把问题静默改答成前一日、后一日或别的波动。\n\
          大盘题先用当前轮代表指数或 ETF 区分整体、成长/科技、小盘与具体板块；需要直接取代表 ETF 行情时，按 DataFetch 真实 schema 使用 data_type=\"quote\" + symbol（或 ticker）字段，不要把 SPY / QQQ / DIA / IWM 放进仅用于 search 的 query 字段。单股题使用同代码证据。latest quote 的涨跌幅只证明其自身 provider timestamp 对应的快照，不能证明另一个历史交易日。若用户说“大跌”而宽基指数不支持，应明确指出“宽基与用户观察范围不一致”，继续核验板块/个股范围或做最小澄清，不能擅自挑另一天的大跌来替换问题。\n\
          原因结论只使用明确覆盖同一对象与目标日期的当前 Web/news/公告原文；标题相关但日期、对象或方向不一致时不算因果证据。证据不足仍要先回答已核验的实际涨跌与范围，并写“原因本轮未完全核验”，不得只返回通用失败，也不得把推断写成已确认触发因素。",
-        beijing.format("%Y-%m-%d %H:%M"),
-        chinese_weekday(beijing.weekday()),
+        hone_core::runtime_timezone_name(),
+        local.format("%Y-%m-%d %H:%M"),
+        chinese_weekday(local.weekday()),
         scope_note,
         market_local.format("%Y-%m-%d %H:%M"),
         chinese_weekday(market_local.weekday()),
@@ -8750,7 +8748,7 @@ fn bound_numeric_market_hint(input: &str, start: usize, end: usize) -> Option<Nu
     } else if bound(&["深证成指", "深交所", "深圳", "深股", "深市"]) {
         Some(NumericMarketHint::Shenzhen)
     } else if bound(&["北交所", "北京证券交易所", "京股"]) {
-        Some(NumericMarketHint::Beijing)
+        Some(NumericMarketHint::Local)
     } else if bound(&["a股", "中国a股", "china a"]) {
         Some(NumericMarketHint::ChinaA)
     } else if bound(&["日股", "日本", "tokyo", "tse"]) {
@@ -10340,7 +10338,7 @@ fn numeric_probe_symbols(requested: &str, market_hint: Option<NumericMarketHint>
         Some(NumericMarketHint::ChinaA) => vec!["SS", "SZ", "BJ"],
         Some(NumericMarketHint::Shanghai) => vec!["SS"],
         Some(NumericMarketHint::Shenzhen) => vec!["SZ"],
-        Some(NumericMarketHint::Beijing) => vec!["BJ"],
+        Some(NumericMarketHint::Local) => vec!["BJ"],
         Some(NumericMarketHint::Japan) => vec!["T"],
         Some(NumericMarketHint::Korea) => vec!["KS", "KQ"],
         Some(NumericMarketHint::Taiwan) => vec!["TW", "TWO"],
@@ -11956,7 +11954,7 @@ mod tests {
             "same-domain same-day sources may be deduplicated, but dated news evidence must remain"
         );
         let data_time = discovered.contract.data_time_line();
-        assert!(data_time.contains("报价源时间：北京时间"), "{data_time}");
+        assert!(data_time.contains("报价源时间：运行时时区"), "{data_time}");
         assert!(data_time.contains("至"), "{data_time}");
     }
 
@@ -13461,8 +13459,8 @@ mod tests {
         assert!(answer_contract_position > discovery_position);
         let answer_contract = &runtime_input[answer_contract_position..];
         assert!(answer_contract.contains("第一可见字符必须是“数”"));
-        assert!(answer_contract.contains("数据时间：北京时间 "));
-        assert!(answer_contract.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
+        assert!(answer_contract.contains("数据时间：运行时时区 "));
+        assert!(answer_contract.contains("数据时间：运行时时区 2026-07-19 09:31；行情口径："));
         assert!(answer_contract.contains("与上方 Session 上下文来自同一次时钟读取"));
         assert!(answer_contract.contains("；行情口径："));
         assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
@@ -13519,7 +13517,7 @@ mod tests {
         let context = market_move_temporal_context("美股周五为什么暴跌", "2026-07-26 06:15")
             .expect("time-sensitive move context");
 
-        assert!(context.contains("Session 北京时间：2026-07-26 06:15 周日"));
+        assert!(context.contains("Session 运行时时区：2026-07-26 06:15 周日"));
         assert!(context.contains("当前原话明确指向 America/New_York"));
         assert!(context.contains("对应市场本地民用时间：2026-07-25 18:15 周六"));
         assert!(context.contains("2026-07-24 周五"));
@@ -14069,7 +14067,7 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间 2026-07-16。比较结论：AMD 与 NVDA 已逐一比较。已核验事实如下，推断情景另列。\n### AMD\n本轮同代码现价 100.0 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n### NVDA\n本轮同代码现价 100.0 美元；年度营收与净利润已核验，估值方法采用 P/E 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。"
+                "数据时间：运行时时区 2026-07-16。比较结论：AMD 与 NVDA 已逐一比较。已核验事实如下，推断情景另列。\n### AMD\n本轮同代码现价 100.0 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n### NVDA\n本轮同代码现价 100.0 美元；年度营收与净利润已核验，估值方法采用 P/E 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。"
             )
             .is_empty()
         );
@@ -14107,7 +14105,7 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间 2026-07-16。NBIS 当前价 100.0 美元。",
+                "数据时间：运行时时区 2026-07-16。NBIS 当前价 100.0 美元。",
             )
             .is_empty()
         );
@@ -14116,7 +14114,7 @@ mod tests {
             "NBIS 当前价格为 100.00 美元。",
             "NBIS 报价 USD 100.00。",
         ] {
-            let formatted = format!("数据时间：北京时间 2026-07-16。\n{formatted}");
+            let formatted = format!("数据时间：运行时时区 2026-07-16。\n{formatted}");
             assert!(
                 missing_investment_response_sections(&contract, &formatted).is_empty(),
                 "{formatted}"
@@ -14125,7 +14123,7 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间 2026-07-16。\nNBIS 当前价（截至北京时间 2026-07-16）：100.0 美元。",
+                "数据时间：运行时时区 2026-07-16。\nNBIS 当前价（截至运行时时区 2026-07-16）：100.0 美元。",
             )
             .is_empty(),
             "an as-of date must not be parsed as the current price"
@@ -14133,7 +14131,7 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间 2026-07-16。\nNBIS 现价相对 30 日均线偏强；当前价 100 美元。",
+                "数据时间：运行时时区 2026-07-16。\nNBIS 现价相对 30 日均线偏强；当前价 100 美元。",
             )
             .is_empty(),
             "a moving-average period must not be parsed as the current price"
@@ -14157,18 +14155,18 @@ mod tests {
                 "natural current-trading predicates must not hide a conflicting quote: {conflicting_trade}"
             );
         }
-        let conflicting_table = "数据时间：北京时间 2026-07-16。\nNBIS 当前价 100 美元。\n| 标的 | 当前价 |\n|---|---:|\n| NBIS | 15 USD |";
+        let conflicting_table = "数据时间：运行时时区 2026-07-16。\nNBIS 当前价 100 美元。\n| 标的 | 当前价 |\n|---|---:|\n| NBIS | 15 USD |";
         assert!(
             missing_investment_response_sections(&contract, conflicting_table)
                 .contains(&"价格表逐标的已核验同代码现价"),
             "single-security Markdown quote tables must use the verified price"
         );
-        let conflicting_price_alias_table = "数据时间：北京时间 2026-07-16。\nNBIS 当前价 100 美元。\n| 标的 | 价格 |\n|---|---:|\n| NBIS | 15 USD |";
+        let conflicting_price_alias_table = "数据时间：运行时时区 2026-07-16。\nNBIS 当前价 100 美元。\n| 标的 | 价格 |\n|---|---:|\n| NBIS | 15 USD |";
         assert!(
             missing_investment_response_sections(&contract, conflicting_price_alias_table)
                 .contains(&"价格表逐标的已核验同代码现价")
         );
-        let target_table = "数据时间：北京时间 2026-07-16。\nNBIS 当前价 100 美元。\n| Ticker | Target Price |\n|---|---:|\n| NBIS | 150 USD |";
+        let target_table = "数据时间：运行时时区 2026-07-16。\nNBIS 当前价 100 美元。\n| Ticker | Target Price |\n|---|---:|\n| NBIS | 150 USD |";
         assert!(
             !missing_investment_response_sections(&contract, target_table)
                 .contains(&"价格表逐标的已核验同代码现价"),
@@ -14180,7 +14178,7 @@ mod tests {
             "| 代码 | 价格变动 |\n|---|---:|\n| NBIS | 5% |",
         ] {
             let content = format!(
-                "数据时间：北京时间 2026-07-16。\nNBIS 当前价 100 美元。\n{analytical_table}"
+                "数据时间：运行时时区 2026-07-16。\nNBIS 当前价 100 美元。\n{analytical_table}"
             );
             assert!(
                 !missing_investment_response_sections(&contract, &content)
@@ -14213,14 +14211,14 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &tiny_price_contract,
-                "数据时间：北京时间 2026-07-16。TINYUSD 当前价 0.0002 美元。",
+                "数据时间：运行时时区 2026-07-16。TINYUSD 当前价 0.0002 美元。",
             )
             .is_empty()
         );
         assert!(
             missing_investment_response_sections(
                 &tiny_price_contract,
-                "数据时间：北京时间 2026-07-16。TINYUSD 当前价 0.01 美元。",
+                "数据时间：运行时时区 2026-07-16。TINYUSD 当前价 0.01 美元。",
             )
             .contains(&"已核验同代码现价"),
             "sub-cent assets need scale-aware quote tolerances"
@@ -14244,21 +14242,21 @@ mod tests {
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间。\n- AMD 现价 100 美元\n- NVDA 当前价 100 美元",
+                "数据时间：运行时时区。\n- AMD 现价 100 美元\n- NVDA 当前价 100 美元",
             )
             .is_empty()
         );
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间。\n- AMD 现价 100 美元\n- NVDA 当前价 15 美元",
+                "数据时间：运行时时区。\n- AMD 现价 100 美元\n- NVDA 当前价 15 美元",
             )
             .contains(&"逐标的已核验同代码现价")
         );
         assert!(
             missing_investment_response_sections(
                 &contract,
-                "数据时间：北京时间。AMD 和 NVDA 当前价 100 美元。",
+                "数据时间：运行时时区。AMD 和 NVDA 当前价 100 美元。",
             )
             .contains(&"逐标的已核验同代码现价"),
             "one shared claim must not substitute for per-symbol price grounding"
@@ -14286,12 +14284,12 @@ mod tests {
             comparison: true,
             origin: AgentTurnOrigin::Interactive,
         };
-        let incomplete = "数据时间：北京时间。比较结论：INTL 和 NBIS 各有风险与证伪条件。已核验事实与情景推断分开。\n### INTL\n本轮同代码现价 100 美元；这里只写公司财务。\n### NBIS\n本轮同代码现价 100 美元；这里只写基金持仓。\n动作建议与触发条件如下。";
+        let incomplete = "数据时间：运行时时区。比较结论：INTL 和 NBIS 各有风险与证伪条件。已核验事实与情景推断分开。\n### INTL\n本轮同代码现价 100 美元；这里只写公司财务。\n### NBIS\n本轮同代码现价 100 美元；这里只写基金持仓。\n动作建议与触发条件如下。";
         let missing = missing_investment_response_sections(&contract, incomplete);
         assert!(missing.contains(&"ETF / 基金小节证据口径"));
         assert!(missing.contains(&"公司小节财务指标与估值方法"));
 
-        let complete = "数据时间：北京时间。比较结论：INTL 和 NBIS 已逐一比较。已核验事实与情景推断分开。\n### INTL\n本轮同代码现价 100 美元；持仓集中度、主要暴露与费用已列。\n### NBIS\n本轮同代码现价 100 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。";
+        let complete = "数据时间：运行时时区。比较结论：INTL 和 NBIS 已逐一比较。已核验事实与情景推断分开。\n### INTL\n本轮同代码现价 100 美元；持仓集中度、主要暴露与费用已列。\n### NBIS\n本轮同代码现价 100 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。";
         assert!(missing_investment_response_sections(&contract, complete).is_empty());
     }
 
@@ -14315,12 +14313,12 @@ mod tests {
             comparison: true,
             origin: AgentTurnOrigin::Interactive,
         };
-        let incomplete = "数据时间：北京时间。比较结论已列。已核验事实与情景推断分开。\n### BTCUSD\n本轮同代码现价 100 美元；这里只写公司财务。\n### NBIS\n本轮同代码现价 100 美元；财务与估值已列。\n风险与证伪条件如下。动作建议与触发条件如下。";
+        let incomplete = "数据时间：运行时时区。比较结论已列。已核验事实与情景推断分开。\n### BTCUSD\n本轮同代码现价 100 美元；这里只写公司财务。\n### NBIS\n本轮同代码现价 100 美元；财务与估值已列。\n风险与证伪条件如下。动作建议与触发条件如下。";
         assert!(
             missing_investment_response_sections(&contract, incomplete)
                 .contains(&"加密资产小节证据口径")
         );
-        let complete = "数据时间：北京时间。比较结论已列。已核验事实与情景推断分开。\n### BTCUSD\n本轮同代码现价 100 美元；网络、代币供给与流动性已列。\n### NBIS\n本轮同代码现价 100 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。";
+        let complete = "数据时间：运行时时区。比较结论已列。已核验事实与情景推断分开。\n### BTCUSD\n本轮同代码现价 100 美元；网络、代币供给与流动性已列。\n### NBIS\n本轮同代码现价 100 美元；年度营收与净利润已核验，估值方法采用 P/S 与情景法。\n风险与证伪条件如下。动作建议与触发条件如下。";
         assert!(missing_investment_response_sections(&contract, complete).is_empty());
     }
 
@@ -14350,9 +14348,9 @@ mod tests {
         );
         assert!(missing.contains(&"2. 公司与商业模式"));
         assert!(missing.contains(&"9. 动作建议"));
-        let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景推断分开。\n1. 结论：本轮数据支持保持审慎观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性，仍需用续约率验证。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，面对大型云厂商竞争，市场份额变化需要持续跟踪。\n5. 财务质量与自由现金流：年度利润表反映收入增长，但自由现金流本轮未核验，利润质量仍是核心验证项。\n6. 估值：使用 P/S 与情景法两种方法，并把收入增速和估值倍数明确作为假设。\n7. Bull / Bear / Base Case：Bull 看需求与订单放量，Bear 看竞争和估值压缩，Base 看收入按计划增长。\n8. 催化剂、风险点、证伪条件：新订单是催化，执行降速是风险；若增长持续失速则构成证伪。\n9. 动作建议：保持观察；若增长与现金流同时改善则触发重新评估。";
+        let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景推断分开。\n1. 结论：本轮数据支持保持审慎观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性，仍需用续约率验证。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，面对大型云厂商竞争，市场份额变化需要持续跟踪。\n5. 财务质量与自由现金流：年度利润表反映收入增长，但自由现金流本轮未核验，利润质量仍是核心验证项。\n6. 估值：使用 P/S 与情景法两种方法，并把收入增速和估值倍数明确作为假设。\n7. Bull / Bear / Base Case：Bull 看需求与订单放量，Bear 看竞争和估值压缩，Base 看收入按计划增长。\n8. 催化剂、风险点、证伪条件：新订单是催化，执行降速是风险；若增长持续失速则构成证伪。\n9. 动作建议：保持观察；若增长与现金流同时改善则触发重新评估。";
         assert!(missing_deep_single_stock_sections(complete).is_empty());
-        let placeholder = "数据时间：北京时间 2026-07-16。已核验事实与情景推断分开。\n1. 结论：继续观察。\n2. 公司是什么、靠什么赚钱：本轮待核验。\n3. 护城河与竞争壁垒：需要观察。\n4. 行业位置与关键对手：持续跟踪。\n5. 财务质量：本轮待核验。\n6. 估值：P/S 与情景法。\n7. Bull / Bear / Base Case：Bull 待核验，Bear 待核验，Base 待核验。\n8. 催化剂、风险点、证伪条件：催化待核验，风险待观察，证伪待确认。\n9. 动作建议：观察；若有变化则触发重评。";
+        let placeholder = "数据时间：运行时时区 2026-07-16。已核验事实与情景推断分开。\n1. 结论：继续观察。\n2. 公司是什么、靠什么赚钱：本轮待核验。\n3. 护城河与竞争壁垒：需要观察。\n4. 行业位置与关键对手：持续跟踪。\n5. 财务质量：本轮待核验。\n6. 估值：P/S 与情景法。\n7. Bull / Bear / Base Case：Bull 待核验，Bear 待核验，Base 待核验。\n8. 催化剂、风险点、证伪条件：催化待核验，风险待观察，证伪待确认。\n9. 动作建议：观察；若有变化则触发重评。";
         let placeholder_missing = missing_deep_single_stock_sections(placeholder);
         assert!(placeholder_missing.contains(&"2. 公司与商业模式"));
         assert!(placeholder_missing.contains(&"3. 护城河与壁垒"));
@@ -14362,7 +14360,7 @@ mod tests {
 
     #[test]
     fn deep_quality_gate_accepts_cross_industry_moats_and_catalysts() {
-        let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景推断分开。\n1. 结论：当前先观察，等待经营指标验证。\n2. 公司是什么、靠什么赚钱：公司通过门店销售产品并向会员收取服务费，收入来自零售和订阅业务。\n3. 护城河与竞争壁垒：品牌认知、渠道覆盖、监管牌照和稀缺供应共同构成竞争壁垒。\n4. 行业位置与关键对手：公司位于消费零售产业链下游，同行竞争和市场份额需要持续跟踪。\n5. 财务质量与自由现金流：收入与利润质量需结合年度利润表，自由现金流本轮未核验。\n6. 估值：采用 P/E 与情景法两种方法，增长率和目标倍数均为估算假设。\n7. Bull / Bear / Base Case：Bull 看门店增长，Bear 看成本压力，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：新店扩张是催化，原材料涨价是风险；若同店销售下滑则构成证伪。\n9. 动作建议：先观察；若同店销售和现金流改善则触发重新评估。";
+        let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景推断分开。\n1. 结论：当前先观察，等待经营指标验证。\n2. 公司是什么、靠什么赚钱：公司通过门店销售产品并向会员收取服务费，收入来自零售和订阅业务。\n3. 护城河与竞争壁垒：品牌认知、渠道覆盖、监管牌照和稀缺供应共同构成竞争壁垒。\n4. 行业位置与关键对手：公司位于消费零售产业链下游，同行竞争和市场份额需要持续跟踪。\n5. 财务质量与自由现金流：收入与利润质量需结合年度利润表，自由现金流本轮未核验。\n6. 估值：采用 P/E 与情景法两种方法，增长率和目标倍数均为估算假设。\n7. Bull / Bear / Base Case：Bull 看门店增长，Bear 看成本压力，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：新店扩张是催化，原材料涨价是风险；若同店销售下滑则构成证伪。\n9. 动作建议：先观察；若同店销售和现金流改善则触发重新评估。";
         assert!(
             missing_deep_single_stock_sections(complete).is_empty(),
             "跨行业有效分析不应被 NBIS/RMBS 词表误伤: {:?}",
@@ -14387,7 +14385,7 @@ mod tests {
             comparison: false,
             origin: AgentTurnOrigin::Interactive,
         };
-        let complete = "数据时间：北京时间 2026-07-16。以下区分本轮已核验事实与情景推断。\n1. 结论：RMBS 当前价 **$102.89**，估值偏高，动作上先观察。\n2. 公司是什么、靠什么赚钱：公司通过芯片接口及安全 IP 授权和相关产品收入赚钱，商业模式以授权为核心。\n3. 护城河与竞争壁垒：护城河来自接口 IP、专利组合和客户验证周期形成的竞争壁垒。\n4. 行业位置与关键对手：公司处于内存接口产业链，行业位置及竞争对手的份额变化需要持续核验。\n5. 财务质量：本轮数据反映毛利率较高，自由现金流及收入持续性仍是财务质量的核心验证项。\n6. 估值：方法一采用 Forward PE，假设目标 PE 40x，对应股价 $252；方法二采用 EV/EBITDA，在保守假设下对应股价 $126。上述均为情景估算，不是当前报价。\n7. Bull / Bear / Base Case：Bull 看新品放量，Bear 看估值压缩，Base 看收入按预期增长。\n8. 催化剂、风险点、证伪条件：催化是新品订单，风险是竞争加剧；若收入增长失速则构成证伪。\n9. 动作建议：观察；若盈利兑现且估值回落到目标区间则触发重新评估。";
+        let complete = "数据时间：运行时时区 2026-07-16。以下区分本轮已核验事实与情景推断。\n1. 结论：RMBS 当前价 **$102.89**，估值偏高，动作上先观察。\n2. 公司是什么、靠什么赚钱：公司通过芯片接口及安全 IP 授权和相关产品收入赚钱，商业模式以授权为核心。\n3. 护城河与竞争壁垒：护城河来自接口 IP、专利组合和客户验证周期形成的竞争壁垒。\n4. 行业位置与关键对手：公司处于内存接口产业链，行业位置及竞争对手的份额变化需要持续核验。\n5. 财务质量：本轮数据反映毛利率较高，自由现金流及收入持续性仍是财务质量的核心验证项。\n6. 估值：方法一采用 Forward PE，假设目标 PE 40x，对应股价 $252；方法二采用 EV/EBITDA，在保守假设下对应股价 $126。上述均为情景估算，不是当前报价。\n7. Bull / Bear / Base Case：Bull 看新品放量，Bear 看估值压缩，Base 看收入按预期增长。\n8. 催化剂、风险点、证伪条件：催化是新品订单，风险是竞争加剧；若收入增长失速则构成证伪。\n9. 动作建议：观察；若盈利兑现且估值回落到目标区间则触发重新评估。";
 
         let complete_missing = missing_investment_response_sections(&contract, complete);
         assert!(
@@ -14428,7 +14426,7 @@ mod tests {
     #[test]
     fn data_time_context_accepts_dated_quote_semantics_but_not_unrelated_dates() {
         for accepted in [
-            "数据时间：北京时间 2026-07-16。\n1. 结论：现价 30.495 美元。\n2. 下一节",
+            "数据时间：运行时时区 2026-07-16。\n1. 结论：现价 30.495 美元。\n2. 下一节",
             "数据口径（截至 2026-07-16）。\n1. 结论：现价 30.495 美元。\n2. 下一节",
             "As of 2026-07-16.\n1. 结论：current price USD 30.495。\n2. 下一节",
             "1. 结论：INTL 当前报价 $30.495（2026-07-16 核验）。\n2. 下一节",
@@ -14581,9 +14579,9 @@ mod tests {
             comparison: false,
             origin: AgentTurnOrigin::Interactive,
         };
-        let headings_only = "数据时间：北京时间。已核验事实与情景推断分开。\n1. 结论：现价 100 美元\n2. 资产、网络与核心用途\n3. 供给机制、代币经济与集中度\n4. 采用、流动性与市场结构\n5. 链上、网络与生态数据\n6. 估值框架与关键假设\n7. Bull / Bear / Base Case\n8. 催化、监管、风险与证伪\n9. 动作建议";
+        let headings_only = "数据时间：运行时时区。已核验事实与情景推断分开。\n1. 结论：现价 100 美元\n2. 资产、网络与核心用途\n3. 供给机制、代币经济与集中度\n4. 采用、流动性与市场结构\n5. 链上、网络与生态数据\n6. 估值框架与关键假设\n7. Bull / Bear / Base Case\n8. 催化、监管、风险与证伪\n9. 动作建议";
         assert!(!missing_deep_crypto_sections(headings_only).is_empty());
-        let complete = "数据时间：北京时间。已核验事实与情景推断分开。\n1. 结论：本轮同代码现价 100 美元，先观察。\n2. 资产、网络与核心用途：网络用于价值转移与结算。\n3. 供给机制、代币经济与集中度：供给节奏与集中度是核心变量。\n4. 采用、流动性与市场结构：采用率与流动性决定交易质量。\n5. 链上、网络与生态数据：链上活跃与生态数据本轮未核验。\n6. 估值框架与关键假设：估值取决于采用、流动性与假设。\n7. Bull / Bear / Base Case：Bull 看采用，Bear 看监管，Base 看流动性。\n8. 催化、监管、风险与证伪：催化是采用，风险是监管，证伪是活跃度失速。\n9. 动作建议：观察；若流动性与采用同时改善则触发重评。";
+        let complete = "数据时间：运行时时区。已核验事实与情景推断分开。\n1. 结论：本轮同代码现价 100 美元，先观察。\n2. 资产、网络与核心用途：网络用于价值转移与结算。\n3. 供给机制、代币经济与集中度：供给节奏与集中度是核心变量。\n4. 采用、流动性与市场结构：采用率与流动性决定交易质量。\n5. 链上、网络与生态数据：链上活跃与生态数据本轮未核验。\n6. 估值框架与关键假设：估值取决于采用、流动性与假设。\n7. Bull / Bear / Base Case：Bull 看采用，Bear 看监管，Base 看流动性。\n8. 催化、监管、风险与证伪：催化是采用，风险是监管，证伪是活跃度失速。\n9. 动作建议：观察；若流动性与采用同时改善则触发重评。";
         assert!(missing_deep_crypto_sections(complete).is_empty());
         assert!(missing_investment_response_sections(&contract, complete).is_empty());
     }
@@ -14713,10 +14711,10 @@ mod tests {
         assert!(block.contains("方向未核验时必须明确写未核验"));
         assert!(entity_is_fund(&fund_entity));
 
-        let company_template = "数据时间：北京时间。事实与推断分开。\n1. 结论\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量\n6. 估值：P/S + 情景法\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议";
+        let company_template = "数据时间：运行时时区。事实与推断分开。\n1. 结论\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量\n6. 估值：P/S + 情景法\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议";
         assert!(!missing_deep_fund_sections(company_template).is_empty());
 
-        let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，暂以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：IDEV 持仓权重为 37.647%，主要暴露按本轮持仓数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+        let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，暂以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：IDEV 持仓权重为 37.647%，主要暴露按本轮持仓数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
         assert!(missing_deep_fund_sections(complete).is_empty());
         assert!(missing_investment_response_sections(&contract, complete).is_empty());
         let holding_with_date = complete.replace(
@@ -14777,7 +14775,7 @@ mod tests {
             );
         }
         let dated_quote_without_literal_time_label = complete
-            .replacen("数据时间：北京时间 2026-07-16。", "", 1)
+            .replacen("数据时间：运行时时区 2026-07-16。", "", 1)
             .replacen(
                 "本轮同代码现价 30.495 美元",
                 "INTL 当前报价 $30.495（2026-07-16 核验）",
@@ -14920,7 +14918,7 @@ mod tests {
         let draft = "数据时间：模型自行估计。\nRMBS 当前价 101.53 美元。\n1. 结论：估值偏高，先观察。\n2. 公司是什么、靠什么赚钱：公司依靠芯片接口 IP 与产品收入赚钱。\n3. 护城河与竞争壁垒：专利、接口 IP 与客户验证周期构成壁垒。\n4. 行业位置与关键对手：位于内存接口产业链，竞争对手仍需跟踪。\n5. 财务质量：本轮年度利润表可用于判断利润质量，自由现金流本轮未核验。\n6. 估值：采用 P/S 与情景法，具体倍数作为假设而非事实。\n7. Bull / Bear / Base Case：Bull 看新品，Bear 看估值，Base 看正常执行。\n8. 催化剂、风险点、证伪条件：新品是催化，竞争是风险，增长失速构成证伪。\n9. 动作建议：观察；若盈利兑现且估值回落则触发重评。";
 
         let output = enforce_server_data_time_prefix(&contract, draft);
-        assert!(output.starts_with("数据时间：北京时间 "));
+        assert!(output.starts_with("数据时间：运行时时区 "));
         assert_eq!(output.matches("数据时间：").count(), 1);
         let target_position = output.find("标的核验：Rambus Inc.（RMBS").unwrap();
         let quote_position = output.find("本轮同代码现价 101.53 USD").unwrap();
@@ -14937,7 +14935,7 @@ mod tests {
             missing_investment_response_sections(&contract, &output)
         );
         let finalized_visible = crate::runtime::sanitize_user_visible_output(&output).content;
-        assert!(finalized_visible.starts_with("数据时间：北京时间 "));
+        assert!(finalized_visible.starts_with("数据时间：运行时时区 "));
         assert!(finalized_visible.contains("标的核验：Rambus Inc.（RMBS"));
         assert!(finalized_visible.contains("本轮同代码现价 101.53 USD"));
     }
@@ -14945,7 +14943,7 @@ mod tests {
     #[test]
     fn preflight_errors_still_begin_with_server_time() {
         let output = investment_preflight_failure_message("证券实体查询暂时不可用，请稍后重试。");
-        assert!(output.starts_with("数据时间：北京时间 "));
+        assert!(output.starts_with("数据时间：运行时时区 "));
         assert!(output.contains("证券实体查询暂时不可用"));
         assert!(!output.contains("行情尚未完成核验"));
     }
@@ -14970,7 +14968,7 @@ mod tests {
             origin: AgentTurnOrigin::Interactive,
         };
         let output = investment_contract_failure_message(&contract, contract_failure_message());
-        assert!(output.starts_with("数据时间：北京时间 "));
+        assert!(output.starts_with("数据时间：运行时时区 "));
         assert!(output.contains("Rambus Inc.（RMBS）本轮同代码现价 101.53 USD"));
         assert!(!output.contains("行情尚未完成核验"));
     }
@@ -15004,7 +15002,7 @@ mod tests {
             "我无法获取实时行情，因此当前价格无法反映真实价值",
         ] {
             let content =
-                format!("数据时间：北京时间 2026-07-16。\n{denial}；NBIS 当前价 100 美元。");
+                format!("数据时间：运行时时区 2026-07-16。\n{denial}；NBIS 当前价 100 美元。");
             let missing = missing_investment_response_sections(&contract, &content);
             assert!(
                 missing.contains(&"与已核验行情矛盾的能力声明"),
@@ -15018,7 +15016,7 @@ mod tests {
         ] {
             let safe = missing_investment_response_sections(
                 &contract,
-                &format!("数据时间：北京时间 2026-07-16。\n{safe_statement}"),
+                &format!("数据时间：运行时时区 2026-07-16。\n{safe_statement}"),
             );
             assert!(
                 !safe.contains(&"与已核验行情矛盾的能力声明"),
@@ -15456,7 +15454,7 @@ mod tests {
         };
         let enforcement = mixed.enforcement_block();
         assert!(enforcement.contains("指数只使用同代码行情与指数口径"));
-        let wrong_index_scope = "数据时间：北京时间 2026-07-17。比较结论：已核验事实与推断分开。\n### ^GSPC\n当前价 100 USD；财务与估值如下。\n### NVDA\n当前价 100 USD；公司财务与商业模式、估值如下。\n风险与证伪条件。动作建议与触发条件。";
+        let wrong_index_scope = "数据时间：运行时时区 2026-07-17。比较结论：已核验事实与推断分开。\n### ^GSPC\n当前价 100 USD；财务与估值如下。\n### NVDA\n当前价 100 USD；公司财务与商业模式、估值如下。\n风险与证伪条件。动作建议与触发条件。";
         assert!(
             missing_investment_response_sections(&mixed, wrong_index_scope)
                 .contains(&"指数小节证据口径")
@@ -15467,32 +15465,32 @@ mod tests {
     fn market_news_date_uses_the_relevant_exchange_calendar_date() {
         use chrono::TimeZone;
 
-        let beijing = chrono::FixedOffset::east_opt(8 * 60 * 60)
+        let local = chrono::FixedOffset::east_opt(8 * 60 * 60)
             .unwrap()
             .with_ymd_and_hms(2026, 7, 17, 0, 30, 0)
             .single()
             .unwrap();
         assert_eq!(
-            market_search_date_at("今天美股为什么大跌", beijing),
-            ("2026-07-16".into(), "America/New_York")
+            market_search_date_at("今天美股为什么大跌", local),
+            ("2026-07-16".into(), "America/New_York".into())
         );
         assert_eq!(
-            market_search_date_at("今天港股怎么看", beijing),
-            ("2026-07-17".into(), "Asia/Hong_Kong")
+            market_search_date_at("今天港股怎么看", local),
+            ("2026-07-17".into(), "Asia/Hong_Kong".into())
         );
         assert_eq!(
-            market_search_date_at("日本股市走势", beijing),
-            ("2026-07-17".into(), "Asia/Tokyo")
+            market_search_date_at("日本股市走势", local),
+            ("2026-07-17".into(), "Asia/Tokyo".into())
         );
         assert_eq!(
-            market_search_date_at("欧洲股市走势", beijing),
-            ("2026-07-16".into(), "Europe/Berlin")
+            market_search_date_at("欧洲股市走势", local),
+            ("2026-07-16".into(), "Europe/Berlin".into())
         );
         assert_eq!(
-            market_search_date_at("全球加密市场走势", beijing),
-            ("2026-07-16".into(), "UTC")
+            market_search_date_at("全球加密市场走势", local),
+            ("2026-07-16".into(), "UTC".into())
         );
-        let mixed = dated_market_searches_at("美股和A股今天为什么都在跌", beijing);
+        let mixed = dated_market_searches_at("美股和A股今天为什么都在跌", local);
         assert_eq!(mixed.len(), 2);
         assert_eq!(mixed[0].scope, "China A");
         assert_eq!(mixed[0].local_date, "2026-07-17");
@@ -15595,7 +15593,7 @@ mod tests {
             comparison: false,
             origin: AgentTurnOrigin::Interactive,
         };
-        let complete = "数据时间：北京时间 2026-07-17。已核验事实与情景推断分开。\n1. 结论：NBIS 本轮同代码现价 100 USD，先观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，并面对大型云厂商持续竞争。\n5. 财务质量与自由现金流：年度利润表可用于判断收入和利润质量，自由现金流本轮未核验。\n6. 估值：使用 P/S 与情景法两种方法，并把增长率和目标倍数作为假设。\n7. Bull / Bear / Base Case：Bull 看需求增长，Bear 看竞争压力，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：Reuters.com 在 2026-07-16 报道 Nebius 扩建基础设施；推断：订单增长可能构成催化，竞争加剧可能是风险；若增长失速则构成证伪。\n9. 动作建议：先观察；若增长和现金流改善则触发重新评估。";
+        let complete = "数据时间：运行时时区 2026-07-17。已核验事实与情景推断分开。\n1. 结论：NBIS 本轮同代码现价 100 USD，先观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，并面对大型云厂商持续竞争。\n5. 财务质量与自由现金流：年度利润表可用于判断收入和利润质量，自由现金流本轮未核验。\n6. 估值：使用 P/S 与情景法两种方法，并把增长率和目标倍数作为假设。\n7. Bull / Bear / Base Case：Bull 看需求增长，Bear 看竞争压力，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：Reuters.com 在 2026-07-16 报道 Nebius 扩建基础设施；推断：订单增长可能构成催化，竞争加剧可能是风险；若增长失速则构成证伪。\n9. 动作建议：先观察；若增长和现金流改善则触发重新评估。";
         assert!(
             missing_investment_response_sections(&contract, complete).is_empty(),
             "verified date-domain pair and explicit scenarios should pass: {:?}",
@@ -15686,7 +15684,7 @@ mod tests {
             comparison: false,
             origin: AgentTurnOrigin::Interactive,
         };
-        let complete = "数据时间：北京时间 2026-07-17。\n1. 结论：市场短线承压，先观察而不是追跌。\n2. 已核验行情事实：下表为本轮同代码报价。\n| 标的 | 现价 | 涨跌幅 | 报价源时间 |\n|---|---:|---:|---|\n| ^GSPC | 6500.25 USD | -1.25% | 2026-07-16 16:00 ET |\n| ^IXIC | 22000.5 USD | -1.75% | 2026-07-16 16:00 ET |\n3. 市场变动原因：Reuters.com 在 2026 年 7 月 16 日报道风险偏好下降；归因推断是估值与利率预期共同作用。\n4. Bull / Bear / Base Case：Bull 看政策缓和，Bear 看风险扩散，Base 看震荡消化。\n5. 动作建议、触发条件与证伪条件：先观察；若指数企稳则触发分批评估，若继续放量下跌则证伪反弹判断。";
+        let complete = "数据时间：运行时时区 2026-07-17。\n1. 结论：市场短线承压，先观察而不是追跌。\n2. 已核验行情事实：下表为本轮同代码报价。\n| 标的 | 现价 | 涨跌幅 | 报价源时间 |\n|---|---:|---:|---|\n| ^GSPC | 6500.25 USD | -1.25% | 2026-07-16 16:00 ET |\n| ^IXIC | 22000.5 USD | -1.75% | 2026-07-16 16:00 ET |\n3. 市场变动原因：Reuters.com 在 2026 年 7 月 16 日报道风险偏好下降；归因推断是估值与利率预期共同作用。\n4. Bull / Bear / Base Case：Bull 看政策缓和，Bear 看风险扩散，Base 看震荡消化。\n5. 动作建议、触发条件与证伪条件：先观察；若指数企稳则触发分批评估，若继续放量下跌则证伪反弹判断。";
         assert!(
             missing_investment_response_sections(&contract, complete).is_empty(),
             "{:?}",
@@ -16473,7 +16471,7 @@ mod tests {
             comparison: false,
             origin: AgentTurnOrigin::Interactive,
         };
-        let complete = "数据时间：北京时间 2026-07-17。\n1. 技术或赛道是什么：HBM 是高带宽内存赛道，服务 AI 加速器。\n2. 相对替代方案的核心变化：堆叠封装提升带宽并改变系统瓶颈。\n3. 为什么现在重要与时间节奏：AI 集群扩张使验证与放量节奏成为关键。\n4. 未来 2–3 年市场空间与主流观点：本轮未核验市场规模数字，主流观点仍看需求增长。\n5. 产业链分层：上游存储、接口 IP、加速器与封装共同构成产业链。\n6. 主要上市公司对比：\n| 标的 | 现价 | 定位 |\n|---|---:|---|\n| MU | 150.0 USD | 存储 |\n| RMBS | 101.53 USD | 接口 IP |\n| NVDA | 180.0 USD | 加速器 |\n7. 高确定性、高弹性与概念映射：确定性来自订单，弹性来自供需紧张，概念映射需逐项验证。\n8. Bull / Bear / Base、催化、风险与证伪：Bull 看放量，Bear 看供给，Base 看兑现；催化是新品，风险是竞争，需求失速构成证伪。\n9. 最终投资建议与触发条件：先观察；若订单与盈利同时兑现则触发分批评估。";
+        let complete = "数据时间：运行时时区 2026-07-17。\n1. 技术或赛道是什么：HBM 是高带宽内存赛道，服务 AI 加速器。\n2. 相对替代方案的核心变化：堆叠封装提升带宽并改变系统瓶颈。\n3. 为什么现在重要与时间节奏：AI 集群扩张使验证与放量节奏成为关键。\n4. 未来 2–3 年市场空间与主流观点：本轮未核验市场规模数字，主流观点仍看需求增长。\n5. 产业链分层：上游存储、接口 IP、加速器与封装共同构成产业链。\n6. 主要上市公司对比：\n| 标的 | 现价 | 定位 |\n|---|---:|---|\n| MU | 150.0 USD | 存储 |\n| RMBS | 101.53 USD | 接口 IP |\n| NVDA | 180.0 USD | 加速器 |\n7. 高确定性、高弹性与概念映射：确定性来自订单，弹性来自供需紧张，概念映射需逐项验证。\n8. Bull / Bear / Base、催化、风险与证伪：Bull 看放量，Bear 看供给，Base 看兑现；催化是新品，风险是竞争，需求失速构成证伪。\n9. 最终投资建议与触发条件：先观察；若订单与盈利同时兑现则触发分批评估。";
         assert!(
             missing_investment_response_sections(&contract, complete).is_empty(),
             "{:?}",
@@ -16494,9 +16492,9 @@ mod tests {
     /// maintained acronym deny-list can close this class.
 
     /// The pre-turn search must be anchored on absolute dates, and must carry
-    /// the target market's local date whenever it differs from Beijing's —
-    /// otherwise a Beijing morning searches a US date that has not happened.
-    /// A Beijing evening is a New York pre-market morning. The regular-session
+    /// the target market's local date whenever it differs from Local's —
+    /// otherwise a Local morning searches a US date that has not happened.
+    /// A Local evening is a New York pre-market morning. The regular-session
     /// quote still reports the previous close then, so a turn asking why a
     /// stock jumped gets told the market has not opened — which is what users
     /// reported for LITE and COHR.

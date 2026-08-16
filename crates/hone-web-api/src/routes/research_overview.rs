@@ -82,17 +82,23 @@ pub(crate) async fn handle_get_research_overview(
     cards.push(
         super::daily_signals::overview_card(&state, "macro")
             .await
-            .unwrap_or_else(|| OverviewCard::waiting("daily-signal-macro", "宏观红绿灯", "领先周期判断")),
+            .unwrap_or_else(|| {
+                OverviewCard::waiting("daily-signal-macro", "宏观红绿灯", "领先周期判断")
+            }),
     );
     cards.push(
         super::daily_signals::overview_card(&state, "ai")
             .await
-            .unwrap_or_else(|| OverviewCard::waiting("daily-signal-ai", "AI 红绿灯", "AI 增长可持续性")),
+            .unwrap_or_else(|| {
+                OverviewCard::waiting("daily-signal-ai", "AI 红绿灯", "AI 增长可持续性")
+            }),
     );
     cards.push(
         super::company_ratings::overview_card(&state)
             .await
-            .unwrap_or_else(|| OverviewCard::waiting("company-ratings", "公司评级", "52 家研究基线")),
+            .unwrap_or_else(|| {
+                OverviewCard::waiting("company-ratings", "公司评级", "52 家研究基线")
+            }),
     );
     cards.push(
         super::valuation_lab::overview_card(&state)
@@ -116,7 +122,9 @@ pub(crate) async fn handle_get_research_overview(
     cards.push(
         super::influencer_digest::overview_card(&state)
             .await
-            .unwrap_or_else(|| OverviewCard::waiting("influencer-digest", "大V速报", "观点不等于事实")),
+            .unwrap_or_else(|| {
+                OverviewCard::waiting("influencer-digest", "大V速报", "观点不等于事实")
+            }),
     );
     // Weekly brief must never compute live here (it can fan out to FMP for
     // the whole coverage universe); only a pre-generated snapshot qualifies.
@@ -128,7 +136,9 @@ pub(crate) async fn handle_get_research_overview(
     cards.push(
         super::key_event_chain::overview_card(&state)
             .await
-            .unwrap_or_else(|| OverviewCard::waiting("key-event-chain", "关键事件链", "第一性证据链")),
+            .unwrap_or_else(|| {
+                OverviewCard::waiting("key-event-chain", "关键事件链", "第一性证据链")
+            }),
     );
     cards.push(
         super::research_library::overview_card(&state, &user.user_id)

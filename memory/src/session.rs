@@ -7,7 +7,7 @@ use hone_core::agent::{
 };
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
-use hone_core::{ActorIdentity, HoneResult, SessionIdentity, beijing_now};
+use hone_core::{ActorIdentity, HoneResult, SessionIdentity, compare_rfc3339, local_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -133,8 +133,8 @@ impl SessionIndex for CloudPgSessionIndex {
             .list()?
             .into_iter()
             .filter(|session| {
-                session.updated_at > updated_after
-                    && session.updated_at < updated_before
+                compare_rfc3339(&session.updated_at, &updated_after).is_gt()
+                    && compare_rfc3339(&session.updated_at, &updated_before).is_lt()
                     && session
                         .actor
                         .as_ref()
@@ -204,20 +204,20 @@ fn default_session_version() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct SessionPromptState {
-    #[serde(default)]
-    pub frozen_time_beijing: String,
+    #[serde(default, alias = "frozen_time_beijing")]
+    pub frozen_time_local: String,
 }
 
 impl SessionPromptState {
     pub fn ensure_frozen_time(mut self) -> Self {
-        if self.frozen_time_beijing.trim().is_empty() {
-            self.frozen_time_beijing = hone_core::beijing_now_rfc3339();
+        if self.frozen_time_local.trim().is_empty() {
+            self.frozen_time_local = hone_core::local_now_rfc3339();
         }
         self
     }
 
     pub fn frozen_datetime(&self) -> DateTime<FixedOffset> {
-        DateTime::parse_from_rfc3339(&self.frozen_time_beijing).unwrap_or_else(|_| beijing_now())
+        DateTime::parse_from_rfc3339(&self.frozen_time_local).unwrap_or_else(|_| local_now())
     }
 }
 
@@ -237,7 +237,7 @@ impl SessionSummary {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            updated_at: hone_core::beijing_now_rfc3339(),
+            updated_at: hone_core::local_now_rfc3339(),
         }
     }
 }
@@ -845,7 +845,7 @@ impl SessionStorage {
                 .and_then(|actor| SessionIdentity::from_actor(actor).ok())
         });
 
-        let now = hone_core::beijing_now_rfc3339();
+        let now = hone_core::local_now_rfc3339();
         let session = Session {
             version: default_session_version(),
             id: id.clone(),
@@ -857,7 +857,7 @@ impl SessionStorage {
             metadata: HashMap::new(),
             runtime: SessionRuntimeState {
                 prompt: SessionPromptState {
-                    frozen_time_beijing: hone_core::beijing_now_rfc3339(),
+                    frozen_time_local: hone_core::local_now_rfc3339(),
                 },
             },
             summary: None,
@@ -912,10 +912,10 @@ impl SessionStorage {
         session.messages.push(session_message_from_text(
             role,
             content,
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             metadata,
         ));
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
@@ -948,7 +948,7 @@ impl SessionStorage {
         }
 
         session.messages.pop();
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
@@ -1014,7 +1014,7 @@ impl SessionStorage {
         if prompt != session.runtime.prompt {
             session.runtime.prompt = prompt.clone();
             session.version = default_session_version();
-            session.updated_at = hone_core::beijing_now_rfc3339();
+            session.updated_at = hone_core::local_now_rfc3339();
             self.write_session(session_id, &session)?;
         }
 
@@ -1035,7 +1035,7 @@ impl SessionStorage {
         };
 
         session.messages = messages;
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
@@ -1058,7 +1058,7 @@ impl SessionStorage {
         session.messages = messages;
         session.summary = summary;
         session.version = default_session_version();
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         self.write_session(session_id, &session)?;
 
         Ok(true)
@@ -1077,7 +1077,7 @@ impl SessionStorage {
         };
 
         session.messages.extend(messages);
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
@@ -1100,7 +1100,7 @@ impl SessionStorage {
         for (key, value) in metadata {
             session.metadata.insert(key, value);
         }
-        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.updated_at = hone_core::local_now_rfc3339();
         session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
@@ -1256,7 +1256,7 @@ mod tests {
             Some(SessionIdentity::group("discord", "g:1:c:2").expect("session"))
         );
         assert_eq!(session.version, 4);
-        assert!(!session.runtime.prompt.frozen_time_beijing.is_empty());
+        assert!(!session.runtime.prompt.frozen_time_local.is_empty());
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1408,7 +1408,7 @@ mod tests {
         let new_messages = vec![session_message_from_text(
             "assistant",
             "after",
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             None,
         )];
 
@@ -1482,7 +1482,7 @@ mod tests {
         let new_messages = vec![session_message_from_text(
             "assistant",
             "after",
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             None,
         )];
 
@@ -1510,20 +1510,20 @@ mod tests {
     #[test]
     fn select_messages_after_compact_boundary_slices_to_latest_boundary() {
         let messages = vec![
-            session_message_from_text("user", "before", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text("user", "before", hone_core::local_now_rfc3339(), None),
             session_message_from_text(
                 "system",
                 "Conversation compacted",
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
                 Some(build_compact_boundary_metadata("auto", 3, 5)),
             ),
             session_message_from_text(
                 "user",
                 "【Compact Summary】\nsummary",
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
                 Some(build_compact_summary_metadata("auto")),
             ),
-            session_message_from_text("assistant", "after", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text("assistant", "after", hone_core::local_now_rfc3339(), None),
         ];
 
         let selected = select_messages_after_compact_boundary(&messages, None);
@@ -1538,18 +1538,18 @@ mod tests {
     #[test]
     fn select_context_messages_keeps_tool_role() {
         let messages = vec![
-            session_message_from_text("system", "ignore", hone_core::beijing_now_rfc3339(), None),
-            session_message_from_text("user", "u1", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text("system", "ignore", hone_core::local_now_rfc3339(), None),
+            session_message_from_text("user", "u1", hone_core::local_now_rfc3339(), None),
             session_message_from_text(
                 "tool",
                 "t1",
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
                 Some(HashMap::from([(
                     "tool_name".to_string(),
                     Value::String("web_search".to_string()),
                 )])),
             ),
-            session_message_from_text("assistant", "a1", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text("assistant", "a1", hone_core::local_now_rfc3339(), None),
         ];
 
         let selected = select_context_messages(&messages, Some(3));
@@ -1571,7 +1571,7 @@ mod tests {
         let message = session_message_from_text(
             "tool",
             "{\"ok\":true}",
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             Some(metadata),
         );
         let restored = restore_tool_message(&message).expect("restore tool");
@@ -1729,7 +1729,7 @@ mod tests {
                 vec![session_message_from_text(
                     "tool",
                     "replacement",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(metadata),
                 )],
             )

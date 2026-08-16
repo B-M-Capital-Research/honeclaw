@@ -261,7 +261,7 @@ mod tests {
         let temp = std::env::temp_dir().join(format!(
             "hone_sandbox_sensitive_cleanup_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -290,7 +290,7 @@ mod tests {
         let temp = std::env::temp_dir().join(format!(
             "hone_native_codex_skill_links_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));

@@ -5,7 +5,7 @@ import { For, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
 import type { CronJobInfo } from "@/lib/types"
-import { formatShanghaiDateTime } from "@/lib/time"
+import { formatLocalDateTime } from "@/lib/time"
 import { TASKS } from "@/lib/admin-content/tasks"
 
 export function TaskList() {
@@ -17,7 +17,7 @@ export function TaskList() {
 
     const formatNextRunAt = (dateString?: string) => {
         if (!dateString) return TASKS.list.not_scheduled
-        return formatShanghaiDateTime(dateString, {
+        return formatLocalDateTime(dateString, {
             month: "2-digit",
             day: "2-digit",
             hour: "2-digit",

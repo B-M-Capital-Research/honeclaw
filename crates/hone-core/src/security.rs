@@ -38,9 +38,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "hone_private_permissions_{}_{}",
             std::process::id(),
-            crate::beijing_now()
-                .timestamp_nanos_opt()
-                .unwrap_or_default()
+            crate::local_now().timestamp_nanos_opt().unwrap_or_default()
         ));
         std::fs::create_dir_all(&root).expect("root");
         let file = root.join("config.yaml");

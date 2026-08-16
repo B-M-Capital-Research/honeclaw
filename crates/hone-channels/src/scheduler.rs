@@ -175,7 +175,7 @@ static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE_BEFORE_PRICE: LazyLock<regex::Regex> = 
     || {
         regex::Regex::new(
             r"(?isx)
-            (?:北京时间|数据时间|截至|as\s+of|quote\s+time)?\s*
+            (?:运行时时区|数据时间|截至|as\s+of|quote\s+time)?\s*
             (?:
                 (?P<year_cn>20\d{2})年(?P<month_cn>\d{1,2})月(?P<day_cn>\d{1,2})日
                 |
@@ -192,18 +192,18 @@ static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE_BEFORE_PRICE: LazyLock<regex::Regex> = 
 
 const HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS: i64 = 3;
 
-static RE_HEARTBEAT_BEIJING_TRIGGER_DATETIME: LazyLock<regex::Regex> = LazyLock::new(|| {
+static RE_HEARTBEAT_LOCAL_TRIGGER_DATETIME: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r"(?P<prefix>[^\n。；;]{0,64}(?:监控|检查|心跳|任务|触发)[^\n。；;]{0,40}北京时间\s*)(?P<year>\d{4})(?:年|-)(?P<month>\d{1,2})(?:月|-)(?P<day>\d{1,2})(?:日)?\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})(?P<tail>[^\n。；;]{0,32})",
+        r"(?P<prefix>[^\n。；;]{0,64}(?:监控|检查|心跳|任务|触发)[^\n。；;]{0,40}运行时时区\s*)(?P<year>\d{4})(?:年|-)(?P<month>\d{1,2})(?:月|-)(?P<day>\d{1,2})(?:日)?\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})(?P<tail>[^\n。；;]{0,32})",
     )
-    .expect("valid heartbeat beijing trigger datetime regex")
+    .expect("valid heartbeat local trigger datetime regex")
 });
 
-static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new(|| {
+static RE_HEARTBEAT_LOCAL_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r"北京时间\s*(?P<hour>\d{1,2})(?:[:：点时](?P<minute>\d{1,2})?)?(?:分)?(?P<tail>\s*[^\n。；;]{0,24}(?:监控|检查|心跳|任务|本轮)[^\n。；;]{0,16}触发)",
+        r"运行时时区\s*(?P<hour>\d{1,2})(?:[:：点时](?P<minute>\d{1,2})?)?(?:分)?(?P<tail>\s*[^\n。；;]{0,24}(?:监控|检查|心跳|任务|本轮)[^\n。；;]{0,16}触发)",
     )
-    .expect("valid heartbeat beijing trigger time regex")
+    .expect("valid heartbeat local trigger time regex")
 });
 
 static RE_HEARTBEAT_RELATIVE_TODAY_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -220,7 +220,7 @@ static RE_HEARTBEAT_CURRENT_TIME_CONTEXT: LazyLock<regex::Regex> = LazyLock::new
             (?:
                 系统当前时间
                 |当前(?:检查)?时间(?:上下文)?
-                |当前北京时间
+                |当前运行时时区
                 |current(?:\s+check)?\s+time\s+context
                 |current\s+date\s+context
                 |system\s+current\s+time
@@ -230,13 +230,13 @@ static RE_HEARTBEAT_CURRENT_TIME_CONTEXT: LazyLock<regex::Regex> = LazyLock::new
             \s*[:：]?\s*
         )
         (?P<datetime>
-            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:北京时间)?
+            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:运行时时区)?
             |
             \d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{1,2}(?::\d{1,2})?(?:[+-]\d{2}:\d{2}|Z)
             |
-            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Local\s+time|运行时时区|CST|UTC)?
             |
-            [A-Z][a-z]+\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:Beijing\s+time|UTC|CST)?
+            [A-Z][a-z]+\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:Local\s+time|UTC|CST)?
         )
         ",
     )
@@ -247,11 +247,11 @@ static RE_HEARTBEAT_CHECK_TIME_VALUE: LazyLock<regex::Regex> = LazyLock::new(|| 
     regex::Regex::new(
         r"(?ix)^
         (?P<datetime>
-            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:北京时间)?
+            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:运行时时区)?
             |
-            \d{4}-\d{1,2}-\d{1,2}\s*(?:北京时间\s*)?\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+            \d{4}-\d{1,2}-\d{1,2}\s*(?:运行时时区\s*)?\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Local\s+time|运行时时区|CST|UTC)?
             |
-            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Local\s+time|运行时时区|CST|UTC)?
         )
         ",
     )
@@ -273,7 +273,7 @@ static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     .expect("valid heartbeat fact token regex")
 });
 static RE_SCHEDULER_REPORT_RESTART_OPENER: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"北京时间\s*20\d{2}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{2}。结论[:：]")
+    regex::Regex::new(r"运行时时区\s*20\d{2}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{2}。结论[:：]")
         .expect("valid scheduler report restart opener regex")
 });
 
@@ -978,7 +978,7 @@ fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
         "预警",
         "警报",
         "检查时间",
-        "北京时间",
+        "运行时时区",
         "当前",
         "最新",
         "现价",
@@ -1301,9 +1301,8 @@ fn heartbeat_stale_price_timestamp(text: &str, reference_date: NaiveDate) -> Opt
         })
 }
 
-fn heartbeat_reference_now_beijing() -> DateTime<FixedOffset> {
-    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid beijing offset");
-    chrono::Utc::now().with_timezone(&beijing_tz)
+fn heartbeat_reference_now_local() -> DateTime<FixedOffset> {
+    hone_core::local_now()
 }
 
 fn heartbeat_check_time_text(now: DateTime<FixedOffset>) -> String {
@@ -1318,40 +1317,35 @@ fn heartbeat_check_time_text(now: DateTime<FixedOffset>) -> String {
 }
 
 fn heartbeat_current_check_time_text() -> String {
-    heartbeat_check_time_text(heartbeat_reference_now_beijing())
+    heartbeat_check_time_text(heartbeat_reference_now_local())
 }
 
 fn heartbeat_reference_now_chinese_text(reference_now: DateTime<FixedOffset>) -> String {
     format!(
-        "{:04}年{}月{}日 {:02}:{:02} 北京时间",
+        "{:04}年{}月{}日 {:02}:{:02} {} 时间",
         reference_now.year(),
         reference_now.month(),
         reference_now.day(),
         reference_now.hour(),
-        reference_now.minute()
+        reference_now.minute(),
+        hone_core::runtime_timezone_name()
     )
 }
 
 fn heartbeat_reference_now_english_text(reference_now: DateTime<FixedOffset>) -> String {
     format!(
-        "{:04}-{:02}-{:02} {:02}:{:02} Beijing time",
+        "{:04}-{:02}-{:02} {:02}:{:02} {} time",
         reference_now.year(),
         reference_now.month(),
         reference_now.day(),
         reference_now.hour(),
-        reference_now.minute()
+        reference_now.minute(),
+        hone_core::runtime_timezone_name()
     )
 }
 
 fn heartbeat_reference_now_iso_text(reference_now: DateTime<FixedOffset>) -> String {
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:00+08:00",
-        reference_now.year(),
-        reference_now.month(),
-        reference_now.day(),
-        reference_now.hour(),
-        reference_now.minute()
-    )
+    reference_now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
 }
 
 fn normalize_heartbeat_current_time_context(
@@ -1374,17 +1368,15 @@ fn normalize_heartbeat_current_time_context(
                 return captures[0].to_string();
             }
 
-            let replacement =
-                if trimmed_original.contains('年') || trimmed_original.contains("北京时间") {
-                    heartbeat_reference_now_chinese_text(reference_now)
-                } else if trimmed_original.contains('T')
-                    || trimmed_original.ends_with('Z')
-                    || trimmed_original.contains("+08:00")
-                {
-                    heartbeat_reference_now_iso_text(reference_now)
-                } else {
-                    heartbeat_reference_now_english_text(reference_now)
-                };
+            let replacement = if trimmed_original.contains('年')
+                || trimmed_original.contains("运行时时区")
+            {
+                heartbeat_reference_now_chinese_text(reference_now)
+            } else if chrono::DateTime::parse_from_rfc3339(trimmed_original).is_ok() {
+                heartbeat_reference_now_iso_text(reference_now)
+            } else {
+                heartbeat_reference_now_english_text(reference_now)
+            };
 
             if trimmed_original == replacement {
                 return captures[0].to_string();
@@ -1439,14 +1431,14 @@ fn normalize_heartbeat_check_time_context(
     (text.to_string(), None)
 }
 
-fn normalize_heartbeat_beijing_trigger_time(
+fn normalize_heartbeat_local_trigger_time(
     text: &str,
     reference_now: DateTime<FixedOffset>,
 ) -> (String, Option<String>) {
     let reference_hour = reference_now.hour();
     let reference_minute = reference_now.minute();
     let mut normalized_from = None;
-    let normalized_datetime = RE_HEARTBEAT_BEIJING_TRIGGER_DATETIME
+    let normalized_datetime = RE_HEARTBEAT_LOCAL_TRIGGER_DATETIME
         .replace_all(text, |captures: &regex::Captures<'_>| {
             let year = captures
                 .name("year")
@@ -1527,7 +1519,7 @@ fn normalize_heartbeat_beijing_trigger_time(
             )
         })
         .into_owned();
-    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+    let normalized = RE_HEARTBEAT_LOCAL_TRIGGER_TIME
         .replace_all(
             &normalized_relative_today,
             |captures: &regex::Captures<'_>| {
@@ -1552,7 +1544,7 @@ fn normalize_heartbeat_beijing_trigger_time(
                     .name("tail")
                     .map(|m| m.as_str())
                     .unwrap_or_default();
-                format!("北京时间 {reference_hour:02}:{reference_minute:02}{tail}")
+                format!("运行时时区 {reference_hour:02}:{reference_minute:02}{tail}")
             },
         )
         .into_owned();
@@ -2115,10 +2107,10 @@ fn heartbeat_execution_from_content(
     content: &str,
     heartbeat_model: &str,
 ) -> ScheduledTaskExecution {
-    heartbeat_execution_from_content_at_beijing(
+    heartbeat_execution_from_content_at_local(
         content,
         heartbeat_model,
-        heartbeat_reference_now_beijing(),
+        heartbeat_reference_now_local(),
     )
 }
 
@@ -2131,7 +2123,7 @@ fn heartbeat_execution_from_content_at(
     heartbeat_execution_from_content_internal(content, heartbeat_model, reference_date, None)
 }
 
-fn heartbeat_execution_from_content_at_beijing(
+fn heartbeat_execution_from_content_at_local(
     content: &str,
     heartbeat_model: &str,
     reference_now: DateTime<FixedOffset>,
@@ -2227,9 +2219,9 @@ fn heartbeat_execution_from_content_internal(
                 sanitized_message = normalized;
                 normalized_from
             });
-            let normalized_beijing_trigger_time = reference_now.and_then(|reference_now| {
+            let normalized_local_trigger_time = reference_now.and_then(|reference_now| {
                 let (normalized, normalized_from) =
-                    normalize_heartbeat_beijing_trigger_time(&sanitized_message, reference_now);
+                    normalize_heartbeat_local_trigger_time(&sanitized_message, reference_now);
                 sanitized_message = normalized;
                 normalized_from
             });
@@ -2283,12 +2275,12 @@ fn heartbeat_execution_from_content_internal(
                     "starts_with_json": starts_with_json,
                     "raw_preview": raw_preview,
                     "deliver_preview": deliver_preview,
-                    "beijing_trigger_time_normalized": normalized_beijing_trigger_time.is_some(),
-                    "original_beijing_trigger_time": normalized_beijing_trigger_time,
-                    "beijing_current_time_context_normalized": normalized_current_time_from.is_some(),
-                    "original_beijing_current_time_context": normalized_current_time_from,
-                    "beijing_check_time_context_normalized": normalized_check_time.is_some(),
-                    "original_beijing_check_time_context": normalized_check_time,
+                    "local_trigger_time_normalized": normalized_local_trigger_time.is_some(),
+                    "original_local_trigger_time": normalized_local_trigger_time,
+                    "local_current_time_context_normalized": normalized_current_time_from.is_some(),
+                    "original_local_current_time_context": normalized_current_time_from,
+                    "local_check_time_context_normalized": normalized_check_time.is_some(),
+                    "original_local_check_time_context": normalized_check_time,
                 }),
                 session_id: None,
             }
@@ -4226,13 +4218,13 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
         return format!(
             "[心跳检测任务] 任务名称：{}。\n\
 你正在执行一个每 30 分钟运行一次的后台条件检查。\n\
-本轮权威检查时间（北京时间）：{}。\n\
+本轮权威检查时间（运行时时区：{}）：{}。\n\
 请使用可用工具检查用户设置的触发条件是否已经满足。\n\
 \n\
 规则：\n\
 1. 如果条件尚未满足，优先只输出 `{{\"status\":\"noop\"}}`；为兼容旧行为，也允许只输出 `{{}}`。\n\
 2. 如果条件已满足，只输出一段 JSON：`{{\"status\":\"triggered\",\"message\":\"...\"}}`。\n\
-3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间；检查时间必须使用上方“本轮权威检查时间（北京时间）”，不得自行换算或推断另一个北京时间。\n\
+3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间；检查时间必须使用上方“本轮权威检查时间（运行时时区）”，不得自行换算或推断另一个运行时时区。\n\
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
@@ -4241,7 +4233,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6c. 严禁输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或任何“已配置/将创建监控”的说明；如果本轮误入配置/建档/任务治理路径，必须返回 `{{\"status\":\"noop\"}}`。\n\
 6d. 下方“用户条件”可能保留了用户最初的“帮我创建/设置/每30分钟监控”措辞；你必须把它解释为“当前已有 heartbeat 任务的执行说明”，只检查条件，不得把它当成新的创建请求，也不得输出“无法创建/不能设置/这是第几次提出创建”的话术。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
-7a. 时间口径命名约束：`message` 中写“北京时间 HH:MM 触发/监控触发/检查触发”时，只能使用上方权威检查时间；市场时段、数据时间或美东盘前/盘后只能标注为“数据时间”“美东时间”“交易时段”，不能写成另一个“北京时间触发”。\n\
+7a. 时间口径命名约束：`message` 中写“运行时时区 HH:MM 触发/监控触发/检查触发”时，只能使用上方权威检查时间；市场时段、数据时间或美东盘前/盘后只能标注为“数据时间”“美东时间”“交易时段”，不能写成另一个“运行时时区触发”。\n\
 8. 价格时间口径约束：引用股价、金价、汇率或商品价格时，必须核实价格的时间戳。价格阈值 / 跌破 / 突破类 heartbeat 只有在最新可得价格属于当前检查窗口或最近可解释交易窗口时才能 triggered；若工具只返回明显旧日期、缺少价格时间戳，或无法证明该价格仍是最新可得价格，必须返回 noop，不允许把旧价格包装成当前触发依据。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
 10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
@@ -4251,11 +4243,15 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 14. 工具预算约束：必须以最少工具调用收口。优先使用本地事件、组合、文件和 FMP 缓存；只有本地/缓存证据不足时才搜索 Tavily。单轮最多 1 次 `web_search`、2 次 `data_fetch`、3 次工具调用；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 noop 或 triggered，禁止为了展示分析过程反复调用相同工具。\n\
 {}\
 \n以下是需要检查的用户条件：\n{}",
-            event.job_name, check_time, history_section, event.task_prompt
+            event.job_name,
+            hone_core::runtime_timezone_name(),
+            check_time,
+            history_section,
+            event.task_prompt
         );
     }
     let trigger_note = format!(
-        "[定时任务触发] 任务名称：{}。\n权威触发配置：repeat={}{}，北京时间 {:02}:{:02}。如果下面的用户任务正文里出现了不同的日期或时间，以这里的权威触发配置为准，不要在回复中声称本轮不是设定触发时点。\n请执行以下指令：",
+        "[定时任务触发] 任务名称：{}。\n权威触发配置：repeat={}{}，运行时时区 {} {:02}:{:02}。如果下面的用户任务正文里出现了不同的日期或时间，以这里的权威触发配置为准，不要在回复中声称本轮不是设定触发时点。\n请执行以下指令：",
         event.job_name,
         event.schedule_repeat,
         event
@@ -4263,6 +4259,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
             .as_deref()
             .map(|date| format!(", date={date}"))
             .unwrap_or_default(),
+        hone_core::runtime_timezone_name(),
         event.schedule_hour,
         event.schedule_minute
     );
@@ -4297,12 +4294,12 @@ fn build_heartbeat_recovery_prompt(
     };
     format!(
         "[心跳检测恢复重试] 任务名称：{}。\n\
-本轮权威检查时间（北京时间）：{}。\n\
+本轮权威检查时间（运行时时区：{}）：{}。\n\
 {}\
 \n\
 恢复重试规则：\n\
 1. 整条回复必须是单段 JSON：只允许 `{{\"status\":\"noop\"}}` 或 `{{\"status\":\"triggered\",\"message\":\"...\"}}`。\n\
-2. `triggered.message` 只写用户可见提醒：触发条件、关键数据、检查时间；检查时间必须使用上方权威北京时间。\n\
+2. `triggered.message` 只写用户可见提醒：触发条件、关键数据、检查时间；检查时间必须使用上方权威运行时时区。\n\
 3. 本轮最多允许 2 次工具调用：优先复用本地文件、组合和一次行情/新闻确认；若仍不能确认，直接返回 noop。\n\
 4. 不要输出分析过程、Markdown 代码块、任务配置、画像流程、工具名或内部错误。\n\
 5. 不要给直接买卖指令；只能报告触发事实和条件化风险提示。\n\
@@ -4310,6 +4307,7 @@ fn build_heartbeat_recovery_prompt(
 \n\
 以下是需要检查的用户条件：\n{}",
         event.job_name,
+        hone_core::runtime_timezone_name(),
         heartbeat_current_check_time_text(),
         reason_note,
         event.task_prompt
@@ -4978,7 +4976,7 @@ async fn run_heartbeat_task(
         false,
         &event.task_prompt,
         AgentTurnOrigin::Heartbeat,
-        &bundle.answer_time_beijing,
+        &bundle.answer_time_local,
         &mut investment_runtime_suffix,
         // Heartbeat work never takes the Interactive enrichment path.
         &mut 0,
@@ -5118,7 +5116,7 @@ mod tests {
         guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
         heartbeat_contract_recovery_profile, heartbeat_duplicate_preview_match,
         heartbeat_execution_from_content, heartbeat_execution_from_content_at,
-        heartbeat_execution_from_content_at_beijing, heartbeat_execution_from_runner_error,
+        heartbeat_execution_from_content_at_local, heartbeat_execution_from_runner_error,
         heartbeat_max_tool_calls, heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
         heartbeat_recovery_reason_label, heartbeat_runner_selection,
         heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
@@ -5216,12 +5214,12 @@ mod tests {
 
     #[test]
     fn heartbeat_boolean_triggered_shape_delivers_message() {
-        let content = r#"{"triggered":true,"message":"【RKLB 异动提醒】当前涨幅超过 8%，检查时间：北京时间 09:30。"}"#;
+        let content = r#"{"triggered":true,"message":"【RKLB 异动提醒】当前涨幅超过 8%，检查时间：运行时时区 09:30。"}"#;
         assert_eq!(
             inspect_heartbeat_result(content),
             (
                 HeartbeatOutcome::Deliver(
-                    "【RKLB 异动提醒】当前涨幅超过 8%，检查时间：北京时间 09:30。".to_string()
+                    "【RKLB 异动提醒】当前涨幅超过 8%，检查时间：运行时时区 09:30。".to_string()
                 ),
                 HeartbeatParseKind::JsonTriggered
             )
@@ -5284,11 +5282,11 @@ mod tests {
     fn heartbeat_malformed_triggered_json_recovers_message_before_extra_fields() {
         assert_eq!(
             inspect_heartbeat_result(
-                r#"{"status":"triggered","message":"【Cerebras IPO 认购超热 · 2026-05-09 15:00 北京时间】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求"超级健康"，触发业务进展提醒。","source":"Bloomberg","confidence":"medium"}"#
+                r#"{"status":"triggered","message":"【Cerebras IPO 认购超热 · 2026-05-09 15:00 运行时时区】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求"超级健康"，触发业务进展提醒。","source":"Bloomberg","confidence":"medium"}"#
             ),
             (
                 HeartbeatOutcome::Deliver(
-                    "【Cerebras IPO 认购超热 · 2026-05-09 15:00 北京时间】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求\"超级健康\"，触发业务进展提醒。"
+                    "【Cerebras IPO 认购超热 · 2026-05-09 15:00 运行时时区】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求\"超级健康\"，触发业务进展提醒。"
                         .to_string()
                 ),
                 HeartbeatParseKind::JsonTriggered
@@ -5300,11 +5298,11 @@ mod tests {
     fn heartbeat_malformed_triggered_json_keeps_quoted_colon_text_inside_message() {
         assert_eq!(
             inspect_heartbeat_result(
-                r#"{"status":"triggered","message":"【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 北京时间】管理层称"公司史上最强一季度","订单需求":持续强劲，单日涨跌幅超过 8%，触发提醒。","source":"earnings call"}"#
+                r#"{"status":"triggered","message":"【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 运行时时区】管理层称"公司史上最强一季度","订单需求":持续强劲，单日涨跌幅超过 8%，触发提醒。","source":"earnings call"}"#
             ),
             (
                 HeartbeatOutcome::Deliver(
-                    "【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 北京时间】管理层称\"公司史上最强一季度\",\"订单需求\":持续强劲，单日涨跌幅超过 8%，触发提醒。"
+                    "【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 运行时时区】管理层称\"公司史上最强一季度\",\"订单需求\":持续强劲，单日涨跌幅超过 8%，触发提醒。"
                         .to_string()
                 ),
                 HeartbeatParseKind::JsonTriggered
@@ -5520,7 +5518,7 @@ mod tests {
     #[test]
     fn heartbeat_future_price_timestamp_trigger_is_suppressed() {
         let execution = heartbeat_execution_from_content_at(
-            r#"{"status":"triggered","message":"【黄金急跌预警】XAU/USD 现货黄金当前价 4161.56 美元/盎司（数据时间：2026年6月18日 北京时间 13:10，盘中日低 4130.62 美元/盎司），已跌破 4500 美元/盎司阈值。"}"#,
+            r#"{"status":"triggered","message":"【黄金急跌预警】XAU/USD 现货黄金当前价 4161.56 美元/盎司（数据时间：2026年6月18日 运行时时区 13:10，盘中日低 4130.62 美元/盎司），已跌破 4500 美元/盎司阈值。"}"#,
             "MiniMax-M2.7-highspeed",
             chrono::NaiveDate::from_ymd_opt(2026, 6, 10).expect("date"),
         );
@@ -5544,7 +5542,7 @@ mod tests {
     #[test]
     fn heartbeat_leading_future_price_timestamp_trigger_is_suppressed() {
         let execution = heartbeat_execution_from_content_at(
-            r#"{"status":"triggered","message":"北京时间 2026年6月13日 20:20，现货黄金（XAU/USD）最新价格为 $4098.71/盎司。当前价格已低于您设置的 $4500 预警阈值。"}"#,
+            r#"{"status":"triggered","message":"运行时时区 2026年6月13日 20:20，现货黄金（XAU/USD）最新价格为 $4098.71/盎司。当前价格已低于您设置的 $4500 预警阈值。"}"#,
             "MiniMax-M2.7-highspeed",
             chrono::NaiveDate::from_ymd_opt(2026, 6, 11).expect("date"),
         );
@@ -5566,35 +5564,35 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_normalizes_conflicting_beijing_trigger_time() {
+    fn heartbeat_normalizes_conflicting_local_trigger_time() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-05-29T11:31:32+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
-            r#"{"status":"triggered","message":"2026年5月29日 北京时间 04:00 盘后监控触发。已核验事实：AI 产业链出现关键事件。"}"#,
+        let execution = heartbeat_execution_from_content_at_local(
+            r#"{"status":"triggered","message":"2026年5月29日 运行时时区 04:00 盘后监控触发。已核验事实：AI 产业链出现关键事件。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
         );
 
         assert!(execution.should_deliver);
         assert!(execution.error.is_none());
-        assert!(execution.content.contains("北京时间 11:31 盘后监控触发"));
-        assert!(!execution.content.contains("北京时间 04:00 盘后监控触发"));
+        assert!(execution.content.contains("运行时时区 11:31 盘后监控触发"));
+        assert!(!execution.content.contains("运行时时区 04:00 盘后监控触发"));
         assert_eq!(
-            execution.metadata["beijing_trigger_time_normalized"].as_bool(),
+            execution.metadata["local_trigger_time_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_trigger_time"].as_str(),
+            execution.metadata["original_local_trigger_time"].as_str(),
             Some("04:00")
         );
     }
 
     #[test]
-    fn heartbeat_normalizes_conflicting_beijing_trigger_datetime_title() {
+    fn heartbeat_normalizes_conflicting_local_trigger_datetime_title() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-06-21T19:01:02+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
-            r#"{"status":"triggered","message":"【NBIS 高权重事件监控 · 北京时间 2026-06-19 17:30】已核验到关键事件，本轮触发提醒。"}"#,
+        let execution = heartbeat_execution_from_content_at_local(
+            r#"{"status":"triggered","message":"【NBIS 高权重事件监控 · 运行时时区 2026-06-19 17:30】已核验到关键事件，本轮触发提醒。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
         );
@@ -5602,17 +5600,17 @@ mod tests {
         assert!(execution.should_deliver);
         assert!(execution.error.is_none());
         assert!(
-            execution.content.contains("北京时间 2026-06-21 19:01"),
+            execution.content.contains("运行时时区 2026-06-21 19:01"),
             "{}",
             execution.content
         );
-        assert!(!execution.content.contains("北京时间 2026-06-19 17:30"));
+        assert!(!execution.content.contains("运行时时区 2026-06-19 17:30"));
         assert_eq!(
-            execution.metadata["beijing_trigger_time_normalized"].as_bool(),
+            execution.metadata["local_trigger_time_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_trigger_time"].as_str(),
+            execution.metadata["original_local_trigger_time"].as_str(),
             Some("2026-06-19 17:30")
         );
     }
@@ -5621,7 +5619,7 @@ mod tests {
     fn heartbeat_normalizes_conflicting_relative_today_date() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-06-29T13:00:21+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
+        let execution = heartbeat_execution_from_content_at_local(
             r#"{"status":"triggered","message":"【强提醒】小米（1810.HK）当前价格21.86港元，已触及30港元心理止损/观察线。今日（6月30日）高开高走，日内涨幅约+2.05%。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
@@ -5637,8 +5635,8 @@ mod tests {
     fn heartbeat_normalizes_conflicting_current_time_context() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-07-07T23:00:11+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
-            r#"{"status":"triggered","message":"系统当前时间：2025年4月28日 17:50 北京时间。金价已跌破阈值，触发提醒。"}"#,
+        let execution = heartbeat_execution_from_content_at_local(
+            r#"{"status":"triggered","message":"系统当前时间：2025年4月28日 17:50 运行时时区。金价已跌破阈值，触发提醒。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
         );
@@ -5648,18 +5646,18 @@ mod tests {
         assert!(
             execution
                 .content
-                .contains("系统当前时间：2026年7月7日 23:00 北京时间"),
+                .contains("系统当前时间：2026年7月7日 23:00 运行时时区"),
             "{}",
             execution.content
         );
-        assert!(!execution.content.contains("2025年4月28日 17:50 北京时间"));
+        assert!(!execution.content.contains("2025年4月28日 17:50 运行时时区"));
         assert_eq!(
-            execution.metadata["beijing_current_time_context_normalized"].as_bool(),
+            execution.metadata["local_current_time_context_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_current_time_context"].as_str(),
-            Some("2025年4月28日 17:50 北京时间")
+            execution.metadata["original_local_current_time_context"].as_str(),
+            Some("2025年4月28日 17:50 运行时时区")
         );
     }
 
@@ -5667,7 +5665,7 @@ mod tests {
     fn heartbeat_normalizes_conflicting_english_current_time_context() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-07-07T18:30:45+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
+        let execution = heartbeat_execution_from_content_at_local(
             r#"{"status":"triggered","message":"Current time context: 2026-04-06T10:00:27+08:00. RKLB has new launch-related updates, trigger this alert."}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
@@ -5684,11 +5682,11 @@ mod tests {
         );
         assert!(!execution.content.contains("2026-04-06T10:00:27+08:00"));
         assert_eq!(
-            execution.metadata["beijing_current_time_context_normalized"].as_bool(),
+            execution.metadata["local_current_time_context_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_current_time_context"].as_str(),
+            execution.metadata["original_local_current_time_context"].as_str(),
             Some("2026-04-06T10:00:27+08:00")
         );
     }
@@ -5697,8 +5695,8 @@ mod tests {
     fn heartbeat_normalizes_conflicting_check_time_context() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-07-10T22:30:18+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
-            r#"{"status":"triggered","message":"【光模块板块关键事件心跳提醒】检查时间：2026-07-11 22:30 北京时间（美东 07:30，盘前）。A股与美股光模块链出现关键增量。"}"#,
+        let execution = heartbeat_execution_from_content_at_local(
+            r#"{"status":"triggered","message":"【光模块板块关键事件心跳提醒】检查时间：2026-07-11 22:30 运行时时区（美东 07:30，盘前）。A股与美股光模块链出现关键增量。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
         );
@@ -5714,12 +5712,12 @@ mod tests {
         );
         assert!(!execution.content.contains("2026-07-11 22:30"));
         assert_eq!(
-            execution.metadata["beijing_check_time_context_normalized"].as_bool(),
+            execution.metadata["local_check_time_context_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_check_time_context"].as_str(),
-            Some("2026-07-11 22:30 北京时间")
+            execution.metadata["original_local_check_time_context"].as_str(),
+            Some("2026-07-11 22:30 运行时时区")
         );
     }
 
@@ -5727,8 +5725,8 @@ mod tests {
     fn heartbeat_normalizes_conflicting_verification_summary_time() {
         let reference_now =
             chrono::DateTime::parse_from_rfc3339("2026-07-10T23:00:09+08:00").expect("time");
-        let execution = heartbeat_execution_from_content_at_beijing(
-            r#"{"status":"triggered","message":"核验摘要（2026-07-10 北京时间 22:00）：持仓重大事件心跳提醒已命中，需关注后续走势。"}"#,
+        let execution = heartbeat_execution_from_content_at_local(
+            r#"{"status":"triggered","message":"核验摘要（2026-07-10 运行时时区 22:00）：持仓重大事件心跳提醒已命中，需关注后续走势。"}"#,
             "MiniMax-M2.7-highspeed",
             reference_now,
         );
@@ -5742,14 +5740,14 @@ mod tests {
             "{}",
             execution.content
         );
-        assert!(!execution.content.contains("北京时间 22:00"));
+        assert!(!execution.content.contains("运行时时区 22:00"));
         assert_eq!(
-            execution.metadata["beijing_check_time_context_normalized"].as_bool(),
+            execution.metadata["local_check_time_context_normalized"].as_bool(),
             Some(true)
         );
         assert_eq!(
-            execution.metadata["original_beijing_check_time_context"].as_str(),
-            Some("2026-07-10 北京时间 22:00")
+            execution.metadata["original_local_check_time_context"].as_str(),
+            Some("2026-07-10 运行时时区 22:00")
         );
     }
 
@@ -6095,7 +6093,7 @@ mod tests {
 
     #[test]
     fn heartbeat_think_wrapped_noop_marker_is_suppressed() {
-        let content = "<think>\n让我检查一下这个心跳检测任务的条件。\n\n当前北京时间：2026-04-05 08:30:00\n当前小时数：8\n当前分钟数：30\n\n用户条件：\n如果当前小时数是 0、3、6、9、12、15、18、21 其中之一\n并且当前分钟数小于 30 分钟\n当前小时数 8 不在 [0, 3, 6, 9, 12, 15, 18, 21] 这个列表中，所以条件不满足。\n\n按照规则，我应该保持静默，不输出任何内容。\n</think>\n\n[[HEARTBEAT_NOOP]]";
+        let content = "<think>\n让我检查一下这个心跳检测任务的条件。\n\n当前运行时时区：2026-04-05 08:30:00\n当前小时数：8\n当前分钟数：30\n\n用户条件：\n如果当前小时数是 0、3、6、9、12、15、18、21 其中之一\n并且当前分钟数小于 30 分钟\n当前小时数 8 不在 [0, 3, 6, 9, 12, 15, 18, 21] 这个列表中，所以条件不满足。\n\n按照规则，我应该保持静默，不输出任何内容。\n</think>\n\n[[HEARTBEAT_NOOP]]";
         assert_eq!(
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop)
@@ -6104,7 +6102,7 @@ mod tests {
 
     #[test]
     fn heartbeat_english_think_wrapped_noop_marker_is_suppressed() {
-        let content = "<think>\nLet me analyze this request carefully.\n\nThe user is asking me to check if a heartbeat condition has been met. Let me parse the condition:\nCheck if current hour (Beijing time) is one of: 0, 3, 6, 9, 12, 15, 18, 21\nAND current minute is less than 30\nCurrent time: 2026-04-05 07:30:00 (Beijing time)\nHour: 07 (7)\nMinute: 30\nIs 7 in [0, 3, 6, 9, 12, 15, 18, 21]? No.\nTherefore, the condition is NOT met.\n\n</think>\n\n[[HEARTBEAT_NOOP]]";
+        let content = "<think>\nLet me analyze this request carefully.\n\nThe user is asking me to check if a heartbeat condition has been met. Let me parse the condition:\nCheck if current hour (Local time) is one of: 0, 3, 6, 9, 12, 15, 18, 21\nAND current minute is less than 30\nCurrent time: 2026-04-05 07:30:00 (Local time)\nHour: 07 (7)\nMinute: 30\nIs 7 in [0, 3, 6, 9, 12, 15, 18, 21]? No.\nTherefore, the condition is NOT met.\n\n</think>\n\n[[HEARTBEAT_NOOP]]";
         assert_eq!(
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop)
@@ -6275,13 +6273,13 @@ mod tests {
 
     #[test]
     fn scheduler_delivery_text_trims_repeated_report_restart() {
-        let raw = "北京时间 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线，重点看美国商保扩张、现金消耗和新适应症推进，当前没有看到足以改变长期判断的新公告。\n\nCAI：新上市后的信息仍需跟踪，公开材料仍以客户拓展和平台兑现为主，暂未看到需要上调或下调主线的事实。\n\nNBIS：云需求和资本开支是核心，短期新闻仍围绕 GPU 供给、客户签约和融资节奏，结论需要继续看订单转收入。\n\nCRWV：客户集中度仍需观察，新增报道主要围绕 AI 云容量和大客户采购，风险仍在毛利率、资本开支和债务成本。\n\nGOOGL：广告、云和 Gemini 分发是主线，本轮没有看到监管或产品侧出现足以重写框架的新变量。\n\nTSM：先进制程供需和美国厂进度仍是核心，短期报道没有改变 AI 需求强度判断。\n\nNVDA：Blackwell 供给和客户节奏是核心，Wolfe 等继续偏北京时间 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线。\n\nCAI：新上市后的信息仍需跟踪。";
+        let raw = "运行时时区 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线，重点看美国商保扩张、现金消耗和新适应症推进，当前没有看到足以改变长期判断的新公告。\n\nCAI：新上市后的信息仍需跟踪，公开材料仍以客户拓展和平台兑现为主，暂未看到需要上调或下调主线的事实。\n\nNBIS：云需求和资本开支是核心，短期新闻仍围绕 GPU 供给、客户签约和融资节奏，结论需要继续看订单转收入。\n\nCRWV：客户集中度仍需观察，新增报道主要围绕 AI 云容量和大客户采购，风险仍在毛利率、资本开支和债务成本。\n\nGOOGL：广告、云和 Gemini 分发是主线，本轮没有看到监管或产品侧出现足以重写框架的新变量。\n\nTSM：先进制程供需和美国厂进度仍是核心，短期报道没有改变 AI 需求强度判断。\n\nNVDA：Blackwell 供给和客户节奏是核心，Wolfe 等继续偏运行时时区 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线。\n\nCAI：新上市后的信息仍需跟踪。";
         let sanitized = sanitize_scheduler_delivery_text(raw);
         assert!(sanitized.contains("TEM：订单和现金流仍是主线"));
         assert!(sanitized.contains("NVDA：Blackwell"));
         assert_eq!(
             sanitized
-                .matches("北京时间 2026年6月16日 12:00。结论：")
+                .matches("运行时时区 2026年6月16日 12:00。结论：")
                 .count(),
             1
         );
@@ -6400,7 +6398,7 @@ mod tests {
     #[test]
     fn scheduler_verified_quote_price_mismatch_detects_suffix_currency_current_status() {
         let mismatch = detect_verified_quote_price_mismatch(
-            "数据时间：北京时间 2026-08-04 11:04；行情口径：NASDAQ 的 SNDK 报价源最新可得、非逐笔；报价时间为北京时间 2026-08-04 04:00:00 +08:00，价格 1,288.03 美元、当日变动 +6.03%。",
+            "数据时间：运行时时区 2026-08-04 11:04；行情口径：NASDAQ 的 SNDK 报价源最新可得、非逐笔；报价时间为运行时时区 2026-08-04 04:00:00 +08:00，价格 1,288.03 美元、当日变动 +6.03%。",
             &[ToolCallMade {
                 name: "data_fetch".to_string(),
                 arguments: serde_json::json!({"data_type":"quote","ticker":"SNDK"}),
@@ -6467,7 +6465,7 @@ mod tests {
     #[test]
     fn scheduler_recovers_preserved_read_only_failure_answer() {
         let response = hone_core::agent::AgentResponse {
-            content: "北京时间 2026年7月23日 00:00。\n\nTEM：本轮未见 AACR/合作/财报新增催化，维持继续跟踪。".to_string(),
+            content: "运行时时区 2026年7月23日 00:00。\n\nTEM：本轮未见 AACR/合作/财报新增催化，维持继续跟踪。".to_string(),
             tool_calls_made: vec![
                 hone_core::agent::ToolCallMade {
                     name: "data_fetch".to_string(),
@@ -6520,22 +6518,22 @@ mod tests {
             "本轮报价接口触及限额，以下持仓价格采用同一会话04:30已校验的美股4月29日收盘口径。"
         ));
         assert!(is_stale_market_data_success_fallback(
-            "数据时间：北京时间 2026-07-26 14:00；行情口径：300308.SZ 报价未能于本轮核验（quote 工具调用异常），引用最近一次已知报价 ¥1046.51（深交所，hone_quote_time 2026-07-24 15:06 北京）；今日为周六，A 股休市，无新报价。"
+            "数据时间：运行时时区 2026-07-26 14:00；行情口径：300308.SZ 报价未能于本轮核验（quote 工具调用异常），引用最近一次已知报价 ¥1046.51（深交所，hone_quote_time 2026-07-24 15:06 北京）；今日为周六，A 股休市，无新报价。"
         ));
         assert!(is_stale_market_data_success_fallback(
-            "数据时间：北京时间 2026-07-22 16:00；行情口径：最新可得、非逐笔（参考锚点：AAOI $119.26 / SNDK $1,589.40，本轮工具调用受限未能重新核验）。"
+            "数据时间：运行时时区 2026-07-22 16:00；行情口径：最新可得、非逐笔（参考锚点：AAOI $119.26 / SNDK $1,589.40，本轮工具调用受限未能重新核验）。"
         ));
         assert!(is_stale_market_data_success_fallback(
             "已核验事实：行情工具调用受限，本轮不能重新核验；MU 848.95，SNDK 1,288.03 美元，后续只保留新闻与事件变化。"
         ));
         assert!(is_stale_market_data_success_fallback(
-            "数据时间：北京时间 2026-08-10 18:00；行情口径：本轮行情核验受限，引用来自近期上下文已核验报价（NVDA $223.96 / SKHY $58.15，NASDAQ，2026-08-07 纽约 16:00 / 北京 2026-08-08 04:00，最新可得、非逐笔）。"
+            "数据时间：运行时时区 2026-08-10 18:00；行情口径：本轮行情核验受限，引用来自近期上下文已核验报价（NVDA $223.96 / SKHY $58.15，NASDAQ，2026-08-07 纽约 16:00 / 北京 2026-08-08 04:00，最新可得、非逐笔）。"
         ));
         assert!(is_stale_market_data_success_fallback(
-            "数据时间：北京时间 2026-08-10 19:00；行情口径：当前美东周日 15:00，美国非常规交易时段，无新报价；引用近期上下文已核验报价（SNDK $1,253.49 / AAOI $133.92，2026-08-10 00:30，最新可得、非逐笔）。"
+            "数据时间：运行时时区 2026-08-10 19:00；行情口径：当前美东周日 15:00，美国非常规交易时段，无新报价；引用近期上下文已核验报价（SNDK $1,253.49 / AAOI $133.92，2026-08-10 00:30，最新可得、非逐笔）。"
         ));
         assert!(is_stale_market_data_success_fallback(
-            "数据时间：北京时间 2026-08-10 19:00；行情口径：本轮 quote 未返回新的独立行情时间戳；以下核验基于 2026-08-07 收盘价 $172.01（provider Unix 1786132802），最新可得、非逐笔。"
+            "数据时间：运行时时区 2026-08-10 19:00；行情口径：本轮 quote 未返回新的独立行情时间戳；以下核验基于 2026-08-07 收盘价 $172.01（provider Unix 1786132802），最新可得、非逐笔。"
         ));
         assert!(!is_stale_market_data_success_fallback(
             "本轮新闻检索正常，以下价格使用同窗 data_fetch 返回的最新行情。"
@@ -6799,7 +6797,7 @@ mod tests {
 
     #[test]
     fn heartbeat_rich_plain_text_noop_status_is_compatible_noop() {
-        let content = "数据时间：北京时间 2026-08-06 10:00；行情口径：AAOI $128.56（NASDAQ，2026-08-06 04:00:01 北京时间，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立重大事件触发。**\n\n---\n\n## 本轮核验\n\n### AAOI 行情（无新报价，本轮报价仍为 04:00 数据）";
+        let content = "数据时间：运行时时区 2026-08-06 10:00；行情口径：AAOI $128.56（NASDAQ，2026-08-06 04:00:01 运行时时区，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立重大事件触发。**\n\n---\n\n## 本轮核验\n\n### AAOI 行情（无新报价，本轮报价仍为 04:00 数据）";
         assert_eq!(
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
@@ -6814,12 +6812,12 @@ mod tests {
     fn heartbeat_plain_text_noop_recognizes_untriggered_summary_variants() {
         for content in [
             "**无新触发。**\n\n| 指标 | 状态 |\n|---|---|\n| 现价 | $218.99 |",
-            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**30 分钟心跳检查：NOOP**\n\n**本轮无新触发。**",
-            "数据时间：北京时间 2026-08-07 23:30；行情口径：SNDK $1,238.74（NASDAQ，2026-08-07 23:30:14 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立持仓触发事件。以下为已知事件的结构性补充确认。**",
-            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 Web 搜索（行情工具已达上限）。\n\n**本轮心跳监控检查结论：noop**",
-            "数据时间：北京时间 2026-08-10 22:00；行情口径：本轮最新可得报价无变化。\n\n**本轮监控状态：正常，无新触发事件。**",
-            "数据时间：北京时间 2026-08-10 22:00；行情口径：AAOI $128.56（NASDAQ，2026-08-10 04:00:01 北京时间，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新报价时间戳，报价无变化。**",
-            "数据时间：北京时间 2026-08-10 22:00；行情口径：本轮搜索结果均为已归档事件。\n\n**本轮无实质新催化，且无新增量事件。**",
+            "数据时间：运行时时区 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**30 分钟心跳检查：NOOP**\n\n**本轮无新触发。**",
+            "数据时间：运行时时区 2026-08-07 23:30；行情口径：SNDK $1,238.74（NASDAQ，2026-08-07 23:30:14 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新独立持仓触发事件。以下为已知事件的结构性补充确认。**",
+            "数据时间：运行时时区 2026-08-07 23:30；行情口径：本轮 Web 搜索（行情工具已达上限）。\n\n**本轮心跳监控检查结论：noop**",
+            "数据时间：运行时时区 2026-08-10 22:00；行情口径：本轮最新可得报价无变化。\n\n**本轮监控状态：正常，无新触发事件。**",
+            "数据时间：运行时时区 2026-08-10 22:00；行情口径：AAOI $128.56（NASDAQ，2026-08-10 04:00:01 运行时时区，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — 无全新报价时间戳，报价无变化。**",
+            "数据时间：运行时时区 2026-08-10 22:00；行情口径：本轮搜索结果均为已归档事件。\n\n**本轮无实质新催化，且无新增量事件。**",
         ] {
             assert_eq!(
                 inspect_heartbeat_result(content),
@@ -6832,8 +6830,8 @@ mod tests {
     #[test]
     fn heartbeat_plain_text_noop_keeps_material_update_overrides_deliverable() {
         for content in [
-            "数据时间：北京时间 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**无新增即时触发事件。** 但本轮行情出现一个值得记录的状态变化：\n\n**NVDA** $224.42，当前重新站上该阈值。",
-            "数据时间：北京时间 2026-08-07 23:00；行情口径：AAOI $137.50（NASDAQ，2026-08-07 23:00:25 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — AAOI 股价无新触发阈值。以下为结构性重大事件补充确认，对持仓具有中长期意义。**\n\n## 重大政策催化\nFCC 拟禁止进口中国光模块。",
+            "数据时间：运行时时区 2026-08-07 23:30；行情口径：本轮 AAPL/NVDA 最新可得、非逐笔（数据源时间戳 1786116621）\n\n**无新增即时触发事件。** 但本轮行情出现一个值得记录的状态变化：\n\n**NVDA** $224.42，当前重新站上该阈值。",
+            "数据时间：运行时时区 2026-08-07 23:00；行情口径：AAOI $137.50（NASDAQ，2026-08-07 23:00:25 北京，常规交易时段，最新可得、非逐笔）。\n\n**状态：noop — AAOI 股价无新触发阈值。以下为结构性重大事件补充确认，对持仓具有中长期意义。**\n\n## 重大政策催化\nFCC 拟禁止进口中国光模块。",
         ] {
             let (outcome, parse_kind) = inspect_heartbeat_result(content);
             assert_eq!(parse_kind, HeartbeatParseKind::PlainTextTriggered);
@@ -6843,7 +6841,7 @@ mod tests {
 
     #[test]
     fn heartbeat_plain_text_noop_override_phrase_is_not_mistaken_for_noop() {
-        let content = "数据时间：北京时间 2026-08-07 19:30；行情口径：002281.SZ ¥193.04（深圳交易所，hone_quote_time 2026-08-07 15:04:45 北京，深交所收盘，最新可得、非逐笔）。\n\n**本轮有增量值得关注（noop 边界，但需告知用户）**";
+        let content = "数据时间：运行时时区 2026-08-07 19:30；行情口径：002281.SZ ¥193.04（深圳交易所，hone_quote_time 2026-08-07 15:04:45 北京，深交所收盘，最新可得、非逐笔）。\n\n**本轮有增量值得关注（noop 边界，但需告知用户）**";
         assert!(!heartbeat_plain_text_indicates_noop(content));
     }
 
@@ -6872,13 +6870,13 @@ mod tests {
 
     #[test]
     fn heartbeat_malformed_triggered_message_strips_trailing_data_object() {
-        let raw = r#"{"status":"triggered","message":"【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：北京时间 2026-06-16 00:31。","data":{"ticker":"CBRS","exchange":"NASDAQ Global Market""#;
+        let raw = r#"{"status":"triggered","message":"【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：运行时时区 2026-06-16 00:31。","data":{"ticker":"CBRS","exchange":"NASDAQ Global Market""#;
         let (outcome, parse_kind) = inspect_heartbeat_result(raw);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
         assert_eq!(
             outcome,
             HeartbeatOutcome::Deliver(
-                "【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：北京时间 2026-06-16 00:31。"
+                "【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：运行时时区 2026-06-16 00:31。"
                     .to_string()
             )
         );
@@ -6886,13 +6884,14 @@ mod tests {
 
     #[test]
     fn heartbeat_malformed_triggered_message_strips_trailing_threshold_fields() {
-        let raw = r#"{"status":"triggered","message":"【伦敦金提醒】金价已跌破 4500，检查时间：北京时间 2026-06-13 01:30。","direction":"below_threshold","beat_threshold":"281.83""#;
+        let raw = r#"{"status":"triggered","message":"【伦敦金提醒】金价已跌破 4500，检查时间：运行时时区 2026-06-13 01:30。","direction":"below_threshold","beat_threshold":"281.83""#;
         let (outcome, parse_kind) = inspect_heartbeat_result(raw);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
         assert_eq!(
             outcome,
             HeartbeatOutcome::Deliver(
-                "【伦敦金提醒】金价已跌破 4500，检查时间：北京时间 2026-06-13 01:30。".to_string()
+                "【伦敦金提醒】金价已跌破 4500，检查时间：运行时时区 2026-06-13 01:30。"
+                    .to_string()
             )
         );
     }
@@ -7223,7 +7222,7 @@ mod tests {
         };
 
         let prompt = build_scheduled_prompt(&event);
-        assert!(prompt.contains("本轮权威检查时间（北京时间）"));
+        assert!(prompt.contains("本轮权威检查时间（运行时时区）"));
         assert!(prompt.contains("检查时间必须使用上方"));
         assert!(prompt.contains("时间口径命名约束"));
         assert!(prompt.contains("也允许只输出 `{}`。"));
@@ -7361,7 +7360,7 @@ mod tests {
             "【ASTS 单日涨跌幅超阈值】ASTS 单日上涨 14.8%，Rakuten 退出完成，Q1 财报临近。";
         let previews = vec![(
             "2026-05-09T18:00:31+08:00".to_string(),
-            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与财报预期出现单日大幅上涨。"
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 运行时时区】RKLB 因新合同与财报预期出现单日大幅上涨。"
                 .to_string(),
         )];
 
@@ -7374,7 +7373,7 @@ mod tests {
             "【TEM Q1财报超预期 + 可转债发行 + 新合作】TEM 披露 Q1 收入增长，并宣布新的战略合作。";
         let previews = vec![(
             "2026-05-09T18:00:31+08:00".to_string(),
-            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与 Q1 财报预期出现单日大幅上涨。"
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 运行时时区】RKLB 因新合同与 Q1 财报预期出现单日大幅上涨。"
                 .to_string(),
         )];
 
@@ -7386,7 +7385,7 @@ mod tests {
         let message = "【ASTS 单日暴涨近15%】持仓重大事件：ASTS 单日涨幅接近 15%，Rakuten 退出完成，Q1 财报临近。";
         let previews = vec![(
             "2026-05-09T18:00:31+08:00".to_string(),
-            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与财报预期出现单日大幅上涨。"
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 运行时时区】RKLB 因新合同与财报预期出现单日大幅上涨。"
                 .to_string(),
         )];
 
@@ -7395,10 +7394,10 @@ mod tests {
 
     #[test]
     fn heartbeat_duplicate_preview_match_allows_cross_job_different_entities() {
-        let message = "【ORCL 大事件监控 | 检查时间: 2026-05-04 23:00 北京时间】ORCL 最新价 171.83 美元，OpenAI 合作叙事仍在发酵。";
+        let message = "【ORCL 大事件监控 | 检查时间: 2026-05-04 23:00 运行时时区】ORCL 最新价 171.83 美元，OpenAI 合作叙事仍在发酵。";
         let previews = vec![(
             "2026-05-04T22:31:43+08:00".to_string(),
-            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 北京时间】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
+            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 运行时时区】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
                 .to_string(),
         )];
 
@@ -7407,10 +7406,10 @@ mod tests {
 
     #[test]
     fn heartbeat_duplicate_preview_match_allows_portfolio_alert_after_unrelated_ipo() {
-        let message = "【持仓重大事件心跳检测 | 检查时间: 2026-05-04 23:00 北京时间】TEM 财报窗口临近，ORCL 价格异动继续触发持仓重大事件观察。";
+        let message = "【持仓重大事件心跳检测 | 检查时间: 2026-05-04 23:00 运行时时区】TEM 财报窗口临近，ORCL 价格异动继续触发持仓重大事件观察。";
         let previews = vec![(
             "2026-05-04T22:31:43+08:00".to_string(),
-            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 北京时间】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
+            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 运行时时区】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
                 .to_string(),
         )];
 
@@ -7457,7 +7456,7 @@ mod tests {
         let message = "【DRAM 心跳监控】触发条件：DRAM 盘中创历史新高（满足条件2）。盘中最高 $56.38 = 上市以来历史最高价。";
         let previews = vec![(
             "2026-05-12T08:30:00+08:00".to_string(),
-            "【Cerebras IPO 重大更新 | 2026-05-12 08:30 北京时间】Cerebras IPO 定价区间上修，上市时间线出现新进展。"
+            "【Cerebras IPO 重大更新 | 2026-05-12 08:30 运行时时区】Cerebras IPO 定价区间上修，上市时间线出现新进展。"
                 .to_string(),
         )];
 
@@ -7797,7 +7796,7 @@ mod tests {
         };
 
         let guarded = guard_commodity_causality_for_event(
-            "【2026-05-10 周六 18:00 北京时间】WTI 原油（近月合约）：约 $95.42/桶（5月8日 Bloomberg 数据）。布伦特原油（近月合约）：约 $100.49-$101.29/桶；近一个月布伦特累计上涨约4.76%。",
+            "【2026-05-10 周六 18:00 运行时时区】WTI 原油（近月合约）：约 $95.42/桶（5月8日 Bloomberg 数据）。布伦特原油（近月合约）：约 $100.49-$101.29/桶；近一个月布伦特累计上涨约4.76%。",
             &event,
         )
         .expect("wrong weekday and unverified commodity market claims should be guarded");
@@ -8033,7 +8032,7 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        let original = "北京时间 2026年5月29日 17:30，A股、港股今天均实际开市；结论是：A股从昨天硬科技反攻切到高位兑现，港股则靠联想、百度、内房、航空托住指数，AI 硬件、港股科技和美股映射仍是正文主体，风险提示里只把 WTI、Brent 与油价波动作为通胀和航空成本的边际变量，不能把它当成本轮 A/H 收盘复盘的主因。";
+        let original = "运行时时区 2026年5月29日 17:30，A股、港股今天均实际开市；结论是：A股从昨天硬科技反攻切到高位兑现，港股则靠联想、百度、内房、航空托住指数，AI 硬件、港股科技和美股映射仍是正文主体，风险提示里只把 WTI、Brent 与油价波动作为通胀和航空成本的边际变量，不能把它当成本轮 A/H 收盘复盘的主因。";
 
         assert_eq!(
             guard_commodity_causality_for_event(original, &event),
@@ -8287,7 +8286,7 @@ mod tests {
 
         assert!(
             guard_commodity_causality_for_event(
-                "【每日美股大盘温度检查】当前北京时间 2026年5月30日20:00，美东时间周六08:00，美股现货与期货均处于周末休市阶段，只能按最近完整交易日收盘口径复盘。Nasdaq 与 S&P 500 仍在高位，低波动、Greed 情绪和追涨赔率显示风险偏好偏强但偏热。\nAI 硬件盈利兑现后仍是主线，利率和油价压制边际缓和，但这只是大盘温度的风险变量，不是原油或大宗商品播报。",
+                "【每日美股大盘温度检查】当前运行时时区 2026年5月30日20:00，美东时间周六08:00，美股现货与期货均处于周末休市阶段，只能按最近完整交易日收盘口径复盘。Nasdaq 与 S&P 500 仍在高位，低波动、Greed 情绪和追涨赔率显示风险偏好偏强但偏热。\nAI 硬件盈利兑现后仍是主线，利率和油价压制边际缓和，但这只是大盘温度的风险变量，不是原油或大宗商品播报。",
                 &event,
             )
             .is_none()
@@ -8319,7 +8318,7 @@ mod tests {
 
         assert!(
             guard_commodity_causality_for_event(
-                "【每日美股大盘风险简报】当前北京时间 2026年5月30日20:00，美股周末休市，本轮按 2026-05-29 最近完整交易日收盘口径评估。结论：Nasdaq、S&P 500 和 QQQ 的风险偏好仍偏强，AI 硬件盈利兑现、半导体高位震荡和追涨赔率是正文主体。\n风险提示：利率与油价压制有所缓和，但高位偏热和低波动更需要警惕；油价只是宏观风险变量，不能把本轮大盘风险简报改写成原油/大宗商品归因。",
+                "【每日美股大盘风险简报】当前运行时时区 2026年5月30日20:00，美股周末休市，本轮按 2026-05-29 最近完整交易日收盘口径评估。结论：Nasdaq、S&P 500 和 QQQ 的风险偏好仍偏强，AI 硬件盈利兑现、半导体高位震荡和追涨赔率是正文主体。\n风险提示：利率与油价压制有所缓和，但高位偏热和低波动更需要警惕；油价只是宏观风险变量，不能把本轮大盘风险简报改写成原油/大宗商品归因。",
                 &event,
             )
             .is_none()
@@ -8396,7 +8395,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -8413,7 +8412,7 @@ mod tests {
                 vec![session_message_from_text(
                     "system",
                     "【Compact Summary】\n| 股票代码 | 公司名 | 当前价 | 击球区 | 财报时间 |\n| --- | --- | --- | --- | --- |\n| MSFT | 微软 | $416.97 | $335–$350 | 2026-04-29 |\n| TSM | 台积电 | $367.09 | 保守$290–$310 / 合理$320–$340 / 激进$345–$355 | 2026-07-16 |\n| LITE | Lumentum | $881.64 | 保守$520–$580 / 合理$600–$650 / 激进观察$680–$720 | 2026-05-05 |",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
@@ -8453,7 +8452,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_all_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -8470,7 +8469,7 @@ mod tests {
                 vec![session_message_from_text(
                     "system",
                     "【Compact Summary】\n| 股票代码 | 公司名 | 当前价 | 击球区 | 财报时间 |\n| --- | --- | --- | --- | --- |\n| MSFT | 微软 | $416.97 | $335-$350 | 2026-04-29 |\n| NVDA | 英伟达 | $183.40 | $150-$165 | 2026-05-28 |\n| GOOGL | Alphabet | $285.14 | $255-$275 | 2026-07-24 |\n| LITE | Lumentum | $881.64 | 保守$520-$580 / 合理$600-$650 / 激进观察$680-$720 | 2026-05-05 |",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
@@ -8511,7 +8510,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "scheduler_hit_zone_prompt_compact_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -8529,7 +8528,7 @@ mod tests {
                 vec![session_message_from_text(
                     "system",
                     "【Compact Summary】\n观察池击球区：MSFT $335-$350；NVDA $150-$165；GOOGL $255-$275。\nTSM 当前价 $367.09，击球区 保守$290-$310 / 合理$320-$340 / 激进$345-$355。\nLITE 击球区：待确认。",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
@@ -8571,7 +8570,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "scheduler_heartbeat_watchlist_prompt_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -8589,7 +8588,7 @@ mod tests {
                 vec![session_message_from_text(
                     "system",
                     "【Compact Summary】\n观察池击球区：MU $90-$115；LITE $52-$68；RKLB $18-$25。",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
@@ -8628,7 +8627,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "scheduler_holdings_heartbeat_prompt_{}_{}",
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         ));
@@ -8646,7 +8645,7 @@ mod tests {
                 vec![session_message_from_text(
                     "system",
                     "【Compact Summary】\n观察池击球区：SNDK $42-$55；AAOI $18-$28；MU $90-$115。",
-                    hone_core::beijing_now_rfc3339(),
+                    hone_core::local_now_rfc3339(),
                     Some(build_compact_summary_metadata("test")),
                 )],
             )
@@ -8683,7 +8682,7 @@ mod tests {
     fn sector_heartbeat_with_local_watchlist_context_flags_quantity_mismatch() {
         let zones = watchlist_guard_zones_from_source("观察池击球区：SNDK $42-$55；MU $90-$115。");
         let detected = detect_unstable_watchlist_price_anchor(
-            "数据时间：北京时间 2026-08-03 01:30；行情口径：SNDK $1,214.83 / MU $823.03（2026-07-31 纽约时间 16:00，来源 financialmodelingprep.com），最新可得、非逐笔。",
+            "数据时间：运行时时区 2026-08-03 01:30；行情口径：SNDK $1,214.83 / MU $823.03（2026-07-31 纽约时间 16:00，来源 financialmodelingprep.com），最新可得、非逐笔。",
             &zones,
         )
         .expect("holdings or sector heartbeat prices should be guarded by recovered watchlist zones");

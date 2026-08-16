@@ -30,4 +30,6 @@ mod tests;
 pub use buffer::DigestBuffer;
 pub use payload::{DigestItem, DigestPayload, KindBucket, group_by_kind_bucket};
 pub use render::{build_digest_payload, render_digest};
-pub use time_window::{in_window, local_date_key, shift_hhmm_earlier};
+pub use time_window::{
+    in_window, in_window_timezone, local_date_key, local_date_key_timezone, shift_hhmm_earlier,
+};

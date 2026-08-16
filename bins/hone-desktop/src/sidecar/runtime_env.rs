@@ -10,9 +10,7 @@ pub(super) fn normalize_base_url(raw: &str) -> String {
 }
 
 fn timestamp_string() -> String {
-    let tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid tz");
-    chrono::Utc::now()
-        .with_timezone(&tz)
+    hone_core::local_now()
         .format("%Y-%m-%d %H:%M:%S%.3f")
         .to_string()
 }

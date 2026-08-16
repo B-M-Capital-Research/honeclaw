@@ -7,7 +7,7 @@
 //! 区间语义：本地 `[from, to)`。`from > to` 视为跨午夜（如 `23:00 → 07:00`）。
 //! `from == to` 表示空区间（无效配置，调用方拦下）。
 
-use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, NaiveTime, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -83,9 +83,8 @@ fn local_hm(tz_name: Option<&str>, fallback_offset_hours: i32, now: DateTime<Utc
         let local = tz.from_utc_datetime(&now.naive_utc());
         return (local.hour(), local.minute());
     }
-    let offset = FixedOffset::east_opt(fallback_offset_hours * 3600)
-        .unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
+    let local =
+        crate::RuntimeTimezone::fixed_offset_seconds(fallback_offset_hours * 3600).at_utc(now);
     (local.hour(), local.minute())
 }
 

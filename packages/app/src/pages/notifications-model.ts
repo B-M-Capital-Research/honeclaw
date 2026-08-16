@@ -98,7 +98,6 @@ export function bucketHourLabel(iso: string, locale: "zh" | "en"): string {
   const date = new Date(iso)
   if (isNaN(date.getTime())) return iso
   return date.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
-    timeZone: "Asia/Shanghai",
     hour: "2-digit",
     hour12: false,
   })

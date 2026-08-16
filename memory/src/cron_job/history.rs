@@ -313,7 +313,7 @@ impl CronJobStorage {
         actor: &ActorIdentity,
         push_id: &str,
     ) -> HoneResult<usize> {
-        let read_at = hone_core::beijing_now_rfc3339();
+        let read_at = hone_core::local_now_rfc3339();
 
         let postgres = self.postgres.clone();
         let actor = actor.clone();
@@ -617,15 +617,15 @@ mod web_push_tests {
 
     /// 陈旧判定必须按**真实时刻**比较,不能用文本字典序。
     ///
-    /// `executed_at` 是 TEXT 列、写入时用北京时间(`+08:00`),而调用方
+    /// `executed_at` 是 TEXT 列，历史生产行使用 `+08:00`，新行使用配置的运行时时区；调用方
     /// (`crates/hone-scheduler/src/lib.rs:74`)给的 `stale_before` 是
     /// `Utc::now().to_rfc3339()`(`+00:00`)。字典序只比墙钟数字、完全无视偏移,
-    /// 于是北京时间的行会显得比 UTC 阈值"新"最多 8 小时,回收被推迟同样长的时间。
+    /// 于是运行时时区的行会显得比 UTC 阈值"新"最多 8 小时,回收被推迟同样长的时间。
     ///
     /// 2026-08-16 生产实测:一条已 613 分钟未收口的行,文本比较判 false、时刻比较判 true;
     /// `recovered_stale_pending` 自 2026-08-11 起再未新增,同时积压 55 行僵尸 running。
     ///
-    /// 构造方式:刚写入的行(北京时间)配一个"1 小时之后"的 **UTC** 阈值。
+    /// 构造方式:刚写入的行(运行时时区)配一个"1 小时之后"的 **UTC** 阈值。
     /// 真实时刻上该行必然早于阈值 ⇒ 应当回收;而字典序下 `2026-08-16T…+08:00`
     /// 往往大于 `2026-08-15T…+00:00`,旧实现会判成"不陈旧"从而漏掉。
     #[test]
@@ -667,7 +667,7 @@ mod web_push_tests {
                 )
                 .expect("recover"),
             1,
-            "北京时间写入的 started 行必须按真实时刻判为陈旧;字典序比较会漏掉它"
+            "运行时时区写入的 started 行必须按真实时刻判为陈旧;字典序比较会漏掉它"
         );
 
         // 反向:阈值早于该行真实时刻时不得回收,否则会误杀在途任务。

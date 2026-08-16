@@ -2,7 +2,7 @@
 
 use hone_core::cloud_runtime::{CloudPgRuntime, CloudPortfolioRecord};
 use hone_core::cloud_sync::run_cloud_sync;
-use hone_core::{ActorIdentity, HoneError, HoneResult};
+use hone_core::{ActorIdentity, HoneError, HoneResult, compare_rfc3339};
 use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
@@ -349,7 +349,7 @@ impl PortfolioStorage {
                 }
                 results.push((actor, portfolio));
             }
-            results.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
+            results.sort_by(|a, b| compare_rfc3339(&b.1.updated_at, &a.1.updated_at));
             return results;
         }
 
@@ -390,7 +390,7 @@ impl PortfolioStorage {
             }
         }
         // 按 updated_at 降序排列（最近更新的在前）
-        results.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
+        results.sort_by(|a, b| compare_rfc3339(&b.1.updated_at, &a.1.updated_at));
         results
     }
 

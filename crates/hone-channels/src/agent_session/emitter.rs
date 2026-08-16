@@ -418,7 +418,7 @@ mod tests {
         assert!(
             !emitter
                 .emit_committed(AgentRunnerEvent::CommittedStreamDelta {
-                    content: "数据时间：北京时间 2026-07-22 10:00；行情口径：最新可得\n"
+                    content: "数据时间：运行时时区 2026-07-22 10:00；行情口径：最新可得\n"
                         .to_string(),
                 })
                 .await
@@ -429,7 +429,7 @@ mod tests {
     async fn deferred_output_forwards_only_committed_answer_content() {
         let inner = Arc::new(CaptureRunnerEmitter::default());
         let deferred = DeferredUserOutputEmitter::new(inner.clone());
-        let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
         deferred
             .emit(AgentRunnerEvent::StreamDelta {
@@ -475,7 +475,7 @@ mod tests {
             message_id: None,
             working_directory: String::new(),
         };
-        let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
         emitter
             .emit(AgentRunnerEvent::CommittedStreamDelta {

@@ -1,6 +1,6 @@
 //! Cached daily macro and AI traffic-light reports.
 //!
-//! Generation is server-owned and runs at 20:00 Asia/Shanghai. Public routes
+//! Generation is server-owned and runs at 20:00 in the runtime timezone. Public routes
 //! only read durable snapshots; opening a dashboard never starts research.
 
 use std::collections::HashMap;
@@ -13,7 +13,6 @@ use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, NaiveDate, Utc};
-use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -153,7 +152,9 @@ pub(crate) struct DailySignalReport {
     pub market_date: Option<String>,
     pub data_cutoff: Option<String>,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
+    pub timezone: String,
     pub next_refresh_at: DateTime<Utc>,
     pub model_version: String,
     pub status: String,
@@ -179,7 +180,7 @@ pub(crate) struct DailySignalReport {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ReportHistoryItem {
     pub report_date: String,
-    pub generated_at_beijing: String,
+    pub generated_at_local: String,
     pub status: String,
     pub score: Option<f64>,
     pub raw_score: Option<f64>,
@@ -285,7 +286,7 @@ pub(crate) async fn overview_card(
     Some(card)
 }
 
-/// Generate a missing startup snapshot, then refresh at exactly 20:00 BJT.
+/// Generate a missing startup snapshot, then refresh at exactly 20:00 runtime-local time.
 pub(crate) async fn daily_signal_worker(state: Arc<AppState>) {
     let today = report_date(Utc::now());
     let missing = [ReportKind::Macro, ReportKind::Ai]
@@ -345,7 +346,7 @@ async fn refresh_all(state: &AppState, force: bool) {
 
 async fn generate_macro_report(state: &AppState) -> DailySignalReport {
     let specs = macro_specs();
-    let start = (Utc::now().with_timezone(&Shanghai).date_naive() - chrono::Duration::days(3660))
+    let start = (hone_core::local_now().date_naive() - chrono::Duration::days(3660))
         .format("%Y-%m-%d")
         .to_string();
     let fetched_at = Utc::now();
@@ -398,7 +399,8 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
         market_date: latest_period.clone(),
         data_cutoff: latest_period,
         generated_at: now,
-        generated_at_beijing: beijing_time(now),
+        generated_at_local: local_time(now),
+        timezone: hone_core::runtime_timezone_name(),
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status,
@@ -981,7 +983,8 @@ async fn generate_ai_report(state: &AppState) -> DailySignalReport {
             .filter_map(|item| facts.get(&item.symbol).and_then(|fact| fact.date.clone()))
             .max(),
         generated_at: now,
-        generated_at_beijing: beijing_time(now),
+        generated_at_local: local_time(now),
+        timezone: hone_core::runtime_timezone_name(),
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
@@ -1651,7 +1654,8 @@ fn framework_report(kind: ReportKind) -> DailySignalReport {
         market_date: None,
         data_cutoff: None,
         generated_at: now,
-        generated_at_beijing: beijing_time(now),
+        generated_at_local: local_time(now),
+        timezone: hone_core::runtime_timezone_name(),
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status: "framework_only".to_string(),
@@ -1906,17 +1910,17 @@ fn downsample(points: &[TrendPoint], max: usize) -> Vec<TrendPoint> {
     let step = (points.len() as f64 / max as f64).ceil() as usize;
     points.iter().step_by(step).cloned().collect()
 }
-fn beijing_time(now: DateTime<Utc>) -> String {
-    now.with_timezone(&Shanghai)
+fn local_time(now: DateTime<Utc>) -> String {
+    hone_core::local_time_at(now)
         .format("%Y-%m-%d %H:%M")
         .to_string()
 }
 fn report_date(now: DateTime<Utc>) -> String {
-    now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string()
+    hone_core::local_time_at(now).format("%Y-%m-%d").to_string()
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn worker_wake_at(now: DateTime<Utc>, incomplete: bool) -> DateTime<Utc> {
@@ -1977,7 +1981,7 @@ async fn read_history(state: &AppState, kind: ReportKind, limit: usize) -> Vec<R
         .into_iter()
         .map(|item| ReportHistoryItem {
             report_date: item.report_date,
-            generated_at_beijing: item.generated_at_beijing,
+            generated_at_local: item.generated_at_local,
             status: item.status,
             score: item.score,
             raw_score: item.raw_score,
@@ -2117,7 +2121,7 @@ mod tests {
             now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS)
         );
         assert_eq!(
-            worker_wake_at(now, false).with_timezone(&Shanghai).hour(),
+            hone_core::local_time_at(worker_wake_at(now, false)).hour(),
             20
         );
     }

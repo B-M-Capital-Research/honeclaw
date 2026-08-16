@@ -272,9 +272,9 @@ pub(crate) async fn handle_usage_report(
             "统计周期仅支持 14、30 或 90 天",
         );
     };
-    let now = hone_core::beijing_now();
+    let now = hone_core::local_now();
     let period_start_date = now.date_naive() - Duration::days(report_days - 1);
-    let period_start = start_of_beijing_day(period_start_date, now.offset());
+    let period_start = start_of_local_day(period_start_date, now.offset());
     let execution_limit = usize::try_from(report_days)
         .unwrap_or_default()
         .saturating_mul(USAGE_EXECUTION_LIMIT_PER_DAY);
@@ -351,7 +351,7 @@ fn build_usage_report(
 ) -> PublicAdminUsageReport {
     let today = now.date_naive();
     let period_start_date = today - Duration::days(report_days - 1);
-    let period_start = start_of_beijing_day(period_start_date, now.offset());
+    let period_start = start_of_local_day(period_start_date, now.offset());
     let web_phone_numbers = users
         .into_iter()
         .map(|user| (user.user_id, user.phone_number))
@@ -373,7 +373,7 @@ fn build_usage_report(
             if usage_message_is_automation(&text, message.metadata.as_ref()) {
                 continue;
             }
-            let Some(asked_at) = parse_beijing_time(&message.timestamp, now.offset()) else {
+            let Some(asked_at) = parse_local_time(&message.timestamp, now.offset()) else {
                 continue;
             };
             if asked_at < period_start || asked_at > now {
@@ -402,7 +402,7 @@ fn build_usage_report(
         if usage_user_is_automation(&execution.user_id) {
             continue;
         }
-        let Some(executed_at) = parse_beijing_time(&execution.executed_at, now.offset()) else {
+        let Some(executed_at) = parse_local_time(&execution.executed_at, now.offset()) else {
             continue;
         };
         if executed_at < period_start || executed_at > now {
@@ -520,7 +520,7 @@ fn build_usage_summary(
             && date <= today
             && (date < today
                 || row.questions.iter().any(|question| {
-                    parse_beijing_time(&question.asked_at, now.offset())
+                    parse_local_time(&question.asked_at, now.offset())
                         .is_some_and(|asked_at| asked_at.time() <= comparison_time)
                 }));
         if include_current {
@@ -528,7 +528,7 @@ fn build_usage_summary(
                 .questions
                 .iter()
                 .filter(|question| {
-                    parse_beijing_time(&question.asked_at, now.offset())
+                    parse_local_time(&question.asked_at, now.offset())
                         .is_some_and(|asked_at| asked_at <= now)
                 })
                 .count();
@@ -545,7 +545,7 @@ fn build_usage_summary(
                 .questions
                 .iter()
                 .filter(|question| {
-                    parse_beijing_time(&question.asked_at, now.offset())
+                    parse_local_time(&question.asked_at, now.offset())
                         .is_some_and(|asked_at| asked_at <= previous_end)
                 })
                 .count();
@@ -704,13 +704,13 @@ fn usage_user_label(channel: &str, user_id: &str, phone_number: &str) -> String 
     format!("{channel_label}用户 {tail}")
 }
 
-fn parse_beijing_time(value: &str, offset: &FixedOffset) -> Option<DateTime<FixedOffset>> {
+fn parse_local_time(value: &str, offset: &FixedOffset) -> Option<DateTime<FixedOffset>> {
     DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|parsed| parsed.with_timezone(offset))
 }
 
-fn start_of_beijing_day(date: NaiveDate, offset: &FixedOffset) -> DateTime<FixedOffset> {
+fn start_of_local_day(date: NaiveDate, offset: &FixedOffset) -> DateTime<FixedOffset> {
     offset
         .from_local_datetime(&date.and_hms_opt(0, 0, 0).expect("valid start of day"))
         .single()
@@ -952,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn usage_report_counts_real_questions_in_beijing_and_excludes_automation() {
+    fn usage_report_counts_real_questions_in_local_and_excludes_automation() {
         let now = DateTime::parse_from_rfc3339("2026-08-02T12:00:00+08:00").expect("now");
         let mut scheduler_metadata = HashMap::new();
         scheduler_metadata.insert("source".to_string(), json!(" Scheduler "));

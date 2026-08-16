@@ -10,7 +10,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use chrono_tz::Asia::Shanghai;
 use hone_event_engine::EventSource;
 use hone_event_engine::pollers::RssNewsPoller;
 use hone_llm::{CreatedLlmProvider, LlmResolver, Message};
@@ -458,7 +457,7 @@ pub(crate) struct KeyEventItem {
     pub id: String,
     pub topic_id: String,
     pub published_at: DateTime<Utc>,
-    pub published_at_beijing: String,
+    pub published_at_local: String,
     pub source_name: String,
     pub source_url: String,
     #[serde(default = "default_source_tier")]
@@ -532,7 +531,8 @@ pub(crate) struct TenDayBrief {
     pub review_end: String,
     pub outlook_start: String,
     pub outlook_end: String,
-    pub previous_generated_at_beijing: Option<String>,
+    #[serde(alias = "previous_generated_at_beijing")]
+    pub previous_generated_at_local: Option<String>,
     pub status: String,
     pub summary: String,
     pub version_summary: String,
@@ -545,7 +545,8 @@ pub(crate) struct TenDayBrief {
 pub(crate) struct KeyEventChainSnapshot {
     pub report_date: String,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub lookback_days: i64,
@@ -1252,9 +1253,7 @@ fn public_event(
         id: format!("{}:{}", topic.id, source.id),
         topic_id: topic.id.to_string(),
         published_at: source.published_at,
-        published_at_beijing: source
-            .published_at
-            .with_timezone(&Shanghai)
+        published_at_local: hone_core::local_time_at(source.published_at)
             .format("%m-%d %H:%M")
             .to_string(),
         source_name: source.source_name.clone(),
@@ -1439,7 +1438,7 @@ fn build_ten_day_brief(
     now: DateTime<Utc>,
     source_status: &str,
 ) -> TenDayBrief {
-    let today = now.with_timezone(&Shanghai).date_naive();
+    let today = hone_core::local_time_at(now).date_naive();
     let review_start = today - chrono::Duration::days(REVIEW_DAYS - 1);
     let outlook_start = today + chrono::Duration::days(1);
     let outlook_end = today + chrono::Duration::days(OUTLOOK_DAYS);
@@ -1451,7 +1450,7 @@ fn build_ten_day_brief(
             .events
             .iter()
             .filter(|event| {
-                event.published_at.with_timezone(&Shanghai).date_naive() >= review_start
+                hone_core::local_time_at(event.published_at).date_naive() >= review_start
             })
             .collect::<Vec<_>>();
         let confirmed_evidence = evidence
@@ -1580,8 +1579,8 @@ fn build_ten_day_brief(
         review_end: today.format("%Y-%m-%d").to_string(),
         outlook_start: outlook_start.format("%Y-%m-%d").to_string(),
         outlook_end: outlook_end.format("%Y-%m-%d").to_string(),
-        previous_generated_at_beijing: previous
-            .map(|snapshot| snapshot.generated_at_beijing.clone()),
+        previous_generated_at_local: previous
+            .map(|snapshot| snapshot.generated_at_local.clone()),
         status: status.to_string(),
         summary,
         version_summary,
@@ -1698,14 +1697,13 @@ fn snapshot(
     };
     let ten_day_brief = build_ten_day_brief(&topics, previous, now, status);
     KeyEventChainSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         lookback_days: LOOKBACK_HOURS / 24,
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
@@ -1782,7 +1780,7 @@ async fn write_snapshot(state: &AppState, snapshot: &KeyEventChainSnapshot) -> a
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 #[cfg(test)]
@@ -1964,9 +1962,10 @@ mod tests {
     }
 
     #[test]
-    fn next_refresh_is_1955_beijing() {
-        let next = next_refresh(Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap())
-            .with_timezone(&Shanghai);
+    fn next_refresh_is_1955_local() {
+        let next = hone_core::local_time_at(next_refresh(
+            Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap(),
+        ));
         assert_eq!((next.hour(), next.minute()), (19, 55));
     }
 
@@ -2051,7 +2050,7 @@ mod tests {
             id: "rubin:one".into(),
             topic_id: "rubin".into(),
             published_at: Utc::now(),
-            published_at_beijing: "08-11 10:00".into(),
+            published_at_local: "08-11 10:00".into(),
             source_name: "source".into(),
             source_url: "https://x.com/a/status/1".into(),
             source_tier: "opinion".into(),

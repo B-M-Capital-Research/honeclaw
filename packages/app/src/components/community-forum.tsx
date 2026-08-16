@@ -17,9 +17,8 @@ import "./community-forum.css";
 
 const REPORT_REASONS = ["疑似虚假信息", "广告或骚扰", "人身攻击", "侵权内容"];
 
-function formatBeijing(value: string) {
+function formatLocal(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -185,7 +184,7 @@ export function CommunityForum(props: { query: string }) {
       <div class="community-forum-list">
         <For each={visiblePosts()}>{(post) => (
           <article class="community-forum-post" data-status={post.moderation_status}>
-            <header><div class="community-forum-avatar" aria-hidden="true">研</div><div><strong>{post.author_label}</strong><time>{formatBeijing(post.created_at)} 北京时间</time></div><Show when={post.moderation_status !== "visible"}><em>{post.moderation_status === "pending_review" ? "待管理员复核" : post.moderation_status === "deleted" ? "已删除" : "已隐藏"}</em></Show></header>
+            <header><div class="community-forum-avatar" aria-hidden="true">研</div><div><strong>{post.author_label}</strong><time>{formatLocal(post.created_at)} 本地时间</time></div><Show when={post.moderation_status !== "visible"}><em>{post.moderation_status === "pending_review" ? "待管理员复核" : post.moderation_status === "deleted" ? "已删除" : "已隐藏"}</em></Show></header>
             <h3>{post.title}</h3>
             <p class="community-forum-body">{post.body}</p>
             <div class="community-forum-tags"><For each={post.tickers}>{(ticker) => <span>${ticker}</span>}</For><For each={post.topics}>{(topic) => <span>#{topic}</span>}</For></div>
@@ -221,7 +220,7 @@ export function CommunityForum(props: { query: string }) {
             <Show when={reportOpen() === post.id}><div class="community-forum-report"><span>请选择举报原因</span><For each={REPORT_REASONS}>{(reason) => <button type="button" onClick={() => { setReportOpen(null); void runPostAction(post.id, "report", () => reportCommunityForumPost(post.id, reason)); }}>{reason}</button>}</For></div></Show>
             <Show when={commentOpen() === post.id}>
               <div class="community-forum-comments">
-                <For each={post.comments}>{(comment) => <article data-status={comment.moderation_status}><header><strong>{comment.author_label}</strong><time>{formatBeijing(comment.created_at)}</time><Show when={comment.can_delete}><button type="button" onClick={() => void runPostAction(post.id, "delete-comment", () => deleteCommunityForumComment(post.id, comment.id))}>删除</button></Show></header><p>{comment.moderation_status === "deleted" ? "该评论已删除" : comment.body}</p></article>}</For>
+                <For each={post.comments}>{(comment) => <article data-status={comment.moderation_status}><header><strong>{comment.author_label}</strong><time>{formatLocal(comment.created_at)}</time><Show when={comment.can_delete}><button type="button" onClick={() => void runPostAction(post.id, "delete-comment", () => deleteCommunityForumComment(post.id, comment.id))}>删除</button></Show></header><p>{comment.moderation_status === "deleted" ? "该评论已删除" : comment.body}</p></article>}</For>
                 <div class="community-forum-comment-box"><textarea aria-label={`评论 ${post.title}`} rows={2} maxLength={1000} value={commentDrafts()[post.id] ?? ""} onInput={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.currentTarget.value }))} placeholder="回应观点，尽量说明依据…" /><button type="button" disabled={!commentDrafts()[post.id]?.trim() || !!working()} onClick={() => submitComment(post)}>发送评论</button></div>
               </div>
             </Show>

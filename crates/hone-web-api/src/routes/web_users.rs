@@ -284,7 +284,7 @@ fn to_invite_info(
 ) -> WebInviteInfo {
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
-    let quota_date = hone_core::beijing_now().format("%F").to_string();
+    let quota_date = hone_core::local_now().format("%F").to_string();
     let snapshot = actor.as_ref().and_then(|actor| {
         state
             .core

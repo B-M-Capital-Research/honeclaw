@@ -126,7 +126,7 @@ function formatValuation(value: number, currency: string) {
   return `${value.toFixed(2)} ${currency}`;
 }
 
-function ValuationPanel(props: { item: CompanyRating }) {
+function ValuationPanel(props: { item: CompanyRating; timezone: string }) {
   const marker = () => Math.max(0, Math.min(100, props.item.valuation?.position_percent ?? 0));
   return (
     <section class="company-rating-valuation">
@@ -158,7 +158,7 @@ function ValuationPanel(props: { item: CompanyRating }) {
               {valuation().current_position} · 区间位置 {valuation().position_percent.toFixed(1)}%
             </p>
             <p>{valuation().method} · {valuation().method_count} 种方法 · {valuation().confidence === "high" ? "高" : "中"}置信度</p>
-            <small>估值时间 {valuation().generated_at_beijing} 北京时间 · 数据日 {valuation().as_of}</small>
+            <small>估值时间 {valuation().generated_at_local} {props.timezone} · 数据日 {valuation().as_of}</small>
           </>
         )}
       </Show>
@@ -228,7 +228,7 @@ export function CompanyRatingPanel(props: Props) {
               <span class={`is-${value().data_status}`}>
                 {coverageLabel(value())}
               </span>
-              <span>北京时间 {value().generated_at_beijing} 更新</span>
+              <span>{value().timezone} {value().generated_at_local} 更新</span>
               <button type="button" disabled={loading()} onClick={() => void load()}>
                 {loading() ? "刷新中…" : "重新读取"}
               </button>
@@ -379,7 +379,7 @@ export function CompanyRatingPanel(props: Props) {
                           </div>
                           <div class="company-rating-detail__grid">
                             <section><h3>护城河</h3><p>{item.moat}</p></section>
-                            <ValuationPanel item={item} />
+                            <ValuationPanel item={item} timezone={snapshot()?.timezone ?? "运行时时区"} />
                             <FundamentalMetrics item={item} />
                             <section><h3>重点跟踪</h3><ul><For each={item.watch_items}>{(text) => <li>{text}</li>}</For></ul></section>
                             <section><h3>风险与证伪</h3><ul><For each={[...item.risks, ...item.falsifiers].slice(0, 4)}>{(text) => <li>{text}</li>}</For></ul></section>

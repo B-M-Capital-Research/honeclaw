@@ -163,7 +163,7 @@ export function WeeklyBriefPanel(props: Props) {
     if (!current || !query || !props.onAsk) return;
     const saved = {
       reportDate: current.report_date,
-      generatedAtBJT: current.generated_at_beijing,
+      generatedAtLocal: current.generated_at_local,
       previousWeek: current.previous_week,
       nextWeek: current.next_week,
       aiOutlook: current.ai_outlook,
@@ -181,7 +181,7 @@ export function WeeklyBriefPanel(props: Props) {
         question: query,
         rules: [
           "区分一手确认的产业变化、已经过去但结果尚未核验的日程、以及尚未发生的未来日程",
-          "未来日程不是预测，过去日程也不能据此补造公布值。涉及财报或宏观结果时优先核对公司 IR、监管文件和官方数据，附来源与北京时间，再给出对基本面、估值和持仓风险的适当分析",
+          "未来日程不是预测，过去日程也不能据此补造公布值。涉及财报或宏观结果时优先核对公司 IR、监管文件和官方数据，附来源与运行时时区，再给出对基本面、估值和持仓风险的适当分析",
         ],
       }),
     );
@@ -223,7 +223,7 @@ export function WeeklyBriefPanel(props: Props) {
               <div class="weekly-brief-meta">
                 <b>{statusLabel(current().status)}</b>
                 <span>报告日 {current().report_date}</span>
-                <span>{current().generated_at_beijing} 北京时间</span>
+                <span>{current().generated_at_local} {current().timezone}</span>
                 <button onClick={() => void load()} disabled={loading()}>
                   {loading() ? "读取中…" : "重新读取"}
                 </button>

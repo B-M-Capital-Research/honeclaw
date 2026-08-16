@@ -28,6 +28,17 @@ fn yaml_has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
 }
 
 #[test]
+fn top_level_timezone_accepts_iana_and_rejects_unknown_names() {
+    let valid: HoneConfig = serde_yaml::from_str("timezone: America/New_York\n").unwrap();
+    assert_eq!(valid.timezone.as_deref(), Some("America/New_York"));
+    valid.validate().unwrap();
+
+    let invalid: HoneConfig = serde_yaml::from_str("timezone: Mars/Olympus\n").unwrap();
+    let error = invalid.validate().unwrap_err().to_string();
+    assert!(error.contains("IANA"), "{error}");
+}
+
+#[test]
 fn fmp_default_matches_deserialization_defaults() {
     let direct = FmpConfig::default();
     let deserialized: FmpConfig = serde_yaml::from_str("{}").expect("deserialize empty FMP config");
@@ -120,6 +131,7 @@ fn assert_config_example_roots(root: &serde_yaml::Mapping) {
         "security",
         "storage",
         "telegram",
+        "timezone",
         "web",
     ]
     .into_iter()

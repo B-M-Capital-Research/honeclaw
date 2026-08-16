@@ -318,10 +318,6 @@ pub struct GlobalDigestConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// admin 视角时区,目前仅用于历史日志解释;实际触发时刻由 actor `prefs.digest_slots` 决定。
-    #[serde(default = "default_global_digest_tz")]
-    pub timezone: String,
-
     /// 候选池的回看窗口(小时)。第一次推送 / 兜底用;后续以"距上次成功推送"为准。
     #[serde(default = "default_global_digest_lookback_hours")]
     pub lookback_hours: u32,
@@ -388,7 +384,6 @@ impl Default for GlobalDigestConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            timezone: default_global_digest_tz(),
             lookback_hours: default_global_digest_lookback_hours(),
             pass1_model: default_global_digest_pass1_model(),
             pass1_llm: String::new(),
@@ -410,9 +405,6 @@ fn default_event_dedupe_model() -> String {
     "x-ai/grok-4.3".into()
 }
 
-fn default_global_digest_tz() -> String {
-    "Asia/Shanghai".into()
-}
 fn default_global_digest_lookback_hours() -> u32 {
     24
 }
@@ -478,14 +470,12 @@ pub struct DefaultDigestSlot {
 
 /// Digest 触发窗口配置。
 ///
-/// `timezone` 默认 Asia/Shanghai（UTC+8）。`default_slots` 是 actor 没自定义
-/// `prefs.digest_slots` 时的兜底触发时刻。默认两个槽:
+/// `default_slots` 是 actor 没自定义 `prefs.digest_slots` 时的兜底触发时刻。
+/// 所有槽位继承进程运行时时区。默认两个槽:
 /// * 08:30 "盘前摘要" — CN 用户开工前合并推送一条。
 /// * 09:00 "晨间摘要" — 美股盘后收于北京凌晨,延后到早上推送以免半夜打扰。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DigestConfig {
-    #[serde(default = "default_tz")]
-    pub timezone: String,
     #[serde(default = "default_default_slots")]
     pub default_slots: Vec<DefaultDigestSlot>,
     /// 单条摘要最多渲染多少事件，超出截断并附"另 N 条已省略"。0 = 不限制。
@@ -505,7 +495,6 @@ pub struct DigestConfig {
 impl Default for DigestConfig {
     fn default() -> Self {
         Self {
-            timezone: default_tz(),
             default_slots: default_default_slots(),
             max_items_per_batch: default_max_items_per_batch(),
             prefetch_offset_mins: default_prefetch_offset_mins(),
@@ -521,9 +510,6 @@ fn default_min_gap_minutes() -> u32 {
     180
 }
 
-fn default_tz() -> String {
-    "Asia/Shanghai".into()
-}
 fn default_default_slots() -> Vec<DefaultDigestSlot> {
     vec![
         DefaultDigestSlot {
@@ -531,7 +517,7 @@ fn default_default_slots() -> Vec<DefaultDigestSlot> {
             label: Some("盘前摘要".into()),
         },
         DefaultDigestSlot {
-            // 美股隔夜收盘摘要延后到北京时间早上 9 点推送,避免半夜打扰。
+            // 美股隔夜收盘摘要延后到运行时区早上 9 点推送,避免半夜打扰。
             time: "09:00".into(),
             label: Some("晨间摘要".into()),
         },
@@ -539,25 +525,6 @@ fn default_default_slots() -> Vec<DefaultDigestSlot> {
 }
 fn default_max_items_per_batch() -> u32 {
     20
-}
-
-/// 粗粒度 IANA 时区名 → UTC 偏移小时数。不识别的名字返回 0（UTC）。
-/// 这是 config 层的轻量 fallback helper；夏令时按常用区域做固定近似。
-pub fn tz_offset_hours(tz: &str) -> i32 {
-    match tz.trim() {
-        "Asia/Shanghai" | "Asia/Hong_Kong" | "Asia/Singapore" | "Asia/Taipei" | "PRC" => 8,
-        "Asia/Tokyo" | "Asia/Seoul" => 9,
-        "Europe/London" | "UTC" | "GMT" | "" => 0,
-        "Europe/Paris" | "Europe/Berlin" | "Europe/Amsterdam" | "Europe/Madrid" => 1,
-        "America/New_York" | "America/Toronto" => -4, // 夏令时近似
-        "America/Chicago" => -5,
-        "America/Denver" => -6,
-        "America/Los_Angeles" => -7,
-        other => {
-            tracing::warn!("未识别的 timezone '{other}'，回退 UTC");
-            0
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

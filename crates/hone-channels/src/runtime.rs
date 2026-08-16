@@ -301,7 +301,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?(?:可用)?|本地没有\s*python(?:\s*命令)?(?:可用)?|shell\s*环境里可用的解释器|改用\s*python3|(?:已|已经)加载(?:股票|单股)研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|本地观察池配置|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*(?:画像|公司画像)|本地没有[^。\n！？]*(?:长期公司画像|长期画像|公司画像|画像)|本地已有的[^。\n！？]*(?:画像|公司画像)|我没有找到本地已有的[^。\n！？]*(?:画像|公司画像)|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*(?:画像|公司画像)|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|画像|公司画像)|写回[^。\n！？]*(?:长期画像|画像|公司画像)|不追加[^。\n！？]*(?:长期画像|画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|画像|公司画像)|公司画像事件|画像已写入(?:[:：]|[，,])?[^。\n！？]*|我(?:先|再)核(?:对|验|一下)?[^。\n！？]*(?:交易日|对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|我先按北京时间[^。\n！？]*对齐交易日|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像|组合画像)|我会新增[^。\n！？]*(?:长期画像|画像|公司画像)|我会新建[^。\n！？]*(?:长期画像|画像|公司画像)|准备建立[^。\n！？]*(?:长期画像|画像|公司画像)|把长期可复用的[^。\n！？]*沉淀到[^。\n！？]*(?:画像|公司画像))[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?(?:可用)?|本地没有\s*python(?:\s*命令)?(?:可用)?|shell\s*环境里可用的解释器|改用\s*python3|(?:已|已经)加载(?:股票|单股)研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|本地观察池配置|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*(?:画像|公司画像)|本地没有[^。\n！？]*(?:长期公司画像|长期画像|公司画像|画像)|本地已有的[^。\n！？]*(?:画像|公司画像)|我没有找到本地已有的[^。\n！？]*(?:画像|公司画像)|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*(?:画像|公司画像)|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|画像|公司画像)|写回[^。\n！？]*(?:长期画像|画像|公司画像)|不追加[^。\n！？]*(?:长期画像|画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|画像|公司画像)|公司画像事件|画像已写入(?:[:：]|[，,])?[^。\n！？]*|我(?:先|再)核(?:对|验|一下)?[^。\n！？]*(?:交易日|对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|我先按运行时时区[^。\n！？]*对齐交易日|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像|组合画像)|我会新增[^。\n！？]*(?:长期画像|画像|公司画像)|我会新建[^。\n！？]*(?:长期画像|画像|公司画像)|准备建立[^。\n！？]*(?:长期画像|画像|公司画像)|把长期可复用的[^。\n！？]*沉淀到[^。\n！？]*(?:画像|公司画像))[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -380,7 +380,7 @@ static RE_MARKET_DATA_SOURCE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_MARKET_DATA_TIME_FIELD_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:[^\n。；]*(?:hone?_quote_time(?:\.beijing)?|provider\s+timestamp)[^\n。；]*)"#,
+        r#"(?i)(?:[^\n。；]*(?:hone?_quote_time(?:\.local)?|provider\s+timestamp)[^\n。；]*)"#,
     )
     .expect("valid regex")
 });
@@ -1328,7 +1328,7 @@ mod tests {
 
     #[test]
     fn agent_owned_sanitizer_preserves_market_copy_without_semantic_rewrite() {
-        let raw = "<think>hidden</think>\n数据时间：北京时间 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。";
+        let raw = "<think>hidden</think>\n数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。";
 
         let sanitized = sanitize_agent_owned_user_visible_output(raw);
 
@@ -1336,7 +1336,7 @@ mod tests {
         assert!(!sanitized.only_internal);
         assert_eq!(
             sanitized.content,
-            "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。"
+            "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。"
         );
         assert!(!sanitized.content.contains("hidden"));
         assert!(!sanitized.content.contains("已完成校验"));
@@ -1345,7 +1345,7 @@ mod tests {
 
     #[test]
     fn agent_owned_sanitizer_removes_entire_tagged_tool_payload() {
-        let raw = "<tool_call>{\"foo\":\"bar\"}</tool_call>\n[TOOL_RESULT]{\"baz\":\"qux\"}[/TOOL_RESULT]\n数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果";
+        let raw = "<tool_call>{\"foo\":\"bar\"}</tool_call>\n[TOOL_RESULT]{\"baz\":\"qux\"}[/TOOL_RESULT]\n数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮工具结果";
 
         let sanitized = sanitize_agent_owned_user_visible_output(raw);
 
@@ -1353,7 +1353,7 @@ mod tests {
         assert!(!sanitized.only_internal);
         assert_eq!(
             sanitized.content,
-            "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果"
+            "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮工具结果"
         );
         assert!(!sanitized.content.contains("foo"));
         assert!(!sanitized.content.contains("bar"));
@@ -1708,7 +1708,7 @@ mod tests {
     fn sanitize_user_visible_output_rewrites_market_time_field_and_limit_copy() {
         for (raw, expected) in [
             (
-                "数据来自 hone_quote_time.beijing 04:00-04:02，以下继续看核心观察池。",
+                "数据来自 hone_quote_time.local 04:00-04:02，以下继续看核心观察池。",
                 "以下价格按最新可得公开行情整理。",
             ),
             (
@@ -2032,11 +2032,11 @@ mod tests {
     #[test]
     fn user_visible_error_message_preserves_wrapped_quota_rejection() {
         let err = user_visible_error_message(Some(
-            "工具执行错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试",
+            "工具执行错误: 已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试",
         ));
         assert_eq!(
             err,
-            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+            "已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试"
         );
     }
 
@@ -2109,11 +2109,11 @@ mod tests {
     #[test]
     fn user_visible_error_message_or_none_preserves_quota_rejection() {
         let err = user_visible_error_message_or_none(Some(
-            "渠道错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试",
+            "渠道错误: 已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试",
         ));
         assert_eq!(
             err.as_deref(),
-            Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试")
+            Some("已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试")
         );
     }
 

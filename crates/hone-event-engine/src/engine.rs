@@ -386,8 +386,7 @@ impl EventEngine {
             "notification prefs dir ready (edit per-actor JSON to change runtime)"
         );
 
-        let tz_offset_for_router =
-            hone_core::config::tz_offset_hours(&self.engine_cfg.digest.timezone);
+        let runtime_timezone = hone_core::runtime_timezone();
         let mut router_builder = NotificationRouter::new(
             registry.clone(),
             self.sink.clone(),
@@ -396,7 +395,7 @@ impl EventEngine {
         )
         .with_polisher(self.polisher.clone())
         .with_prefs(prefs_storage.clone())
-        .with_tz_offset_hours(tz_offset_for_router)
+        .with_runtime_timezone(runtime_timezone.clone())
         .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
         .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
         .with_price_policy_defaults(PriceAlertPolicyDefaults::from(&self.engine_cfg.thresholds))
@@ -444,10 +443,8 @@ impl EventEngine {
         // UnifiedDigestScheduler：取代旧 DigestScheduler + GlobalDigestScheduler 双 spawn,
         // 每 60s tick 一次,以 actor × digest_slots 触发,每个 slot 跨 actor 共享一份
         // `audience+pass1+fetch+baseline`,personalize fan-out 走 per-actor。
-        let tz_offset = hone_core::config::tz_offset_hours(&self.engine_cfg.digest.timezone);
         info!(
-            timezone = %self.engine_cfg.digest.timezone,
-            offset_hours = tz_offset,
+            timezone = %runtime_timezone.name(),
             "unified digest scheduler timezone resolved"
         );
         let portfolio_storage = Arc::new(hone_memory::PortfolioStorage::new(&self.portfolio_dir));
@@ -484,7 +481,7 @@ impl EventEngine {
                 })
                 .collect(),
         )
-        .with_tz_offset_hours(tz_offset)
+        .with_runtime_timezone(runtime_timezone.clone())
         .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
         .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes)
         .with_lookback_hours(self.engine_cfg.global_digest.lookback_hours)
@@ -539,7 +536,7 @@ impl EventEngine {
         let scheduler = Arc::new(unified);
         tokio::spawn(pipeline::cron_minute_tick(
             "internal.unified_digest_scheduler",
-            tz_offset,
+            runtime_timezone.clone(),
             task_runs_dir.clone(),
             move |now, fired| {
                 let scheduler = scheduler.clone();
@@ -552,11 +549,11 @@ impl EventEngine {
         // 不通过 sink 推给用户:这是给我自己看的引擎运营日志。
         let daily_report = Arc::new(
             DailyReport::new(store.clone(), self.daily_report_dir.clone())
-                .with_tz_offset_hours(tz_offset),
+                .with_runtime_timezone(runtime_timezone.clone()),
         );
         tokio::spawn(pipeline::cron_minute_tick(
             "internal.daily_report",
-            tz_offset,
+            runtime_timezone.clone(),
             task_runs_dir.clone(),
             move |now, fired| {
                 let daily_report = daily_report.clone();
@@ -587,7 +584,7 @@ impl EventEngine {
                     .map(|parent| parent.join("weekly_reports"))
                     .unwrap_or_else(|| PathBuf::from("data/weekly_reports")),
             )
-            .with_tz_offset_hours(tz_offset);
+            .with_runtime_timezone(runtime_timezone.clone());
             if let Some(task_runs_dir) = self.task_runs_dir.as_deref() {
                 weekly = weekly.with_task_runs_dir(task_runs_dir.clone());
             }
@@ -597,7 +594,7 @@ impl EventEngine {
             let weekly = Arc::new(weekly);
             tokio::spawn(pipeline::cron_minute_tick(
                 "internal.weekly_report",
-                tz_offset,
+                runtime_timezone.clone(),
                 task_runs_dir.clone(),
                 move |now, fired| {
                     let weekly = weekly.clone();
@@ -652,7 +649,7 @@ impl EventEngine {
                 client.clone(),
                 SourceSchedule::CronAligned {
                     prefetch_at: prefetch_at.clone(),
-                    tz_offset,
+                    timezone: runtime_timezone.clone(),
                 },
             )
             .with_window_days(self.engine_cfg.earnings.window_days);
@@ -689,7 +686,7 @@ impl EventEngine {
                 client.clone(),
                 SourceSchedule::CronAligned {
                     prefetch_at: prefetch_at.clone(),
-                    tz_offset,
+                    timezone: runtime_timezone.clone(),
                 },
             );
             spawn_event_source(
@@ -710,7 +707,7 @@ impl EventEngine {
                 registry.clone(),
                 SourceSchedule::CronAligned {
                     prefetch_at: prefetch_at.clone(),
-                    tz_offset,
+                    timezone: runtime_timezone.clone(),
                 },
             )
             .with_sec_recent_hours(48)
@@ -759,7 +756,7 @@ impl EventEngine {
                 client.clone(),
                 SourceSchedule::CronAligned {
                     prefetch_at: prefetch_at.clone(),
-                    tz_offset,
+                    timezone: runtime_timezone.clone(),
                 },
             );
             spawn_event_source(
@@ -844,7 +841,7 @@ impl EventEngine {
                 registry.clone(),
                 SourceSchedule::CronAligned {
                     prefetch_at: prefetch_at.clone(),
-                    tz_offset,
+                    timezone: runtime_timezone.clone(),
                 },
             );
             spawn_event_source(

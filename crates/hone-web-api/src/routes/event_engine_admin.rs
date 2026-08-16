@@ -55,22 +55,6 @@ pub(crate) struct PutGlobalDigestBody {
 }
 
 fn validate_global_digest(global_digest_config: &GlobalDigestConfig) -> Result<(), Response> {
-    if global_digest_config.timezone.trim().is_empty() {
-        return Err(json_error(
-            StatusCode::BAD_REQUEST,
-            "global_digest.timezone 不能为空 (例 \"Asia/Shanghai\")",
-        ));
-    }
-    use std::str::FromStr;
-    if chrono_tz::Tz::from_str(global_digest_config.timezone.trim()).is_err() {
-        return Err(json_error(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "global_digest.timezone {:?} 不是合法 IANA 名;示例:Asia/Shanghai、America/New_York、Europe/London",
-                global_digest_config.timezone
-            ),
-        ));
-    }
     if global_digest_config.final_pick_n == 0 {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
@@ -618,7 +602,6 @@ mod tests {
     fn cfg(top_n: u32, pick_n: u32) -> GlobalDigestConfig {
         GlobalDigestConfig {
             enabled: true,
-            timezone: "Asia/Shanghai".into(),
             lookback_hours: 24,
             pass1_llm: String::new(),
             pass1_model: "x-ai/grok-4.3".into(),
@@ -641,12 +624,9 @@ mod tests {
     }
 
     #[test]
-    fn validate_global_digest_rejects_unknown_timezone() {
-        let mut c = cfg(15, 8);
-        c.timezone = "Mars/Olympus".into();
-        let err = validate_global_digest(&c).unwrap_err();
-        let body = format!("{:?}", err);
-        assert!(body.contains("400") || body.contains("BAD_REQUEST"));
+    fn global_digest_config_does_not_own_a_timezone() {
+        let value = serde_json::to_value(cfg(15, 8)).unwrap();
+        assert!(value.get("timezone").is_none());
     }
 
     #[test]

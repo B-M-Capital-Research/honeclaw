@@ -401,7 +401,7 @@ mod tests {
             "{}_{}_{}",
             name,
             std::process::id(),
-            hone_core::beijing_now()
+            hone_core::local_now()
                 .timestamp_nanos_opt()
                 .unwrap_or_default()
         );

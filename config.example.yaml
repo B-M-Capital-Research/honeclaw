@@ -8,6 +8,11 @@
 # UI / CLI display language: zh or en
 language: zh
 
+# Process runtime timezone (IANA name). This is the single default for cron,
+# date keys, report schedules, and user-visible local timestamps. In production
+# containers, set it explicitly because host detection commonly resolves to UTC.
+timezone: "Asia/Shanghai"
+
 # iMessage config
 imessage:
   enabled: false
@@ -179,9 +184,8 @@ event_engine:
     # 管理员视角默认槽位时刻 —— 在 actor 没有自定义 prefs.digest_slots 时,
     # UnifiedDigestScheduler 用这组时刻作为默认 slot 触发推送。每个 slot 可配
     # `time`(本地 HH:MM)和可选 `label`(渲染 header 用)。
-    # Defaults target CN users: 08:30 卷起夜里队列成早间摘要;09:00 把美股盘后(BJ 凌晨)
+    # Defaults target CN users: 08:30 卷起夜里队列成早间摘要;09:00 把美股盘后
     # 隔夜汇总延后到醒来后,避免半夜打扰。
-    timezone: Asia/Shanghai
     default_slots:
       - {time: "08:30", label: "盘前摘要"}
       - {time: "09:00", label: "晨间摘要"}
@@ -314,7 +318,6 @@ event_engine:
   # global news section 跳过;pipeline 仍按 buffer/synth 候选推送 actor。
   global_digest:
     enabled: false
-    timezone: Asia/Shanghai
     lookback_hours: 24 # 候选池回看窗口
     # *_llm fields name llm.profiles entries; matching *_model fields are legacy OpenRouter fallbacks.
     pass1_llm: digest_fast

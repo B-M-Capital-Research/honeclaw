@@ -23,12 +23,12 @@ pub(crate) fn write_prompt_audit(
     fs::create_dir_all(&audit_dir)
         .map_err(|err| format!("create audit dir {} failed: {err}", audit_dir.display()))?;
 
-    let timestamp = hone_core::beijing_now().format("%Y%m%d-%H%M%S").to_string();
+    let timestamp = hone_core::local_now().format("%Y%m%d-%H%M%S").to_string();
     let session_slug = sanitize_prompt_audit_path(session_id);
     let prompt_path = audit_dir.join(format!("{timestamp}-{session_slug}.json"));
     let latest_path = audit_dir.join(format!("latest-{session_slug}.json"));
     let payload = serde_json::json!({
-        "created_at": hone_core::beijing_now_rfc3339(),
+        "created_at": hone_core::local_now_rfc3339(),
         "channel": actor.channel,
         "actor_user_id": actor.user_id,
         "session_id": session_id,

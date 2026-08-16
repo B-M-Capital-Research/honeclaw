@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
 use hone_memory::PortfolioStorage;
 use tokio::sync::Mutex;
@@ -79,8 +79,8 @@ pub struct UnifiedDigestScheduler {
 
     /// 缺省 slot:用户没设 `prefs.digest_slots` 时回退到这组时刻。
     default_slots: Vec<DigestSlot>,
-    /// 全局 IANA 时区的 UTC 偏移(小时),actor `prefs.timezone` 缺失时兜底。
-    tz_offset_hours: i32,
+    /// actor `prefs.timezone` 缺失时继承的运行时时区。
+    runtime_timezone: hone_core::RuntimeTimezone,
 
     max_items_per_batch: usize,
     min_gap_minutes: u32,
@@ -128,7 +128,7 @@ impl UnifiedDigestScheduler {
             audience_cache_dir: audience_cache_dir.into(),
             daily_report_dir: daily_report_dir.into(),
             default_slots,
-            tz_offset_hours: 8,
+            runtime_timezone: hone_core::runtime_timezone(),
             max_items_per_batch: 20,
             min_gap_minutes: 0,
             lookback_hours: 14,
@@ -141,8 +141,15 @@ impl UnifiedDigestScheduler {
         }
     }
 
+    #[cfg(test)]
     pub fn with_tz_offset_hours(mut self, offset_hours: i32) -> Self {
-        self.tz_offset_hours = offset_hours;
+        self.runtime_timezone =
+            hone_core::RuntimeTimezone::fixed_offset_seconds(offset_hours * 3600);
+        self
+    }
+
+    pub fn with_runtime_timezone(mut self, timezone: hone_core::RuntimeTimezone) -> Self {
+        self.runtime_timezone = timezone;
         self
     }
 
@@ -191,10 +198,6 @@ impl UnifiedDigestScheduler {
         self
     }
 
-    pub fn tz_offset_hours(&self) -> i32 {
-        self.tz_offset_hours
-    }
-
     /// 单轮 tick:遍历所有 direct actor,按各自 `effective_digest_slots` 触发。
     /// `already_fired_today` 防止同分钟同 actor 同 slot 重复触发。
     pub async fn tick_once(
@@ -203,7 +206,7 @@ impl UnifiedDigestScheduler {
         already_fired_today: &mut HashSet<String>,
     ) -> anyhow::Result<u32> {
         let mut flushed = 0u32;
-        let global_today = local_date_key(now, self.tz_offset_hours);
+        let global_today = local_date_key(now, &self.runtime_timezone);
 
         // 跨日清掉昨天的 slot 缓存,防止一直累积。
         {
@@ -218,11 +221,7 @@ impl UnifiedDigestScheduler {
         let mut synth_by_actor: HashMap<ActorIdentity, Vec<MarketEvent>> = HashMap::new();
         match self.store.list_upcoming_earnings(now, 4) {
             Ok(teasers) => {
-                let local_today = {
-                    let offset = FixedOffset::east_opt(self.tz_offset_hours * 3600)
-                        .unwrap_or(FixedOffset::east_opt(0).unwrap());
-                    offset.from_utc_datetime(&now.naive_utc()).date_naive()
-                };
+                let local_today = self.runtime_timezone.at_utc(now).date_naive();
                 let synth_pool =
                     crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
                 let registry_snapshot = self.registry.load();
@@ -280,8 +279,10 @@ impl UnifiedDigestScheduler {
             }
             let user_prefs = self.prefs.load(&actor);
             let focus_symbols = actor_focus_symbols(&self.portfolio_storage, &actor, &user_prefs);
-            let effective_tz =
-                EffectiveTz::from_actor_prefs(user_prefs.timezone.as_deref(), self.tz_offset_hours);
+            let effective_tz = EffectiveTz::from_actor_prefs(
+                user_prefs.timezone.as_deref(),
+                &self.runtime_timezone,
+            );
             let actor_key_str = actor_key(&actor);
 
             // ── quiet_hours 优先 ─────────────────────────────────────
@@ -368,7 +369,7 @@ impl UnifiedDigestScheduler {
                 };
                 // synth 跨 slot 去重已投递
                 let mut synths_this_slot = std::mem::take(&mut synth_for_actor);
-                let day_start_utc = local_day_start_utc(now, self.tz_offset_hours);
+                let day_start_utc = local_day_start_utc(now, &self.runtime_timezone);
                 if let Ok(seen) = self
                     .store
                     .delivered_event_ids_since(&actor_key_str, day_start_utc)
@@ -673,10 +674,10 @@ impl UnifiedDigestScheduler {
                 .collect();
         if global_candidates.is_empty() {
             self.append_audit(
-                &local_date_key(now, self.tz_offset_hours),
+                &local_date_key(now, &self.runtime_timezone),
                 &format!(
                     "## {} {} — no candidates\n候选池为空,跳过本次 run。\n\n",
-                    local_date_key(now, self.tz_offset_hours),
+                    local_date_key(now, &self.runtime_timezone),
                     slot.time
                 ),
             );
@@ -737,7 +738,7 @@ impl UnifiedDigestScheduler {
             }
         };
         if ranked.is_empty() {
-            let date = local_date_key(now, self.tz_offset_hours);
+            let date = local_date_key(now, &self.runtime_timezone);
             self.append_audit(
                 &date,
                 &format!(
@@ -765,7 +766,7 @@ impl UnifiedDigestScheduler {
             .await
         {
             Ok(baseline) => {
-                let date = local_date_key(now, self.tz_offset_hours);
+                let date = local_date_key(now, &self.runtime_timezone);
                 let mut s = format!(
                     "## {date} {} — candidates={} baseline_picks={}\n",
                     slot.time,
@@ -936,7 +937,7 @@ impl UnifiedDigestScheduler {
         let payload = build_digest_payload(label.clone(), &filtered, cap_overflow);
         let send_result = self.sink.send_digest(actor, &payload, &body).await;
 
-        let date = effective_tz_date_key(user_prefs, self.tz_offset_hours, now);
+        let date = effective_tz_date_key(user_prefs, &self.runtime_timezone, now);
         let batch_id = format!("quiet-flush:{date}@{}:{}", qh.to, filtered.len());
         let status = if send_result.is_ok() {
             self.sink.success_status_for(actor)
@@ -1078,30 +1079,20 @@ fn actor_key(actor: &ActorIdentity) -> String {
     )
 }
 
-fn local_day_start_utc(now: DateTime<Utc>, tz_offset_hours: i32) -> DateTime<Utc> {
-    let offset =
-        FixedOffset::east_opt(tz_offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
-    let midnight = local
-        .date_naive()
-        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-    offset
-        .from_local_datetime(&midnight)
-        .single()
-        .map(|l| l.with_timezone(&Utc))
-        .unwrap_or(now)
+fn local_day_start_utc(now: DateTime<Utc>, timezone: &hone_core::RuntimeTimezone) -> DateTime<Utc> {
+    timezone.local_day_start_utc(now)
 }
 
-fn local_date_key(now: DateTime<Utc>, tz_offset_hours: i32) -> String {
-    crate::digest::local_date_key(now, tz_offset_hours)
+fn local_date_key(now: DateTime<Utc>, timezone: &hone_core::RuntimeTimezone) -> String {
+    timezone.date_key(now)
 }
 
 fn effective_tz_date_key(
     prefs: &NotificationPrefs,
-    fallback_offset_hours: i32,
+    fallback: &hone_core::RuntimeTimezone,
     now: DateTime<Utc>,
 ) -> String {
-    EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback_offset_hours).date_key(now)
+    EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback).date_key(now)
 }
 
 fn digest_slot_label(slot: &DigestSlot) -> String {

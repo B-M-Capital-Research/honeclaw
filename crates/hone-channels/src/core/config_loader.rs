@@ -26,6 +26,8 @@ pub fn load_runtime_config() -> hone_core::HoneResult<(HoneConfig, String)> {
         hone_core::HoneError::Config(format!("failed to protect runtime config: {err}"))
     })?;
     let mut config = HoneConfig::from_file(&config_path)?;
+    hone_core::configure_runtime_timezone(config.timezone.as_deref())
+        .map_err(hone_core::HoneError::Config)?;
     let data_dir = std::env::var_os("HONE_DATA_DIR").map(PathBuf::from);
     let skills_dir = std::env::var_os("HONE_SKILLS_DIR").map(PathBuf::from);
     config.apply_runtime_overrides(

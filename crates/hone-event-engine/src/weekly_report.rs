@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
 
-use crate::digest::{in_window, local_date_key};
+use crate::digest::{in_window_timezone, local_date_key_timezone};
 use crate::fmp::FmpClient;
 use crate::pollers::analyst_grade::consensus_counts_from_payloads;
 use crate::router::OutboundSink;
@@ -39,7 +39,7 @@ pub struct WeeklyReport {
     /// `task_runs.jsonl` 所在目录(即 `data/runtime/`)。为 `None` 时省略
     /// "定时任务健康"section。
     task_runs_dir: Option<PathBuf>,
-    tz_offset_hours: i32,
+    timezone: hone_core::RuntimeTimezone,
     trigger_weekday: Weekday,
     trigger_time: String,
 }
@@ -58,7 +58,7 @@ impl WeeklyReport {
             client: None,
             report_dir: report_dir.into(),
             task_runs_dir: None,
-            tz_offset_hours: 8,
+            timezone: hone_core::runtime_timezone(),
             trigger_weekday: Weekday::Sat,
             trigger_time: "10:00".into(),
         }
@@ -74,8 +74,14 @@ impl WeeklyReport {
         self
     }
 
+    #[cfg(test)]
     pub fn with_tz_offset_hours(mut self, offset: i32) -> Self {
-        self.tz_offset_hours = offset;
+        self.timezone = hone_core::RuntimeTimezone::fixed_offset_seconds(offset * 3600);
+        self
+    }
+
+    pub fn with_runtime_timezone(mut self, timezone: hone_core::RuntimeTimezone) -> Self {
+        self.timezone = timezone;
         self
     }
 
@@ -86,13 +92,13 @@ impl WeeklyReport {
         now: DateTime<Utc>,
         already_fired: &mut std::collections::HashSet<String>,
     ) -> anyhow::Result<u32> {
-        let local_weekday = (now + Duration::hours(self.tz_offset_hours as i64)).weekday();
+        let local_weekday = self.timezone.at_utc(now).weekday();
         if local_weekday != self.trigger_weekday
-            || !in_window(now, &self.trigger_time, self.tz_offset_hours)
+            || !in_window_timezone(now, &self.trigger_time, &self.timezone)
         {
             return Ok(0);
         }
-        let date = local_date_key(now, self.tz_offset_hours);
+        let date = local_date_key_timezone(now, &self.timezone);
         if !already_fired.insert(format!("weekly-report@{date}")) {
             return Ok(0);
         }

@@ -134,7 +134,7 @@ pub(crate) fn spawn_event_source(
             }
             SourceSchedule::CronAligned {
                 prefetch_at,
-                tz_offset,
+                timezone,
             } => {
                 run_once_observed(
                     &task_label,
@@ -152,13 +152,13 @@ pub(crate) fn spawn_event_source(
                 loop {
                     ticker.tick().await;
                     let now = chrono::Utc::now();
-                    let today = digest::local_date_key(now, tz_offset);
+                    let today = digest::local_date_key_timezone(now, &timezone);
                     if today != last_date {
                         fired.clear();
                         last_date = today.clone();
                     }
                     for hhmm in &prefetch_at {
-                        if !digest::in_window(now, hhmm, tz_offset) {
+                        if !digest::in_window_timezone(now, hhmm, &timezone) {
                             continue;
                         }
                         let key = format!("{today}@{hhmm}");
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(
             poller_tick_timeout(&SourceSchedule::CronAligned {
                 prefetch_at: vec!["09:25".to_string()],
-                tz_offset: 8,
+                timezone: hone_core::RuntimeTimezone::parse_iana("America/New_York").unwrap(),
             }),
             MAX_POLLER_TICK_TIMEOUT
         );

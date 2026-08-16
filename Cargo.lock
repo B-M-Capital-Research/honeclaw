@@ -2884,6 +2884,7 @@ dependencies = [
  "chrono-tz",
  "fs2",
  "hmac 0.12.1",
+ "iana-time-zone",
  "percent-encoding",
  "reqwest 0.12.28",
  "serde",

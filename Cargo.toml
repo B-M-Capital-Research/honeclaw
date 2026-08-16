@@ -68,6 +68,7 @@ uuid = { version = "1", features = ["v4"] }
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.9"
+iana-time-zone = "0.1"
 
 # Legacy read-only imports only (hone-cli migration input and iMessage chat.db)
 rusqlite = { version = "0.31", features = ["bundled"] }

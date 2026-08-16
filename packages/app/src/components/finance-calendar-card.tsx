@@ -53,9 +53,9 @@ function eventLabel(event: FinanceCalendarEvent) {
 }
 
 function compactEventTime(event: FinanceCalendarEvent) {
-  // Not UI copy: the server builds subtitles as `北京时间 HH:MM · <period>`,
+  // Not UI copy: the server builds subtitles as `运行时时区 HH:MM · <period>`,
   // so this strips a fixed data prefix and must match the backend format.
-  return event.subtitle?.replace("北京时间 ", "").split(" · ")[0] ?? CONTENT.chat_page.calendar.pending;
+  return event.subtitle?.replace("运行时时区 ", "").split(" · ")[0] ?? CONTENT.chat_page.calendar.pending;
 }
 
 function monthParts(monthValue: string) {

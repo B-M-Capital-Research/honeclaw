@@ -2,7 +2,7 @@
 //!
 //! 使用 tokio interval 实现分钟级 cron 调度。
 
-use chrono::{Datelike, FixedOffset, Timelike, Utc};
+use chrono::{Timelike, Utc};
 use hone_core::ActorIdentity;
 use hone_core::config::HoneConfig;
 use hone_memory::{
@@ -226,18 +226,11 @@ impl HoneScheduler {
 
     /// 检查到期任务
     async fn check_due_jobs(&self) {
-        let beijing_tz = FixedOffset::east_opt(8 * 3600).unwrap();
-        let now = Utc::now().with_timezone(&beijing_tz);
-
-        let hour = now.hour() as i32;
-        let minute = now.minute() as i32;
-        let weekday = now.weekday().num_days_from_monday();
+        let now = hone_core::local_now();
 
         // 只查询本进程负责的渠道，防止多进程共享存储时跨渠道误标记
         let channel_refs: Vec<&str> = self.channels.iter().map(|s| s.as_str()).collect();
-        let due_jobs = self
-            .storage
-            .get_due_jobs(hour, minute, weekday, &channel_refs);
+        let due_jobs = self.storage.get_due_jobs_at(now, &channel_refs);
 
         if due_jobs.is_empty() {
             return;
@@ -532,7 +525,7 @@ mod tests {
         let dir = make_temp_dir("hone_scheduler_missing_target");
         let storage = Arc::new(CronJobStorage::new(&dir));
         let actor = ActorIdentity::new("telegram", "user_missing", None::<String>).expect("actor");
-        let now = Utc::now().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
+        let now = hone_core::local_now();
         let job = CronJob {
             id: "j_missing_target".to_string(),
             name: "missing target".to_string(),
@@ -699,10 +692,7 @@ mod tests {
         let dir = make_temp_dir("hone_scheduler_once_event_activity");
         let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("telegram", "once-user", None::<String>).expect("actor");
-        let date = hone_core::beijing_now()
-            .date_naive()
-            .format("%F")
-            .to_string();
+        let date = hone_core::local_now().date_naive().format("%F").to_string();
         let added = storage.add_job(
             &actor,
             "one-time report",

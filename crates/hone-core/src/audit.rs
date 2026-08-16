@@ -1,4 +1,4 @@
-use crate::beijing_now_rfc3339;
+use crate::local_now_rfc3339;
 use crate::{ActorIdentity, HoneResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,7 +45,7 @@ impl LlmAuditRecord {
     ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            created_at: beijing_now_rfc3339(),
+            created_at: local_now_rfc3339(),
             session_id: session_id.into(),
             actor,
             source: source.into(),

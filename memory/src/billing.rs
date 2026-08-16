@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use chrono::DateTime;
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
-use hone_core::{HoneError, HoneResult, beijing_now_rfc3339};
+use hone_core::{HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -372,7 +372,7 @@ impl BillingStorage {
             Ok(()) => {
                 event.processing_state = BILLING_EVENT_PROCESSED.to_string();
                 event.last_error = None;
-                event.processed_at = Some(beijing_now_rfc3339());
+                event.processed_at = Some(local_now_rfc3339());
             }
             Err(error) => {
                 event.processing_state = BILLING_EVENT_FAILED.to_string();

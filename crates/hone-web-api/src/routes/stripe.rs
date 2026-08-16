@@ -306,7 +306,7 @@ pub(crate) async fn handle_stripe_webhook(
         processing_state: BILLING_EVENT_RECEIVED.to_string(),
         attempt_count: 0,
         last_error: None,
-        received_at: hone_core::beijing_now_rfc3339(),
+        received_at: hone_core::local_now_rfc3339(),
         processing_started_at: None,
         processed_at: None,
         normalized_payload: match serde_json::to_value(&normalized) {
@@ -1062,7 +1062,7 @@ fn apply_stripe_entitlement(
     } else {
         None
     };
-    let now = hone_core::beijing_now_rfc3339();
+    let now = hone_core::local_now_rfc3339();
     state
         .billing
         .upsert_entitlement(BillingEntitlement {

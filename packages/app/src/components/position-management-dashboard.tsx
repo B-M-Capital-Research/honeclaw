@@ -50,7 +50,7 @@ function formatPrice(value?: number | null) {
 function savedReportContext(snapshot: PositionManagementSnapshot, question: string) {
   const compact = {
     reportDate: snapshot.report_date,
-    generatedAtBJT: snapshot.generated_at_beijing,
+    generatedAtLocal: snapshot.generated_at_local,
     status: snapshot.status,
     frameworkVersion: snapshot.framework_version,
     macro: snapshot.macro_context,
@@ -153,7 +153,7 @@ export function PositionManagementPanel(props: Props) {
             <div class="position-management-meta">
               <b class={`is-${value().status}`}>{statusLabel(value().status)}</b>
               <span>报告日 {value().report_date}</span>
-              <span>{value().generated_at_beijing} 北京时间</span>
+              <span>{value().generated_at_local} {value().timezone}</span>
               <span>{value().framework_version}</span>
               <button type="button" onClick={() => void load()} disabled={loading()}>{loading() ? "读取中…" : "重新读取"}</button>
             </div>

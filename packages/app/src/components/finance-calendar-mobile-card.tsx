@@ -63,7 +63,7 @@ function eventLabel(event: FinanceCalendarEvent) {
 
 function eventTime(event: FinanceCalendarEvent) {
   return event.subtitle
-    ?.replace("北京时间 ", "")
+    ?.replace("运行时时区 ", "")
     .split(" · ")[0]
     ?.trim()
     .replace(" / ", "\n") || CONTENT.chat_page.calendar.pending;
@@ -110,7 +110,7 @@ export function FinanceCalendarMobileCard(props: {
       <header class="fcm-cover">
         <div class="fcm-cover__eyebrow">
           <span>HONE / 财经日历</span>
-          <strong>{CONTENT.chat_page.calendar.beijing_time} · {parsedMonth()?.year ?? ""}</strong>
+          <strong>{CONTENT.chat_page.calendar.local_time} · {parsedMonth()?.year ?? ""}</strong>
         </div>
         <div class="fcm-cover__body">
           <strong class="fcm-cover__month">

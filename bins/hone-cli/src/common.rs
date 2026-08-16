@@ -133,6 +133,8 @@ pub(crate) fn load_cli_config(
         )?;
     }
     let mut config = HoneConfig::from_file(&paths.canonical_config_path)?;
+    hone_core::configure_runtime_timezone(config.timezone.as_deref())
+        .map_err(hone_core::HoneError::Config)?;
     config.apply_runtime_overrides(
         Some(paths.data_dir.as_path()),
         Some(paths.skills_dir.as_path()),

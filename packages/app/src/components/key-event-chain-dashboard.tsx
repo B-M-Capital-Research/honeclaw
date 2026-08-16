@@ -104,7 +104,7 @@ export function KeyEventChainPanel(props: Props) {
     if (!report || !current || !query || !props.onAsk) return;
     const saved = {
       reportDate: report.report_date,
-      generatedAtBJT: report.generated_at_beijing,
+      generatedAtLocal: report.generated_at_local,
       status: report.status,
       evidenceFilter: evidenceFilter(),
       topic: current,
@@ -116,7 +116,7 @@ export function KeyEventChainPanel(props: Props) {
         subject: "已保存的关键事件链",
         question: query,
         rules: [
-          "逐条附原文链接和北京时间",
+          "逐条附原文链接和运行时时区",
           "只有 verification_status=confirmed 才可称为已确认里程碑，clue 只能作为待核实线索",
           "区分来源事实、作者观点与 HONE 推断",
           "聚合翻译和管理员研究资料不是一手事实",
@@ -148,7 +148,7 @@ export function KeyEventChainPanel(props: Props) {
         <div class="key-chain-meta">
           <b>{statusLabel(snapshot()?.status ?? "")}</b>
           <span>近 {snapshot()?.lookback_days ?? 30} 天</span>
-          <span>{snapshot()?.generated_at_beijing ?? "—"} 北京时间</span>
+          <span>{snapshot()?.generated_at_local ?? "—"} {snapshot()?.timezone}</span>
           <button onClick={() => void load()}>重新读取</button>
         </div>
 
@@ -214,7 +214,7 @@ export function KeyEventChainPanel(props: Props) {
                     <For each={visibleEvents()}>
                       {(event) => (
                         <article data-verification={event.verification_status}>
-                          <time>{event.published_at_beijing} 北京时间</time>
+                          <time>{event.published_at_local} {snapshot()?.timezone}</time>
                           <div>
                             <div class="key-chain-event-meta">
                               <b>{event.source_name}</b>

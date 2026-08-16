@@ -87,6 +87,7 @@ describe("notifications-model", () => {
   })
 
   it("derives chart helper values from histogram data", () => {
+    setLocale("zh")
     const peakHistogramBucket = {
       bucket_start: "2026-05-13T01:00:00.000Z",
       total: 8,
@@ -133,6 +134,6 @@ describe("notifications-model", () => {
     })
 
     expect(bucketHourLabel("not-a-date", "zh")).toBe("not-a-date")
-    expect(bucketHourLabel("2026-05-13T00:00:00.000Z", "zh")).toMatch(/08/)
+    expect(bucketHourLabel("2026-05-13T00:00:00.000Z", "zh")).toMatch(/^\d{2}时$/)
   })
 })

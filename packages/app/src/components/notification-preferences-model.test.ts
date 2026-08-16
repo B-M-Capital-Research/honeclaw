@@ -205,7 +205,7 @@ describe("notification-preferences-model", () => {
   })
 
   it("normalizes scalar preference inputs", () => {
-    expect(timezonePrefFromInput(" Asia/Shanghai ")).toBe("Asia/Shanghai")
+    expect(timezonePrefFromInput(" runtime timezone ")).toBe("runtime timezone")
     expect(timezonePrefFromInput("   ")).toBeNull()
     expect(priceHighOverrideFromInput("", 3)).toBeNull()
     expect(priceHighOverrideFromInput("4.5", null)).toBe(4.5)

@@ -153,7 +153,7 @@ pub fn build_overview_with_cron_jobs(
     let timezone = prefs
         .timezone
         .clone()
-        .unwrap_or_else(|| "Asia/Shanghai".to_string());
+        .unwrap_or_else(hone_core::runtime_timezone_name);
 
     let mut schedule: Vec<ScheduleEntry> = Vec::new();
 

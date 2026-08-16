@@ -14,7 +14,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
 use hone_event_engine::{
     EventKind, EventSource, FmpClient, MarketEvent, NewsPoller, Severity, SourceSchedule,
@@ -41,7 +40,7 @@ pub(crate) struct PortfolioNewsItem {
     pub symbol: String,
     pub title: String,
     pub published_at: DateTime<Utc>,
-    pub published_at_beijing: String,
+    pub published_at_local: String,
     pub source: String,
     pub source_url: String,
     pub source_summary: String,
@@ -70,7 +69,8 @@ pub(crate) struct PortfolioNewsCounts {
 pub(crate) struct PortfolioNewsSnapshot {
     pub report_date: String,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub model_version: String,
@@ -646,14 +646,13 @@ fn snapshot_for_portfolio(
     let summary = snapshot_summary(status, &counts, &covered_symbols, &missing_symbols);
     let now = Utc::now();
     PortfolioNewsSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
         source_status: source_status.to_string(),
@@ -723,9 +722,7 @@ fn item_from_event(
         symbol: symbol.to_string(),
         title: event.title.clone(),
         published_at: event.occurred_at,
-        published_at_beijing: event
-            .occurred_at
-            .with_timezone(&Shanghai)
+        published_at_local: hone_core::local_time_at(event.occurred_at)
             .format("%m-%d %H:%M")
             .to_string(),
         source: source_label(event),
@@ -874,14 +871,13 @@ fn empty_snapshot(
 ) -> PortfolioNewsSnapshot {
     let now = Utc::now();
     PortfolioNewsSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
         source_status: "not_run".to_string(),
@@ -928,7 +924,7 @@ async fn write_snapshot(
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn truncate_chars(value: &str, max: usize) -> String {
@@ -1048,9 +1044,9 @@ mod tests {
     }
 
     #[test]
-    fn next_refresh_is_2000_beijing() {
+    fn next_refresh_is_2000_local() {
         let now = Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap();
-        let next = next_refresh(now).with_timezone(&Shanghai);
+        let next = hone_core::local_time_at(next_refresh(now));
         assert_eq!((next.hour(), next.minute()), (20, 0));
         assert_eq!(next.day(), 11);
     }

@@ -104,7 +104,7 @@ fn recorded_runner_result(content: &str, success: bool) -> AgentRunnerResult {
 #[test]
 fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
     let response = AgentResponse {
-        content: "北京时间 2026年7月23日 08:31。\n\nTEM：本轮未见 AACR、合作或财报催化触发，继续跟踪价格与公告窗口。".to_string(),
+        content: "运行时时区 2026年7月23日 08:31。\n\nTEM：本轮未见 AACR、合作或财报催化触发，继续跟踪价格与公告窗口。".to_string(),
         tool_calls_made: vec![
             ToolCallMade {
                 name: "data_fetch".to_string(),
@@ -158,7 +158,7 @@ fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_c
 
 #[test]
 fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
-    let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Beijing offset");
+    let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Local offset");
     let original = offset
         .with_ymd_and_hms(2026, 7, 19, 9, 31, 42)
         .single()
@@ -524,7 +524,7 @@ struct MockLlmState {
 }
 
 const MOCK_SERVICE_OWNED_PREFIX_TOKEN: &str = "{{service_owned_initial_prefix}}";
-const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
+const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
 const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str =
     "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
@@ -1659,7 +1659,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "committed-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         AgentRunnerResult {
             response: AgentResponse {
@@ -1739,7 +1739,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
 
 #[test]
 fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite() {
-    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let mut persistent_failure = AgentRunnerResult {
         response: AgentResponse {
             content: String::new(),
@@ -2010,7 +2010,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
 async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
     let root = make_temp_dir("hone_channels_persistent_trace_committed_prefix");
     std::fs::create_dir_all(&root).expect("create root");
-    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let runs = Arc::new(Mutex::new(VecDeque::from([MockStreamingRun {
         events: vec![AgentRunnerEvent::CommittedStreamDelta {
             content: committed.to_string(),
@@ -2199,7 +2199,7 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
 
 #[test]
 fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
-    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut aligned = AgentResponse {
         content: format!("\n\u{3000}\t{prefix}\n\n候选结论"),
         tool_calls_made: Vec::new(),
@@ -2224,7 +2224,7 @@ fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
 
 #[test]
 fn committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content() {
-    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut tail_only = AgentResponse {
         content: "\n\n候选结论".to_string(),
         tool_calls_made: Vec::new(),
@@ -2331,7 +2331,7 @@ async fn service_prefix_conflicting_time_header_is_recovered_without_generic_fai
     let root = make_temp_dir("hone_channels_service_prefix_conflicting_header");
     std::fs::create_dir_all(&root).expect("create root");
     let recovered = concat!(
-        "数据时间：北京时间 2026-07-25 02:59；行情口径：另一条首行\n\n",
+        "数据时间：运行时时区 2026-07-25 02:59；行情口径：另一条首行\n\n",
         "已按本轮可核验证据完成数据中心候选筛选。"
     );
     let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
@@ -2953,7 +2953,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
 
     assert!(!result.response.success);
     assert!(
-        result.response.content.starts_with("数据时间：北京时间 "),
+        result.response.content.starts_with("数据时间：运行时时区 "),
         "content={} calls={:?}",
         result.response.content,
         result.response.tool_calls_made
@@ -3011,7 +3011,12 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         .await;
     assert!(fallback.response.success);
     assert!(fallback.response.error.is_none());
-    assert!(fallback.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        fallback
+            .response
+            .content
+            .starts_with("数据时间：运行时时区 ")
+    );
     assert!(
         fallback
             .response
@@ -3156,7 +3161,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         "deterministic fallback failed: {:?}",
         result.response.error
     );
-    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
     assert!(
         result
             .response
@@ -3392,7 +3397,7 @@ async fn interactive_contract_cannot_authorize_repair_fallback_or_replay() {
     let actor = ActorIdentity::new("web", "interactive-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let original_answer =
-        "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果\n\n这是 Agent 的原始回答。";
+        "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮工具结果\n\n这是 Agent 的原始回答。";
     let forbidden_repair = "这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。";
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         AgentRunnerResult {
@@ -3639,7 +3644,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "fund-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let forbidden_call = ToolCallMade {
         name: "data_fetch".into(),
         arguments: serde_json::json!({"data_type":"financials","ticker":"INTL"}),
@@ -3742,7 +3747,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
 
     assert!(result.response.success);
     assert!(result.response.error.is_none());
-    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
     for section in 1..=9 {
         assert!(result.response.content.contains(&format!("## {section}.")));
     }
@@ -3761,7 +3766,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "visible-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let visible = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let visible = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let raw =
         format!("<think>\n1. 先规划输出\n2. 这里是内部推理，不是基金目标章节\n</think>\n{visible}");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -3852,7 +3857,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         .await;
 
     assert!(result.response.success);
-    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
     assert!(
         result
             .response
@@ -5276,7 +5281,7 @@ fn response_leaks_system_prompt_detects_prefixed_echo() {
         "\n### System Instructions ###\nsecret"
     ));
     assert!(response_leaks_system_prompt(
-        "数据时间：北京时间 2026-07-22 10:00；行情口径：最新可得\n\n### System Prompt ###\nsecret"
+        "数据时间：运行时时区 2026-07-22 10:00；行情口径：最新可得\n\n### System Prompt ###\nsecret"
     ));
     assert!(response_leaks_system_prompt(
         "正常开头\n【Invoked Skill Context】\nsecret"
@@ -5826,7 +5831,7 @@ fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text()
             &session_id,
             vec![session_message_from_normalized(
                 &message,
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
             )],
         )
         .expect("append assistant");
@@ -6082,7 +6087,7 @@ fn restore_context_injects_invoked_skills_before_message_window() {
             "effort": null,
             "agent": null,
             "loaded_from": "slash",
-            "updated_at": hone_core::beijing_now_rfc3339()
+            "updated_at": hone_core::local_now_rfc3339()
         }]),
     );
     storage
@@ -6122,7 +6127,7 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
                 "effort": null,
                 "agent": null,
                 "loaded_from": "slash",
-                "updated_at": hone_core::beijing_now_rfc3339()
+                "updated_at": hone_core::local_now_rfc3339()
             },
             {
                 "skill_name": "alpha",
@@ -6135,7 +6140,7 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
                 "effort": null,
                 "agent": null,
                 "loaded_from": "slash",
-                "updated_at": hone_core::beijing_now_rfc3339()
+                "updated_at": hone_core::local_now_rfc3339()
             }
         ]),
     );
@@ -6195,7 +6200,7 @@ fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
                 "effort": null,
                 "agent": null,
                 "loaded_from": "slash",
-                "updated_at": hone_core::beijing_now_rfc3339()
+                "updated_at": hone_core::local_now_rfc3339()
             })
         })
         .collect::<Vec<_>>();
@@ -6269,7 +6274,7 @@ fn restore_context_skips_invoked_skill_when_registry_disables_it() {
             "effort": null,
             "agent": null,
             "loaded_from": "slash",
-            "updated_at": hone_core::beijing_now_rfc3339()
+            "updated_at": hone_core::local_now_rfc3339()
         }]),
     );
     storage
@@ -6524,7 +6529,7 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
             "effort": null,
             "agent": null,
             "loaded_from": "tool",
-            "updated_at": hone_core::beijing_now_rfc3339()
+            "updated_at": hone_core::local_now_rfc3339()
         }]),
     );
     storage
@@ -6581,7 +6586,7 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
             "effort": null,
             "agent": null,
             "loaded_from": "tool",
-            "updated_at": hone_core::beijing_now_rfc3339()
+            "updated_at": hone_core::local_now_rfc3339()
         }]),
     );
     storage
@@ -6639,7 +6644,7 @@ async fn run_success_commits_daily_conversation_quota() {
     let result = session.run("hello", AgentRunOptions::default()).await;
     assert!(result.response.success, "{:?}", result.response.error);
 
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
@@ -6668,7 +6673,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     }]);
     let core = make_test_core(&root, llm.clone());
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let daily_limit = core.config.agent.daily_conversation_limit;
     core.delivered_push_context_store
         .as_ref()
@@ -7715,7 +7720,7 @@ async fn incomplete_natural_direct_final_recovers_before_whole_answer_publicatio
         ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
-        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+        "数据时间：运行时时区 2026-07-18 21:05；行情口径：",
         "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n这段终稿在传输结束前中断。");
@@ -7868,12 +7873,12 @@ async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
         ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
-        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+        "数据时间：运行时时区 2026-07-18 21:05；行情口径：",
         "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n未完成正文");
     let mismatched_recovery = concat!(
-        "数据时间：北京时间 2026-07-18 21:06；行情口径：不同前缀\n",
+        "数据时间：运行时时区 2026-07-18 21:06；行情口径：不同前缀\n",
         "恢复正文"
     );
     let llm = MockLlmProvider::with_tool_responses(vec![
@@ -8007,7 +8012,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         ActorIdentity::new("web", "crwv-nvidia-observational", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let timestamp = chrono::Utc::now().timestamp() - 60;
-    let answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n\nCRWV 与英伟达的关系是算力云客户/供应链关系。CRWV 本轮同代码现价 73.21 USD；在情景估值里可把当前价约 73 USD 作为近似锚点。后续估值结论由 Agent 按本轮工具上下文展开。";
+    let answer = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n\nCRWV 与英伟达的关系是算力云客户/供应链关系。CRWV 本轮同代码现价 73.21 USD；在情景估值里可把当前价约 73 USD 作为近似锚点。后续估值结论由 Agent 按本轮工具上下文展开。";
     let tool_call = |id: &str, arguments: Value, result: Value| ToolCallMade {
         name: "data_fetch".to_string(),
         arguments,
@@ -8434,7 +8439,7 @@ async fn speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere(
 }
 
 /// Users asked why LITE and COHR jumped and were told the market had not
-/// opened. Beijing evening is New York pre-market: the regular-session quote
+/// opened. Local evening is New York pre-market: the regular-session quote
 /// still reports the previous close, so unless the extended bar is preloaded
 /// the turn's first context genuinely looks like an unopened market.
 #[tokio::test]
@@ -8514,7 +8519,7 @@ async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-/// The reported SpaceX-report shape: at a Beijing afternoon (New York
+/// The reported SpaceX-report shape: at a Local afternoon (New York
 /// overnight, all sessions closed) the user asks why a stock fell after
 /// hours. The regular quote reports the completed close from before the drop,
 /// and the latest extended bar is hours old — but yesterday's post window is
@@ -8571,7 +8576,7 @@ async fn overnight_enrichment_keeps_yesterdays_post_session_summary() {
         false,
         "COHR 昨晚盘后为什么大跌",
         AgentTurnOrigin::Interactive,
-        // Beijing 14:30 = New York 02:30 — every US session closed.
+        // Local 14:30 = New York 02:30 — every US session closed.
         "2026-08-05 14:30",
         &mut runtime_input,
         &mut preloaded,
@@ -8890,7 +8895,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("工具结果原样留在当前上下文中")
                 && runtime_input.contains("完整 Stop + Done 自然终稿一次发送并原样持久化")
                 && runtime_input.contains("第一可见字符必须是“数”")
-                && runtime_input.contains("数据时间：北京时间 2026-07-19 09:31；行情口径：")
+                && runtime_input.contains("数据时间：运行时时区 2026-07-19 09:31；行情口径：")
                 && runtime_input.contains("禁止在该行之前输出 `---`、Markdown 标题")
                 && runtime_input.contains("终稿在事实旁内联来源标题与原始 URL")
                 && runtime_input.contains("以‘推断：’开头")
@@ -8967,7 +8972,7 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
                 .expect("eligible Web finance prefix");
             assert!(!configured.commit_before_model);
             let prefix = configured.content.as_str();
-            assert!(prefix.starts_with("数据时间：北京时间 "), "{prefix}");
+            assert!(prefix.starts_with("数据时间：运行时时区 "), "{prefix}");
             assert!(
                 prefix.ends_with(
                     "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
@@ -9067,7 +9072,7 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
         "an image-dependent turn must consume attachment evidence before any irreversible header"
     );
     assert!(
-        configured.content.starts_with("数据时间：北京时间 "),
+        configured.content.starts_with("数据时间：运行时时区 "),
         "{}",
         configured.content
     );
@@ -9146,7 +9151,7 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
                     "effort": null,
                     "agent": null,
                     "loaded_from": "slash",
-                    "updated_at": hone_core::beijing_now_rfc3339()
+                    "updated_at": hone_core::local_now_rfc3339()
                 }]),
             )]),
         )
@@ -10010,7 +10015,7 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
                 usage: None,
             }),
             Ok(ChatResponse {
-                content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
+                content: "数据时间：运行时时区 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
                 reasoning_content: None,
                 tool_calls: None,
                 usage: None,
@@ -10044,7 +10049,7 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
         result.response.tool_calls_made
     );
     assert!(
-        result.response.content.starts_with("数据时间：北京时间 "),
+        result.response.content.starts_with("数据时间：运行时时区 "),
         "content={} calls={:?}",
         result.response.content,
         result.response.tool_calls_made
@@ -10163,7 +10168,7 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
         assert!(result.response.success, "{:?}", result.response.error);
     }
 
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
@@ -10201,7 +10206,7 @@ async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer(
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 1);
 
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
@@ -10732,7 +10737,7 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
     assert_eq!(result.response.content, "Conversation compacted.");
     assert_eq!(llm.chat_calls(), 1);
 
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
@@ -10926,7 +10931,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
     }]);
     let core = make_test_core(&root, llm);
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
-    let today = hone_core::beijing_now().format("%F").to_string();
+    let today = hone_core::local_now().format("%F").to_string();
     let daily_limit = core.config.agent.daily_conversation_limit;
 
     for _ in 0..daily_limit {

@@ -3,7 +3,7 @@ import { makeContentProxy } from "../i18n"
 const ZH = {
   list: {
     title: "任务中心",
-    subtitle: "管理定时触发的工作流（东八区）",
+    subtitle: "管理按运行时时区触发的工作流",
     new_button: "新建",
     not_scheduled: "未调度",
     empty_title: "目前没有定时任务",
@@ -56,7 +56,7 @@ const ZH = {
     save_button: "保存设置",
     saving_button: "保存中…",
     history_title: "执行记录",
-    history_subtitle: "所有时间统一按东八区（Asia/Shanghai）展示",
+    history_subtitle: "所有时间统一按运行时时区展示",
     history_count: "最近 {count} 条",
     history_empty: "暂无执行记录",
     history_col_time: "时间",
@@ -89,7 +89,7 @@ const ZH = {
 const EN: typeof ZH = {
   list: {
     title: "Tasks",
-    subtitle: "Manage scheduled workflows (Asia/Shanghai).",
+    subtitle: "Manage scheduled workflows (runtime timezone).",
     new_button: "New",
     not_scheduled: "Not scheduled",
     empty_title: "No scheduled tasks",
@@ -142,7 +142,7 @@ const EN: typeof ZH = {
     save_button: "Save",
     saving_button: "Saving…",
     history_title: "Execution history",
-    history_subtitle: "All times shown in Asia/Shanghai.",
+    history_subtitle: "All times shown in runtime timezone.",
     history_count: "Last {count} runs",
     history_empty: "No executions yet",
     history_col_time: "Time",

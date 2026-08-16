@@ -3,7 +3,7 @@ use hone_core::cloud_runtime::{
     CloudWebUserExternalStateRecord,
 };
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
-use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
+use hone_core::{HoneError, HoneResult, local_now, local_now_rfc3339, rfc3339_at_or_before};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -341,13 +341,13 @@ impl WebAuthStorage {
     }
 
     pub fn web_admin_create_count_today(&self, admin_user_id: &str) -> HoneResult<u32> {
-        let beijing_date = beijing_now().format("%F").to_string();
+        let local_date = local_now().format("%F").to_string();
 
         let postgres = self.postgres.clone();
         let admin_user_id = admin_user_id.to_string();
         return run_cloud_web_auth(async move {
             postgres
-                .web_admin_create_count_for_date(&admin_user_id, &beijing_date)
+                .web_admin_create_count_for_date(&admin_user_id, &local_date)
                 .await
         });
     }
@@ -357,9 +357,9 @@ impl WebAuthStorage {
         admin_user_id: &str,
         phone_number: &str,
     ) -> HoneResult<WebAdminInviteCreateOutcome> {
-        let now = beijing_now();
+        let now = local_now();
         let created_at = now.to_rfc3339();
-        let beijing_date = now.format("%F").to_string();
+        let local_date = now.format("%F").to_string();
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
 
@@ -399,7 +399,7 @@ impl WebAuthStorage {
                     &user_id,
                     &phone_number,
                     record,
-                    &beijing_date,
+                    &local_date,
                     WEB_ADMIN_DAILY_INVITE_LIMIT,
                 )
                 .await
@@ -426,8 +426,8 @@ impl WebAuthStorage {
         admin_user_id: &str,
         target_user_id: &str,
     ) -> HoneResult<WebAdminInviteDisableOutcome> {
-        let now = beijing_now();
-        let beijing_date = now.format("%F").to_string();
+        let now = local_now();
+        let local_date = now.format("%F").to_string();
         let now = now.to_rfc3339();
 
         let postgres = self.postgres.clone();
@@ -439,7 +439,7 @@ impl WebAuthStorage {
                     &admin_user_id,
                     &target_user_id,
                     &now,
-                    &beijing_date,
+                    &local_date,
                 )
                 .await
         })?;
@@ -467,7 +467,7 @@ impl WebAuthStorage {
     }
 
     pub fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
-        let created_at = beijing_now_rfc3339();
+        let created_at = local_now_rfc3339();
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
 
@@ -534,7 +534,7 @@ impl WebAuthStorage {
         let Some((user, mut state)) = self.find_external_user_by_email(email_address)? else {
             return Ok(None);
         };
-        let now = beijing_now();
+        let now = local_now();
         let code = generate_email_verification_code();
         state.email_challenge = Some(EmailVerificationChallenge {
             code_hash: hash_email_verification_code(&user.user_id, &code),
@@ -562,7 +562,7 @@ impl WebAuthStorage {
             self.save_external_state(&user, state)?;
             return Ok(EmailVerificationResult::AttemptsExceeded);
         }
-        if challenge.expires_at <= beijing_now_rfc3339() {
+        if rfc3339_at_or_before(&challenge.expires_at, &local_now_rfc3339()) {
             self.save_external_state(&user, state)?;
             return Ok(EmailVerificationResult::Expired);
         }
@@ -578,7 +578,7 @@ impl WebAuthStorage {
                 EmailVerificationResult::Invalid
             });
         }
-        state.profile.email_verified_at = Some(beijing_now_rfc3339());
+        state.profile.email_verified_at = Some(local_now_rfc3339());
         self.save_external_state(&user, state)?;
         Ok(EmailVerificationResult::Verified {
             user_id: user.user_id,
@@ -586,7 +586,7 @@ impl WebAuthStorage {
     }
 
     fn create_international_email_user(&self, email_address: String) -> HoneResult<WebInviteUser> {
-        let created_at = beijing_now_rfc3339();
+        let created_at = local_now_rfc3339();
         let user_id = generate_user_id();
         let external_state = WebUserExternalState {
             profile: WebUserExternalProfile {
@@ -682,7 +682,7 @@ impl WebAuthStorage {
         if api_key.is_empty() {
             return Ok(None);
         }
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
         let api_key_hash = hash_api_key(api_key);
 
         let Some((mut user, stored_hash)) =
@@ -700,7 +700,7 @@ impl WebAuthStorage {
     }
 
     pub fn ensure_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let Some((mut existing, _existing_hash)) = self.cloud_find_invite_by("user_id", user_id)?
         else {
@@ -721,7 +721,7 @@ impl WebAuthStorage {
     }
 
     pub fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(None);
@@ -743,7 +743,7 @@ impl WebAuthStorage {
     ) -> HoneResult<Option<WebInviteSession>> {
         let invite_code = normalize_invite_code(invite_code);
         let phone_number = normalize_phone_number(phone_number);
-        let now = beijing_now();
+        let now = local_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let token = generate_session_token();
@@ -791,7 +791,7 @@ impl WebAuthStorage {
         &self,
         session_token: &str,
     ) -> HoneResult<WebSessionAuthResult> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
         let token_hash = hash_session_token(session_token);
 
         let postgres = self.postgres.clone();
@@ -809,7 +809,7 @@ impl WebAuthStorage {
         };
         let mut session: CloudWebAuthSessionRecord = serde_json::from_value(value)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        if session.expires_at <= now {
+        if rfc3339_at_or_before(&session.expires_at, &now) {
             self.delete_session(session_token)?;
             return Ok(WebSessionAuthResult::Expired {
                 user_id: session.user_id,
@@ -843,7 +843,7 @@ impl WebAuthStorage {
     }
 
     pub fn count_active_sessions_for_user(&self, user_id: &str) -> HoneResult<u32> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let postgres = self.postgres.clone();
         self.cloud_purge_expired_sessions(&now)?;
@@ -860,7 +860,7 @@ impl WebAuthStorage {
         user_id: &str,
         revoked: bool,
     ) -> HoneResult<Option<WebInviteMutation>> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         self.cloud_purge_expired_sessions(&now)?;
         let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
@@ -886,7 +886,7 @@ impl WebAuthStorage {
     }
 
     pub fn reset_invite_code(&self, user_id: &str) -> HoneResult<Option<WebInviteMutation>> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         self.cloud_purge_expired_sessions(&now)?;
         let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
@@ -935,7 +935,7 @@ impl WebAuthStorage {
         password_hash: &str,
         tos_version: &str,
     ) -> HoneResult<bool> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(false);
@@ -953,7 +953,7 @@ impl WebAuthStorage {
 
     /// 已设置密码后用于修改密码(/me 页)。不动 tos_accepted_at / tos_version。
     pub fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(false);
@@ -968,7 +968,7 @@ impl WebAuthStorage {
     }
 
     pub fn record_tos_acceptance(&self, user_id: &str, tos_version: &str) -> HoneResult<bool> {
-        let now = beijing_now_rfc3339();
+        let now = local_now_rfc3339();
 
         let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
             return Ok(false);
@@ -990,7 +990,7 @@ impl WebAuthStorage {
         user_id: &str,
         ttl_days: i64,
     ) -> HoneResult<Option<WebInviteSession>> {
-        let now = beijing_now();
+        let now = local_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(ttl_days)).to_rfc3339();
         let token = generate_session_token();
@@ -1294,7 +1294,7 @@ mod tests {
         generate_invite_code, generate_session_token, hash_session_token, run_cloud_web_auth,
     };
     use hone_core::cloud_runtime::CloudPgRuntime;
-    use hone_core::{HoneError, HoneResult, beijing_now};
+    use hone_core::{HoneError, HoneResult, local_now};
 
     fn test_storage() -> WebAuthStorage {
         let namespace =
@@ -1811,7 +1811,7 @@ WHERE s.user_id = $1
     fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
-        let now = beijing_now();
+        let now = local_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let legacy_token = "legacy-plaintext-session-token";
@@ -1849,7 +1849,7 @@ WHERE s.user_id = $1
     fn detailed_auth_reports_expired_and_missing_sessions() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
-        let now = beijing_now();
+        let now = local_now();
         let created_at = (now - chrono::Duration::days(2)).to_rfc3339();
         let expires_at = (now - chrono::Duration::days(1)).to_rfc3339();
         let raw_token = "expired-session-token";

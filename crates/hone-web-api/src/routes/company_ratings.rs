@@ -1,6 +1,6 @@
 //! Daily transcript-informed company ratings for the public chat workspace.
 //!
-//! The durable snapshot is refreshed at 19:30 Asia/Shanghai. FMP enriches the
+//! The durable snapshot is refreshed at 19:30 in the runtime timezone. FMP enriches the
 //! research baseline when configured; missing upstream data never becomes a
 //! zero and is surfaced through `data_status`, coverage, and confidence.
 
@@ -14,7 +14,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -101,7 +100,8 @@ pub(crate) struct RatingMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct DailyValuation {
     pub as_of: String,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub currency: String,
     pub bear_case: f64,
     pub base_case: f64,
@@ -202,7 +202,8 @@ pub(crate) struct RatingCoverage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct CompanyRatingSnapshot {
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub data_status: String,
@@ -314,9 +315,7 @@ pub(crate) async fn overview_card(
         "52 家研究基线",
     );
     card.report_date = Some(
-        snapshot
-            .generated_at
-            .with_timezone(&Shanghai)
+        hone_core::local_time_at(snapshot.generated_at)
             .format("%Y-%m-%d")
             .to_string(),
     );
@@ -330,7 +329,7 @@ pub(crate) async fn overview_card(
     Some(card)
 }
 
-/// Start an immediate best-effort refresh, then wait for 19:30 Beijing each day.
+/// Start an immediate best-effort refresh, then wait for 19:30 Local each day.
 pub(crate) async fn company_rating_worker(state: Arc<AppState>) {
     refresh_and_store(&state).await;
     loop {
@@ -450,7 +449,7 @@ fn simulation_preview_enabled(state: &AppState) -> bool {
 fn simulation_inputs(
     cards: &[CompanyCard],
 ) -> (HashMap<String, FinancialFact>, HashMap<String, ForwardFact>) {
-    let as_of = Utc::now().with_timezone(&Shanghai).date_naive().to_string();
+    let as_of = hone_core::local_now().date_naive().to_string();
     let mut financials = HashMap::new();
     let mut forward = HashMap::new();
     for card in cards {
@@ -596,12 +595,11 @@ fn snapshot_from_facts(
     });
     CompanyRatingSnapshot {
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         data_status,
         methodology_version: METHODOLOGY_VERSION.to_string(),
         simulation_note: if simulation {
@@ -1267,7 +1265,7 @@ async fn read_verified_forward_evidence(state: &AppState) -> HashMap<String, For
         warn!(path = %path.display(), "forward evidence file failed freshness validation");
         return HashMap::new();
     }
-    let today = now.with_timezone(&Shanghai).date_naive();
+    let today = hone_core::local_time_at(now).date_naive();
     file.items
         .into_iter()
         .filter_map(|item| {
@@ -1321,7 +1319,7 @@ async fn read_verified_fundamentals(state: &AppState) -> HashMap<String, Financi
         warn!(path = %path.display(), "daily fundamental file failed freshness validation");
         return HashMap::new();
     }
-    let today = now.with_timezone(&Shanghai).date_naive();
+    let today = hone_core::local_time_at(now).date_naive();
     file.items
         .into_iter()
         .filter_map(|item| {
@@ -1361,7 +1359,7 @@ async fn read_verified_valuations(state: &AppState) -> HashMap<String, DailyValu
         return HashMap::new();
     };
     let now = Utc::now();
-    let today = now.with_timezone(&Shanghai).date_naive().to_string();
+    let today = hone_core::local_time_at(now).date_naive().to_string();
     let expected_review_status = match file.framework_version.as_str() {
         "hari-invest-v1" => "verified",
         "hone-valuation-v2" => "computed",
@@ -1435,8 +1433,7 @@ fn validated_daily_valuation(
         symbol,
         DailyValuation {
             as_of: item.as_of,
-            generated_at_beijing: generated_at
-                .with_timezone(&Shanghai)
+            generated_at_local: hone_core::local_time_at(generated_at)
                 .format("%Y-%m-%d %H:%M")
                 .to_string(),
             currency: item.currency,
@@ -1598,7 +1595,7 @@ fn mark_stale_if_needed(mut snapshot: CompanyRatingSnapshot) -> CompanyRatingSna
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 #[cfg(test)]
@@ -1963,9 +1960,9 @@ mod tests {
     }
 
     #[test]
-    fn next_refresh_is_1930_beijing() {
+    fn next_refresh_is_1930_local() {
         let now = Utc.with_ymd_and_hms(2026, 8, 10, 8, 0, 0).unwrap();
-        let next = next_refresh(now).with_timezone(&Shanghai);
+        let next = hone_core::local_time_at(next_refresh(now));
         assert_eq!((next.hour(), next.minute()), (19, 30));
         assert_eq!(next.day(), 10);
     }

@@ -71,8 +71,8 @@ pub struct NotificationPrefs {
     /// `NewsCritical` 与此 prompt 一起送给 LLM 仲裁器,LLM 判 yes 即升 Medium。
     /// `None` → 走 `EventEngineConfig.news_importance_prompt` 全局默认。
     pub news_importance_prompt: Option<String>,
-    /// 用户所在 IANA 时区,如 `"Asia/Shanghai"`、`"America/New_York"`。
-    /// `None` → 沿用全局 `digest.timezone`。仅影响 digest 窗口的本地时刻解释。
+    /// 用户所在 IANA 时区,如 `"America/New_York"`、`"Europe/London"`。
+    /// `None` → 沿用进程运行时时区。仅影响 digest 窗口的本地时刻解释。
     pub timezone: Option<String>,
     /// Unified digest 的触发槽位列表。每条 slot = 一次推送。
     /// `None` → 走全局默认 `event_engine.digest.default_slots`;`Some(vec![])` = 完全关 digest。
@@ -448,7 +448,7 @@ impl NotificationPrefs {
             let timezone = timezone.trim();
             if timezone.is_empty() || timezone.parse::<chrono_tz::Tz>().is_err() {
                 return Err(HoneError::Config(format!(
-                    "未知 IANA 时区 {timezone:?};示例:Asia/Shanghai、America/New_York、Europe/London"
+                    "未知 IANA 时区 {timezone:?};示例:America/New_York、Europe/London"
                 )));
             }
         }

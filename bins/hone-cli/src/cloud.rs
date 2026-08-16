@@ -1772,7 +1772,13 @@ async fn run_community_contents(
     let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
         .ok_or_else(|| "Postgres 未配置，不能对账 community contents".to_string())?;
     let report = pg
-        .reconcile_community_contents(source, external_id, &candidates, args.apply)
+        .reconcile_community_contents(
+            source,
+            external_id,
+            &candidates,
+            &hone_core::runtime_timezone_name(),
+            args.apply,
+        )
         .await
         .map_err(|err| err.to_string())?;
     print_json(&report)

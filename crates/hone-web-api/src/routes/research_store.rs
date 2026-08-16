@@ -1,14 +1,13 @@
 //! Shared storage plumbing for the research sections.
 //!
 //! Every daily research product persists JSON snapshots under the same data
-//! root and refreshes on a Beijing wall-clock schedule. This module owns the
+//! root and refreshes on a Local wall-clock schedule. This module owns the
 //! three pieces they previously each re-implemented: deriving the data root,
-//! atomic JSON writes, and the "next HH:MM Asia/Shanghai" arithmetic.
+//! atomic JSON writes, and the next runtime-local `HH:MM` arithmetic.
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Datelike, TimeZone, Utc};
-use chrono_tz::Asia::Shanghai;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::state::AppState;
@@ -33,14 +32,34 @@ pub(crate) async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> a
     Ok(())
 }
 
-/// Next occurrence of `hour:minute` Beijing time strictly in the future of
+/// Next occurrence of `hour:minute` Local time strictly in the future of
 /// `now` (rolls to tomorrow once today's slot has passed).
-pub(crate) fn next_beijing_refresh(now: DateTime<Utc>, hour: u32, minute: u32) -> DateTime<Utc> {
-    let local = now.with_timezone(&Shanghai);
-    let today = Shanghai
-        .with_ymd_and_hms(local.year(), local.month(), local.day(), hour, minute, 0)
-        .single()
-        .expect("Shanghai local time is unambiguous");
+pub(crate) fn next_local_refresh(now: DateTime<Utc>, hour: u32, minute: u32) -> DateTime<Utc> {
+    next_local_refresh_in(&hone_core::runtime_timezone(), now, hour, minute)
+}
+
+fn next_local_refresh_in(
+    timezone: &hone_core::RuntimeTimezone,
+    now: DateTime<Utc>,
+    hour: u32,
+    minute: u32,
+) -> DateTime<Utc> {
+    let local = timezone.at_utc(now);
+    let today_naive = local
+        .date_naive()
+        .and_hms_opt(hour, minute, 0)
+        .expect("valid refresh wall-clock time");
+    let today = timezone
+        .from_local_datetime(&today_naive)
+        .earliest()
+        .or_else(|| {
+            (1..=180).find_map(|minutes| {
+                timezone
+                    .from_local_datetime(&(today_naive + chrono::Duration::minutes(minutes)))
+                    .earliest()
+            })
+        })
+        .expect("runtime timezone has a valid instant near the refresh slot");
     (if local < today {
         today
     } else {
@@ -52,35 +71,42 @@ pub(crate) fn next_beijing_refresh(now: DateTime<Utc>, hour: u32, minute: u32) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Timelike;
+    use chrono::{TimeZone, Timelike};
+
+    fn timezone() -> hone_core::RuntimeTimezone {
+        hone_core::RuntimeTimezone::parse_iana("America/New_York").unwrap()
+    }
 
     #[test]
     fn next_refresh_stays_today_before_the_slot() {
-        // 2026-08-08 11:00 UTC == 19:00 Beijing; 20:00 is still ahead today.
-        let now = Utc.with_ymd_and_hms(2026, 8, 8, 11, 0, 0).unwrap();
-        let next = next_beijing_refresh(now, 20, 0).with_timezone(&Shanghai);
+        let timezone = timezone();
+        // 2026-01-15 23:00 UTC == 18:00 New York; 20:00 is still ahead today.
+        let now = Utc.with_ymd_and_hms(2026, 1, 15, 23, 0, 0).unwrap();
+        let next = timezone.at_utc(next_local_refresh_in(&timezone, now, 20, 0));
         assert_eq!((next.hour(), next.minute()), (20, 0));
-        assert_eq!(next.date_naive().to_string(), "2026-08-08");
+        assert_eq!(next.date_naive().to_string(), "2026-01-15");
     }
 
     #[test]
     fn next_refresh_rolls_to_tomorrow_after_the_slot() {
-        // 2026-08-08 13:00 UTC == 21:00 Beijing; 20:00 already passed.
-        let now = Utc.with_ymd_and_hms(2026, 8, 8, 13, 0, 0).unwrap();
-        let next = next_beijing_refresh(now, 20, 0).with_timezone(&Shanghai);
-        assert_eq!(next.date_naive().to_string(), "2026-08-09");
+        let timezone = timezone();
+        // 2026-01-16 02:00 UTC == 21:00 New York; 20:00 already passed.
+        let now = Utc.with_ymd_and_hms(2026, 1, 16, 2, 0, 0).unwrap();
+        let next = timezone.at_utc(next_local_refresh_in(&timezone, now, 20, 0));
+        assert_eq!(next.date_naive().to_string(), "2026-01-16");
         // Minute-level slots are honoured as-is.
-        let next = next_beijing_refresh(now, 19, 55).with_timezone(&Shanghai);
+        let next = timezone.at_utc(next_local_refresh_in(&timezone, now, 19, 55));
         assert_eq!((next.hour(), next.minute()), (19, 55));
-        assert_eq!(next.date_naive().to_string(), "2026-08-09");
+        assert_eq!(next.date_naive().to_string(), "2026-01-16");
     }
 
     #[test]
     fn next_refresh_runs_on_weekends_too() {
-        // 2026-08-09 is a Sunday.
-        let now = Utc.with_ymd_and_hms(2026, 8, 9, 1, 0, 0).unwrap();
-        let next = next_beijing_refresh(now, 19, 30).with_timezone(&Shanghai);
-        assert_eq!(next.date_naive().to_string(), "2026-08-09");
+        let timezone = timezone();
+        // 2026-01-18 is a Sunday in New York.
+        let now = Utc.with_ymd_and_hms(2026, 1, 18, 16, 0, 0).unwrap();
+        let next = timezone.at_utc(next_local_refresh_in(&timezone, now, 19, 30));
+        assert_eq!(next.date_naive().to_string(), "2026-01-18");
         assert_eq!((next.hour(), next.minute()), (19, 30));
     }
 

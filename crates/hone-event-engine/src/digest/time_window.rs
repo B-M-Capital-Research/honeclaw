@@ -12,9 +12,19 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveTime, TimeZone, Timelike, Utc
 
 /// 判断 `now` 对应的本地时间（按 `offset_hours` 解释）是否处于给定 HH:MM 的 60 秒窗口内。
 pub fn in_window(now: DateTime<Utc>, hhmm: &str, offset_hours: i32) -> bool {
-    let offset =
-        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
+    in_window_timezone(
+        now,
+        hhmm,
+        &hone_core::RuntimeTimezone::fixed_offset_seconds(offset_hours * 3600),
+    )
+}
+
+pub fn in_window_timezone(
+    now: DateTime<Utc>,
+    hhmm: &str,
+    timezone: &hone_core::RuntimeTimezone,
+) -> bool {
+    let local = timezone.at_utc(now);
     let Ok(target) = NaiveTime::parse_from_str(hhmm, "%H:%M") else {
         return false;
     };
@@ -36,19 +46,21 @@ pub fn shift_hhmm_earlier(hhmm: &str, offset_mins: u32) -> String {
 
 /// 当前本地日期（粗略）—— 用于 flush key 防止同一天重复触发。
 pub fn local_date_key(now: DateTime<Utc>, offset_hours: i32) -> String {
-    let offset =
-        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
-    format!(
-        "{:04}-{:02}-{:02}",
-        local.year(),
-        local.month(),
-        local.day()
+    local_date_key_timezone(
+        now,
+        &hone_core::RuntimeTimezone::fixed_offset_seconds(offset_hours * 3600),
     )
 }
 
+pub fn local_date_key_timezone(
+    now: DateTime<Utc>,
+    timezone: &hone_core::RuntimeTimezone,
+) -> String {
+    timezone.date_key(now)
+}
+
 /// 调度器内部用的"有效时区"——优先 IANA 名称(尊重 DST/历史偏移),否则回到全局
-/// FixedOffset。这层抽象让 actor 的 prefs.timezone 与全局 `digest.timezone` 共用同
+/// FixedOffset。这层抽象让 actor 的 prefs.timezone 与进程运行时时区共用同
 /// 一套窗口/日期判断函数,不必双份实现。
 #[derive(Debug, Clone)]
 pub(crate) enum EffectiveTz {
@@ -57,18 +69,23 @@ pub(crate) enum EffectiveTz {
 }
 
 impl EffectiveTz {
-    pub(crate) fn from_actor_prefs(prefs_tz: Option<&str>, fallback_offset_hours: i32) -> Self {
+    pub(crate) fn from_actor_prefs(
+        prefs_tz: Option<&str>,
+        fallback: &hone_core::RuntimeTimezone,
+    ) -> Self {
         if let Some(name) = prefs_tz {
             if let Ok(tz) = name.parse::<chrono_tz::Tz>() {
                 return EffectiveTz::Iana(tz);
             }
             tracing::warn!(
-                "actor prefs.timezone {name:?} 解析失败,回到全局 fallback_offset_hours={fallback_offset_hours}"
+                fallback_timezone = %fallback.name(),
+                "actor prefs.timezone {name:?} 解析失败,回到运行时时区"
             );
         }
-        let offset = FixedOffset::east_opt(fallback_offset_hours * 3600)
-            .unwrap_or(FixedOffset::east_opt(0).unwrap());
-        EffectiveTz::Fixed(offset)
+        match fallback {
+            hone_core::RuntimeTimezone::Iana(timezone) => EffectiveTz::Iana(*timezone),
+            hone_core::RuntimeTimezone::Fixed(offset) => EffectiveTz::Fixed(*offset),
+        }
     }
 
     pub(crate) fn local_hm(&self, now: DateTime<Utc>) -> (u32, u32) {

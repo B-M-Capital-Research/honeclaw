@@ -92,6 +92,6 @@ describe("chat accessibility layout", () => {
     expect(source).toContain("HONE 投资助手");
     expect(source).toContain("<span>投资助手</span>");
     expect(source).not.toContain("<span>Agent</span>");
-    expect(source).toContain("北京时间");
+    expect(source).toContain("运行时时区");
   });
 });

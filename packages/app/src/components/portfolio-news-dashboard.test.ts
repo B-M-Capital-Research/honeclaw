@@ -33,7 +33,7 @@ describe("portfolio news dashboard contract", () => {
 
   test("keeps provenance, analysis status and fail-closed states visible", () => {
     expect(component).toContain("item.source_url");
-    expect(component).toContain("published_at_beijing");
+    expect(component).toContain("published_at_local");
     expect(component).toContain("unassessed");
     expect(component).toContain("等待新闻数据源");
     expect(component).toContain("待模型分析");

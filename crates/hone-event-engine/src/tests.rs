@@ -1801,7 +1801,7 @@ async fn replay_two_weeks_and_push() {
     };
 
     // ── 6. 组装消息:即时逐条,摘要按北京日合并 ──────────────
-    let beijing_day = |e: &MarketEvent| (e.occurred_at + Duration::hours(8)).date_naive();
+    let local_day = |e: &MarketEvent| (e.occurred_at + Duration::hours(8)).date_naive();
     let mut immediates: Vec<(chrono::NaiveDate, chrono::DateTime<Utc>, String)> = Vec::new();
     let mut digest_by_day: BTreeMap<chrono::NaiveDate, Vec<MarketEvent>> = BTreeMap::new();
     let (mut n_imm, mut n_dig) = (0usize, 0usize);
@@ -1813,7 +1813,7 @@ async fn replay_two_weeks_and_push() {
         match route_for(&event) {
             Some(Route::Immediate) => {
                 let symbol = event.symbols.first().cloned().unwrap_or_default();
-                let day = beijing_day(&event);
+                let day = local_day(&event);
                 let cooled = last_immediate_at
                     .get(&symbol)
                     .is_some_and(|at| event.occurred_at - *at < Duration::minutes(60));
@@ -1831,7 +1831,7 @@ async fn replay_two_weeks_and_push() {
                 let stamp = (annotated.occurred_at + Duration::hours(8)).format("%m-%d %H:%M");
                 let body = render_immediate(&annotated, RenderFormat::DiscordMarkdown);
                 immediates.push((
-                    beijing_day(&annotated),
+                    local_day(&annotated),
                     annotated.occurred_at,
                     format!("🔁 回放 {stamp}(北京)\n{body}"),
                 ));
@@ -1840,7 +1840,7 @@ async fn replay_two_weeks_and_push() {
             Some(Route::Digest) => {
                 let annotated = annotate(event);
                 digest_by_day
-                    .entry(beijing_day(&annotated))
+                    .entry(local_day(&annotated))
                     .or_default()
                     .push(annotated);
                 n_dig += 1;

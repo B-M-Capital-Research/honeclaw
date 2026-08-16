@@ -109,7 +109,7 @@ fn earnings_pdf_validation_recovery_runtime_input(
 pub(super) struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
-    prompt_time_beijing: DateTime<FixedOffset>,
+    prompt_time_local: DateTime<FixedOffset>,
     pub(super) reexecution_policy: PreparedTurnReexecutionPolicy,
     pub(super) main_agent_entity_discovery_input: Option<String>,
     /// Business evidence the service loaded into `runtime_suffix` before the
@@ -135,7 +135,7 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     ExecuteOnce,
 }
 
-const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
+const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
 const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
 const DELIVERED_PUSH_CONTEXT_MAX_RECORDS: usize = 20;
 const DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS: usize = 12_000;
@@ -1304,9 +1304,9 @@ impl AgentSession {
                 );
             }
         }
-        let prompt_time_beijing = prompt_time_for_attempt(
-            prepared_investment.map(|prepared| prepared.prompt_time_beijing),
-            hone_core::beijing_now(),
+        let prompt_time_local = prompt_time_for_attempt(
+            prepared_investment.map(|prepared| prepared.prompt_time_local),
+            hone_core::local_now(),
         );
         let use_native_codex_turn_input = options.runner_override.is_none()
             && options.turn_origin == AgentTurnOrigin::Interactive
@@ -1315,11 +1315,11 @@ impl AgentSession {
                 .effective_runner_uses_native_codex_turns(&self.actor)
                 || (self.prompt_options.is_admin
                     && self.core.configured_runner_uses_native_codex_turns()));
-        let (mut system_prompt, mut runtime_input, answer_time_beijing) = self
+        let (mut system_prompt, mut runtime_input, answer_time_local) = self
             .resolve_prompt_input_at(
                 session_id,
                 runtime_user_input,
-                prompt_time_beijing,
+                prompt_time_local,
                 !use_fast_interactive_context
                     && !use_current_turn_only_context
                     && !use_isolated_prior_history,
@@ -1354,7 +1354,7 @@ impl AgentSession {
             PreparedInvestmentContext {
                 contract: None,
                 runtime_suffix: String::new(),
-                prompt_time_beijing,
+                prompt_time_local,
                 reexecution_policy: PreparedTurnReexecutionPolicy::Allowed,
                 main_agent_entity_discovery_input: None,
                 preloaded_evidence_calls: 0,
@@ -1370,7 +1370,7 @@ impl AgentSession {
             PreparedInvestmentContext {
                 contract: None,
                 runtime_suffix: String::new(),
-                prompt_time_beijing,
+                prompt_time_local,
                 reexecution_policy: prepared_turn_reexecution_policy(entity_resolution_input),
                 // Keep server-side read-only trace diagnostics without
                 // injecting their tool-loop instructions into the user turn.
@@ -1424,7 +1424,7 @@ impl AgentSession {
                     self.allow_cron,
                     entity_resolution_input,
                     options.turn_origin,
-                    &answer_time_beijing,
+                    &answer_time_local,
                     &mut runtime_input,
                     &mut preloaded_evidence_calls,
                     emit_preturn_progress.then_some(&progress_tx),
@@ -1461,7 +1461,7 @@ impl AgentSession {
             PreparedInvestmentContext {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
-                prompt_time_beijing,
+                prompt_time_local,
                 reexecution_policy: prepared_turn_reexecution_policy(entity_resolution_input),
                 main_agent_entity_discovery_input: main_agent_entity_discovery
                     .then(|| entity_resolution_input.to_string()),
@@ -1591,7 +1591,8 @@ impl AgentSession {
             execution.runner_request.service_owned_initial_prefix = Some(
                 ServiceOwnedInitialPrefix {
                     content: format!(
-                        "数据时间：北京时间 {answer_time_beijing}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
+                        "数据时间：运行时时区 {answer_time_local}；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
+                        hone_core::runtime_timezone_name()
                     ),
                     // Preserve the established first-line format, but publish
                     // it only with a completed usable answer. Whole-answer
@@ -1628,7 +1629,7 @@ impl AgentSession {
             session_id,
             vec![session_message_from_normalized(
                 &message,
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
             )],
         );
     }
@@ -1666,7 +1667,7 @@ impl AgentSession {
             session_id,
             vec![session_message_from_normalized(
                 &message,
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
             )],
         );
     }
@@ -1925,20 +1926,14 @@ impl AgentSession {
         session_id: &str,
         user_input: &str,
     ) -> (String, String, String) {
-        self.resolve_prompt_input_at(
-            session_id,
-            user_input,
-            hone_core::beijing_now(),
-            true,
-            false,
-        )
+        self.resolve_prompt_input_at(session_id, user_input, hone_core::local_now(), true, false)
     }
 
     fn resolve_prompt_input_at(
         &self,
         session_id: &str,
         user_input: &str,
-        prompt_time_beijing: DateTime<FixedOffset>,
+        prompt_time_local: DateTime<FixedOffset>,
         include_conversation_context: bool,
         use_native_codex_turn_input: bool,
     ) -> (String, String, String) {
@@ -1952,14 +1947,14 @@ impl AgentSession {
         )
         .resolve_prompt_input_at(
             user_input,
-            prompt_time_beijing,
+            prompt_time_local,
             include_conversation_context,
             use_native_codex_turn_input,
         );
         (
             turn.system_prompt,
             turn.runtime_input,
-            turn.answer_time_beijing,
+            turn.answer_time_local,
         )
     }
 
@@ -2018,7 +2013,7 @@ impl AgentSession {
             effort: None,
             agent: None,
             loaded_from: "slash".to_string(),
-            updated_at: hone_core::beijing_now_rfc3339(),
+            updated_at: hone_core::local_now_rfc3339(),
         });
         let mut metadata = HashMap::new();
         metadata.insert(
@@ -2263,9 +2258,10 @@ impl AgentSession {
             ConversationQuotaReserveResult::Bypassed => Ok(None),
             ConversationQuotaReserveResult::Rejected(snapshot) => {
                 Err(hone_core::HoneError::Other(format!(
-                    "已达到今日对话上限（{}/{}，北京时间 {}），请明天再试",
+                    "已达到今日对话上限（{}/{}，运行时时区 {}，日期 {}），请明天再试",
                     snapshot.success_count + snapshot.in_flight,
                     snapshot.limit,
+                    hone_core::runtime_timezone_name(),
                     snapshot.quota_date
                 )))
             }

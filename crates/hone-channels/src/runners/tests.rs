@@ -609,7 +609,7 @@ async fn codex_acp_1_1_7_boundary_keeps_every_prompt_current_turn_only() {
                 RunnerConversationInput::prepare(
                     AgentConversationStrategy::NativePersistent,
                     "HONE_DEVELOPER_INSTRUCTIONS".to_string(),
-                    "【当前时间】\n2026-08-03 10:00:00 (北京时间)\n\n【本轮用户输入】\nTURN_TWO"
+                    "【当前时间】\n2026-08-03 10:00:00 (运行时时区)\n\n【本轮用户输入】\nTURN_TWO"
                         .to_string(),
                     AgentContext::new("codex-boundary-contract".to_string()),
                     DeliveredPushContextBatch {
@@ -2127,7 +2127,7 @@ async fn opencode_1_18_11_stream_preserves_available_reasoning_answer_and_usage(
 #[test]
 fn opencode_1_18_11_prompt_keeps_delivered_push_out_of_current_user_input() {
     let current_user_turn =
-        "【当前时间】\n2026-08-03 11:00:00 (北京时间)\n\n【本轮用户输入】\nTURN_CURRENT";
+        "【当前时间】\n2026-08-03 11:00:00 (运行时时区)\n\n【本轮用户输入】\nTURN_CURRENT";
     let conversation = RunnerConversationInput::prepare(
         AgentConversationStrategy::EphemeralCompiledPrompt,
         "SYSTEM_LAYER".to_string(),

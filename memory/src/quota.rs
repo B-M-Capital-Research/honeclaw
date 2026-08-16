@@ -1,6 +1,6 @@
 use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
-use hone_core::{ActorIdentity, HoneError, HoneResult, beijing_now_rfc3339};
+use hone_core::{ActorIdentity, HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -185,7 +185,7 @@ impl ConversationQuotaStorage {
         }
 
         current.in_flight += 1;
-        current.updated_at = beijing_now_rfc3339();
+        current.updated_at = local_now_rfc3339();
         self.write_quota_file(actor, &current)?;
 
         Ok(ConversationQuotaReserveResult::Reserved(
@@ -223,7 +223,7 @@ impl ConversationQuotaStorage {
         if committed {
             current.success_count = current.success_count.saturating_add(1);
         }
-        current.updated_at = beijing_now_rfc3339();
+        current.updated_at = local_now_rfc3339();
         self.write_quota_file(&reservation.actor, &current)?;
         Ok(())
     }
@@ -312,7 +312,7 @@ where
 }
 
 fn quota_date_today() -> String {
-    hone_core::beijing_now().format("%F").to_string()
+    hone_core::local_now().format("%F").to_string()
 }
 
 fn quota_lock_key(actor: &ActorIdentity, quota_date: &str) -> String {
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn quota_resets_on_new_beijing_day() {
+    fn quota_resets_on_new_local_day() {
         let root = make_temp_dir("hone_quota_day_reset");
         let storage = ConversationQuotaStorage::new(&root).expect("storage");
         let actor = actor("telegram", "alice", None);

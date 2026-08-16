@@ -89,10 +89,7 @@ impl<S: tracing::Subscriber> Layer<S> for LogCaptureLayer {
         event.record(&mut visitor);
         let message = visitor.0;
 
-        // 显式使用 UTC+8（GMT+8 / Asia/Shanghai），不依赖系统时区
-        let tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid tz");
-        let timestamp = chrono::Utc::now()
-            .with_timezone(&tz)
+        let timestamp = hone_core::local_now()
             .format("%Y-%m-%d %H:%M:%S%.3f")
             .to_string();
 

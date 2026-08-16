@@ -1809,7 +1809,7 @@ mod tests {
         let session_id = storage
             .create_session_for_actor(&actor)
             .expect("create session");
-        let daily_limit_reply = "已达到今日对话上限（12/12，北京时间 2026-06-07），请明天再试";
+        let daily_limit_reply = "已达到今日对话上限（12/12，运行时时区 2026-06-07），请明天再试";
 
         storage
             .add_message(&session_id, "user", "继续", None)
@@ -2041,9 +2041,9 @@ mod tests {
                 None,
                 true,
                 THINKING_PLACEHOLDER_TEXT,
-                Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
+                Some("已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试"),
             ),
-            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+            "已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试"
         );
     }
 
@@ -2054,9 +2054,11 @@ mod tests {
                 None,
                 true,
                 THINKING_PLACEHOLDER_TEXT,
-                Some("工具执行错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
+                Some(
+                    "工具执行错误: 已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试"
+                ),
             ),
-            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+            "已达到今日对话上限（12/12，运行时时区 2026-05-01），请明天再试"
         );
     }
 

@@ -253,7 +253,7 @@ fn parse_timezone_update(value: &Value) -> HoneResult<PreferenceUpdate<String>> 
         return Ok(PreferenceUpdate::Inherit);
     }
     let raw = value.as_str().ok_or_else(|| {
-        HoneError::Tool("timezone 需要 IANA 字符串,例 \"Asia/Shanghai\";null 表示继承".into())
+        HoneError::Tool("timezone 需要 IANA 字符串,例 \"America/New_York\";null 表示继承".into())
     })?;
     let trimmed = raw.trim();
     Ok(if trimmed.is_empty() {
@@ -425,7 +425,7 @@ impl Tool for NotificationPrefsTool {
          set_min_severity 调整最低严重度 (low/medium/high)、\
          set_portfolio_only 只推持仓相关、allow_kinds 设置白名单、block_kinds 设置黑名单、\
          clear_allow/clear_block 清空对应列表、reset 恢复默认。\
-         per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 Asia/Shanghai、America/New_York)、\
+         per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 America/New_York、Europe/London)、\
          set_digest_slots 设 digest 触发槽位(支持旧 HH:MM 数组或 \
          {id,time,label?,floor_macro?} 对象数组;[] 关 digest;null 恢复全局)、\
          set_price_high_pct / set_price_high_pct_up / set_price_high_pct_down \
@@ -534,7 +534,7 @@ impl Tool for NotificationPrefsTool {
                     set_min_severity 传 low/medium/high;\
                     set_portfolio_only 传 true/false;\
                     allow_kinds/block_kinds/set_immediate_kinds 传 JSON 数组 (例 [\"news_critical\"]);\
-                    set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
+                    set_timezone 传 IANA 名 (例 \"America/New_York\");\
                     set_digest_slots 可传 HH:MM 数组，或对象数组 \
                     [{\"id\":\"premarket\",\"time\":\"08:30\",\"label\":\"盘前要闻\",\"floor_macro\":1}];\
                     空数组关 digest，null 或 inherit_digest_slots 恢复全局时段;\

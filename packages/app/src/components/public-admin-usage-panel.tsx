@@ -253,13 +253,12 @@ export function summarizePublicAdminUsage(
 }
 
 function formatUsageDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00+08:00`);
+  const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     month: "short",
     day: "numeric",
     weekday: "short",
-    timeZone: "Asia/Shanghai",
   });
 }
 
@@ -270,7 +269,6 @@ function formatUsageTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Asia/Shanghai",
   });
 }
 
@@ -301,7 +299,6 @@ function formatGeneratedAt(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Asia/Shanghai",
   });
 }
 
@@ -318,12 +315,11 @@ const PUBLIC_ADMIN_USAGE_CHANNELS = [
 ] as const;
 
 function formatTrendDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00+08:00`);
+  const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString(useLocale() === "en" ? "en-US" : "zh-CN", {
     month: "numeric",
     day: "numeric",
-    timeZone: "Asia/Shanghai",
   });
 }
 

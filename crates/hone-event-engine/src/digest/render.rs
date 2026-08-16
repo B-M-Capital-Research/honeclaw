@@ -18,7 +18,7 @@
 
 use std::collections::HashSet;
 
-use chrono::{FixedOffset, Utc};
+use chrono::Utc;
 use hone_core::truncate_chars_append;
 
 use crate::event::{EventKind, MarketEvent, Severity};
@@ -223,11 +223,9 @@ fn digest_event_detail(event: &MarketEvent) -> Option<String> {
                     "时间"
                 };
                 Some(format!(
-                    "{label} {} UTC+8",
-                    event
-                        .occurred_at
-                        .with_timezone(&FixedOffset::east_opt(8 * 3600)?)
-                        .format("%m-%d %H:%M")
+                    "{label} {} {}",
+                    hone_core::local_time_at(event.occurred_at).format("%m-%d %H:%M"),
+                    hone_core::runtime_timezone_name()
                 ))
             }
         }

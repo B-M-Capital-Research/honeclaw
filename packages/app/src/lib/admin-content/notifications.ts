@@ -128,7 +128,7 @@ const ZH = {
     allow_kinds_label: "接收的事件类型（留空 = 全部）",
     block_kinds_label: "屏蔽的事件类型（优先级高于接收范围）",
     cadence_title: "推送节奏（按用户主体；留空 = 沿用全局）",
-    timezone_label: "时区（IANA，例如 Asia/Shanghai、America/New_York）",
+    timezone_label: "时区（IANA，例如 runtime timezone、America/New_York）",
     timezone_placeholder: "留空 → 沿用全局时区",
     digest_label: "摘要时刻（本地 HH:MM；未设置 = 沿用全局，清空 = 关闭摘要）",
     digest_inherit_global: "当前：沿用全局摘要时刻",
@@ -288,7 +288,7 @@ const EN: typeof ZH = {
     allow_kinds_label: "Event types to receive (empty = all)",
     block_kinds_label: "Muted event types (overrides receive list)",
     cadence_title: "Push cadence (per user identity; empty = inherit global)",
-    timezone_label: "Timezone (IANA, e.g. Asia/Shanghai, America/New_York)",
+    timezone_label: "Timezone (IANA, e.g. runtime timezone, America/New_York)",
     timezone_placeholder: "Empty → inherit global timezone",
     digest_label:
       "Digest slots (local HH:MM; no custom slots = inherit global; all slots cleared = digest off)",

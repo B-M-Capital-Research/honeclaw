@@ -6,7 +6,7 @@
 //! `DigestScheduler::tick_once` 一致,只是把"per-tick 全 actor 一次算 + per-actor
 //! 分发"改成"per-actor 单独取自家命中"。
 
-use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
 
 use crate::pollers::earnings::synthesize_countdowns;
@@ -38,9 +38,10 @@ impl<'a> SynthSource<'a> {
         now: DateTime<Utc>,
     ) -> anyhow::Result<Vec<UnifiedCandidate>> {
         let teasers = self.store.list_upcoming_earnings(now, 4)?;
-        let offset = FixedOffset::east_opt(self.tz_offset_hours * 3600)
-            .unwrap_or(FixedOffset::east_opt(0).unwrap());
-        let local_today = offset.from_utc_datetime(&now.naive_utc()).date_naive();
+        let local_today =
+            hone_core::RuntimeTimezone::fixed_offset_seconds(self.tz_offset_hours * 3600)
+                .at_utc(now)
+                .date_naive();
         let synth_pool = synthesize_countdowns(&teasers, local_today);
         let registry = self.registry.load();
         let mut candidates = Vec::new();
@@ -65,6 +66,7 @@ mod tests {
     use crate::event::{EventKind, MarketEvent, Severity};
     use crate::subscription::{PortfolioSubscription, SharedRegistry, SubscriptionRegistry};
     use crate::unified_digest::ItemOrigin;
+    use chrono::TimeZone;
     use tempfile::tempdir;
 
     fn actor() -> ActorIdentity {

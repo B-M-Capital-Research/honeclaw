@@ -190,7 +190,7 @@ impl NotificationRouter {
             let mut demoted_by_cooldown = false;
             let mut demoted_by_price_advance = false;
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
-                let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
+                let since = local_day_start(chrono::Utc::now(), &self.runtime_timezone);
                 let category = event_category(event);
                 match self.store.count_high_sent_since_for_category(
                     &actor_key(&actor),
@@ -238,7 +238,7 @@ impl NotificationRouter {
                 && price_policy.repeat_step_pct > 0.0
             {
                 if let Some((symbol, direction)) = price_alert_symbol_direction(event) {
-                    let day_start = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
+                    let day_start = local_day_start(chrono::Utc::now(), &self.runtime_timezone);
                     let current_bps = event
                         .payload
                         .get("hone_price_band_bps")
@@ -383,7 +383,7 @@ impl NotificationRouter {
                 if let Some(qh) = user_prefs.quiet_hours.as_ref() {
                     let tz = EffectiveTz::from_actor_prefs(
                         user_prefs.timezone.as_deref(),
-                        self.tz_offset_hours,
+                        &self.runtime_timezone,
                     );
                     let now = chrono::Utc::now();
                     let kind_t = kind_tag(&event.kind);

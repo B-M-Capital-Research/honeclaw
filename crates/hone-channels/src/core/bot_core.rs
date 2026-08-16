@@ -111,6 +111,8 @@ impl Drop for HoneBotCore {
 impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
+        hone_core::configure_runtime_timezone(config.timezone.as_deref())
+            .expect("runtime timezone must be a validated IANA name");
         let cloud_pg_runtime = CloudPgRuntime::from_cloud_config(&config.cloud)
             .expect("PostgreSQL must be configured for the runtime");
         #[cfg(test)]

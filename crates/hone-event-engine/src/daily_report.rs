@@ -12,15 +12,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 
-use crate::digest::{in_window, local_date_key};
+use crate::digest::{in_window_timezone, local_date_key_timezone};
 use crate::store::{EventStore, delivery_breakdown_per_actor, event_breakdown_by_source};
 
 pub struct DailyReport {
     store: Arc<EventStore>,
     report_dir: PathBuf,
-    tz_offset_hours: i32,
+    timezone: hone_core::RuntimeTimezone,
     trigger_time: String,
 }
 
@@ -29,13 +29,19 @@ impl DailyReport {
         Self {
             store,
             report_dir: report_dir.into(),
-            tz_offset_hours: 8,
+            timezone: hone_core::runtime_timezone(),
             trigger_time: "22:00".into(),
         }
     }
 
+    #[cfg(test)]
     pub fn with_tz_offset_hours(mut self, offset: i32) -> Self {
-        self.tz_offset_hours = offset;
+        self.timezone = hone_core::RuntimeTimezone::fixed_offset_seconds(offset * 3600);
+        self
+    }
+
+    pub fn with_runtime_timezone(mut self, timezone: hone_core::RuntimeTimezone) -> Self {
+        self.timezone = timezone;
         self
     }
 
@@ -50,16 +56,16 @@ impl DailyReport {
         now: DateTime<Utc>,
         already_fired_today: &mut std::collections::HashSet<String>,
     ) -> anyhow::Result<u32> {
-        if !in_window(now, &self.trigger_time, self.tz_offset_hours) {
+        if !in_window_timezone(now, &self.trigger_time, &self.timezone) {
             return Ok(0);
         }
-        let date = local_date_key(now, self.tz_offset_hours);
+        let date = local_date_key_timezone(now, &self.timezone);
         let fire_key = format!("daily-report@{date}@{}", self.trigger_time);
         if !already_fired_today.insert(fire_key) {
             return Ok(0);
         }
 
-        let (since, until) = local_day_bounds(now, self.tz_offset_hours);
+        let (since, until) = local_day_bounds(now, &self.timezone);
         let events_by_source = event_breakdown_by_source(&self.store, since, until)?;
         let deliveries = delivery_breakdown_per_actor(&self.store, since, until)?;
 
@@ -94,18 +100,11 @@ fn write_report(report_dir: &Path, date: &str, body: &str) -> anyhow::Result<()>
     Ok(())
 }
 
-fn local_day_bounds(now: DateTime<Utc>, offset_hours: i32) -> (DateTime<Utc>, DateTime<Utc>) {
-    let offset =
-        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
-    let local = offset.from_utc_datetime(&now.naive_utc());
-    let midnight = local
-        .date_naive()
-        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-    let local_midnight = offset
-        .from_local_datetime(&midnight)
-        .single()
-        .unwrap_or_else(|| offset.from_utc_datetime(&midnight));
-    (local_midnight.with_timezone(&Utc), now)
+fn local_day_bounds(
+    now: DateTime<Utc>,
+    timezone: &hone_core::RuntimeTimezone,
+) -> (DateTime<Utc>, DateTime<Utc>) {
+    (timezone.local_day_start_utc(now), now)
 }
 
 /// 渲染日报正文(Markdown)。给引擎运营看,不推送给用户。

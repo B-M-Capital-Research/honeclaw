@@ -14,7 +14,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use chrono_tz::Asia::Shanghai;
 use hone_event_engine::pollers::RssNewsPoller;
 use hone_event_engine::{EventSource, MarketEvent};
 use hone_llm::{CreatedLlmProvider, LlmResolver, Message};
@@ -84,7 +83,7 @@ pub(crate) struct InfluencerDigestItem {
     pub public_handle: String,
     pub title: String,
     pub published_at: DateTime<Utc>,
-    pub published_at_beijing: String,
+    pub published_at_local: String,
     pub source_url: String,
     pub aggregation_source: Option<String>,
     pub aggregation_url: Option<String>,
@@ -113,7 +112,8 @@ pub(crate) struct InfluencerDigestCoverage {
 pub(crate) struct InfluencerDigestSnapshot {
     pub report_date: String,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub lookback_hours: i64,
@@ -730,9 +730,7 @@ fn public_item(item: &FetchedItem, analysis: Option<&AnalysisItem>) -> Influence
         public_handle: item.author.public_handle.to_string(),
         title: item.title.clone(),
         published_at: item.published_at,
-        published_at_beijing: item
-            .published_at
-            .with_timezone(&Shanghai)
+        published_at_local: hone_core::local_time_at(item.published_at)
             .format("%m-%d %H:%M")
             .to_string(),
         source_url: item.url.clone(),
@@ -777,14 +775,13 @@ fn snapshot(
         ),
     };
     InfluencerDigestSnapshot {
-        report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
+        report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
-        generated_at_beijing: now
-            .with_timezone(&Shanghai)
+        generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         lookback_hours: LOOKBACK_HOURS,
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
@@ -914,7 +911,7 @@ async fn write_snapshot(
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 #[cfg(test)]
@@ -1013,9 +1010,10 @@ mod tests {
     }
 
     #[test]
-    fn next_refresh_is_1950_beijing() {
-        let next = next_refresh(Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap())
-            .with_timezone(&Shanghai);
+    fn next_refresh_is_1950_local() {
+        let next = hone_core::local_time_at(next_refresh(
+            Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap(),
+        ));
         assert_eq!((next.hour(), next.minute()), (19, 50));
     }
 

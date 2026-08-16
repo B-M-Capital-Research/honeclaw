@@ -69,9 +69,8 @@ impl LlmAuditStorage {
     }
 
     pub fn prune_expired(&self) -> HoneResult<()> {
-        let cutoff = (hone_core::beijing_now()
-            - chrono::Duration::days(self.retention_days as i64))
-        .to_rfc3339();
+        let cutoff = (hone_core::local_now() - chrono::Duration::days(self.retention_days as i64))
+            .to_rfc3339();
         let postgres = self.postgres.clone();
         run_cloud_llm_audit(async move {
             postgres.prune_llm_audit_records(&cutoff).await?;
@@ -203,7 +202,7 @@ mod tests {
 
         let stale = LlmAuditRecord {
             id: uuid::Uuid::new_v4().to_string(),
-            created_at: (hone_core::beijing_now() - chrono::Duration::days(31)).to_rfc3339(),
+            created_at: (hone_core::local_now() - chrono::Duration::days(31)).to_rfc3339(),
             session_id: "old".to_string(),
             actor: None,
             source: "agent.codex_acp".to_string(),

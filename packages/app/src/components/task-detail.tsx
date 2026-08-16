@@ -5,7 +5,7 @@ import { Textarea } from "@hone-financial/ui/textarea"
 import { Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
-import { formatShanghaiDateTime } from "@/lib/time"
+import { formatLocalDateTime } from "@/lib/time"
 import { TASKS } from "@/lib/admin-content/tasks"
 import { tpl } from "@/lib/i18n"
 import {
@@ -296,7 +296,7 @@ export function TaskDetail() {
                                                 {tasks.executionRecords().map((record) => (
                                                     <tr class="align-top">
                                                         <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-secondary)]">
-                                                            {formatShanghaiDateTime(record.executed_at)}
+                                                            {formatLocalDateTime(record.executed_at)}
                                                         </td>
                                                         <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
                                                             {executionStatusLabel(record.execution_status)}

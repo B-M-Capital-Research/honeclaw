@@ -96,10 +96,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::schedule::beijing_slot_time;
+    use super::schedule::runtime_slot_time;
     use super::*;
     use chrono::{Datelike, Timelike};
-    use hone_core::{ActorIdentity, HoneError, beijing_offset};
+    use hone_core::{ActorIdentity, HoneError, local_offset};
     use serde_json::Value;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -447,7 +447,7 @@ mod tests {
         let storage = CronJobStorage::new(&dir);
         let actor = actor("imessage", "u1", None);
 
-        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -495,7 +495,7 @@ mod tests {
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
 
-        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -550,7 +550,7 @@ mod tests {
         let primary_actor = actor("feishu", "ou_real", None);
         let other_actor = actor("feishu", "ou_other", None);
 
-        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -664,7 +664,7 @@ mod tests {
             token: "pending-1".to_string(),
             job_id: first_job_id,
             updates: serde_json::json!({"hour": 10}),
-            created_at: hone_core::beijing_now_rfc3339(),
+            created_at: hone_core::local_now_rfc3339(),
         });
         storage
             .save_jobs(&actor_one, &actor_one_data)
@@ -840,7 +840,7 @@ mod tests {
         );
         let job_id = job_id_from_add_result(&add);
 
-        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         // 查询分钟取到最大抖动偏移之后:heartbeat 现在按 job_id 在半点后的
         // [0, JITTER_SPREAD_MINUTES) 分钟内错峰,槽内任一分钟都算同一槽。
         let probe_minute = 30 + super::storage::JITTER_SPREAD_MINUTES - 1;
@@ -938,14 +938,14 @@ mod tests {
             .iter_mut()
             .find(|job| job.id == job_id)
             .expect("job exists");
-        let today = hone_core::beijing_now().date_naive();
-        job.created_at = Some(beijing_slot_time(today, 8, 0).to_rfc3339());
+        let today = hone_core::local_now().date_naive();
+        job.created_at = Some(runtime_slot_time(today, 8, 0).to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
 
         let due = storage.get_due_jobs(
             12,
             0,
-            hone_core::beijing_now().weekday().num_days_from_monday(),
+            hone_core::local_now().weekday().num_days_from_monday(),
             &["feishu"],
         );
         assert_eq!(due.len(), 1);
@@ -982,14 +982,14 @@ mod tests {
             .iter_mut()
             .find(|job| job.id == job_id)
             .expect("job exists");
-        let today = hone_core::beijing_now().date_naive();
-        job.created_at = Some(beijing_slot_time(today, 12, 15).to_rfc3339());
+        let today = hone_core::local_now().date_naive();
+        job.created_at = Some(runtime_slot_time(today, 12, 15).to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
 
         let due = storage.get_due_jobs(
             12,
             30,
-            hone_core::beijing_now().weekday().num_days_from_monday(),
+            hone_core::local_now().weekday().num_days_from_monday(),
             &["feishu"],
         );
         assert!(due.is_empty());
@@ -1028,7 +1028,7 @@ mod tests {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
-        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
         let stale_hour = (hour + 1) % 24;
@@ -1092,7 +1092,7 @@ mod tests {
         let dir = make_temp_dir("hone_cron_storage_once_date");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_once", None);
-        let today = hone_core::beijing_now().date_naive();
+        let today = hone_core::local_now().date_naive();
         let tomorrow = today + chrono::Duration::days(1);
 
         let add = storage.add_job(

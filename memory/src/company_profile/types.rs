@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::CloudPgRuntime;
+use hone_core::{ActorIdentity, compare_rfc3339};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -315,17 +315,20 @@ impl CompanyProfileDocument {
     pub fn research_ledger(&self) -> CompanyResearchLedger {
         let mut events = self.events.iter().collect::<Vec<_>>();
         events.sort_by(|left, right| {
-            left.metadata
-                .occurred_at
-                .cmp(&right.metadata.occurred_at)
-                .then_with(|| left.metadata.captured_at.cmp(&right.metadata.captured_at))
+            compare_rfc3339(&left.metadata.occurred_at, &right.metadata.occurred_at)
+                .then_with(|| {
+                    compare_rfc3339(&left.metadata.captured_at, &right.metadata.captured_at)
+                })
                 .then_with(|| left.id.cmp(&right.id))
         });
 
         let mut items = BTreeMap::<String, ResearchLedgerItem>::new();
         let mut as_of = None;
         for event in events {
-            if as_of.as_deref() < Some(event.metadata.captured_at.as_str()) {
+            if as_of
+                .as_deref()
+                .is_none_or(|current| compare_rfc3339(current, &event.metadata.captured_at).is_lt())
+            {
                 as_of = Some(event.metadata.captured_at.clone());
             }
             for update in &event.metadata.research_updates {

@@ -13,8 +13,7 @@ use axum::body::Body;
 use axum::extract::{Multipart, Path as AxumPath, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use chrono_tz::Asia::Shanghai;
+use chrono::{DateTime, NaiveDate, Utc};
 use hone_channels::attachments::{ReceivedAttachment, enrich_attachment, infer_attachment_kind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -387,7 +386,7 @@ pub(crate) async fn handle_upload(
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "来源链接必须是 http(s) 地址");
     }
     let source_date = if input.source_date.trim().is_empty() {
-        hone_core::beijing_now().format("%Y-%m-%d").to_string()
+        hone_core::local_now().format("%Y-%m-%d").to_string()
     } else if NaiveDate::parse_from_str(input.source_date.trim(), "%Y-%m-%d").is_ok() {
         input.source_date.trim().to_string()
     } else {
@@ -1130,7 +1129,7 @@ fn source_date_utc(source_date: &str) -> DateTime<Utc> {
     NaiveDate::parse_from_str(source_date, "%Y-%m-%d")
         .ok()
         .and_then(|date| {
-            Shanghai
+            hone_core::runtime_timezone()
                 .from_local_datetime(&date.and_hms_opt(12, 0, 0)?)
                 .single()
         })

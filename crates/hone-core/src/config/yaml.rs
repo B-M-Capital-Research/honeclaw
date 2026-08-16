@@ -413,9 +413,7 @@ mod private_write_tests {
         let root = std::env::temp_dir().join(format!(
             "hone_atomic_yaml_private_{}_{}",
             std::process::id(),
-            crate::beijing_now()
-                .timestamp_nanos_opt()
-                .unwrap_or_default()
+            crate::local_now().timestamp_nanos_opt().unwrap_or_default()
         ));
         let path = root.join("config.yaml");
 

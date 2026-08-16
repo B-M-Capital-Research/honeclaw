@@ -192,7 +192,7 @@ impl Tool for CronJobTool {
             ToolParameter {
                 name: "hour".to_string(),
                 param_type: "number".to_string(),
-                description: "触发小时 (0-23，北京时间)".to_string(),
+                description: "触发小时 (0-23，运行时时区)".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -232,7 +232,7 @@ impl Tool for CronJobTool {
             ToolParameter {
                 name: "date".to_string(),
                 param_type: "string".to_string(),
-                description: "一次性任务的绝对日期（仅 repeat=once 使用，格式 YYYY-MM-DD，北京时间）"
+                description: "一次性任务的绝对日期（仅 repeat=once 使用，格式 YYYY-MM-DD，运行时时区）"
                     .to_string(),
                 required: false,
                 r#enum: None,

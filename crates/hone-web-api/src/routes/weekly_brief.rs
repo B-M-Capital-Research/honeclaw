@@ -14,7 +14,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{Datelike, Days, NaiveDate, Utc};
-use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -24,7 +23,7 @@ use crate::routes::public_finance_calendar::{
 };
 use crate::state::AppState;
 
-/// Pre-generation runs at 19:10 Asia/Shanghai, before the 19:30+ rating and
+/// Pre-generation runs at 19:10 in the runtime timezone, before the 19:30+ rating and
 /// signal workers, so the first screen never triggers the FMP fan-out itself.
 const REFRESH_HOUR: u32 = 19;
 const REFRESH_MINUTE: u32 = 10;
@@ -61,7 +60,8 @@ pub(crate) struct WeeklyBriefItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WeeklyBriefPayload {
     pub report_date: String,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub timezone: String,
     pub status: String,
     pub summary: String,
@@ -102,7 +102,7 @@ pub(crate) async fn handle_get_weekly_brief(
     // to the existing live path so behaviour never degrades.
     let holdings = portfolio_calendar_symbols(&state, &actor);
     if let Some(mut snapshot) = read_snapshot(&state).await {
-        let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+        let today = hone_core::local_now().format("%Y-%m-%d").to_string();
         if snapshot.report_date == today && holdings_within_coverage(&state, &holdings).await {
             snapshot.holdings = holdings;
             return Json(snapshot).into_response();
@@ -143,7 +143,7 @@ pub(crate) async fn overview_card(
     Some(card)
 }
 
-/// Pre-generate the shared weekly brief at 19:10 Asia/Shanghai. On startup it
+/// Pre-generate the shared weekly brief at 19:10 in the runtime timezone. On startup it
 /// first checks whether today's snapshot already exists (daily_signals'
 /// `latest_is_date` pattern) so a restart never burns the FMP quota again.
 pub(crate) async fn weekly_brief_worker(state: Arc<AppState>) {
@@ -153,7 +153,7 @@ pub(crate) async fn weekly_brief_worker(state: Arc<AppState>) {
         refresh_and_store(&state).await;
     }
     loop {
-        let next = crate::routes::research_store::next_beijing_refresh(
+        let next = crate::routes::research_store::next_local_refresh(
             Utc::now(),
             REFRESH_HOUR,
             REFRESH_MINUTE,
@@ -194,7 +194,7 @@ async fn read_snapshot(state: &AppState) -> Option<WeeklyBriefPayload> {
 }
 
 fn latest_is_today(state: &AppState) -> bool {
-    let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    let today = hone_core::local_now().format("%Y-%m-%d").to_string();
     std::fs::read(snapshot_path(state))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<WeeklyBriefPayload>(&bytes).ok())
@@ -202,7 +202,7 @@ fn latest_is_today(state: &AppState) -> bool {
 }
 
 async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBriefPayload {
-    let now = hone_core::beijing_now();
+    let now = hone_core::local_now();
     let today = now.date_naive();
     let current_week_start = week_start(today);
     let previous_start = current_week_start - Days::new(7);
@@ -262,7 +262,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
     let key_snapshot = super::key_event_chain::current_snapshot(state).await;
     for topic in key_snapshot.topics {
         for event in topic.events {
-            let date = event.published_at.with_timezone(&Shanghai).date_naive();
+            let date = hone_core::local_time_at(event.published_at).date_naive();
             if date < previous_start
                 || date > previous_end
                 || event.verification_status != "confirmed"
@@ -315,8 +315,8 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
 
     WeeklyBriefPayload {
         report_date: today.format("%Y-%m-%d").to_string(),
-        generated_at_beijing: now.format("%Y-%m-%d %H:%M").to_string(),
-        timezone: "Asia/Shanghai".to_string(),
+        generated_at_local: now.format("%Y-%m-%d %H:%M").to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         status: status.to_string(),
         summary: format!(
             "上周收录 {} 项，其中 {} 项为已确认产业变化；下周有 {} 项日程，{} 项列为重点关注。",
@@ -336,7 +336,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
         holdings,
         errors: calendar.errors,
         methodology_note: "上周由一手确认的产业变化和已发生的重要日程组成；日程本身不代表数据结果。下周仅列有来源的宏观、财报日程；AI 前瞻优先使用公司 IR 与会议官网，只收录已确认日期，未官宣日期不补造。".to_string(),
-        disclaimer: "时间均按北京时间展示。财报日期可能由公司或交易所调整；投资前应再次核对公司 IR、监管文件和官方发布。".to_string(),
+        disclaimer: "时间均按运行时时区展示。财报日期可能由公司或交易所调整；投资前应再次核对公司 IR、监管文件和官方发布。".to_string(),
     }
 }
 
@@ -629,7 +629,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn week_windows_use_beijing_monday_to_sunday() {
+    fn week_windows_use_local_monday_to_sunday() {
         let today = NaiveDate::from_ymd_opt(2026, 8, 11).unwrap();
         let current = week_start(today);
         assert_eq!(current.to_string(), "2026-08-10");

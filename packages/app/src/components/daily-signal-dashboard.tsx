@@ -157,7 +157,7 @@ function reportContext(report: DailySignalReport, question: string) {
     reportDate: report.report_date,
     marketDate: report.market_date,
     dataCutoff: report.data_cutoff,
-    generatedAtBJT: report.generated_at_beijing,
+    generatedAtLocal: report.generated_at_local,
     modelVersion: report.model_version,
     status: report.status,
     score: report.score,
@@ -298,7 +298,7 @@ export function DailySignalPanel(props: Props) {
                             <span>报告日 {current().report_date}</span>
                             <span>市场日 {current().market_date ?? "—"}</span>
                             <span>数据截止 {current().data_cutoff ?? "—"}</span>
-                            <span>生成时间 {current().generated_at_beijing} 北京时间</span>
+                            <span>生成时间 {current().generated_at_local} {current().timezone}</span>
                             <span>{current().model_version}</span>
                             <Show when={current().stale}><b>数据已过期</b></Show>
                           </div>

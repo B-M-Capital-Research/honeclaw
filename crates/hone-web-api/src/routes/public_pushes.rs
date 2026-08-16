@@ -54,7 +54,7 @@ pub(crate) fn store_web_scheduler_push(
     event: &SchedulerEvent,
     content: &str,
 ) -> hone_core::HoneResult<StoredWebPush> {
-    let created_at = hone_core::beijing_now_rfc3339();
+    let created_at = hone_core::local_now_rfc3339();
     let storage = state.core.cron_job_storage();
     let message = storage.upsert_web_push_message(
         &event.actor,

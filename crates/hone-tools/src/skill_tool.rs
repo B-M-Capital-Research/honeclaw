@@ -1613,7 +1613,7 @@ impl Tool for SkillTool {
                     "script": skill.script,
                     "loaded_from": skill.source.as_str(),
                     "paths": skill.paths,
-                    "updated_at": hone_core::beijing_now_rfc3339(),
+                    "updated_at": hone_core::local_now_rfc3339(),
                 });
                 let _ = self.persist_invoked_skill(&payload);
                 if script_requested {

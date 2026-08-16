@@ -14,7 +14,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, NaiveDate, Utc};
-use chrono_tz::Asia::Shanghai;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -153,7 +152,8 @@ pub(crate) struct ValuationLabItem {
 pub(crate) struct ValuationLabSnapshot {
     pub report_date: String,
     pub generated_at: DateTime<Utc>,
-    pub generated_at_beijing: String,
+    #[serde(alias = "generated_at_beijing")]
+    pub generated_at_local: String,
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub methodology_version: String,
@@ -375,7 +375,7 @@ async fn refresh_and_store(state: &AppState) {
 async fn generate_snapshot(state: &AppState) -> ValuationLabSnapshot {
     let companies = parse_companies();
     let now = Utc::now();
-    let report_date = now.with_timezone(&Shanghai).date_naive();
+    let report_date = hone_core::local_time_at(now).date_naive();
     let keys = state.core.config.fmp.effective_key_pool().keys().to_vec();
     if keys.is_empty() {
         return snapshot_from_inputs(
@@ -421,7 +421,7 @@ fn snapshot_from_inputs(
     now: DateTime<Utc>,
     source_error: String,
 ) -> ValuationLabSnapshot {
-    let report_date = now.with_timezone(&Shanghai).date_naive();
+    let report_date = hone_core::local_time_at(now).date_naive();
     let mut items = companies
         .into_iter()
         .map(|company| {
@@ -484,9 +484,9 @@ fn snapshot_from_inputs(
     ValuationLabSnapshot {
         report_date: report_date.to_string(),
         generated_at: now,
-        generated_at_beijing: now.with_timezone(&Shanghai).format("%Y-%m-%d %H:%M").to_string(),
+        generated_at_local: hone_core::local_time_at(now).format("%Y-%m-%d %H:%M").to_string(),
         next_refresh_at: next_refresh(now),
-        timezone: "Asia/Shanghai".to_string(),
+        timezone: hone_core::runtime_timezone_name(),
         methodology_version: "hone-valuation-v2".to_string(),
         status: status.to_string(),
         coverage,
@@ -1930,7 +1930,7 @@ fn mark_stale_if_needed(mut snapshot: ValuationLabSnapshot) -> ValuationLabSnaps
 }
 
 fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_beijing_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
+    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
 fn stable_base_url(base_url: &str) -> String {

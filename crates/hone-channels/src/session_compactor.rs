@@ -348,7 +348,7 @@ impl<'a> SessionCompactor<'a> {
         new_messages.push(session_message_from_text(
             "system",
             "Conversation compacted",
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             Some(build_compact_boundary_metadata(
                 trigger,
                 active_messages.len().saturating_sub(retain_recent),
@@ -358,7 +358,7 @@ impl<'a> SessionCompactor<'a> {
         new_messages.push(session_message_from_text(
             "system",
             &format!("【Compact Summary】\n{summary_to_store}"),
-            hone_core::beijing_now_rfc3339(),
+            hone_core::local_now_rfc3339(),
             Some(build_compact_summary_metadata(trigger)),
         ));
         for skill in invoked_skills_from_metadata(&session.metadata)
@@ -373,7 +373,7 @@ impl<'a> SessionCompactor<'a> {
             new_messages.push(session_message_from_text(
                 "user",
                 &snapshot,
-                hone_core::beijing_now_rfc3339(),
+                hone_core::local_now_rfc3339(),
                 Some(build_compact_skill_snapshot_metadata(&skill.skill_name)),
             ));
         }

@@ -38,8 +38,8 @@ pub struct NotificationRouter {
     /// 事件自动降级进 digest,并在 delivery_log 写 status="capped"。
     /// 0 = 不启用。
     pub(super) high_daily_cap: u32,
-    /// 解释"当日"起点所用的 UTC 偏移(小时)。
-    pub(super) tz_offset_hours: i32,
+    /// 解释“当日”和 quiet-hours 所用的运行时时区。
+    pub(super) runtime_timezone: hone_core::RuntimeTimezone,
     /// 同一 ticker 相邻两次 High sink 推送的最小间隔(分钟)。0 = 不启用。
     /// 防止同一 ticker 短时间内被价格异动 + 新闻 + SEC filing 三连推。
     /// 命中后降级到 digest,log_delivery 写 status="cooled_down"。
@@ -102,7 +102,7 @@ impl NotificationRouter {
             prefs: Arc::new(AllowAllPrefs),
             earnings_continuity: None,
             high_daily_cap: 0,
-            tz_offset_hours: 8,
+            runtime_timezone: hone_core::runtime_timezone(),
             same_symbol_cooldown_minutes: 0,
             // `NotificationRouter::new` 保留历史上的“重复 band 不限流”测试/嵌入语义；
             // 生产 EventEngine 总是通过 `with_price_policy_defaults` 注入 canonical 配置。
@@ -151,8 +151,14 @@ impl NotificationRouter {
     }
 
     /// 配置 tz 偏移,用于计算"当日"窗口起点。默认 8 (北京)。
+    #[cfg(test)]
     pub fn with_tz_offset_hours(mut self, offset: i32) -> Self {
-        self.tz_offset_hours = offset;
+        self.runtime_timezone = hone_core::RuntimeTimezone::fixed_offset_seconds(offset * 3600);
+        self
+    }
+
+    pub fn with_runtime_timezone(mut self, timezone: hone_core::RuntimeTimezone) -> Self {
+        self.runtime_timezone = timezone;
         self
     }
 

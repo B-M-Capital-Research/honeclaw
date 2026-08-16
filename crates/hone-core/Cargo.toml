@@ -12,6 +12,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+iana-time-zone = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }

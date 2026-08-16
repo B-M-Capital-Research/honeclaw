@@ -35,7 +35,7 @@ pub use event_engine::{
     DigestConfig as EventEngineDigestConfig, EventEngineConfig, GlobalDigestConfig,
     PollIntervals as EventEnginePollIntervals, PriceSigmaThresholds,
     RendererConfig as EventEngineRendererConfig, RssFeedConfig, Sources as EventEngineSources,
-    TelegramChannelConfig, Thresholds as EventEngineThresholds, tz_offset_hours,
+    TelegramChannelConfig, Thresholds as EventEngineThresholds,
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
@@ -87,6 +87,9 @@ impl Locale {
 /// 顶层配置结构
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HoneConfig {
+    /// 进程运行时时区（IANA 名称）。缺省时依次读取 `HONE_TIMEZONE`、机器时区、UTC。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
     #[serde(default)]
     pub llm: LlmConfig,
     #[serde(default)]
@@ -164,6 +167,14 @@ impl HoneConfig {
     }
 
     pub fn validate(&self) -> crate::HoneResult<()> {
+        if let Some(timezone) = self
+            .timezone
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            crate::time::validate_timezone_name(timezone).map_err(crate::HoneError::Config)?;
+        }
         mutation::validate_channel_chat_scope("feishu", self.feishu.chat_scope)?;
         mutation::validate_channel_chat_scope("telegram", self.telegram.chat_scope)?;
         mutation::validate_channel_chat_scope("discord", self.discord.chat_scope)?;

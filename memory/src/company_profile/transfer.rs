@@ -4,6 +4,7 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path};
 
 use chrono::Utc;
+use hone_core::compare_rfc3339;
 use zip::ZipWriter;
 use zip::read::ZipArchive;
 use zip::write::FileOptions;
@@ -497,9 +498,7 @@ impl CompanyProfileStorage {
         }
 
         events.sort_by(|a, b| {
-            b.metadata
-                .occurred_at
-                .cmp(&a.metadata.occurred_at)
+            compare_rfc3339(&b.metadata.occurred_at, &a.metadata.occurred_at)
                 .then_with(|| b.filename.cmp(&a.filename))
         });
         Ok(events)
@@ -698,10 +697,7 @@ fn parse_company_profile_bundle(bundle_bytes: &[u8]) -> Result<ParsedCompanyProf
             )?);
         }
         event_documents.sort_by(|left, right| {
-            right
-                .metadata
-                .occurred_at
-                .cmp(&left.metadata.occurred_at)
+            compare_rfc3339(&right.metadata.occurred_at, &left.metadata.occurred_at)
                 .then_with(|| right.filename.cmp(&left.filename))
         });
         documents.push(CompanyProfileDocument {

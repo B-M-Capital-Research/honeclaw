@@ -129,14 +129,14 @@ describe("public chat active-run recovery", () => {
     expect(afterRefresh.message?.statusText).toBe("正在核验实时行情");
   });
 
-  it("formats the server-owned start in Beijing time and keeps it stable", () => {
+  it("formats the server-owned start in browser-local timezone and keeps it stable", () => {
+    setLocale("zh");
     const startedAt = Date.parse("2026-07-17T00:30:00.000Z");
     const beforeRefresh = publicChatRunStartedAtLabel(startedAt);
     const afterRefresh = publicChatRunStartedAtLabel(startedAt);
 
-    expect(beforeRefresh?.startsWith("查询开始：北京时间 ")).toBe(true);
+    expect(beforeRefresh?.startsWith("查询开始：本地时间 ")).toBe(true);
     expect(beforeRefresh).toContain("2026");
-    expect(beforeRefresh).toContain("08:30");
     expect(afterRefresh).toBe(beforeRefresh);
     expect(publicChatRunStartedAtLabel(undefined)).toBeUndefined();
   });

@@ -126,7 +126,7 @@ pub(crate) async fn handle_get_finance_calendar(
     };
     let month = match resolve_requested_month(
         query.month.as_deref(),
-        hone_core::beijing_now().date_naive(),
+        hone_core::local_now().date_naive(),
     ) {
         Ok(month) => month,
         Err(error) => return json_error(StatusCode::BAD_REQUEST, error),
@@ -197,7 +197,7 @@ pub(crate) async fn handle_send_finance_calendar(
         .as_deref()
         .and_then(|value| parse_month_spec(value).ok())
         .map(|month| month.value())
-        .unwrap_or_else(|| hone_core::beijing_now().format("%Y-%m").to_string());
+        .unwrap_or_else(|| hone_core::local_now().format("%Y-%m").to_string());
     let content =
         finance_calendar_assistant_message(&validated_path, Some(&validated_mobile_path), &month);
     let metadata =
@@ -289,7 +289,7 @@ async fn build_finance_calendar_payload(
     });
 
     FinanceCalendarPayload {
-        today: hone_core::beijing_now()
+        today: hone_core::local_now()
             .date_naive()
             .format("%Y-%m-%d")
             .to_string(),
@@ -385,179 +385,199 @@ fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
         (
             "2026-07-01",
             "ISM 制造业 PMI",
-            "北京时间 22:00 · 6月",
+            "运行时时区 22:00 · 6月",
             "ismworld.org",
         ),
         (
             "2026-07-02",
             "美国非农就业报告",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "bls.gov",
         ),
         (
             "2026-07-06",
             "ISM 服务业 PMI",
-            "北京时间 22:00 · 6月",
+            "运行时时区 22:00 · 6月",
             "ismworld.org",
         ),
         (
             "2026-07-07",
             "美国贸易帐",
-            "北京时间 20:30 · 5月",
+            "运行时时区 20:30 · 5月",
             "bea.gov",
         ),
         (
             "2026-07-09",
             "FOMC 会议纪要",
-            "北京时间 02:00 · 6月会议",
+            "运行时时区 02:00 · 6月会议",
             "federalreserve.gov",
         ),
-        ("2026-07-14", "美国 CPI", "北京时间 20:30 · 6月", "bls.gov"),
-        ("2026-07-15", "美国 PPI", "北京时间 20:30 · 6月", "bls.gov"),
+        (
+            "2026-07-14",
+            "美国 CPI",
+            "运行时时区 20:30 · 6月",
+            "bls.gov",
+        ),
+        (
+            "2026-07-15",
+            "美国 PPI",
+            "运行时时区 20:30 · 6月",
+            "bls.gov",
+        ),
         (
             "2026-07-16",
             "美联储褐皮书",
-            "北京时间 02:00",
+            "运行时时区 02:00",
             "federalreserve.gov",
         ),
         (
             "2026-07-16",
             "美国零售销售",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "census.gov",
         ),
         (
             "2026-07-17",
             "美国新屋开工",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "census.gov",
         ),
         (
             "2026-07-17",
             "美国工业产出",
-            "北京时间 21:15 · 6月",
+            "运行时时区 21:15 · 6月",
             "federalreserve.gov",
         ),
         (
             "2026-07-24",
             "美国新屋销售",
-            "北京时间 22:00 · 6月",
+            "运行时时区 22:00 · 6月",
             "census.gov",
         ),
         (
             "2026-07-27",
             "美国耐用品订单",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "census.gov",
         ),
         (
             "2026-07-30",
             "FOMC 利率决议与记者会",
-            "北京时间 02:00 / 02:30",
+            "运行时时区 02:00 / 02:30",
             "federalreserve.gov",
         ),
         (
             "2026-07-30",
             "美国二季度 GDP 初值",
-            "北京时间 20:30",
+            "运行时时区 20:30",
             "bea.gov",
         ),
         (
             "2026-07-30",
             "美国 PCE 物价指数",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "bea.gov",
         ),
         (
             "2026-07-31",
             "美国就业成本指数",
-            "北京时间 20:30 · 二季度",
+            "运行时时区 20:30 · 二季度",
             "bls.gov",
         ),
         (
             "2026-08-03",
             "ISM 制造业 PMI",
-            "北京时间 22:00 · 7月",
+            "运行时时区 22:00 · 7月",
             "ismworld.org",
         ),
         (
             "2026-08-05",
             "ISM 服务业 PMI",
-            "北京时间 22:00 · 7月",
+            "运行时时区 22:00 · 7月",
             "ismworld.org",
         ),
         (
             "2026-08-05",
             "美国贸易帐",
-            "北京时间 20:30 · 6月",
+            "运行时时区 20:30 · 6月",
             "bea.gov",
         ),
         (
             "2026-08-07",
             "美国非农就业报告",
-            "北京时间 20:30 · 7月",
+            "运行时时区 20:30 · 7月",
             "bls.gov",
         ),
-        ("2026-08-12", "美国 CPI", "北京时间 20:30 · 7月", "bls.gov"),
-        ("2026-08-13", "美国 PPI", "北京时间 20:30 · 7月", "bls.gov"),
+        (
+            "2026-08-12",
+            "美国 CPI",
+            "运行时时区 20:30 · 7月",
+            "bls.gov",
+        ),
+        (
+            "2026-08-13",
+            "美国 PPI",
+            "运行时时区 20:30 · 7月",
+            "bls.gov",
+        ),
         (
             "2026-08-14",
             "美国零售销售",
-            "北京时间 20:30 · 7月",
+            "运行时时区 20:30 · 7月",
             "census.gov",
         ),
         (
             "2026-08-14",
             "美国工业产出",
-            "北京时间 21:15 · 7月",
+            "运行时时区 21:15 · 7月",
             "federalreserve.gov",
         ),
         (
             "2026-08-18",
             "美国新屋开工",
-            "北京时间 20:30 · 7月",
+            "运行时时区 20:30 · 7月",
             "census.gov",
         ),
         (
             "2026-08-20",
             "FOMC 会议纪要",
-            "北京时间 02:00 · 7月会议",
+            "运行时时区 02:00 · 7月会议",
             "federalreserve.gov",
         ),
         (
             "2026-08-21",
             "杰克逊霍尔央行年会·美联储主席讲话",
-            "北京时间 22:00 前后 · 年会 8/20-8/22",
+            "运行时时区 22:00 前后 · 年会 8/20-8/22",
             "kansascityfed.org",
         ),
         (
             "2026-08-25",
             "美国新屋销售",
-            "北京时间 22:00 · 7月",
+            "运行时时区 22:00 · 7月",
             "census.gov",
         ),
         (
             "2026-08-26",
             "美国耐用品订单",
-            "北京时间 20:30 · 7月",
+            "运行时时区 20:30 · 7月",
             "census.gov",
         ),
         (
             "2026-08-27",
             "美国二季度 GDP 修正值",
-            "北京时间 20:30",
+            "运行时时区 20:30",
             "bea.gov",
         ),
         (
             "2026-08-28",
             "美国 PCE 物价指数",
-            "北京时间 20:30 · 7月",
+            "运行时时区 20:30 · 7月",
             "bea.gov",
         ),
         (
             "2026-08-28",
             "密歇根大学消费者信心终值",
-            "北京时间 22:00 · 8月",
+            "运行时时区 22:00 · 8月",
             "umich.edu",
         ),
     ]

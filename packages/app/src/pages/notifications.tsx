@@ -14,7 +14,7 @@ import {
   type NotificationsSummary,
 } from "@/lib/api"
 import { actorKey, type ActorRef } from "@/lib/actors"
-import { formatShanghaiDateTime } from "@/lib/time"
+import { formatLocalDateTime } from "@/lib/time"
 import { NOTIFICATIONS } from "@/lib/admin-content/notifications"
 import { tpl, useLocale } from "@/lib/i18n"
 import {
@@ -215,7 +215,7 @@ export default function NotificationsPage() {
                   <div
                     class="group relative flex flex-1 flex-col justify-end"
                     title={tpl(NOTIFICATIONS.page.histogram_tooltip, {
-                      ts: formatShanghaiDateTime(bucket.bucket_start),
+                      ts: formatLocalDateTime(bucket.bucket_start),
                       total: bucket.total,
                       sent: bucket.sent,
                       failed: bucket.failed,
@@ -311,7 +311,7 @@ export default function NotificationsPage() {
                         class="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-[color:var(--text-muted)]"
                         title={record.executed_at}
                       >
-                        {formatShanghaiDateTime(record.executed_at)}
+                        {formatLocalDateTime(record.executed_at)}
                       </td>
                       <td class="px-3 py-2 font-mono text-[11px]">
                         {record.user_id}
@@ -436,7 +436,7 @@ function RecordDrawer(props: {
           <div>
             <div class="text-base font-semibold">{props.record.job_name}</div>
             <div class="text-[11px] text-[color:var(--text-muted)]">
-              {formatShanghaiDateTime(props.record.executed_at)}
+              {formatLocalDateTime(props.record.executed_at)}
             </div>
           </div>
           <button

@@ -144,7 +144,7 @@ fn persist_and_emit_web_scheduler_push(
                         "job_name": event.job_name.clone(),
                         "job_id": event.job_id.clone(),
                         "summary": build_web_push_summary(&event.job_name, response),
-                        "created_at": hone_core::beijing_now_rfc3339(),
+                        "created_at": hone_core::local_now_rfc3339(),
                         "content": response.trim(),
                     }),
                 })
