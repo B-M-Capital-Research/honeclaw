@@ -470,7 +470,7 @@ async fn run_cli() -> Result<(), String> {
                 let (config, _) =
                     load_cli_config(cli.config.as_deref(), false).map_err(|e| e.to_string())?;
                 let storage = cron_storage_from_config(&config);
-                let targets = storage.list_channel_targets();
+                let targets = storage.list_channel_targets().await;
                 if args.json {
                     print_json(&targets)
                 } else {

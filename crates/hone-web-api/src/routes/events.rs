@@ -117,7 +117,7 @@ fn emit_web_scheduler_push(
         .is_some_and(|push_event| push_tx.send(push_event).is_ok())
 }
 
-fn persist_and_emit_web_scheduler_push(
+async fn persist_and_emit_web_scheduler_push(
     state: &AppState,
     event: &SchedulerEvent,
     response: &str,
@@ -125,7 +125,7 @@ fn persist_and_emit_web_scheduler_push(
     if event.channel != "web" || response.trim().is_empty() {
         return false;
     }
-    match store_web_scheduler_push(state, event, response) {
+    match store_web_scheduler_push(state, event, response).await {
         Ok(stored) => emit_web_scheduler_push(&state.push_tx, event, &stored),
         Err(error) => {
             warn!(
@@ -192,7 +192,8 @@ pub(crate) async fn handle_scheduler_events(
             channel,
             recovery_window,
             "web_scheduler_startup",
-        );
+        )
+        .await;
     }
     while let Some(event) = event_rx.recv().await {
         if event.channel == "imessage" && !state.core.config.imessage.enabled {
@@ -224,25 +225,27 @@ pub(crate) async fn handle_scheduler_events(
                 return;
             };
             let storage = state_clone.core.cron_job_storage();
-            let _ = storage.record_execution_event(
-                &event.actor,
-                &event.job_id,
-                &event.job_name,
-                &event.channel_target,
-                event.heartbeat,
-                CronJobExecutionInput {
-                    execution_status: "running".to_string(),
-                    message_send_status: "pending".to_string(),
-                    should_deliver: true,
-                    delivered: false,
-                    response_preview: None,
-                    error_message: None,
-                    detail: json!({
-                        "delivery_key": event.delivery_key,
-                        "phase": "started",
-                    }),
-                },
-            );
+            let _ = storage
+                .record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: "running".to_string(),
+                        message_send_status: "pending".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: json!({
+                            "delivery_key": event.delivery_key,
+                            "phase": "started",
+                        }),
+                    },
+                )
+                .await;
             let result = run_scheduled_task(&state_clone, &event, &storage).await;
             if !result.should_deliver {
                 let failure_trace = scheduler_failure_trace_required(&result);
@@ -257,12 +260,11 @@ pub(crate) async fn handle_scheduler_events(
                 if let Some(response) = response.as_deref() {
                     persist_web_scheduler_failure(&state_clone, &event, &result, response).await;
                 }
-                let console_event_sent = response
-                    .as_deref()
-                    .map(|response| {
-                        persist_and_emit_web_scheduler_push(&state_clone, &event, response)
-                    })
-                    .unwrap_or(false);
+                let console_event_sent = if let Some(response) = response.as_deref() {
+                    persist_and_emit_web_scheduler_push(&state_clone, &event, response).await
+                } else {
+                    false
+                };
                 if let Some(response) = response.as_deref()
                     && event.channel == "web"
                 {
@@ -275,44 +277,46 @@ pub(crate) async fn handle_scheduler_events(
                         response,
                     );
                 }
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if failure_trace {
-                            "execution_failed".to_string()
-                        } else {
-                            "noop".to_string()
-                        },
-                        message_send_status: if failure_trace {
-                            "skipped_error".to_string()
-                        } else {
-                            "skipped_noop".to_string()
-                        },
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: response,
-                        error_message: result.error.clone().or_else(|| {
-                            failure_trace
-                                .then(|| "内部错误已抑制，已写入用户可见失败提示".to_string())
-                        }),
-                        detail: execution_detail_with_delivery_key(
-                            if failure_trace && event.channel == "web" {
-                                web_scheduler_delivery_detail(
-                                    result.metadata.clone(),
-                                    console_event_sent,
-                                    &event.channel,
-                                )
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if failure_trace {
+                                "execution_failed".to_string()
                             } else {
-                                result.metadata.clone()
+                                "noop".to_string()
                             },
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                            message_send_status: if failure_trace {
+                                "skipped_error".to_string()
+                            } else {
+                                "skipped_noop".to_string()
+                            },
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: response,
+                            error_message: result.error.clone().or_else(|| {
+                                failure_trace
+                                    .then(|| "内部错误已抑制，已写入用户可见失败提示".to_string())
+                            }),
+                            detail: execution_detail_with_delivery_key(
+                                if failure_trace && event.channel == "web" {
+                                    web_scheduler_delivery_detail(
+                                        result.metadata.clone(),
+                                        console_event_sent,
+                                        &event.channel,
+                                    )
+                                } else {
+                                    result.metadata.clone()
+                                },
+                                &event.delivery_key,
+                            ),
+                        },
+                    )
+                    .await;
                 return;
             }
             let response = if result.error.is_some() {
@@ -326,7 +330,7 @@ pub(crate) async fn handle_scheduler_events(
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
             let console_event_sent =
-                persist_and_emit_web_scheduler_push(&state_clone, &event, &response);
+                persist_and_emit_web_scheduler_push(&state_clone, &event, &response).await;
 
             // 2. 若是 iMessage 渠道，把结果通过 hone-imessage 内置 HTTP 服务投递给用户
             let (mut message_send_status, mut delivered) =
@@ -417,26 +421,28 @@ pub(crate) async fn handle_scheduler_events(
                     &response,
                 );
             }
-            let _ = storage.record_execution_event(
-                &event.actor,
-                &event.job_id,
-                &event.job_name,
-                &event.channel_target,
-                event.heartbeat,
-                CronJobExecutionInput {
-                    execution_status: if result.error.is_some() {
-                        "execution_failed".to_string()
-                    } else {
-                        "completed".to_string()
+            let _ = storage
+                .record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status,
+                        should_deliver: true,
+                        delivered,
+                        response_preview: Some(response),
+                        error_message,
+                        detail: execution_detail_with_delivery_key(detail, &event.delivery_key),
                     },
-                    message_send_status,
-                    should_deliver: true,
-                    delivered,
-                    response_preview: Some(response),
-                    error_message,
-                    detail: execution_detail_with_delivery_key(detail, &event.delivery_key),
-                },
-            );
+                )
+                .await;
         });
     }
 }

@@ -584,7 +584,7 @@ impl Tool for NotificationPrefsTool {
                         .map_err(|e| HoneError::Tool(format!("打开云端 cron 存储失败: {e}")))?;
                     crate::schedule_view::build_overview_with_cron_jobs(
                         &self.prefs_dir,
-                        cron_storage.list_jobs(&actor),
+                        cron_storage.list_jobs(&actor).await,
                         &actor,
                         &self.overview_defaults,
                     )
@@ -596,6 +596,7 @@ impl Tool for NotificationPrefsTool {
                         &self.overview_defaults,
                         chrono::Utc::now(),
                     )
+                    .await
                 }
                 .map_err(|e| HoneError::Tool(format!("聚合推送日程失败: {e}")))?;
                 let fmt = crate::schedule_view::channel_render_format(&actor.channel);
@@ -614,7 +615,7 @@ impl Tool for NotificationPrefsTool {
                 prefs.enabled = false;
             }
             "disable_all" => {
-                let removed_jobs = self.cron_storage()?.remove_all_jobs(&actor)?;
+                let removed_jobs = self.cron_storage()?.remove_all_jobs(&actor).await?;
                 prefs.enabled = false;
                 prefs.digest_slots = Some(Vec::new());
                 storage
@@ -905,38 +906,42 @@ mod tests {
         );
         let cron_storage = hone_memory::CronJobStorage::new(&cron_dir);
         for (name, repeat) in [("daily report", "daily"), ("price heartbeat", "heartbeat")] {
-            let response = cron_storage.add_job(
-                &actor,
-                name,
-                Some(9),
+            let response = cron_storage
+                .add_job(
+                    &actor,
+                    name,
+                    Some(9),
+                    Some(0),
+                    repeat,
+                    "task",
+                    &actor.user_id,
+                    None,
+                    None,
+                    None,
+                    true,
+                    None,
+                    false,
+                )
+                .await;
+            assert_eq!(response["success"], true);
+        }
+        let other_response = cron_storage
+            .add_job(
+                &other_actor,
+                "other actor report",
+                Some(10),
                 Some(0),
-                repeat,
+                "daily",
                 "task",
-                &actor.user_id,
+                &other_actor.user_id,
                 None,
                 None,
                 None,
                 true,
                 None,
                 false,
-            );
-            assert_eq!(response["success"], true);
-        }
-        let other_response = cron_storage.add_job(
-            &other_actor,
-            "other actor report",
-            Some(10),
-            Some(0),
-            "daily",
-            "task",
-            &other_actor.user_id,
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+            )
+            .await;
         assert_eq!(other_response["success"], true);
 
         let response = tool
@@ -948,8 +953,8 @@ mod tests {
         assert_eq!(response["removed_count"], 2);
         assert_eq!(response["prefs"]["enabled"], false);
         assert_eq!(response["prefs"]["digest_slots"], json!([]));
-        assert!(cron_storage.list_jobs(&actor).is_empty());
-        assert_eq!(cron_storage.list_jobs(&other_actor).len(), 1);
+        assert!(cron_storage.list_jobs(&actor).await.is_empty());
+        assert_eq!(cron_storage.list_jobs(&other_actor).await.len(), 1);
 
         let repeated = tool
             .execute(json!({"action": "disable_all"}))

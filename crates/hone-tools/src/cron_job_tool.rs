@@ -297,7 +297,7 @@ impl Tool for CronJobTool {
 
         match action {
             "list" => {
-                let jobs = storage.list_jobs(actor);
+                let jobs = storage.list_jobs(actor).await;
                 let mut result = serde_json::json!({
                     "action": "list",
                     "jobs": serde_json::to_value(&jobs).unwrap_or_default()
@@ -340,28 +340,30 @@ impl Tool for CronJobTool {
                     .and_then(|v| v.as_str())
                     .map(|date_text| date_text.to_string());
 
-                let result = storage.add_job(
-                    actor,
-                    name,
-                    hour,
-                    minute,
-                    repeat,
-                    task_prompt,
-                    &self.channel_target,
-                    weekday,
-                    date,
-                    None,
-                    true,
-                    tags,
-                    self.admin_bypass,
-                );
+                let result = storage
+                    .add_job(
+                        actor,
+                        name,
+                        hour,
+                        minute,
+                        repeat,
+                        task_prompt,
+                        &self.channel_target,
+                        weekday,
+                        date,
+                        None,
+                        true,
+                        tags,
+                        self.admin_bypass,
+                    )
+                    .await;
                 Ok(result)
             }
             "remove" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
                 let name_query = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let confirm = args.get("confirm").and_then(|v| v.as_str()).unwrap_or("");
-                let data = storage.load_jobs(actor);
+                let data = storage.load_jobs(actor).await;
 
                 let matched_job = if !job_id.is_empty() {
                     match data.jobs.iter().find(|job| job.id == job_id) {
@@ -427,11 +429,11 @@ impl Tool for CronJobTool {
                     }));
                 }
 
-                let result = storage.remove_job(actor, &matched_job.id)?;
+                let result = storage.remove_job(actor, &matched_job.id).await?;
                 Ok(result)
             }
             "remove_all" => {
-                let removed_jobs = storage.remove_all_jobs(actor)?;
+                let removed_jobs = storage.remove_all_jobs(actor).await?;
                 let mut result = serde_json::json!({
                     "success": true,
                     "action": "remove_all",
@@ -487,7 +489,7 @@ impl Tool for CronJobTool {
                     None
                 };
 
-                let data = storage.load_jobs(actor);
+                let data = storage.load_jobs(actor).await;
 
                 // Resolve the target job: by job_id first, then by name fuzzy match.
                 let resolved_id: String = if !job_id.is_empty()
@@ -593,7 +595,10 @@ impl Tool for CronJobTool {
                     bypass_quiet_hours,
                 };
 
-                match storage.update_job(&resolved_id, Some(actor), update, self.admin_bypass)? {
+                match storage
+                    .update_job(&resolved_id, Some(actor), update, self.admin_bypass)
+                    .await?
+                {
                     Some((_updated_actor, job)) => Ok(serde_json::json!({
                         "success": true,
                         "job": serde_json::to_value(job).unwrap_or_default()
@@ -876,8 +881,8 @@ mod tests {
         assert_eq!(removed["remaining_count"], 0);
 
         let storage = hone_memory::CronJobStorage::new(&data_dir);
-        assert!(storage.list_jobs(&actor).is_empty());
-        assert_eq!(storage.list_jobs(&other_actor).len(), 1);
+        assert!(storage.list_jobs(&actor).await.is_empty());
+        assert_eq!(storage.list_jobs(&other_actor).await.len(), 1);
 
         let repeated = tool
             .execute(serde_json::json!({"action": "remove_all"}))
@@ -954,7 +959,9 @@ mod tests {
         assert_eq!(preview_response["needs_confirmation"].as_bool(), Some(true));
         assert_eq!(preview_response["job"]["id"], add_response["job"]["id"]);
 
-        let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir)
+            .list_jobs(&actor)
+            .await;
         assert_eq!(jobs_after_preview.len(), 1);
 
         let confirmed_response = tool
@@ -967,7 +974,9 @@ mod tests {
             .expect("confirmed remove");
         assert_eq!(confirmed_response["success"].as_bool(), Some(true));
 
-        let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir)
+            .list_jobs(&actor)
+            .await;
         assert!(jobs_after_confirm.is_empty());
     }
 
@@ -1006,7 +1015,9 @@ mod tests {
             Some(2)
         );
 
-        let jobs = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        let jobs = hone_memory::CronJobStorage::new(&data_dir)
+            .list_jobs(&actor)
+            .await;
         assert_eq!(jobs.len(), 2);
     }
 

@@ -11,7 +11,7 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
+use hone_core::cloud_sync::ensure_cloud_schema_once;
 
 pub mod history;
 pub mod schedule;
@@ -66,12 +66,11 @@ impl CronJobStorage {
     }
 }
 
-pub(super) fn run_cloud_cron<T, F>(future: F) -> hone_core::HoneResult<T>
+pub(super) async fn cloud_cron_operation<T, F>(future: F) -> hone_core::HoneResult<T>
 where
-    T: Send + 'static,
-    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>>,
 {
-    run_cloud_cron_with_timeout(future, cloud_cron_operation_timeout())
+    cloud_cron_operation_with_timeout(future, cloud_cron_operation_timeout()).await
 }
 
 fn cloud_cron_operation_timeout() -> Duration {
@@ -83,15 +82,20 @@ fn cloud_cron_operation_timeout() -> Duration {
         .unwrap_or_else(|| Duration::from_secs(DEFAULT_CLOUD_CRON_TIMEOUT_SECS))
 }
 
-fn run_cloud_cron_with_timeout<T, F>(
+async fn cloud_cron_operation_with_timeout<T, F>(
     future: F,
     operation_timeout: Duration,
 ) -> hone_core::HoneResult<T>
 where
-    T: Send + 'static,
-    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>>,
 {
-    run_cloud_sync(future, Some(operation_timeout), "cloud cron operation")
+    match tokio::time::timeout(operation_timeout, future).await {
+        Ok(result) => result,
+        Err(_) => Err(hone_core::HoneError::Storage(format!(
+            "cloud cron operation timed out after {}ms",
+            operation_timeout.as_millis()
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -122,17 +126,18 @@ mod tests {
         dir
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn cloud_cron_timeout_returns_storage_error_instead_of_blocking() {
+    async fn cloud_cron_timeout_returns_storage_error_instead_of_blocking() {
         let started = Instant::now();
-        let err = run_cloud_cron_with_timeout(
+        let err = cloud_cron_operation_with_timeout(
             async {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 Ok::<(), HoneError>(())
             },
             Duration::from_millis(20),
         )
+        .await
         .expect_err("cloud cron bridge should time out");
 
         assert!(
@@ -146,38 +151,26 @@ mod tests {
         );
     }
 
-    /// 同步桥在 **tokio 上下文内**也必须正常返回结果与超时。
-    ///
-    /// 这条分支此前(`std::thread::spawn(...).join()` + 每次新建 Runtime)一行
-    /// 测试都没有。现在它改成"交给长驻 runtime + 阻塞等结果",更需要被钉住:
-    /// 一旦误用 `Runtime::block_on`,tokio 会 panic
-    /// "Cannot start a runtime from within a runtime"。
+    /// async timeout 包装在 Tokio 上下文内必须正常返回结果与超时。
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    async fn cloud_cron_bridge_works_from_inside_a_tokio_context() {
-        // 借 blocking 线程调用同步桥——这正是生产里的形态:
-        // 同步的 `get_due_jobs` / `record_execution_event` 跑在 tokio worker 上。
-        let ok = tokio::task::spawn_blocking(|| {
-            run_cloud_cron_with_timeout(
-                async { Ok::<u32, HoneError>(7) },
-                Duration::from_millis(500),
-            )
-        })
+    async fn cloud_cron_operation_works_from_inside_a_tokio_context() {
+        let ok = cloud_cron_operation_with_timeout(
+            async { Ok::<u32, HoneError>(7) },
+            Duration::from_millis(500),
+        )
         .await
-        .expect("join");
-        assert_eq!(ok.expect("bridge should return the value"), 7);
+        .expect("operation should return the value");
+        assert_eq!(ok, 7);
 
-        let timed_out = tokio::task::spawn_blocking(|| {
-            run_cloud_cron_with_timeout(
-                async {
-                    tokio::time::sleep(Duration::from_millis(300)).await;
-                    Ok::<(), HoneError>(())
-                },
-                Duration::from_millis(20),
-            )
-        })
+        let timed_out = cloud_cron_operation_with_timeout(
+            async {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                Ok::<(), HoneError>(())
+            },
+            Duration::from_millis(20),
+        )
         .await
-        .expect("join")
         .expect_err("should time out");
         assert!(
             timed_out
@@ -186,21 +179,17 @@ mod tests {
             "unexpected error: {timed_out}"
         );
 
-        // 反复调用不应再有 runtime/线程 churn:连续跑一批,全部成功即说明长驻
-        // runtime 被复用(此前每次都会新建并销毁 1+N 个 OS 线程)。
-        let batch = tokio::task::spawn_blocking(|| {
-            (0..32)
-                .map(|i| {
-                    run_cloud_cron_with_timeout(
-                        async move { Ok::<u32, HoneError>(i) },
-                        Duration::from_millis(500),
-                    )
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .await
-        .expect("join")
-        .expect("all bridge calls should succeed");
+        let mut batch = Vec::new();
+        for i in 0..32 {
+            batch.push(
+                cloud_cron_operation_with_timeout(
+                    async move { Ok::<u32, HoneError>(i) },
+                    Duration::from_millis(500),
+                )
+                .await
+                .expect("operation"),
+            );
+        }
         assert_eq!(batch.len(), 32);
         assert_eq!(batch[31], 31);
     }
@@ -209,11 +198,11 @@ mod tests {
         ActorIdentity::new(channel, user_id, channel_scope).expect("actor")
     }
 
-    fn set_cron_run_executed_at(storage: &CronJobStorage, job_id: &str, executed_at: &str) {
+    async fn set_cron_run_executed_at(storage: &CronJobStorage, job_id: &str, executed_at: &str) {
         let postgres = storage.postgres.clone();
         let job_id = job_id.to_string();
         let executed_at = executed_at.to_string();
-        run_cloud_cron(async move {
+        cloud_cron_operation(async move {
             let client = postgres.connect_cached_client().await?;
             client
                 .execute(
@@ -224,12 +213,13 @@ mod tests {
                 .map_err(|error| HoneError::Config(error.to_string()))?;
             Ok(())
         })
+        .await
         .expect("update cron run timestamp");
     }
 
-    fn cron_run_counts(storage: &CronJobStorage) -> (i64, i64) {
+    async fn cron_run_counts(storage: &CronJobStorage) -> (i64, i64) {
         let postgres = storage.postgres.clone();
-        run_cloud_cron(async move {
+        cloud_cron_operation(async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -240,25 +230,28 @@ mod tests {
                 .map_err(|error| HoneError::Config(error.to_string()))?;
             Ok((row.get(0), row.get(1)))
         })
+        .await
         .expect("count cron runs")
     }
 
-    fn add_enabled_job(storage: &CronJobStorage, actor: &ActorIdentity, name: &str) -> Value {
-        storage.add_job(
-            actor,
-            name,
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            &actor.user_id,
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        )
+    async fn add_enabled_job(storage: &CronJobStorage, actor: &ActorIdentity, name: &str) -> Value {
+        storage
+            .add_job(
+                actor,
+                name,
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                &actor.user_id,
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await
     }
 
     fn assert_job_result_success(result: &Value) {
@@ -308,98 +301,106 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn add_job_validates_params() {
+    async fn add_job_validates_params() {
         let dir = make_temp_dir("hone_cron_storage_validate");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("imessage", "u1", None);
 
-        let bad_hour = storage.add_job(
-            &actor,
-            "bad hour",
-            Some(24),
-            Some(0),
-            "daily",
-            "task",
-            "u1",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let bad_hour = storage
+            .add_job(
+                &actor,
+                "bad hour",
+                Some(24),
+                Some(0),
+                "daily",
+                "task",
+                "u1",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_failure(&bad_hour);
 
-        let bad_weekly = storage.add_job(
-            &actor,
-            "bad weekly",
-            Some(9),
-            Some(0),
-            "weekly",
-            "task",
-            "u1",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let bad_weekly = storage
+            .add_job(
+                &actor,
+                "bad weekly",
+                Some(9),
+                Some(0),
+                "weekly",
+                "task",
+                "u1",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_failure(&bad_weekly);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn add_job_rejects_empty_channel_target() {
+    async fn add_job_rejects_empty_channel_target() {
         let dir = make_temp_dir("hone_cron_storage_empty_target");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("telegram", "user_1", None);
 
-        let result = storage.add_job(
-            &actor,
-            "missing target",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "   ",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let result = storage
+            .add_job(
+                &actor,
+                "missing target",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "   ",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
 
         assert_job_result_failure(&result);
         assert_job_result_error_contains(&result, "channel_target 不能为空");
-        assert!(storage.list_jobs(&actor).is_empty());
+        assert!(storage.list_jobs(&actor).await.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn channel_target_directory_aggregates_jobs_and_execution_history() {
+    async fn channel_target_directory_aggregates_jobs_and_execution_history() {
         let dir = make_temp_dir("hone_cron_storage_target_directory");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("telegram", "user_1", Some("g:1:c:2"));
 
-        let add = storage.add_job(
-            &actor,
-            "group heartbeat",
-            Some(9),
-            Some(0),
-            "heartbeat",
-            "task",
-            "-100123",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "group heartbeat",
+                Some(9),
+                Some(0),
+                "heartbeat",
+                "task",
+                "-100123",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
         storage
@@ -419,9 +420,10 @@ mod tests {
                     detail: serde_json::json!({"delivery_key": "target-directory-test"}),
                 },
             )
+            .await
             .expect("record execution");
 
-        let targets = storage.list_channel_targets();
+        let targets = storage.list_channel_targets().await;
         let target = targets
             .iter()
             .find(|target| target.target == "-100123")
@@ -440,9 +442,9 @@ mod tests {
         assert!(target.actor_user_ids.iter().any(|user| user == "user_1"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn due_job_and_mark_run_prevents_immediate_duplicate() {
+    async fn due_job_and_mark_run_prevents_immediate_duplicate() {
         let dir = make_temp_dir("hone_cron_storage_due");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("imessage", "u1", None);
@@ -451,46 +453,52 @@ mod tests {
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
-        let add = storage.add_job(
-            &actor,
-            "daily report",
-            Some(hour),
-            Some(minute),
-            "daily",
-            "send report",
-            "u1",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "daily report",
+                Some(hour),
+                Some(minute),
+                "daily",
+                "send report",
+                "u1",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
-        let due_first = storage.get_due_jobs(
-            hour as i32,
-            minute as i32,
-            now_bj.weekday().num_days_from_monday(),
-            &["imessage"],
-        );
+        let due_first = storage
+            .get_due_jobs(
+                hour as i32,
+                minute as i32,
+                now_bj.weekday().num_days_from_monday(),
+                &["imessage"],
+            )
+            .await;
         assert_eq!(due_first.len(), 1);
         assert_eq!(due_first[0].0, actor);
         assert_eq!(due_first[0].1.id, job_id);
 
-        storage.mark_job_run(&due_first[0].0, &job_id);
-        let due_second = storage.get_due_jobs(
-            hour as i32,
-            minute as i32,
-            now_bj.weekday().num_days_from_monday(),
-            &["imessage"],
-        );
+        storage.mark_job_run(&due_first[0].0, &job_id).await;
+        let due_second = storage
+            .get_due_jobs(
+                hour as i32,
+                minute as i32,
+                now_bj.weekday().num_days_from_monday(),
+                &["imessage"],
+            )
+            .await;
         assert!(due_second.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn due_jobs_skip_mismatched_cron_file_actor() {
+    async fn due_jobs_skip_mismatched_cron_file_actor() {
         let dir = make_temp_dir("hone_cron_storage_mismatch");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
@@ -533,18 +541,20 @@ mod tests {
         )
         .expect("write");
 
-        let due = storage.get_due_jobs(
-            hour as i32,
-            minute as i32,
-            now_bj.weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due = storage
+            .get_due_jobs(
+                hour as i32,
+                minute as i32,
+                now_bj.weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert!(due.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn due_jobs_dedup_same_job_id_across_files() {
+    async fn due_jobs_dedup_same_job_id_across_files() {
         let dir = make_temp_dir("hone_cron_storage_dup_files");
         let storage = CronJobStorage::new(&dir);
         let primary_actor = actor("feishu", "ou_real", None);
@@ -554,21 +564,23 @@ mod tests {
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
-        let add = storage.add_job(
-            &primary_actor,
-            "daily report",
-            Some(hour),
-            Some(minute),
-            "daily",
-            "send report",
-            "+86123",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &primary_actor,
+                "daily report",
+                Some(hour),
+                Some(minute),
+                "daily",
+                "send report",
+                "+86123",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job: CronJob = serde_json::from_value(add["job"].clone()).expect("job");
         let duplicate_data = CronJobData {
             actor: Some(other_actor.clone()),
@@ -586,79 +598,88 @@ mod tests {
         )
         .expect("write");
 
-        let due = storage.get_due_jobs(
-            hour as i32,
-            minute as i32,
-            now_bj.weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due = storage
+            .get_due_jobs(
+                hour as i32,
+                minute as i32,
+                now_bj.weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert_eq!(due.len(), 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn list_jobs_isolated_by_actor_scope() {
+    async fn list_jobs_isolated_by_actor_scope() {
         let dir = make_temp_dir("hone_cron_storage_scope");
         let storage = CronJobStorage::new(&dir);
         let actor_one = actor("discord", "alice", Some("g:1:c:1"));
         let actor_two = actor("discord", "alice", Some("g:1:c:2"));
 
-        let first_add = storage.add_job(
-            &actor_one,
-            "report one",
-            Some(9),
-            Some(0),
-            "daily",
-            "task one",
-            "alice",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let first_add = storage
+            .add_job(
+                &actor_one,
+                "report one",
+                Some(9),
+                Some(0),
+                "daily",
+                "task one",
+                "alice",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_success(&first_add);
-        let second_add = storage.add_job(
-            &actor_two,
-            "report two",
-            Some(9),
-            Some(30),
-            "daily",
-            "task two",
-            "alice",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let second_add = storage
+            .add_job(
+                &actor_two,
+                "report two",
+                Some(9),
+                Some(30),
+                "daily",
+                "task two",
+                "alice",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_success(&second_add);
 
-        let first = storage.list_jobs(&actor_one);
-        let second = storage.list_jobs(&actor_two);
+        let first = storage.list_jobs(&actor_one).await;
+        let second = storage.list_jobs(&actor_two).await;
         assert_eq!(first.len(), 1);
         assert_eq!(second.len(), 1);
         assert_eq!(first[0].name, "report one");
         assert_eq!(second[0].name, "report two");
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn remove_all_jobs_is_actor_scoped_clears_pending_updates_and_is_idempotent() {
+    async fn remove_all_jobs_is_actor_scoped_clears_pending_updates_and_is_idempotent() {
         let dir = make_temp_dir("hone_cron_storage_remove_all");
         let storage = CronJobStorage::new(&dir);
         let actor_one = actor("feishu", "u1", None);
         let actor_two = actor("feishu", "u2", None);
 
-        let first_job_id =
-            job_id_from_add_result(&add_enabled_job(&storage, &actor_one, "daily report"));
-        assert_job_result_success(&add_enabled_job(&storage, &actor_one, "price heartbeat"));
-        assert_job_result_success(&add_enabled_job(&storage, &actor_two, "other actor report"));
+        let first_job = add_enabled_job(&storage, &actor_one, "daily report").await;
+        let first_job_id = job_id_from_add_result(&first_job);
+        let heartbeat_job = add_enabled_job(&storage, &actor_one, "price heartbeat").await;
+        assert_job_result_success(&heartbeat_job);
+        let other_actor_job = add_enabled_job(&storage, &actor_two, "other actor report").await;
+        assert_job_result_success(&other_actor_job);
 
         let mut actor_one_data = storage
             .try_load_jobs(&actor_one)
+            .await
             .expect("load actor one jobs");
         actor_one_data.pending_updates.push(PendingUpdate {
             token: "pending-1".to_string(),
@@ -668,35 +689,41 @@ mod tests {
         });
         storage
             .save_jobs(&actor_one, &actor_one_data)
+            .await
             .expect("save pending update");
 
         let removed = storage
             .remove_all_jobs(&actor_one)
+            .await
             .expect("remove all actor one jobs");
         assert_eq!(removed.len(), 2);
-        let remaining_actor_one = storage.try_load_jobs(&actor_one).expect("reload actor one");
+        let remaining_actor_one = storage
+            .try_load_jobs(&actor_one)
+            .await
+            .expect("reload actor one");
         assert!(remaining_actor_one.jobs.is_empty());
         assert!(remaining_actor_one.pending_updates.is_empty());
-        assert_eq!(storage.list_jobs(&actor_two).len(), 1);
+        assert_eq!(storage.list_jobs(&actor_two).await.len(), 1);
 
         let repeated = storage
             .remove_all_jobs(&actor_one)
+            .await
             .expect("remove all should be idempotent");
         assert!(repeated.is_empty());
 
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn remove_all_jobs_does_not_report_success_when_durable_data_is_unreadable() {
+    async fn remove_all_jobs_does_not_report_success_when_durable_data_is_unreadable() {
         let dir = make_temp_dir("hone_cron_storage_remove_all_corrupt");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "u1", None);
         let postgres = storage.postgres.clone();
         let actor_key = actor.storage_key();
         let actor_value = serde_json::to_value(&actor).expect("actor");
-        run_cloud_cron(async move {
+        cloud_cron_operation(async move {
             postgres
                 .upsert_cron_job_record(
                     &actor_key,
@@ -706,10 +733,12 @@ mod tests {
                 )
                 .await
         })
+        .await
         .expect("write corrupt cron data");
 
         let error = storage
             .remove_all_jobs(&actor)
+            .await
             .expect_err("corrupt durable data must fail cancellation");
         assert!(
             error.to_string().contains("expected")
@@ -721,75 +750,81 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn sixth_enabled_job_is_rejected_but_disabled_job_is_allowed() {
+    async fn sixth_enabled_job_is_rejected_but_disabled_job_is_allowed() {
         let dir = make_temp_dir("hone_cron_storage_limit_add");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("discord", "alice", None);
 
         for index in 0..MAX_ENABLED_JOBS_PER_ACTOR {
-            assert_job_result_success(&add_enabled_job(&storage, &actor, &format!("job-{index}")));
+            let result = add_enabled_job(&storage, &actor, &format!("job-{index}")).await;
+            assert_job_result_success(&result);
         }
 
-        let rejected = add_enabled_job(&storage, &actor, "job-6");
+        let rejected = add_enabled_job(&storage, &actor, "job-6").await;
         assert_job_result_failure(&rejected);
         assert_job_result_error_eq(&rejected, &cron_enabled_limit_error());
 
-        let disabled = storage.add_job(
-            &actor,
-            "disabled",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "alice",
-            None,
-            None,
-            None,
-            false,
-            None,
-            false,
-        );
+        let disabled = storage
+            .add_job(
+                &actor,
+                "disabled",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "alice",
+                None,
+                None,
+                None,
+                false,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_success(&disabled);
         assert_eq!(
-            storage.list_jobs(&actor).len(),
+            storage.list_jobs(&actor).await.len(),
             MAX_ENABLED_JOBS_PER_ACTOR + 1
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn enabling_sixth_job_via_toggle_or_update_is_rejected() {
+    async fn enabling_sixth_job_via_toggle_or_update_is_rejected() {
         let dir = make_temp_dir("hone_cron_storage_limit_enable");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("discord", "alice", None);
 
         let mut job_ids = Vec::new();
         for index in 0..MAX_ENABLED_JOBS_PER_ACTOR {
-            let result = add_enabled_job(&storage, &actor, &format!("job-{index}"));
+            let result = add_enabled_job(&storage, &actor, &format!("job-{index}")).await;
             job_ids.push(job_id_from_add_result(&result));
         }
 
-        let disabled = storage.add_job(
-            &actor,
-            "disabled",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "alice",
-            None,
-            None,
-            None,
-            false,
-            None,
-            false,
-        );
+        let disabled = storage
+            .add_job(
+                &actor,
+                "disabled",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "alice",
+                None,
+                None,
+                None,
+                false,
+                None,
+                false,
+            )
+            .await;
         let disabled_id = job_id_from_add_result(&disabled);
 
         let toggle_err = storage
             .toggle_job(&disabled_id, Some(&actor), false)
+            .await
             .expect_err("toggle should hit limit");
         assert_enabled_limit_error(&toggle_err);
 
@@ -803,58 +838,65 @@ mod tests {
                 },
                 false,
             )
+            .await
             .expect_err("update should hit limit");
         assert_enabled_limit_error(&update_err);
 
         storage
             .toggle_job(&job_ids[0], Some(&actor), false)
+            .await
             .expect("disable first job");
 
         let enabled = storage
             .toggle_job(&disabled_id, Some(&actor), false)
+            .await
             .expect("toggle after freeing slot")
             .expect("job exists");
         assert!(enabled.1.enabled);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn heartbeat_jobs_run_once_per_half_hour_slot() {
+    async fn heartbeat_jobs_run_once_per_half_hour_slot() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_heartbeat", None);
-        let add = storage.add_job(
-            &actor,
-            "price watch",
-            None,
-            None,
-            "heartbeat",
-            "当闪迪低于 520 提醒我",
-            "ou_heartbeat",
-            None,
-            None,
-            None,
-            true,
-            Some(vec!["heartbeat".to_string()]),
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "price watch",
+                None,
+                None,
+                "heartbeat",
+                "当闪迪低于 520 提醒我",
+                "ou_heartbeat",
+                None,
+                None,
+                None,
+                true,
+                Some(vec!["heartbeat".to_string()]),
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
         let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         // 查询分钟取到最大抖动偏移之后:heartbeat 现在按 job_id 在半点后的
         // [0, JITTER_SPREAD_MINUTES) 分钟内错峰,槽内任一分钟都算同一槽。
         let probe_minute = 30 + super::storage::JITTER_SPREAD_MINUTES - 1;
-        let due_first = storage.get_due_jobs(
-            10,
-            probe_minute,
-            now_bj.weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due_first = storage
+            .get_due_jobs(
+                10,
+                probe_minute,
+                now_bj.weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert_eq!(due_first.len(), 1);
         assert_eq!(due_first[0].1.id, job_id);
         assert!(due_first[0].1.is_heartbeat());
 
-        let mut data = storage.load_jobs(&actor);
+        let mut data = storage.load_jobs(&actor).await;
         let slot_time = now_bj
             .with_hour(10)
             .and_then(|dt| dt.with_minute(probe_minute as u32))
@@ -866,21 +908,23 @@ mod tests {
             .find(|job| job.id == job_id)
             .expect("job exists");
         job.last_run_at = Some(slot_time.to_rfc3339());
-        storage.save_jobs(&actor, &data).expect("save");
-        let due_second = storage.get_due_jobs(
-            10,
-            probe_minute,
-            now_bj.weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        storage.save_jobs(&actor, &data).await.expect("save");
+        let due_second = storage
+            .get_due_jobs(
+                10,
+                probe_minute,
+                now_bj.weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert!(due_second.is_empty());
     }
 
     /// heartbeat 齐射削峰:偏移必须确定性、落在 `[0, JITTER_SPREAD_MINUTES)`,
     /// 且始终留在到期容错窗口内(否则该轮任务会被整个丢掉)。
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn heartbeat_dispatch_jitter_is_deterministic_and_stays_inside_due_window() {
+    async fn heartbeat_dispatch_jitter_is_deterministic_and_stays_inside_due_window() {
         use super::storage::{JITTER_SPREAD_MINUTES, dispatch_jitter_minutes};
 
         assert!(
@@ -908,31 +952,33 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn daily_jobs_catch_up_after_missed_window_same_day() {
+    async fn daily_jobs_catch_up_after_missed_window_same_day() {
         let dir = make_temp_dir("hone_cron_storage_catch_up");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_catch_up", None);
 
-        let add = storage.add_job(
-            &actor,
-            "daily report",
-            Some(9),
-            Some(30),
-            "daily",
-            "task",
-            "ou_catch_up",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "daily report",
+                Some(9),
+                Some(30),
+                "daily",
+                "task",
+                "ou_catch_up",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
-        let mut data = storage.load_jobs(&actor);
+        let mut data = storage.load_jobs(&actor).await;
         let job = data
             .jobs
             .iter_mut()
@@ -940,43 +986,47 @@ mod tests {
             .expect("job exists");
         let today = hone_core::local_now().date_naive();
         job.created_at = Some(runtime_slot_time(today, 8, 0).to_rfc3339());
-        storage.save_jobs(&actor, &data).expect("save");
+        storage.save_jobs(&actor, &data).await.expect("save");
 
-        let due = storage.get_due_jobs(
-            12,
-            0,
-            hone_core::local_now().weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due = storage
+            .get_due_jobs(
+                12,
+                0,
+                hone_core::local_now().weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].1.id, job_id);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn daily_jobs_created_after_slot_do_not_backfill_immediately() {
+    async fn daily_jobs_created_after_slot_do_not_backfill_immediately() {
         let dir = make_temp_dir("hone_cron_storage_no_backfill_new_job");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_new_job", None);
 
-        let add = storage.add_job(
-            &actor,
-            "late daily report",
-            Some(9),
-            Some(30),
-            "daily",
-            "task",
-            "ou_new_job",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "late daily report",
+                Some(9),
+                Some(30),
+                "daily",
+                "task",
+                "ou_new_job",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
-        let mut data = storage.load_jobs(&actor);
+        let mut data = storage.load_jobs(&actor).await;
         let job = data
             .jobs
             .iter_mut()
@@ -984,47 +1034,51 @@ mod tests {
             .expect("job exists");
         let today = hone_core::local_now().date_naive();
         job.created_at = Some(runtime_slot_time(today, 12, 15).to_rfc3339());
-        storage.save_jobs(&actor, &data).expect("save");
+        storage.save_jobs(&actor, &data).await.expect("save");
 
-        let due = storage.get_due_jobs(
-            12,
-            30,
-            hone_core::local_now().weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due = storage
+            .get_due_jobs(
+                12,
+                30,
+                hone_core::local_now().weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert!(due.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn add_job_rejects_prompt_schedule_time_mismatch() {
+    async fn add_job_rejects_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_add");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
 
-        let result = storage.add_job(
-            &actor,
-            "美股盘后AI及高景气产业链推演",
-            Some(8),
-            Some(30),
-            "trading_day",
-            "【触发时间】每个交易日 20:45（交易日）\n请执行复盘。",
-            "ou_real",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let result = storage
+            .add_job(
+                &actor,
+                "美股盘后AI及高景气产业链推演",
+                Some(8),
+                Some(30),
+                "trading_day",
+                "【触发时间】每个交易日 20:45（交易日）\n请执行复盘。",
+                "ou_real",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
 
         assert_job_result_failure(&result);
         assert_job_result_error_contains(&result, "与结构化 schedule 08:30 不一致");
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn due_jobs_repair_existing_prompt_schedule_time_mismatch() {
+    async fn due_jobs_repair_existing_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
@@ -1059,14 +1113,16 @@ mod tests {
             }],
             pending_updates: Vec::new(),
         };
-        storage.save_jobs(&actor, &data).expect("save");
+        storage.save_jobs(&actor, &data).await.expect("save");
 
-        let due = storage.get_due_jobs(
-            hour as i32,
-            minute as i32,
-            now_bj.weekday().num_days_from_monday(),
-            &["feishu"],
-        );
+        let due = storage
+            .get_due_jobs(
+                hour as i32,
+                minute as i32,
+                now_bj.weekday().num_days_from_monday(),
+                &["feishu"],
+            )
+            .await;
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].1.id, "j_mismatch");
         assert_eq!(
@@ -1074,7 +1130,7 @@ mod tests {
             (hour, minute)
         );
 
-        let saved = storage.load_jobs(&actor);
+        let saved = storage.load_jobs(&actor).await;
         let repaired = saved
             .jobs
             .into_iter()
@@ -1086,61 +1142,67 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn once_jobs_with_future_date_do_not_run_today() {
+    async fn once_jobs_with_future_date_do_not_run_today() {
         let dir = make_temp_dir("hone_cron_storage_once_date");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_once", None);
         let today = hone_core::local_now().date_naive();
         let tomorrow = today + chrono::Duration::days(1);
 
-        let add = storage.add_job(
-            &actor,
-            "future once",
-            Some(8),
-            Some(30),
-            "once",
-            "task",
-            "ou_once",
-            None,
-            Some(tomorrow.format("%Y-%m-%d").to_string()),
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "future once",
+                Some(8),
+                Some(30),
+                "once",
+                "task",
+                "ou_once",
+                None,
+                Some(tomorrow.format("%Y-%m-%d").to_string()),
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         assert_job_result_success(&add);
 
-        let due = storage.get_due_jobs(12, 0, today.weekday().num_days_from_monday(), &["feishu"]);
+        let due = storage
+            .get_due_jobs(12, 0, today.weekday().num_days_from_monday(), &["feishu"])
+            .await;
         assert!(
             due.is_empty(),
             "future one-shot job must not be catch-up executed today"
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn execution_records_are_persisted_in_postgres() {
+    async fn execution_records_are_persisted_in_postgres() {
         let dir = make_temp_dir("hone_cron_storage_exec_records");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec", None);
 
-        let add = storage.add_job(
-            &actor,
-            "daily report",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "ou_exec",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "daily report",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "ou_exec",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
         storage
@@ -1160,10 +1222,12 @@ mod tests {
                     detail: serde_json::json!({"sent_segments": 1}),
                 },
             )
+            .await
             .expect("record execution");
 
         let records = storage
             .list_execution_records(&job_id, 10)
+            .await
             .expect("list execution records");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].job_id, job_id);
@@ -1173,9 +1237,9 @@ mod tests {
         assert_eq!(records[0].detail["sent_segments"], 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn discord_send_failed_without_error_is_classified_by_storage_backstop() {
+    async fn discord_send_failed_without_error_is_classified_by_storage_backstop() {
         let dir = make_temp_dir("hone_cron_storage_discord_send_failed_backstop");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("discord", "g_exec", Some("channel-1"));
@@ -1201,10 +1265,12 @@ mod tests {
                     }),
                 },
             )
+            .await
             .expect("record execution");
 
         let records = storage
             .list_execution_records("j_discord", 10)
+            .await
             .expect("list execution records");
         assert_eq!(records.len(), 1);
         assert_eq!(
@@ -1216,28 +1282,30 @@ mod tests {
         assert_eq!(records[0].detail["total_segments"], 2);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn execution_terminal_event_updates_matching_pending_row() {
+    async fn execution_terminal_event_updates_matching_pending_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_pending");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec_update", None);
 
-        let add = storage.add_job(
-            &actor,
-            "daily report",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "ou_exec_update",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "daily report",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "ou_exec_update",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
         storage
@@ -1257,6 +1325,7 @@ mod tests {
                     detail: serde_json::json!({"phase": "started", "delivery_key": "k-1"}),
                 },
             )
+            .await
             .expect("record started");
 
         storage
@@ -1276,10 +1345,12 @@ mod tests {
                     detail: serde_json::json!({"phase": "terminal", "delivery_key": "k-1"}),
                 },
             )
+            .await
             .expect("record terminal");
 
         let records = storage
             .list_execution_records(&job_id, 10)
+            .await
             .expect("list execution records");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "completed");
@@ -1300,9 +1371,9 @@ mod tests {
 
     /// 没有配对 started 行的终态记录:开始时刻未知,必须留 NULL,
     /// 不能回填成 executed_at —— 那会谎报 0 毫秒并污染时延统计。
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn terminal_only_execution_leaves_start_and_duration_unknown() {
+    async fn terminal_only_execution_leaves_start_and_duration_unknown() {
         let dir = make_temp_dir("hone_cron_storage_exec_terminal_only");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("web", "web-user-terminal-only", None);
@@ -1324,10 +1395,12 @@ mod tests {
                     detail: serde_json::json!({"phase": "terminal"}),
                 },
             )
+            .await
             .expect("record terminal without a started row");
 
         let records = storage
             .list_execution_records("j_terminal_only", 10)
+            .await
             .expect("list execution records");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "execution_failed");
@@ -1341,9 +1414,9 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn started_execution_can_be_failed_by_exact_delivery_key_watchdog() {
+    async fn started_execution_can_be_failed_by_exact_delivery_key_watchdog() {
         let dir = make_temp_dir("hone_cron_storage_watchdog_pending");
         let storage = CronJobStorage::new(&dir);
         let target_actor = actor("feishu", "ou_watchdog", None);
@@ -1374,6 +1447,7 @@ mod tests {
                         }),
                     },
                 )
+                .await
                 .expect("record started");
         }
 
@@ -1387,6 +1461,7 @@ mod tests {
                 "feishu_scheduler_handler_watchdog",
                 "scheduler_handler_watchdog_timeout:1235s",
             )
+            .await
             .expect("watchdog finalize");
         assert_eq!(updated, 1);
 
@@ -1400,11 +1475,13 @@ mod tests {
                 "feishu_scheduler_handler_watchdog",
                 "scheduler_handler_watchdog_timeout:1235s",
             )
+            .await
             .expect("watchdog finalize is idempotent");
         assert_eq!(second, 0);
 
         let finalized = storage
             .list_execution_records("j_watchdog", 10)
+            .await
             .expect("list finalized");
         assert_eq!(finalized.len(), 2);
         let target = finalized
@@ -1427,6 +1504,7 @@ mod tests {
 
         let other_key = storage
             .list_execution_records("j_other_key", 10)
+            .await
             .expect("list other key");
         assert_eq!(other_key[0].execution_status, "running");
         assert_eq!(other_key[0].message_send_status, "pending");
@@ -1439,9 +1517,9 @@ mod tests {
         assert_eq!(other_actor_records.message_send_status, "pending");
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn stale_started_rows_can_be_recovered_as_failed() {
+    async fn stale_started_rows_can_be_recovered_as_failed() {
         let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
         let storage = CronJobStorage::new(&dir);
         let feishu_actor = actor("feishu", "ou_interrupted", None);
@@ -1487,10 +1565,11 @@ mod tests {
                         }),
                     },
                 )
+                .await
                 .expect("record pending");
         }
 
-        set_cron_run_executed_at(&storage, "j_feishu_started", "2026-05-07T20:30:00+08:00");
+        set_cron_run_executed_at(&storage, "j_feishu_started", "2026-05-07T20:30:00+08:00").await;
 
         let updated = storage
             .recover_stale_started_executions(
@@ -1499,11 +1578,13 @@ mod tests {
                 "feishu_scheduler_startup",
                 "Feishu scheduler runtime restarted before this run reached a terminal status",
             )
+            .await
             .expect("finalize pending");
         assert_eq!(updated, 1);
 
         let finalized = storage
             .list_execution_records("j_feishu_started", 10)
+            .await
             .expect("list finalized");
         assert_eq!(finalized.len(), 1);
         assert_eq!(finalized[0].execution_status, "execution_failed");
@@ -1529,12 +1610,14 @@ mod tests {
 
         let feishu_other = storage
             .list_execution_records("j_feishu_other", 10)
+            .await
             .expect("list feishu other");
         assert_eq!(feishu_other[0].execution_status, "running");
         assert_eq!(feishu_other[0].message_send_status, "pending");
 
         let discord = storage
             .list_execution_records("j_discord_started", 10)
+            .await
             .expect("list discord");
         assert_eq!(discord[0].execution_status, "running");
         assert_eq!(discord[0].message_send_status, "pending");
@@ -1545,9 +1628,9 @@ mod tests {
     /// terminal — production observes started rows persisting as
     /// `running + pending` across windows, so verify no orphan started rows
     /// remain after both windows finish.
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn heartbeat_started_rows_finalize_across_two_windows() {
+    async fn heartbeat_started_rows_finalize_across_two_windows() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_two_windows");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_heartbeat", None);
@@ -1592,6 +1675,7 @@ mod tests {
                             }),
                         },
                     )
+                    .await
                     .expect("record started");
 
                 storage
@@ -1615,11 +1699,12 @@ mod tests {
                             }),
                         },
                     )
+                    .await
                     .expect("record terminal");
             }
         }
 
-        let (total, stuck) = cron_run_counts(&storage);
+        let (total, stuck) = cron_run_counts(&storage).await;
         assert_eq!(
             stuck, 0,
             "no started row should remain running+pending after terminal noop"
@@ -1636,9 +1721,9 @@ mod tests {
     /// `execution_detail_with_delivery_key`, producing a detail object with
     /// `delivery_key` at top level, plus a `scheduler` sub-object — matches the
     /// real production payload exactly.
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper() {
+    async fn heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_scheduler_wrap");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_heartbeat_wrap", None);
@@ -1666,6 +1751,7 @@ mod tests {
                     }),
                 },
             )
+            .await
             .expect("record started");
 
         let terminal_detail = serde_json::json!({
@@ -1697,37 +1783,43 @@ mod tests {
                     detail: terminal_detail,
                 },
             )
+            .await
             .expect("record terminal");
 
-        let records = storage.list_execution_records(job_id, 10).expect("list");
+        let records = storage
+            .list_execution_records(job_id, 10)
+            .await
+            .expect("list");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "completed");
         assert_eq!(records[0].message_send_status, "sent");
         assert!(records[0].delivered);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn execution_terminal_event_falls_back_to_recent_started_row() {
+    async fn execution_terminal_event_falls_back_to_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_recent_started");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_exec_update_fallback", None);
 
-        let add = storage.add_job(
-            &actor,
-            "heartbeat",
-            Some(9),
-            Some(0),
-            "heartbeat",
-            "task",
-            "ou_exec_update_fallback",
-            None,
-            None,
-            None,
-            true,
-            None,
-            true,
-        );
+        let add = storage
+            .add_job(
+                &actor,
+                "heartbeat",
+                Some(9),
+                Some(0),
+                "heartbeat",
+                "task",
+                "ou_exec_update_fallback",
+                None,
+                None,
+                None,
+                true,
+                None,
+                true,
+            )
+            .await;
         let job_id = job_id_from_add_result(&add);
 
         storage
@@ -1747,6 +1839,7 @@ mod tests {
                     detail: serde_json::json!({"phase": "started", "delivery_key": "k-recent"}),
                 },
             )
+            .await
             .expect("record started");
 
         storage
@@ -1766,10 +1859,12 @@ mod tests {
                     detail: serde_json::json!({"phase": "terminal", "delivery_key": null}),
                 },
             )
+            .await
             .expect("record terminal");
 
         let records = storage
             .list_execution_records(&job_id, 10)
+            .await
             .expect("list execution records");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "noop");
@@ -1779,9 +1874,9 @@ mod tests {
 
     /// Reproduce the v0.5.0 terminal write that handed raw heartbeat
     /// diagnostics to storage without wrapping a top-level delivery_key.
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row() {
+    async fn pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_pre_fix_terminal");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_pre_fix", None);
@@ -1809,6 +1904,7 @@ mod tests {
                     }),
                 },
             )
+            .await
             .expect("record started");
 
         storage
@@ -1834,18 +1930,19 @@ mod tests {
                     }),
                 },
             )
+            .await
             .expect("record terminal");
 
-        let (total, stuck) = cron_run_counts(&storage);
+        let (total, stuck) = cron_run_counts(&storage).await;
 
         assert_eq!(stuck, 0);
         assert_eq!(total, 1);
     }
 
     /// Reproduce a legacy started row written without delivery_key in detail.
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback() {
+    async fn heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback() {
         let dir = make_temp_dir("hone_cron_storage_legacy_started");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_legacy", None);
@@ -1868,6 +1965,7 @@ mod tests {
                     detail: serde_json::json!({"phase": "started"}),
                 },
             )
+            .await
             .expect("record legacy started");
 
         storage
@@ -1890,9 +1988,10 @@ mod tests {
                     }),
                 },
             )
+            .await
             .expect("record terminal");
 
-        let (total, stuck) = cron_run_counts(&storage);
+        let (total, stuck) = cron_run_counts(&storage).await;
 
         assert_eq!(stuck, 0);
         assert_eq!(total, 1);

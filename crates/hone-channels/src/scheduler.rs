@@ -4378,7 +4378,7 @@ pub async fn execute_scheduler_event_with_storage(
     storage: &CronJobStorage,
 ) -> ScheduledTaskExecution {
     let watchlist_guard_zones = watchlist_price_anchor_guard_zones(&core, event).await;
-    if !scheduler_event_is_active(storage, event) {
+    if !scheduler_event_is_active(storage, event).await {
         tracing::info!(
             job_id = %event.job_id,
             job = %event.job_name,
@@ -4423,7 +4423,7 @@ pub async fn execute_scheduler_event_with_storage(
         let response = result.response;
         let session_id = result.session_id;
         let verified_tool_calls = response.tool_calls_made.clone();
-        if !scheduler_event_is_active(storage, event) {
+        if !scheduler_event_is_active(storage, event).await {
             if response.success && !response.content.trim().is_empty() {
                 rollback_skipped_scheduler_assistant_turn(
                     &core.session_storage,
@@ -4719,7 +4719,7 @@ pub async fn execute_scheduler_event_with_storage(
     let heartbeat_model = run_options.model_override.clone().unwrap_or_default();
 
     let heartbeat_result = run_heartbeat_task(core, event, prompt_options, run_options).await;
-    if !scheduler_event_is_active(storage, event) {
+    if !scheduler_event_is_active(storage, event).await {
         tracing::info!(
             job_id = %event.job_id,
             job = %event.job_name,
@@ -8845,7 +8845,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    fn persist_event_job(core: &HoneBotCore, event: &SchedulerEvent) {
+    async fn persist_event_job(core: &HoneBotCore, event: &SchedulerEvent) {
         core.cron_job_storage()
             .save_jobs(
                 &event.actor,
@@ -8876,6 +8876,7 @@ mod tests {
                     pending_updates: Vec::new(),
                 },
             )
+            .await
             .expect("persist scheduler event job");
     }
 
@@ -8919,7 +8920,7 @@ mod tests {
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
         let event = make_event(actor, /* bypass */ false);
-        persist_event_job(&core, &event);
+        persist_event_job(&core, &event).await;
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =
@@ -8944,7 +8945,7 @@ mod tests {
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
         let event = make_event(actor, /* bypass */ true);
-        persist_event_job(&core, &event);
+        persist_event_job(&core, &event).await;
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =
@@ -8965,7 +8966,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         // 不写 prefs 文件 → quiet_hours None → 不拦截
         let event = make_event(actor, /* bypass */ false);
-        persist_event_job(&core, &event);
+        persist_event_job(&core, &event).await;
         let mut run_options = AgentRunOptions::default();
         run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
         let result =

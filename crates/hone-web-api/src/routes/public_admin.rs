@@ -248,7 +248,6 @@ pub(crate) async fn handle_usage_report(
     let execution_limit = usize::try_from(report_days)
         .unwrap_or_default()
         .saturating_mul(USAGE_EXECUTION_LIMIT_PER_DAY);
-    let state_for_worker = state.clone();
     let sessions = match state.core.session_storage.list_sessions().await {
         Ok(sessions) => sessions,
         Err(error) => {
@@ -267,65 +266,50 @@ pub(crate) async fn handle_usage_report(
             );
         }
     };
-    let result = tokio::task::spawn_blocking(move || {
-        let executions = state_for_worker
-            .core
-            .cron_job_storage()
-            .list_recent_executions(&ExecutionFilter {
-                since: Some(period_start.to_rfc3339()),
-                until: Some(now.to_rfc3339()),
-                limit: execution_limit,
-                ..ExecutionFilter::default()
-            })?;
-        if executions.len() >= execution_limit {
-            return Err(hone_core::HoneError::Config(format!(
-                "public admin usage execution query reached safety limit {execution_limit}"
-            )));
-        }
-        Ok::<_, hone_core::HoneError>(build_usage_report(
-            now,
-            report_days,
-            sessions,
-            executions,
-            users,
-        ))
-    })
-    .await;
-
-    match result {
-        Ok(Ok(report)) => {
-            tracing::info!(
-                admin_user_id = %admin.user_id,
-                report_days,
-                row_count = report.rows.len(),
-                today_questions = report.summary.today_question_count,
-                "public admin usage report loaded"
-            );
-            Json(report).into_response()
-        }
-        Ok(Err(error)) => {
+    let executions = match state
+        .core
+        .cron_job_storage()
+        .list_recent_executions(&ExecutionFilter {
+            since: Some(period_start.to_rfc3339()),
+            until: Some(now.to_rfc3339()),
+            limit: execution_limit,
+            ..ExecutionFilter::default()
+        })
+        .await
+    {
+        Ok(executions) => executions,
+        Err(error) => {
             tracing::error!(
                 admin_user_id = %admin.user_id,
                 error = %error,
                 "public admin usage report failed"
             );
-            crate::routes::json_error(
+            return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "使用统计暂时无法读取，请稍后重试",
-            )
-        }
-        Err(error) => {
-            tracing::error!(
-                admin_user_id = %admin.user_id,
-                error = %error,
-                "public admin usage report task failed"
             );
-            crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "使用统计暂时无法读取，请稍后重试",
-            )
         }
+    };
+    if executions.len() >= execution_limit {
+        tracing::error!(
+            admin_user_id = %admin.user_id,
+            execution_limit,
+            "public admin usage execution query reached safety limit"
+        );
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "使用统计暂时无法读取，请稍后重试",
+        );
     }
+    let report = build_usage_report(now, report_days, sessions, executions, users);
+    tracing::info!(
+        admin_user_id = %admin.user_id,
+        report_days,
+        row_count = report.rows.len(),
+        today_questions = report.summary.today_question_count,
+        "public admin usage report loaded"
+    );
+    Json(report).into_response()
 }
 
 fn build_usage_report(

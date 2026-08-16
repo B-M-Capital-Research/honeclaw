@@ -41,7 +41,8 @@ pub(crate) async fn handle_scheduler_events(
             .overall_timeout()
             .saturating_add(std::time::Duration::from_secs(30)),
         "telegram_scheduler_startup",
-    );
+    )
+    .await;
     while let Some(event) = event_rx.recv().await {
         if event.channel != "telegram" {
             continue;
@@ -61,30 +62,32 @@ pub(crate) async fn handle_scheduler_events(
                     "[Telegram] 心跳任务未命中，本轮不发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "noop".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "noop".to_string()
+                            },
+                            message_send_status: if result.error.is_some() {
+                                "skipped_error".to_string()
+                            } else {
+                                "skipped_noop".to_string()
+                            },
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: result.error.clone(),
+                            detail: result.metadata.clone(),
                         },
-                        message_send_status: if result.error.is_some() {
-                            "skipped_error".to_string()
-                        } else {
-                            "skipped_noop".to_string()
-                        },
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: result.error.clone(),
-                        detail: result.metadata.clone(),
-                    },
-                );
+                    )
+                    .await;
                 return;
             }
             let response = result
@@ -103,26 +106,28 @@ pub(crate) async fn handle_scheduler_events(
                         "[Telegram] 定时任务目标解析失败: job={} target={} ",
                         event.job_name, event.channel_target
                     );
-                    let _ = storage.record_execution_event(
-                        &event.actor,
-                        &event.job_id,
-                        &event.job_name,
-                        &event.channel_target,
-                        event.heartbeat,
-                        CronJobExecutionInput {
-                            execution_status: if result.error.is_some() {
-                                "execution_failed".to_string()
-                            } else {
-                                "completed".to_string()
+                    let _ = storage
+                        .record_execution_event(
+                            &event.actor,
+                            &event.job_id,
+                            &event.job_name,
+                            &event.channel_target,
+                            event.heartbeat,
+                            CronJobExecutionInput {
+                                execution_status: if result.error.is_some() {
+                                    "execution_failed".to_string()
+                                } else {
+                                    "completed".to_string()
+                                },
+                                message_send_status: "target_resolution_failed".to_string(),
+                                should_deliver: true,
+                                delivered: false,
+                                response_preview: Some(response.clone()),
+                                error_message: Some("Telegram 定时任务目标解析失败".to_string()),
+                                detail: result.metadata.clone(),
                             },
-                            message_send_status: "target_resolution_failed".to_string(),
-                            should_deliver: true,
-                            delivered: false,
-                            response_preview: Some(response.clone()),
-                            error_message: Some("Telegram 定时任务目标解析失败".to_string()),
-                            detail: result.metadata.clone(),
-                        },
-                    );
+                        )
+                        .await;
                     return;
                 }
             };
@@ -130,30 +135,32 @@ pub(crate) async fn handle_scheduler_events(
                 .split_html(&response, core_clone.config.telegram.max_message_length);
             let context_segments = segments.clone();
             let total_segments = segments.len();
-            if !scheduler_event_is_active(&storage, &event) {
+            if !scheduler_event_is_active(&storage, &event).await {
                 info!(
                     "[Telegram] 定时任务已取消，抑制发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: "noop".to_string(),
-                        message_send_status: "skipped_cancelled".to_string(),
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: None,
-                        detail: execution_detail_with_delivery_key(
-                            json!({"skipped": "job_cancelled"}),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: "noop".to_string(),
+                            message_send_status: "skipped_cancelled".to_string(),
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: None,
+                            detail: execution_detail_with_delivery_key(
+                                json!({"skipped": "job_cancelled"}),
+                                &event.delivery_key,
+                            ),
+                        },
+                    )
+                    .await;
                 return;
             }
             let sent = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
@@ -171,34 +178,36 @@ pub(crate) async fn handle_scheduler_events(
                     &delivered_context,
                 );
             }
-            let _ = storage.record_execution_event(
-                &event.actor,
-                &event.job_id,
-                &event.job_name,
-                &event.channel_target,
-                event.heartbeat,
-                CronJobExecutionInput {
-                    execution_status: if result.error.is_some() {
-                        "execution_failed".to_string()
-                    } else {
-                        "completed".to_string()
+            let _ = storage
+                .record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status: if sent > 0 {
+                            "sent".to_string()
+                        } else {
+                            "send_failed".to_string()
+                        },
+                        should_deliver: true,
+                        delivered: sent > 0,
+                        response_preview: Some(response),
+                        error_message: result.error.clone(),
+                        detail: json!({
+                            "sent_segments": sent,
+                            "total_segments": total_segments,
+                            "scheduler": result.metadata,
+                        }),
                     },
-                    message_send_status: if sent > 0 {
-                        "sent".to_string()
-                    } else {
-                        "send_failed".to_string()
-                    },
-                    should_deliver: true,
-                    delivered: sent > 0,
-                    response_preview: Some(response),
-                    error_message: result.error.clone(),
-                    detail: json!({
-                        "sent_segments": sent,
-                        "total_segments": total_segments,
-                        "scheduler": result.metadata,
-                    }),
-                },
-            );
+                )
+                .await;
         });
     }
 }

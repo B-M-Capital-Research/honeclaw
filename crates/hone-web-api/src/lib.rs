@@ -446,7 +446,7 @@ async fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(Stri
             Vec::new()
         }
     };
-    feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets(), sessions)
+    feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets().await, sessions)
 }
 
 fn sessions_or_empty(primary: hone_core::HoneResult<Vec<Session>>) -> Vec<Session> {

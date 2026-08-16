@@ -61,7 +61,7 @@ pub async fn acquire_job_slot() -> Option<tokio::sync::OwnedSemaphorePermit> {
 ///
 /// 这段回收此前**只有飞书渠道实现**,web / telegram / discord 全都没有。
 /// 提到这里由各渠道启动时统一调用。
-pub fn recover_stale_started_rows(
+pub async fn recover_stale_started_rows(
     storage: &CronJobStorage,
     channel: &str,
     recovery_window: std::time::Duration,
@@ -72,12 +72,15 @@ pub fn recover_stale_started_rows(
         return;
     };
     let stale_before = (Utc::now() - recovery_delta).to_rfc3339();
-    match storage.recover_stale_started_executions(
-        channel,
-        &stale_before,
-        reason,
-        "Scheduler runtime restarted before this run reached a terminal status",
-    ) {
+    match storage
+        .recover_stale_started_executions(
+            channel,
+            &stale_before,
+            reason,
+            "Scheduler runtime restarted before this run reached a terminal status",
+        )
+        .await
+    {
         Ok(0) => {}
         Ok(count) => {
             warn!("[{channel}] 已回收上一进程遗留的 stale pending 定时任务: count={count}")
@@ -117,9 +120,10 @@ pub struct SchedulerEvent {
 /// must re-check this immediately before model work and delivery. One-shot
 /// jobs are disabled when dispatched, but remain registered with `last_run_at`
 /// set; they are still allowed to finish that single claimed run.
-pub fn scheduler_event_is_active(storage: &CronJobStorage, event: &SchedulerEvent) -> bool {
+pub async fn scheduler_event_is_active(storage: &CronJobStorage, event: &SchedulerEvent) -> bool {
     storage
         .get_job(&event.job_id, Some(&event.actor))
+        .await
         .is_some_and(|(_, job)| {
             job.enabled
                 || (event.schedule_repeat.eq_ignore_ascii_case("once")
@@ -230,7 +234,7 @@ impl HoneScheduler {
 
         // 只查询本进程负责的渠道，防止多进程共享存储时跨渠道误标记
         let channel_refs: Vec<&str> = self.channels.iter().map(|s| s.as_str()).collect();
-        let due_jobs = self.storage.get_due_jobs_at(now, &channel_refs);
+        let due_jobs = self.storage.get_due_jobs_at(now, &channel_refs).await;
 
         if due_jobs.is_empty() {
             return;
@@ -250,32 +254,35 @@ impl HoneScheduler {
                     actor.storage_key(),
                     job.id
                 );
-                let _ = self.storage.record_execution_event(
-                    &actor,
-                    &job.id,
-                    &job.name,
-                    "",
-                    job.is_heartbeat(),
-                    CronJobExecutionInput {
-                        execution_status: "execution_failed".to_string(),
-                        message_send_status: "target_missing".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: Some(
-                            "定时任务缺少 channel_target，无法确认来源渠道投递目标".to_string(),
-                        ),
-                        detail: json!({
-                            "phase": "target_missing",
-                            "delivery_key": delivery_key,
-                        }),
-                    },
-                );
-                self.storage.mark_job_run(&actor, &job.id);
+                let _ = self
+                    .storage
+                    .record_execution_event(
+                        &actor,
+                        &job.id,
+                        &job.name,
+                        "",
+                        job.is_heartbeat(),
+                        CronJobExecutionInput {
+                            execution_status: "execution_failed".to_string(),
+                            message_send_status: "target_missing".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: Some(
+                                "定时任务缺少 channel_target，无法确认来源渠道投递目标".to_string(),
+                            ),
+                            detail: json!({
+                                "phase": "target_missing",
+                                "delivery_key": delivery_key,
+                            }),
+                        },
+                    )
+                    .await;
+                self.storage.mark_job_run(&actor, &job.id).await;
                 continue;
             }
             let last_delivered_previews = if job.is_heartbeat() {
-                load_heartbeat_delivery_history(&self.storage, &actor, &job.id)
+                load_heartbeat_delivery_history(&self.storage, &actor, &job.id).await
             } else {
                 Vec::new()
             };
@@ -304,7 +311,7 @@ impl HoneScheduler {
             // 避免"已标记但未处理"导致任务永久丢失。
             match self.event_tx.send(event).await {
                 Ok(_) => {
-                    self.storage.mark_job_run(&actor, &job.id);
+                    self.storage.mark_job_run(&actor, &job.id).await;
                 }
                 Err(e) => {
                     warn!(
@@ -317,18 +324,19 @@ impl HoneScheduler {
     }
 }
 
-fn load_heartbeat_delivery_history(
+async fn load_heartbeat_delivery_history(
     storage: &CronJobStorage,
     actor: &ActorIdentity,
     job_id: &str,
 ) -> Vec<(String, String)> {
-    fn delivered_previews(
+    async fn delivered_previews(
         storage: &CronJobStorage,
         filter: ExecutionFilter,
         limit: usize,
     ) -> Vec<(String, String)> {
         storage
             .list_recent_executions(&filter)
+            .await
             .unwrap_or_default()
             .into_iter()
             .filter(|r| r.delivered && r.response_preview.is_some())
@@ -355,10 +363,9 @@ fn load_heartbeat_delivery_history(
 
     let mut seen = HashSet::new();
     let mut history = Vec::new();
-    for item in delivered_previews(storage, same_job_filter, 8)
-        .into_iter()
-        .chain(delivered_previews(storage, actor_filter, 8))
-    {
+    let same_job = delivered_previews(storage, same_job_filter, 8).await;
+    let actor_history = delivered_previews(storage, actor_filter, 8).await;
+    for item in same_job.into_iter().chain(actor_history) {
         if seen.insert(item.clone()) {
             history.push(item);
         }
@@ -411,8 +418,8 @@ mod tests {
         dir
     }
 
-    #[test]
-    fn heartbeat_history_includes_actor_cross_job_deliveries() {
+    #[tokio::test]
+    async fn heartbeat_history_includes_actor_cross_job_deliveries() {
         let dir = make_temp_dir("hone_scheduler_cross_job_history");
         let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("feishu", "ou_cross_job", None::<String>).expect("actor");
@@ -434,6 +441,7 @@ mod tests {
                     detail: serde_json::json!({"delivery_key": "a-1"}),
                 },
             )
+            .await
             .expect("record job a");
         storage
             .record_execution_event(
@@ -452,17 +460,18 @@ mod tests {
                     detail: serde_json::json!({"delivery_key": "b-1"}),
                 },
             )
+            .await
             .expect("record job b noop");
 
-        let history = load_heartbeat_delivery_history(&storage, &actor, "job-b");
+        let history = load_heartbeat_delivery_history(&storage, &actor, "job-b").await;
         assert_eq!(history.len(), 1);
         assert!(history[0].1.contains("小米跌破 30 港元"));
 
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
-    fn heartbeat_history_keeps_same_job_delivery_when_actor_history_is_busy() {
+    #[tokio::test]
+    async fn heartbeat_history_keeps_same_job_delivery_when_actor_history_is_busy() {
         let dir = make_temp_dir("hone_scheduler_same_job_history");
         let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("feishu", "ou_same_job", None::<String>).expect("actor");
@@ -486,6 +495,7 @@ mod tests {
                     detail: serde_json::json!({"delivery_key": "rklb-old"}),
                 },
             )
+            .await
             .expect("record old rklb");
 
         for idx in 0..14 {
@@ -506,10 +516,11 @@ mod tests {
                         detail: serde_json::json!({"delivery_key": format!("other-{idx}")}),
                     },
                 )
+                .await
                 .expect("record other");
         }
 
-        let history = load_heartbeat_delivery_history(&storage, &actor, "job-rklb");
+        let history = load_heartbeat_delivery_history(&storage, &actor, "job-rklb").await;
         assert!(
             history
                 .iter()
@@ -557,6 +568,7 @@ mod tests {
                     pending_updates: Vec::new(),
                 },
             )
+            .await
             .expect("save invalid legacy job");
 
         let (tx, mut rx) = mpsc::channel(4);
@@ -570,6 +582,7 @@ mod tests {
                 limit: 10,
                 ..ExecutionFilter::default()
             })
+            .await
             .expect("list executions");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "execution_failed");
@@ -637,26 +650,28 @@ mod tests {
         assert_eq!(detail["parse_kind"], "JsonTriggered");
     }
 
-    #[test]
-    fn scheduler_event_activity_fails_closed_after_actor_scoped_cancellation() {
+    #[tokio::test]
+    async fn scheduler_event_activity_fails_closed_after_actor_scoped_cancellation() {
         let dir = make_temp_dir("hone_scheduler_event_activity");
         let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("feishu", "ou_cancelled", None::<String>).expect("actor");
-        let added = storage.add_job(
-            &actor,
-            "daily report",
-            Some(9),
-            Some(0),
-            "daily",
-            "task",
-            "ou_cancelled",
-            None,
-            None,
-            None,
-            true,
-            None,
-            false,
-        );
+        let added = storage
+            .add_job(
+                &actor,
+                "daily report",
+                Some(9),
+                Some(0),
+                "daily",
+                "task",
+                "ou_cancelled",
+                None,
+                None,
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job: CronJob = serde_json::from_value(added["job"].clone()).expect("job");
         let event = SchedulerEvent {
             actor: actor.clone(),
@@ -678,36 +693,39 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        assert!(scheduler_event_is_active(&storage, &event));
+        assert!(scheduler_event_is_active(&storage, &event).await);
         storage
             .remove_all_jobs(&actor)
+            .await
             .expect("cancel all actor jobs");
-        assert!(!scheduler_event_is_active(&storage, &event));
+        assert!(!scheduler_event_is_active(&storage, &event).await);
 
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
-    fn dispatched_once_event_remains_active_for_its_claimed_run() {
+    #[tokio::test]
+    async fn dispatched_once_event_remains_active_for_its_claimed_run() {
         let dir = make_temp_dir("hone_scheduler_once_event_activity");
         let storage = CronJobStorage::new(&dir);
         let actor = ActorIdentity::new("telegram", "once-user", None::<String>).expect("actor");
         let date = hone_core::local_now().date_naive().format("%F").to_string();
-        let added = storage.add_job(
-            &actor,
-            "one-time report",
-            Some(9),
-            Some(0),
-            "once",
-            "task",
-            "123",
-            None,
-            Some(date),
-            None,
-            true,
-            None,
-            false,
-        );
+        let added = storage
+            .add_job(
+                &actor,
+                "one-time report",
+                Some(9),
+                Some(0),
+                "once",
+                "task",
+                "123",
+                None,
+                Some(date),
+                None,
+                true,
+                None,
+                false,
+            )
+            .await;
         let job: CronJob = serde_json::from_value(added["job"].clone()).expect("job");
         let event = SchedulerEvent {
             actor: actor.clone(),
@@ -729,8 +747,8 @@ mod tests {
             bypass_quiet_hours: false,
         };
 
-        storage.mark_job_run(&actor, &job.id);
-        assert!(scheduler_event_is_active(&storage, &event));
+        storage.mark_job_run(&actor, &job.id).await;
+        assert!(scheduler_event_is_active(&storage, &event).await);
 
         let _ = std::fs::remove_dir_all(dir);
     }

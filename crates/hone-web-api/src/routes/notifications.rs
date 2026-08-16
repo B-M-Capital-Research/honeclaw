@@ -128,6 +128,7 @@ pub(crate) async fn handle_notifications(
     };
     let mut records: Vec<NotificationRecord> = storage
         .list_recent_executions(&cron_filter)
+        .await
         .unwrap_or_default()
         .into_iter()
         .map(record_from_cron)
@@ -151,6 +152,7 @@ pub(crate) async fn handle_notifications(
     };
     let mut histogram_records: Vec<NotificationRecord> = storage
         .list_recent_executions(&histogram_filter)
+        .await
         .unwrap_or_default()
         .into_iter()
         .map(record_from_cron)

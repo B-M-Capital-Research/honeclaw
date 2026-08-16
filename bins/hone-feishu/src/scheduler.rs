@@ -36,7 +36,7 @@ pub(crate) async fn handle_scheduler_events(
     mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: feishu）");
-    recover_stale_started_rows(&state);
+    recover_stale_started_rows(&state).await;
     while let Some(event) = event_rx.recv().await {
         if event.channel != "feishu" {
             continue;
@@ -50,25 +50,27 @@ pub(crate) async fn handle_scheduler_events(
                 return;
             };
             let storage = state_clone.core.cron_job_storage();
-            let _ = storage.record_execution_event(
-                &event.actor,
-                &event.job_id,
-                &event.job_name,
-                &event.channel_target,
-                event.heartbeat,
-                CronJobExecutionInput {
-                    execution_status: "running".to_string(),
-                    message_send_status: "pending".to_string(),
-                    should_deliver: true,
-                    delivered: false,
-                    response_preview: None,
-                    error_message: None,
-                    detail: json!({
-                        "delivery_key": event.delivery_key,
-                        "phase": "started",
-                    }),
-                },
-            );
+            let _ = storage
+                .record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: "running".to_string(),
+                        message_send_status: "pending".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: json!({
+                            "delivery_key": event.delivery_key,
+                            "phase": "started",
+                        }),
+                    },
+                )
+                .await;
             let handler_completed = Arc::new(AtomicBool::new(false));
             let watchdog_recovered = Arc::new(AtomicBool::new(false));
             let watchdog = spawn_scheduler_timeout_watchdog(
@@ -103,33 +105,35 @@ pub(crate) async fn handle_scheduler_events(
                         event.job_name, event.channel_target
                     );
                 }
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "noop".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "noop".to_string()
+                            },
+                            message_send_status: if result.error.is_some() {
+                                "skipped_error".to_string()
+                            } else {
+                                "skipped_noop".to_string()
+                            },
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: result.error.clone(),
+                            detail: execution_detail_with_delivery_key(
+                                result.metadata.clone(),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: if result.error.is_some() {
-                            "skipped_error".to_string()
-                        } else {
-                            "skipped_noop".to_string()
-                        },
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: result.error.clone(),
-                        detail: execution_detail_with_delivery_key(
-                            result.metadata.clone(),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
                 return;
             }
             let response = result
@@ -160,29 +164,31 @@ pub(crate) async fn handle_scheduler_events(
                             "[Feishu] 定时任务目标解析失败: job={} target={} err={}",
                             event.job_name, event.channel_target, err
                         );
-                        let _ = storage.record_execution_event(
-                            &event.actor,
-                            &event.job_id,
-                            &event.job_name,
-                            &event.channel_target,
-                            event.heartbeat,
-                            CronJobExecutionInput {
-                                execution_status: if result.error.is_some() {
-                                    "execution_failed".to_string()
-                                } else {
-                                    "completed".to_string()
+                        let _ = storage
+                            .record_execution_event(
+                                &event.actor,
+                                &event.job_id,
+                                &event.job_name,
+                                &event.channel_target,
+                                event.heartbeat,
+                                CronJobExecutionInput {
+                                    execution_status: if result.error.is_some() {
+                                        "execution_failed".to_string()
+                                    } else {
+                                        "completed".to_string()
+                                    },
+                                    message_send_status: "target_resolution_failed".to_string(),
+                                    should_deliver: true,
+                                    delivered: false,
+                                    response_preview: Some(response.clone()),
+                                    error_message: Some(err.to_string()),
+                                    detail: execution_detail_with_delivery_key(
+                                        result.metadata.clone(),
+                                        &event.delivery_key,
+                                    ),
                                 },
-                                message_send_status: "target_resolution_failed".to_string(),
-                                should_deliver: true,
-                                delivered: false,
-                                response_preview: Some(response.clone()),
-                                error_message: Some(err.to_string()),
-                                detail: execution_detail_with_delivery_key(
-                                    result.metadata.clone(),
-                                    &event.delivery_key,
-                                ),
-                            },
-                        );
+                            )
+                            .await;
                         return;
                     }
                 }
@@ -194,29 +200,31 @@ pub(crate) async fn handle_scheduler_events(
                     "[Feishu] 定时任务目标校验失败: job={} target={} receive_id={} err={}",
                     event.job_name, event.channel_target, receive_id, err
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                            message_send_status: "target_resolution_failed".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: Some(response.clone()),
+                            error_message: Some(err.to_string()),
+                            detail: execution_detail_with_delivery_key(
+                                result.metadata.clone(),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: "target_resolution_failed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: Some(err.to_string()),
-                        detail: execution_detail_with_delivery_key(
-                            result.metadata.clone(),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
                 return;
             }
             let idempotency = scheduled_send_idempotency(&event, &receive_id, &response, "open_id");
@@ -228,59 +236,63 @@ pub(crate) async fn handle_scheduler_events(
                     "[Feishu] 已拦截重复定时任务投递: job={} delivery_key={} target={}",
                     event.job_name, event.delivery_key, receive_id
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                            message_send_status: "duplicate_suppressed".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: Some(response.clone()),
+                            error_message: result.error.clone(),
+                            detail: execution_detail_with_delivery_key(
+                                json!({
+                                    "receive_id": receive_id,
+                                    "scheduler": result.metadata,
+                                }),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: "duplicate_suppressed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: result.error.clone(),
-                        detail: execution_detail_with_delivery_key(
-                            json!({
-                                "receive_id": receive_id,
-                                "scheduler": result.metadata,
-                            }),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
                 return;
             }
 
-            if !scheduler_event_is_active(&storage, &event) {
+            if !scheduler_event_is_active(&storage, &event).await {
                 info!(
                     "[Feishu] 定时任务已取消，抑制发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: "noop".to_string(),
-                        message_send_status: "skipped_cancelled".to_string(),
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: None,
-                        detail: execution_detail_with_delivery_key(
-                            json!({"skipped": "job_cancelled"}),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: "noop".to_string(),
+                            message_send_status: "skipped_cancelled".to_string(),
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: None,
+                            detail: execution_detail_with_delivery_key(
+                                json!({"skipped": "job_cancelled"}),
+                                &event.delivery_key,
+                            ),
+                        },
+                    )
+                    .await;
                 return;
             }
 
@@ -299,32 +311,34 @@ pub(crate) async fn handle_scheduler_events(
                     "[Feishu] 定时任务投递失败: job={} target={} err={}",
                     event.job_name, event.channel_target, err
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                            message_send_status: "send_failed".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: Some(response.clone()),
+                            error_message: Some(err.to_string()),
+                            detail: execution_detail_with_delivery_key(
+                                json!({
+                                    "receive_id": receive_id,
+                                    "scheduler": result.metadata,
+                                }),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: "send_failed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: Some(err.to_string()),
-                        detail: execution_detail_with_delivery_key(
-                            json!({
-                                "receive_id": receive_id,
-                                "scheduler": result.metadata,
-                            }),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
             } else {
                 scheduler::record_confirmed_scheduled_delivery(
                     &state_clone.core,
@@ -332,32 +346,34 @@ pub(crate) async fn handle_scheduler_events(
                     &result,
                     &response,
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                            message_send_status: "sent".to_string(),
+                            should_deliver: true,
+                            delivered: true,
+                            response_preview: Some(response),
+                            error_message: result.error.clone(),
+                            detail: execution_detail_with_delivery_key(
+                                json!({
+                                    "receive_id": receive_id,
+                                    "scheduler": result.metadata,
+                                }),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: "sent".to_string(),
-                        should_deliver: true,
-                        delivered: true,
-                        response_preview: Some(response),
-                        error_message: result.error.clone(),
-                        detail: execution_detail_with_delivery_key(
-                            json!({
-                                "receive_id": receive_id,
-                                "scheduler": result.metadata,
-                            }),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
             }
         });
     }
@@ -419,7 +435,9 @@ async fn mark_scheduler_handler_watchdog_timeout(
             &event.delivery_key,
             "feishu_scheduler_handler_watchdog",
             &reason,
-        ) {
+        )
+        .await
+    {
         Ok(0) => false,
         Ok(_) => {
             persist_scheduler_timeout_failure_turn(
@@ -440,7 +458,7 @@ async fn mark_scheduler_handler_watchdog_timeout(
     }
 }
 
-fn recover_stale_started_rows(state: &AppState) {
+async fn recover_stale_started_rows(state: &AppState) {
     let recovery_window = scheduler_execution_timeout(state)
         .saturating_add(Duration::from_secs(SCHEDULER_STALE_RECOVERY_GRACE_SECS));
     hone_scheduler::recover_stale_started_rows(
@@ -448,7 +466,8 @@ fn recover_stale_started_rows(state: &AppState) {
         "feishu",
         recovery_window,
         "feishu_scheduler_startup",
-    );
+    )
+    .await;
 }
 
 async fn persist_scheduler_timeout_failure_turn(
