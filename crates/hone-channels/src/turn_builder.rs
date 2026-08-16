@@ -156,7 +156,7 @@ impl<'a> PromptTurnBuilder<'a> {
         }
     }
 
-    pub(crate) fn resolve_prompt_input_at(
+    pub(crate) async fn resolve_prompt_input_at(
         &self,
         user_input: &str,
         prompt_time_local: DateTime<FixedOffset>,
@@ -206,7 +206,8 @@ impl<'a> PromptTurnBuilder<'a> {
             &prompt_options,
             prompt_time_local,
             include_conversation_context,
-        );
+        )
+        .await;
         if use_native_codex_turn_input {
             bundle.conversation_context = None;
         }

@@ -113,12 +113,12 @@ fn sanitize_assistant_followup_snippet(text: &str) -> String {
     sanitize_user_visible_output(&image_placeholders).content
 }
 
-fn build_group_followup_recv_extra(
+async fn build_group_followup_recv_extra(
     storage: &SessionStorage,
     session_id: &str,
     speaker_label: &str,
 ) -> Option<String> {
-    let session = storage.load_session(session_id).ok().flatten()?;
+    let session = storage.load_session(session_id).await.ok().flatten()?;
     let messages = select_messages_after_compact_boundary(&session.messages, None);
 
     for idx in (0..messages.len()).rev() {
@@ -169,12 +169,13 @@ fn build_group_followup_recv_extra(
 }
 
 pub(crate) async fn run() {
-    let runtime = hone_channels::bootstrap_channel_runtime(
+    let runtime = hone_channels::bootstrap_channel_runtime_async(
         "telegram",
         "Telegram Bot",
         hone_core::PROCESS_LOCK_TELEGRAM,
         |config| config.telegram.enabled,
-    );
+    )
+    .await;
     let core = runtime.core;
 
     let token = core.config.telegram.bot_token.trim().to_string();
@@ -204,7 +205,7 @@ pub(crate) async fn run() {
         media_groups: MediaGroupBuffer::new(),
     });
 
-    let (scheduler, event_rx) = core.create_scheduler(vec!["telegram".to_string()]);
+    let (scheduler, event_rx) = core.create_scheduler(vec!["telegram".to_string()]).await;
     tokio::spawn(async move {
         scheduler.start().await;
     });
@@ -504,6 +505,7 @@ async fn process_telegram_message_batch(
     if core
         .session_storage
         .load_session(&session_id)
+        .await
         .map_err(|err| {
             error!("[Telegram] 加载 session 失败 session_id={session_id}: {err}");
             err
@@ -514,7 +516,8 @@ async fn process_telegram_message_batch(
     {
         let _ = core
             .session_storage
-            .create_session_for_identity(&session_identity, Some(&actor));
+            .create_session_for_identity(&session_identity, Some(&actor))
+            .await;
     }
     let buffered_messages = if !is_private && core.config.group_context.pretrigger_window_enabled {
         app_state
@@ -528,7 +531,9 @@ async fn process_telegram_message_batch(
         &core.session_storage,
         &session_id,
         &buffered_messages,
-    ) {
+    )
+    .await
+    {
         Ok(count) => count,
         Err(err) => {
             error!("[Telegram] 预触发窗口写入 session 失败 session_id={session_id}: {err}");
@@ -583,7 +588,7 @@ async fn process_telegram_message_batch(
         build_group_user_input_with_speaker(&speaker_label, &normalized)
     };
     let recv_extra = if !is_private && !reply_to_bot && attachments.is_empty() {
-        build_group_followup_recv_extra(&core.session_storage, &session_id, &speaker_label)
+        build_group_followup_recv_extra(&core.session_storage, &session_id, &speaker_label).await
     } else {
         None
     };
@@ -1025,7 +1030,7 @@ mod tests {
         let me = bot.get_me().await.expect("telegram getMe should succeed");
         let bot_id = me.user.id.0;
         let bot_username = Arc::new(me.user.username.unwrap_or_default());
-        let core = Arc::new(hone_channels::HoneBotCore::new(config));
+        let core = Arc::new(hone_channels::HoneBotCore::new(config).await);
         let app_state = Arc::new(TelegramAppState {
             dedup: MessageDeduplicator::new(Duration::from_secs(120), 2048),
             session_locks: SessionLockRegistry::new(),
@@ -1051,8 +1056,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn group_followup_recv_extra_prefers_same_speaker_recent_exchange() {
+    #[tokio::test]
+    async fn group_followup_recv_extra_prefers_same_speaker_recent_exchange() {
         let root = std::env::temp_dir().join(format!(
             "hone_telegram_followup_{}_{}",
             std::process::id(),
@@ -1062,9 +1067,10 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(Some("group-session"), None, None)
+            .await
             .expect("create session");
         storage
             .add_message(
@@ -1073,6 +1079,7 @@ mod tests {
                 "Conversation compacted",
                 Some(build_compact_boundary_metadata("auto", 12, 24)),
             )
+            .await
             .expect("add boundary");
         storage
             .add_message(
@@ -1081,6 +1088,7 @@ mod tests {
                 "【Compact Summary】\n- TEM 未决",
                 Some(build_compact_summary_metadata("auto")),
             )
+            .await
             .expect("add summary");
         storage
             .add_message(
@@ -1092,9 +1100,11 @@ mod tests {
                     Value::String("Chet Zhang".to_string()),
                 )])),
             )
+            .await
             .expect("add chet");
         storage
             .add_message(&session_id, "assistant", "先看 TEM。", None)
+            .await
             .expect("add tem answer");
         storage
             .add_message(
@@ -1106,13 +1116,16 @@ mod tests {
                     Value::String("James Guan".to_string()),
                 )])),
             )
+            .await
             .expect("add james");
         storage
             .add_message(&session_id, "assistant", "ETH 先看 2350/2383/2415。", None)
+            .await
             .expect("add eth answer");
 
-        let extra =
-            build_group_followup_recv_extra(&storage, &session_id, "James Guan").expect("extra");
+        let extra = build_group_followup_recv_extra(&storage, &session_id, "James Guan")
+            .await
+            .expect("extra");
         assert!(extra.contains("James Guan"));
         assert!(extra.contains("ETH"));
         assert!(!extra.contains("先看 TEM"));
@@ -1122,8 +1135,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn group_followup_recv_extra_redacts_local_image_markers_from_assistant_snippet() {
+    #[tokio::test]
+    async fn group_followup_recv_extra_redacts_local_image_markers_from_assistant_snippet() {
         let root = std::env::temp_dir().join(format!(
             "hone_telegram_followup_local_image_{}_{}",
             std::process::id(),
@@ -1133,9 +1146,10 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(Some("group-session"), None, None)
+            .await
             .expect("create session");
         storage
             .add_message(
@@ -1147,6 +1161,7 @@ mod tests {
                     Value::String("Chet Zhang".to_string()),
                 )])),
             )
+            .await
             .expect("add user");
         storage
             .add_message(
@@ -1155,10 +1170,12 @@ mod tests {
                 "file:///tmp/chart.png<br>当前价位已经高于 base case。",
                 None,
             )
+            .await
             .expect("add assistant");
 
-        let extra =
-            build_group_followup_recv_extra(&storage, &session_id, "Chet Zhang").expect("extra");
+        let extra = build_group_followup_recv_extra(&storage, &session_id, "Chet Zhang")
+            .await
+            .expect("extra");
 
         assert!(extra.contains("（上文包含图表）"));
         assert!(!extra.contains("file:///tmp/chart.png"));

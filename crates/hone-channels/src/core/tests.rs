@@ -35,9 +35,9 @@ fn register_admin_intercept_matches_plain_and_quoted_text() {
     assert!(!matches_register_admin_intercept("/register-admin"));
 }
 
-#[test]
-fn runtime_admin_override_requires_whitelisted_actor_and_configured_passphrase() {
-    let core = HoneBotCore::new(HoneConfig::default());
+#[tokio::test]
+async fn runtime_admin_override_requires_whitelisted_actor_and_configured_passphrase() {
+    let core = HoneBotCore::new(HoneConfig::default()).await;
     let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
     assert_eq!(
         core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT),
@@ -45,14 +45,14 @@ fn runtime_admin_override_requires_whitelisted_actor_and_configured_passphrase()
     );
 }
 
-#[test]
-fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
+#[tokio::test]
+async fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
     let mut config = HoneConfig::default();
     // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
     // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
     config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.discord_user_ids = vec!["alice".to_string()];
-    let core = HoneBotCore::new(config.clone());
+    let core = HoneBotCore::new(config.clone()).await;
     let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
 
     assert_eq!(
@@ -61,7 +61,7 @@ fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
     );
 
     config.admins.runtime_admin_registration_passphrase = "secret".to_string();
-    let core = HoneBotCore::new(config);
+    let core = HoneBotCore::new(config).await;
     assert_eq!(
         core.try_intercept_admin_registration(
             &actor,
@@ -71,15 +71,15 @@ fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
     );
 }
 
-#[test]
-fn runtime_admin_override_is_scoped_to_actor_identity() {
+#[tokio::test]
+async fn runtime_admin_override_is_scoped_to_actor_identity() {
     let mut config = HoneConfig::default();
     // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
     // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
     config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.discord_user_ids = vec!["alice".to_string()];
     config.admins.runtime_admin_registration_passphrase = "secret".to_string();
-    let core = HoneBotCore::new(config);
+    let core = HoneBotCore::new(config).await;
     let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
     let other_scope = ActorIdentity::new("discord", "alice", Some("g:1:c:3")).expect("other scope");
 
@@ -105,14 +105,14 @@ fn runtime_admin_override_is_scoped_to_actor_identity() {
     assert!(core.is_admin_actor(&other_scope));
 }
 
-#[test]
-fn telegram_admin_allowlist_is_honored() {
+#[tokio::test]
+async fn telegram_admin_allowlist_is_honored() {
     let mut config = HoneConfig::default();
     // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
     // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
     config.timezone = Some("Asia/Shanghai".to_string());
     config.admins.telegram_user_ids = vec!["8039067465".to_string()];
-    let core = HoneBotCore::new(config);
+    let core = HoneBotCore::new(config).await;
 
     assert!(core.is_admin("8039067465", "telegram"));
     assert!(!core.is_admin("999", "telegram"));
@@ -121,15 +121,15 @@ fn telegram_admin_allowlist_is_honored() {
     assert!(core.is_admin_actor(&actor));
 }
 
-#[test]
-fn effective_context_owner_follows_actor_runner_route() {
+#[tokio::test]
+async fn effective_context_owner_follows_actor_runner_route() {
     let mut config = HoneConfig::default();
     // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
     // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
     config.timezone = Some("Asia/Shanghai".to_string());
     config.agent.runner = "codex_acp".to_string();
     config.admins.discord_user_ids = vec!["admin".to_string()];
-    let core = HoneBotCore::new(config);
+    let core = HoneBotCore::new(config).await;
     let public_actor =
         ActorIdentity::new("discord", "public", None::<String>).expect("public actor");
     let admin_actor = ActorIdentity::new("discord", "admin", None::<String>).expect("admin actor");
@@ -148,13 +148,13 @@ fn effective_context_owner_follows_actor_runner_route() {
     assert!(core.effective_runner_uses_native_codex_turns(&admin_actor));
 }
 
-#[test]
-fn native_minimal_turns_are_codex_specific() {
+#[tokio::test]
+async fn native_minimal_turns_are_codex_specific() {
     let actor = ActorIdentity::new("cli", "local", None::<String>).expect("actor");
 
     let mut opencode_config = HoneConfig::default();
     opencode_config.agent.runner = "opencode_acp".to_string();
-    let opencode_core = HoneBotCore::new(opencode_config);
+    let opencode_core = HoneBotCore::new(opencode_config).await;
     assert_eq!(
         opencode_core.effective_runner_conversation_strategy(&actor),
         AgentConversationStrategy::EphemeralCompiledPrompt
@@ -163,7 +163,7 @@ fn native_minimal_turns_are_codex_specific() {
 
     let mut codex_config = HoneConfig::default();
     codex_config.agent.runner = "codex_acp".to_string();
-    let codex_core = HoneBotCore::new(codex_config);
+    let codex_core = HoneBotCore::new(codex_config).await;
     assert!(codex_core.effective_runner_uses_native_codex_turns(&actor));
 }
 
@@ -172,9 +172,9 @@ fn strict_actor_runner_uses_the_standard_iteration_budget() {
     assert_eq!(STRICT_ACTOR_MAX_ITERATIONS, 18);
 }
 
-#[test]
-fn actor_scoped_registry_includes_local_file_tools() {
-    let core = HoneBotCore::new(HoneConfig::default());
+#[tokio::test]
+async fn actor_scoped_registry_includes_local_file_tools() {
+    let core = HoneBotCore::new(HoneConfig::default()).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
 
     let with_actor = core.create_tool_registry(Some(&actor), "discord", false);

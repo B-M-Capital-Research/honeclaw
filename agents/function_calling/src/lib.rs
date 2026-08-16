@@ -1518,7 +1518,7 @@ impl FunctionCallingAgent {
         ]
     }
 
-    fn record_audit(
+    async fn record_audit(
         &self,
         context: &AgentContext,
         operation: &str,
@@ -1551,7 +1551,7 @@ impl FunctionCallingAgent {
             record.completion_tokens = u.completion_tokens;
             record.total_tokens = u.total_tokens;
         }
-        if let Err(err) = sink.record(record) {
+        if let Err(err) = sink.record(record).await {
             tracing::warn!(
                 "[LlmAudit] failed to persist function_calling audit: {}",
                 err
@@ -2201,7 +2201,7 @@ impl FunctionCallingAgent {
                         "tool_choice_fallback": terminal_tool_choice.fallback,
                     }),
                     response.usage.clone(),
-                );
+                ).await;
                 response
             }
             Err(error) => {
@@ -2228,7 +2228,7 @@ impl FunctionCallingAgent {
                         "tool_choice_fallback": terminal_tool_choice.fallback,
                     }),
                     None,
-                );
+                ).await;
                 let empty_terminal = error
                     .to_string()
                     .contains(EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR);
@@ -2308,7 +2308,7 @@ impl FunctionCallingAgent {
                                 "tool_choice_fallback": recovery_tool_choice.fallback,
                             }),
                             response.usage.clone(),
-                        );
+                        ).await;
                         response
                     }
                     Err(recovery_error) => {
@@ -2333,7 +2333,7 @@ impl FunctionCallingAgent {
                                 "tool_choice_fallback": recovery_tool_choice.fallback,
                             }),
                             None,
-                        );
+                        ).await;
                         return AgentResponse {
                             content: String::new(),
                             tool_calls_made,
@@ -6293,7 +6293,7 @@ impl Agent for FunctionCallingAgent {
                                     "tool_choice_fallback": stream_tool_choice.fallback,
                                 }),
                                 None,
-                            );
+                            ).await;
                             if retrying {
                                 continue;
                             }
@@ -6338,7 +6338,7 @@ impl Agent for FunctionCallingAgent {
                                     "tool_choice_fallback": stream_tool_choice.fallback,
                                 }),
                                 None,
-                            );
+                            ).await;
                             self.dbg(&format!(
                                 "[Agent] active business stream failed without terminal authorization: {error}"
                             ));
@@ -6379,7 +6379,7 @@ impl Agent for FunctionCallingAgent {
                                     "tool_choice_fallback": stream_tool_choice.fallback,
                                 }),
                                 None,
-                            );
+                            ).await;
                             if retrying {
                                 blocked_tool_finalization = Some(error.to_string());
                                 continue;
@@ -6438,7 +6438,7 @@ impl Agent for FunctionCallingAgent {
                                     "tool_choice_fallback": stream_tool_choice.fallback,
                                 }),
                                 None,
-                            );
+                            ).await;
                             if context_overflow_recovery {
                                 context_overflow_finalization = true;
                                 continue;
@@ -6495,7 +6495,8 @@ impl Agent for FunctionCallingAgent {
                                 "context_overflow_bounded_recovery": context_overflow_recovery,
                             }),
                             None,
-                        );
+                        )
+                        .await;
                         if context_overflow_recovery {
                             context_overflow_finalization = true;
                             continue;
@@ -6598,7 +6599,8 @@ impl Agent for FunctionCallingAgent {
                 call_started.elapsed().as_millis(),
                 audit_metadata,
                 result.usage.clone(),
-            );
+            )
+            .await;
 
             // 检查是否有工具调用
             if let Some(ref tcs) = result.tool_calls {
@@ -8610,8 +8612,9 @@ mod tests {
         records: Mutex<Vec<LlmAuditRecord>>,
     }
 
+    #[async_trait]
     impl LlmAuditSink for RecordingAuditSink {
-        fn record(&self, record: LlmAuditRecord) -> hone_core::HoneResult<()> {
+        async fn record(&self, record: LlmAuditRecord) -> hone_core::HoneResult<()> {
             self.operations
                 .lock()
                 .expect("audit operations lock")

@@ -20,18 +20,77 @@ pub fn bootstrap_channel_runtime<F>(
 where
     F: Fn(&HoneConfig) -> bool,
 {
-    let (config, config_path) = match load_runtime_config() {
+    let (config, config_path) = load_channel_config_or_exit();
+    // `hone-imessage` is intentionally outside this refactor and still calls a synchronous
+    // bootstrap API. Keep the one-time boundary here, isolated from every storage operation;
+    // all async-capable channel binaries use `bootstrap_channel_runtime_async` below.
+    let core = std::thread::Builder::new()
+        .name("hone-channel-bootstrap".into())
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("channel bootstrap runtime")
+                .block_on(HoneBotCore::new(config))
+        })
+        .expect("spawn channel bootstrap thread")
+        .join()
+        .expect("channel bootstrap thread panicked");
+    finish_channel_runtime(
+        channel,
+        display_name,
+        process_lock_name,
+        is_enabled,
+        Arc::new(core),
+        &config_path,
+    )
+}
+
+pub async fn bootstrap_channel_runtime_async<F>(
+    channel: &str,
+    display_name: &str,
+    process_lock_name: &'static str,
+    is_enabled: F,
+) -> ChannelRuntimeBootstrap
+where
+    F: Fn(&HoneConfig) -> bool,
+{
+    let (config, config_path) = load_channel_config_or_exit();
+    let core = Arc::new(HoneBotCore::new(config).await);
+    finish_channel_runtime(
+        channel,
+        display_name,
+        process_lock_name,
+        is_enabled,
+        core,
+        &config_path,
+    )
+}
+
+fn load_channel_config_or_exit() -> (HoneConfig, String) {
+    match load_runtime_config() {
         Ok(value) => value,
         Err(err) => {
             eprintln!("❌ 配置加载失败: {err}");
             std::process::exit(1);
         }
-    };
-    let core = Arc::new(HoneBotCore::new(config));
+    }
+}
 
+fn finish_channel_runtime<F>(
+    channel: &str,
+    display_name: &str,
+    process_lock_name: &'static str,
+    is_enabled: F,
+    core: Arc<HoneBotCore>,
+    config_path: &str,
+) -> ChannelRuntimeBootstrap
+where
+    F: Fn(&HoneConfig) -> bool,
+{
     hone_core::logging::setup_logging(&core.config.logging);
     info!("🚀 Hone {display_name} 启动");
-    core.log_startup_routing(channel, &config_path);
+    core.log_startup_routing(channel, config_path);
 
     if !is_enabled(&core.config) {
         warn!("{channel}.enabled=false，{display_name} 不会启动。");

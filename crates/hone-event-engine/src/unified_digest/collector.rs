@@ -57,7 +57,7 @@ impl<'a> UnifiedCollector<'a> {
 
     /// per-actor 池:buffer drain + synth 倒计时。两路任一失败仍返回另一路成果,
     /// 失败原因落 `tracing::warn!`(`BufferSource` 内部已 warn,`SynthSource` 在此处 warn)。
-    pub fn collect_per_actor(
+    pub async fn collect_per_actor(
         &self,
         actor: &ActorIdentity,
         now: DateTime<Utc>,
@@ -70,7 +70,7 @@ impl<'a> UnifiedCollector<'a> {
             }
         };
         if let Some(synth) = &self.synth {
-            match synth.synthesize_for_actor(actor, now) {
+            match synth.synthesize_for_actor(actor, now).await {
                 Ok(mut synthesized) => candidates.append(&mut synthesized),
                 Err(e) => tracing::warn!(actor = ?actor, "synth failed: {e:#}"),
             }
@@ -79,7 +79,7 @@ impl<'a> UnifiedCollector<'a> {
     }
 
     /// shared global pool;`global` 未配置时返回空。
-    pub fn collect_global(
+    pub async fn collect_global(
         &self,
         until: DateTime<Utc>,
         lookback_hours: u32,
@@ -88,7 +88,10 @@ impl<'a> UnifiedCollector<'a> {
         let Some(global_source) = &self.global else {
             return Vec::new();
         };
-        match global_source.collect(until, lookback_hours, dedup_lookback_hours) {
+        match global_source
+            .collect(until, lookback_hours, dedup_lookback_hours)
+            .await
+        {
             Ok(global_candidates) => global_candidates,
             Err(e) => {
                 tracing::warn!(
@@ -167,10 +170,10 @@ mod tests {
         }
     }
 
-    fn open_store() -> EventStore {
+    async fn open_store() -> EventStore {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().join("event-store");
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         std::mem::forget(temp_dir);
         store
     }
@@ -184,8 +187,8 @@ mod tests {
         SharedRegistry::from_registry(registry)
     }
 
-    #[test]
-    fn buffer_only_skips_synth_and_global() {
+    #[tokio::test]
+    async fn buffer_only_skips_synth_and_global() {
         let temp_dir = tempdir().unwrap();
         let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
         let test_actor = actor();
@@ -194,21 +197,21 @@ mod tests {
             .unwrap();
         let collector = UnifiedCollector::buffer_only(&digest_buffer);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor_candidates = collector.collect_per_actor(&test_actor, now);
+        let per_actor_candidates = collector.collect_per_actor(&test_actor, now).await;
         assert_eq!(per_actor_candidates.len(), 1);
         assert_eq!(per_actor_candidates[0].origin, ItemOrigin::Buffered);
-        let global_candidates = collector.collect_global(now, 24, 24);
+        let global_candidates = collector.collect_global(now, 24, 24).await;
         assert!(
             global_candidates.is_empty(),
             "buffer_only 路径不应触达 global source"
         );
     }
 
-    #[test]
-    fn full_collector_merges_buffer_and_synth_per_actor() {
+    #[tokio::test]
+    async fn full_collector_merges_buffer_and_synth_per_actor() {
         let temp_dir = tempdir().unwrap();
         let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
-        let store = open_store();
+        let store = open_store().await;
         let test_actor = actor();
         digest_buffer
             .enqueue(&test_actor, &buffered_event("e1"))
@@ -219,11 +222,12 @@ mod tests {
                 "GOOGL",
                 Utc.with_ymd_and_hms(2026, 4, 29, 20, 0, 0).unwrap(),
             ))
+            .await
             .unwrap();
         let registry = registry_with_holding("GOOGL", &test_actor);
         let collector = UnifiedCollector::new(&digest_buffer, &store, &registry, 0);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor_candidates = collector.collect_per_actor(&test_actor, now);
+        let per_actor_candidates = collector.collect_per_actor(&test_actor, now).await;
 
         assert_eq!(per_actor_candidates.len(), 2);
         let origins: Vec<ItemOrigin> = per_actor_candidates
@@ -234,20 +238,21 @@ mod tests {
         assert!(origins.contains(&ItemOrigin::Synth));
     }
 
-    #[test]
-    fn full_collector_pulls_global_news_independently() {
+    #[tokio::test]
+    async fn full_collector_pulls_global_news_independently() {
         let temp_dir = tempdir().unwrap();
         let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
-        let store = open_store();
+        let store = open_store().await;
         let test_actor = actor();
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         store
             .insert_event(&global_news("g1", now - chrono::Duration::hours(2)))
+            .await
             .unwrap();
         let registry = registry_with_holding("AAPL", &test_actor);
         let collector = UnifiedCollector::new(&digest_buffer, &store, &registry, 0);
 
-        let global_candidates = collector.collect_global(now, 24, 24);
+        let global_candidates = collector.collect_global(now, 24, 24).await;
         assert_eq!(global_candidates.len(), 1);
         assert_eq!(global_candidates[0].origin, ItemOrigin::Global);
         assert!(
@@ -259,7 +264,7 @@ mod tests {
         );
 
         // per-actor 不应混入 global news
-        let per_actor_candidates = collector.collect_per_actor(&test_actor, now);
+        let per_actor_candidates = collector.collect_per_actor(&test_actor, now).await;
         assert!(
             per_actor_candidates
                 .iter()
@@ -268,26 +273,27 @@ mod tests {
         );
     }
 
-    #[test]
-    fn without_global_returns_empty_global_pool() {
+    #[tokio::test]
+    async fn without_global_returns_empty_global_pool() {
         let temp_dir = tempdir().unwrap();
         let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
-        let store = open_store();
+        let store = open_store().await;
         let test_actor = actor();
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         store
             .insert_event(&global_news("g1", now - chrono::Duration::hours(2)))
+            .await
             .unwrap();
         let registry = registry_with_holding("AAPL", &test_actor);
         let collector =
             UnifiedCollector::new(&digest_buffer, &store, &registry, 0).without_global();
 
-        let global_candidates = collector.collect_global(now, 24, 24);
+        let global_candidates = collector.collect_global(now, 24, 24).await;
         assert!(global_candidates.is_empty());
     }
 
-    #[test]
-    fn price_alert_latest_dedup_preserved_in_per_actor_pool() {
+    #[tokio::test]
+    async fn price_alert_latest_dedup_preserved_in_per_actor_pool() {
         // buffer 自带"同 symbol 同日 PriceAlert 只留最新"的去重,
         // UnifiedCollector 不应抹掉这条语义。
         let temp_dir = tempdir().unwrap();
@@ -311,7 +317,7 @@ mod tests {
             .unwrap();
         let collector = UnifiedCollector::buffer_only(&digest_buffer);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor_candidates = collector.collect_per_actor(&test_actor, now);
+        let per_actor_candidates = collector.collect_per_actor(&test_actor, now).await;
         assert_eq!(per_actor_candidates.len(), 1);
         assert_eq!(per_actor_candidates[0].event.id, "p2");
     }

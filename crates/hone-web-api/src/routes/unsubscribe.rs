@@ -36,7 +36,7 @@ fn secret(state: &AppState) -> String {
     state.core.config.email.resolved_unsubscribe_secret()
 }
 
-fn resolve(state: &AppState, token: &str) -> Result<(String, String, bool), ()> {
+async fn resolve(state: &AppState, token: &str) -> Result<(String, String, bool), ()> {
     let job_id = match verify_unsubscribe_token(&secret(state), token) {
         Ok(job_id) => job_id,
         // A deployment with no secret trusts nothing, and a forged or
@@ -51,7 +51,9 @@ fn resolve(state: &AppState, token: &str) -> Result<(String, String, bool), ()> 
     let (_, job) = state
         .core
         .cron_job_storage()
+        .await
         .get_job(&job_id, None)
+        .await
         .ok_or(())?;
     Ok((job_id, job.name.clone(), job.enabled))
 }
@@ -60,7 +62,7 @@ pub(crate) async fn handle_unsubscribe_page(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
 ) -> Response {
-    let outcome = match resolve(&state, &token) {
+    let outcome = match resolve(&state, &token).await {
         Ok((_, job_name, true)) => Outcome::Confirm { token, job_name },
         Ok((_, job_name, false)) => Outcome::Already { job_name },
         Err(()) => Outcome::Invalid,
@@ -72,7 +74,7 @@ pub(crate) async fn handle_unsubscribe_submit(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
 ) -> Response {
-    let outcome = match resolve(&state, &token) {
+    let outcome = match resolve(&state, &token).await {
         Ok((_, job_name, false)) => Outcome::Already { job_name },
         Ok((job_id, job_name, true)) => {
             let updates = CronJobUpdate {
@@ -84,7 +86,9 @@ pub(crate) async fn handle_unsubscribe_submit(
             match state
                 .core
                 .cron_job_storage()
+                .await
                 .update_job(&job_id, None, updates, true)
+                .await
             {
                 Ok(Some(_)) => Outcome::Done { job_name },
                 // Someone else disabled it between the page load and the click.

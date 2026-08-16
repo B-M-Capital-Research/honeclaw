@@ -319,7 +319,7 @@ pub(crate) async fn handle_stripe_webhook(
             }
         },
     };
-    if let Err(error) = state.billing.record_webhook_event(webhook) {
+    if let Err(error) = state.billing.record_webhook_event(webhook).await {
         return crate::routes::json_error(
             StatusCode::CONFLICT,
             format!("Stripe webhook 收件失败: {error}"),
@@ -351,15 +351,15 @@ pub(crate) async fn handle_create_checkout(
     if let Err(response) = require_browser_mutation(&headers, &config.public_base_url) {
         return response;
     }
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let profile = match verified_checkout_profile(&state, &user.user_id) {
+    let profile = match verified_checkout_profile(&state, &user.user_id).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let entitlements = match state.billing.list_user_entitlements(&user.user_id) {
+    let entitlements = match state.billing.list_user_entitlements(&user.user_id).await {
         Ok(value) => value,
         Err(error) => {
             return crate::routes::json_error(
@@ -526,11 +526,11 @@ pub(crate) async fn handle_create_portal(
     if let Err(response) = require_browser_mutation(&headers, &config.public_base_url) {
         return response;
     }
-    let user = match crate::routes::public::require_public_session_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let entitlements = match state.billing.list_user_entitlements(&user.user_id) {
+    let entitlements = match state.billing.list_user_entitlements(&user.user_id).await {
         Ok(value) => value,
         Err(error) => {
             return crate::routes::json_error(
@@ -931,6 +931,7 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
             let claimed = match state
                 .billing
                 .claim_webhook_event(BILLING_PROVIDER_STRIPE, &event_id)
+                .await
             {
                 Ok(value) => value,
                 Err(error) => {
@@ -947,23 +948,30 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
                     Ok(value) => value,
                     Err(error) => {
                         let message = format!("Stripe 标准事件反序列化失败: {error}");
-                        let _ = state.billing.finish_webhook_event(
-                            BILLING_PROVIDER_STRIPE,
-                            &event_id,
-                            claim_attempt,
-                            Err(&message),
-                        );
+                        let _ = state
+                            .billing
+                            .finish_webhook_event(
+                                BILLING_PROVIDER_STRIPE,
+                                &event_id,
+                                claim_attempt,
+                                Err(&message),
+                            )
+                            .await;
                         return;
                     }
                 };
-            match apply_stripe_entitlement(&state, &event) {
+            match apply_stripe_entitlement(&state, &event).await {
                 Ok(outcome) => {
-                    match state.billing.finish_webhook_event(
-                        BILLING_PROVIDER_STRIPE,
-                        &event_id,
-                        claim_attempt,
-                        Ok(()),
-                    ) {
+                    match state
+                        .billing
+                        .finish_webhook_event(
+                            BILLING_PROVIDER_STRIPE,
+                            &event_id,
+                            claim_attempt,
+                            Ok(()),
+                        )
+                        .await
+                    {
                         Err(error) => {
                             warn!(%event_id, %error, "Stripe billing event completion failed");
                         }
@@ -977,12 +985,15 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
                     return;
                 }
                 Err(error) => {
-                    let _ = state.billing.finish_webhook_event(
-                        BILLING_PROVIDER_STRIPE,
-                        &event_id,
-                        claim_attempt,
-                        Err(&error),
-                    );
+                    let _ = state
+                        .billing
+                        .finish_webhook_event(
+                            BILLING_PROVIDER_STRIPE,
+                            &event_id,
+                            claim_attempt,
+                            Err(&error),
+                        )
+                        .await;
                     if attempt == 3 {
                         warn!(%event_id, %error, "Stripe billing event exhausted retries");
                         return;
@@ -994,13 +1005,14 @@ pub(crate) fn spawn_stripe_processing(state: Arc<AppState>, event_id: String) {
     });
 }
 
-fn apply_stripe_entitlement(
+async fn apply_stripe_entitlement(
     state: &AppState,
     event: &StripeEntitlementEvent,
 ) -> Result<BillingEntitlementUpsertOutcome, String> {
     let user = state
         .web_auth
         .find_invite_user(&event.user_id)
+        .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "Stripe webhook 对应的 HONE 用户不存在".to_string())?;
     if user.revoked_at.is_some() {
@@ -1009,6 +1021,7 @@ fn apply_stripe_entitlement(
     let profile = state
         .web_auth
         .external_profile(&user.user_id)
+        .await
         .map_err(|error| error.to_string())?;
     if profile.identity_kind != WEB_IDENTITY_INTERNATIONAL_EMAIL {
         return Err("Stripe webhook 只能绑定国际邮箱身份".to_string());
@@ -1030,6 +1043,7 @@ fn apply_stripe_entitlement(
     let existing = state
         .billing
         .find_entitlement(BILLING_PROVIDER_STRIPE, &event.provider_reference_id)
+        .await
         .map_err(|error| error.to_string())?;
     if existing
         .as_ref()
@@ -1105,6 +1119,7 @@ fn apply_stripe_entitlement(
                 .unwrap_or_else(|| event.event_at.clone()),
             updated_at: now,
         })
+        .await
         .map_err(|error| error.to_string())
 }
 
@@ -1148,16 +1163,20 @@ fn stripe_access_state(
     }
 }
 
-fn verified_checkout_profile(
+async fn verified_checkout_profile(
     state: &AppState,
     user_id: &str,
 ) -> Result<hone_memory::WebUserExternalProfile, Response> {
-    let profile = state.web_auth.external_profile(user_id).map_err(|error| {
-        crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("读取邮箱身份失败: {error}"),
-        )
-    })?;
+    let profile = state
+        .web_auth
+        .external_profile(user_id)
+        .await
+        .map_err(|error| {
+            crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取邮箱身份失败: {error}"),
+            )
+        })?;
     if profile.identity_kind != WEB_IDENTITY_INTERNATIONAL_EMAIL
         || profile.email_address.is_none()
         || profile.email_verified_at.is_none()

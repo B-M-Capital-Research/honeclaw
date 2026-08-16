@@ -128,14 +128,14 @@ impl DigestCurationState {
     }
 }
 
-pub(crate) fn suppress_recent_digest_topics_with_omitted(
+pub(crate) async fn suppress_recent_digest_topics_with_omitted(
     actor_key: &str,
     events: Vec<MarketEvent>,
     store: &crate::store::EventStore,
     now: DateTime<Utc>,
 ) -> DigestCuration {
     let since = now - chrono::Duration::hours(24);
-    let Ok(recent) = store.list_recent_digest_item_events(actor_key, since) else {
+    let Ok(recent) = store.list_recent_digest_item_events(actor_key, since).await else {
         return DigestCuration::kept(events);
     };
     let recent_topics: Vec<(String, HashSet<String>)> =

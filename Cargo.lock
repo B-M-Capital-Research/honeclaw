@@ -3045,6 +3045,7 @@ name = "hone-memory"
 version = "0.15.3"
 dependencies = [
  "argon2",
+ "async-trait",
  "chrono",
  "hone-core",
  "password-hash",

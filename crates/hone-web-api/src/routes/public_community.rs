@@ -227,11 +227,11 @@ fn community_runtime(state: &AppState) -> Result<CloudPgRuntime, Response> {
         .ok_or_else(|| json_error(StatusCode::SERVICE_UNAVAILABLE, "社区归档服务暂不可用"))
 }
 
-fn public_actor_storage_key(
+async fn public_actor_storage_key(
     state: &AppState,
     headers: &axum::http::HeaderMap,
 ) -> Result<String, Response> {
-    let user = crate::routes::public::require_public_user(state, headers)?;
+    let user = crate::routes::public::require_public_user(state, headers).await?;
     ActorIdentity::new("web", user.user_id, Option::<String>::None)
         .map(|actor| actor.storage_key())
         .map_err(|error| {
@@ -311,7 +311,7 @@ pub(crate) async fn handle_community_state(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> Response {
-    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+    let actor_storage_key = match public_actor_storage_key(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -347,7 +347,7 @@ pub(crate) async fn handle_community_edge_session(
         return edge_session_response(false, mode.as_str(), None, clear_community_edge_cookie());
     }
 
-    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+    let actor_storage_key = match public_actor_storage_key(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return with_cleared_community_edge_cookie(response),
     };
@@ -369,7 +369,7 @@ pub(crate) async fn handle_list_community(
     headers: axum::http::HeaderMap,
     Query(query): Query<CommunityQuery>,
 ) -> Response {
-    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+    let actor_storage_key = match public_actor_storage_key(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -418,7 +418,7 @@ pub(crate) async fn handle_mark_community_seen(
     if request.content_id <= 0 {
         return json_error(StatusCode::BAD_REQUEST, "无效的社区内容标识");
     }
-    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+    let actor_storage_key = match public_actor_storage_key(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -447,7 +447,7 @@ pub(crate) async fn handle_community_resource_preview(
     Path(resource_id): Path<i64>,
     Query(query): Query<CommunityResourceQuery>,
 ) -> Response {
-    if let Err(response) = public_actor_storage_key(&state, &headers) {
+    if let Err(response) = public_actor_storage_key(&state, &headers).await {
         return response;
     }
     let runtime = match community_runtime(&state) {

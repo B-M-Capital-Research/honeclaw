@@ -5,7 +5,6 @@ use std::sync::{OnceLock, RwLock};
 
 use chrono::Utc;
 use hone_core::cloud_runtime::{CloudCompanyProfileFileRecord, CloudPgRuntime};
-use hone_core::cloud_sync::run_cloud_sync;
 use hone_core::{ActorIdentity, compare_rfc3339};
 
 use super::markdown::{
@@ -57,7 +56,7 @@ impl CompanyProfileStorage {
         }
     }
 
-    pub fn find_profile_id(
+    pub async fn find_profile_id(
         &self,
         company_name: Option<&str>,
         stock_code: Option<&str>,
@@ -71,7 +70,7 @@ impl CompanyProfileStorage {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(normalize_stock_code);
-            return self.list_profiles().into_iter().find_map(|document| {
+            return self.list_profiles().await.into_iter().find_map(|document| {
                 let code_match = stock_code
                     .as_ref()
                     .map(|value| normalize_stock_code(&document.stock_code) == *value)
@@ -132,9 +131,9 @@ impl CompanyProfileStorage {
         None
     }
 
-    pub fn list_profiles(&self) -> Vec<ProfileSummary> {
+    pub async fn list_profiles(&self) -> Vec<ProfileSummary> {
         if self.cloud.is_some() {
-            return self.cloud_list_profiles();
+            return self.cloud_list_profiles().await;
         }
 
         let Ok(root_dir) = self.scoped_root() else {
@@ -177,9 +176,9 @@ impl CompanyProfileStorage {
         profiles
     }
 
-    pub fn list_profile_spaces(&self) -> Vec<ProfileSpaceSummary> {
+    pub async fn list_profile_spaces(&self) -> Vec<ProfileSpaceSummary> {
         if self.cloud.is_some() {
-            return self.cloud_list_profile_spaces(false);
+            return self.cloud_list_profile_spaces(false).await;
         }
 
         let mut spaces = Vec::new();
@@ -230,7 +229,7 @@ impl CompanyProfileStorage {
                 if !profiles_dir.exists() {
                     continue;
                 }
-                let profiles = self.for_actor(&actor).list_profiles();
+                let profiles = self.for_actor(&actor).list_profiles().await;
                 if profiles.is_empty() {
                     continue;
                 }
@@ -255,9 +254,9 @@ impl CompanyProfileStorage {
         spaces
     }
 
-    pub fn list_profile_spaces_raw(&self) -> Vec<ProfileSpaceSummary> {
+    pub async fn list_profile_spaces_raw(&self) -> Vec<ProfileSpaceSummary> {
         if self.cloud.is_some() {
-            return self.cloud_list_profile_spaces(true);
+            return self.cloud_list_profile_spaces(true).await;
         }
 
         let mut spaces = Vec::new();
@@ -304,7 +303,7 @@ impl CompanyProfileStorage {
                 else {
                     continue;
                 };
-                let profiles = self.for_actor(&actor).list_profiles_raw();
+                let profiles = self.for_actor(&actor).list_profiles_raw().await;
                 if profiles.is_empty() {
                     continue;
                 }
@@ -331,9 +330,9 @@ impl CompanyProfileStorage {
         spaces
     }
 
-    pub fn list_profiles_raw(&self) -> Vec<RawProfileSummary> {
+    pub async fn list_profiles_raw(&self) -> Vec<RawProfileSummary> {
         if self.cloud.is_some() {
-            return self.cloud_list_profiles_raw();
+            return self.cloud_list_profiles_raw().await;
         }
 
         let Ok(root_dir) = self.scoped_root() else {
@@ -370,9 +369,9 @@ impl CompanyProfileStorage {
     ///
     /// 与 `list_profiles_raw()` 后逐项调用 `get_profile_raw()` 相比，cloud 后端不会
     /// 为每个 profile 重复拉取该 actor 的全部文件；本地后端也只遍历一次目录。
-    pub fn list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
+    pub async fn list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
         if self.cloud.is_some() {
-            return self.cloud_list_profile_documents_raw();
+            return self.cloud_list_profile_documents_raw().await;
         }
 
         let Ok(root_dir) = self.scoped_root() else {
@@ -398,9 +397,12 @@ impl CompanyProfileStorage {
         profiles
     }
 
-    pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
+    pub async fn get_profile(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<CompanyProfileDocument>, String> {
         if self.cloud.is_some() {
-            return self.cloud_get_profile(profile_id);
+            return self.cloud_get_profile(profile_id).await;
         }
 
         let root_dir = self.scoped_root()?;
@@ -410,9 +412,12 @@ impl CompanyProfileStorage {
         self.load_profile_by_dir(&profile_dir)
     }
 
-    pub fn get_profile_raw(&self, profile_id: &str) -> Result<Option<RawProfileDocument>, String> {
+    pub async fn get_profile_raw(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<RawProfileDocument>, String> {
         if self.cloud.is_some() {
-            return self.cloud_get_profile_raw(profile_id);
+            return self.cloud_get_profile_raw(profile_id).await;
         }
 
         let root_dir = self.scoped_root()?;
@@ -422,7 +427,7 @@ impl CompanyProfileStorage {
         self.load_raw_profile_by_dir(&profile_dir)
     }
 
-    pub fn create_profile(
+    pub async fn create_profile(
         &self,
         input: CreateProfileInput,
     ) -> Result<(CompanyProfileDocument, bool), String> {
@@ -437,9 +442,13 @@ impl CompanyProfileStorage {
             .map(normalize_stock_code)
             .unwrap_or_default();
 
-        if let Some(existing_id) = self.find_profile_id(Some(company_name), Some(&stock_code)) {
+        if let Some(existing_id) = self
+            .find_profile_id(Some(company_name), Some(&stock_code))
+            .await
+        {
             let mut document = self
-                .get_profile(&existing_id)?
+                .get_profile(&existing_id)
+                .await?
                 .ok_or_else(|| "画像已存在但读取失败".to_string())?;
             let mut changed = false;
 
@@ -460,7 +469,7 @@ impl CompanyProfileStorage {
             }
             if changed {
                 document.metadata.updated_at = Utc::now().to_rfc3339();
-                self.write_profile(&document, None)?;
+                self.write_profile(&document, None).await?;
             }
             return Ok((document, false));
         }
@@ -500,16 +509,16 @@ impl CompanyProfileStorage {
             events: Vec::new(),
         };
 
-        self.write_profile(&document, Some(sections))?;
+        self.write_profile(&document, Some(sections)).await?;
         Ok((document, true))
     }
 
-    pub fn rewrite_sections(
+    pub async fn rewrite_sections(
         &self,
         profile_id: &str,
         sections: &BTreeMap<String, String>,
     ) -> Result<Option<CompanyProfileDocument>, String> {
-        let Some(mut document) = self.get_profile(profile_id)? else {
+        let Some(mut document) = self.get_profile(profile_id).await? else {
             return Ok(None);
         };
 
@@ -539,16 +548,17 @@ impl CompanyProfileStorage {
             &create_profile_body(&ordered_sections),
         )
         .map_err(|err| format!("回写 profile.md 失败: {err}"))?;
-        self.write_profile(&document, Some(ordered_sections))?;
+        self.write_profile(&document, Some(ordered_sections))
+            .await?;
         Ok(Some(document))
     }
 
-    pub fn set_tracking(
+    pub async fn set_tracking(
         &self,
         profile_id: &str,
         tracking: TrackingConfig,
     ) -> Result<Option<CompanyProfileDocument>, String> {
-        let Some(mut document) = self.get_profile(profile_id)? else {
+        let Some(mut document) = self.get_profile(profile_id).await? else {
             return Ok(None);
         };
         document.metadata.tracking = tracking;
@@ -560,11 +570,11 @@ impl CompanyProfileStorage {
             &create_profile_body(&sections),
         )
         .map_err(|err| format!("回写 profile.md 失败: {err}"))?;
-        self.write_profile(&document, Some(sections))?;
+        self.write_profile(&document, Some(sections)).await?;
         Ok(Some(document))
     }
 
-    pub fn append_event(
+    pub async fn append_event(
         &self,
         profile_id: &str,
         input: super::AppendEventInput,
@@ -577,14 +587,15 @@ impl CompanyProfileStorage {
                 research_updates: Vec::new(),
             },
         )
+        .await
     }
 
-    pub fn append_research_event(
+    pub async fn append_research_event(
         &self,
         profile_id: &str,
         input: AppendResearchEventInput,
     ) -> Result<Option<CompanyProfileEventDocument>, String> {
-        let Some(mut document) = self.get_profile(profile_id)? else {
+        let Some(mut document) = self.get_profile(profile_id).await? else {
             return Ok(None);
         };
         let event_input = &input.event;
@@ -609,7 +620,10 @@ impl CompanyProfileStorage {
         let event_id = event_filename.trim_end_matches(".md").to_string();
         if self.cloud.is_some() {
             let relative_path = format!("events/{event_filename}");
-            if let Some(record) = self.cloud_get_file(&document.profile_id, &relative_path)? {
+            if let Some(record) = self
+                .cloud_get_file(&document.profile_id, &relative_path)
+                .await?
+            {
                 return Ok(Some(parse_event_markdown_relaxed(
                     &event_id,
                     &event_filename,
@@ -633,7 +647,8 @@ impl CompanyProfileStorage {
                 research_updates: input.research_updates.clone(),
             };
             let markdown = render_event_markdown(&event_input.title, &metadata, event_input);
-            self.cloud_upsert_file(&document.profile_id, &relative_path, &markdown)?;
+            self.cloud_upsert_file(&document.profile_id, &relative_path, &markdown)
+                .await?;
 
             document.metadata.updated_at = Utc::now().to_rfc3339();
             let sections = parse_profile_sections(&document.markdown).0;
@@ -643,7 +658,7 @@ impl CompanyProfileStorage {
                 &create_profile_body(&sections),
             )
             .map_err(|err| format!("更新 profile.md 时间戳失败: {err}"))?;
-            self.write_profile(&document, Some(sections))?;
+            self.write_profile(&document, Some(sections)).await?;
 
             return Ok(Some(CompanyProfileEventDocument {
                 id: event_id,
@@ -698,7 +713,7 @@ impl CompanyProfileStorage {
             &create_profile_body(&sections),
         )
         .map_err(|err| format!("更新 profile.md 时间戳失败: {err}"))?;
-        self.write_profile(&document, Some(sections))?;
+        self.write_profile(&document, Some(sections)).await?;
 
         Ok(Some(CompanyProfileEventDocument {
             id: event_id,
@@ -709,15 +724,14 @@ impl CompanyProfileStorage {
         }))
     }
 
-    pub fn delete_profile(&self, profile_id: &str) -> Result<bool, String> {
+    pub async fn delete_profile(&self, profile_id: &str) -> Result<bool, String> {
         if let Some(postgres) = self.cloud.clone() {
             let actor_storage_key = self.actor_storage_key()?;
             let profile_id = profile_id.to_string();
-            return run_cloud_company_profile(async move {
-                postgres
-                    .delete_company_profile(&actor_storage_key, &profile_id)
-                    .await
-            });
+            return postgres
+                .delete_company_profile(&actor_storage_key, &profile_id)
+                .await
+                .map_err(|err| err.to_string());
         }
 
         let root_dir = self.scoped_root()?;
@@ -731,7 +745,7 @@ impl CompanyProfileStorage {
         Ok(true)
     }
 
-    pub(super) fn write_profile(
+    pub(super) async fn write_profile(
         &self,
         document: &CompanyProfileDocument,
         sections: Option<Vec<(String, String)>>,
@@ -753,7 +767,9 @@ impl CompanyProfileStorage {
                 )
                 .map_err(|err| format!("渲染 profile.md 失败: {err}"))?
             };
-            return self.cloud_upsert_file(&document.profile_id, "profile.md", &markdown);
+            return self
+                .cloud_upsert_file(&document.profile_id, "profile.md", &markdown)
+                .await;
         }
 
         let profile_dir = self.scoped_root()?.join(&document.profile_id);
@@ -782,11 +798,11 @@ impl CompanyProfileStorage {
         Ok(())
     }
 
-    pub(super) fn touch_profile_updated_at(
+    pub(super) async fn touch_profile_updated_at(
         &self,
         profile_id: &str,
     ) -> Result<Option<CompanyProfileDocument>, String> {
-        let Some(mut document) = self.get_profile(profile_id)? else {
+        let Some(mut document) = self.get_profile(profile_id).await? else {
             return Ok(None);
         };
         let sections = parse_profile_sections(&document.markdown).0;
@@ -797,7 +813,7 @@ impl CompanyProfileStorage {
             &create_profile_body(&sections),
         )
         .map_err(|err| format!("更新 profile.md 时间戳失败: {err}"))?;
-        self.write_profile(&document, Some(sections))?;
+        self.write_profile(&document, Some(sections)).await?;
         Ok(Some(document))
     }
 
@@ -988,7 +1004,7 @@ impl CompanyProfileStorage {
         serde_json::to_value(actor).map_err(|err| format!("序列化 actor 失败: {err}"))
     }
 
-    fn cloud_get_file(
+    async fn cloud_get_file(
         &self,
         profile_id: &str,
         relative_path: &str,
@@ -999,15 +1015,13 @@ impl CompanyProfileStorage {
         let actor_storage_key = self.actor_storage_key()?;
         let profile_id = profile_id.to_string();
         let relative_path = relative_path.to_string();
-        run_cloud_company_profile(async move {
-            postgres
-                .get_company_profile_file(&actor_storage_key, &profile_id, &relative_path)
-                .await
-        })
-        .map_err(|err| err.to_string())
+        postgres
+            .get_company_profile_file(&actor_storage_key, &profile_id, &relative_path)
+            .await
+            .map_err(|err| err.to_string())
     }
 
-    fn cloud_upsert_file(
+    async fn cloud_upsert_file(
         &self,
         profile_id: &str,
         relative_path: &str,
@@ -1024,36 +1038,38 @@ impl CompanyProfileStorage {
             content: content.to_string(),
             updated_at: Utc::now().to_rfc3339(),
         };
-        run_cloud_company_profile(async move { postgres.upsert_company_profile_file(record).await })
+        postgres
+            .upsert_company_profile_file(record)
+            .await
             .map_err(|err| err.to_string())
     }
 
-    fn cloud_files_for_actor(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
+    async fn cloud_files_for_actor(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
         let Some(postgres) = self.cloud.clone() else {
             return Ok(Vec::new());
         };
         let actor_storage_key = self.actor_storage_key()?;
-        run_cloud_company_profile(async move {
-            postgres
-                .list_company_profile_files(Some(&actor_storage_key))
-                .await
-        })
-        .map_err(|err| err.to_string())
-    }
-
-    fn cloud_all_files(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
-        let Some(postgres) = self.cloud.clone() else {
-            return Ok(Vec::new());
-        };
-        run_cloud_company_profile(async move { postgres.list_company_profile_files(None).await })
+        postgres
+            .list_company_profile_files(Some(&actor_storage_key))
+            .await
             .map_err(|err| err.to_string())
     }
 
-    fn cloud_get_profile(
+    async fn cloud_all_files(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
+        let Some(postgres) = self.cloud.clone() else {
+            return Ok(Vec::new());
+        };
+        postgres
+            .list_company_profile_files(None)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    async fn cloud_get_profile(
         &self,
         profile_id: &str,
     ) -> Result<Option<CompanyProfileDocument>, String> {
-        let files = self.cloud_files_for_actor()?;
+        let files = self.cloud_files_for_actor().await?;
         let profile = files
             .iter()
             .find(|file| file.profile_id == profile_id && file.relative_path == "profile.md");
@@ -1092,11 +1108,11 @@ impl CompanyProfileStorage {
         }))
     }
 
-    fn cloud_get_profile_raw(
+    async fn cloud_get_profile_raw(
         &self,
         profile_id: &str,
     ) -> Result<Option<RawProfileDocument>, String> {
-        let files = self.cloud_files_for_actor()?;
+        let files = self.cloud_files_for_actor().await?;
         let profile = files
             .iter()
             .find(|file| file.profile_id == profile_id && file.relative_path == "profile.md");
@@ -1135,8 +1151,8 @@ impl CompanyProfileStorage {
         }))
     }
 
-    fn cloud_list_profiles(&self) -> Vec<ProfileSummary> {
-        let files = match self.cloud_files_for_actor() {
+    async fn cloud_list_profiles(&self) -> Vec<ProfileSummary> {
+        let files = match self.cloud_files_for_actor().await {
             Ok(files) => files,
             Err(error) => {
                 tracing::warn!("cloud company profile list failed: {error}");
@@ -1153,7 +1169,7 @@ impl CompanyProfileStorage {
 
         let mut profiles = Vec::new();
         for profile_id in profile_ids {
-            let Ok(Some(document)) = self.cloud_get_profile(&profile_id) else {
+            let Ok(Some(document)) = self.cloud_get_profile(&profile_id).await else {
                 continue;
             };
             profiles.push(ProfileSummary {
@@ -1179,8 +1195,8 @@ impl CompanyProfileStorage {
         profiles
     }
 
-    fn cloud_list_profiles_raw(&self) -> Vec<RawProfileSummary> {
-        let files = match self.cloud_files_for_actor() {
+    async fn cloud_list_profiles_raw(&self) -> Vec<RawProfileSummary> {
+        let files = match self.cloud_files_for_actor().await {
             Ok(files) => files,
             Err(error) => {
                 tracing::warn!("cloud raw company profile list failed: {error}");
@@ -1208,8 +1224,8 @@ impl CompanyProfileStorage {
         profiles
     }
 
-    fn cloud_list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
-        let files = match self.cloud_files_for_actor() {
+    async fn cloud_list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
+        let files = match self.cloud_files_for_actor().await {
             Ok(files) => files,
             Err(error) => {
                 tracing::warn!("cloud raw company profile document list failed: {error}");
@@ -1219,8 +1235,8 @@ impl CompanyProfileStorage {
         raw_profile_documents_from_cloud_files(files)
     }
 
-    fn cloud_list_profile_spaces(&self, raw: bool) -> Vec<ProfileSpaceSummary> {
-        let files = match self.cloud_all_files() {
+    async fn cloud_list_profile_spaces(&self, raw: bool) -> Vec<ProfileSpaceSummary> {
+        let files = match self.cloud_all_files().await {
             Ok(files) => files,
             Err(error) => {
                 tracing::warn!("cloud company profile space list failed: {error}");
@@ -1306,14 +1322,6 @@ fn cloud_company_profile_storage() -> Option<CloudPgRuntime> {
     CLOUD_COMPANY_PROFILE_STORAGE
         .get()
         .and_then(|lock| lock.read().ok().and_then(|guard| guard.clone()))
-}
-
-fn run_cloud_company_profile<T, F>(future: F) -> Result<T, String>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud company profile operation").map_err(|err| err.to_string())
 }
 
 fn event_counts_by_profile(files: &[CloudCompanyProfileFileRecord]) -> HashMap<String, usize> {

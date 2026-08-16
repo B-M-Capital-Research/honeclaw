@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::DateTime;
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::{HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -112,15 +112,15 @@ pub struct BillingStorage {
 impl BillingStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
-        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
-        let mut storage = Self::new_cloud(postgres)?;
+    pub async fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path).await?;
+        let mut storage = Self::new_cloud(postgres).await?;
         storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             postgres,
             _test_postgres_lease: None,
@@ -136,18 +136,21 @@ impl BillingStorage {
         format!("ent_{suffix}")
     }
 
-    pub fn list_user_entitlements(&self, user_id: &str) -> HoneResult<Vec<BillingEntitlement>> {
+    pub async fn list_user_entitlements(
+        &self,
+        user_id: &str,
+    ) -> HoneResult<Vec<BillingEntitlement>> {
         let postgres = self.postgres.clone();
         let user_id = user_id.to_string();
-        return run_cloud_billing(async move {
-            postgres.list_billing_entitlement_records(&user_id).await
-        })?
-        .into_iter()
-        .map(entitlement_from_value)
-        .collect();
+        return postgres
+            .list_billing_entitlement_records(&user_id)
+            .await?
+            .into_iter()
+            .map(entitlement_from_value)
+            .collect();
     }
 
-    pub fn find_entitlement(
+    pub async fn find_entitlement(
         &self,
         provider: &str,
         provider_reference_id: &str,
@@ -155,30 +158,30 @@ impl BillingStorage {
         let postgres = self.postgres.clone();
         let provider = provider.to_string();
         let provider_reference_id = provider_reference_id.to_string();
-        return run_cloud_billing(async move {
-            postgres
-                .find_billing_entitlement_record(&provider, &provider_reference_id)
-                .await
-        })?
-        .map(entitlement_from_value)
-        .transpose();
+        return postgres
+            .find_billing_entitlement_record(&provider, &provider_reference_id)
+            .await?
+            .map(entitlement_from_value)
+            .transpose();
     }
 
-    pub fn user_has_paid_access(&self, user_id: &str) -> HoneResult<bool> {
+    pub async fn user_has_paid_access(&self, user_id: &str) -> HoneResult<bool> {
         Ok(self
-            .list_user_entitlements(user_id)?
+            .list_user_entitlements(user_id)
+            .await?
             .iter()
             .any(BillingEntitlement::grants_paid_access))
     }
 
-    pub fn upsert_entitlement(
+    pub async fn upsert_entitlement(
         &self,
         mut entitlement: BillingEntitlement,
     ) -> HoneResult<BillingEntitlementUpsertOutcome> {
         normalize_entitlement_timestamps(&mut entitlement)?;
         validate_entitlement(&entitlement)?;
-        let existing =
-            self.find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
+        let existing = self
+            .find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)
+            .await?;
         if let Some(current) = existing.as_ref() {
             match compare_event_order(
                 &entitlement.last_event_created_at,
@@ -195,13 +198,11 @@ impl BillingStorage {
         let postgres = self.postgres.clone();
         let record = serde_json::to_value(&entitlement)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let changed =
-            run_cloud_billing(
-                async move { postgres.upsert_billing_entitlement_record(record).await },
-            )?;
+        let changed = postgres.upsert_billing_entitlement_record(record).await?;
         if !changed {
-            let current =
-                self.find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)?;
+            let current = self
+                .find_entitlement(&entitlement.provider, &entitlement.provider_reference_id)
+                .await?;
             return Ok(
                 if current
                     .as_ref()
@@ -220,13 +221,13 @@ impl BillingStorage {
         });
     }
 
-    pub fn record_webhook_event(
+    pub async fn record_webhook_event(
         &self,
         mut event: BillingWebhookEvent,
     ) -> HoneResult<BillingWebhookRecordOutcome> {
         normalize_webhook_timestamps(&mut event)?;
         validate_webhook_event(&event)?;
-        if let Some(existing) = self.webhook_event(&event.provider, &event.event_id)? {
+        if let Some(existing) = self.webhook_event(&event.provider, &event.event_id).await? {
             if existing.payload_sha256 != event.payload_sha256 {
                 return Err(HoneError::Storage(
                     "同一 billing webhook event_id 对应不同载荷摘要".to_string(),
@@ -238,13 +239,11 @@ impl BillingStorage {
         let postgres = self.postgres.clone();
         let record = serde_json::to_value(&event)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let inserted = run_cloud_billing(async move {
-            postgres.insert_billing_webhook_event_record(record).await
-        })?;
+        let inserted = postgres.insert_billing_webhook_event_record(record).await?;
         if inserted {
             return Ok(BillingWebhookRecordOutcome::Inserted);
         }
-        let existing = self.webhook_event(&event.provider, &event.event_id)?;
+        let existing = self.webhook_event(&event.provider, &event.event_id).await?;
         if existing
             .as_ref()
             .is_some_and(|value| value.payload_sha256 == event.payload_sha256)
@@ -256,7 +255,7 @@ impl BillingStorage {
         ));
     }
 
-    pub fn webhook_event(
+    pub async fn webhook_event(
         &self,
         provider: &str,
         event_id: &str,
@@ -264,21 +263,19 @@ impl BillingStorage {
         let postgres = self.postgres.clone();
         let provider = provider.to_string();
         let event_id = event_id.to_string();
-        return run_cloud_billing(async move {
-            postgres
-                .billing_webhook_event_record(&provider, &event_id)
-                .await
-        })?
-        .map(webhook_from_value)
-        .transpose();
+        return postgres
+            .billing_webhook_event_record(&provider, &event_id)
+            .await?
+            .map(webhook_from_value)
+            .transpose();
     }
 
-    pub fn claim_webhook_event(
+    pub async fn claim_webhook_event(
         &self,
         provider: &str,
         event_id: &str,
     ) -> HoneResult<Option<BillingWebhookEvent>> {
-        let Some(mut event) = self.webhook_event(provider, event_id)? else {
+        let Some(mut event) = self.webhook_event(provider, event_id).await? else {
             return Ok(None);
         };
         let now = chrono::Utc::now();
@@ -308,21 +305,19 @@ impl BillingStorage {
         let event_id = event_id.to_string();
         let record = serde_json::to_value(&event)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        let claimed = run_cloud_billing(async move {
-            postgres
-                .claim_billing_webhook_event(
-                    &provider,
-                    &event_id,
-                    &stale_before.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    BILLING_WEBHOOK_MAX_ATTEMPTS,
-                    record,
-                )
-                .await
-        })?;
+        let claimed = postgres
+            .claim_billing_webhook_event(
+                &provider,
+                &event_id,
+                &stale_before.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                BILLING_WEBHOOK_MAX_ATTEMPTS,
+                record,
+            )
+            .await?;
         return Ok(claimed.then_some(event));
     }
 
-    pub fn claimable_webhook_event_ids(
+    pub async fn claimable_webhook_event_ids(
         &self,
         provider: &str,
         limit: usize,
@@ -339,26 +334,24 @@ impl BillingStorage {
 
         let postgres = self.postgres.clone();
         let provider = provider.to_string();
-        return run_cloud_billing(async move {
-            postgres
-                .list_claimable_billing_webhook_event_ids(
-                    &provider,
-                    &stale_before,
-                    BILLING_WEBHOOK_MAX_ATTEMPTS,
-                    limit,
-                )
-                .await
-        });
+        return postgres
+            .list_claimable_billing_webhook_event_ids(
+                &provider,
+                &stale_before,
+                BILLING_WEBHOOK_MAX_ATTEMPTS,
+                limit,
+            )
+            .await;
     }
 
-    pub fn finish_webhook_event(
+    pub async fn finish_webhook_event(
         &self,
         provider: &str,
         event_id: &str,
         expected_attempt_count: u32,
         result: Result<(), &str>,
     ) -> HoneResult<bool> {
-        let Some(mut event) = self.webhook_event(provider, event_id)? else {
+        let Some(mut event) = self.webhook_event(provider, event_id).await? else {
             return Err(HoneError::Storage(
                 "billing webhook event 不存在".to_string(),
             ));
@@ -390,19 +383,17 @@ impl BillingStorage {
         let processed_at = event.processed_at.clone();
         let record = serde_json::to_value(&event)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
-        return run_cloud_billing(async move {
-            postgres
-                .finish_billing_webhook_event(
-                    &provider,
-                    &event_id,
-                    expected_attempt_count,
-                    &state,
-                    last_error.as_deref(),
-                    processed_at.as_deref(),
-                    record,
-                )
-                .await
-        });
+        return postgres
+            .finish_billing_webhook_event(
+                &provider,
+                &event_id,
+                expected_attempt_count,
+                &state,
+                last_error.as_deref(),
+                processed_at.as_deref(),
+                record,
+            )
+            .await;
     }
 }
 
@@ -557,34 +548,25 @@ fn webhook_from_value(value: serde_json::Value) -> HoneResult<BillingWebhookEven
     serde_json::from_value(value).map_err(|err| HoneError::Serialization(err.to_string()))
 }
 
-fn run_cloud_billing<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud billing operation")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test_storage() -> BillingStorage {
+    async fn test_storage() -> BillingStorage {
         let root = std::env::temp_dir().join(format!("hone-billing-{}", uuid::Uuid::new_v4()));
-        let storage = BillingStorage::new(&root).expect("billing");
+        let storage = BillingStorage::new(&root).await.expect("billing");
         let postgres = storage.postgres.clone();
-        run_cloud_billing(async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .execute(
-                    "INSERT INTO cloud_web_invite_users(user_id, phone_number, record) VALUES ('user_1', '', '{}'::jsonb) ON CONFLICT (user_id) DO NOTHING",
-                    &[],
-                )
-                .await
-                .map_err(|error| HoneError::Config(format!("{error:?}")))?;
-            Ok(())
-        })
-        .expect("billing test user");
+        let client = postgres
+            .connect_cached_client()
+            .await
+            .expect("billing test postgres client");
+        client
+            .execute(
+                "INSERT INTO cloud_web_invite_users(user_id, phone_number, record) VALUES ('user_1', '', '{}'::jsonb) ON CONFLICT (user_id) DO NOTHING",
+                &[],
+            )
+            .await
+            .expect("billing test user");
         storage
     }
 
@@ -627,10 +609,10 @@ mod tests {
         entitlement_for(BILLING_PROVIDER_STRIPE, "sub_1", event_id, event_at, state)
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn active_stripe_entitlement_grants_access_and_stale_events_cannot_revoke() {
-        let storage = test_storage();
+    async fn active_stripe_entitlement_grants_access_and_stale_events_cannot_revoke() {
+        let storage = test_storage().await;
         assert_eq!(
             storage
                 .upsert_entitlement(entitlement(
@@ -638,13 +620,20 @@ mod tests {
                     "2026-08-03T10:00:00+08:00",
                     BILLING_ACCESS_ACTIVE,
                 ))
+                .await
                 .expect("insert"),
             BillingEntitlementUpsertOutcome::Created
         );
-        assert!(storage.user_has_paid_access("user_1").expect("access"));
+        assert!(
+            storage
+                .user_has_paid_access("user_1")
+                .await
+                .expect("access")
+        );
         assert_eq!(
             storage
                 .find_entitlement(BILLING_PROVIDER_STRIPE, "sub_1")
+                .await
                 .expect("read")
                 .expect("entitlement")
                 .last_event_created_at,
@@ -657,22 +646,30 @@ mod tests {
                     "2026-08-03T09:00:00+08:00",
                     BILLING_ACCESS_INACTIVE,
                 ))
+                .await
                 .expect("stale"),
             BillingEntitlementUpsertOutcome::Stale
         );
-        assert!(storage.user_has_paid_access("user_1").expect("access"));
+        assert!(
+            storage
+                .user_has_paid_access("user_1")
+                .await
+                .expect("access")
+        );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn postgres_provider_constraints_reject_legacy_values() {
-        let storage = test_storage();
+    async fn postgres_provider_constraints_reject_legacy_values() {
+        let storage = test_storage().await;
         let postgres = storage.postgres.clone();
-        let error = run_cloud_billing(async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .execute(
-                    r#"
+        let client = postgres
+            .connect_cached_client()
+            .await
+            .expect("billing postgres client");
+        let error = client
+            .execute(
+                r#"
 INSERT INTO billing_entitlements(
   entitlement_id, user_id, provider, entitlement_kind, provider_reference_id,
   raw_status, access_state, last_event_id, last_event_created_at, created_at, updated_at, record
@@ -682,13 +679,11 @@ INSERT INTO billing_entitlements(
   '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z', '{}'::jsonb
 )
 "#,
-                    &[],
-                )
-                .await
-                .map_err(|error| HoneError::Config(format!("{error:?}")))?;
-            Ok(())
-        })
-        .expect_err("legacy provider must violate the PostgreSQL CHECK constraint");
+                &[],
+            )
+            .await
+            .map_err(|error| HoneError::Config(format!("{error:?}")))
+            .expect_err("legacy provider must violate the PostgreSQL CHECK constraint");
         assert!(
             error
                 .to_string()
@@ -696,10 +691,10 @@ INSERT INTO billing_entitlements(
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn old_subscription_events_cannot_revoke_a_repurchase_and_all_inactive_denies_access() {
-        let storage = test_storage();
+    async fn old_subscription_events_cannot_revoke_a_repurchase_and_all_inactive_denies_access() {
+        let storage = test_storage().await;
         storage
             .upsert_entitlement(entitlement_for(
                 BILLING_PROVIDER_STRIPE,
@@ -708,6 +703,7 @@ INSERT INTO billing_entitlements(
                 "2026-08-03T01:00:00+00:00",
                 BILLING_ACCESS_ACTIVE,
             ))
+            .await
             .expect("old subscription");
         storage
             .upsert_entitlement(entitlement_for(
@@ -717,6 +713,7 @@ INSERT INTO billing_entitlements(
                 "2026-08-03T02:00:00+00:00",
                 BILLING_ACCESS_ACTIVE,
             ))
+            .await
             .expect("repurchased subscription");
 
         storage
@@ -727,15 +724,20 @@ INSERT INTO billing_entitlements(
                 "2026-08-03T03:00:00+00:00",
                 BILLING_ACCESS_INACTIVE,
             ))
+            .await
             .expect("late event for old subscription");
 
         assert!(
-            storage.user_has_paid_access("user_1").expect("access"),
+            storage
+                .user_has_paid_access("user_1")
+                .await
+                .expect("access"),
             "an event for the old subscription must not revoke the repurchase"
         );
         assert_eq!(
             storage
                 .find_entitlement(BILLING_PROVIDER_STRIPE, "sub_repurchase")
+                .await
                 .expect("read repurchase")
                 .expect("repurchase entitlement")
                 .access_state,
@@ -750,17 +752,21 @@ INSERT INTO billing_entitlements(
                 "2026-08-03T04:00:00+00:00",
                 BILLING_ACCESS_INACTIVE,
             ))
+            .await
             .expect("cancel repurchase");
         assert!(
-            !storage.user_has_paid_access("user_1").expect("access"),
+            !storage
+                .user_has_paid_access("user_1")
+                .await
+                .expect("access"),
             "access must be denied only after every entitlement is inactive"
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn webhook_inbox_rejects_event_id_payload_conflicts_and_tracks_processing() {
-        let storage = test_storage();
+    async fn webhook_inbox_rejects_event_id_payload_conflicts_and_tracks_processing() {
+        let storage = test_storage().await;
         let event = BillingWebhookEvent {
             provider: BILLING_PROVIDER_STRIPE.to_string(),
             event_id: "evt_1".to_string(),
@@ -777,28 +783,34 @@ INSERT INTO billing_entitlements(
             normalized_payload: serde_json::json!({"subscription_id": "sub_1"}),
         };
         assert_eq!(
-            storage.record_webhook_event(event.clone()).expect("insert"),
+            storage
+                .record_webhook_event(event.clone())
+                .await
+                .expect("insert"),
             BillingWebhookRecordOutcome::Inserted
         );
         assert_eq!(
             storage
                 .record_webhook_event(event.clone())
+                .await
                 .expect("duplicate"),
             BillingWebhookRecordOutcome::Duplicate
         );
         let mut conflict = event;
         conflict.payload_sha256 = "b".repeat(64);
-        assert!(storage.record_webhook_event(conflict).is_err());
+        assert!(storage.record_webhook_event(conflict).await.is_err());
 
         assert_eq!(
             storage
                 .claimable_webhook_event_ids(BILLING_PROVIDER_STRIPE, 10)
+                .await
                 .expect("claimable"),
             vec!["evt_1".to_string()]
         );
 
         let claimed = storage
             .claim_webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
+            .await
             .expect("claim")
             .expect("claimed");
         assert_eq!(claimed.attempt_count, 1);
@@ -806,41 +818,45 @@ INSERT INTO billing_entitlements(
         assert!(
             storage
                 .claimable_webhook_event_ids(BILLING_PROVIDER_STRIPE, 10)
+                .await
                 .expect("leased")
                 .is_empty()
         );
         assert!(
             storage
                 .claim_webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
+                .await
                 .expect("second claim")
                 .is_none()
         );
         let postgres = storage.postgres.clone();
-        run_cloud_billing(async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .execute(
+        let client = postgres
+            .connect_cached_client()
+            .await
+            .expect("billing postgres client");
+        client
+            .execute(
                     "UPDATE billing_webhook_events SET processing_started_at = $1, record = jsonb_set(record, '{processing_started_at}', to_jsonb($1::text)) WHERE event_id = $2",
                     &[&"2020-08-03T01:00:00.000Z", &"evt_1"],
                 )
                 .await
-                .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(())
-        })
         .expect("expire lease");
         let reclaimed = storage
             .claim_webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
+            .await
             .expect("reclaim")
             .expect("reclaimed");
         assert_eq!(reclaimed.attempt_count, 2);
         assert!(
             !storage
                 .finish_webhook_event(BILLING_PROVIDER_STRIPE, "evt_1", 1, Ok(()))
+                .await
                 .expect("reject stale completion")
         );
         assert_eq!(
             storage
                 .webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
+                .await
                 .expect("event after stale completion")
                 .expect("present after stale completion")
                 .processing_state,
@@ -854,11 +870,13 @@ INSERT INTO billing_entitlements(
                     reclaimed.attempt_count,
                     Ok(()),
                 )
+                .await
                 .expect("finish")
         );
         assert_eq!(
             storage
                 .webhook_event(BILLING_PROVIDER_STRIPE, "evt_1")
+                .await
                 .expect("event")
                 .expect("present")
                 .processing_state,

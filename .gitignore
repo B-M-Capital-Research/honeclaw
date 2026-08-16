@@ -264,3 +264,4 @@ apps/hone-ios/**/xcuserdata/
 apps/hone-ios/DerivedData/
 local/
 packages/app/dist-public/
+.claude/worktrees/

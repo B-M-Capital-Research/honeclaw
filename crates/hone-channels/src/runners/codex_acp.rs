@@ -758,6 +758,7 @@ async fn run_codex_acp(
         {
             checkpoint
                 .persist(metadata_updates.clone())
+                .await
                 .map_err(|message| AgentSessionError {
                     kind: AgentSessionErrorKind::Io,
                     message,

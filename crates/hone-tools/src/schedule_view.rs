@@ -128,26 +128,26 @@ pub struct DigestDefaultSlot {
 }
 
 /// 主入口：聚合一名 actor 的全部推送时刻视图。
-pub fn build_overview(
+pub async fn build_overview(
     prefs_dir: &Path,
     cron_jobs_dir: &Path,
     actor: &ActorIdentity,
     defaults: &NotificationOverviewDefaults,
     _now: DateTime<Utc>,
 ) -> anyhow::Result<ScheduleOverview> {
-    let cron_storage = CronJobStorage::new(cron_jobs_dir);
-    let jobs = cron_storage.list_jobs(actor);
-    build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults)
+    let cron_storage = CronJobStorage::new(cron_jobs_dir).await;
+    let jobs = cron_storage.list_jobs(actor).await;
+    build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults).await
 }
 
-pub fn build_overview_with_cron_jobs(
+pub async fn build_overview_with_cron_jobs(
     prefs_dir: &Path,
     jobs: Vec<CronJob>,
     actor: &ActorIdentity,
     defaults: &NotificationOverviewDefaults,
 ) -> anyhow::Result<ScheduleOverview> {
     let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
-    let prefs = prefs_storage.load(actor);
+    let prefs = prefs_storage.load(actor).await;
 
     let actor_key = schedule_actor_key(actor);
     let timezone = prefs
@@ -754,8 +754,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_overview_with_no_cron_or_prefs_returns_default_slots() {
+    #[tokio::test]
+    async fn build_overview_with_no_cron_or_prefs_returns_default_slots() {
         let temp_root = tempdir().unwrap();
         let prefs_dir = temp_root.path().join("prefs");
         let cron_dir = temp_root.path().join("cron");
@@ -769,6 +769,7 @@ mod tests {
             &default_slots,
             Utc::now(),
         )
+        .await
         .unwrap();
         // 无 prefs → 默认 2 条 unified digest slot
         assert_eq!(overview.schedule.len(), 2);
@@ -794,8 +795,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_overview_marks_cron_skipped_by_quiet() {
+    #[tokio::test]
+    async fn build_overview_marks_cron_skipped_by_quiet() {
         let temp_root = tempdir().unwrap();
         let prefs_dir = temp_root.path().join("prefs");
         let cron_dir = temp_root.path().join("cron");
@@ -811,46 +812,50 @@ mod tests {
             }),
             ..Default::default()
         };
-        prefs_storage.save(&actor_fixture(), &prefs).unwrap();
+        prefs_storage.save(&actor_fixture(), &prefs).await.unwrap();
 
-        let cron_storage = CronJobStorage::new(&cron_dir);
+        let cron_storage = CronJobStorage::new(&cron_dir).await;
         // 02:00 触发 → 在 quiet 内
-        let night_job_result = cron_storage.add_job(
-            &actor_fixture(),
-            "夜半监控",
-            Some(2),
-            Some(0),
-            "daily",
-            "do something",
-            "u1",
-            None,
-            None,
-            None,
-            true,
-            None,
-            true,
-        );
+        let night_job_result = cron_storage
+            .add_job(
+                &actor_fixture(),
+                "夜半监控",
+                Some(2),
+                Some(0),
+                "daily",
+                "do something",
+                "u1",
+                None,
+                None,
+                None,
+                true,
+                None,
+                true,
+            )
+            .await;
         assert_eq!(
             night_job_result["success"],
             serde_json::json!(true),
             "add_job failed: {night_job_result}"
         );
         // 09:00 触发 → 不在 quiet 内
-        let morning_job_result = cron_storage.add_job(
-            &actor_fixture(),
-            "盘后总结",
-            Some(9),
-            Some(0),
-            "daily",
-            "do something else",
-            "u1",
-            None,
-            None,
-            None,
-            true,
-            None,
-            true,
-        );
+        let morning_job_result = cron_storage
+            .add_job(
+                &actor_fixture(),
+                "盘后总结",
+                Some(9),
+                Some(0),
+                "daily",
+                "do something else",
+                "u1",
+                None,
+                None,
+                None,
+                true,
+                None,
+                true,
+            )
+            .await;
         assert_eq!(
             morning_job_result["success"],
             serde_json::json!(true),
@@ -865,6 +870,7 @@ mod tests {
             &default_slots,
             Utc::now(),
         )
+        .await
         .unwrap();
 
         let night_job = overview
@@ -899,7 +905,7 @@ mod tests {
         assert_eq!(channel_render_format("anything-else"), RenderFormat::Plain);
     }
 
-    fn make_overview() -> ScheduleOverview {
+    async fn make_overview() -> ScheduleOverview {
         let temp_root = tempdir().unwrap();
         let prefs_dir = temp_root.path().join("prefs");
         let cron_dir = temp_root.path().join("cron");
@@ -913,13 +919,14 @@ mod tests {
             &default_slots,
             Utc::now(),
         )
+        .await
         .unwrap()
     }
 
-    #[test]
-    fn render_overview_discord_uses_codeblock_table() {
+    #[tokio::test]
+    async fn render_overview_discord_uses_codeblock_table() {
         pin_test_timezone();
-        let overview = make_overview();
+        let overview = make_overview().await;
         let rendered = render_overview(&overview, RenderFormat::DiscordMarkdown);
         assert_text_contains_all(
             &rendered,
@@ -935,16 +942,16 @@ mod tests {
         assert_text_contains_none(&rendered, &["| --- |", "## "]);
     }
 
-    #[test]
-    fn render_overview_telegram_uses_pre_block() {
-        let overview = make_overview();
+    #[tokio::test]
+    async fn render_overview_telegram_uses_pre_block() {
+        let overview = make_overview().await;
         let rendered = render_overview(&overview, RenderFormat::TelegramHtml);
         assert_text_contains_all(&rendered, &["<pre>\n", "\n</pre>", "时刻"]);
     }
 
-    #[test]
-    fn render_overview_feishu_and_imessage_use_bullet_list() {
-        let overview = make_overview();
+    #[tokio::test]
+    async fn render_overview_feishu_and_imessage_use_bullet_list() {
+        let overview = make_overview().await;
         for fmt in [RenderFormat::FeishuPost, RenderFormat::Plain] {
             let rendered = render_overview(&overview, fmt);
             assert_text_contains_all(&rendered, &["你的推送日程", "定时推送："]);
@@ -955,8 +962,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn overview_exposes_directional_and_large_position_thresholds() {
+    #[tokio::test]
+    async fn overview_exposes_directional_and_large_position_thresholds() {
         let temp_root = tempdir().unwrap();
         let prefs_dir = temp_root.path().join("prefs");
         let cron_dir = temp_root.path().join("cron");
@@ -975,6 +982,7 @@ mod tests {
                     ..Default::default()
                 },
             )
+            .await
             .unwrap();
 
         let overview = build_overview(
@@ -984,6 +992,7 @@ mod tests {
             &digest_defaults_fixture(),
             Utc::now(),
         )
+        .await
         .unwrap();
         assert_eq!(overview.immediate.price_high_pct, Some(6.0));
         assert_eq!(overview.immediate.price_high_pct_up, Some(7.0));
@@ -1016,8 +1025,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn overview_explains_global_execution_gates_before_actor_rules() {
+    #[tokio::test]
+    async fn overview_explains_global_execution_gates_before_actor_rules() {
         let temp_root = tempdir().unwrap();
         let prefs_dir = temp_root.path().join("prefs");
         let cron_dir = temp_root.path().join("cron");
@@ -1033,6 +1042,7 @@ mod tests {
             &defaults,
             Utc::now(),
         )
+        .await
         .unwrap();
         let rendered = render_overview(&globally_disabled, RenderFormat::Plain);
         assert_text_contains_all(
@@ -1053,6 +1063,7 @@ mod tests {
             &defaults,
             Utc::now(),
         )
+        .await
         .unwrap();
         let rendered = render_overview(&engine_disabled, RenderFormat::Plain);
         assert_text_contains_all(
@@ -1065,10 +1076,10 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn dump_all_renders_for_visual_inspection() {
-        let overview = make_overview();
+    async fn dump_all_renders_for_visual_inspection() {
+        let overview = make_overview().await;
         for (label, fmt) in [
             ("Discord", RenderFormat::DiscordMarkdown),
             ("Telegram", RenderFormat::TelegramHtml),

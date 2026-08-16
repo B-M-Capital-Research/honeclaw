@@ -72,7 +72,7 @@ pub(crate) async fn handle_get_research_overview(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };

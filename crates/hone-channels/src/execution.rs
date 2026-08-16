@@ -85,12 +85,14 @@ struct PersistentSessionMetadataCheckpoint {
     session_id: String,
 }
 
+#[async_trait::async_trait]
 impl AgentSessionMetadataCheckpoint for PersistentSessionMetadataCheckpoint {
-    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
+    async fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String> {
         match self
             .core
             .session_storage
             .update_metadata(&self.session_id, updates)
+            .await
         {
             Ok(true) => Ok(()),
             Ok(false) => Err(format!(
@@ -408,7 +410,7 @@ mod tests {
         std::env::temp_dir().join(unique)
     }
 
-    fn make_test_core(root: &Path, runner: &str) -> Arc<HoneBotCore> {
+    async fn make_test_core(root: &Path, runner: &str) -> Arc<HoneBotCore> {
         std::fs::create_dir_all(root).expect("create temp root");
         let mut config = HoneConfig::default();
         // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
@@ -425,7 +427,7 @@ mod tests {
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
 
-        Arc::new(HoneBotCore::new(config))
+        Arc::new(HoneBotCore::new(config).await)
     }
 
     fn make_request(
@@ -455,10 +457,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn prepare_uses_user_id_for_persistent_actor_label() {
+    #[tokio::test]
+    async fn prepare_uses_user_id_for_persistent_actor_label() {
         let root = temp_root("execution_persistent_actor_label");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
         let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(
@@ -484,10 +486,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_uses_session_id_for_transient_actor_label() {
+    #[tokio::test]
+    async fn prepare_uses_session_id_for_transient_actor_label() {
         let root = temp_root("execution_transient_actor_label");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
         let actor = ActorIdentity::new("cli", "alice", Some("room-1".to_string())).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(
@@ -508,13 +510,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn persistent_metadata_checkpoint_updates_authoritative_session_storage() {
+    #[tokio::test]
+    async fn persistent_metadata_checkpoint_updates_authoritative_session_storage() {
         let root = temp_root("execution_persistent_metadata_checkpoint");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
         let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         core.session_storage
             .create_session(Some("session-1"), Some(actor.clone()), None)
+            .await
             .expect("create persistent session");
         let prepared = ExecutionService::new(core.clone())
             .prepare(make_request(
@@ -533,21 +536,23 @@ mod tests {
                 "codex_acp_session_id".to_string(),
                 Value::String("native-session-1".to_string()),
             )]))
+            .await
             .expect("checkpoint metadata");
 
         let stored = core
             .session_storage
             .load_session("session-1")
+            .await
             .expect("load session")
             .expect("session exists");
         assert_eq!(stored.metadata["codex_acp_session_id"], "native-session-1");
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_absolutizes_relative_runtime_paths() {
+    #[tokio::test]
+    async fn prepare_absolutizes_relative_runtime_paths() {
         let root = temp_root("execution_absolute_runtime_config");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
         let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         let previous = std::env::var_os("HONE_CONFIG_PATH");
         unsafe {
@@ -572,10 +577,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_fails_closed_when_strict_fallback_llm_is_missing() {
+    #[tokio::test]
+    async fn prepare_fails_closed_when_strict_fallback_llm_is_missing() {
         let root = temp_root("execution_non_admin_native_runner");
-        let core = make_test_core(&root, "codex_acp");
+        let core = make_test_core(&root, "codex_acp").await;
         let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
         let err = match ExecutionService::new(core).prepare(make_request(
@@ -592,10 +597,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_routes_non_admin_native_runner_to_strict_function_calling() {
+    #[tokio::test]
+    async fn prepare_routes_non_admin_native_runner_to_strict_function_calling() {
         let root = temp_root("execution_non_admin_strict_fallback");
-        let core = make_test_core(&root, "codex_acp");
+        let core = make_test_core(&root, "codex_acp").await;
         let mut core = match Arc::try_unwrap(core) {
             Ok(core) => core,
             Err(_) => panic!("test core should have a unique owner"),
@@ -615,10 +620,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_allows_server_verified_administrator_to_use_configured_native_runner() {
+    #[tokio::test]
+    async fn prepare_allows_server_verified_administrator_to_use_configured_native_runner() {
         let root = temp_root("execution_verified_admin_native_runner");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
         let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
 
         let prepared = ExecutionService::new(core)
@@ -633,10 +638,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_routes_verified_earnings_turn_to_opencode_when_global_runner_is_codex() {
+    #[tokio::test]
+    async fn prepare_routes_verified_earnings_turn_to_opencode_when_global_runner_is_codex() {
         let root = temp_root("execution_verified_earnings_opencode_override");
-        let core = make_test_core(&root, "codex_acp");
+        let core = make_test_core(&root, "codex_acp").await;
         let mut core = match Arc::try_unwrap(core) {
             Ok(core) => core,
             Err(_) => panic!("test core should have a unique owner"),
@@ -662,10 +667,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_fails_closed_when_earnings_openrouter_credential_is_missing() {
+    #[tokio::test]
+    async fn prepare_fails_closed_when_earnings_openrouter_credential_is_missing() {
         let root = temp_root("execution_earnings_openrouter_key_missing");
-        let core = make_test_core(&root, "codex_acp");
+        let core = make_test_core(&root, "codex_acp").await;
         let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
         let mut request = make_request(
             actor,
@@ -682,10 +687,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn system_skill_directory_is_absolute_before_mcp_tools_change_working_directory() {
+    #[tokio::test]
+    async fn system_skill_directory_is_absolute_before_mcp_tools_change_working_directory() {
         let root = temp_root("execution_absolute_system_skill_directory");
-        let core = make_test_core(&root, "codex_cli");
+        let core = make_test_core(&root, "codex_cli").await;
 
         let skills_dir = core.configured_system_skills_dir();
 
@@ -694,8 +699,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[test]
-    fn prepare_ignores_repo_internal_sandbox_override() {
+    #[tokio::test]
+    async fn prepare_ignores_repo_internal_sandbox_override() {
         let _guard = crate::sandbox::sandbox_env_test_lock()
             .lock()
             .expect("env lock");
@@ -705,7 +710,7 @@ mod tests {
         unsafe {
             std::env::set_var("HONE_AGENT_SANDBOX_DIR", &repo_internal);
         }
-        let core = make_test_core(&root, "hone_cloud");
+        let core = make_test_core(&root, "hone_cloud").await;
         let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(

@@ -37,7 +37,7 @@ fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
     dir
 }
 
-fn create_profile_with_thesis(
+async fn create_profile_with_thesis(
     storage: &CompanyProfileStorage,
     company_name: &str,
     stock_code: &str,
@@ -53,12 +53,14 @@ fn create_profile_with_thesis(
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create profile");
 
     let mut sections = BTreeMap::new();
     sections.insert("投资主线".to_string(), thesis.to_string());
     storage
         .rewrite_sections(&document.profile_id, &sections)
+        .await
         .expect("rewrite mainline")
         .expect("profile exists")
 }
@@ -94,8 +96,8 @@ fn build_invalid_bundle(entries: &[(&str, &str)]) -> Vec<u8> {
     writer.finish().expect("finish bundle").into_inner()
 }
 
-#[test]
-fn profile_id_prefers_stock_code_then_slugified_name() {
+#[tokio::test]
+async fn profile_id_prefers_stock_code_then_slugified_name() {
     assert_eq!(
         CompanyProfileStorage::profile_id("Apple Inc.", "AAPL"),
         "AAPL"
@@ -106,8 +108,8 @@ fn profile_id_prefers_stock_code_then_slugified_name() {
     );
 }
 
-#[test]
-fn legacy_tracking_config_defaults_to_discovery_and_long_term() {
+#[tokio::test]
+async fn legacy_tracking_config_defaults_to_discovery_and_long_term() {
     let tracking: TrackingConfig =
         serde_yaml::from_str("enabled: true\ncadence: weekly\nfocus_metrics:\n  - revenue\n")
             .expect("legacy tracking config");
@@ -117,8 +119,8 @@ fn legacy_tracking_config_defaults_to_discovery_and_long_term() {
     assert_eq!(tracking.focus_metrics, vec!["revenue"]);
 }
 
-#[test]
-fn create_profile_generates_markdown_template_and_industry_sections() {
+#[tokio::test]
+async fn create_profile_generates_markdown_template_and_industry_sections() {
     let dir = make_temp_dir("company_profile_create");
     let actor = test_actor("discord", "alice", Some("watchlist"));
     let storage = CompanyProfileStorage::new(&dir).for_actor(&actor);
@@ -133,6 +135,7 @@ fn create_profile_generates_markdown_template_and_industry_sections() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create profile");
 
     assert!(created);
@@ -158,8 +161,8 @@ fn create_profile_generates_markdown_template_and_industry_sections() {
     );
 }
 
-#[test]
-fn create_profile_reuses_existing_profile_and_merges_aliases() {
+#[tokio::test]
+async fn create_profile_reuses_existing_profile_and_merges_aliases() {
     let dir = make_temp_dir("company_profile_alias");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
@@ -173,6 +176,7 @@ fn create_profile_reuses_existing_profile_and_merges_aliases() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create");
 
     let (document, created) = storage
@@ -185,6 +189,7 @@ fn create_profile_reuses_existing_profile_and_merges_aliases() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("recreate");
 
     assert!(!created);
@@ -204,8 +209,8 @@ fn create_profile_reuses_existing_profile_and_merges_aliases() {
     );
 }
 
-#[test]
-fn rewrite_sections_only_touches_target_section() {
+#[tokio::test]
+async fn rewrite_sections_only_touches_target_section() {
     let dir = make_temp_dir("company_profile_rewrite");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
@@ -219,6 +224,7 @@ fn rewrite_sections_only_touches_target_section() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create");
 
     let mut updates = BTreeMap::new();
@@ -228,6 +234,7 @@ fn rewrite_sections_only_touches_target_section() {
     );
     let updated = storage
         .rewrite_sections(&document.profile_id, &updates)
+        .await
         .expect("rewrite")
         .expect("profile exists");
 
@@ -235,8 +242,8 @@ fn rewrite_sections_only_touches_target_section() {
     assert!(updated.markdown.contains("## 财务质量"));
 }
 
-#[test]
-fn append_event_is_idempotent_by_filename() {
+#[tokio::test]
+async fn append_event_is_idempotent_by_filename() {
     let dir = make_temp_dir("company_profile_event");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
@@ -250,6 +257,7 @@ fn append_event_is_idempotent_by_filename() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create");
 
     let input = AppendEventInput {
@@ -269,16 +277,19 @@ fn append_event_is_idempotent_by_filename() {
 
     let first = storage
         .append_event(&document.profile_id, input.clone())
+        .await
         .expect("append")
         .expect("event");
     let second = storage
         .append_event(&document.profile_id, input)
+        .await
         .expect("append again")
         .expect("event");
 
     assert_eq!(first.filename, second.filename);
     let loaded = storage
         .get_profile(&document.profile_id)
+        .await
         .expect("load")
         .expect("profile exists");
     assert_eq!(loaded.events.len(), 1);
@@ -286,8 +297,8 @@ fn append_event_is_idempotent_by_filename() {
     assert!(loaded.events[0].markdown.contains("## 本轮研究路径"));
 }
 
-#[test]
-fn research_ledger_carries_questions_and_commitments_across_quarters() {
+#[tokio::test]
+async fn research_ledger_carries_questions_and_commitments_across_quarters() {
     let dir = make_temp_dir("company_profile_research_ledger");
     let storage = scoped_storage(&dir, "discord", "alice", None);
     let (document, _) = storage
@@ -304,6 +315,7 @@ fn research_ledger_carries_questions_and_commitments_across_quarters() {
             }),
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create profile");
 
     let question = "企业级 SSD 客户采用是否开始形成可持续收入贡献？";
@@ -353,6 +365,7 @@ fn research_ledger_carries_questions_and_commitments_across_quarters() {
                 ],
             },
         )
+        .await
         .expect("append q1")
         .expect("q1 event");
 
@@ -384,11 +397,13 @@ fn research_ledger_carries_questions_and_commitments_across_quarters() {
                 ],
             },
         )
+        .await
         .expect("append q2")
         .expect("q2 event");
 
     let loaded = storage
         .get_profile(&document.profile_id)
+        .await
         .expect("load")
         .expect("profile exists");
     assert_eq!(loaded.events.len(), 2);
@@ -412,11 +427,11 @@ fn research_ledger_carries_questions_and_commitments_across_quarters() {
     assert_eq!(ledger.active_commitments().count(), 0);
 }
 
-#[test]
-fn research_ledger_rejects_silent_statement_rewrite() {
+#[tokio::test]
+async fn research_ledger_rejects_silent_statement_rewrite() {
     let dir = make_temp_dir("company_profile_research_identity");
     let storage = scoped_storage(&dir, "discord", "alice", None);
-    let document = create_profile_with_thesis(&storage, "SanDisk", "SNDK", "NAND 供给纪律");
+    let document = create_profile_with_thesis(&storage, "SanDisk", "SNDK", "NAND 供给纪律").await;
     let original = "毛利率改善能否穿越 NAND 周期？";
     let item_id = research_item_id(&ResearchItemKind::OpenQuestion, original);
     let base = AppendEventInput {
@@ -450,6 +465,7 @@ fn research_ledger_rejects_silent_statement_rewrite() {
                 }],
             },
         )
+        .await
         .expect("seed item");
 
     let error = storage
@@ -473,12 +489,13 @@ fn research_ledger_rejects_silent_statement_rewrite() {
                 }],
             },
         )
+        .await
         .expect_err("rewrite must fail");
     assert!(error.contains("statement 不可静默改写"));
 }
 
-#[test]
-fn delete_profile_removes_directory() {
+#[tokio::test]
+async fn delete_profile_removes_directory() {
     let dir = make_temp_dir("company_profile_delete");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
@@ -492,23 +509,26 @@ fn delete_profile_removes_directory() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create");
 
     assert!(
         storage
             .delete_profile(&document.profile_id)
+            .await
             .expect("delete")
     );
     assert!(
         storage
             .get_profile(&document.profile_id)
+            .await
             .expect("load deleted")
             .is_none()
     );
 }
 
-#[test]
-fn profiles_are_isolated_by_actor_space() {
+#[tokio::test]
+async fn profiles_are_isolated_by_actor_space() {
     let dir = make_temp_dir("company_profile_isolation");
     let alice = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     let bob = scoped_storage(&dir, "discord", "bob", Some("watchlist"));
@@ -523,6 +543,7 @@ fn profiles_are_isolated_by_actor_space() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("alice profile");
 
     let (bob_profile, _) = bob
@@ -535,10 +556,11 @@ fn profiles_are_isolated_by_actor_space() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("bob profile");
 
-    let alice_profiles = alice.list_profiles();
-    let bob_profiles = bob.list_profiles();
+    let alice_profiles = alice.list_profiles().await;
+    let bob_profiles = bob.list_profiles().await;
 
     assert_eq!(alice_profiles.len(), 1);
     assert_eq!(bob_profiles.len(), 1);
@@ -547,18 +569,20 @@ fn profiles_are_isolated_by_actor_space() {
     assert!(
         alice
             .get_profile(&bob_profile.profile_id)
+            .await
             .expect("alice load")
             .is_none()
     );
     assert!(
         bob.get_profile(&alice_profile.profile_id)
+            .await
             .expect("bob load")
             .is_none()
     );
 }
 
-#[test]
-fn list_profile_spaces_summarizes_actor_roots() {
+#[tokio::test]
+async fn list_profile_spaces_summarizes_actor_roots() {
     let dir = make_temp_dir("company_profile_spaces");
     let base = CompanyProfileStorage::new(&dir);
     let alice_actor = test_actor("discord", "alice", Some("watchlist"));
@@ -576,6 +600,7 @@ fn list_profile_spaces_summarizes_actor_roots() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("alice profile");
     let _ = bob
         .create_profile(CreateProfileInput {
@@ -587,9 +612,10 @@ fn list_profile_spaces_summarizes_actor_roots() {
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("bob profile");
 
-    let spaces = base.list_profile_spaces();
+    let spaces = base.list_profile_spaces().await;
     assert_eq!(spaces.len(), 2);
     assert!(spaces.iter().any(|space| {
         space.channel == alice_actor.channel
@@ -605,8 +631,8 @@ fn list_profile_spaces_summarizes_actor_roots() {
     }));
 }
 
-#[test]
-fn raw_listing_reads_plain_markdown_profiles() {
+#[tokio::test]
+async fn raw_listing_reads_plain_markdown_profiles() {
     let dir = make_temp_dir("company_profile_raw_listing");
     let base = CompanyProfileStorage::new(&dir);
     let actor = test_actor("telegram", "alice", None::<&str>);
@@ -618,13 +644,13 @@ fn raw_listing_reads_plain_markdown_profiles() {
         &[("2026-04-13-update.md", "# Fresh Event\n\nbody\n")],
     );
 
-    let spaces = base.list_profile_spaces_raw();
+    let spaces = base.list_profile_spaces_raw().await;
     assert_eq!(spaces.len(), 1);
     assert_eq!(spaces[0].channel, actor.channel);
     assert_eq!(spaces[0].user_id, actor.user_id);
     assert_eq!(spaces[0].profile_count, 1);
 
-    let profiles = base.for_actor(&actor).list_profiles_raw();
+    let profiles = base.for_actor(&actor).list_profiles_raw().await;
     assert_eq!(profiles.len(), 1);
     assert_eq!(profiles[0].profile_id, "plain-profile");
     assert_eq!(profiles[0].title, "Plain Profile");
@@ -639,6 +665,7 @@ fn raw_listing_reads_plain_markdown_profiles() {
     let detail = base
         .for_actor(&actor)
         .get_profile_raw("plain-profile")
+        .await
         .expect("load raw profile")
         .expect("raw profile exists");
     assert_eq!(detail.title, "Plain Profile");
@@ -646,8 +673,8 @@ fn raw_listing_reads_plain_markdown_profiles() {
     assert_eq!(detail.events[0].title, "Fresh Event");
 }
 
-#[test]
-fn export_bundle_normalizes_plain_markdown_profiles_without_frontmatter() {
+#[tokio::test]
+async fn export_bundle_normalizes_plain_markdown_profiles_without_frontmatter() {
     let dir = make_temp_dir("company_profile_export_plain_markdown");
     let base = CompanyProfileStorage::new(&dir);
     let actor = test_actor("discord", "alice", Some("watchlist"));
@@ -696,8 +723,8 @@ fn export_bundle_normalizes_plain_markdown_profiles_without_frontmatter() {
     assert_eq!(preview.profiles[0].stock_code, "AAPL");
 }
 
-#[test]
-fn list_and_get_profile_tolerate_plain_markdown_without_frontmatter() {
+#[tokio::test]
+async fn list_and_get_profile_tolerate_plain_markdown_without_frontmatter() {
     let dir = make_temp_dir("company_profile_plain_markdown_storage");
     let actor = test_actor("discord", "alice", Some("watchlist"));
     let storage = CompanyProfileStorage::new(&dir).for_actor(&actor);
@@ -712,7 +739,7 @@ fn list_and_get_profile_tolerate_plain_markdown_without_frontmatter() {
         )],
     );
 
-    let profiles = storage.list_profiles();
+    let profiles = storage.list_profiles().await;
     assert_eq!(profiles.len(), 1);
     assert_eq!(profiles[0].profile_id, "AAPL");
     assert_eq!(profiles[0].company_name, "Apple Inc.");
@@ -721,6 +748,7 @@ fn list_and_get_profile_tolerate_plain_markdown_without_frontmatter() {
 
     let document = storage
         .get_profile("AAPL")
+        .await
         .expect("load plain markdown profile")
         .expect("plain markdown profile exists");
     assert_eq!(document.metadata.company_name, "Apple Inc.");
@@ -732,8 +760,8 @@ fn list_and_get_profile_tolerate_plain_markdown_without_frontmatter() {
     assert!(document.events[0].markdown.starts_with("# Earnings Update"));
 }
 
-#[test]
-fn preview_import_bundle_accepts_plain_markdown_profile_without_frontmatter() {
+#[tokio::test]
+async fn preview_import_bundle_accepts_plain_markdown_profile_without_frontmatter() {
     let dir = make_temp_dir("company_profile_preview_plain_bundle");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     let manifest = CompanyProfileTransferManifest {
@@ -774,14 +802,14 @@ fn preview_import_bundle_accepts_plain_markdown_profile_without_frontmatter() {
     assert_eq!(preview.profiles[0].event_count, 1);
 }
 
-#[test]
-fn apply_import_bundle_can_replace_plain_markdown_target_profile() {
+#[tokio::test]
+async fn apply_import_bundle_can_replace_plain_markdown_target_profile() {
     let dir = make_temp_dir("company_profile_apply_plain_target");
     let source = scoped_storage(&dir, "discord", "source", Some("watchlist"));
     let target_actor = test_actor("discord", "target", Some("watchlist"));
     let target = CompanyProfileStorage::new(&dir).for_actor(&target_actor);
 
-    let _ = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "结构化导入 thesis");
+    let _ = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "结构化导入 thesis").await;
     let bundle = source.export_bundle().expect("export bundle");
 
     write_plain_markdown_profile(
@@ -814,14 +842,15 @@ fn apply_import_bundle_can_replace_plain_markdown_target_profile() {
 
     let replaced = target
         .get_profile("AAPL")
+        .await
         .expect("load replaced profile")
         .expect("replaced profile exists");
     assert!(replaced.markdown.contains("结构化导入 thesis"));
     assert_eq!(replaced.metadata.company_name, "Apple Inc.");
 }
 
-#[test]
-fn template_appendix_matches_industry() {
+#[tokio::test]
+async fn template_appendix_matches_industry() {
     let sections = base_profile_sections(&IndustryTemplate::Financials);
     let appendix = sections
         .iter()
@@ -830,31 +859,33 @@ fn template_appendix_matches_industry() {
     assert!(appendix.1.contains("净息差"));
 }
 
-#[test]
-fn sanitize_id_rejects_dot_components_but_keeps_safe_ticker_chars() {
+#[tokio::test]
+async fn sanitize_id_rejects_dot_components_but_keeps_safe_ticker_chars() {
     assert_eq!(sanitize_id(".."), "");
     assert_eq!(sanitize_id("../secret"), "secret");
     assert_eq!(sanitize_id("BRK.B"), "BRK.B");
 }
 
-#[test]
-fn get_profile_rejects_parent_dir_component() {
+#[tokio::test]
+async fn get_profile_rejects_parent_dir_component() {
     let dir = make_temp_dir("company_profile_invalid_component");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     assert!(
         storage
             .get_profile("..")
+            .await
             .expect("load invalid component")
             .is_none()
     );
 }
 
-#[test]
-fn export_bundle_contains_manifest_and_markdown_files() {
+#[tokio::test]
+async fn export_bundle_contains_manifest_and_markdown_files() {
     let dir = make_temp_dir("company_profile_export_bundle");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     let document =
-        create_profile_with_thesis(&storage, "NVIDIA", "NVDA", "AI 基础设施继续驱动长期需求。");
+        create_profile_with_thesis(&storage, "NVIDIA", "NVDA", "AI 基础设施继续驱动长期需求。")
+            .await;
     storage
         .append_event(
             &document.profile_id,
@@ -873,6 +904,7 @@ fn export_bundle_contains_manifest_and_markdown_files() {
                 follow_up: "继续跟踪 capex。".to_string(),
             },
         )
+        .await
         .expect("append event")
         .expect("event exists");
 
@@ -900,8 +932,8 @@ fn export_bundle_contains_manifest_and_markdown_files() {
     }));
 }
 
-#[test]
-fn preview_import_bundle_detects_conflicts_by_stock_name_alias_and_profile_id() {
+#[tokio::test]
+async fn preview_import_bundle_detects_conflicts_by_stock_name_alias_and_profile_id() {
     let dir = make_temp_dir("company_profile_preview_bundle");
     let target = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     let source = scoped_storage(&dir, "discord", "bob", Some("watchlist"));
@@ -916,6 +948,7 @@ fn preview_import_bundle_detects_conflicts_by_stock_name_alias_and_profile_id() 
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create target profile");
 
     let _ = source
@@ -928,6 +961,7 @@ fn preview_import_bundle_detects_conflicts_by_stock_name_alias_and_profile_id() 
             tracking: None,
             initial_sections: BTreeMap::new(),
         })
+        .await
         .expect("create source profile");
 
     let mut bundle = source.export_bundle().expect("export bundle");
@@ -966,8 +1000,8 @@ fn preview_import_bundle_detects_conflicts_by_stock_name_alias_and_profile_id() 
     assert!(err.contains("manifest 与内容不一致"));
 }
 
-#[test]
-fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
+#[tokio::test]
+async fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
     let dir = make_temp_dir("company_profile_apply_bundle");
     let source = scoped_storage(&dir, "discord", "source", Some("watchlist"));
     let target_keep = scoped_storage(&dir, "discord", "target-keep", Some("watchlist"));
@@ -975,11 +1009,11 @@ fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
     let target_interactive =
         scoped_storage(&dir, "discord", "target-interactive", Some("watchlist"));
 
-    let _ = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis");
-    let _ = create_profile_with_thesis(&source, "Snowflake", "SNOW", "新的 SaaS thesis");
+    let _ = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis").await;
+    let _ = create_profile_with_thesis(&source, "Snowflake", "SNOW", "新的 SaaS thesis").await;
     let bundle = source.export_bundle().expect("export bundle");
 
-    let _ = create_profile_with_thesis(&target_keep, "Apple", "AAPL", "保留版本 thesis");
+    let _ = create_profile_with_thesis(&target_keep, "Apple", "AAPL", "保留版本 thesis").await;
     let keep_result = target_keep
         .apply_import_bundle(
             &bundle,
@@ -993,17 +1027,19 @@ fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
     assert_eq!(keep_result.skipped_count, 1);
     let kept = target_keep
         .get_profile("AAPL")
+        .await
         .expect("load kept")
         .expect("kept profile");
     assert!(kept.markdown.contains("保留版本 thesis"));
     assert!(
         target_keep
             .get_profile("SNOW")
+            .await
             .expect("load imported")
             .is_some()
     );
 
-    let _ = create_profile_with_thesis(&target_replace, "Apple", "AAPL", "旧 thesis");
+    let _ = create_profile_with_thesis(&target_replace, "Apple", "AAPL", "旧 thesis").await;
     let replace_result = target_replace
         .apply_import_bundle(
             &bundle,
@@ -1017,11 +1053,12 @@ fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
     assert_eq!(replace_result.replaced_count, 1);
     let replaced = target_replace
         .get_profile("AAPL")
+        .await
         .expect("load replaced")
         .expect("replaced profile");
     assert!(replaced.markdown.contains("导入版本 thesis"));
 
-    let _ = create_profile_with_thesis(&target_interactive, "Apple", "AAPL", "交互旧 thesis");
+    let _ = create_profile_with_thesis(&target_interactive, "Apple", "AAPL", "交互旧 thesis").await;
     let err = target_interactive
         .apply_import_bundle(
             &bundle,
@@ -1047,13 +1084,14 @@ fn apply_import_bundle_supports_keep_replace_and_interactive_modes() {
     assert_eq!(interactive_result.replaced_count, 1);
     let interactive = target_interactive
         .get_profile("AAPL")
+        .await
         .expect("load interactive")
         .expect("interactive profile");
     assert!(interactive.markdown.contains("导入版本 thesis"));
 }
 
-#[test]
-fn preview_import_bundle_rejects_invalid_bundle_paths() {
+#[tokio::test]
+async fn preview_import_bundle_rejects_invalid_bundle_paths() {
     let dir = make_temp_dir("company_profile_invalid_bundle");
     let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
     let manifest = CompanyProfileTransferManifest {
@@ -1086,17 +1124,19 @@ fn preview_import_bundle_rejects_invalid_bundle_paths() {
     assert!(err.contains("画像包路径非法") || err.contains("不支持的路径"));
 }
 
-#[test]
-fn describe_import_conflict_returns_section_and_event_diffs() {
+#[tokio::test]
+async fn describe_import_conflict_returns_section_and_event_diffs() {
     let dir = make_temp_dir("company_profile_conflict_detail");
     let source = scoped_storage(&dir, "discord", "source", Some("watchlist"));
     let target = scoped_storage(&dir, "discord", "target", Some("watchlist"));
 
-    let source_doc = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis");
+    let source_doc =
+        create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis").await;
     let mut source_updates = BTreeMap::new();
     source_updates.insert("风险台账".to_string(), "导入版风险台账".to_string());
     source
         .rewrite_sections(&source_doc.profile_id, &source_updates)
+        .await
         .expect("rewrite source")
         .expect("source exists");
     source
@@ -1117,20 +1157,23 @@ fn describe_import_conflict_returns_section_and_event_diffs() {
                 follow_up: String::new(),
             },
         )
+        .await
         .expect("append source event")
         .expect("source event");
 
-    let target_doc = create_profile_with_thesis(&target, "Apple", "AAPL", "本地旧 thesis");
+    let target_doc = create_profile_with_thesis(&target, "Apple", "AAPL", "本地旧 thesis").await;
     let mut target_updates = BTreeMap::new();
     target_updates.insert("风险台账".to_string(), "本地旧风险台账".to_string());
     target
         .rewrite_sections(&target_doc.profile_id, &target_updates)
+        .await
         .expect("rewrite target")
         .expect("target exists");
 
     let bundle = source.export_bundle().expect("export bundle");
     let detail = target
         .describe_import_conflict(&bundle, "AAPL", None)
+        .await
         .expect("describe conflict");
     assert!(
         detail
@@ -1159,22 +1202,25 @@ fn describe_import_conflict_returns_section_and_event_diffs() {
 
     let focused = target
         .describe_import_conflict(&bundle, "AAPL", Some("风险台账"))
+        .await
         .expect("focused section diff");
     assert_eq!(focused.section_diffs.len(), 1);
     assert_eq!(focused.section_diffs[0].section_title, "风险台账");
 }
 
-#[test]
-fn apply_import_resolution_merges_selected_sections_and_imports_missing_events() {
+#[tokio::test]
+async fn apply_import_resolution_merges_selected_sections_and_imports_missing_events() {
     let dir = make_temp_dir("company_profile_merge_resolution");
     let source = scoped_storage(&dir, "discord", "source", Some("watchlist"));
     let target = scoped_storage(&dir, "discord", "target", Some("watchlist"));
 
-    let source_doc = create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis");
+    let source_doc =
+        create_profile_with_thesis(&source, "Apple Inc.", "AAPL", "导入版本 thesis").await;
     let mut source_updates = BTreeMap::new();
     source_updates.insert("风险台账".to_string(), "导入版风险台账".to_string());
     source
         .rewrite_sections(&source_doc.profile_id, &source_updates)
+        .await
         .expect("rewrite source")
         .expect("source exists");
     let source_event = source
@@ -1195,14 +1241,16 @@ fn apply_import_resolution_merges_selected_sections_and_imports_missing_events()
                 follow_up: String::new(),
             },
         )
+        .await
         .expect("append source event")
         .expect("source event");
 
-    let target_doc = create_profile_with_thesis(&target, "Apple", "AAPL", "本地旧 thesis");
+    let target_doc = create_profile_with_thesis(&target, "Apple", "AAPL", "本地旧 thesis").await;
     let mut target_updates = BTreeMap::new();
     target_updates.insert("风险台账".to_string(), "本地旧风险台账".to_string());
     target
         .rewrite_sections(&target_doc.profile_id, &target_updates)
+        .await
         .expect("rewrite target")
         .expect("target exists");
 
@@ -1217,6 +1265,7 @@ fn apply_import_resolution_merges_selected_sections_and_imports_missing_events()
                 import_missing_events: true,
             },
         )
+        .await
         .expect("merge resolution");
 
     assert!(result.merged_existing_profile);
@@ -1225,6 +1274,7 @@ fn apply_import_resolution_merges_selected_sections_and_imports_missing_events()
 
     let merged = target
         .get_profile("AAPL")
+        .await
         .expect("load merged")
         .expect("merged exists");
     assert!(merged.markdown.contains("导入版本 thesis"));

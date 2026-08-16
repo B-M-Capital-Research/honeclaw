@@ -27,16 +27,18 @@ pub(crate) async fn handle_cron_jobs(
         Err(error) => return error,
     };
 
-    let storage = cron_job_storage(&state);
+    let storage = cron_job_storage(&state).await;
     let records: Vec<CronJobRecord> = if let Some(actor) = actor {
         storage
             .list_jobs(&actor)
+            .await
             .into_iter()
             .map(|job| serialize_cron_job(actor.clone(), job))
             .collect()
     } else {
         storage
             .list_all_jobs()
+            .await
             .into_iter()
             .map(|(actor, job)| serialize_cron_job(actor, job))
             .collect()
@@ -51,18 +53,19 @@ pub(crate) async fn handle_cron_job(
     Path(job_id): Path<String>,
     Query(params): Query<UserIdQuery>,
 ) -> impl IntoResponse {
-    let storage = cron_job_storage(&state);
+    let storage = cron_job_storage(&state).await;
     let actor = match normalized_query_actor(&params) {
         Ok(actor) => actor,
         Err(error) => return error,
     };
 
-    match storage.get_job(&job_id, actor.as_ref()) {
+    match storage.get_job(&job_id, actor.as_ref()).await {
         Some((actor, job)) => Json(json!({
             "job": CronJobDetailRecord {
                 job: serialize_cron_job(actor, job.clone()),
                 executions: storage
                     .list_execution_records(&job.id, 50)
+                    .await
                     .unwrap_or_default(),
             }
         }))
@@ -106,22 +109,24 @@ pub(crate) async fn handle_create_cron_job(
     let enabled = req.enabled.unwrap_or(true);
     let admin_bypass = state.core.is_admin_actor(&actor);
 
-    let storage = cron_job_storage(&state);
-    let result = storage.add_job(
-        &actor,
-        &name,
-        req.hour,
-        req.minute,
-        &repeat,
-        &task_prompt,
-        &channel_target,
-        req.weekday,
-        req.date,
-        req.push,
-        enabled,
-        req.tags,
-        admin_bypass,
-    );
+    let storage = cron_job_storage(&state).await;
+    let result = storage
+        .add_job(
+            &actor,
+            &name,
+            req.hour,
+            req.minute,
+            &repeat,
+            &task_prompt,
+            &channel_target,
+            req.weekday,
+            req.date,
+            req.push,
+            enabled,
+            req.tags,
+            admin_bypass,
+        )
+        .await;
     if result["success"] != true {
         let message = result["error"]
             .as_str()
@@ -173,8 +178,9 @@ pub(crate) async fn handle_update_cron_job(
         },
         Err(error) => return error,
     };
-    let storage = cron_job_storage(&state);
-    let Some((resolved_actor, existing)) = storage.get_job(&job_id, lookup_actor.as_ref()) else {
+    let storage = cron_job_storage(&state).await;
+    let Some((resolved_actor, existing)) = storage.get_job(&job_id, lookup_actor.as_ref()).await
+    else {
         return json_error(StatusCode::NOT_FOUND, format!("未找到任务 {job_id}"));
     };
 
@@ -227,7 +233,10 @@ pub(crate) async fn handle_update_cron_job(
     };
 
     let admin_bypass = state.core.is_admin_actor(&resolved_actor);
-    match storage.update_job(&job_id, Some(&resolved_actor), updates, admin_bypass) {
+    match storage
+        .update_job(&job_id, Some(&resolved_actor), updates, admin_bypass)
+        .await
+    {
         Ok(Some((actor, job))) => Json(json!({
             "job": serialize_cron_job(actor, job)
         }))
@@ -251,16 +260,19 @@ pub(crate) async fn handle_toggle_cron_job(
     Path(job_id): Path<String>,
     Query(params): Query<UserIdQuery>,
 ) -> axum::response::Response {
-    let storage = cron_job_storage(&state);
+    let storage = cron_job_storage(&state).await;
     let actor = match normalized_query_actor(&params) {
         Ok(actor) => actor,
         Err(error) => return error,
     };
-    let Some((resolved_actor, _)) = storage.get_job(&job_id, actor.as_ref()) else {
+    let Some((resolved_actor, _)) = storage.get_job(&job_id, actor.as_ref()).await else {
         return json_error(StatusCode::NOT_FOUND, format!("未找到任务 {job_id}"));
     };
     let admin_bypass = state.core.is_admin_actor(&resolved_actor);
-    match storage.toggle_job(&job_id, Some(&resolved_actor), admin_bypass) {
+    match storage
+        .toggle_job(&job_id, Some(&resolved_actor), admin_bypass)
+        .await
+    {
         Ok(Some((actor, job))) => Json(json!({
             "job": serialize_cron_job(actor, job)
         }))
@@ -284,12 +296,12 @@ pub(crate) async fn handle_delete_cron_job(
     Path(job_id): Path<String>,
     Query(params): Query<UserIdQuery>,
 ) -> axum::response::Response {
-    let storage = cron_job_storage(&state);
+    let storage = cron_job_storage(&state).await;
     let actor = match normalized_query_actor(&params) {
         Ok(actor) => actor,
         Err(error) => return error,
     };
-    match storage.delete_job(&job_id, actor.as_ref()) {
+    match storage.delete_job(&job_id, actor.as_ref()).await {
         Ok(Some((actor, job))) => Json(json!({
             "removed_job": serialize_cron_job(actor, job)
         }))
@@ -299,8 +311,8 @@ pub(crate) async fn handle_delete_cron_job(
     }
 }
 
-fn cron_job_storage(state: &AppState) -> CronJobStorage {
-    state.core.cron_job_storage()
+async fn cron_job_storage(state: &AppState) -> CronJobStorage {
+    state.core.cron_job_storage().await
 }
 
 fn serialize_cron_job(actor: ActorIdentity, job: CronJob) -> CronJobRecord {

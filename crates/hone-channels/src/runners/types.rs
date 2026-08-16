@@ -149,8 +149,9 @@ pub trait AgentRunnerEmitter: Send + Sync {
 /// Runners still cannot read session storage. The session/execution layer
 /// supplies this checkpoint only for persistent logical conversations; a
 /// transient task has no durable native-session identity to checkpoint.
+#[async_trait::async_trait]
 pub trait AgentSessionMetadataCheckpoint: Send + Sync {
-    fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String>;
+    async fn persist(&self, updates: HashMap<String, Value>) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, Copy)]

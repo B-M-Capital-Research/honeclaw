@@ -65,6 +65,7 @@ impl LlmAuditRecord {
     }
 }
 
+#[async_trait::async_trait]
 pub trait LlmAuditSink: Send + Sync {
-    fn record(&self, record: LlmAuditRecord) -> HoneResult<()>;
+    async fn record(&self, record: LlmAuditRecord) -> HoneResult<()>;
 }

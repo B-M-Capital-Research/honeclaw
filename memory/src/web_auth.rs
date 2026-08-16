@@ -1,8 +1,8 @@
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
     CloudWebUserExternalStateRecord,
 };
-use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
 use hone_core::{HoneError, HoneResult, local_now, local_now_rfc3339, rfc3339_at_or_before};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -162,34 +162,36 @@ struct CloudWebAuthSessionRecord {
 impl WebAuthStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
-        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
-        let mut storage = Self::new_cloud(postgres)?;
+    pub async fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path).await?;
+        let mut storage = Self::new_cloud(postgres).await?;
         storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             postgres,
             _test_postgres_lease: None,
         })
     }
 
-    fn cloud_upsert_invite(
+    async fn cloud_upsert_invite(
         &self,
         user: &WebInviteUser,
         api_key_hash: Option<String>,
     ) -> HoneResult<()> {
         let external_state = self
-            .cloud_find_record_by("user_id", &user.user_id)?
+            .cloud_find_record_by("user_id", &user.user_id)
+            .await?
             .map(|record| record.external_state)
             .unwrap_or_default();
         self.cloud_upsert_invite_with_state(user, api_key_hash, external_state)
+            .await
     }
 
-    fn cloud_upsert_invite_with_state(
+    async fn cloud_upsert_invite_with_state(
         &self,
         user: &WebInviteUser,
         api_key_hash: Option<String>,
@@ -206,7 +208,7 @@ impl WebAuthStorage {
         let user_id = user.user_id.clone();
         let phone_number = user.phone_number.clone();
         let external_state = cloud_external_state_record(&user_id, &external_state)?;
-        run_cloud_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_invite_user_record_with_external_state(
                     &user_id,
@@ -216,6 +218,7 @@ impl WebAuthStorage {
                 )
                 .await
         })
+        .await
     }
 
     fn cloud_record_to_user(
@@ -225,7 +228,7 @@ impl WebAuthStorage {
         Ok((record.user, record.api_key_hash))
     }
 
-    fn cloud_find_record_by(
+    async fn cloud_find_record_by(
         &self,
         field: &str,
         value: &str,
@@ -233,99 +236,98 @@ impl WebAuthStorage {
         let postgres = self.postgres.clone();
         let field = field.to_string();
         let value = value.to_string();
-        run_cloud_web_auth(
-            async move { postgres.find_web_invite_user_record(&field, &value).await },
-        )?
-        .map(cloud_record_from_value)
-        .transpose()
+        (async move { postgres.find_web_invite_user_record(&field, &value).await })
+            .await?
+            .map(cloud_record_from_value)
+            .transpose()
     }
 
-    fn cloud_find_invite_by(
+    async fn cloud_find_invite_by(
         &self,
         field: &str,
         value: &str,
     ) -> HoneResult<Option<(WebInviteUser, Option<String>)>> {
         Ok(self
-            .cloud_find_record_by(field, value)?
+            .cloud_find_record_by(field, value)
+            .await?
             .map(|record| (record.user, record.api_key_hash)))
     }
 
-    fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
+    async fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
         let postgres = self.postgres.clone();
         let user_id = user_id.to_string();
-        return run_cloud_web_auth(async move {
-            postgres.find_web_user_external_state_record(&user_id).await
-        })?
-        .map(cloud_external_state_from_record)
-        .transpose()
-        .map(|state| state.unwrap_or_default());
+        return (async move { postgres.find_web_user_external_state_record(&user_id).await })
+            .await?
+            .map(cloud_external_state_from_record)
+            .transpose()
+            .map(|state| state.unwrap_or_default());
     }
 
-    fn save_external_state(
+    async fn save_external_state(
         &self,
         user: &WebInviteUser,
         state: WebUserExternalState,
     ) -> HoneResult<()> {
         let postgres = self.postgres.clone();
         let external_state = cloud_external_state_record(&user.user_id, &state)?;
-        return run_cloud_web_auth(async move {
+        return (async move {
             postgres
                 .upsert_web_user_external_state_record(&external_state)
                 .await
-        });
+        })
+        .await;
     }
 
-    fn find_external_user_by_email(
+    async fn find_external_user_by_email(
         &self,
         email_address: &str,
     ) -> HoneResult<Option<(WebInviteUser, WebUserExternalState)>> {
         let email = normalize_email_address(email_address)?;
 
         let postgres = self.postgres.clone();
-        return run_cloud_web_auth(async move {
-            postgres.find_web_invite_user_record_by_email(&email).await
-        })?
-        .map(|(record, external_state)| {
-            Ok((
-                cloud_record_from_value(record)?.user,
-                cloud_external_state_from_record(external_state)?,
-            ))
-        })
-        .transpose();
+        return (async move { postgres.find_web_invite_user_record_by_email(&email).await })
+            .await?
+            .map(|(record, external_state)| {
+                Ok((
+                    cloud_record_from_value(record)?.user,
+                    cloud_external_state_from_record(external_state)?,
+                ))
+            })
+            .transpose();
     }
 
-    fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
+    async fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
         let postgres = self.postgres.clone();
         let record = serde_json::to_value(session)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let session_hash = session.session_hash.clone();
         let user_id = session.user_id.clone();
         let expires_at = session.expires_at.clone();
-        run_cloud_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(&session_hash, &user_id, record, Some(&expires_at))
                 .await
         })
+        .await
     }
 
-    fn cloud_purge_expired_sessions(&self, now: &str) -> HoneResult<()> {
+    async fn cloud_purge_expired_sessions(&self, now: &str) -> HoneResult<()> {
         let postgres = self.postgres.clone();
         let now = now.to_string();
-        run_cloud_web_auth(async move {
+        (async move {
             postgres.purge_expired_web_auth_sessions(&now).await?;
             Ok(())
         })
+        .await
     }
 
-    pub fn is_web_admin(&self, user_id: &str) -> HoneResult<bool> {
+    pub async fn is_web_admin(&self, user_id: &str) -> HoneResult<bool> {
         let postgres = self.postgres.clone();
         let user_id = user_id.to_string();
-        return run_cloud_web_auth(
-            async move { postgres.web_invite_user_is_admin(&user_id).await },
-        );
+        return (async move { postgres.web_invite_user_is_admin(&user_id).await }).await;
     }
 
-    pub fn set_web_admin_by_phone(
+    pub async fn set_web_admin_by_phone(
         &self,
         phone_number: &str,
         is_admin: bool,
@@ -333,26 +335,28 @@ impl WebAuthStorage {
         let phone_number = validate_phone_number(phone_number)?;
 
         let postgres = self.postgres.clone();
-        return run_cloud_web_auth(async move {
+        return (async move {
             postgres
                 .set_web_invite_user_admin_by_phone(&phone_number, is_admin)
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn web_admin_create_count_today(&self, admin_user_id: &str) -> HoneResult<u32> {
+    pub async fn web_admin_create_count_today(&self, admin_user_id: &str) -> HoneResult<u32> {
         let local_date = local_now().format("%F").to_string();
 
         let postgres = self.postgres.clone();
         let admin_user_id = admin_user_id.to_string();
-        return run_cloud_web_auth(async move {
+        return (async move {
             postgres
                 .web_admin_create_count_for_date(&admin_user_id, &local_date)
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn create_invite_user_by_admin(
+    pub async fn create_invite_user_by_admin(
         &self,
         admin_user_id: &str,
         phone_number: &str,
@@ -364,8 +368,8 @@ impl WebAuthStorage {
         let phone_number = validate_phone_number(phone_number)?;
 
         let postgres = self.postgres.clone();
-        let invite_code = generate_unique_invite_code_cloud(self)?;
-        let api_key = generate_unique_api_key_cloud(self)?;
+        let invite_code = generate_unique_invite_code_cloud(self).await?;
+        let api_key = generate_unique_api_key_cloud(self).await?;
         let api_key_hash = hash_api_key(&api_key);
         let api_key_prefix = api_key_prefix(&api_key);
         let user = WebInviteUser {
@@ -392,7 +396,7 @@ impl WebAuthStorage {
         let record = serde_json::to_value(record)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let admin_user_id = admin_user_id.to_string();
-        let outcome = run_cloud_web_auth(async move {
+        let outcome = (async move {
             postgres
                 .create_web_invite_user_record_by_admin(
                     &admin_user_id,
@@ -403,7 +407,8 @@ impl WebAuthStorage {
                     WEB_ADMIN_DAILY_INVITE_LIMIT,
                 )
                 .await
-        })?;
+        })
+        .await?;
         return Ok(match outcome {
             CloudWebAdminCreateOutcome::Created { used_today } => {
                 WebAdminInviteCreateOutcome::Created {
@@ -421,7 +426,7 @@ impl WebAuthStorage {
         });
     }
 
-    pub fn disable_invite_user_by_admin(
+    pub async fn disable_invite_user_by_admin(
         &self,
         admin_user_id: &str,
         target_user_id: &str,
@@ -433,7 +438,7 @@ impl WebAuthStorage {
         let postgres = self.postgres.clone();
         let admin_user_id = admin_user_id.to_string();
         let target_user_id = target_user_id.to_string();
-        let outcome = run_cloud_web_auth(async move {
+        let outcome = (async move {
             postgres
                 .disable_web_invite_user_by_admin(
                     &admin_user_id,
@@ -442,7 +447,8 @@ impl WebAuthStorage {
                     &local_date,
                 )
                 .await
-        })?;
+        })
+        .await?;
         return Ok(match outcome {
             CloudWebAdminDisableOutcome::Disabled {
                 record,
@@ -466,13 +472,13 @@ impl WebAuthStorage {
         });
     }
 
-    pub fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
+    pub async fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
         let created_at = local_now_rfc3339();
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
 
-        let invite_code = generate_unique_invite_code_cloud(self)?;
-        let api_key = generate_unique_api_key_cloud(self)?;
+        let invite_code = generate_unique_invite_code_cloud(self).await?;
+        let api_key = generate_unique_api_key_cloud(self).await?;
         let api_key_hash = hash_api_key(&api_key);
         let api_key_prefix = api_key_prefix(&api_key);
         let user = WebInviteUser {
@@ -491,26 +497,30 @@ impl WebAuthStorage {
             api_key_last_used_at: None,
             api_key_plaintext: Some(api_key),
         };
-        self.cloud_upsert_invite(&user, Some(api_key_hash))?;
+        self.cloud_upsert_invite(&user, Some(api_key_hash)).await?;
         return Ok(user);
     }
 
-    pub fn external_profile(&self, user_id: &str) -> HoneResult<WebUserExternalProfile> {
-        Ok(self.load_external_state(user_id)?.profile)
+    pub async fn external_profile(&self, user_id: &str) -> HoneResult<WebUserExternalProfile> {
+        Ok(self.load_external_state(user_id).await?.profile)
     }
 
-    pub fn find_user_by_email(&self, email_address: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn find_user_by_email(
+        &self,
+        email_address: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
         Ok(self
-            .find_external_user_by_email(email_address)?
+            .find_external_user_by_email(email_address)
+            .await?
             .map(|(user, _)| user))
     }
 
-    pub fn ensure_international_email_user(
+    pub async fn ensure_international_email_user(
         &self,
         email_address: &str,
     ) -> HoneResult<WebInviteUser> {
         let email_address = normalize_email_address(email_address)?;
-        if let Some((user, mut state)) = self.find_external_user_by_email(&email_address)? {
+        if let Some((user, mut state)) = self.find_external_user_by_email(&email_address).await? {
             if state.profile.email_verified_at.is_some()
                 && state.profile.email_address.as_deref() != Some(email_address.as_str())
             {
@@ -520,18 +530,18 @@ impl WebAuthStorage {
             }
             state.profile.email_address = Some(email_address);
             state.profile.identity_kind = WEB_IDENTITY_INTERNATIONAL_EMAIL.to_string();
-            self.save_external_state(&user, state)?;
+            self.save_external_state(&user, state).await?;
             return Ok(user);
         }
-        self.create_international_email_user(email_address)
+        self.create_international_email_user(email_address).await
     }
 
-    pub fn begin_email_verification(
+    pub async fn begin_email_verification(
         &self,
         email_address: &str,
         ttl_minutes: i64,
     ) -> HoneResult<Option<String>> {
-        let Some((user, mut state)) = self.find_external_user_by_email(email_address)? else {
+        let Some((user, mut state)) = self.find_external_user_by_email(email_address).await? else {
             return Ok(None);
         };
         let now = local_now();
@@ -542,16 +552,16 @@ impl WebAuthStorage {
             expires_at: (now + chrono::Duration::minutes(ttl_minutes.max(1))).to_rfc3339(),
             attempts: 0,
         });
-        self.save_external_state(&user, state)?;
+        self.save_external_state(&user, state).await?;
         Ok(Some(code))
     }
 
-    pub fn verify_email_code(
+    pub async fn verify_email_code(
         &self,
         email_address: &str,
         code: &str,
     ) -> HoneResult<EmailVerificationResult> {
-        let Some((user, mut state)) = self.find_external_user_by_email(email_address)? else {
+        let Some((user, mut state)) = self.find_external_user_by_email(email_address).await? else {
             return Ok(EmailVerificationResult::Missing);
         };
         let Some(mut challenge) = state.email_challenge.take() else {
@@ -559,11 +569,11 @@ impl WebAuthStorage {
         };
         if challenge.attempts >= 5 {
             state.email_challenge = Some(challenge);
-            self.save_external_state(&user, state)?;
+            self.save_external_state(&user, state).await?;
             return Ok(EmailVerificationResult::AttemptsExceeded);
         }
         if rfc3339_at_or_before(&challenge.expires_at, &local_now_rfc3339()) {
-            self.save_external_state(&user, state)?;
+            self.save_external_state(&user, state).await?;
             return Ok(EmailVerificationResult::Expired);
         }
         let normalized_code = normalize_email_verification_code(code);
@@ -571,7 +581,7 @@ impl WebAuthStorage {
             challenge.attempts = challenge.attempts.saturating_add(1);
             let exhausted = challenge.attempts >= 5;
             state.email_challenge = Some(challenge);
-            self.save_external_state(&user, state)?;
+            self.save_external_state(&user, state).await?;
             return Ok(if exhausted {
                 EmailVerificationResult::AttemptsExceeded
             } else {
@@ -579,13 +589,16 @@ impl WebAuthStorage {
             });
         }
         state.profile.email_verified_at = Some(local_now_rfc3339());
-        self.save_external_state(&user, state)?;
+        self.save_external_state(&user, state).await?;
         Ok(EmailVerificationResult::Verified {
             user_id: user.user_id,
         })
     }
 
-    fn create_international_email_user(&self, email_address: String) -> HoneResult<WebInviteUser> {
+    async fn create_international_email_user(
+        &self,
+        email_address: String,
+    ) -> HoneResult<WebInviteUser> {
         let created_at = local_now_rfc3339();
         let user_id = generate_user_id();
         let external_state = WebUserExternalState {
@@ -599,7 +612,7 @@ impl WebAuthStorage {
 
         let user = WebInviteUser {
             user_id,
-            invite_code: generate_unique_invite_code_cloud(self)?,
+            invite_code: generate_unique_invite_code_cloud(self).await?,
             phone_number: String::new(),
             created_at,
             last_login_at: None,
@@ -613,14 +626,14 @@ impl WebAuthStorage {
             api_key_last_used_at: None,
             api_key_plaintext: None,
         };
-        self.cloud_upsert_invite_with_state(&user, None, external_state)?;
+        self.cloud_upsert_invite_with_state(&user, None, external_state)
+            .await?;
         return Ok(user);
     }
 
-    pub fn list_invite_users(&self) -> HoneResult<Vec<WebInviteUser>> {
+    pub async fn list_invite_users(&self) -> HoneResult<Vec<WebInviteUser>> {
         let postgres = self.postgres.clone();
-        let records =
-            run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
+        let records = (async move { postgres.list_web_invite_user_records().await }).await?;
         return records
             .into_iter()
             .map(Self::cloud_record_to_user)
@@ -628,10 +641,9 @@ impl WebAuthStorage {
             .collect();
     }
 
-    pub fn list_web_admin_invite_summaries(&self) -> HoneResult<Vec<WebAdminInviteSummary>> {
+    pub async fn list_web_admin_invite_summaries(&self) -> HoneResult<Vec<WebAdminInviteSummary>> {
         let postgres = self.postgres.clone();
-        let records =
-            run_cloud_web_auth(async move { postgres.list_web_admin_invite_summaries().await })?;
+        let records = (async move { postgres.list_web_admin_invite_summaries().await }).await?;
         return Ok(records
             .into_iter()
             .map(|record| WebAdminInviteSummary {
@@ -645,17 +657,21 @@ impl WebAuthStorage {
             .collect());
     }
 
-    pub fn find_invite_user_by_code(&self, invite_code: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn find_invite_user_by_code(
+        &self,
+        invite_code: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
         let invite_code = normalize_invite_code(invite_code);
 
         return Ok(self
-            .cloud_find_invite_by("invite_code", &invite_code)?
+            .cloud_find_invite_by("invite_code", &invite_code)
+            .await?
             .map(|(user, _)| user));
     }
 
     /// Public SMS login whitelist lookup. Admin-created invite users are the
     /// current whitelist source; revoked users cannot receive or verify codes.
-    pub fn find_active_invite_user_by_phone(
+    pub async fn find_active_invite_user_by_phone(
         &self,
         phone_number: &str,
     ) -> HoneResult<Option<WebInviteUser>> {
@@ -665,19 +681,24 @@ impl WebAuthStorage {
         }
 
         let user = self
-            .cloud_find_invite_by("phone_number", &phone)?
+            .cloud_find_invite_by("phone_number", &phone)
+            .await?
             .map(|(user, _)| user)
             .filter(|user| user.revoked_at.is_none());
         return Ok(user);
     }
 
-    pub fn find_invite_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn find_invite_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         return Ok(self
-            .cloud_find_invite_by("user_id", user_id)?
+            .cloud_find_invite_by("user_id", user_id)
+            .await?
             .map(|(user, _)| user));
     }
 
-    pub fn find_invite_user_by_api_key(&self, api_key: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn find_invite_user_by_api_key(
+        &self,
+        api_key: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
         let api_key = api_key.trim();
         if api_key.is_empty() {
             return Ok(None);
@@ -685,8 +706,9 @@ impl WebAuthStorage {
         let now = local_now_rfc3339();
         let api_key_hash = hash_api_key(api_key);
 
-        let Some((mut user, stored_hash)) =
-            self.cloud_find_invite_by("api_key_hash", &api_key_hash)?
+        let Some((mut user, stored_hash)) = self
+            .cloud_find_invite_by("api_key_hash", &api_key_hash)
+            .await?
         else {
             return Ok(None);
         };
@@ -695,14 +717,18 @@ impl WebAuthStorage {
         }
         user.api_key_last_used_at = Some(now);
         user.api_key_plaintext = None;
-        self.cloud_upsert_invite(&user, stored_hash)?;
+        self.cloud_upsert_invite(&user, stored_hash).await?;
         return Ok(Some(user));
     }
 
-    pub fn ensure_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn ensure_api_key_for_user(
+        &self,
+        user_id: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
         let now = local_now_rfc3339();
 
-        let Some((mut existing, _existing_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+        let Some((mut existing, _existing_hash)) =
+            self.cloud_find_invite_by("user_id", user_id).await?
         else {
             return Ok(None);
         };
@@ -710,33 +736,35 @@ impl WebAuthStorage {
             existing.api_key_plaintext = None;
             return Ok(Some(existing));
         }
-        let api_key = generate_unique_api_key_cloud(self)?;
+        let api_key = generate_unique_api_key_cloud(self).await?;
         let api_key_hash = hash_api_key(&api_key);
         existing.api_key_prefix = Some(api_key_prefix(&api_key));
         existing.api_key_created_at = Some(now);
         existing.api_key_last_used_at = None;
         existing.api_key_plaintext = Some(api_key);
-        self.cloud_upsert_invite(&existing, Some(api_key_hash))?;
+        self.cloud_upsert_invite(&existing, Some(api_key_hash))
+            .await?;
         return Ok(Some(existing));
     }
 
-    pub fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
+    pub async fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let now = local_now_rfc3339();
 
-        let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id).await? else {
             return Ok(None);
         };
-        let api_key = generate_unique_api_key_cloud(self)?;
+        let api_key = generate_unique_api_key_cloud(self).await?;
         let api_key_hash = hash_api_key(&api_key);
         invite.api_key_prefix = Some(api_key_prefix(&api_key));
         invite.api_key_created_at = Some(now);
         invite.api_key_last_used_at = None;
         invite.api_key_plaintext = Some(api_key);
-        self.cloud_upsert_invite(&invite, Some(api_key_hash))?;
+        self.cloud_upsert_invite(&invite, Some(api_key_hash))
+            .await?;
         return Ok(Some(invite));
     }
 
-    pub fn create_session_for_invite(
+    pub async fn create_session_for_invite(
         &self,
         invite_code: &str,
         phone_number: &str,
@@ -749,9 +777,10 @@ impl WebAuthStorage {
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
 
-        self.cloud_purge_expired_sessions(&created_at)?;
-        let Some((mut user, api_key_hash)) =
-            self.cloud_find_invite_by("invite_code", &invite_code)?
+        self.cloud_purge_expired_sessions(&created_at).await?;
+        let Some((mut user, api_key_hash)) = self
+            .cloud_find_invite_by("invite_code", &invite_code)
+            .await?
         else {
             return Ok(None);
         };
@@ -759,7 +788,7 @@ impl WebAuthStorage {
             return Ok(None);
         }
         user.last_login_at = Some(created_at.clone());
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         let session = CloudWebAuthSessionRecord {
             session_hash: token_hash,
             user_id: user.user_id.clone(),
@@ -767,7 +796,7 @@ impl WebAuthStorage {
             expires_at: expires_at.clone(),
             last_seen_at: created_at.clone(),
         };
-        self.cloud_upsert_session(&session)?;
+        self.cloud_upsert_session(&session).await?;
         return Ok(Some(WebInviteSession {
             session_token: token,
             user_id: user.user_id,
@@ -777,8 +806,11 @@ impl WebAuthStorage {
         }));
     }
 
-    pub fn authenticate_session(&self, session_token: &str) -> HoneResult<Option<WebInviteUser>> {
-        match self.authenticate_session_detailed(session_token)? {
+    pub async fn authenticate_session(
+        &self,
+        session_token: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
+        match self.authenticate_session_detailed(session_token).await? {
             WebSessionAuthResult::Authenticated(user) => Ok(Some(user)),
             WebSessionAuthResult::Missing
             | WebSessionAuthResult::Expired { .. }
@@ -787,7 +819,7 @@ impl WebAuthStorage {
         }
     }
 
-    pub fn authenticate_session_detailed(
+    pub async fn authenticate_session_detailed(
         &self,
         session_token: &str,
     ) -> HoneResult<WebSessionAuthResult> {
@@ -795,7 +827,7 @@ impl WebAuthStorage {
         let token_hash = hash_session_token(session_token);
 
         let postgres = self.postgres.clone();
-        let value = run_cloud_web_auth({
+        let value = ({
             let token_hash = token_hash.clone();
             let session_token = session_token.to_string();
             async move {
@@ -803,19 +835,23 @@ impl WebAuthStorage {
                     .find_web_auth_session_record(&token_hash, &session_token)
                     .await
             }
-        })?;
+        })
+        .await?;
         let Some(value) = value else {
             return Ok(WebSessionAuthResult::Missing);
         };
         let mut session: CloudWebAuthSessionRecord = serde_json::from_value(value)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         if rfc3339_at_or_before(&session.expires_at, &now) {
-            self.delete_session(session_token)?;
+            self.delete_session(session_token).await?;
             return Ok(WebSessionAuthResult::Expired {
                 user_id: session.user_id,
             });
         }
-        let Some((user, _)) = self.cloud_find_invite_by("user_id", &session.user_id)? else {
+        let Some((user, _)) = self
+            .cloud_find_invite_by("user_id", &session.user_id)
+            .await?
+        else {
             return Ok(WebSessionAuthResult::UserMissing {
                 user_id: session.user_id,
             });
@@ -826,83 +862,89 @@ impl WebAuthStorage {
             });
         }
         session.last_seen_at = now;
-        self.cloud_upsert_session(&session)?;
+        self.cloud_upsert_session(&session).await?;
         return Ok(WebSessionAuthResult::Authenticated(user));
     }
 
-    pub fn delete_session(&self, session_token: &str) -> HoneResult<()> {
+    pub async fn delete_session(&self, session_token: &str) -> HoneResult<()> {
         let token_hash = hash_session_token(session_token);
 
         let postgres = self.postgres.clone();
         let session_token = session_token.to_string();
-        return run_cloud_web_auth(async move {
+        return (async move {
             postgres
                 .delete_web_auth_session(&token_hash, &session_token)
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn count_active_sessions_for_user(&self, user_id: &str) -> HoneResult<u32> {
+    pub async fn count_active_sessions_for_user(&self, user_id: &str) -> HoneResult<u32> {
         let now = local_now_rfc3339();
 
         let postgres = self.postgres.clone();
-        self.cloud_purge_expired_sessions(&now)?;
+        self.cloud_purge_expired_sessions(&now).await?;
         let user_id = user_id.to_string();
-        return run_cloud_web_auth(async move {
+        return (async move {
             postgres
                 .count_active_web_auth_sessions(&user_id, &now)
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn set_invite_revoked(
+    pub async fn set_invite_revoked(
         &self,
         user_id: &str,
         revoked: bool,
     ) -> HoneResult<Option<WebInviteMutation>> {
         let now = local_now_rfc3339();
 
-        self.cloud_purge_expired_sessions(&now)?;
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        self.cloud_purge_expired_sessions(&now).await?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(None);
         };
         let cleared_session_count = if revoked {
             let postgres = self.postgres.clone();
             let user_id_owned = user_id.to_string();
-            run_cloud_web_auth(async move {
+            (async move {
                 postgres
                     .delete_web_auth_sessions_for_user(&user_id_owned)
                     .await
-            })? as u32
+            })
+            .await? as u32
         } else {
             0
         };
         user.revoked_at = if revoked { Some(now) } else { None };
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         return Ok(Some(WebInviteMutation {
             invite: user,
             cleared_session_count,
         }));
     }
 
-    pub fn reset_invite_code(&self, user_id: &str) -> HoneResult<Option<WebInviteMutation>> {
+    pub async fn reset_invite_code(&self, user_id: &str) -> HoneResult<Option<WebInviteMutation>> {
         let now = local_now_rfc3339();
 
-        self.cloud_purge_expired_sessions(&now)?;
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        self.cloud_purge_expired_sessions(&now).await?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(None);
         };
-        let invite_code = generate_unique_invite_code_cloud(self)?;
+        let invite_code = generate_unique_invite_code_cloud(self).await?;
         let postgres = self.postgres.clone();
         let user_id_owned = user_id.to_string();
-        let cleared_session_count = run_cloud_web_auth(async move {
+        let cleared_session_count = (async move {
             postgres
                 .delete_web_auth_sessions_for_user(&user_id_owned)
                 .await
-        })? as u32;
+        })
+        .await? as u32;
         user.invite_code = invite_code;
         user.revoked_at = None;
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         return Ok(Some(WebInviteMutation {
             invite: user,
             cleared_session_count,
@@ -910,7 +952,7 @@ impl WebAuthStorage {
     }
 
     /// 查询已设置密码、未吊销的用户,用于手机号+密码登录校验。
-    pub fn find_by_phone_password_ready(
+    pub async fn find_by_phone_password_ready(
         &self,
         phone_number: &str,
     ) -> HoneResult<Option<WebInviteUser>> {
@@ -920,7 +962,8 @@ impl WebAuthStorage {
         }
 
         return Ok(self
-            .cloud_find_invite_by("phone_number", &phone)?
+            .cloud_find_invite_by("phone_number", &phone)
+            .await?
             .map(|(user, _)| user)
             .filter(|user| user.revoked_at.is_none() && user.password_hash.is_some()));
     }
@@ -929,7 +972,7 @@ impl WebAuthStorage {
     ///
     /// 返回 Ok(true) 表示成功写入,Ok(false) 表示用户已经有密码(调用方应走
     /// change_password 路径避免覆写)或用户不存在。
-    pub fn set_password(
+    pub async fn set_password(
         &self,
         user_id: &str,
         password_hash: &str,
@@ -937,7 +980,8 @@ impl WebAuthStorage {
     ) -> HoneResult<bool> {
         let now = local_now_rfc3339();
 
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(false);
         };
         if user.password_hash.is_some() {
@@ -947,15 +991,16 @@ impl WebAuthStorage {
         user.password_set_at = Some(now.clone());
         user.tos_accepted_at = Some(now);
         user.tos_version = Some(tos_version.to_string());
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         return Ok(true);
     }
 
     /// 已设置密码后用于修改密码(/me 页)。不动 tos_accepted_at / tos_version。
-    pub fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
+    pub async fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
         let now = local_now_rfc3339();
 
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(false);
         };
         if user.password_hash.is_none() {
@@ -963,14 +1008,19 @@ impl WebAuthStorage {
         }
         user.password_hash = Some(password_hash.to_string());
         user.password_set_at = Some(now);
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         return Ok(true);
     }
 
-    pub fn record_tos_acceptance(&self, user_id: &str, tos_version: &str) -> HoneResult<bool> {
+    pub async fn record_tos_acceptance(
+        &self,
+        user_id: &str,
+        tos_version: &str,
+    ) -> HoneResult<bool> {
         let now = local_now_rfc3339();
 
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(false);
         };
         if user.revoked_at.is_some() {
@@ -978,14 +1028,14 @@ impl WebAuthStorage {
         }
         user.tos_accepted_at = Some(now);
         user.tos_version = Some(tos_version.to_string());
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         return Ok(true);
     }
 
     /// 按 user_id 创建 session,TTL 由调用方指定(密码登录根据"保持登录"勾选
     /// 选择 long / short)。普通登录不清理该用户的其它活跃 session,避免
     /// 用户浏览器、自动化健康检查和多设备登录互相踢掉登录态。
-    pub fn create_session_for_user(
+    pub async fn create_session_for_user(
         &self,
         user_id: &str,
         ttl_days: i64,
@@ -996,15 +1046,16 @@ impl WebAuthStorage {
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
 
-        self.cloud_purge_expired_sessions(&created_at)?;
-        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)? else {
+        self.cloud_purge_expired_sessions(&created_at).await?;
+        let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id).await?
+        else {
             return Ok(None);
         };
         if user.revoked_at.is_some() {
             return Ok(None);
         }
         user.last_login_at = Some(created_at.clone());
-        self.cloud_upsert_invite(&user, api_key_hash)?;
+        self.cloud_upsert_invite(&user, api_key_hash).await?;
         let session = CloudWebAuthSessionRecord {
             session_hash: token_hash,
             user_id: user.user_id.clone(),
@@ -1012,7 +1063,7 @@ impl WebAuthStorage {
             expires_at: expires_at.clone(),
             last_seen_at: created_at.clone(),
         };
-        self.cloud_upsert_session(&session)?;
+        self.cloud_upsert_session(&session).await?;
         return Ok(Some(WebInviteSession {
             session_token: token,
             user_id: user.user_id,
@@ -1023,19 +1074,12 @@ impl WebAuthStorage {
     }
 }
 
-fn run_cloud_web_auth<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud web auth operation")
-}
-
-fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
+async fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
     for _ in 0..16 {
         let invite_code = generate_invite_code();
         if storage
-            .cloud_find_invite_by("invite_code", &invite_code)?
+            .cloud_find_invite_by("invite_code", &invite_code)
+            .await?
             .is_none()
         {
             return Ok(invite_code);
@@ -1046,12 +1090,13 @@ fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<Str
     ))
 }
 
-fn generate_unique_api_key_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
+async fn generate_unique_api_key_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
     for _ in 0..16 {
         let api_key = generate_api_key();
         let api_key_hash = hash_api_key(&api_key);
         if storage
-            .cloud_find_invite_by("api_key_hash", &api_key_hash)?
+            .cloud_find_invite_by("api_key_hash", &api_key_hash)
+            .await?
             .is_none()
         {
             return Ok(api_key);
@@ -1291,15 +1336,15 @@ mod tests {
         CloudWebInviteRecord, EmailVerificationResult, SESSION_TTL_DAYS_LONG,
         SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebAdminInviteCreateOutcome,
         WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, generate_api_key,
-        generate_invite_code, generate_session_token, hash_session_token, run_cloud_web_auth,
+        generate_invite_code, generate_session_token, hash_session_token,
     };
     use hone_core::cloud_runtime::CloudPgRuntime;
     use hone_core::{HoneError, HoneResult, local_now};
 
-    fn test_storage() -> WebAuthStorage {
+    async fn test_storage() -> WebAuthStorage {
         let namespace =
             std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
-        WebAuthStorage::new(namespace).expect("storage")
+        WebAuthStorage::new(namespace).await.expect("storage")
     }
 
     /// 和 `inspect_cloud_external_state` 同理:清理必须走测试自己那条隔离连接,
@@ -1313,7 +1358,12 @@ mod tests {
         fn drop(&mut self) {
             let postgres = self.postgres.clone();
             let user_id = self.user_id.clone();
-            let _ = run_cloud_web_auth(async move {
+            // Drop cannot await; schedule best-effort test-fixture cleanup on the
+            // current runtime without blocking or constructing a nested runtime.
+            let Ok(handle) = tokio::runtime::Handle::try_current() else {
+                return;
+            };
+            let _ = handle.spawn(async move {
                 let client = postgres.connect_cached_client().await?;
                 client
                     .execute(
@@ -1324,7 +1374,7 @@ mod tests {
                     .map_err(|err| {
                         HoneError::Config(format!("Postgres test cleanup 删除失败: {err}"))
                     })?;
-                Ok(())
+                Ok::<(), HoneError>(())
             });
         }
     }
@@ -1333,11 +1383,11 @@ mod tests {
     /// 另开一条 `tokio_postgres::connect` 会得到自己的空 `pg_temp`,`search_path`
     /// 落回 `public`,于是查不到测试刚建的表。
     /// 2026-08-16 CI 上就是这么挂的(本地空过是因为开发库的 `public` 里恰好有真实的表)。
-    fn inspect_cloud_external_state(
+    async fn inspect_cloud_external_state(
         postgres: CloudPgRuntime,
         user_id: String,
     ) -> HoneResult<(Option<String>, Option<String>, Option<String>, bool)> {
-        run_cloud_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1356,10 +1406,11 @@ WHERE s.user_id = $1
                 })?;
             Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
         })
+        .await
     }
 
-    #[test]
-    fn invite_code_has_sufficient_entropy() {
+    #[tokio::test]
+    async fn invite_code_has_sufficient_entropy() {
         let code = generate_invite_code();
         assert!(code.starts_with("HONE-"), "prefix: {code}");
         // HONE- + 4 groups of 5 hex chars separated by dashes = 28 chars total
@@ -1374,25 +1425,28 @@ WHERE s.user_id = $1
         assert_eq!(hex_chars.len(), 20, "hex chars in random part: {code}");
     }
 
-    #[test]
-    fn session_token_has_256_bits_of_hex_entropy() {
+    #[tokio::test]
+    async fn session_token_has_256_bits_of_hex_entropy() {
         let token = generate_session_token();
 
         assert_eq!(token.len(), 64);
         assert!(token.chars().all(|ch| ch.is_ascii_hexdigit()));
     }
 
-    #[test]
-    fn api_key_has_hone_cloud_prefix_and_entropy() {
+    #[tokio::test]
+    async fn api_key_has_hone_cloud_prefix_and_entropy() {
         let key = generate_api_key();
         assert!(key.starts_with("hck_"));
         assert_eq!(key.len(), 68);
     }
 
-    #[test]
-    fn cloud_invite_records_never_serialize_or_restore_plaintext_api_keys() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    #[tokio::test]
+    async fn cloud_invite_records_never_serialize_or_restore_plaintext_api_keys() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         assert!(created.api_key_plaintext.is_some());
 
         let record = CloudWebInviteRecord {
@@ -1412,12 +1466,15 @@ WHERE s.user_id = $1
         assert!(restored.user.api_key_plaintext.is_none());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn create_and_list_invites_round_trip() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
-        let listed = storage.list_invite_users().expect("list");
+    async fn create_and_list_invites_round_trip() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
+        let listed = storage.list_invite_users().await.expect("list");
 
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].user_id, created.user_id);
@@ -1435,72 +1492,92 @@ WHERE s.user_id = $1
         assert_eq!(listed[0].api_key_prefix, created.api_key_prefix);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn active_invite_user_by_phone_is_sms_login_whitelist() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn active_invite_user_by_phone_is_sms_login_whitelist() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
 
         let found = storage
             .find_active_invite_user_by_phone("138-0013-8000")
+            .await
             .expect("lookup")
             .expect("user");
         assert_eq!(found.user_id, created.user_id);
 
         storage
             .set_invite_revoked(&created.user_id, true)
+            .await
             .expect("revoke");
         assert!(
             storage
                 .find_active_invite_user_by_phone("13800138000")
+                .await
                 .expect("lookup revoked")
                 .is_none()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn web_admin_role_is_storage_authoritative() {
-        let storage = test_storage();
-        let user = storage.create_invite_user("13871396421").expect("create");
+    async fn web_admin_role_is_storage_authoritative() {
+        let storage = test_storage().await;
+        let user = storage
+            .create_invite_user("13871396421")
+            .await
+            .expect("create");
 
-        assert!(!storage.is_web_admin(&user.user_id).expect("role"));
+        assert!(!storage.is_web_admin(&user.user_id).await.expect("role"));
         assert_eq!(
             storage
                 .set_web_admin_by_phone("138-7139-6421", true)
+                .await
                 .expect("grant")
                 .as_deref(),
             Some(user.user_id.as_str())
         );
-        assert!(storage.is_web_admin(&user.user_id).expect("role"));
+        assert!(storage.is_web_admin(&user.user_id).await.expect("role"));
         assert_eq!(
             storage
                 .set_web_admin_by_phone("13871396421", false)
+                .await
                 .expect("revoke")
                 .as_deref(),
             Some(user.user_id.as_str())
         );
-        assert!(!storage.is_web_admin(&user.user_id).expect("role"));
+        assert!(!storage.is_web_admin(&user.user_id).await.expect("role"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn web_admin_summary_list_uses_minimal_fields_and_excludes_non_phone_accounts() {
-        let storage = test_storage();
-        let admin = storage.create_invite_user("13871396421").expect("admin");
-        let member = storage.create_invite_user("13900000000").expect("member");
+    async fn web_admin_summary_list_uses_minimal_fields_and_excludes_non_phone_accounts() {
+        let storage = test_storage().await;
+        let admin = storage
+            .create_invite_user("13871396421")
+            .await
+            .expect("admin");
+        let member = storage
+            .create_invite_user("13900000000")
+            .await
+            .expect("member");
         let international = storage
             .create_invite_user("13700000000")
+            .await
             .expect("international");
         storage
             .set_web_admin_by_phone("13871396421", true)
+            .await
             .expect("grant admin");
         storage
             .set_invite_revoked(&member.user_id, true)
+            .await
             .expect("disable member");
         let postgres = storage.postgres.clone();
         let international_user_id = international.user_id.clone();
-        run_cloud_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             client
                 .execute(
@@ -1509,12 +1586,13 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(())
+            Ok::<(), HoneError>(())
         })
-        .expect("clear international placeholder phone");
+        .await.expect("clear international placeholder phone");
 
         let summaries = storage
             .list_web_admin_invite_summaries()
+            .await
             .expect("list summaries");
 
         assert_eq!(summaries.len(), 2);
@@ -1532,17 +1610,22 @@ WHERE s.user_id = $1
         assert!(member_summary.revoked_at.is_some());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn public_admin_create_limit_counts_only_successful_creates() {
-        let storage = test_storage();
-        let admin = storage.create_invite_user("13871396421").expect("admin");
+    async fn public_admin_create_limit_counts_only_successful_creates() {
+        let storage = test_storage().await;
+        let admin = storage
+            .create_invite_user("13871396421")
+            .await
+            .expect("admin");
         storage
             .set_web_admin_by_phone("13871396421", true)
+            .await
             .expect("grant");
 
         let first = storage
             .create_invite_user_by_admin(&admin.user_id, "13900000000")
+            .await
             .expect("first");
         assert!(matches!(
             first,
@@ -1551,6 +1634,7 @@ WHERE s.user_id = $1
         assert_eq!(
             storage
                 .web_admin_create_count_today(&admin.user_id)
+                .await
                 .unwrap(),
             1
         );
@@ -1558,12 +1642,14 @@ WHERE s.user_id = $1
         assert_eq!(
             storage
                 .create_invite_user_by_admin(&admin.user_id, "13900000000")
+                .await
                 .expect("duplicate"),
             WebAdminInviteCreateOutcome::DuplicatePhone
         );
         assert_eq!(
             storage
                 .web_admin_create_count_today(&admin.user_id)
+                .await
                 .unwrap(),
             1,
             "duplicate attempts must not consume the daily allowance"
@@ -1576,7 +1662,7 @@ WHERE s.user_id = $1
             assert!(matches!(
                 storage
                     .create_invite_user_by_admin(&admin.user_id, phone)
-                    .expect("create"),
+                    .await.expect("create"),
                 WebAdminInviteCreateOutcome::Created { used_today, .. }
                     if used_today == index as u32 + 2
             ));
@@ -1584,66 +1670,87 @@ WHERE s.user_id = $1
         assert_eq!(
             storage
                 .create_invite_user_by_admin(&admin.user_id, "13900000005")
+                .await
                 .expect("limit"),
             WebAdminInviteCreateOutcome::LimitReached { used_today: 5 }
         );
         assert_eq!(
             storage
                 .web_admin_create_count_today(&admin.user_id)
+                .await
                 .unwrap(),
             5
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn non_admin_cannot_create_or_disable_whitelist_users() {
-        let storage = test_storage();
-        let ordinary = storage.create_invite_user("13800138000").expect("ordinary");
-        let target = storage.create_invite_user("13900139000").expect("target");
+    async fn non_admin_cannot_create_or_disable_whitelist_users() {
+        let storage = test_storage().await;
+        let ordinary = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("ordinary");
+        let target = storage
+            .create_invite_user("13900139000")
+            .await
+            .expect("target");
 
         assert_eq!(
             storage
                 .create_invite_user_by_admin(&ordinary.user_id, "13700137000")
+                .await
                 .expect("create"),
             WebAdminInviteCreateOutcome::NotAdmin
         );
         assert_eq!(
             storage
                 .disable_invite_user_by_admin(&ordinary.user_id, &target.user_id)
+                .await
                 .expect("disable"),
             WebAdminInviteDisableOutcome::NotAdmin
         );
         assert!(
             storage
                 .find_active_invite_user_by_phone("13900139000")
+                .await
                 .expect("target")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn admin_disable_is_audited_clears_sessions_and_protects_admins() {
-        let storage = test_storage();
-        let admin = storage.create_invite_user("13871396421").expect("admin");
+    async fn admin_disable_is_audited_clears_sessions_and_protects_admins() {
+        let storage = test_storage().await;
+        let admin = storage
+            .create_invite_user("13871396421")
+            .await
+            .expect("admin");
         storage
             .set_web_admin_by_phone("13871396421", true)
+            .await
             .expect("grant");
-        let target = storage.create_invite_user("13900139000").expect("target");
+        let target = storage
+            .create_invite_user("13900139000")
+            .await
+            .expect("target");
         let session = storage
             .create_session_for_user(&target.user_id, SESSION_TTL_DAYS_LONG)
+            .await
             .expect("session")
             .expect("session");
 
         assert_eq!(
             storage
                 .disable_invite_user_by_admin(&admin.user_id, &admin.user_id)
+                .await
                 .expect("self"),
             WebAdminInviteDisableOutcome::ProtectedAdmin
         );
         let disabled = storage
             .disable_invite_user_by_admin(&admin.user_id, &target.user_id)
+            .await
             .expect("disable");
         assert!(matches!(
             disabled,
@@ -1655,19 +1762,21 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .authenticate_session(&session.session_token)
+                .await
                 .expect("auth")
                 .is_none()
         );
         assert!(matches!(
             storage
                 .disable_invite_user_by_admin(&admin.user_id, &target.user_id)
+                .await
                 .expect("idempotent"),
             WebAdminInviteDisableOutcome::AlreadyDisabled(_)
         ));
 
         let postgres = storage.postgres.clone();
         let admin_user_id = admin.user_id.clone();
-        let audit_count = run_cloud_web_auth(async move {
+        let audit_count = (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1676,39 +1785,48 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(row.get::<_, i64>(0))
+            Ok::<i64, HoneError>(row.get::<_, i64>(0))
         })
-        .expect("audit");
+        .await.expect("audit");
         assert_eq!(audit_count, 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn record_tos_acceptance_updates_public_login_terms() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn record_tos_acceptance_updates_public_login_terms() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
 
         assert!(
             storage
                 .record_tos_acceptance(&created.user_id, "2.0")
+                .await
                 .expect("record")
         );
         let refreshed = storage
             .find_invite_user(&created.user_id)
+            .await
             .expect("lookup")
             .expect("user");
         assert_eq!(refreshed.tos_version.as_deref(), Some("2.0"));
         assert!(refreshed.tos_accepted_at.is_some());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn api_key_lookup_updates_last_used_and_reset_invalidates_old_key() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn api_key_lookup_updates_last_used_and_reset_invalidates_old_key() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let first_key = created.api_key_plaintext.clone().expect("api key");
         let authed = storage
             .find_invite_user_by_api_key(&first_key)
+            .await
             .expect("lookup")
             .expect("user");
         assert_eq!(authed.user_id, created.user_id);
@@ -1716,6 +1834,7 @@ WHERE s.user_id = $1
 
         let reset = storage
             .reset_api_key_for_user(&created.user_id)
+            .await
             .expect("reset")
             .expect("user");
         let next_key = reset.api_key_plaintext.expect("new api key");
@@ -1723,25 +1842,30 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .find_invite_user_by_api_key(&first_key)
+                .await
                 .expect("old lookup")
                 .is_none()
         );
         assert!(
             storage
                 .find_invite_user_by_api_key(&next_key)
+                .await
                 .expect("new lookup")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn existing_user_can_generate_api_key_once_without_plaintext_replay() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn existing_user_can_generate_api_key_once_without_plaintext_replay() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let postgres = storage.postgres.clone();
         let user_id = created.user_id.clone();
-        run_cloud_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             client
                 .execute(
@@ -1750,40 +1874,47 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(())
+            Ok::<(), HoneError>(())
         })
-        .expect("clear key");
+        .await.expect("clear key");
         let generated = storage
             .ensure_api_key_for_user(&created.user_id)
+            .await
             .expect("generate")
             .expect("user");
         assert!(generated.api_key_plaintext.is_some());
         let replay = storage
             .ensure_api_key_for_user(&created.user_id)
+            .await
             .expect("replay")
             .expect("user");
         assert!(replay.api_key_plaintext.is_none());
         assert_eq!(replay.api_key_prefix, generated.api_key_prefix);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn invite_login_creates_session_and_authenticates() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn invite_login_creates_session_and_authenticates() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let session = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("session")
             .expect("session exists");
         let authed = storage
             .authenticate_session(&session.session_token)
+            .await
             .expect("auth")
             .expect("user");
 
         assert_eq!(authed.user_id, created.user_id);
         let postgres = storage.postgres.clone();
         let user_id = created.user_id.clone();
-        let stored_token: String = run_cloud_web_auth(async move {
+        let stored_token: String = (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1792,8 +1923,9 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(row.get(0))
+            Ok::<String, HoneError>(row.get(0))
         })
+        .await
         .expect("stored token");
         assert_eq!(stored_token, hash_session_token(&session.session_token));
         assert_ne!(stored_token, session.session_token);
@@ -1806,11 +1938,14 @@ WHERE s.user_id = $1
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let now = local_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
@@ -1824,7 +1959,7 @@ WHERE s.user_id = $1
         };
         let postgres = storage.postgres.clone();
         let record_value = serde_json::to_value(&record).expect("record");
-        run_cloud_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(
                     legacy_token,
@@ -1834,21 +1969,26 @@ WHERE s.user_id = $1
                 )
                 .await
         })
+        .await
         .expect("insert legacy session");
 
         let authed = storage
             .authenticate_session(legacy_token)
+            .await
             .expect("auth")
             .expect("user");
 
         assert_eq!(authed.user_id, created.user_id);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn detailed_auth_reports_expired_and_missing_sessions() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn detailed_auth_reports_expired_and_missing_sessions() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let now = local_now();
         let created_at = (now - chrono::Duration::days(2)).to_rfc3339();
         let expires_at = (now - chrono::Duration::days(1)).to_rfc3339();
@@ -1863,7 +2003,7 @@ WHERE s.user_id = $1
         };
         let postgres = storage.postgres.clone();
         let record_value = serde_json::to_value(&record).expect("record");
-        run_cloud_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(
                     &token_hash,
@@ -1873,11 +2013,13 @@ WHERE s.user_id = $1
                 )
                 .await
         })
+        .await
         .expect("insert expired session");
 
         assert_eq!(
             storage
                 .authenticate_session_detailed(raw_token)
+                .await
                 .expect("auth"),
             WebSessionAuthResult::Expired {
                 user_id: created.user_id
@@ -1886,78 +2028,98 @@ WHERE s.user_id = $1
         assert_eq!(
             storage
                 .authenticate_session_detailed("not-a-real-token")
+                .await
                 .expect("auth"),
             WebSessionAuthResult::Missing
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn repeated_invite_logins_keep_existing_sessions() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn repeated_invite_logins_keep_existing_sessions() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let first = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("first")
             .expect("session exists");
         let second = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("second")
             .expect("session exists");
 
         assert!(
             storage
                 .authenticate_session(&first.session_token)
+                .await
                 .expect("auth first")
                 .is_some()
         );
         assert!(
             storage
                 .authenticate_session(&second.session_token)
+                .await
                 .expect("auth second")
                 .is_some()
         );
         assert_eq!(
             storage
                 .count_active_sessions_for_user(&created.user_id)
+                .await
                 .expect("count"),
             2
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn deleting_session_invalidates_authentication() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn deleting_session_invalidates_authentication() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let session = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("session")
             .expect("session exists");
         storage
             .delete_session(&session.session_token)
+            .await
             .expect("delete session");
 
         assert!(
             storage
                 .authenticate_session(&session.session_token)
+                .await
                 .expect("auth")
                 .is_none()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn revoking_invite_invalidates_existing_session_and_blocks_future_login() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn revoking_invite_invalidates_existing_session_and_blocks_future_login() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let session = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("session")
             .expect("session exists");
 
         let revoked = storage
             .set_invite_revoked(&created.user_id, true)
+            .await
             .expect("revoke")
             .expect("invite exists");
 
@@ -1966,28 +2128,35 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .authenticate_session(&session.session_token)
+                .await
                 .expect("auth")
                 .is_none()
         );
         assert!(
             storage
                 .create_session_for_invite(&created.invite_code, "13800138000")
+                .await
                 .expect("login")
                 .is_none()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn reactivating_invite_allows_login_again() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn reactivating_invite_allows_login_again() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         storage
             .set_invite_revoked(&created.user_id, true)
+            .await
             .expect("revoke")
             .expect("invite exists");
         let restored = storage
             .set_invite_revoked(&created.user_id, false)
+            .await
             .expect("restore")
             .expect("invite exists");
 
@@ -1996,22 +2165,28 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .create_session_for_invite(&created.invite_code, "13800138000")
+                .await
                 .expect("login")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn resetting_invite_rotates_code_and_invalidates_existing_session() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn resetting_invite_rotates_code_and_invalidates_existing_session() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         let session = storage
             .create_session_for_invite(&created.invite_code, "13800138000")
+            .await
             .expect("session")
             .expect("session exists");
         let reset = storage
             .reset_invite_code(&created.user_id)
+            .await
             .expect("reset")
             .expect("invite exists");
 
@@ -2021,63 +2196,70 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .create_session_for_invite(&created.invite_code, "13800138000")
+                .await
                 .expect("old code")
                 .is_none()
         );
         assert!(
             storage
                 .authenticate_session(&session.session_token)
+                .await
                 .expect("auth")
                 .is_none()
         );
         assert!(
             storage
                 .create_session_for_invite(&reset.invite.invite_code, "13800138000")
+                .await
                 .expect("new code")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn invite_login_requires_matching_phone_number() {
-        let storage = test_storage();
+    async fn invite_login_requires_matching_phone_number() {
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("+86 138-0013-8000")
+            .await
             .expect("create");
 
         assert!(
             storage
                 .create_session_for_invite(&created.invite_code, "13900139000")
+                .await
                 .expect("login mismatch")
                 .is_none()
         );
         assert!(
             storage
                 .create_session_for_invite(&created.invite_code, "+86 138 0013 8000")
+                .await
                 .expect("login match")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn invalid_phone_number_is_rejected_when_creating_invite() {
-        let storage = test_storage();
+    async fn invalid_phone_number_is_rejected_when_creating_invite() {
+        let storage = test_storage().await;
         let error = storage
             .create_invite_user("abc")
+            .await
             .expect_err("invalid phone");
         assert!(error.to_string().contains("手机号格式不合法"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn postgres_schema_keeps_invite_columns_and_defaults() {
+    async fn postgres_schema_keeps_invite_columns_and_defaults() {
         let root =
             std::env::temp_dir().join(format!("hone_web_auth_migrate_{}", uuid::Uuid::new_v4()));
-        let storage = WebAuthStorage::new(&root).expect("postgres storage");
+        let storage = WebAuthStorage::new(&root).await.expect("postgres storage");
         let postgres = storage.postgres.clone();
-        let columns = run_cloud_web_auth(async move {
+        let columns = (async move {
             let client = postgres.connect_cached_client().await?;
             let rows = client
                 .query(
@@ -2086,14 +2268,21 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(rows.into_iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>())
+            Ok::<Vec<String>, HoneError>(
+                rows.into_iter()
+                    .map(|row| row.get::<_, String>(0))
+                    .collect::<Vec<_>>(),
+            )
         })
-        .expect("columns");
+        .await.expect("columns");
         assert!(columns.iter().any(|column| column == "phone_number"));
         assert!(columns.iter().any(|column| column == "is_admin"));
         assert!(columns.iter().any(|column| column == "record"));
-        let created = storage.create_invite_user("13800138000").expect("create");
-        let listed = storage.list_invite_users().expect("list");
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
+        let listed = storage.list_invite_users().await.expect("list");
 
         assert_eq!(listed[0].user_id, created.user_id);
         assert_eq!(listed[0].phone_number, "13800138000");
@@ -2104,15 +2293,19 @@ WHERE s.user_id = $1
         assert_eq!(listed[0].tos_version, None);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn set_password_roundtrip_and_find_by_phone() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn set_password_roundtrip_and_find_by_phone() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         assert_eq!(created.password_hash, None);
         assert!(
             storage
                 .find_by_phone_password_ready("13800138000")
+                .await
                 .expect("find")
                 .is_none(),
             "未设密码的账号不应被 password-ready 查询命中"
@@ -2120,11 +2313,13 @@ WHERE s.user_id = $1
 
         let ok = storage
             .set_password(&created.user_id, "argon2-hash-v1", "1.0")
+            .await
             .expect("set password");
         assert!(ok);
 
         let found = storage
             .find_by_phone_password_ready("13800138000")
+            .await
             .expect("find")
             .expect("user exists");
         assert_eq!(found.user_id, created.user_id);
@@ -2136,10 +2331,12 @@ WHERE s.user_id = $1
         // set_password 对已有密码的用户应为幂等禁止(返回 false)。
         let second = storage
             .set_password(&created.user_id, "another-hash", "1.0")
+            .await
             .expect("second set");
         assert!(!second, "已有密码的账号不能再 set_password");
         let still = storage
             .find_by_phone_password_ready("13800138000")
+            .await
             .expect("find")
             .expect("user");
         assert_eq!(still.password_hash.as_deref(), Some("argon2-hash-v1"));
@@ -2147,24 +2344,30 @@ WHERE s.user_id = $1
         // change_password 更新但保留 tos。
         let changed = storage
             .change_password(&created.user_id, "argon2-hash-v2")
+            .await
             .expect("change password");
         assert!(changed);
         let after = storage
             .find_by_phone_password_ready("13800138000")
+            .await
             .expect("find")
             .expect("user");
         assert_eq!(after.password_hash.as_deref(), Some("argon2-hash-v2"));
         assert_eq!(after.tos_version.as_deref(), Some("1.0"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn create_session_for_user_respects_ttl_parameter() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn create_session_for_user_respects_ttl_parameter() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
 
         let short = storage
             .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_SHORT)
+            .await
             .expect("short")
             .expect("session");
         let span = (chrono::DateTime::parse_from_rfc3339(&short.expires_at).unwrap()
@@ -2174,6 +2377,7 @@ WHERE s.user_id = $1
 
         let long = storage
             .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
+            .await
             .expect("long")
             .expect("session");
         let span_days = (chrono::DateTime::parse_from_rfc3339(&long.expires_at).unwrap()
@@ -2184,69 +2388,85 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .authenticate_session(&short.session_token)
+                .await
                 .expect("auth")
                 .is_some()
         );
         assert!(
             storage
                 .authenticate_session(&long.session_token)
+                .await
                 .expect("auth")
                 .is_some()
         );
         assert_eq!(
             storage
                 .count_active_sessions_for_user(&created.user_id)
+                .await
                 .expect("count"),
             2
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn create_session_for_user_rejects_revoked() {
-        let storage = test_storage();
-        let created = storage.create_invite_user("13800138000").expect("create");
+    async fn create_session_for_user_rejects_revoked() {
+        let storage = test_storage().await;
+        let created = storage
+            .create_invite_user("13800138000")
+            .await
+            .expect("create");
         storage
             .set_invite_revoked(&created.user_id, true)
+            .await
             .expect("revoke")
             .expect("invite");
 
         let attempt = storage
             .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
+            .await
             .expect("attempt");
         assert!(attempt.is_none(), "revoked 用户不能创建 session");
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn international_email_identity_is_provider_neutral_and_verifiable() {
-        let storage = test_storage();
+    async fn international_email_identity_is_provider_neutral_and_verifiable() {
+        let storage = test_storage().await;
         let created = storage
             .ensure_international_email_user("Buyer@Example.com")
+            .await
             .expect("create identity");
         let same = storage
             .ensure_international_email_user("buyer@example.com")
+            .await
             .expect("idempotent identity");
         assert_eq!(same.user_id, created.user_id);
         assert!(created.phone_number.is_empty());
-        let profile = storage.external_profile(&created.user_id).expect("profile");
+        let profile = storage
+            .external_profile(&created.user_id)
+            .await
+            .expect("profile");
         assert_eq!(profile.email_address.as_deref(), Some("buyer@example.com"));
         assert_eq!(profile.identity_kind, WEB_IDENTITY_INTERNATIONAL_EMAIL);
 
         let code = storage
             .begin_email_verification("BUYER@example.com", 10)
+            .await
             .expect("challenge")
             .expect("known email");
         assert_eq!(code.len(), 8);
         assert_eq!(
             storage
                 .verify_email_code("buyer@example.com", "00000000")
+                .await
                 .expect("invalid"),
             EmailVerificationResult::Invalid
         );
         assert_eq!(
             storage
                 .verify_email_code("buyer@example.com", &code)
+                .await
                 .expect("verify"),
             EmailVerificationResult::Verified {
                 user_id: created.user_id.clone()
@@ -2255,6 +2475,7 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .external_profile(&created.user_id)
+                .await
                 .expect("profile")
                 .email_verified_at
                 .is_some()
@@ -2262,14 +2483,15 @@ WHERE s.user_id = $1
         assert!(
             storage
                 .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
+                .await
                 .expect("session")
                 .is_some()
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn cloud_web_user_external_state_round_trip() {
+    async fn cloud_web_user_external_state_round_trip() {
         // 必须走和其它 91 个 PG 测试相同的 `pg_temp` 隔离脚手架,不能用
         // `CloudPgRuntime::from_cloud_config` 直连 `public`。
         // `ensure_cloud_schema_once` 是**进程级** AtomicBool:只要任何一个隔离测试
@@ -2277,11 +2499,13 @@ WHERE s.user_id = $1
         // 表现是「单独跑过、和别人一起跑挂」——2026-08-16 在 CI 上就是这么红的
         // (本地空过是因为开发库的 `public` 里恰好有真实的表)。
         let storage = WebAuthStorage::new("web_auth_external_state_round_trip")
+            .await
             .expect("cloud web auth storage");
         let email = format!("pg-web-auth-{}@example.com", uuid::Uuid::new_v4().simple());
 
         let created = storage
             .ensure_international_email_user(&email)
+            .await
             .expect("create international user");
         let _cleanup = CloudWebAuthTestUser {
             postgres: storage.postgres.clone(),
@@ -2289,11 +2513,13 @@ WHERE s.user_id = $1
         };
         let same = storage
             .ensure_international_email_user(&email.to_ascii_uppercase())
+            .await
             .expect("lookup international user by indexed email");
         assert_eq!(same.user_id, created.user_id);
         assert_eq!(
             storage
                 .external_profile(&created.user_id)
+                .await
                 .expect("load external profile")
                 .email_address
                 .as_deref(),
@@ -2302,17 +2528,20 @@ WHERE s.user_id = $1
 
         let code = storage
             .begin_email_verification(&email, 10)
+            .await
             .expect("write email challenge")
             .expect("known email");
         assert_eq!(
             storage
                 .verify_email_code(&email, "00000000")
+                .await
                 .expect("persist invalid attempt"),
             EmailVerificationResult::Invalid
         );
         assert_eq!(
             storage
                 .verify_email_code(&email, &code)
+                .await
                 .expect("verify email"),
             EmailVerificationResult::Verified {
                 user_id: created.user_id.clone()
@@ -2321,6 +2550,7 @@ WHERE s.user_id = $1
 
         let (stored_email, verified_at, challenge_json, invite_record_has_external_state) =
             inspect_cloud_external_state(storage.postgres.clone(), created.user_id.clone())
+                .await
                 .expect("inspect external state row");
         assert_eq!(stored_email.as_deref(), Some(email.as_str()));
         assert!(verified_at.is_some());

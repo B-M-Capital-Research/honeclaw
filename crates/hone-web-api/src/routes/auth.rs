@@ -106,17 +106,19 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio::sync::broadcast;
 
-    fn test_state(token: Option<&str>) -> AppState {
+    async fn test_state(token: Option<&str>) -> AppState {
         let (push_tx, _) = broadcast::channel(8);
         let storage_path = std::env::temp_dir()
             .join(format!("hone_web_auth_auth_test_{}", uuid::Uuid::new_v4()))
             .join("postgres-scope");
-        let web_auth = hone_memory::WebAuthStorage::new(&storage_path).expect("web auth");
-        let billing = hone_memory::BillingStorage::new(&storage_path).expect("billing");
+        let web_auth = hone_memory::WebAuthStorage::new(&storage_path)
+            .await
+            .expect("web auth");
+        let billing = hone_memory::BillingStorage::new(&storage_path)
+            .await
+            .expect("billing");
         AppState {
-            core: Arc::new(hone_channels::HoneBotCore::new(
-                hone_core::HoneConfig::default(),
-            )),
+            core: Arc::new(hone_channels::HoneBotCore::new(hone_core::HoneConfig::default()).await),
             web_auth: Arc::new(web_auth),
             billing: Arc::new(billing),
             email_verification_sender: Arc::new(
@@ -136,9 +138,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bearer_token_auth_accepts_exact_match() {
-        let state = test_state(Some("secret-token"));
+    #[tokio::test]
+    async fn bearer_token_auth_accepts_exact_match() {
+        let state = test_state(Some("secret-token")).await;
         let request = Request::builder()
             .uri("/api/skills")
             .header(header::AUTHORIZATION, "Bearer secret-token")
@@ -147,9 +149,9 @@ mod tests {
         assert!(request_has_valid_auth(&state, &request));
     }
 
-    #[test]
-    fn bearer_token_auth_rejects_non_matching_token() {
-        let state = test_state(Some("secret-token"));
+    #[tokio::test]
+    async fn bearer_token_auth_rejects_non_matching_token() {
+        let state = test_state(Some("secret-token")).await;
         let request = Request::builder()
             .uri("/api/skills")
             .header(header::AUTHORIZATION, "Bearer secret-token-x")

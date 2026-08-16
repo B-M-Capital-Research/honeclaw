@@ -47,8 +47,8 @@ async fn live_engine_e2e() {
 
     tokio::time::sleep(std::time::Duration::from_secs(8)).await;
 
-    let store = EventStore::open(&store_path).unwrap();
-    let stored_event_count = store.count_events().unwrap();
+    let store = EventStore::open(&store_path).await.unwrap();
+    let stored_event_count = store.count_events().await.unwrap();
     let jsonl_lines = std::fs::read_to_string(&jsonl_path)
         .map(|s| s.lines().filter(|l| !l.is_empty()).count() as i64)
         .unwrap_or(-1);
@@ -939,7 +939,11 @@ async fn daily_report_roundtrip() {
     use chrono::TimeZone;
 
     let temp_dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(EventStore::open(temp_dir.path().join("event-store")).unwrap());
+    let store = Arc::new(
+        EventStore::open(temp_dir.path().join("event-store"))
+            .await
+            .unwrap(),
+    );
     let report_dir = temp_dir.path().join("reports");
 
     let now_utc = chrono::Utc::now();
@@ -969,7 +973,7 @@ async fn daily_report_roundtrip() {
                 source: src.into(),
                 payload: serde_json::Value::Null,
             };
-            store.insert_event(&ev).unwrap();
+            store.insert_event(&ev).await.unwrap();
             event_idx += 1;
         }
     }
@@ -984,6 +988,7 @@ async fn daily_report_roundtrip() {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
     }
     for _ in 0..8 {
@@ -996,6 +1001,7 @@ async fn daily_report_roundtrip() {
                 "queued",
                 None,
             )
+            .await
             .unwrap();
     }
     for _ in 0..2 {
@@ -1008,6 +1014,7 @@ async fn daily_report_roundtrip() {
                 "filtered",
                 None,
             )
+            .await
             .unwrap();
     }
     store
@@ -1019,6 +1026,7 @@ async fn daily_report_roundtrip() {
             "sent",
             None,
         )
+        .await
         .unwrap();
 
     // 人工构造"恰好在 22:00 本地"的 now:取北京 tz,today 的 22:00。
@@ -1101,7 +1109,7 @@ async fn live_social_engine_e2e() {
         }],
         updated_at: "2026-04-22".into(),
     };
-    storage.save(&actor, &portfolio).unwrap();
+    storage.save(&actor, &portfolio).await.unwrap();
 
     // 关掉所有 FMP poller,只开社交
     let mut engine_cfg = EventEngineConfig::default();
@@ -1138,8 +1146,8 @@ async fn live_social_engine_e2e() {
     // 正常情况下 5-10s 够了,给 20s 容 CI 慢网。
     tokio::time::sleep(std::time::Duration::from_secs(20)).await;
 
-    let store = EventStore::open(&store_path).unwrap();
-    let stored_event_count = store.count_events().unwrap();
+    let store = EventStore::open(&store_path).await.unwrap();
+    let stored_event_count = store.count_events().await.unwrap();
     let jsonl = std::fs::read_to_string(&jsonl_path).unwrap_or_default();
     let tg_lines: Vec<&str> = jsonl
         .lines()
@@ -1488,14 +1496,17 @@ async fn replay_two_weeks_and_push() {
 
     let now = Utc::now();
     let cutoff = now - Duration::days(days);
-    let store = EventStore::open(&store_namespace).expect("open isolated PostgreSQL store");
-    let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir);
+    let store = EventStore::open(&store_namespace)
+        .await
+        .expect("open isolated PostgreSQL store");
+    let registry = SharedRegistry::from_portfolio_dir(&portfolio_dir).await;
     let registry = registry.load();
     let actor = ActorIdentity::new("discord", target_user.as_str(), None::<&str>)
         .unwrap_or_else(|_| ActorIdentity::new("discord", "dryrun", None::<&str>).unwrap());
     let prefs = FilePrefsStorage::new(&prefs_dir)
         .expect("prefs dir")
-        .load(&actor);
+        .load(&actor)
+        .await;
 
     // σ 表:committed fixture(2026-01-02..2026-08-14 日线)
     let fixture: serde_json::Value = serde_json::from_str(
@@ -1741,17 +1752,19 @@ async fn replay_two_weeks_and_push() {
         }
     };
 
-    let annotate = |mut event: MarketEvent| -> MarketEvent {
+    let annotate = |mut event: MarketEvent| async {
         let occurred = event.occurred_at;
         let Some(symbol) = event.symbols.first().cloned() else {
             return event;
         };
         if matches!(event.kind, EventKind::AnalystGrade)
-            && let Ok(payloads) = store.list_analyst_grade_payloads_in_window(
-                &symbol,
-                occurred - Duration::days(30),
-                occurred,
-            )
+            && let Ok(payloads) = store
+                .list_analyst_grade_payloads_in_window(
+                    &symbol,
+                    occurred - Duration::days(30),
+                    occurred,
+                )
+                .await
         {
             let counts = crate::pollers::analyst_grade::consensus_counts_from_payloads(&payloads);
             if counts.total() > 0
@@ -1769,7 +1782,9 @@ async fn replay_two_weeks_and_push() {
         if matches!(
             event.kind,
             EventKind::PriceAlert { .. } | EventKind::Weekly52High | EventKind::Weekly52Low
-        ) && let Ok(Some(at)) = store.next_upcoming_earnings_for_symbol(&symbol, occurred, 14)
+        ) && let Ok(Some(at)) = store
+            .next_upcoming_earnings_for_symbol(&symbol, occurred, 14)
+            .await
         {
             let days_to = (at.date_naive() - occurred.date_naive()).num_days().max(0);
             if let Some(obj) = event.payload.as_object_mut() {
@@ -1820,14 +1835,14 @@ async fn replay_two_weeks_and_push() {
                 let capped = *daily_high_count.get(&day).unwrap_or(&0) >= 8;
                 if cooled || capped {
                     cooled_or_capped += 1;
-                    let annotated = annotate(event);
+                    let annotated = annotate(event).await;
                     digest_by_day.entry(day).or_default().push(annotated);
                     n_dig += 1;
                     continue;
                 }
                 last_immediate_at.insert(symbol, event.occurred_at);
                 *daily_high_count.entry(day).or_default() += 1;
-                let annotated = annotate(event);
+                let annotated = annotate(event).await;
                 let stamp = (annotated.occurred_at + Duration::hours(8)).format("%m-%d %H:%M");
                 let body = render_immediate(&annotated, RenderFormat::DiscordMarkdown);
                 immediates.push((
@@ -1838,7 +1853,7 @@ async fn replay_two_weeks_and_push() {
                 n_imm += 1;
             }
             Some(Route::Digest) => {
-                let annotated = annotate(event);
+                let annotated = annotate(event).await;
                 digest_by_day
                     .entry(local_day(&annotated))
                     .or_default()

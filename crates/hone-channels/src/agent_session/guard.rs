@@ -29,12 +29,13 @@ impl QuotaReservationGuard {
 
     /// 成功路径：把预留的额度正式 commit 到当日计数。
     /// 消耗 self 防止随后的 Drop 再次执行 release。
-    pub(super) fn commit(mut self) {
+    pub(super) async fn commit(mut self) {
         if let Some(reservation) = self.reservation.take() {
             let _ = self
                 .core
                 .conversation_quota_storage
-                .commit_daily_conversation(&reservation);
+                .commit_daily_conversation(&reservation)
+                .await;
         }
     }
 }
@@ -44,10 +45,27 @@ impl Drop for QuotaReservationGuard {
         // 默认退出路径 = 失败 / panic / 提前 return：把 reservation 原样还回去,
         // 避免用户当日配额被白白消耗。`commit` 已经 take 过时这里是 no-op。
         if let Some(reservation) = self.reservation.take() {
-            let _ = self
-                .core
-                .conversation_quota_storage
-                .release_daily_conversation(&reservation);
+            // Drop 不能 await。AgentSession guard 只存在于 Tokio 驱动的 run() 中，
+            // 因此把释放操作交回当前 runtime；不再阻塞线程或跳转到第二个 runtime。
+            let core = self.core.clone();
+            match tokio::runtime::Handle::try_current() {
+                Ok(handle) => {
+                    handle.spawn(async move {
+                        if let Err(error) = core
+                            .conversation_quota_storage
+                            .release_daily_conversation(&reservation)
+                            .await
+                        {
+                            tracing::warn!("failed to release dropped quota reservation: {error}");
+                        }
+                    });
+                }
+                Err(error) => {
+                    tracing::error!(
+                        "cannot release dropped quota reservation without Tokio runtime: {error}"
+                    );
+                }
+            }
         }
     }
 }

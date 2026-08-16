@@ -210,7 +210,7 @@ Verified search tool transcript (JSON):\n{}",
         ))
     }
 
-    fn record_stage_audit(
+    async fn record_stage_audit(
         &self,
         request: &AgentRunnerRequest,
         source: &str,
@@ -240,7 +240,7 @@ Verified search tool transcript (JSON):\n{}",
         record.response = response_payload;
         record.error = error;
         record.metadata = metadata;
-        if let Err(err) = sink.record(record) {
+        if let Err(err) = sink.record(record).await {
             tracing::warn!(
                 "[LlmAudit] failed to persist multi-agent stage audit: {}",
                 err
@@ -602,7 +602,8 @@ impl AgentRunner for MultiAgentRunner {
                 "tool_calls": search_tool_calls,
                 "used_live_search_tool": used_live_search_tool,
             }),
-        );
+        )
+        .await;
 
         if !search_response.success {
             return AgentRunnerResult {
@@ -716,7 +717,8 @@ impl AgentRunner for MultiAgentRunner {
             json!({
                 "kind": "multi_agent_answer"
             }),
-        );
+        )
+        .await;
 
         let mut combined_tool_calls = search_response.tool_calls_made.clone();
         combined_tool_calls.extend(answer_result.response.tool_calls_made.clone());
@@ -1435,7 +1437,8 @@ mod tests {
             error: None,
         };
 
-        let handoff = runner.stage_handoff_text("列出我的任务", &response, &response.tool_calls_made);
+        let handoff =
+            runner.stage_handoff_text("列出我的任务", &response, &response.tool_calls_made);
 
         assert!(handoff.contains("cron_job.list succeeded"));
         assert!(handoff.contains("total_jobs=3 enabled_jobs=2"));

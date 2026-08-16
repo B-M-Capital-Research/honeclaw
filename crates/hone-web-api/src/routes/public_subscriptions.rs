@@ -43,8 +43,11 @@ fn serialize_subscription(job: &CronJob) -> serde_json::Value {
     })
 }
 
-fn public_web_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
-    let user = require_public_user(state, headers)?;
+async fn public_web_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<ActorIdentity, Response> {
+    let user = require_public_user(state, headers).await?;
     ActorIdentity::new("web", user.user_id, None::<String>)
         .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))
 }
@@ -53,11 +56,11 @@ pub(crate) async fn handle_list_subscriptions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let mut jobs = state.core.cron_job_storage().list_jobs(&actor);
+    let mut jobs = state.core.cron_job_storage().await.list_jobs(&actor).await;
     // Active ones first: someone opening this page is usually looking for
     // something still firing, not something they already stopped.
     jobs.sort_by(|left, right| {
@@ -91,14 +94,14 @@ pub(crate) async fn handle_update_subscription(
     Path(job_id): Path<String>,
     Json(request): Json<SubscriptionUpdateRequest>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     // Scoping the lookup to the caller is what stops one user editing
     // another's schedule by guessing a job id.
-    let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)) else {
+    let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)).await else {
         return crate::routes::json_error(StatusCode::NOT_FOUND, "未找到该订阅".to_string());
     };
 
@@ -138,7 +141,10 @@ pub(crate) async fn handle_update_subscription(
         ..Default::default()
     };
 
-    match storage.update_job(&job_id, Some(&actor), updates, false) {
+    match storage
+        .update_job(&job_id, Some(&actor), updates, false)
+        .await
+    {
         Ok(Some((_, job))) => {
             Json(json!({ "subscription": serialize_subscription(&job) })).into_response()
         }
@@ -154,12 +160,12 @@ pub(crate) async fn handle_unsubscribe_subscription(
     headers: HeaderMap,
     Path(job_id): Path<String>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
-    let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)) else {
+    let storage = state.core.cron_job_storage().await;
+    let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)).await else {
         return crate::routes::json_error(StatusCode::NOT_FOUND, "未找到该订阅".to_string());
     };
     if !existing.enabled {
@@ -174,7 +180,10 @@ pub(crate) async fn handle_unsubscribe_subscription(
         enabled: Some(false),
         ..Default::default()
     };
-    match storage.update_job(&job_id, Some(&actor), updates, true) {
+    match storage
+        .update_job(&job_id, Some(&actor), updates, true)
+        .await
+    {
         Ok(Some((_, job))) => Json(json!({
             "subscription": serialize_subscription(&job),
             "already_unsubscribed": false,

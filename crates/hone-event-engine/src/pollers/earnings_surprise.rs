@@ -139,7 +139,7 @@ impl EarningsSurprisePoller {
                         continue;
                     }
                     for mut event in candidates {
-                        if self.was_reviewed(&event.id) {
+                        if self.was_reviewed(&event.id).await {
                             continue;
                         }
                         if self.apply_quality_review(&mut event).await {
@@ -154,7 +154,7 @@ impl EarningsSurprisePoller {
         Ok(events)
     }
 
-    fn was_reviewed(&self, event_id: &str) -> bool {
+    async fn was_reviewed(&self, event_id: &str) -> bool {
         if self
             .reviewed_event_ids
             .lock()
@@ -166,7 +166,7 @@ impl EarningsSurprisePoller {
         let Some(store) = self.event_store.as_ref() else {
             return false;
         };
-        match store.contains_event(event_id) {
+        match store.contains_event(event_id).await {
             Ok(reviewed) => reviewed,
             Err(error) => {
                 warn!(
@@ -743,18 +743,22 @@ mod tests {
         )); // Saturday
     }
 
-    #[test]
-    fn persisted_event_short_circuits_review_after_poller_restart() {
+    #[tokio::test]
+    async fn persisted_event_short_circuits_review_after_poller_restart() {
         use crate::subscription::SubscriptionRegistry;
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
+        let store = Arc::new(
+            EventStore::open(dir.path().join("event-store"))
+                .await
+                .unwrap(),
+        );
         let raw = serde_json::json!([surprise(0, 0.18, 0.10)]);
         let mut events =
             events_from_surprises(&raw, "SNDK", Utc::now() - chrono::Duration::days(3), 5.0);
         let event = events.remove(0);
-        store.insert_event(&event).unwrap();
+        store.insert_event(&event).await.unwrap();
 
         let client = FmpClient::from_config(&hone_core::config::FmpConfig {
             api_key: "test-key".into(),
@@ -770,17 +774,25 @@ mod tests {
         )
         .with_event_store(store);
 
-        assert!(restarted.was_reviewed(&event.id));
-        assert!(!restarted.was_reviewed("earnings_surprise:OTHER:2026-08-05"));
+        assert!(restarted.was_reviewed(&event.id).await);
+        assert!(
+            !restarted
+                .was_reviewed("earnings_surprise:OTHER:2026-08-05")
+                .await
+        );
     }
 
-    #[test]
-    fn store_backed_poller_does_not_cache_before_pipeline_persists_event() {
+    #[tokio::test]
+    async fn store_backed_poller_does_not_cache_before_pipeline_persists_event() {
         use crate::subscription::SubscriptionRegistry;
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
+        let store = Arc::new(
+            EventStore::open(dir.path().join("event-store"))
+                .await
+                .unwrap(),
+        );
         let client = FmpClient::from_config(&hone_core::config::FmpConfig {
             api_key: "test-key".into(),
             api_keys: vec![],
@@ -798,7 +810,7 @@ mod tests {
 
         poller.mark_reviewed(event_id);
         assert!(
-            !poller.was_reviewed(event_id),
+            !poller.was_reviewed(event_id).await,
             "failed pipeline persistence must remain retryable on the next tick"
         );
     }

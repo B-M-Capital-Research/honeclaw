@@ -363,10 +363,10 @@ pub struct SharedRegistry {
 
 impl SharedRegistry {
     /// 从 portfolio 目录构建：初次读盘填充 registry，并记住目录以便后续 refresh。
-    pub fn from_portfolio_dir(dir: impl Into<PathBuf>) -> Self {
+    pub async fn from_portfolio_dir(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
         let storage = PortfolioStorage::new(&dir);
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         Self {
             inner: RwLock::new(Arc::new(reg)),
             portfolio_dir: Some(dir),
@@ -376,7 +376,7 @@ impl SharedRegistry {
 
     /// 同时从持仓与启用 tracking 的公司画像建立订阅。画像可覆盖未持仓观察标的，
     /// cloud mode 仍由 CompanyProfileStorage 的统一后端决定。
-    pub fn from_portfolio_and_company_profiles(
+    pub async fn from_portfolio_and_company_profiles(
         portfolio_dir: impl Into<PathBuf>,
         company_profile_dir: impl Into<PathBuf>,
     ) -> Self {
@@ -384,7 +384,7 @@ impl SharedRegistry {
         let company_profile_dir = company_profile_dir.into();
         let portfolios = PortfolioStorage::new(&portfolio_dir);
         let profiles = CompanyProfileStorage::new(&company_profile_dir);
-        let reg = registry_from_portfolios_and_profiles(&portfolios, &profiles);
+        let reg = registry_from_portfolios_and_profiles(&portfolios, &profiles).await;
         Self {
             inner: RwLock::new(Arc::new(reg)),
             portfolio_dir: Some(portfolio_dir),
@@ -411,15 +411,18 @@ impl SharedRegistry {
 
     /// 从磁盘重建 registry 并原子替换。返回新 registry 的订阅数。
     /// 若未绑定 portfolio 目录（测试构造），返回 `None`。
-    pub fn refresh(&self) -> Option<usize> {
+    pub async fn refresh(&self) -> Option<usize> {
         let dir = self.portfolio_dir.as_ref()?;
         let storage = PortfolioStorage::new(dir);
         let new_reg = match self.company_profile_dir.as_ref() {
-            Some(profile_dir) => registry_from_portfolios_and_profiles(
-                &storage,
-                &CompanyProfileStorage::new(profile_dir),
-            ),
-            None => registry_from_portfolios(&storage),
+            Some(profile_dir) => {
+                registry_from_portfolios_and_profiles(
+                    &storage,
+                    &CompanyProfileStorage::new(profile_dir),
+                )
+                .await
+            }
+            None => registry_from_portfolios(&storage).await,
         };
         let n = new_reg.len();
         match self.inner.write() {
@@ -441,10 +444,10 @@ impl SharedRegistry {
 /// - 所有 direct actor 汇总后 → 一个 `GlobalSubscription`(kinds=[`social_post`,
 ///   `macro_event`])。社交事件默认进 digest/LLM 仲裁；宏观事件经 router 的
 ///   due-window 保护后，远期日历只进摘要，临近 high 才即时播报。
-pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegistry {
+pub async fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegistry {
     let mut reg = SubscriptionRegistry::new();
     let mut direct_actors: Vec<ActorIdentity> = Vec::new();
-    for (actor, portfolio) in storage.list_all() {
+    for (actor, portfolio) in storage.list_all().await {
         // 硬规则：群聊持仓不订阅——主动推送只走单聊。
         // 这里跳过可以避免群聊 holdings 污染 watch pool，省下不必要的 FMP 拉取。
         if !actor.is_direct() {
@@ -504,12 +507,12 @@ fn position_snapshots(
         .collect()
 }
 
-pub fn registry_from_portfolios_and_profiles(
+pub async fn registry_from_portfolios_and_profiles(
     portfolios: &PortfolioStorage,
     profiles: &CompanyProfileStorage,
 ) -> SubscriptionRegistry {
-    let mut registry = registry_from_portfolios(portfolios);
-    for space in profiles.list_profile_spaces() {
+    let mut registry = registry_from_portfolios(portfolios).await;
+    for space in profiles.list_profile_spaces().await {
         let Ok(actor) = ActorIdentity::new(space.channel, space.user_id, space.channel_scope)
         else {
             continue;
@@ -517,7 +520,7 @@ pub fn registry_from_portfolios_and_profiles(
         if !actor.is_direct() {
             continue;
         }
-        for profile in profiles.for_actor(&actor).list_profiles() {
+        for profile in profiles.for_actor(&actor).list_profiles().await {
             let symbol = profile.stock_code.trim();
             if !profile.tracking_enabled || symbol.is_empty() {
                 continue;
@@ -559,8 +562,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn portfolio_sub_matches_case_insensitive() {
+    #[tokio::test]
+    async fn portfolio_sub_matches_case_insensitive() {
         let sub = PortfolioSubscription::new(actor("imessage", "u1"), vec!["aapl".into()]);
         assert!(sub.matches(&test_event(
             "e1",
@@ -576,8 +579,8 @@ mod tests {
         )));
     }
 
-    #[test]
-    fn registry_dedups_actor_and_keeps_max_severity() {
+    #[tokio::test]
+    async fn registry_dedups_actor_and_keeps_max_severity() {
         let mut reg = SubscriptionRegistry::new();
         reg.register(Box::new(PortfolioSubscription::new(
             actor("imessage", "u1"),
@@ -611,8 +614,8 @@ mod tests {
         assert_eq!(hits[0].1, Severity::High);
     }
 
-    #[test]
-    fn global_sub_kind_filter() {
+    #[tokio::test]
+    async fn global_sub_kind_filter() {
         let sub = GlobalSubscription::new("g1", vec![actor("imessage", "u1")])
             .with_kinds(["macro_event".to_string()]);
         assert!(sub.matches(&test_event("e", "", Severity::Low, EventKind::MacroEvent)));
@@ -624,15 +627,15 @@ mod tests {
         )));
     }
 
-    #[test]
-    fn registry_from_portfolios_broadcasts_macro_to_direct_actors() {
+    #[tokio::test]
+    async fn registry_from_portfolios_broadcasts_macro_to_direct_actors() {
         use hone_memory::PortfolioStorage;
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path());
         let a = actor("telegram", "u_macro");
-        storage.upsert_watch(&a, "AAPL", "stock").unwrap();
+        storage.upsert_watch(&a, "AAPL", "stock").await.unwrap();
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         let mut macro_event = test_event("macro", "", Severity::High, EventKind::MacroEvent);
         macro_event.symbols.clear();
         let hits = reg.resolve(&macro_event);
@@ -640,8 +643,8 @@ mod tests {
         assert_eq!(hits[0].0.user_id, "u_macro");
     }
 
-    #[test]
-    fn profile_tracking_adds_unheld_symbols_and_applies_tier_cadence() {
+    #[tokio::test]
+    async fn profile_tracking_adds_unheld_symbols_and_applies_tier_cadence() {
         let portfolio_dir = tempfile::tempdir().unwrap();
         let profile_dir = tempfile::tempdir().unwrap();
         let profiles = CompanyProfileStorage::new(profile_dir.path());
@@ -665,13 +668,15 @@ mod tests {
                     }),
                     initial_sections: BTreeMap::new(),
                 })
+                .await
                 .expect("create tracked profile");
         }
 
         let registry = registry_from_portfolios_and_profiles(
             &PortfolioStorage::new(portfolio_dir.path()),
             &profiles,
-        );
+        )
+        .await;
         assert_eq!(registry.watch_pool(), vec!["AMD", "BE", "SNDK"]);
 
         let core = registry.resolve(&test_event(
@@ -715,8 +720,8 @@ mod tests {
         assert_eq!(discovery_earnings[0].1, Severity::Low);
     }
 
-    #[test]
-    fn resolve_skips_group_actors() {
+    #[tokio::test]
+    async fn resolve_skips_group_actors() {
         // 哪怕 Subscription 命中，群聊 actor 都应该被硬过滤。
         let mut reg = SubscriptionRegistry::new();
         let group_actor = actor("feishu", "u1");
@@ -742,8 +747,8 @@ mod tests {
         assert_eq!(hits[0].0.user_id, "u2");
     }
 
-    #[test]
-    fn registry_from_portfolios_skips_group_portfolios() {
+    #[tokio::test]
+    async fn registry_from_portfolios_skips_group_portfolios() {
         use hone_memory::PortfolioStorage;
         use hone_memory::portfolio::{Holding, Portfolio};
         let dir = tempfile::tempdir().unwrap();
@@ -773,7 +778,7 @@ mod tests {
             }],
             updated_at: "2026-04-21".into(),
         };
-        storage.save(&dm, &p_dm).unwrap();
+        storage.save(&dm, &p_dm).await.unwrap();
 
         // 群 actor → 应跳过
         let group = ActorIdentity::new("feishu", "u2", Some("chat:42")).unwrap();
@@ -799,16 +804,16 @@ mod tests {
             }],
             updated_at: "2026-04-21".into(),
         };
-        storage.save(&group, &p_group).unwrap();
+        storage.save(&group, &p_group).await.unwrap();
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         // 1 direct actor portfolio sub + 1 社交/宏观全员 sub(direct actor 集合)
         assert_eq!(reg.len(), 2);
         assert_eq!(reg.watch_pool(), vec!["AAPL"], "NVDA 来自群持仓应被跳过");
     }
 
-    #[test]
-    fn resolve_empty_when_no_subs_match() {
+    #[tokio::test]
+    async fn resolve_empty_when_no_subs_match() {
         let mut reg = SubscriptionRegistry::new();
         reg.register(Box::new(PortfolioSubscription::new(
             actor("imessage", "u1"),
@@ -823,8 +828,8 @@ mod tests {
         assert!(hits.is_empty());
     }
 
-    #[test]
-    fn watch_pool_aggregates_portfolio_symbols_and_dedups() {
+    #[tokio::test]
+    async fn watch_pool_aggregates_portfolio_symbols_and_dedups() {
         let mut reg = SubscriptionRegistry::new();
         reg.register(Box::new(PortfolioSubscription::new(
             actor("imessage", "u1"),
@@ -843,15 +848,15 @@ mod tests {
         assert_eq!(pool, vec!["AAPL", "MSFT", "NVDA"]);
     }
 
-    #[test]
-    fn shared_registry_refresh_picks_up_new_portfolio() {
+    #[tokio::test]
+    async fn shared_registry_refresh_picks_up_new_portfolio() {
         use hone_memory::PortfolioStorage;
         use hone_memory::portfolio::{Holding, Portfolio};
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path());
 
         // 初始：无持仓
-        let shared = SharedRegistry::from_portfolio_dir(dir.path());
+        let shared = SharedRegistry::from_portfolio_dir(dir.path()).await;
         assert!(shared.load().watch_pool().is_empty());
         assert_eq!(shared.load().len(), 0);
 
@@ -879,14 +884,14 @@ mod tests {
             }],
             updated_at: "2026-04-21".into(),
         };
-        storage.save(&u1, &portfolio).unwrap();
+        storage.save(&u1, &portfolio).await.unwrap();
 
         // 未刷新前：依然为空
         assert!(shared.load().watch_pool().is_empty());
 
         // refresh 后：新持仓可见，resolve 立即命中
         // 1 portfolio sub + 1 social/macro global sub(direct actor 汇总)
-        let n = shared.refresh().unwrap();
+        let n = shared.refresh().await.unwrap();
         assert_eq!(n, 2);
         assert_eq!(shared.load().watch_pool(), vec!["AAPL"]);
         let hits = shared.load().resolve(&test_event(
@@ -899,18 +904,18 @@ mod tests {
         assert_eq!(hits[0].0.user_id, "u1");
     }
 
-    #[test]
-    fn shared_registry_from_registry_has_no_refresh() {
+    #[tokio::test]
+    async fn shared_registry_from_registry_has_no_refresh() {
         let reg = SubscriptionRegistry::new();
         let shared = SharedRegistry::from_registry(reg);
         assert!(
-            shared.refresh().is_none(),
+            shared.refresh().await.is_none(),
             "无 portfolio 目录时 refresh 应返回 None"
         );
     }
 
-    #[test]
-    fn registry_from_portfolios_skips_empty_holdings() {
+    #[tokio::test]
+    async fn registry_from_portfolios_skips_empty_holdings() {
         use hone_memory::PortfolioStorage;
         use hone_memory::portfolio::{Holding, Portfolio};
         let dir = tempfile::tempdir().unwrap();
@@ -938,7 +943,7 @@ mod tests {
             }],
             updated_at: "2026-04-21".into(),
         };
-        storage.save(&a, &p).unwrap();
+        storage.save(&a, &p).await.unwrap();
 
         // 再加一个空持仓 actor
         let a2 = actor("imessage", "u2");
@@ -948,9 +953,9 @@ mod tests {
             holdings: vec![],
             updated_at: "2026-04-21".into(),
         };
-        storage.save(&a2, &p2).unwrap();
+        storage.save(&a2, &p2).await.unwrap();
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         // 1 portfolio sub(a has AAPL)+ 1 social/macro global sub(包含 a 和 a2),
         // 空持仓 a2 不单独产生 PortfolioSubscription
         assert_eq!(reg.len(), 2, "空持仓不应产生 PortfolioSubscription");
@@ -959,8 +964,8 @@ mod tests {
     /// 不变量：仅关注（tracking_only=true）的 symbol 也必须进入 watch_pool 与 resolve。
     /// 锁死"关注与持仓同级推送"的契约——未来若有人误给 registry_from_portfolios
     /// 加上 `!h.tracking_only.unwrap_or(false)` 过滤,这条测试会立即失败。
-    #[test]
-    fn registry_from_portfolios_includes_tracking_only_symbols() {
+    #[tokio::test]
+    async fn registry_from_portfolios_includes_tracking_only_symbols() {
         use hone_memory::PortfolioStorage;
         use hone_memory::portfolio::{Holding, Portfolio};
         let dir = tempfile::tempdir().unwrap();
@@ -969,9 +974,10 @@ mod tests {
         let a = actor("imessage", "u_watch");
         storage
             .upsert_watch(&a, "NVDA", "stock")
+            .await
             .expect("upsert watch");
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         // 1 portfolio sub(仅关注 NVDA 也会创建 PortfolioSub)+ 1 social/macro global sub
         assert_eq!(reg.len(), 2, "仅关注的 actor 也应注册订阅");
         assert_eq!(reg.watch_pool(), vec!["NVDA"]);
@@ -1028,9 +1034,9 @@ mod tests {
             ],
             updated_at: "2026-04-22".into(),
         };
-        storage.save(&a2, &p_mixed).unwrap();
+        storage.save(&a2, &p_mixed).await.unwrap();
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         let mut pool = reg.watch_pool();
         pool.sort();
         assert_eq!(pool, vec!["AAPL", "NVDA", "TSLA"]);
@@ -1038,8 +1044,8 @@ mod tests {
 
     /// Item 2:registry 折算持仓快照 —— 显式 weight 优先、成本市值折算兜底;
     /// tracking_only 与期权不注入。
-    #[test]
-    fn registry_from_portfolios_builds_position_snapshots() {
+    #[tokio::test]
+    async fn registry_from_portfolios_builds_position_snapshots() {
         use hone_memory::PortfolioStorage;
         use hone_memory::portfolio::{Holding, Portfolio};
         let dir = tempfile::tempdir().unwrap();
@@ -1078,9 +1084,9 @@ mod tests {
             ],
             updated_at: "2026-08-15".into(),
         };
-        storage.save(&dm, &portfolio).unwrap();
+        storage.save(&dm, &portfolio).await.unwrap();
 
-        let reg = registry_from_portfolios(&storage);
+        let reg = registry_from_portfolios(&storage).await;
         let sndk = reg.position_for(&dm, "SNDK").expect("SNDK 应有快照");
         assert_eq!(sndk.shares, 13.0);
         assert!((sndk.weight_pct.unwrap() - 74.7126).abs() < 0.01);

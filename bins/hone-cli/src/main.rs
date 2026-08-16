@@ -234,10 +234,11 @@ pub(crate) fn non_empty(value: &str) -> bool {
     !value.trim().is_empty()
 }
 
-fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
+async fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
     let postgres = hone_core::cloud_runtime::CloudPgRuntime::from_cloud_config(&config.cloud)
         .expect("PostgreSQL must be configured for cron storage");
     CronJobStorage::new_cloud(postgres)
+        .await
         .unwrap_or_else(|error| panic!("{}", cloud_cron_storage_failure(&error)))
 }
 
@@ -269,7 +270,9 @@ async fn run_cli() -> Result<(), String> {
     let cli = Cli::parse();
     match cli.command {
         None | Some(Commands::Chat) => {
-            let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
+            let (core, paths) = load_cli_core(cli.config.as_deref())
+                .await
+                .map_err(|e| e.to_string())?;
             repl::run_chat(core, &paths.canonical_config_path.to_string_lossy()).await
         }
         Some(Commands::Onboard(args)) => run_onboard(cli.config.as_deref(), args).await,
@@ -469,8 +472,8 @@ async fn run_cli() -> Result<(), String> {
             ChannelsCommands::Targets(args) => {
                 let (config, _) =
                     load_cli_config(cli.config.as_deref(), false).map_err(|e| e.to_string())?;
-                let storage = cron_storage_from_config(&config);
-                let targets = storage.list_channel_targets();
+                let storage = cron_storage_from_config(&config).await;
+                let targets = storage.list_channel_targets().await;
                 if args.json {
                     print_json(&targets)
                 } else {
@@ -599,7 +602,9 @@ async fn run_cli() -> Result<(), String> {
             run_cloud_command(cli.config.as_deref(), command).await
         }
         Some(Commands::Probe(args)) => {
-            let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
+            let (core, paths) = load_cli_core(cli.config.as_deref())
+                .await
+                .map_err(|e| e.to_string())?;
             probe::run_probe(core, &paths.canonical_config_path.to_string_lossy(), args).await
         }
     }

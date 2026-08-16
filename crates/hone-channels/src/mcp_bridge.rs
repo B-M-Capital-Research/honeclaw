@@ -318,7 +318,7 @@ fn macos_resources_dir(base_dir: &Path) -> Option<PathBuf> {
 
 pub async fn run_hone_mcp_stdio() -> Result<(), String> {
     let (config, config_path) = crate::load_runtime_config().map_err(|e| e.to_string())?;
-    let core = HoneBotCore::new(config);
+    let core = HoneBotCore::new(config).await;
     let actor = actor_from_env()?;
     let channel_target = env::var("HONE_MCP_CHANNEL_TARGET").unwrap_or_else(|_| "mcp".to_string());
     let allow_cron = env_bool("HONE_MCP_ALLOW_CRON");
@@ -1319,15 +1319,15 @@ cloud:
         assert!(!excerpt.contains("json-header"));
     }
 
-    #[test]
-    fn handle_tools_list_respects_allowed_tools_for_local_file_tools() {
+    #[tokio::test]
+    async fn handle_tools_list_respects_allowed_tools_for_local_file_tools() {
         let _guard = env_lock();
         clear_test_env();
         unsafe {
             env::set_var("HONE_MCP_ALLOWED_TOOLS", "local_list_files");
         }
 
-        let core = HoneBotCore::new(HoneConfig::default());
+        let core = HoneBotCore::new(HoneConfig::default()).await;
         let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
         let registry = core.create_tool_registry(Some(&actor), "telegram", false);
         let payload = handle_tools_list(&registry);
@@ -1337,12 +1337,12 @@ cloud:
         assert_eq!(tools[0]["name"], "local_list_files");
     }
 
-    #[test]
-    fn handle_tools_list_exposes_cron_job_only_when_allow_cron_is_enabled() {
+    #[tokio::test]
+    async fn handle_tools_list_exposes_cron_job_only_when_allow_cron_is_enabled() {
         let _guard = env_lock();
         clear_test_env();
 
-        let core = HoneBotCore::new(HoneConfig::default());
+        let core = HoneBotCore::new(HoneConfig::default()).await;
         let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
 
         let disabled_registry = core.create_tool_registry(Some(&actor), "telegram", false);
@@ -1364,15 +1364,15 @@ cloud:
         );
     }
 
-    #[test]
-    fn handle_tools_call_rejects_cron_job_when_stage_allowed_tools_excludes_it() {
+    #[tokio::test]
+    async fn handle_tools_call_rejects_cron_job_when_stage_allowed_tools_excludes_it() {
         let _guard = env_lock();
         clear_test_env();
         unsafe {
             env::set_var("HONE_MCP_ALLOWED_TOOLS", "discover_skills,skill_tool");
         }
 
-        let core = HoneBotCore::new(HoneConfig::default());
+        let core = HoneBotCore::new(HoneConfig::default()).await;
         let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
         let registry = core.create_tool_registry(Some(&actor), "telegram", true);
 

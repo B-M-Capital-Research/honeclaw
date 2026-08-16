@@ -82,7 +82,7 @@ impl CodexCliAgent {
         }
     }
 
-    fn record_audit(
+    async fn record_audit(
         &self,
         context: &AgentContext,
         request: Value,
@@ -114,7 +114,7 @@ impl CodexCliAgent {
             record.completion_tokens = u.completion_tokens;
             record.total_tokens = u.total_tokens;
         }
-        if let Err(err) = sink.record(record) {
+        if let Err(err) = sink.record(record).await {
             tracing::warn!("[LlmAudit] failed to persist codex_cli audit: {}", err);
         }
     }
@@ -332,7 +332,8 @@ impl Agent for CodexCliAgent {
                         call_started.elapsed().as_millis(),
                         serde_json::json!({ "iteration": iteration }),
                         None,
-                    );
+                    )
+                    .await;
                     self.dbg(&format!("[CodexCliAgent] {e}"));
                     return AgentResponse {
                         content: String::new(),
@@ -352,7 +353,8 @@ impl Agent for CodexCliAgent {
                 call_started.elapsed().as_millis(),
                 serde_json::json!({ "iteration": iteration }),
                 None,
-            );
+            )
+            .await;
 
             self.dbg(&format!(
                 "[CodexCliAgent] output chars={}",
@@ -458,7 +460,8 @@ impl Agent for CodexCliAgent {
                     call_started.elapsed().as_millis(),
                     serde_json::json!({ "iteration": iteration, "final_fetch": true }),
                     None,
-                );
+                )
+                .await;
                 return AgentResponse {
                     content: String::new(),
                     tool_calls_made,
@@ -477,7 +480,8 @@ impl Agent for CodexCliAgent {
             call_started.elapsed().as_millis(),
             serde_json::json!({ "iteration": iteration, "final_fetch": true }),
             None,
-        );
+        )
+        .await;
 
         context.add_assistant_message(&content, None);
         AgentResponse {

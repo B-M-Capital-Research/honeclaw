@@ -49,25 +49,27 @@ pub(crate) struct StoredWebPush {
     pub unread_count: usize,
 }
 
-pub(crate) fn store_web_scheduler_push(
+pub(crate) async fn store_web_scheduler_push(
     state: &AppState,
     event: &SchedulerEvent,
     content: &str,
 ) -> hone_core::HoneResult<StoredWebPush> {
     let created_at = hone_core::local_now_rfc3339();
-    let storage = state.core.cron_job_storage();
-    let message = storage.upsert_web_push_message(
-        &event.actor,
-        WebPushMessageInput {
-            push_id: event.delivery_key.clone(),
-            job_id: event.job_id.clone(),
-            job_name: event.job_name.clone(),
-            summary: build_web_push_summary(&event.job_name, content),
-            content: content.trim().to_string(),
-            created_at,
-        },
-    )?;
-    let unread_count = storage.count_unread_web_push_messages(&event.actor)?;
+    let storage = state.core.cron_job_storage().await;
+    let message = storage
+        .upsert_web_push_message(
+            &event.actor,
+            WebPushMessageInput {
+                push_id: event.delivery_key.clone(),
+                job_id: event.job_id.clone(),
+                job_name: event.job_name.clone(),
+                summary: build_web_push_summary(&event.job_name, content),
+                content: content.trim().to_string(),
+                created_at,
+            },
+        )
+        .await?;
+    let unread_count = storage.count_unread_web_push_messages(&event.actor).await?;
     Ok(StoredWebPush {
         message,
         unread_count,
@@ -79,7 +81,7 @@ pub(crate) async fn handle_list_pushes(
     headers: HeaderMap,
     Query(query): Query<PublicPushListQuery>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
@@ -87,18 +89,17 @@ pub(crate) async fn handle_list_pushes(
         .limit
         .unwrap_or(DEFAULT_PUSH_PAGE_SIZE)
         .clamp(1, MAX_PUSH_PAGE_SIZE);
-    let storage = state.core.cron_job_storage();
-    if let Err(error) = backfill_legacy_web_pushes(&state, &actor) {
+    let storage = state.core.cron_job_storage().await;
+    if let Err(error) = backfill_legacy_web_pushes(&state, &actor).await {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("整理历史推送失败: {error}"),
         );
     }
-    let mut messages = match storage.list_web_push_messages(
-        &actor,
-        query.before.as_deref(),
-        limit.saturating_add(1),
-    ) {
+    let mut messages = match storage
+        .list_web_push_messages(&actor, query.before.as_deref(), limit.saturating_add(1))
+        .await
+    {
         Ok(messages) => messages,
         Err(error) => {
             return crate::routes::json_error(
@@ -112,7 +113,7 @@ pub(crate) async fn handle_list_pushes(
     let next_before = has_more
         .then(|| messages.last().map(|message| message.push_id.clone()))
         .flatten();
-    let unread_count = match storage.count_unread_web_push_messages(&actor) {
+    let unread_count = match storage.count_unread_web_push_messages(&actor).await {
         Ok(count) => count,
         Err(error) => {
             return crate::routes::json_error(
@@ -135,12 +136,12 @@ pub(crate) async fn handle_open_push(
     headers: HeaderMap,
     Path(push_id): Path<String>,
 ) -> Response {
-    let actor = match public_web_actor(&state, &headers) {
+    let actor = match public_web_actor(&state, &headers).await {
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
-    let message = match storage.get_web_push_message(&actor, &push_id) {
+    let storage = state.core.cron_job_storage().await;
+    let message = match storage.get_web_push_message(&actor, &push_id).await {
         Ok(Some(message)) => message,
         Ok(None) => return crate::routes::json_error(StatusCode::NOT_FOUND, "推送不存在"),
         Err(error) => {
@@ -150,13 +151,16 @@ pub(crate) async fn handle_open_push(
             );
         }
     };
-    if let Err(error) = storage.mark_web_push_messages_read_through(&actor, &push_id) {
+    if let Err(error) = storage
+        .mark_web_push_messages_read_through(&actor, &push_id)
+        .await
+    {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("更新推送已读状态失败: {error}"),
         );
     }
-    let unread_count = match storage.count_unread_web_push_messages(&actor) {
+    let unread_count = match storage.count_unread_web_push_messages(&actor).await {
         Ok(count) => count,
         Err(error) => {
             return crate::routes::json_error(
@@ -173,25 +177,31 @@ pub(crate) async fn handle_open_push(
     .into_response()
 }
 
-fn public_web_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
-    let user = require_public_user(state, headers)?;
+async fn public_web_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<ActorIdentity, Response> {
+    let user = require_public_user(state, headers).await?;
     ActorIdentity::new("web", user.user_id, None::<String>)
         .map_err(|error| crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()))
 }
 
-fn backfill_legacy_web_pushes(
+async fn backfill_legacy_web_pushes(
     state: &AppState,
     actor: &ActorIdentity,
 ) -> hone_core::HoneResult<usize> {
-    let storage = state.core.cron_job_storage();
-    if storage.has_legacy_web_push_messages(actor)? {
+    let storage = state.core.cron_job_storage().await;
+    if storage.has_legacy_web_push_messages(actor).await? {
         return Ok(0);
     }
     let messages = state
         .core
         .session_storage
-        .get_messages(&actor.session_id(), None)?;
-    storage.upsert_web_push_messages(actor, legacy_web_push_inputs(&messages))
+        .get_messages(&actor.session_id(), None)
+        .await?;
+    storage
+        .upsert_web_push_messages(actor, legacy_web_push_inputs(&messages))
+        .await
 }
 
 fn legacy_web_push_inputs(

@@ -198,7 +198,7 @@ pub(crate) async fn handle_get_influencer_digest(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers) {
+    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
     }
     let mut snapshot = read_snapshot(&state)

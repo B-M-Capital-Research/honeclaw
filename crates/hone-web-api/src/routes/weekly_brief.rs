@@ -83,7 +83,7 @@ pub(crate) async fn handle_get_weekly_brief(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -100,7 +100,7 @@ pub(crate) async fn handle_get_weekly_brief(
     // universe, so it is exact for every user whose holdings stay inside that
     // scope. Anything else (missing/stale snapshot, extra holdings) falls back
     // to the existing live path so behaviour never degrades.
-    let holdings = portfolio_calendar_symbols(&state, &actor);
+    let holdings = portfolio_calendar_symbols(&state, &actor).await;
     if let Some(mut snapshot) = read_snapshot(&state).await {
         let today = hone_core::local_now().format("%Y-%m-%d").to_string();
         if snapshot.report_date == today && holdings_within_coverage(&state, &holdings).await {
@@ -211,7 +211,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
     let next_end = next_start + Days::new(6);
     let ai_outlook_end = today + Days::new(29);
 
-    let holdings = portfolio_calendar_symbols(state, actor);
+    let holdings = portfolio_calendar_symbols(state, actor).await;
     let mut scope = holdings.iter().cloned().collect::<BTreeSet<_>>();
     scope.extend(super::company_ratings::covered_symbols(state).await);
     let scope = scope.into_iter().collect::<Vec<_>>();

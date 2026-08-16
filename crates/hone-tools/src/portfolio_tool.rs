@@ -169,7 +169,7 @@ impl Tool for PortfolioTool {
 
         match action {
             "view" => {
-                let portfolio = storage.load(&self.actor)?;
+                let portfolio = storage.load(&self.actor).await?;
                 let data = match portfolio {
                     Some(saved_portfolio) => {
                         let mut holdings = Vec::new();
@@ -204,12 +204,15 @@ impl Tool for PortfolioTool {
             "add" | "update" => {
                 let input_holdings = parse_holdings_from_args(&args)?;
 
-                let mut portfolio = storage.load(&self.actor)?.unwrap_or_else(|| Portfolio {
-                    actor: Some(self.actor.clone()),
-                    user_id: self.actor.user_id.clone(),
-                    holdings: Vec::new(),
-                    updated_at: chrono::Utc::now().to_rfc3339(),
-                });
+                let mut portfolio = storage
+                    .load(&self.actor)
+                    .await?
+                    .unwrap_or_else(|| Portfolio {
+                        actor: Some(self.actor.clone()),
+                        user_id: self.actor.user_id.clone(),
+                        holdings: Vec::new(),
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                    });
 
                 let mut processed = Vec::with_capacity(input_holdings.len());
 
@@ -241,7 +244,7 @@ impl Tool for PortfolioTool {
                 }
                 portfolio.updated_at = chrono::Utc::now().to_rfc3339();
 
-                storage.save(&self.actor, &portfolio)?;
+                storage.save(&self.actor, &portfolio).await?;
                 let mut response = serde_json::json!({
                     "action": action,
                     "count": processed.len(),
@@ -261,7 +264,7 @@ impl Tool for PortfolioTool {
             "remove" => {
                 let removals = parse_removals_from_args(&args)?;
 
-                if let Some(mut portfolio) = storage.load(&self.actor)? {
+                if let Some(mut portfolio) = storage.load(&self.actor).await? {
                     for removal in &removals {
                         portfolio.holdings.retain(|candidate| {
                             !(candidate.symbol == removal.symbol
@@ -269,7 +272,7 @@ impl Tool for PortfolioTool {
                         });
                     }
                     portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-                    storage.save(&self.actor, &portfolio)?;
+                    storage.save(&self.actor, &portfolio).await?;
                 }
 
                 let mut response = serde_json::json!({
@@ -294,12 +297,15 @@ impl Tool for PortfolioTool {
             "watch" => {
                 let input_holdings = parse_holdings_from_args(&args)?;
 
-                let mut portfolio = storage.load(&self.actor)?.unwrap_or_else(|| Portfolio {
-                    actor: Some(self.actor.clone()),
-                    user_id: self.actor.user_id.clone(),
-                    holdings: Vec::new(),
-                    updated_at: chrono::Utc::now().to_rfc3339(),
-                });
+                let mut portfolio = storage
+                    .load(&self.actor)
+                    .await?
+                    .unwrap_or_else(|| Portfolio {
+                        actor: Some(self.actor.clone()),
+                        user_id: self.actor.user_id.clone(),
+                        holdings: Vec::new(),
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                    });
 
                 let mut processed = Vec::with_capacity(input_holdings.len());
                 for mut holding in input_holdings {
@@ -336,7 +342,7 @@ impl Tool for PortfolioTool {
                 }
 
                 portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-                storage.save(&self.actor, &portfolio)?;
+                storage.save(&self.actor, &portfolio).await?;
 
                 let mut response = serde_json::json!({
                     "action": "watch",
@@ -363,7 +369,7 @@ impl Tool for PortfolioTool {
                 let removals = parse_removals_from_args(&args)?;
 
                 let mut processed = Vec::with_capacity(removals.len());
-                if let Some(mut portfolio) = storage.load(&self.actor)? {
+                if let Some(mut portfolio) = storage.load(&self.actor).await? {
                     for removal in &removals {
                         let before = portfolio.holdings.len();
                         portfolio.holdings.retain(|candidate| {
@@ -390,7 +396,7 @@ impl Tool for PortfolioTool {
                         }));
                     }
                     portfolio.updated_at = chrono::Utc::now().to_rfc3339();
-                    storage.save(&self.actor, &portfolio)?;
+                    storage.save(&self.actor, &portfolio).await?;
                 } else {
                     for removal in &removals {
                         processed.push(serde_json::json!({

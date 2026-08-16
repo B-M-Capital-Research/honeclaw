@@ -61,30 +61,15 @@ pub(crate) async fn handle_list_invites(State(state): State<Arc<AppState>>) -> i
         return Json(json!({ "invites": invites }));
     }
 
-    let state_for_worker = state.clone();
-    let invites_result = tokio::time::timeout(
-        Duration::from_secs(8),
-        tokio::task::spawn_blocking(move || {
-            state_for_worker
-                .web_auth
-                .list_invite_users()
-                .map(|invites| {
-                    invites
-                        .into_iter()
-                        .map(|invite| to_invite_info_summary(&state_for_worker, invite))
-                        .collect::<Vec<_>>()
-                })
-        }),
-    )
-    .await;
+    let invites_result =
+        tokio::time::timeout(Duration::from_secs(8), state.web_auth.list_invite_users()).await;
     let invites = match invites_result {
-        Ok(Ok(Ok(invites))) => invites,
-        Ok(Ok(Err(error))) => {
-            warn!(%error, "failed to list web invite users");
-            Vec::new()
-        }
+        Ok(Ok(invites)) => invites
+            .into_iter()
+            .map(|invite| to_invite_info_summary(&state, invite))
+            .collect(),
         Ok(Err(error)) => {
-            warn!(%error, "web invite list worker failed");
+            warn!(%error, "failed to list web invite users");
             Vec::new()
         }
         Err(_) => {
@@ -107,11 +92,12 @@ pub(crate) async fn handle_create_invite(
         Err(response) => return response,
     };
 
-    match state.web_auth.create_invite_user(&phone_number) {
+    match state.web_auth.create_invite_user(&phone_number).await {
         Ok(invite) => {
             clear_web_invites_cache();
             let user_id = invite.user_id.clone();
-            Json(json!({ "invite": to_invite_info(&state, &user_id, invite) })).into_response()
+            Json(json!({ "invite": to_invite_info(&state, &user_id, invite).await }))
+                .into_response()
         }
         Err(error) if error.to_string().contains("手机号格式不合法") => {
             crate::routes::json_error(StatusCode::BAD_REQUEST, "手机号格式不合法")
@@ -127,11 +113,11 @@ pub(crate) async fn handle_disable_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.set_invite_revoked(&user_id, true) {
+    match state.web_auth.set_invite_revoked(&user_id, true).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
-                "invite": to_invite_info(&state, &user_id, result.invite),
+                "invite": to_invite_info(&state, &user_id, result.invite).await,
                 "cleared_session_count": result.cleared_session_count,
                 "message": format!("已停用邀请码，并清理 {} 个登录态", result.cleared_session_count),
             }))
@@ -151,11 +137,11 @@ pub(crate) async fn handle_enable_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.set_invite_revoked(&user_id, false) {
+    match state.web_auth.set_invite_revoked(&user_id, false).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
-                "invite": to_invite_info(&state, &user_id, result.invite),
+                "invite": to_invite_info(&state, &user_id, result.invite).await,
                 "cleared_session_count": result.cleared_session_count,
                 "message": "已重新启用邀请码",
             }))
@@ -175,11 +161,11 @@ pub(crate) async fn handle_reset_invite(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.reset_invite_code(&user_id) {
+    match state.web_auth.reset_invite_code(&user_id).await {
         Ok(Some(result)) => {
             clear_web_invites_cache();
             Json(json!({
-                "invite": to_invite_info(&state, &user_id, result.invite),
+                "invite": to_invite_info(&state, &user_id, result.invite).await,
                 "cleared_session_count": result.cleared_session_count,
                 "message": format!("已重置邀请码，并清理 {} 个登录态", result.cleared_session_count),
             }))
@@ -199,11 +185,11 @@ pub(crate) async fn handle_get_api_key(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.ensure_api_key_for_user(&user_id) {
+    match state.web_auth.ensure_api_key_for_user(&user_id).await {
         Ok(Some(invite)) => {
             clear_web_invites_cache();
             Json(json!({
-                "invite": to_invite_info(&state, &user_id, invite),
+                "invite": to_invite_info(&state, &user_id, invite).await,
                 "message": "已获取 API Key；明文仅显示一次，请妥善保存",
             }))
             .into_response()
@@ -222,11 +208,11 @@ pub(crate) async fn handle_reset_api_key(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
-    match state.web_auth.reset_api_key_for_user(&user_id) {
+    match state.web_auth.reset_api_key_for_user(&user_id).await {
         Ok(Some(invite)) => {
             clear_web_invites_cache();
             Json(json!({
-                "invite": to_invite_info(&state, &user_id, invite),
+                "invite": to_invite_info(&state, &user_id, invite).await,
                 "message": "已重置 API Key；旧 Key 已失效，新 Key 明文仅显示一次",
             }))
             .into_response()
@@ -277,7 +263,7 @@ fn clear_web_invites_cache() {
     }
 }
 
-fn to_invite_info(
+async fn to_invite_info(
     state: &AppState,
     user_id: &str,
     invite: hone_memory::WebInviteUser,
@@ -285,14 +271,17 @@ fn to_invite_info(
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::local_now().format("%F").to_string();
-    let snapshot = actor.as_ref().and_then(|actor| {
+    let snapshot = if let Some(actor) = actor.as_ref() {
         state
             .core
             .conversation_quota_storage
             .snapshot_for_date(actor, &quota_date)
+            .await
             .ok()
             .flatten()
-    });
+    } else {
+        None
+    };
     let success_count = snapshot
         .as_ref()
         .map(|value| value.success_count)
@@ -306,6 +295,7 @@ fn to_invite_info(
     let active_session_count = state
         .web_auth
         .count_active_sessions_for_user(user_id)
+        .await
         .unwrap_or(0);
     let enabled = invite.revoked_at.is_none();
 

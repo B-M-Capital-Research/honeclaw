@@ -76,13 +76,13 @@ fn restore_invoked_skill_prompts(
     }
 }
 
-pub fn restore_context(
+pub async fn restore_context(
     storage: &SessionStorage,
     session_id: &str,
     max_messages: Option<usize>,
     skill_runtime: Option<&hone_tools::SkillRuntime>,
 ) -> AgentContext {
-    let Ok(Some(session)) = storage.load_session(session_id) else {
+    let Ok(Some(session)) = storage.load_session(session_id).await else {
         return AgentContext::new(session_id.to_string());
     };
 

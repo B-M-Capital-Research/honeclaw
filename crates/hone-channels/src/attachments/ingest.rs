@@ -1312,15 +1312,15 @@ mod tests {
         assert!(prompt.contains("不要列举目录、OSS、数据库、工具链或技能加载状态"));
     }
 
-    #[test]
-    fn codex_acp_admin_skips_redundant_local_image_ocr() {
+    #[tokio::test]
+    async fn codex_acp_admin_skips_redundant_local_image_ocr() {
         let mut config = HoneConfig::default();
         // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
         // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
         config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.runner = "codex_acp".to_string();
         config.admins.discord_user_ids = vec!["admin".to_string()];
-        let core = HoneBotCore::new(config);
+        let core = HoneBotCore::new(config).await;
         let admin = ActorIdentity::new("discord", "admin", None::<String>).expect("admin actor");
         let public = ActorIdentity::new("discord", "public", None::<String>).expect("public actor");
 
@@ -1684,9 +1684,12 @@ mod tests {
             }],
         };
 
-        persist_attachment_manifest(Arc::new(HoneBotCore::new(HoneConfig::default())), request)
-            .await
-            .expect("persist manifest");
+        persist_attachment_manifest(
+            Arc::new(HoneBotCore::new(HoneConfig::default()).await),
+            request,
+        )
+        .await
+        .expect("persist manifest");
 
         let manifest_path =
             attachment_upload_dir(&actor, "session-1").join("attachments.manifest.json");

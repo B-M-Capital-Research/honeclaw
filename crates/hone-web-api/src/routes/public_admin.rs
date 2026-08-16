@@ -55,36 +55,14 @@ pub(crate) async fn handle_list_invites(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let admin = match require_public_admin(&state, &headers) {
+    let admin = match require_public_admin(&state, &headers).await {
         Ok(admin) => admin,
         Err(response) => return response,
     };
     let admin_user_id = admin.user_id.clone();
-    let state_for_worker = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let invites = state_for_worker.web_auth.list_web_admin_invite_summaries();
-        let created_today = state_for_worker
-            .web_auth
-            .web_admin_create_count_today(&admin_user_id);
-        (invites, created_today)
-    })
-    .await;
-    let (invites, created_today) = match result {
-        Ok((Ok(invites), created_today)) => {
-            let created_today = match created_today {
-                Ok(created_today) => created_today,
-                Err(error) => {
-                    tracing::warn!(
-                        admin_user_id = %admin.user_id,
-                        error = %error,
-                        "public admin daily whitelist count failed; disabling creation conservatively"
-                    );
-                    WEB_ADMIN_DAILY_INVITE_LIMIT
-                }
-            };
-            (invites, created_today)
-        }
-        Ok((Err(error), _)) => {
+    let invites = match state.web_auth.list_web_admin_invite_summaries().await {
+        Ok(invites) => invites,
+        Err(error) => {
             tracing::error!(
                 admin_user_id = %admin.user_id,
                 error = %error,
@@ -95,16 +73,20 @@ pub(crate) async fn handle_list_invites(
                 "会员白名单暂时无法读取，请稍后重试",
             );
         }
+    };
+    let created_today = match state
+        .web_auth
+        .web_admin_create_count_today(&admin_user_id)
+        .await
+    {
+        Ok(created_today) => created_today,
         Err(error) => {
-            tracing::error!(
+            tracing::warn!(
                 admin_user_id = %admin.user_id,
                 error = %error,
-                "public admin whitelist list task failed"
+                "public admin daily whitelist count failed; disabling creation conservatively"
             );
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "会员白名单暂时无法读取，请稍后重试",
-            );
+            WEB_ADMIN_DAILY_INVITE_LIMIT
         }
     };
     tracing::info!(
@@ -130,7 +112,7 @@ pub(crate) async fn handle_create_invite(
     headers: HeaderMap,
     Json(request): Json<PublicAdminCreateInviteRequest>,
 ) -> Response {
-    let admin = match require_public_admin_mutation(&state, &headers) {
+    let admin = match require_public_admin_mutation(&state, &headers).await {
         Ok(admin) => admin,
         Err(response) => return response,
     };
@@ -140,15 +122,12 @@ pub(crate) async fn handle_create_invite(
         Err(response) => return response,
     };
     let admin_user_id = admin.user_id.clone();
-    let state_for_worker = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        state_for_worker
-            .web_auth
-            .create_invite_user_by_admin(&admin_user_id, &phone_number)
-    })
-    .await;
+    let result = state
+        .web_auth
+        .create_invite_user_by_admin(&admin_user_id, &phone_number)
+        .await;
     match result {
-        Ok(Ok(WebAdminInviteCreateOutcome::Created { invite, used_today })) => {
+        Ok(WebAdminInviteCreateOutcome::Created { invite, used_today }) => {
             Json(PublicAdminInviteMutation {
                 invite: to_public_admin_mutation_invite(&admin.user_id, invite),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
@@ -159,10 +138,10 @@ pub(crate) async fn handle_create_invite(
             })
             .into_response()
         }
-        Ok(Ok(WebAdminInviteCreateOutcome::NotAdmin)) => {
+        Ok(WebAdminInviteCreateOutcome::NotAdmin) => {
             crate::routes::json_error(StatusCode::FORBIDDEN, "当前账号没有管理权限")
         }
-        Ok(Ok(WebAdminInviteCreateOutcome::LimitReached { used_today })) => (
+        Ok(WebAdminInviteCreateOutcome::LimitReached { used_today }) => (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({
                 "error": "今日新增白名单已达到 5 人上限",
@@ -172,19 +151,15 @@ pub(crate) async fn handle_create_invite(
             })),
         )
             .into_response(),
-        Ok(Ok(WebAdminInviteCreateOutcome::DuplicatePhone)) => {
+        Ok(WebAdminInviteCreateOutcome::DuplicatePhone) => {
             crate::routes::json_error(StatusCode::CONFLICT, "该手机号已在会员白名单中")
         }
-        Ok(Err(error)) if error.to_string().contains("手机号格式不合法") => {
+        Err(error) if error.to_string().contains("手机号格式不合法") => {
             crate::routes::json_error(StatusCode::BAD_REQUEST, "手机号格式不合法")
         }
-        Ok(Err(error)) => crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("新增会员白名单失败: {error}"),
-        ),
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("新增会员白名单任务失败: {error}"),
+            format!("新增会员白名单失败: {error}"),
         ),
     }
 }
@@ -194,23 +169,21 @@ pub(crate) async fn handle_disable_invite(
     headers: HeaderMap,
     Path(target_user_id): Path<String>,
 ) -> Response {
-    let admin = match require_public_admin_mutation(&state, &headers) {
+    let admin = match require_public_admin_mutation(&state, &headers).await {
         Ok(admin) => admin,
         Err(response) => return response,
     };
     let admin_user_id = admin.user_id.clone();
-    let state_for_worker = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        state_for_worker
-            .web_auth
-            .disable_invite_user_by_admin(&admin_user_id, &target_user_id)
-    })
-    .await;
+    let result = state
+        .web_auth
+        .disable_invite_user_by_admin(&admin_user_id, &target_user_id)
+        .await;
     match result {
-        Ok(Ok(WebAdminInviteDisableOutcome::Disabled(result))) => {
+        Ok(WebAdminInviteDisableOutcome::Disabled(result)) => {
             let created_today = state
                 .web_auth
                 .web_admin_create_count_today(&admin.user_id)
+                .await
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
             Json(PublicAdminInviteMutation {
                 invite: to_public_admin_mutation_invite(&admin.user_id, result.invite),
@@ -222,10 +195,11 @@ pub(crate) async fn handle_disable_invite(
             })
             .into_response()
         }
-        Ok(Ok(WebAdminInviteDisableOutcome::AlreadyDisabled(invite))) => {
+        Ok(WebAdminInviteDisableOutcome::AlreadyDisabled(invite)) => {
             let created_today = state
                 .web_auth
                 .web_admin_create_count_today(&admin.user_id)
+                .await
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
             Json(PublicAdminInviteMutation {
                 invite: to_public_admin_mutation_invite(&admin.user_id, invite),
@@ -237,22 +211,18 @@ pub(crate) async fn handle_disable_invite(
             })
             .into_response()
         }
-        Ok(Ok(WebAdminInviteDisableOutcome::NotAdmin)) => {
+        Ok(WebAdminInviteDisableOutcome::NotAdmin) => {
             crate::routes::json_error(StatusCode::FORBIDDEN, "当前账号没有管理权限")
         }
-        Ok(Ok(WebAdminInviteDisableOutcome::NotFound)) => {
+        Ok(WebAdminInviteDisableOutcome::NotFound) => {
             crate::routes::json_error(StatusCode::NOT_FOUND, "会员白名单用户不存在")
         }
-        Ok(Ok(WebAdminInviteDisableOutcome::ProtectedAdmin)) => {
+        Ok(WebAdminInviteDisableOutcome::ProtectedAdmin) => {
             crate::routes::json_error(StatusCode::CONFLICT, "不能禁用当前管理员或其他管理员")
         }
-        Ok(Err(error)) => crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("禁用会员白名单失败: {error}"),
-        ),
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("禁用会员白名单任务失败: {error}"),
+            format!("禁用会员白名单失败: {error}"),
         ),
     }
 }
@@ -262,7 +232,7 @@ pub(crate) async fn handle_usage_report(
     Query(query): Query<PublicAdminUsageQuery>,
     headers: HeaderMap,
 ) -> Response {
-    let admin = match require_public_admin(&state, &headers) {
+    let admin = match require_public_admin(&state, &headers).await {
         Ok(admin) => admin,
         Err(response) => return response,
     };
@@ -278,68 +248,69 @@ pub(crate) async fn handle_usage_report(
     let execution_limit = usize::try_from(report_days)
         .unwrap_or_default()
         .saturating_mul(USAGE_EXECUTION_LIMIT_PER_DAY);
-    let state_for_worker = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let sessions = state_for_worker.core.session_storage.list_sessions()?;
-        let executions = state_for_worker
-            .core
-            .cron_job_storage()
-            .list_recent_executions(&ExecutionFilter {
-                since: Some(period_start.to_rfc3339()),
-                until: Some(now.to_rfc3339()),
-                limit: execution_limit,
-                ..ExecutionFilter::default()
-            })?;
-        if executions.len() >= execution_limit {
-            return Err(hone_core::HoneError::Config(format!(
-                "public admin usage execution query reached safety limit {execution_limit}"
-            )));
-        }
-        let users = state_for_worker.web_auth.list_invite_users()?;
-        Ok::<_, hone_core::HoneError>(build_usage_report(
-            now,
-            report_days,
-            sessions,
-            executions,
-            users,
-        ))
-    })
-    .await;
-
-    match result {
-        Ok(Ok(report)) => {
-            tracing::info!(
-                admin_user_id = %admin.user_id,
-                report_days,
-                row_count = report.rows.len(),
-                today_questions = report.summary.today_question_count,
-                "public admin usage report loaded"
+    let sessions = match state.core.session_storage.list_sessions().await {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取会话统计失败: {error}"),
             );
-            Json(report).into_response()
         }
-        Ok(Err(error)) => {
+    };
+    let users = match state.web_auth.list_invite_users().await {
+        Ok(users) => users,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取用户统计失败: {error}"),
+            );
+        }
+    };
+    let executions = match state
+        .core
+        .cron_job_storage()
+        .await
+        .list_recent_executions(&ExecutionFilter {
+            since: Some(period_start.to_rfc3339()),
+            until: Some(now.to_rfc3339()),
+            limit: execution_limit,
+            ..ExecutionFilter::default()
+        })
+        .await
+    {
+        Ok(executions) => executions,
+        Err(error) => {
             tracing::error!(
                 admin_user_id = %admin.user_id,
                 error = %error,
                 "public admin usage report failed"
             );
-            crate::routes::json_error(
+            return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "使用统计暂时无法读取，请稍后重试",
-            )
-        }
-        Err(error) => {
-            tracing::error!(
-                admin_user_id = %admin.user_id,
-                error = %error,
-                "public admin usage report task failed"
             );
-            crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "使用统计暂时无法读取，请稍后重试",
-            )
         }
+    };
+    if executions.len() >= execution_limit {
+        tracing::error!(
+            admin_user_id = %admin.user_id,
+            execution_limit,
+            "public admin usage execution query reached safety limit"
+        );
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "使用统计暂时无法读取，请稍后重试",
+        );
     }
+    let report = build_usage_report(now, report_days, sessions, executions, users);
+    tracing::info!(
+        admin_user_id = %admin.user_id,
+        report_days,
+        row_count = report.rows.len(),
+        today_questions = report.summary.today_question_count,
+        "public admin usage report loaded"
+    );
+    Json(report).into_response()
 }
 
 fn build_usage_report(
@@ -725,16 +696,19 @@ fn update_latest_activity(current: &mut String, candidate: &str) {
 
 /// Read-only admin gate for other public modules. The mutation variant adds a
 /// header marker on top of this; a report endpoint does not need it.
-pub(crate) fn require_public_admin_for_read(
+pub(crate) async fn require_public_admin_for_read(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<WebInviteUser, Response> {
-    require_public_admin(state, headers)
+    require_public_admin(state, headers).await
 }
 
-fn require_public_admin(state: &AppState, headers: &HeaderMap) -> Result<WebInviteUser, Response> {
-    let user = crate::routes::public::require_public_session_user(state, headers)?;
-    match state.web_auth.is_web_admin(&user.user_id) {
+async fn require_public_admin(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<WebInviteUser, Response> {
+    let user = crate::routes::public::require_public_session_user(state, headers).await?;
+    match state.web_auth.is_web_admin(&user.user_id).await {
         Ok(true) => Ok(user),
         Ok(false) => Err(crate::routes::json_error(
             StatusCode::FORBIDDEN,
@@ -747,11 +721,11 @@ fn require_public_admin(state: &AppState, headers: &HeaderMap) -> Result<WebInvi
     }
 }
 
-fn require_public_admin_mutation(
+async fn require_public_admin_mutation(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<WebInviteUser, Response> {
-    let user = require_public_admin(state, headers)?;
+    let user = require_public_admin(state, headers).await?;
     let marker = headers
         .get(ADMIN_ACTION_HEADER)
         .and_then(|value| value.to_str().ok())

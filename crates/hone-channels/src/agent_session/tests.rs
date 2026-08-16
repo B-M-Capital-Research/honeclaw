@@ -101,8 +101,8 @@ fn recorded_runner_result(content: &str, success: bool) -> AgentRunnerResult {
     }
 }
 
-#[test]
-fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
+#[tokio::test]
+async fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
     let response = AgentResponse {
         content: "运行时时区 2026年7月23日 08:31。\n\nTEM：本轮未见 AACR、合作或财报催化触发，继续跟踪价格与公告窗口。".to_string(),
         tool_calls_made: vec![
@@ -134,8 +134,8 @@ fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
     );
 }
 
-#[test]
-fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_copy() {
+#[tokio::test]
+async fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_copy() {
     let response = AgentResponse {
         content: "这次操作可能已经执行，但执行器在返回最终确认前中断，当前状态无法确定。为避免重复写入或重复启动研究任务，我没有自动重试；请先查看当前持仓、关注、提醒、研究任务或服务状态，再决定是否重试。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -156,8 +156,8 @@ fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_c
     );
 }
 
-#[test]
-fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
+#[tokio::test]
+async fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
     let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Local offset");
     let original = offset
         .with_ymd_and_hms(2026, 7, 19, 9, 31, 42)
@@ -863,11 +863,11 @@ impl LlmProvider for MockLlmProvider {
     }
 }
 
-fn make_test_core(root: &std::path::Path, llm: MockLlmProvider) -> Arc<HoneBotCore> {
-    make_test_core_with_config(root, llm, |_| {})
+async fn make_test_core(root: &std::path::Path, llm: MockLlmProvider) -> Arc<HoneBotCore> {
+    make_test_core_with_config(root, llm, |_| {}).await
 }
 
-fn make_test_core_with_config(
+async fn make_test_core_with_config(
     root: &std::path::Path,
     llm: MockLlmProvider,
     configure: impl FnOnce(&mut HoneConfig),
@@ -891,7 +891,7 @@ fn make_test_core_with_config(
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
     configure(&mut config);
 
-    let mut core = HoneBotCore::new(config);
+    let mut core = HoneBotCore::new(config).await;
     let shared_llm = Arc::new(llm);
     core.llm = Some(shared_llm.clone());
     core.auxiliary_llm = Some(shared_llm.clone());
@@ -904,7 +904,7 @@ fn make_test_core_with_config(
     Arc::new(core)
 }
 
-fn make_strict_tool_loop_test_core_with_config(
+async fn make_strict_tool_loop_test_core_with_config(
     root: &std::path::Path,
     llm: MockLlmProvider,
     configure: impl FnOnce(&mut HoneConfig),
@@ -926,7 +926,7 @@ fn make_strict_tool_loop_test_core_with_config(
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
     configure(&mut config);
 
-    let mut core = HoneBotCore::new(config);
+    let mut core = HoneBotCore::new(config).await;
     let shared_llm = Arc::new(llm);
     core.llm = Some(shared_llm.clone());
     core.auxiliary_llm = Some(shared_llm);
@@ -1105,11 +1105,11 @@ fn write_mock_gemini_script_with_stderr(
     (root, script_path)
 }
 
-#[test]
-fn restore_context_missing_session_returns_empty() {
+#[tokio::test]
+async fn restore_context_missing_session_returns_empty() {
     let root = make_temp_dir("hone_channels_restore_missing");
-    let storage = SessionStorage::new(&root);
-    let restored_context = restore_context(&storage, "missing", Some(5), None);
+    let storage = SessionStorage::new(&root).await;
+    let restored_context = restore_context(&storage, "missing", Some(5), None).await;
     assert!(restored_context.messages.is_empty());
     assert!(restored_context.actor_identity().is_none());
     let _ = std::fs::remove_dir_all(root);
@@ -1122,7 +1122,8 @@ async fn native_interactive_turn_consumes_delivered_pushes_once_without_mutating
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
@@ -1160,6 +1161,7 @@ async fn native_interactive_turn_consumes_delivered_pushes_once_without_mutating
                 body,
                 None,
             )
+            .await
             .expect("log delivered push");
     }
 
@@ -1205,6 +1207,7 @@ async fn native_interactive_turn_consumes_delivered_pushes_once_without_mutating
     let persisted = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let user_messages = persisted
         .iter()
@@ -1227,7 +1230,7 @@ async fn replay_runner_receives_delivered_push_as_assistant_context_and_failure_
     let root = make_temp_dir("hone_channels_replay_delivered_push_context");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let mut core = make_test_core(&root, llm);
+    let mut core = make_test_core(&root, llm).await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
@@ -1262,6 +1265,7 @@ async fn replay_runner_receives_delivered_push_as_assistant_context_and_failure_
             "REPLAY_PUSH",
             None,
         )
+        .await
         .expect("log delivered push");
     let session = AgentSession::new(core.clone(), actor.clone(), "direct");
 
@@ -1314,6 +1318,7 @@ async fn replay_runner_receives_delivered_push_as_assistant_context_and_failure_
     let persisted = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let persisted_user = persisted
         .iter()
@@ -1331,8 +1336,8 @@ async fn replay_runner_receives_delivered_push_as_assistant_context_and_failure_
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn should_return_runner_result_ignores_streaming_flag_when_response_is_empty() {
+#[tokio::test]
+async fn should_return_runner_result_ignores_streaming_flag_when_response_is_empty() {
     let result = AgentRunnerResult {
         response: AgentResponse {
             content: String::new(),
@@ -1355,8 +1360,8 @@ fn should_return_runner_result_ignores_streaming_flag_when_response_is_empty() {
     assert!(should_return_runner_result(&with_content));
 }
 
-#[test]
-fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
+#[tokio::test]
+async fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
     let result = AgentRunnerResult {
         response: AgentResponse {
             content: String::new(),
@@ -1380,8 +1385,8 @@ fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
     assert!(!should_return_runner_result(&result));
 }
 
-#[test]
-fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout() {
+#[tokio::test]
+async fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout() {
     assert!(is_retryable_transient_runner_error_text(
         "codex acp error: stream disconnected before completion"
     ));
@@ -1396,8 +1401,8 @@ fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout
     ));
 }
 
-#[test]
-fn corrupted_thought_signature_match_is_exact_to_opencode_invalid_request() {
+#[tokio::test]
+async fn corrupted_thought_signature_match_is_exact_to_opencode_invalid_request() {
     assert!(is_opencode_corrupted_thought_signature_error_text(
         r#"opencode acp request failed: Internal error: {"code":400,"message":"Corrupted thought signature.","metadata":{"error_type":"invalid_request"}}"#
     ));
@@ -1409,8 +1414,8 @@ fn corrupted_thought_signature_match_is_exact_to_opencode_invalid_request() {
     ));
 }
 
-#[test]
-fn upstream_idle_timeout_match_is_exact_to_opencode_504_timeout() {
+#[tokio::test]
+async fn upstream_idle_timeout_match_is_exact_to_opencode_504_timeout() {
     assert!(is_opencode_upstream_idle_timeout_error_text(
         r#"opencode acp request failed: Internal error: {"code":504,"message":"Upstream idle timeout exceeded","metadata":{"error_type":"timeout"}}"#
     ));
@@ -1425,8 +1430,8 @@ fn upstream_idle_timeout_match_is_exact_to_opencode_504_timeout() {
     ));
 }
 
-#[test]
-fn sanitize_user_visible_output_whitespace_only_success_needs_fallback() {
+#[tokio::test]
+async fn sanitize_user_visible_output_whitespace_only_success_needs_fallback() {
     let sanitized = sanitize_user_visible_output("   ");
     assert!(sanitized.content.is_empty());
     assert!(!sanitized.only_internal);
@@ -1436,7 +1441,7 @@ fn sanitize_user_visible_output_whitespace_only_success_needs_fallback() {
 async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
     let root = make_temp_dir("hone_channels_empty_success_tool_calls");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("discord", "empty-success", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let runner = MockEmptySuccessRunner {
@@ -1506,7 +1511,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
 async fn transient_runner_failure_retries_once_before_returning_success() {
     let root = make_temp_dir("hone_channels_transient_runner_retry_success");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("discord", "transient-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let runner = MockSequencedRunner {
@@ -1589,7 +1594,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
 async fn native_persistent_failure_never_resends_the_current_turn_automatically() {
     let root = make_temp_dir("hone_channels_native_persistent_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("discord", "native-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -1665,7 +1670,7 @@ async fn native_persistent_failure_never_resends_the_current_turn_automatically(
 async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppresses_retry() {
     let root = make_temp_dir("hone_channels_committed_terminal_prefix_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "committed-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
@@ -1746,8 +1751,8 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite() {
+#[tokio::test]
+async fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite() {
     let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let mut persistent_failure = AgentRunnerResult {
         response: AgentResponse {
@@ -1857,8 +1862,8 @@ fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite()
     );
 }
 
-#[test]
-fn explicit_persistent_operations_are_execute_once_but_research_context_is_not() {
+#[tokio::test]
+async fn explicit_persistent_operations_are_execute_once_but_research_context_is_not() {
     for input in [
         "帮我关注 NVDA",
         "把 NBIS 放进自选",
@@ -1926,7 +1931,7 @@ fn explicit_persistent_operations_are_execute_once_but_research_context_is_not()
 async fn observed_persistent_tool_trace_suppresses_transient_retry() {
     let root = make_temp_dir("hone_channels_persistent_trace_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor =
         ActorIdentity::new("discord", "persistent-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
@@ -2048,7 +2053,7 @@ async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
         },
     }])));
     let runtime_inputs = Arc::new(Mutex::new(Vec::new()));
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     {
         let core_mut = Arc::get_mut(&mut core).expect("unique test core");
         let runs = runs.clone();
@@ -2108,6 +2113,7 @@ async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let assistant = messages
         .iter()
@@ -2144,7 +2150,7 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
         omit_prefix_from_final_response: false,
         seen_prefixes: seen_prefixes.clone(),
     };
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     Arc::get_mut(&mut core)
         .expect("unique test core")
         .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
@@ -2195,6 +2201,7 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let persisted = messages
         .iter()
@@ -2206,8 +2213,8 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
+#[tokio::test]
+async fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
     let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut aligned = AgentResponse {
         content: format!("\n\u{3000}\t{prefix}\n\n候选结论"),
@@ -2231,8 +2238,8 @@ fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
     assert_eq!(wrong.content, original);
 }
 
-#[test]
-fn committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content() {
+#[tokio::test]
+async fn committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content() {
     let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut tail_only = AgentResponse {
         content: "\n\n候选结论".to_string(),
@@ -2274,7 +2281,7 @@ async fn service_prefix_tail_only_final_response_is_recovered_without_generic_fa
         omit_prefix_from_final_response: true,
         seen_prefixes: seen_prefixes.clone(),
     };
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     Arc::get_mut(&mut core)
         .expect("unique test core")
         .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
@@ -2324,6 +2331,7 @@ async fn service_prefix_tail_only_final_response_is_recovered_without_generic_fa
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let persisted = messages
         .iter()
@@ -2350,7 +2358,7 @@ async fn service_prefix_conflicting_time_header_is_recovered_without_generic_fai
         omit_prefix_from_final_response: true,
         seen_prefixes: seen_prefixes.clone(),
     };
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     Arc::get_mut(&mut core)
         .expect("unique test core")
         .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
@@ -2401,6 +2409,7 @@ async fn service_prefix_conflicting_time_header_is_recovered_without_generic_fai
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let persisted = messages
         .iter()
@@ -2423,7 +2432,7 @@ async fn failed_committed_prefix_run_never_appends_canned_business_refusal_copy(
         omit_prefix_from_final_response: false,
         seen_prefixes: seen_prefixes.clone(),
     };
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     Arc::get_mut(&mut core)
         .expect("unique test core")
         .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
@@ -2476,6 +2485,7 @@ async fn failed_committed_prefix_run_never_appends_canned_business_refusal_copy(
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted messages");
     let assistant = messages
         .iter()
@@ -2503,7 +2513,7 @@ async fn failed_committed_prefix_run_never_appends_canned_business_refusal_copy(
 async fn unknown_tool_trace_suppresses_transient_retry() {
     let root = make_temp_dir("hone_channels_unknown_tool_trace_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "unknown-tool-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -2592,7 +2602,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
 async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace() {
     let root = make_temp_dir("hone_channels_execute_once_empty_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("discord", "execute-once-empty", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -2681,7 +2691,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
 async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trace() {
     let root = make_temp_dir("hone_channels_portfolio_mutation_disconnect_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor =
         ActorIdentity::new("web", "portfolio-mutation-disconnect", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
@@ -2774,7 +2784,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
 async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_trace() {
     let root = make_temp_dir("hone_channels_deep_research_disconnect_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor =
         ActorIdentity::new("web", "deep-research-disconnect", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
@@ -2870,7 +2880,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
 async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fallback() {
     let root = make_temp_dir("hone_channels_post_quote_runner_failure");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "post-quote-failure", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -3051,7 +3061,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
 async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() {
     let root = make_temp_dir("hone_channels_investment_contract_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let incomplete_raw = "<think>内部推理不得带入修订请求</think>\nQ3 可能起飞。你成本多少？";
@@ -3204,7 +3214,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
 async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
     let root = make_temp_dir("hone_channels_investment_unknown_tool_no_fallback");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor =
         ActorIdentity::new("web", "investment-unknown-tool", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
@@ -3402,7 +3412,7 @@ fn repair_trace_call(name: &str, arguments: Value, id: &str) -> ToolCallMade {
 async fn interactive_contract_cannot_authorize_repair_fallback_or_replay() {
     let root = make_temp_dir("hone_channels_interactive_contract_is_observational");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "interactive-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let original_answer =
@@ -3468,7 +3478,7 @@ async fn interactive_contract_cannot_authorize_repair_fallback_or_replay() {
 async fn investment_contract_repair_keeps_initial_and_retry_tool_traces() {
     let root = make_temp_dir("hone_channels_investment_repair_trace_merge");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "repair-trace-merge", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -3568,7 +3578,7 @@ async fn investment_contract_repair_rejects_unknown_and_persistent_retry_traces(
     for (case_name, unsafe_retry_call, expected_message) in cases {
         let root = make_temp_dir(&format!("hone_channels_investment_repair_{case_name}"));
         std::fs::create_dir_all(&root).expect("create root");
-        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
         let actor = ActorIdentity::new("web", format!("repair-{case_name}"), None::<String>)
             .expect("actor");
         let session = AgentSession::new(core, actor, "direct");
@@ -3650,7 +3660,7 @@ async fn investment_contract_repair_rejects_unknown_and_persistent_retry_traces(
 async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback() {
     let root = make_temp_dir("hone_channels_fund_forbidden_call_retry");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "fund-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
@@ -3772,7 +3782,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
 async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() {
     let root = make_temp_dir("hone_channels_investment_contract_visible_text");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "visible-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let visible = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
@@ -3892,10 +3902,10 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_context_filters_and_limits_messages() {
+#[tokio::test]
+async fn restore_context_filters_and_limits_messages() {
     let root = make_temp_dir("hone_channels_restore_filter");
-    let storage = SessionStorage::new(&root);
+    let storage = SessionStorage::new(&root).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session_id = storage
         .create_session(
@@ -3903,13 +3913,16 @@ fn restore_context_filters_and_limits_messages() {
             Some(actor.clone()),
             Some(SessionIdentity::from_actor(&actor).expect("session identity")),
         )
+        .await
         .expect("create");
 
     storage
         .add_message(&session_id, "user", "u1", None)
+        .await
         .expect("add u1");
     storage
         .add_message(&session_id, "assistant", "a1", None)
+        .await
         .expect("add a1");
     storage
         .add_message(
@@ -3927,15 +3940,18 @@ fn restore_context_filters_and_limits_messages() {
                 ),
             ])),
         )
+        .await
         .expect("add t1");
     storage
         .add_message(&session_id, "user", "u2", None)
+        .await
         .expect("add u2");
     storage
         .add_message(&session_id, "assistant", "a2", None)
+        .await
         .expect("add a2");
 
-    let restored_context = restore_context(&storage, &session_id, Some(4), None);
+    let restored_context = restore_context(&storage, &session_id, Some(4), None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -3956,17 +3972,19 @@ fn restore_context_filters_and_limits_messages() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_context_rehydrates_assistant_tool_calls() {
+#[tokio::test]
+async fn restore_context_rehydrates_assistant_tool_calls() {
     let root = make_temp_dir("hone_channels_restore_tool_calls");
-    let storage = SessionStorage::new(&root);
+    let storage = SessionStorage::new(&root).await;
     let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     storage
         .add_message(&session_id, "user", "AAOI 是什么公司", None)
+        .await
         .expect("add user");
     storage
         .add_message(
@@ -3982,6 +4000,7 @@ fn restore_context_rehydrates_assistant_tool_calls() {
                 }
             })])),
         )
+        .await
         .expect("add assistant");
     storage
         .add_message(
@@ -3994,9 +4013,10 @@ fn restore_context_rehydrates_assistant_tool_calls() {
                 None,
             )),
         )
+        .await
         .expect("add tool");
 
-    let restored_context = restore_context(&storage, &session_id, None, None);
+    let restored_context = restore_context(&storage, &session_id, None, None).await;
     assert_eq!(restored_context.messages.len(), 3);
     assert_eq!(restored_context.messages[1].role, "assistant");
     let tool_calls = restored_context.messages[1]
@@ -4015,13 +4035,14 @@ fn restore_context_rehydrates_assistant_tool_calls() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_context_preserves_message_metadata() {
+#[tokio::test]
+async fn restore_context_preserves_message_metadata() {
     let root = make_temp_dir("hone_channels_restore_metadata");
-    let storage = SessionStorage::new(&root);
+    let storage = SessionStorage::new(&root).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     storage
@@ -4052,6 +4073,7 @@ fn restore_context_preserves_message_metadata() {
                 ),
             ])),
         )
+        .await
         .expect("add assistant");
     storage
         .add_message(
@@ -4078,9 +4100,10 @@ fn restore_context_preserves_message_metadata() {
                 ),
             ])),
         )
+        .await
         .expect("add tool");
 
-    let restored_context = restore_context(&storage, &session_id, None, None);
+    let restored_context = restore_context(&storage, &session_id, None, None).await;
     assert_eq!(restored_context.messages.len(), 2);
     assert_eq!(
         restored_context.messages[0]
@@ -4110,8 +4133,8 @@ fn restore_context_preserves_message_metadata() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn interactive_runtime_history_drops_scheduler_and_failed_turn_groups() {
+#[tokio::test]
+async fn interactive_runtime_history_drops_scheduler_and_failed_turn_groups() {
     let message =
         |role: &str, content: &str, metadata: Option<HashMap<String, Value>>| AgentMessage {
             role: role.to_string(),
@@ -4169,8 +4192,8 @@ fn interactive_runtime_history_drops_scheduler_and_failed_turn_groups() {
     );
 }
 
-#[test]
-fn interactive_runtime_history_does_not_exempt_historical_same_text_groups() {
+#[tokio::test]
+async fn interactive_runtime_history_does_not_exempt_historical_same_text_groups() {
     let message =
         |role: &str, content: &str, metadata: Option<HashMap<String, Value>>| AgentMessage {
             role: role.to_string(),
@@ -4210,15 +4233,16 @@ fn interactive_runtime_history_does_not_exempt_historical_same_text_groups() {
     assert_eq!(messages[0].content.as_deref(), Some(current));
 }
 
-#[test]
-fn session_restore_limit_does_not_roll_before_compact_threshold() {
+#[tokio::test]
+async fn session_restore_limit_does_not_roll_before_compact_threshold() {
     let root = make_temp_dir("hone_channels_restore_limit_floor");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let core = make_test_core_with_config(&root, llm, |config| {
         config.group_context.recent_context_limit = 6;
         config.group_context.compress_threshold_messages = 24;
-    });
+    })
+    .await;
 
     let direct_actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let direct = AgentSession::new(core.clone(), direct_actor, "target");
@@ -4237,8 +4261,8 @@ fn session_restore_limit_does_not_roll_before_compact_threshold() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() {
+#[tokio::test]
+async fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() {
     let root = make_temp_dir("hone_channels_prompt_cache_stability");
     let system_skills = root.join("system_skills");
     let skill_dir = system_skills.join("alpha_skill");
@@ -4262,14 +4286,17 @@ fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() 
             "skills_dir".to_string(),
             serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
         );
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "target");
 
-    let (system_with_match, runtime_with_match, _) =
-        session.resolve_prompt_input("session-demo", "alpha skill");
-    let (system_without_match, runtime_without_match, _) =
-        session.resolve_prompt_input("session-demo", "plain greeting");
+    let (system_with_match, runtime_with_match, _) = session
+        .resolve_prompt_input("session-demo", "alpha skill")
+        .await;
+    let (system_without_match, runtime_without_match, _) = session
+        .resolve_prompt_input("session-demo", "plain greeting")
+        .await;
 
     assert_eq!(system_with_match, system_without_match);
     assert!(system_with_match.contains("【SkillTool】"));
@@ -4309,7 +4336,8 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             "skills_dir".to_string(),
             serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
         );
-    });
+    })
+    .await;
     Arc::get_mut(&mut core)
         .expect("exclusive test core")
         .test_runner_factory = Some(Arc::new(|| {
@@ -4411,7 +4439,8 @@ async fn database_admin_web_turn_uses_native_codex_prompt_ownership() {
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     Arc::get_mut(&mut core)
         .expect("exclusive test core")
         .test_runner_factory = Some(Arc::new(|| {
@@ -4484,7 +4513,8 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     Arc::get_mut(&mut core)
         .expect("exclusive test core")
         .test_runner_factory = Some(Arc::new(|| {
@@ -4499,6 +4529,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     core.session_storage
         .add_message(
@@ -4507,9 +4538,11 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
             "旧任务：创建 attachment-persistence-check.txt",
             None,
         )
+        .await
         .expect("seed unrelated prior instruction");
     core.session_storage
         .add_message(&actor.session_id(), "assistant", "旧任务已经结束", None)
+        .await
         .expect("seed unrelated prior answer");
     let session =
         AgentSession::new(core, actor.clone(), "direct").with_prompt_options(PromptOptions {
@@ -4595,7 +4628,8 @@ async fn dedicated_earnings_text_fallback_without_pdf_fails_closed() {
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     Arc::get_mut(&mut core)
         .expect("exclusive test core")
         .test_runner_factory = Some(Arc::new(|| Box::new(EarningsFallbackStreamingRunner)));
@@ -4639,6 +4673,7 @@ async fn dedicated_earnings_text_fallback_without_pdf_fails_closed() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert!(!messages.iter().any(|message| {
         message
@@ -4657,7 +4692,8 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
     let llm = MockLlmProvider::with_chat_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
@@ -4750,12 +4786,15 @@ async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thou
         .expect("actor");
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&actor.session_id(), "user", "旧的普通聊天任务", None)
+        .await
         .expect("seed old user message");
     core.session_storage
         .add_message(&actor.session_id(), "assistant", "旧任务回答", None)
+        .await
         .expect("seed old assistant message");
     let session = AgentSession::new(core, actor, "direct").with_prompt_options(PromptOptions {
         is_admin: true,
@@ -4813,7 +4852,8 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
     let llm = MockLlmProvider::with_chat_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
@@ -4905,9 +4945,11 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
         ActorIdentity::new("web", "database-admin-pdf-validation", None::<String>).expect("actor");
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&actor.session_id(), "user", "旧的普通聊天任务", None)
+        .await
         .expect("seed old user message");
     let session = AgentSession::new(core, actor, "direct").with_prompt_options(PromptOptions {
         is_admin: true,
@@ -4969,7 +5011,8 @@ async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let mut core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     Arc::get_mut(&mut core)
         .expect("exclusive test core")
         .test_runner_factory = Some(Arc::new(|| {
@@ -5014,7 +5057,8 @@ async fn unverified_actor_cannot_enable_dedicated_earnings_profile() {
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
     let core = make_test_core_with_config(&root, llm, |config| {
         config.agent.runner = "codex_acp".to_string();
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "ordinary-user", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor.clone(), "direct");
     let options = AgentRunOptions {
@@ -5041,8 +5085,8 @@ async fn unverified_actor_cannot_enable_dedicated_earnings_profile() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
+#[tokio::test]
+async fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
     let root = make_temp_dir("hone_channels_slash_skill_task_boundary");
     let system_skills = root.join("system_skills");
     let skill_dir = system_skills.join("earnings-research");
@@ -5071,7 +5115,8 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
             "skills_dir".to_string(),
             serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
         );
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
     let preview_task =
         "请为 SNDK（闪迪）执行财报前瞻\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: SNDK";
@@ -5134,8 +5179,8 @@ fn direct_slash_skill_keeps_user_task_separate_from_skill_instructions() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
+#[tokio::test]
+async fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
     let root = make_temp_dir("hone_channels_prompt_stage_skill_visibility");
     let system_skills = root.join("system_skills");
     let scheduled_dir = system_skills.join("scheduled_task");
@@ -5175,12 +5220,14 @@ fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
             "skills_dir".to_string(),
             serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
         );
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("telegram", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "target").with_cron_allowed(false);
 
-    let (_, runtime_input, _) =
-        session.resolve_prompt_input("session-demo", "set a scheduled task");
+    let (_, runtime_input, _) = session
+        .resolve_prompt_input("session-demo", "set a scheduled task")
+        .await;
 
     assert!(!runtime_input.contains("scheduled_task"));
     assert!(!runtime_input.contains("Scheduled Task"));
@@ -5189,16 +5236,18 @@ fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
+#[tokio::test]
+async fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
     let root = make_temp_dir("hone_channels_prompt_web_cron_delivery");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("web", "web-user", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "web-user").with_cron_allowed(true);
 
-    let (system_prompt, _, _) = session.resolve_prompt_input("session-demo", "3 分钟后提醒我");
+    let (system_prompt, _, _) = session
+        .resolve_prompt_input("session-demo", "3 分钟后提醒我")
+        .await;
 
     assert!(system_prompt.contains("【Web 定时任务送达边界】"));
     assert!(system_prompt.contains("只保证写入当前 Hone 会话"));
@@ -5208,16 +5257,18 @@ fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
+#[tokio::test]
+async fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
     let root = make_temp_dir("hone_channels_prompt_cron_enabled_language");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("feishu", "ou_cron", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "ou_cron").with_cron_allowed(true);
 
-    let (system_prompt, _, _) = session.resolve_prompt_input("session-demo", "我有哪些定时任务");
+    let (system_prompt, _, _) = session
+        .resolve_prompt_input("session-demo", "我有哪些定时任务")
+        .await;
 
     assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
     assert!(system_prompt.contains("必须调用真实 `cron_job` 工具完成"));
@@ -5232,15 +5283,15 @@ fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
+#[tokio::test]
+async fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
     let root = make_temp_dir("hone_channels_prompt_recv_extra_priority");
     let actor = ActorIdentity::new("discord", "alice", Some("room-1".to_string())).expect("actor");
     let session_identity =
         SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
             .expect("group session");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let storage = &core.session_storage;
     let session_id = storage
         .create_session(
@@ -5248,6 +5299,7 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
             Some(actor.clone()),
             Some(session_identity),
         )
+        .await
         .expect("create session");
     storage
         .add_message(
@@ -5256,6 +5308,7 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
         )
+        .await
         .expect("add boundary");
     storage
         .add_message(
@@ -5264,6 +5317,7 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
             "【Compact Summary】\nsummary",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
 
     let session = AgentSession::new(core, actor, "target")
@@ -5272,7 +5326,7 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
             "【群聊同发言者最近往返候选】\nrecent exchange".to_string(),
         ));
 
-    let (_, runtime_input, _) = session.resolve_prompt_input("session-demo", "请继续");
+    let (_, runtime_input, _) = session.resolve_prompt_input("session-demo", "请继续").await;
     let extra_pos = runtime_input
         .find("【群聊同发言者最近往返候选】")
         .expect("recv extra present");
@@ -5284,8 +5338,8 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn response_leaks_system_prompt_detects_prefixed_echo() {
+#[tokio::test]
+async fn response_leaks_system_prompt_detects_prefixed_echo() {
     assert!(response_leaks_system_prompt(
         "\n### System Instructions ###\nsecret"
     ));
@@ -5298,11 +5352,11 @@ fn response_leaks_system_prompt_detects_prefixed_echo() {
     assert!(!response_leaks_system_prompt("正常回复"));
 }
 
-#[test]
-fn finalize_agent_response_marks_sanitized_empty_success_as_failure() {
+#[tokio::test]
+async fn finalize_agent_response_marks_sanitized_empty_success_as_failure() {
     let root = make_temp_dir("hone_channels_finalize_sanitized_empty");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "   ".to_string(),
         tool_calls_made: Vec::new(),
@@ -5324,11 +5378,11 @@ fn finalize_agent_response_marks_sanitized_empty_success_as_failure() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_marks_planning_sentence_as_failure() {
+#[tokio::test]
+async fn finalize_agent_response_marks_planning_sentence_as_failure() {
     let root = make_temp_dir("hone_channels_finalize_planning_sentence");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "我先查一下你现有的定时任务。".to_string(),
         tool_calls_made: Vec::new(),
@@ -5353,11 +5407,11 @@ fn finalize_agent_response_marks_planning_sentence_as_failure() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_owned_interactive_finalizer_does_not_rewrite_or_veto_business_copy() {
+#[tokio::test]
+async fn agent_owned_interactive_finalizer_does_not_rewrite_or_veto_business_copy() {
     let root = make_temp_dir("hone_channels_finalize_agent_owned_interactive");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let original =
         "我先把本轮证据边界说清楚：data_fetch quote 没有逐笔字段，因此这里只按最新可得口径回答。";
     let mut response = AgentResponse {
@@ -5385,11 +5439,11 @@ fn agent_owned_interactive_finalizer_does_not_rewrite_or_veto_business_copy() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
     let root = make_temp_dir("hone_channels_finalize_cron_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "我先处理这个监控任务，稍后给你创建结果。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5427,11 +5481,11 @@ fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_cron_job_list_from_tool_result() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_cron_job_list_from_tool_result() {
     let root = make_temp_dir("hone_channels_finalize_cron_list_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "我先查一下你现有的定时任务。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5482,11 +5536,11 @@ fn finalize_agent_response_recovers_cron_job_list_from_tool_result() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_cron_job_remove_confirmation_from_tool_result() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_cron_job_remove_confirmation_from_tool_result() {
     let root = make_temp_dir("hone_channels_finalize_cron_remove_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "当前没有可用的定时任务注册入口，因此不能直接完成自动创建。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5527,11 +5581,12 @@ fn finalize_agent_response_recovers_cron_job_remove_confirmation_from_tool_resul
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_cron_job_result_after_sanitization_strips_internal_copy() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_cron_job_result_after_sanitization_strips_internal_copy()
+{
     let root = make_temp_dir("hone_channels_finalize_cron_sanitized_empty_recovery");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "自动定时任务注册工具没有暴露出来，所以我不能确认任务已经正式创建成功。"
             .to_string(),
@@ -5571,11 +5626,11 @@ fn finalize_agent_response_recovers_cron_job_result_after_sanitization_strips_in
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
     let root = make_temp_dir("hone_channels_finalize_portfolio_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "我先把你的 RDW 持仓记录好，然后继续跟踪。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5619,11 +5674,11 @@ fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn finalize_agent_response_recovers_portfolio_view_holding_confirmation() {
+#[tokio::test]
+async fn finalize_agent_response_recovers_portfolio_view_holding_confirmation() {
     let root = make_temp_dir("hone_channels_finalize_portfolio_view_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let mut response = AgentResponse {
         content: "我先看一下你的 VST 持仓和计划，再给你确认。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5667,18 +5722,18 @@ fn finalize_agent_response_recovers_portfolio_view_holding_confirmation() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn transitional_clarification_question_is_not_treated_as_planning_sentence() {
+#[tokio::test]
+async fn transitional_clarification_question_is_not_treated_as_planning_sentence() {
     assert!(!crate::runtime::is_transitional_planning_sentence(
         "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。"
     ));
 }
 
-#[test]
-fn finalize_agent_response_keeps_user_facing_clarification_question() {
+#[tokio::test]
+async fn finalize_agent_response_keeps_user_facing_clarification_question() {
     let root = make_temp_dir("hone_channels_finalize_clarification_question");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let clarification = "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。";
     let mut response = AgentResponse {
         content: clarification.to_string(),
@@ -5698,8 +5753,8 @@ fn finalize_agent_response_keeps_user_facing_clarification_question() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_context() {
+#[tokio::test]
+async fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_context() {
     let runtime_input = crate::turn_builder::compose_invoked_skill_runtime_input(
         "SKILL_PROMPT",
         Some("finish the task"),
@@ -5709,8 +5764,8 @@ fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_conte
     assert!(runtime_input.contains("finish the task"));
 }
 
-#[test]
-fn unavailable_web_search_results_are_not_persisted() {
+#[tokio::test]
+async fn unavailable_web_search_results_are_not_persisted() {
     let call = ToolCallMade {
         name: "web_search".to_string(),
         arguments: Value::Null,
@@ -5723,10 +5778,10 @@ fn unavailable_web_search_results_are_not_persisted() {
     assert!(!should_persist_tool_result(&call));
 }
 
-#[test]
-fn restore_context_sanitizes_polluted_assistant_history() {
+#[tokio::test]
+async fn restore_context_sanitizes_polluted_assistant_history() {
     let root = make_temp_dir("hone_channels_restore_sanitized_assistant");
-    let storage = SessionStorage::new(&root);
+    let storage = SessionStorage::new(&root).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session_id = storage
         .create_session(
@@ -5734,6 +5789,7 @@ fn restore_context_sanitizes_polluted_assistant_history() {
             Some(actor.clone()),
             Some(SessionIdentity::from_actor(&actor).expect("session identity")),
         )
+        .await
         .expect("create");
 
     storage
@@ -5743,6 +5799,7 @@ fn restore_context_sanitizes_polluted_assistant_history() {
             "<think>先查一下</think>\n真正可见结论",
             None,
         )
+        .await
         .expect("add assistant");
     storage
         .add_message(
@@ -5751,9 +5808,10 @@ fn restore_context_sanitizes_polluted_assistant_history() {
             r#"<tool_call>{"name":"web_search","parameters":{"query":"AAPL"}}</tool_call>"#,
             None,
         )
+        .await
         .expect("add polluted");
 
-    let restored_context = restore_context(&storage, &session_id, None, None);
+    let restored_context = restore_context(&storage, &session_id, None, None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -5764,8 +5822,8 @@ fn restore_context_sanitizes_polluted_assistant_history() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn persistable_turn_from_response_stores_only_final_text_and_tool_call_metadata() {
+#[tokio::test]
+async fn persistable_turn_from_response_stores_only_final_text_and_tool_call_metadata() {
     let response = AgentResponse {
         content: "最终结论：继续观察。".to_string(),
         tool_calls_made: vec![ToolCallMade {
@@ -5813,13 +5871,14 @@ fn persistable_turn_from_response_stores_only_final_text_and_tool_call_metadata(
     assert_eq!(tool_calls[0]["function"]["name"], "web_search");
 }
 
-#[test]
-fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text() {
+#[tokio::test]
+async fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text() {
     let root = make_temp_dir("hone_channels_persistable_turn_preview");
-    let storage = SessionStorage::new(root.join("sessions"));
+    let storage = SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("feishu", "preview-user", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     let response = AgentResponse {
@@ -5843,6 +5902,7 @@ fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text()
                 hone_core::local_now_rfc3339(),
             )],
         )
+        .await
         .expect("append assistant");
 
     assert!(
@@ -5854,6 +5914,7 @@ fn persistable_turn_from_response_keeps_postgres_runtime_history_on_final_text()
     );
     let session = storage
         .load_session(&session_id)
+        .await
         .expect("load session")
         .expect("session from PostgreSQL");
     let assistant = session
@@ -5887,7 +5948,7 @@ async fn normalize_local_image_references_moves_sandbox_images_into_gen_images()
     std::fs::create_dir_all(&data_dir).expect("create data dir");
 
     with_temp_env_var("HONE_DATA_DIR", data_dir.as_os_str(), || async {
-        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
         let sandbox_image = sandbox_base_dir()
             .join("telegram")
             .join("chat_3a-test__probe")
@@ -5923,11 +5984,11 @@ async fn normalize_local_image_references_moves_sandbox_images_into_gen_images()
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn normalize_local_image_references_replaces_missing_images_with_fallback_note() {
+#[tokio::test]
+async fn normalize_local_image_references_replaces_missing_images_with_fallback_note() {
     let root = make_temp_dir("hone_channels_local_image_missing");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let missing = root.join("missing").join("chart.png");
     let content = format!("前文\nfile://{}\n后文", missing.display());
 
@@ -5938,8 +5999,8 @@ fn normalize_local_image_references_replaces_missing_images_with_fallback_note()
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn sanitize_assistant_context_content_redacts_local_image_markers() {
+#[tokio::test]
+async fn sanitize_assistant_context_content_redacts_local_image_markers() {
     let sanitized = sanitize_assistant_context_content(
         "前文<a href=\"file:///tmp/chart.png\">查看图片</a>后文",
     );
@@ -5947,15 +6008,16 @@ fn sanitize_assistant_context_content_redacts_local_image_markers() {
     assert_eq!(sanitized, "前文（上文包含图表）后文");
 }
 
-#[test]
-fn successful_context_messages_persist_only_final_text_and_tool_metadata() {
+#[tokio::test]
+async fn successful_context_messages_persist_only_final_text_and_tool_metadata() {
     let root = make_temp_dir("hone_channels_context_messages_persist_sanitized");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_tool_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_tool_responses(Vec::new())).await;
     let actor = ActorIdentity::new("feishu", "context-persist", None::<String>).expect("actor");
     let session = AgentSession::new(core.clone(), actor.clone(), "direct");
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     let response = AgentResponse {
@@ -6002,15 +6064,14 @@ fn successful_context_messages_persist_only_final_text_and_tool_metadata() {
         },
     ];
 
-    session.persist_successful_assistant_turn(
-        &actor.session_id(),
-        &response,
-        Some(&context_messages),
-    );
+    session
+        .persist_successful_assistant_turn(&actor.session_id(), &response, Some(&context_messages))
+        .await;
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     let assistant = messages
         .iter()
@@ -6036,8 +6097,8 @@ fn successful_context_messages_persist_only_final_text_and_tool_metadata() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn successful_web_search_results_are_persisted() {
+#[tokio::test]
+async fn successful_web_search_results_are_persisted() {
     let call = ToolCallMade {
         name: "web_search".to_string(),
         arguments: Value::Null,
@@ -6049,8 +6110,8 @@ fn successful_web_search_results_are_persisted() {
     assert!(should_persist_tool_result(&call));
 }
 
-#[test]
-fn namespaced_skill_runtime_tool_results_are_not_persisted() {
+#[tokio::test]
+async fn namespaced_skill_runtime_tool_results_are_not_persisted() {
     for name in [
         "hone/skill_tool",
         "hone/load_skill",
@@ -6067,20 +6128,23 @@ fn namespaced_skill_runtime_tool_results_are_not_persisted() {
     }
 }
 
-#[test]
-fn restore_context_injects_invoked_skills_before_message_window() {
+#[tokio::test]
+async fn restore_context_injects_invoked_skills_before_message_window() {
     let root = make_temp_dir("hone_channels_restore_invoked_skills");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("discord", "bob", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     storage
         .add_message(&session_id, "user", "hello", None)
+        .await
         .expect("add user");
     storage
         .add_message(&session_id, "assistant", "world", None)
+        .await
         .expect("add assistant");
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -6101,9 +6165,10 @@ fn restore_context_injects_invoked_skills_before_message_window() {
     );
     storage
         .update_metadata(&session_id, metadata)
+        .await
         .expect("metadata");
 
-    let restored_context = restore_context(&storage, &session_id, Some(5), None);
+    let restored_context = restore_context(&storage, &session_id, Some(5), None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -6112,14 +6177,15 @@ fn restore_context_injects_invoked_skills_before_message_window() {
     assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT", "hello", "world"]);
 }
 
-#[test]
-fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
+#[tokio::test]
+async fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
     let root = make_temp_dir("hone_channels_restore_turn_scoped_earnings");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -6155,6 +6221,7 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
     );
     storage
         .update_metadata(&session_id, metadata)
+        .await
         .expect("metadata");
     storage
         .add_message(
@@ -6163,6 +6230,7 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 2, 4)),
         )
+        .await
         .expect("boundary");
     storage
         .add_message(
@@ -6173,9 +6241,10 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
                 "earnings-research",
             )),
         )
+        .await
         .expect("earnings snapshot");
 
-    let restored = restore_context(&storage, &session_id, Some(10), None);
+    let restored = restore_context(&storage, &session_id, Some(10), None).await;
     let contents = restored
         .messages
         .iter()
@@ -6186,14 +6255,15 @@ fn restore_context_never_reinjects_turn_scoped_earnings_prompts() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
+#[tokio::test]
+async fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
     let root = make_temp_dir("hone_channels_forget_legacy_earnings_prompt");
     let llm = MockLlmProvider::with_tool_responses(Vec::new());
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("web", "earnings-admin", None::<String>).expect("actor");
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     let records = ["earnings-research", "alpha"]
         .into_iter()
@@ -6221,16 +6291,19 @@ fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
                 Value::Array(records),
             )]),
         )
+        .await
         .expect("metadata");
     let session = AgentSession::new(core.clone(), actor.clone(), "direct");
 
     session
         .forget_turn_scoped_skill_prompt(&actor.session_id(), "earnings-research")
+        .await
         .expect("forget earnings prompt");
 
     let stored = core
         .session_storage
         .load_session(&actor.session_id())
+        .await
         .expect("load session")
         .expect("session");
     let skills = hone_memory::invoked_skills_from_metadata(&stored.metadata);
@@ -6244,8 +6317,8 @@ fn starting_a_turn_scoped_workflow_forgets_legacy_earnings_metadata_only() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_context_skips_invoked_skill_when_registry_disables_it() {
+#[tokio::test]
+async fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     let root = make_temp_dir("hone_channels_restore_disabled_skill");
     std::fs::create_dir_all(root.join("system/alpha")).expect("skill dir");
     std::fs::create_dir_all(root.join("custom")).expect("custom dir");
@@ -6261,13 +6334,15 @@ fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     )
     .expect("disable alpha");
 
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("discord", "bob", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     storage
         .add_message(&session_id, "assistant", "world", None)
+        .await
         .expect("add assistant");
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -6288,12 +6363,13 @@ fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     );
     storage
         .update_metadata(&session_id, metadata)
+        .await
         .expect("metadata");
 
     let runtime =
         hone_tools::SkillRuntime::new(root.join("system"), root.join("custom"), root.clone())
             .with_registry_path(root.join("runtime").join("skill_registry.json"));
-    let restored_context = restore_context(&storage, &session_id, Some(5), Some(&runtime));
+    let restored_context = restore_context(&storage, &session_id, Some(5), Some(&runtime)).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -6302,17 +6378,19 @@ fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     assert_eq!(contents, vec!["world"]);
 }
 
-#[test]
-fn restore_context_uses_only_messages_after_latest_compact_boundary() {
+#[tokio::test]
+async fn restore_context_uses_only_messages_after_latest_compact_boundary() {
     let root = make_temp_dir("hone_channels_restore_after_boundary");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("discord", "carol", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     storage
         .add_message(&session_id, "user", "before-compact", None)
+        .await
         .expect("add old");
     storage
         .add_message(
@@ -6321,6 +6399,7 @@ fn restore_context_uses_only_messages_after_latest_compact_boundary() {
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 4, 6)),
         )
+        .await
         .expect("add boundary");
     storage
         .add_message(
@@ -6329,12 +6408,14 @@ fn restore_context_uses_only_messages_after_latest_compact_boundary() {
             "【Compact Summary】\nsummary",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
     storage
         .add_message(&session_id, "assistant", "after-compact", None)
+        .await
         .expect("add assistant");
 
-    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let restored_context = restore_context(&storage, &session_id, Some(10), None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -6344,18 +6425,20 @@ fn restore_context_uses_only_messages_after_latest_compact_boundary() {
     assert_eq!(contents, vec!["after-compact"]);
 }
 
-#[test]
-fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_text_noise() {
+#[tokio::test]
+async fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_text_noise() {
     let root = make_temp_dir("hone_channels_recent_user_refs_across_compact");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("web", "recent-user-refs", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     for index in 1..=7 {
         storage
             .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .await
             .expect("add pre-compact user");
     }
     storage
@@ -6365,6 +6448,7 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 7, 9)),
         )
+        .await
         .expect("add boundary");
     storage
         .add_message(
@@ -6373,10 +6457,12 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
             "【Compact Summary】\nsummary-must-not-be-a-reference",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
     for index in 8..=9 {
         storage
             .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .await
             .expect("add post-compact user");
     }
     storage
@@ -6389,6 +6475,7 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
                 Value::String("old-skill".to_string()),
             )])),
         )
+        .await
         .expect("add slash user");
 
     let current = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
@@ -6402,12 +6489,15 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
                 Value::String("scheduler".to_string()),
             )])),
         )
+        .await
         .expect("add same-text automation user");
     storage
         .add_message(&session_id, "assistant", "automation result", None)
+        .await
         .expect("add automation assistant");
     storage
         .add_message(&session_id, "user", current, None)
+        .await
         .expect("add same-text failed user");
     storage
         .add_message(
@@ -6419,13 +6509,16 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
                 Value::Bool(true),
             )])),
         )
+        .await
         .expect("add failed assistant");
     storage
         .add_message(&session_id, "user", current, None)
+        .await
         .expect("add current user");
 
     let snapshot = storage
         .load_session(&session_id)
+        .await
         .expect("load session")
         .expect("session");
     let restored = restore_recent_interactive_user_references(&snapshot, current, None);
@@ -6448,14 +6541,15 @@ fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_tex
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_confirmation() {
+#[tokio::test]
+async fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_confirmation() {
     let root = make_temp_dir("hone_channels_restore_recent_followup_confirmation");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("feishu", "followup-entity", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     storage
@@ -6465,6 +6559,7 @@ fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_conf
             "META、MSFT、STX、BE 的财报日期和盘前盘后分别是什么？",
             None,
         )
+        .await
         .expect("add explicit ticker user");
     storage
         .add_message(
@@ -6473,6 +6568,7 @@ fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_conf
             "你上面提到的是 META、MSFT、STX、BE 这四家公司。",
             None,
         )
+        .await
         .expect("add assistant entity confirmation");
     storage
         .add_message(
@@ -6481,10 +6577,12 @@ fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_conf
             "上面四家公司最近一次财报分别是什么时间？",
             None,
         )
+        .await
         .expect("add current followup");
 
     let snapshot = storage
         .load_session(&session_id)
+        .await
         .expect("load session")
         .expect("session");
     let restored = restore_recent_interactive_user_references(
@@ -6514,14 +6612,15 @@ fn restore_recent_interactive_user_references_keeps_recent_assistant_entity_conf
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
+#[tokio::test]
+async fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
     let root = make_temp_dir("hone_channels_restore_skill_after_boundary");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("discord", "dana", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     let mut metadata = HashMap::new();
@@ -6543,6 +6642,7 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
     );
     storage
         .update_metadata(&session_id, metadata)
+        .await
         .expect("update metadata");
     storage
         .add_message(
@@ -6551,6 +6651,7 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
         )
+        .await
         .expect("add boundary");
     storage
         .add_message(
@@ -6559,9 +6660,10 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
             "【Compact Summary】\nsummary",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
 
-    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let restored_context = restore_context(&storage, &session_id, Some(10), None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -6571,14 +6673,15 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
     assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT"]);
 }
 
-#[test]
-fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() {
+#[tokio::test]
+async fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() {
     let root = make_temp_dir("hone_channels_restore_skill_snapshot_dedup");
     std::fs::create_dir_all(&root).expect("create root");
-    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
     let actor = ActorIdentity::new("discord", "erin", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
 
     let mut metadata = HashMap::new();
@@ -6600,6 +6703,7 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
     );
     storage
         .update_metadata(&session_id, metadata)
+        .await
         .expect("update metadata");
     storage
         .add_message(
@@ -6608,6 +6712,7 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
         )
+        .await
         .expect("add boundary");
     storage
         .add_message(
@@ -6616,6 +6721,7 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
             "【Compact Summary】\nsummary",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
     storage
         .add_message(
@@ -6624,9 +6730,10 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
             "INVOKED_SKILL_PROMPT",
             Some(hone_memory::build_compact_skill_snapshot_metadata("alpha")),
         )
+        .await
         .expect("add skill snapshot");
 
-    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let restored_context = restore_context(&storage, &session_id, Some(10), None).await;
     let contents: Vec<_> = restored_context
         .messages
         .iter()
@@ -6646,7 +6753,7 @@ async fn run_success_commits_daily_conversation_quota() {
         tool_calls: None,
         usage: None,
     }]);
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
 
@@ -6657,6 +6764,7 @@ async fn run_success_commits_daily_conversation_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, 1);
@@ -6665,6 +6773,7 @@ async fn run_success_commits_daily_conversation_quota() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 2);
     let _ = std::fs::remove_dir_all(root);
@@ -6680,7 +6789,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         tool_calls: None,
         usage: None,
     }]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let today = hone_core::local_now().format("%F").to_string();
     let daily_limit = core.config.agent.daily_conversation_limit;
@@ -6695,12 +6804,14 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
             "PUSH MUST SURVIVE QUOTA REJECTION",
             None,
         )
+        .await
         .expect("record delivered push before quota rejection");
 
     for _ in 0..daily_limit {
         let reservation = match core
             .conversation_quota_storage
             .try_reserve_daily_conversation(&actor, daily_limit, false)
+            .await
             .expect("reserve")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -6708,6 +6819,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         };
         core.conversation_quota_storage
             .commit_daily_conversation(&reservation)
+            .await
             .expect("commit");
     }
 
@@ -6727,6 +6839,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
@@ -6756,6 +6869,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, daily_limit);
@@ -6772,6 +6886,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
             12_000,
             60_000,
         )
+        .await
         .expect("claim after quota rejection");
     assert_eq!(pending_after_rejection.records.len(), 1);
     assert_eq!(
@@ -6799,7 +6914,7 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
     config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
     config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
-    let core = Arc::new(HoneBotCore::new(config));
+    let core = Arc::new(HoneBotCore::new(config).await);
     let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
     let listener = Arc::new(RecordingListener::default());
@@ -6811,6 +6926,7 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
@@ -6850,7 +6966,7 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
             "provider transport error".to_string(),
         ))],
     );
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
     let listener = Arc::new(RecordingListener::default());
@@ -6864,6 +6980,7 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
@@ -6941,7 +7058,7 @@ async fn interactive_business_protocol_failure_is_not_repaired_rewritten_or_repl
         },
     }])));
     let runtime_inputs = Arc::new(Mutex::new(Vec::new()));
-    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     {
         let core_mut = Arc::get_mut(&mut core).expect("unique test core");
         let runs = runs.clone();
@@ -7008,6 +7125,7 @@ async fn interactive_business_protocol_failure_is_not_repaired_rewritten_or_repl
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted failure messages");
     assert_eq!(
         messages.len(),
@@ -7212,7 +7330,8 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "entity-malformed", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
     let mut session = AgentSession::new(core, actor, "direct");
@@ -7349,7 +7468,8 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "agent-no-coverage", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
     let mut session = AgentSession::new(core, actor, "direct");
@@ -7483,7 +7603,8 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "agent-equal-candidates", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
     let mut session = AgentSession::new(core, actor, "direct");
@@ -7617,7 +7738,8 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor =
         ActorIdentity::new("web", "optional-agent-contract", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
@@ -7641,6 +7763,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(
         messages
@@ -7795,7 +7918,8 @@ async fn incomplete_natural_direct_final_recovers_before_whole_answer_publicatio
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor =
         ActorIdentity::new("web", "terminal-header-recovery", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
@@ -7851,6 +7975,7 @@ async fn incomplete_natural_direct_final_recovers_before_whole_answer_publicatio
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted terminal messages");
     let assistant = messages
         .iter()
@@ -7949,7 +8074,8 @@ async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor =
         ActorIdentity::new("web", "terminal-header-double-failure", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
@@ -8005,6 +8131,7 @@ async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted partial terminal messages");
     assert!(messages.iter().all(|message| {
         message.role != "assistant"
@@ -8019,7 +8146,7 @@ async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
 async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten() {
     let root = make_temp_dir("hone_channels_crwv_nvidia_observational_contract");
     std::fs::create_dir_all(&root).expect("create root");
-    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor =
         ActorIdentity::new("web", "crwv-nvidia-observational", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
@@ -8193,7 +8320,7 @@ async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
     let root = make_temp_dir("hone_channels_preturn_enrichment");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "preturn", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8268,7 +8395,8 @@ async fn pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input() {
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-hit", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8346,7 +8474,8 @@ async fn sndk_pre_turn_enrichment_injects_current_active_listing_before_agent_ca
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-sndk", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8421,7 +8550,8 @@ async fn speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere(
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-miss", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8493,7 +8623,8 @@ async fn pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists() {
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-extended", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8576,7 +8707,8 @@ async fn overnight_enrichment_keeps_yesterdays_post_session_summary() {
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-overnight", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8697,7 +8829,8 @@ async fn pre_turn_enrichment_delivers_quarterly_fundamentals_and_a_trailing_wind
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-fundamentals", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8821,7 +8954,8 @@ async fn pre_turn_enrichment_searches_again_under_the_verified_identity() {
     let core = make_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "preturn-identity", None::<String>).expect("actor");
 
     let mut runtime_input = String::new();
@@ -8864,7 +8998,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "rklb-exact", None::<String>).expect("actor");
 
     for input in [
@@ -8934,7 +9068,7 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
         std::fs::create_dir_all(&root).expect("create root");
         let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-        let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+        let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {}).await;
         let actor =
             ActorIdentity::new(channel, "natural-loop-user", None::<String>).expect("actor");
         let session = AgentSession::new(core, actor.clone(), "direct");
@@ -9010,7 +9144,7 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
     let root = make_temp_dir("hone_channels_ordinary_web_no_finance_prefix");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {}).await;
     let actor = ActorIdentity::new("web", "ordinary-web-user", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor.clone(), "direct");
 
@@ -9051,7 +9185,7 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
     let root = make_temp_dir("hone_channels_image_finance_deferred_prefix");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {}).await;
     let actor = ActorIdentity::new("web", "image-finance-user", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor.clone(), "direct");
     let input = "分析 CRWV 持仓\n\n用户上传了附件：\n1. 文件名=positions.png 分类=图片 大小=1024B 类型=image/png URL=oss://positions 本地路径=/tmp/positions.png 下载状态=成功\n\n【图片文字提取】\n### positions.png\nCRWV | 72.07 | 持仓 139";
@@ -9131,7 +9265,8 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
         config.group_context.compress_threshold_bytes = 1024;
         config.group_context.retain_recent_after_compress = 1;
         config.group_context.recent_context_limit = 6;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new(
         "discord",
         "strict-initial-fast-context",
@@ -9145,6 +9280,7 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
     .expect("group identity");
     core.session_storage
         .create_session_for_identity(&identity, Some(&actor))
+        .await
         .expect("create session");
     let session_id = identity.session_id();
     let invoked_skill_prompt =
@@ -9169,10 +9305,12 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
                 }]),
             )]),
         )
+        .await
         .expect("seed invoked skill metadata");
     for index in 1..=7 {
         core.session_storage
             .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .await
             .expect("add pre-compact user");
     }
     core.session_storage
@@ -9182,6 +9320,7 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
             "Conversation compacted",
             Some(hone_memory::build_compact_boundary_metadata("auto", 7, 9)),
         )
+        .await
         .expect("add boundary");
     core.session_storage
         .add_message(
@@ -9190,10 +9329,12 @@ async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only
             "【Compact Summary】\nsummary-that-must-not-load",
             Some(hone_memory::build_compact_summary_metadata("auto")),
         )
+        .await
         .expect("add summary");
     for index in 8..=9 {
         core.session_storage
             .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .await
             .expect("add post-compact user");
     }
 
@@ -9274,7 +9415,8 @@ async fn strict_initial_research_force_compacts_and_loads_summary_after_overflow
         config.group_context.compress_threshold_bytes = 1024;
         config.group_context.retain_recent_after_compress = 1;
         config.group_context.recent_context_limit = 6;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new(
         "discord",
         "strict-overflow-forced-compact",
@@ -9288,11 +9430,13 @@ async fn strict_initial_research_force_compacts_and_loads_summary_after_overflow
     .expect("group identity");
     core.session_storage
         .create_session_for_identity(&identity, Some(&actor))
+        .await
         .expect("create session");
     let session_id = identity.session_id();
     for index in 1..=5 {
         core.session_storage
             .add_message(&session_id, "user", &format!("older-user-{index}"), None)
+            .await
             .expect("seed old user");
         core.session_storage
             .add_message(
@@ -9301,6 +9445,7 @@ async fn strict_initial_research_force_compacts_and_loads_summary_after_overflow
                 &format!("older-answer-{index}"),
                 None,
             )
+            .await
             .expect("seed old assistant");
     }
 
@@ -9487,7 +9632,8 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "crwv-nbis-agent-loop", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
     let mut session = AgentSession::new(core, actor, "direct");
@@ -9625,7 +9771,8 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor =
         ActorIdentity::new("web", "agent-seed-observational", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
@@ -9832,7 +9979,8 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor =
         ActorIdentity::new("web", "agent-search-refinement", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
@@ -9900,6 +10048,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("persisted terminal messages");
     assert_eq!(
         messages
@@ -9920,7 +10069,7 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
     let root = make_temp_dir("hone_channels_scheduled_cross_market_entity_fast_path");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor =
         ActorIdentity::new("web", "scheduled-symbol-fast-path", None::<String>).expect("actor");
 
@@ -10039,7 +10188,8 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("web", "entity-empty", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10100,7 +10250,7 @@ async fn valid_empty_entity_payload_allows_an_ordinary_finance_question() {
             usage: None,
         })],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "ordinary-finance", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10121,7 +10271,7 @@ async fn interactive_portfolio_wording_stays_inside_the_main_agent_tool_loop() {
     let root = make_temp_dir("hone_channels_portfolio_scope_agent_loop");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "portfolio-preflight", None::<String>).expect("actor");
     let mut runtime_input = "帮我看持仓".to_string();
 
@@ -10171,7 +10321,8 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
     );
     let core = make_test_core_with_config(&root, llm, |config| {
         config.agent.daily_conversation_limit = 0;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
 
@@ -10186,6 +10337,7 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert!(snapshot.is_none());
     let _ = std::fs::remove_dir_all(root);
@@ -10201,7 +10353,7 @@ async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer(
         tool_calls: None,
         usage: None,
     }]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
 
@@ -10224,6 +10376,7 @@ async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer(
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert_eq!(
         snapshot
@@ -10236,6 +10389,7 @@ async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer(
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
@@ -10274,7 +10428,7 @@ async fn context_overflow_auto_compacts_and_retries_successfully() {
             }),
         ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("discord", "overflow-ok", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10316,7 +10470,7 @@ async fn context_overflow_compact_retry_then_current_turn_only_recovers_successf
             }),
         ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("discord", "overflow-fail", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10349,7 +10503,7 @@ async fn exhausted_context_overflow_never_exposes_context_or_compact_guidance() 
         })],
         vec![overflow(), overflow(), overflow()],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "overflow-exhausted", None::<String>).expect("actor");
     let session_id = actor.session_id();
     let listener = Arc::new(RecordingListener::default());
@@ -10381,6 +10535,7 @@ async fn exhausted_context_overflow_never_exposes_context_or_compact_guidance() 
     let persisted = core
         .session_storage
         .get_messages(&session_id, None)
+        .await
         .expect("persisted messages");
     let persisted_failure = persisted
         .last()
@@ -10415,7 +10570,7 @@ async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
             }),
         ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "overflow-key", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10439,7 +10594,7 @@ async fn self_managed_runner_context_overflow_is_not_locally_compacted_or_retrie
         content: "Hone 不应生成这个压缩摘要".to_string(),
         usage: None,
     }]);
-    let mut core = make_test_core(&root, llm.clone());
+    let mut core = make_test_core(&root, llm.clone()).await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([AgentRunnerResult {
@@ -10506,7 +10661,7 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
         content: "压缩后的摘要".to_string(),
         usage: None,
     }]);
-    let mut core = make_test_core(&root, llm.clone());
+    let mut core = make_test_core(&root, llm.clone()).await;
     let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
     let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
     let queued_results = Arc::new(Mutex::new(VecDeque::from([
@@ -10573,15 +10728,19 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
     let session_id = actor.session_id();
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&session_id, "user", "旧问题", None)
+        .await
         .expect("seed user");
     core.session_storage
         .add_message(&session_id, "assistant", "旧回答", None)
+        .await
         .expect("seed assistant");
     core.session_storage
         .add_message(&session_id, "user", "继续查 NVDA", None)
+        .await
         .expect("seed followup user");
     core.session_storage
         .add_message(
@@ -10597,6 +10756,7 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
                 }
             })])),
         )
+        .await
         .expect("seed assistant tool call");
     core.session_storage
         .add_message(
@@ -10609,9 +10769,11 @@ async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_c
                 Some(serde_json::json!({"query": "NVDA"})),
             )),
         )
+        .await
         .expect("seed tool result");
     core.session_storage
         .add_message(&session_id, "assistant", "旧一轮长回答", None)
+        .await
         .expect("seed trailing assistant");
 
     let session = AgentSession::new(core.clone(), actor, "direct");
@@ -10688,7 +10850,7 @@ async fn execute_once_context_overflow_is_not_compacted_or_retried() {
             }),
         ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("web", "execute-once-overflow", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
@@ -10715,17 +10877,20 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
         content: "summary".to_string(),
         usage: None,
     }]);
-    let core = make_test_core(&root, llm.clone());
+    let core = make_test_core(&root, llm.clone()).await;
     let actor = ActorIdentity::new("discord", "frank", None::<String>).expect("actor");
     let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
     core.session_storage
         .create_session_for_actor(&actor)
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&actor.session_id(), "user", "hello", None)
+        .await
         .expect("seed user");
     core.session_storage
         .add_message(&actor.session_id(), "assistant", "world", None)
+        .await
         .expect("seed assistant");
     core.delivered_push_context_store
         .as_ref()
@@ -10738,6 +10903,7 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
             "PUSH MUST SURVIVE COMPACT",
             None,
         )
+        .await
         .expect("record delivered push before compact");
 
     let result = session
@@ -10755,12 +10921,14 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot");
     assert!(snapshot.is_none());
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
+        .await
         .expect("messages");
     assert_eq!(messages.len(), 4);
     assert_eq!(
@@ -10790,6 +10958,7 @@ async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
             12_000,
             60_000,
         )
+        .await
         .expect("claim after compact");
     assert_eq!(pending_after_compact.records.len(), 1);
     assert_eq!(
@@ -10821,7 +10990,8 @@ async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
         config.group_context.compress_threshold_bytes = 1024;
         config.group_context.retain_recent_after_compress = 1;
         config.group_context.recent_context_limit = 6;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("discord", "gina", Some("room-1".to_string())).expect("actor");
     let group_session =
         SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
@@ -10830,9 +11000,11 @@ async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
         .with_session_identity(group_session.clone());
     core.session_storage
         .create_session_for_identity(&group_session, Some(&actor))
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&group_session.session_id(), "user", "old-user", None)
+        .await
         .expect("seed user");
     core.session_storage
         .add_message(
@@ -10841,6 +11013,7 @@ async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
             "old-assistant",
             None,
         )
+        .await
         .expect("seed assistant");
 
     let result = session.run("new-user", AgentRunOptions::default()).await;
@@ -10853,6 +11026,7 @@ async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
     let messages = core
         .session_storage
         .get_messages(&group_session.session_id(), None)
+        .await
         .expect("messages");
     let contents: Vec<_> = messages
         .iter()
@@ -10898,7 +11072,8 @@ async fn auto_compact_summary_excludes_latest_user_turn_from_prompt() {
         config.group_context.compress_threshold_bytes = 1024;
         config.group_context.retain_recent_after_compress = 1;
         config.group_context.recent_context_limit = 6;
-    });
+    })
+    .await;
     let actor = ActorIdentity::new("discord", "henry", Some("room-2".to_string())).expect("actor");
     let group_session =
         SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
@@ -10907,9 +11082,11 @@ async fn auto_compact_summary_excludes_latest_user_turn_from_prompt() {
         .with_session_identity(group_session.clone());
     core.session_storage
         .create_session_for_identity(&group_session, Some(&actor))
+        .await
         .expect("create session");
     core.session_storage
         .add_message(&group_session.session_id(), "user", "older topic", None)
+        .await
         .expect("seed older user");
     core.session_storage
         .add_message(
@@ -10918,6 +11095,7 @@ async fn auto_compact_summary_excludes_latest_user_turn_from_prompt() {
             "older reply",
             None,
         )
+        .await
         .expect("seed older assistant");
 
     let result = session
@@ -10943,7 +11121,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
         tool_calls: None,
         usage: None,
     }]);
-    let core = make_test_core(&root, llm);
+    let core = make_test_core(&root, llm).await;
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let today = hone_core::local_now().format("%F").to_string();
     let daily_limit = core.config.agent.daily_conversation_limit;
@@ -10952,6 +11130,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
         let reservation = match core
             .conversation_quota_storage
             .try_reserve_daily_conversation(&actor, daily_limit, false)
+            .await
             .expect("reserve")
         {
             ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -10959,6 +11138,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
         };
         core.conversation_quota_storage
             .commit_daily_conversation(&reservation)
+            .await
             .expect("commit");
     }
 
@@ -10977,6 +11157,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
+        .await
         .expect("snapshot")
         .expect("row");
     assert_eq!(snapshot.success_count, daily_limit);

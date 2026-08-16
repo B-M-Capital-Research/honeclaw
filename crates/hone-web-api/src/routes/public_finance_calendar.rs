@@ -120,7 +120,7 @@ pub(crate) async fn handle_get_finance_calendar(
     headers: HeaderMap,
     Query(query): Query<FinanceCalendarQuery>,
 ) -> Response {
-    let (actor, _) = match require_public_actor(&state, &headers) {
+    let (actor, _) = match require_public_actor(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -142,7 +142,7 @@ pub(crate) async fn handle_send_finance_calendar(
     headers: HeaderMap,
     Json(request): Json<FinanceCalendarSendRequest>,
 ) -> Response {
-    let (actor, user_id) = match require_public_actor(&state, &headers) {
+    let (actor, user_id) = match require_public_actor(&state, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
     };
@@ -207,10 +207,15 @@ pub(crate) async fn handle_send_finance_calendar(
         .core
         .session_storage
         .load_session(&session_id)
+        .await
         .ok()
         .flatten()
         .is_none()
-        && let Err(error) = state.core.session_storage.create_session_for_actor(&actor)
+        && let Err(error) = state
+            .core
+            .session_storage
+            .create_session_for_actor(&actor)
+            .await
     {
         return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -221,6 +226,7 @@ pub(crate) async fn handle_send_finance_calendar(
         .core
         .session_storage
         .add_message(&session_id, "assistant", &content, Some(metadata))
+        .await
     {
         Ok(true) => {}
         Ok(false) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "会话不可用"),
@@ -253,7 +259,7 @@ async fn build_finance_calendar_payload(
     month: &MonthSpec,
 ) -> FinanceCalendarPayload {
     let mut events = macro_events_for_month(month);
-    let holdings = portfolio_calendar_symbols(state, actor);
+    let holdings = portfolio_calendar_symbols(state, actor).await;
     let mut errors = Vec::new();
     let mut earnings_status = "ok".to_string();
 
@@ -310,11 +316,11 @@ fn event_kind_sort_key(kind: &str) -> u8 {
     }
 }
 
-fn require_public_actor(
+async fn require_public_actor(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<(ActorIdentity, String), Response> {
-    let user = crate::routes::public::require_public_user(state, headers)?;
+    let user = crate::routes::public::require_public_user(state, headers).await?;
     let user_id = user.user_id.clone();
     let actor = ActorIdentity::new("web", &user_id, Option::<String>::None).map_err(|e| {
         json_error(
@@ -593,10 +599,13 @@ fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
     .collect()
 }
 
-pub(crate) fn portfolio_calendar_symbols(state: &AppState, actor: &ActorIdentity) -> Vec<String> {
+pub(crate) async fn portfolio_calendar_symbols(
+    state: &AppState,
+    actor: &ActorIdentity,
+) -> Vec<String> {
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let Ok(Some(portfolio)) = portfolio_storage.load(actor) else {
+    let Ok(Some(portfolio)) = portfolio_storage.load(actor).await else {
         return Vec::new();
     };
     calendar_symbols_from_holdings(&portfolio.holdings)

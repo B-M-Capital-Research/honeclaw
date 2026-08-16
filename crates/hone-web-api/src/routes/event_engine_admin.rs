@@ -353,18 +353,19 @@ pub(crate) async fn handle_get_mainline_context(
         }
     };
     use hone_event_engine::prefs::PrefsProvider;
-    let prefs = prefs_storage.load(&actor);
+    let prefs = prefs_storage.load(&actor).await;
 
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let holdings: Vec<String> = match portfolio_storage.load(&actor) {
+    let holdings: Vec<String> = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p.holdings.iter().map(|h| h.symbol.clone()).collect(),
         _ => Vec::new(),
     };
 
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     let profile_summaries = profile_summaries_from_sources(&profiles);
 
     Json(json!({
@@ -404,7 +405,8 @@ pub(crate) async fn handle_get_actor_company_profile(
     }
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     match profiles.iter().find(|p| p.ticker == target) {
         Some(p) => Json(json!({
             "ticker": p.ticker,
@@ -477,7 +479,7 @@ pub(crate) async fn handle_distill_mainline_now(
     // portfolio + holdings
     let portfolio_storage =
         hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = match portfolio_storage.load(&actor) {
+    let portfolio = match portfolio_storage.load(&actor).await {
         Ok(Some(p)) => p,
         Ok(None) => {
             return json_error(

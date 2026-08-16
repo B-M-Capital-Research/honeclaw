@@ -79,7 +79,7 @@ pub(crate) async fn handle_get_prefs(
         }
     };
     Json(json!({
-        "prefs": storage.load(&actor),
+        "prefs": storage.load(&actor).await,
         "kind_tags": ALL_KIND_TAGS,
     }))
     .into_response()
@@ -121,7 +121,7 @@ pub(crate) async fn handle_batch_get_prefs(
             );
         }
     };
-    let prefs = storage.load_many(&actors);
+    let prefs = storage.load_many(&actors).await;
     let entries = actor_refs
         .into_iter()
         .zip(prefs)
@@ -155,7 +155,7 @@ pub(crate) async fn handle_put_prefs(
             );
         }
     };
-    if let Err(e) = storage.save(&actor, &body.prefs) {
+    if let Err(e) = storage.save(&actor, &body.prefs).await {
         return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("保存 prefs 失败: {e}"),

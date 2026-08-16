@@ -7,7 +7,7 @@ use hone_core::{ActorIdentity, HoneResult, truncate_chars_append};
 use serde_json::Value;
 
 use super::CronJobStorage;
-use super::run_cloud_cron;
+use super::cloud_cron_operation;
 use super::types::{
     CronJobExecutionInput, CronJobExecutionRecord, WebPushMessage, WebPushMessageInput,
 };
@@ -36,7 +36,7 @@ pub struct ExecutionFilter {
 }
 
 impl CronJobStorage {
-    pub fn mark_started_execution_failed_by_delivery_key(
+    pub async fn mark_started_execution_failed_by_delivery_key(
         &self,
         actor: &ActorIdentity,
         job_id: &str,
@@ -58,7 +58,7 @@ impl CronJobStorage {
         let delivery_key = delivery_key.to_string();
         let recovered_by = recovered_by.to_string();
         let reason = truncate_chars_append(reason, 500, "...");
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             postgres
                 .mark_cron_started_execution_failed_by_delivery_key(
                     &actor,
@@ -70,10 +70,11 @@ impl CronJobStorage {
                     &reason,
                 )
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn recover_stale_started_executions(
+    pub async fn recover_stale_started_executions(
         &self,
         channel: &str,
         stale_before_rfc3339: &str,
@@ -85,7 +86,7 @@ impl CronJobStorage {
         let stale_before_rfc3339 = stale_before_rfc3339.to_string();
         let recovered_by = recovered_by.to_string();
         let reason = truncate_chars_append(reason, 500, "...");
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             postgres
                 .recover_stale_cron_started_executions(
                     &channel,
@@ -94,10 +95,11 @@ impl CronJobStorage {
                     &reason,
                 )
                 .await
-        });
+        })
+        .await;
     }
 
-    pub fn record_execution_event(
+    pub async fn record_execution_event(
         &self,
         actor: &ActorIdentity,
         job_id: &str,
@@ -129,7 +131,7 @@ impl CronJobStorage {
                 .map(|text| truncate_chars_append(text, 500, "...")),
             detail: input.detail,
         };
-        let result = run_cloud_cron(async move {
+        let result = cloud_cron_operation(async move {
             postgres
                 .record_cron_execution_event(
                     &actor,
@@ -140,7 +142,8 @@ impl CronJobStorage {
                     cloud_input,
                 )
                 .await
-        });
+        })
+        .await;
         if result.is_ok() {
             self.record_cron_task_observation(observation.as_ref());
         }
@@ -173,7 +176,7 @@ impl CronJobStorage {
         }
     }
 
-    pub fn list_execution_records(
+    pub async fn list_execution_records(
         &self,
         job_id: &str,
         limit: usize,
@@ -184,13 +187,16 @@ impl CronJobStorage {
             limit,
             ..CloudCronExecutionFilter::default()
         };
-        return run_cloud_cron(async move { postgres.list_cron_execution_records(filter).await })
-            .map(|records| records.into_iter().map(cron_execution_from_cloud).collect());
+        return cloud_cron_operation(
+            async move { postgres.list_cron_execution_records(filter).await },
+        )
+        .await
+        .map(|records| records.into_iter().map(cron_execution_from_cloud).collect());
     }
 
     /// 跨任务查询执行记录,用于管理端"推送日志"页。filter 中的所有字段都是
     /// `AND` 连接;`limit` 必须 > 0,调用方负责裁剪到合理上限。
-    pub fn list_recent_executions(
+    pub async fn list_recent_executions(
         &self,
         filter: &ExecutionFilter,
     ) -> HoneResult<Vec<CronJobExecutionRecord>> {
@@ -206,18 +212,21 @@ impl CronJobStorage {
             heartbeat_only: filter.heartbeat_only,
             limit: filter.limit,
         };
-        return run_cloud_cron(async move { postgres.list_cron_execution_records(filter).await })
-            .map(|records| records.into_iter().map(cron_execution_from_cloud).collect());
+        return cloud_cron_operation(
+            async move { postgres.list_cron_execution_records(filter).await },
+        )
+        .await
+        .map(|records| records.into_iter().map(cron_execution_from_cloud).collect());
     }
 
-    pub fn upsert_web_push_message(
+    pub async fn upsert_web_push_message(
         &self,
         actor: &ActorIdentity,
         input: WebPushMessageInput,
     ) -> HoneResult<WebPushMessage> {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             postgres
                 .upsert_web_push_message(
                     &actor,
@@ -230,10 +239,11 @@ impl CronJobStorage {
                 )
                 .await
         })
+        .await
         .map(web_push_from_cloud);
     }
 
-    pub fn upsert_web_push_messages(
+    pub async fn upsert_web_push_messages(
         &self,
         actor: &ActorIdentity,
         inputs: Vec<WebPushMessageInput>,
@@ -258,18 +268,22 @@ impl CronJobStorage {
                 read_at: None,
             })
             .collect();
-        return run_cloud_cron(
-            async move { postgres.upsert_web_push_messages(&actor, messages).await },
-        );
+        return cloud_cron_operation(async move {
+            postgres.upsert_web_push_messages(&actor, messages).await
+        })
+        .await;
     }
 
-    pub fn has_legacy_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<bool> {
+    pub async fn has_legacy_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<bool> {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
-        return run_cloud_cron(async move { postgres.has_legacy_web_push_messages(&actor).await });
+        return cloud_cron_operation(
+            async move { postgres.has_legacy_web_push_messages(&actor).await },
+        )
+        .await;
     }
 
-    pub fn list_web_push_messages(
+    pub async fn list_web_push_messages(
         &self,
         actor: &ActorIdentity,
         before_push_id: Option<&str>,
@@ -278,15 +292,16 @@ impl CronJobStorage {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
         let before_push_id = before_push_id.map(str::to_string);
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             postgres
                 .list_web_push_messages(&actor, before_push_id, limit)
                 .await
         })
+        .await
         .map(|records| records.into_iter().map(web_push_from_cloud).collect());
     }
 
-    pub fn get_web_push_message(
+    pub async fn get_web_push_message(
         &self,
         actor: &ActorIdentity,
         push_id: &str,
@@ -294,21 +309,23 @@ impl CronJobStorage {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
         let push_id = push_id.to_string();
-        return run_cloud_cron(
-            async move { postgres.get_web_push_message(&actor, &push_id).await },
-        )
+        return cloud_cron_operation(async move {
+            postgres.get_web_push_message(&actor, &push_id).await
+        })
+        .await
         .map(|record| record.map(web_push_from_cloud));
     }
 
-    pub fn count_unread_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<usize> {
+    pub async fn count_unread_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<usize> {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
-        return run_cloud_cron(
-            async move { postgres.count_unread_web_push_messages(&actor).await },
-        );
+        return cloud_cron_operation(async move {
+            postgres.count_unread_web_push_messages(&actor).await
+        })
+        .await;
     }
 
-    pub fn mark_web_push_messages_read_through(
+    pub async fn mark_web_push_messages_read_through(
         &self,
         actor: &ActorIdentity,
         push_id: &str,
@@ -318,11 +335,12 @@ impl CronJobStorage {
         let postgres = self.postgres.clone();
         let actor = actor.clone();
         let push_id = push_id.to_string();
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             postgres
                 .mark_web_push_messages_read_through(&actor, &push_id, &read_at)
                 .await
-        });
+        })
+        .await;
     }
 }
 
@@ -491,7 +509,7 @@ mod web_push_tests {
     /// 随后互相 `remove_dir_all` 造成随机 `disk I/O error`。
     static TEMP_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-    fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
+    async fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
             "hone_web_push_{}_{}_{}",
             std::process::id(),
@@ -502,7 +520,7 @@ mod web_push_tests {
             TEMP_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).expect("mkdir");
-        let storage = CronJobStorage::new(root.join("cron"));
+        let storage = CronJobStorage::new(root.join("cron")).await;
         (storage, root)
     }
 
@@ -517,49 +535,83 @@ mod web_push_tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn web_push_read_through_keeps_newer_pushes_unread() {
-        let (storage, root) = test_storage();
+    async fn web_push_read_through_keeps_newer_pushes_unread() {
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("web", "web-user-1", None::<String>).expect("actor");
         let other = ActorIdentity::new("web", "web-user-2", None::<String>).expect("actor");
         storage
             .upsert_web_push_message(&actor, input("p1", "2026-07-10T09:00:00+08:00"))
+            .await
             .expect("p1");
         storage
             .upsert_web_push_message(&actor, input("p2", "2026-07-10T10:00:00+08:00"))
+            .await
             .expect("p2");
         storage
             .upsert_web_push_message(&actor, input("p3", "2026-07-10T11:00:00+08:00"))
+            .await
             .expect("p3");
         storage
             .upsert_web_push_message(&other, input("p4", "2026-07-10T08:00:00+08:00"))
+            .await
             .expect("p4");
 
-        assert_eq!(storage.count_unread_web_push_messages(&actor).unwrap(), 3);
+        assert_eq!(
+            storage
+                .count_unread_web_push_messages(&actor)
+                .await
+                .unwrap(),
+            3
+        );
         assert_eq!(
             storage
                 .mark_web_push_messages_read_through(&actor, "p2")
+                .await
                 .unwrap(),
             2
         );
-        assert_eq!(storage.count_unread_web_push_messages(&actor).unwrap(), 1);
-        assert_eq!(storage.count_unread_web_push_messages(&other).unwrap(), 1);
+        assert_eq!(
+            storage
+                .count_unread_web_push_messages(&actor)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            storage
+                .count_unread_web_push_messages(&other)
+                .await
+                .unwrap(),
+            1
+        );
         assert!(
             storage
                 .get_web_push_message(&actor, "p4")
+                .await
                 .unwrap()
                 .is_none()
         );
         assert_eq!(
             storage
                 .mark_web_push_messages_read_through(&actor, "p4")
+                .await
                 .unwrap(),
             0
         );
-        assert_eq!(storage.count_unread_web_push_messages(&other).unwrap(), 1);
+        assert_eq!(
+            storage
+                .count_unread_web_push_messages(&other)
+                .await
+                .unwrap(),
+            1
+        );
 
-        let listed = storage.list_web_push_messages(&actor, None, 10).unwrap();
+        let listed = storage
+            .list_web_push_messages(&actor, None, 10)
+            .await
+            .unwrap();
         assert_eq!(
             listed
                 .iter()
@@ -572,6 +624,7 @@ mod web_push_tests {
 
         let page = storage
             .list_web_push_messages(&actor, Some("p2"), 10)
+            .await
             .unwrap();
         assert_eq!(
             page.iter()
@@ -582,10 +635,10 @@ mod web_push_tests {
         std::fs::remove_dir_all(root).ok();
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn legacy_web_push_batch_is_idempotent_and_preserves_read_state() {
-        let (storage, root) = test_storage();
+    async fn legacy_web_push_batch_is_idempotent_and_preserves_read_state() {
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("web", "legacy-user", None::<String>).expect("actor");
         let inputs = vec![
             input("legacy:first", "2026-07-10T09:00:00+08:00"),
@@ -595,21 +648,27 @@ mod web_push_tests {
         assert_eq!(
             storage
                 .upsert_web_push_messages(&actor, inputs.clone())
+                .await
                 .expect("first import"),
             2
         );
-        assert!(storage.has_legacy_web_push_messages(&actor).unwrap());
+        assert!(storage.has_legacy_web_push_messages(&actor).await.unwrap());
         storage
             .mark_web_push_messages_read_through(&actor, "legacy:first")
+            .await
             .expect("mark read");
         assert_eq!(
             storage
                 .upsert_web_push_messages(&actor, inputs)
+                .await
                 .expect("second import"),
             2
         );
 
-        let listed = storage.list_web_push_messages(&actor, None, 10).unwrap();
+        let listed = storage
+            .list_web_push_messages(&actor, None, 10)
+            .await
+            .unwrap();
         assert_eq!(listed.len(), 2);
         assert!(listed[1].read_at.is_some());
         std::fs::remove_dir_all(root).ok();
@@ -628,10 +687,10 @@ mod web_push_tests {
     /// 构造方式:刚写入的行(运行时时区)配一个"1 小时之后"的 **UTC** 阈值。
     /// 真实时刻上该行必然早于阈值 ⇒ 应当回收;而字典序下 `2026-08-16T…+08:00`
     /// 往往大于 `2026-08-15T…+00:00`,旧实现会判成"不陈旧"从而漏掉。
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn stale_recovery_compares_instants_not_text_across_timezones() {
-        let (storage, root) = test_storage();
+    async fn stale_recovery_compares_instants_not_text_across_timezones() {
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("feishu", "tz-stale-user", None::<String>).expect("actor");
 
         let started = |job: &str| CronJobExecutionInput {
@@ -653,6 +712,7 @@ mod web_push_tests {
                 true,
                 started("tz-stale-job"),
             )
+            .await
             .expect("started row");
 
         // 阈值取 UTC 的「一小时之后」:真实时刻上刚写入的行必然更早 ⇒ 必须回收。
@@ -665,6 +725,7 @@ mod web_push_tests {
                     "tz_regression",
                     "scheduler restarted",
                 )
+                .await
                 .expect("recover"),
             1,
             "运行时时区写入的 started 行必须按真实时刻判为陈旧;字典序比较会漏掉它"
@@ -680,6 +741,7 @@ mod web_push_tests {
                 true,
                 started("tz-fresh-job"),
             )
+            .await
             .expect("fresh row");
         let too_early_utc = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
         assert_eq!(
@@ -690,6 +752,7 @@ mod web_push_tests {
                     "tz_regression",
                     "scheduler restarted",
                 )
+                .await
                 .expect("recover fresh"),
             0,
             "阈值早于真实执行时刻时不得回收"

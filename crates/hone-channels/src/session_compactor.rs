@@ -37,7 +37,7 @@ impl<'a> SessionCompactor<'a> {
         user_instructions: Option<&str>,
         filter_operational_history: bool,
     ) -> hone_core::HoneResult<CompactSessionOutcome> {
-        let Some(session) = self.core.session_storage.load_session(session_id)? else {
+        let Some(session) = self.core.session_storage.load_session(session_id).await? else {
             return Ok(CompactSessionOutcome {
                 compacted: false,
                 summary: None,
@@ -286,7 +286,8 @@ impl<'a> SessionCompactor<'a> {
                         Some(auxiliary_model.clone()),
                         request_payload.clone(),
                     )
-                });
+                })
+                .await;
                 tracing::error!("[HoneBotCore] LLM summarization failed: {}", err);
                 return Ok(CompactSessionOutcome {
                     compacted: false,
@@ -321,7 +322,8 @@ impl<'a> SessionCompactor<'a> {
                 Some(auxiliary_model),
                 request_payload,
             )
-        });
+        })
+        .await;
         tracing::info!(
             "[SessionCompress] session={} provider={} model={} elapsed_ms={} summary_chars={}",
             session_id,
@@ -386,11 +388,14 @@ impl<'a> SessionCompactor<'a> {
             new_messages.push(message.clone());
         }
 
-        self.core.session_storage.replace_messages_with_summary(
-            session_id,
-            new_messages,
-            Some(SessionSummary::new(summary_to_store)),
-        )?;
+        self.core
+            .session_storage
+            .replace_messages_with_summary(
+                session_id,
+                new_messages,
+                Some(SessionSummary::new(summary_to_store)),
+            )
+            .await?;
         tracing::info!(
             "[HoneBotCore] Session {} compacted to boundary + summary + {} retained items.",
             session_id,
@@ -403,9 +408,9 @@ impl<'a> SessionCompactor<'a> {
         })
     }
 
-    fn record_llm_audit(&self, record: LlmAuditRecord) {
+    async fn record_llm_audit(&self, record: LlmAuditRecord) {
         if let Some(sink) = &self.core.llm_audit
-            && let Err(err) = sink.record(record)
+            && let Err(err) = sink.record(record).await
         {
             tracing::warn!("[LlmAudit] failed to persist record: {}", err);
         }

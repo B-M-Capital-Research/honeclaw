@@ -1167,7 +1167,7 @@ impl AgentSession {
         .with_registry_path(self.core.configured_skill_registry_path())
     }
 
-    fn restore_runtime_context(
+    async fn restore_runtime_context(
         &self,
         session_id: &str,
         persisted_user_input: &str,
@@ -1180,6 +1180,7 @@ impl AgentSession {
             .core
             .session_storage
             .load_session(session_id)
+            .await
             .ok()
             .flatten();
         let skill_runtime = self.build_skill_runtime();
@@ -1276,13 +1277,15 @@ impl AgentSession {
         let use_current_turn_only_context =
             restore_max_override == Some(CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT);
         let use_isolated_prior_history = options.isolate_prior_history;
-        let restored = self.restore_runtime_context(
-            session_id,
-            persisted_user_input,
-            restore_max_override,
-            options.turn_origin,
-            use_fast_interactive_context,
-        );
+        let restored = self
+            .restore_runtime_context(
+                session_id,
+                persisted_user_input,
+                restore_max_override,
+                options.turn_origin,
+                use_fast_interactive_context,
+            )
+            .await;
         let mut context = restored.context;
         if use_current_turn_only_context || use_isolated_prior_history {
             // A self-contained trusted workflow and the final overflow recovery
@@ -1324,7 +1327,8 @@ impl AgentSession {
                     && !use_current_turn_only_context
                     && !use_isolated_prior_history,
                 use_native_codex_turn_input,
-            );
+            )
+            .await;
         if options.dedicated_earnings_workflow {
             if !self.prompt_options.is_admin || options.runner_override.is_none() {
                 return Err((
@@ -1605,7 +1609,7 @@ impl AgentSession {
         Ok((execution, investment_context))
     }
 
-    pub(super) fn persist_successful_assistant_turn(
+    pub(super) async fn persist_successful_assistant_turn(
         &self,
         session_id: &str,
         response: &AgentResponse,
@@ -1625,16 +1629,20 @@ impl AgentSession {
             return;
         };
 
-        let _ = self.core.session_storage.append_session_messages(
-            session_id,
-            vec![session_message_from_normalized(
-                &message,
-                hone_core::local_now_rfc3339(),
-            )],
-        );
+        let _ = self
+            .core
+            .session_storage
+            .append_session_messages(
+                session_id,
+                vec![session_message_from_normalized(
+                    &message,
+                    hone_core::local_now_rfc3339(),
+                )],
+            )
+            .await;
     }
 
-    fn persist_assistant_text_turn(
+    async fn persist_assistant_text_turn(
         &self,
         session_id: &str,
         content: &str,
@@ -1663,16 +1671,20 @@ impl AgentSession {
             status: Some("completed".to_string()),
             metadata,
         };
-        let _ = self.core.session_storage.append_session_messages(
-            session_id,
-            vec![session_message_from_normalized(
-                &message,
-                hone_core::local_now_rfc3339(),
-            )],
-        );
+        let _ = self
+            .core
+            .session_storage
+            .append_session_messages(
+                session_id,
+                vec![session_message_from_normalized(
+                    &message,
+                    hone_core::local_now_rfc3339(),
+                )],
+            )
+            .await;
     }
 
-    fn persist_failed_assistant_turn_if_needed(
+    async fn persist_failed_assistant_turn_if_needed(
         &self,
         session_id: &str,
         kind: AgentSessionErrorKind,
@@ -1682,6 +1694,7 @@ impl AgentSession {
             .core
             .session_storage
             .get_messages(session_id, None)
+            .await
             .ok()
             .and_then(|messages| messages.last().cloned())
             .is_some_and(|message| message.role == "user");
@@ -1692,7 +1705,8 @@ impl AgentSession {
         let mut metadata = HashMap::new();
         metadata.insert("run_failed".to_string(), Value::Bool(true));
         metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));
-        self.persist_assistant_text_turn(session_id, message, metadata);
+        self.persist_assistant_text_turn(session_id, message, metadata)
+            .await;
         self.core.log_message_step(
             &self.actor.channel,
             &self.actor.user_id,
@@ -1807,34 +1821,37 @@ impl AgentSession {
         }
     }
 
-    fn ensure_session_exists(&self) -> hone_core::HoneResult<()> {
+    async fn ensure_session_exists(&self) -> hone_core::HoneResult<()> {
         let session_id = self.session_id();
         if self
             .core
             .session_storage
             .load_session(&session_id)
+            .await
             .ok()
             .flatten()
             .is_none()
         {
             self.core
                 .session_storage
-                .create_session_for_identity(&self.session_identity, Some(&self.actor))?;
+                .create_session_for_identity(&self.session_identity, Some(&self.actor))
+                .await?;
         }
         Ok(())
     }
 
-    fn update_session_metadata(&self) {
+    async fn update_session_metadata(&self) {
         let Some(metadata) = self.session_metadata.clone() else {
             return;
         };
         let _ = self
             .core
             .session_storage
-            .update_metadata(&self.session_id, metadata);
+            .update_metadata(&self.session_id, metadata)
+            .await;
     }
 
-    fn claim_delivered_push_context(
+    async fn claim_delivered_push_context(
         &self,
         turn_id: &str,
         delivered_before_ms: i64,
@@ -1855,15 +1872,18 @@ impl AgentSession {
                     .then_some(self.session_id.as_str())
                 })
         };
-        match store.claim_delivered_push_context_with_native_observation(
-            &self.actor,
-            turn_id,
-            delivered_before_ms,
-            DELIVERED_PUSH_CONTEXT_MAX_RECORDS,
-            DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS,
-            DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS,
-            native_session_id,
-        ) {
+        match store
+            .claim_delivered_push_context_with_native_observation(
+                &self.actor,
+                turn_id,
+                delivered_before_ms,
+                DELIVERED_PUSH_CONTEXT_MAX_RECORDS,
+                DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS,
+                DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS,
+                native_session_id,
+            )
+            .await
+        {
             Ok(claim) => DeliveredPushContextBatch {
                 records: claim
                     .records
@@ -1890,11 +1910,14 @@ impl AgentSession {
         }
     }
 
-    fn complete_delivered_push_context(&self, turn_id: &str) {
+    async fn complete_delivered_push_context(&self, turn_id: &str) {
         let Some(store) = self.core.delivered_push_context_store.as_ref() else {
             return;
         };
-        if let Err(err) = store.complete_delivered_push_context(&self.actor, turn_id) {
+        if let Err(err) = store
+            .complete_delivered_push_context(&self.actor, turn_id)
+            .await
+        {
             tracing::warn!(
                 channel = %self.actor.channel,
                 user_id = %self.actor.user_id,
@@ -1905,11 +1928,14 @@ impl AgentSession {
         }
     }
 
-    fn release_delivered_push_context(&self, turn_id: &str) {
+    async fn release_delivered_push_context(&self, turn_id: &str) {
         let Some(store) = self.core.delivered_push_context_store.as_ref() else {
             return;
         };
-        if let Err(err) = store.release_delivered_push_context(&self.actor, turn_id) {
+        if let Err(err) = store
+            .release_delivered_push_context(&self.actor, turn_id)
+            .await
+        {
             tracing::warn!(
                 channel = %self.actor.channel,
                 user_id = %self.actor.user_id,
@@ -1921,15 +1947,16 @@ impl AgentSession {
     }
 
     #[cfg(test)]
-    pub(super) fn resolve_prompt_input(
+    pub(super) async fn resolve_prompt_input(
         &self,
         session_id: &str,
         user_input: &str,
     ) -> (String, String, String) {
         self.resolve_prompt_input_at(session_id, user_input, hone_core::local_now(), true, false)
+            .await
     }
 
-    fn resolve_prompt_input_at(
+    async fn resolve_prompt_input_at(
         &self,
         session_id: &str,
         user_input: &str,
@@ -1950,7 +1977,8 @@ impl AgentSession {
             prompt_time_local,
             include_conversation_context,
             use_native_codex_turn_input,
-        );
+        )
+        .await;
         (
             turn.system_prompt,
             turn.runtime_input,
@@ -1986,7 +2014,7 @@ impl AgentSession {
         })
     }
 
-    fn persist_invoked_skill_prompt(
+    async fn persist_invoked_skill_prompt(
         &self,
         session_id: &str,
         skill_id: &str,
@@ -1995,7 +2023,8 @@ impl AgentSession {
         let existing = self
             .core
             .session_storage
-            .load_session(session_id)?
+            .load_session(session_id)
+            .await?
             .map(|session| session.metadata)
             .unwrap_or_default();
         let mut invoked = hone_memory::invoked_skills_from_metadata(&existing)
@@ -2024,11 +2053,12 @@ impl AgentSession {
         let _ = self
             .core
             .session_storage
-            .update_metadata(session_id, metadata)?;
+            .update_metadata(session_id, metadata)
+            .await?;
         Ok(())
     }
 
-    pub(super) fn forget_turn_scoped_skill_prompt(
+    pub(super) async fn forget_turn_scoped_skill_prompt(
         &self,
         session_id: &str,
         skill_id: &str,
@@ -2036,7 +2066,8 @@ impl AgentSession {
         let existing = self
             .core
             .session_storage
-            .load_session(session_id)?
+            .load_session(session_id)
+            .await?
             .map(|session| session.metadata)
             .unwrap_or_default();
         let invoked = hone_memory::invoked_skills_from_metadata(&existing);
@@ -2057,7 +2088,8 @@ impl AgentSession {
         let _ = self
             .core
             .session_storage
-            .update_metadata(session_id, metadata)?;
+            .update_metadata(session_id, metadata)
+            .await?;
         Ok(())
     }
 
@@ -2203,7 +2235,8 @@ impl AgentSession {
         message: String,
     ) -> AgentSessionResult {
         let persisted_message = user_visible_error_message(Some(message.as_str()));
-        self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+        self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+            .await;
         let error = AgentSessionError {
             kind,
             // Session error events cross channel/Web boundaries. Preserve the
@@ -2235,7 +2268,7 @@ impl AgentSession {
         }
     }
 
-    fn reserve_conversation_quota(
+    async fn reserve_conversation_quota(
         &self,
         quota_mode: AgentRunQuotaMode,
     ) -> hone_core::HoneResult<Option<ConversationQuotaReservation>> {
@@ -2252,7 +2285,8 @@ impl AgentSession {
         match self
             .core
             .conversation_quota_storage
-            .try_reserve_daily_conversation(&self.actor, daily_limit, is_admin)?
+            .try_reserve_daily_conversation(&self.actor, daily_limit, is_admin)
+            .await?
         {
             ConversationQuotaReserveResult::Reserved(reservation) => Ok(Some(reservation)),
             ConversationQuotaReserveResult::Bypassed => Ok(None),
@@ -2290,7 +2324,7 @@ impl AgentSession {
             let lock = get_session_run_lock(&session_id);
             lock.lock_owned().await
         };
-        if let Err(err) = self.ensure_session_exists() {
+        if let Err(err) = self.ensure_session_exists().await {
             return self
                 .fail_run(
                     session_id,
@@ -2300,7 +2334,7 @@ impl AgentSession {
                 .await;
         }
 
-        self.update_session_metadata();
+        self.update_session_metadata().await;
 
         if let Some(command) = self.parse_compact_command(user_input) {
             return self
@@ -2310,17 +2344,21 @@ impl AgentSession {
 
         // 配额预留；后续任何失败分支都靠 guard 在 drop 时自动把预留释放掉,
         // 不再需要每处都手写 release_daily_conversation。
-        let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
+        let quota_guard = match self.reserve_conversation_quota(options.quota_mode).await {
             Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
                 let raw_error = err.to_string();
                 let quota_message = user_visible_error_message(Some(raw_error.as_str()));
-                let _ = self.core.session_storage.add_message(
-                    &session_id,
-                    "user",
-                    user_input,
-                    self.message_metadata.user.clone(),
-                );
+                let _ = self
+                    .core
+                    .session_storage
+                    .add_message(
+                        &session_id,
+                        "user",
+                        user_input,
+                        self.message_metadata.user.clone(),
+                    )
+                    .await;
                 self.emit(AgentSessionEvent::UserMessage {
                     content: user_input.to_string(),
                 })
@@ -2345,7 +2383,8 @@ impl AgentSession {
                 );
                 let mut metadata = HashMap::new();
                 metadata.insert("quota_rejected".to_string(), Value::Bool(true));
-                self.persist_assistant_text_turn(&session_id, &quota_message, metadata);
+                self.persist_assistant_text_turn(&session_id, &quota_message, metadata)
+                    .await;
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -2411,29 +2450,33 @@ impl AgentSession {
                 interactive_ingress_cutoff_ms,
                 &options,
             )
+            .await
         } else {
             DeliveredPushContextBatch::default()
         };
 
         // ── Fast Persist: 立即写入用户消息 ──
         // 确保 ensureHistory 轮询时 DB 里已有此消息，避免前端因为竞态丢失消息显示
-        let _ = self.core.session_storage.add_message(
-            &session_id,
-            "user",
-            persisted_user_input,
-            user_metadata,
-        );
+        let _ = self
+            .core
+            .session_storage
+            .add_message(&session_id, "user", persisted_user_input, user_metadata)
+            .await;
         if let Some(skill) = &slash_skill {
             if crate::turn_builder::skill_prompt_is_turn_scoped(&skill.skill_id) {
                 // This also removes legacy earnings prompts that older builds
                 // persisted with both mode branches in one session snapshot.
-                let _ = self.forget_turn_scoped_skill_prompt(&session_id, &skill.skill_id);
+                let _ = self
+                    .forget_turn_scoped_skill_prompt(&session_id, &skill.skill_id)
+                    .await;
             } else {
-                let _ = self.persist_invoked_skill_prompt(
-                    &session_id,
-                    &skill.skill_id,
-                    &skill.invoked_prompt,
-                );
+                let _ = self
+                    .persist_invoked_skill_prompt(
+                        &session_id,
+                        &skill.skill_id,
+                        &skill.invoked_prompt,
+                    )
+                    .await;
             }
         }
         self.emit(AgentSessionEvent::UserMessage {
@@ -2531,7 +2574,8 @@ impl AgentSession {
         {
             Ok(prepared) => prepared,
             Err((kind, err)) => {
-                self.release_delivered_push_context(&delivered_push_turn_id);
+                self.release_delivered_push_context(&delivered_push_turn_id)
+                    .await;
                 drop(quota_guard);
                 return self.fail_run(session_id, kind, err).await;
             }
@@ -2595,7 +2639,8 @@ impl AgentSession {
                 let _ = self
                     .core
                     .session_storage
-                    .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
+                    .update_metadata(&session_id, runner_result.session_metadata_updates.clone())
+                    .await;
             }
             context_messages = runner_result.context_messages;
             response = runner_result.response;
@@ -2906,10 +2951,11 @@ impl AgentSession {
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
-            self.complete_delivered_push_context(&delivered_push_turn_id);
+            self.complete_delivered_push_context(&delivered_push_turn_id)
+                .await;
             // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
             // 后续 drop 再执行 release。
-            quota_guard.commit();
+            quota_guard.commit().await;
             if defer_validated_output {
                 if let Some(prefix) = committed_visible_prefix.as_deref() {
                     // The Agent already committed this exact canonical prefix
@@ -2960,7 +3006,8 @@ impl AgentSession {
                 &session_id,
                 &response,
                 context_messages.as_deref(),
-            );
+            )
+            .await;
             self.core.log_message_step(
                 &self.actor.channel,
                 &self.actor.user_id,
@@ -2983,7 +3030,8 @@ impl AgentSession {
             })
             .await;
         } else {
-            self.release_delivered_push_context(&delivered_push_turn_id);
+            self.release_delivered_push_context(&delivered_push_turn_id)
+                .await;
             // 失败路径：显式 drop 触发 release,让配额回到预留前的状态。
             drop(quota_guard);
             let err = response
@@ -3039,7 +3087,8 @@ impl AgentSession {
                     "service_owned_initial_prefix".to_string(),
                     Value::Bool(service_owned_prefix),
                 );
-                self.persist_assistant_text_turn(&session_id, &visible_partial, metadata);
+                self.persist_assistant_text_turn(&session_id, &visible_partial, metadata)
+                    .await;
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -3068,14 +3117,16 @@ impl AgentSession {
                 }))
                 .await;
                 let persisted_message = failed_assistant_persisted_message(&response);
-                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+                    .await;
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),
                 })
                 .await;
             } else {
                 let persisted_message = failed_assistant_persisted_message(&response);
-                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message)
+                    .await;
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),
                 })

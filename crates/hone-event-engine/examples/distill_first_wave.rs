@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let mut total_actors = 0u32;
     let mut total_distilled = 0u32;
     let mut total_failed = 0u32;
-    for (actor, portfolio) in portfolio_storage.list_all() {
+    for (actor, portfolio) in portfolio_storage.list_all().await {
         if !actor.is_direct() {
             continue;
         }
@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         // 验证写入
-        let reloaded = prefs_storage.load(&actor);
+        let reloaded = prefs_storage.load(&actor).await;
         println!(
             "  verify: prefs.mainline_by_ticker has {} entries; last_at = {:?}",
             reloaded

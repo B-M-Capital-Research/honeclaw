@@ -46,7 +46,7 @@ impl<'a> CandidateCollector<'a> {
     ///
     /// `dedup_lookback_hours` 决定跨批次去重看多远 —— 一般等于 `lookback_hours`
     /// 或略大,避免边界刚被推过的事件下一批次又被纳入。
-    pub fn collect(
+    pub async fn collect(
         &self,
         until: DateTime<Utc>,
         lookback_hours: u32,
@@ -59,10 +59,12 @@ impl<'a> CandidateCollector<'a> {
 
         let raw_candidates = self
             .store
-            .list_global_digest_news_candidates(since, until)?;
+            .list_global_digest_news_candidates(since, until)
+            .await?;
         let already_pushed = self
             .store
-            .broadcasted_event_ids_since(GLOBAL_DIGEST_CHANNEL, dedup_since)?;
+            .broadcasted_event_ids_since(GLOBAL_DIGEST_CHANNEL, dedup_since)
+            .await?;
 
         let mut candidates = Vec::with_capacity(raw_candidates.len());
         for event in raw_candidates {
@@ -191,14 +193,16 @@ mod tests {
         }
     }
 
-    fn open_store() -> EventStore {
+    async fn open_store() -> EventStore {
         let dir = tempdir().unwrap();
-        EventStore::open(dir.path().join("event-store")).unwrap()
+        EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap()
     }
 
-    #[test]
-    fn collects_trusted_high_news_within_window() {
-        let store = open_store();
+    #[tokio::test]
+    async fn collects_trusted_high_news_within_window() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -210,9 +214,11 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(2),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].event.id, "n1");
@@ -221,9 +227,9 @@ mod tests {
         assert!(candidates[0].fmp_text.contains("body of n1"));
     }
 
-    #[test]
-    fn drops_pr_wire_opinion_blog_uncertain() {
-        let store = open_store();
+    #[tokio::test]
+    async fn drops_pr_wire_opinion_blog_uncertain() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         for (id, site, source_class) in [
             ("n_pr", "globenewswire.com", "pr_wire"),
@@ -240,17 +246,19 @@ mod tests {
                     Severity::High,
                     now - chrono::Duration::hours(1),
                 ))
+                .await
                 .unwrap();
         }
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn drops_legal_ad_template_even_on_trusted() {
-        let store = open_store();
+    #[tokio::test]
+    async fn drops_legal_ad_template_even_on_trusted() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -262,16 +270,18 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn drops_earnings_call_transcript_titles() {
-        let store = open_store();
+    #[tokio::test]
+    async fn drops_earnings_call_transcript_titles() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -283,19 +293,21 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn keeps_low_severity_when_fmp_source_class_is_trusted() {
+    #[tokio::test]
+    async fn keeps_low_severity_when_fmp_source_class_is_trusted() {
         // 2026-04-27 POC 复盘后:trusted 域 FMP 即便 severity=Low 也进候选池。
         // 之前 pollers::news::classify_severity 只在命中 distress/M&A 关键词时升 High,
         // 导致 GOOGL 财报预告等主线硬料被砍。Pass1 LLM 会自行打低分压住噪音。
-        let store = open_store();
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -307,19 +319,21 @@ mod tests {
                 Severity::Low,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].event.id, "n_low_trusted");
     }
 
-    #[test]
-    fn still_drops_low_severity_for_pr_wire_or_opinion_blog() {
+    #[tokio::test]
+    async fn still_drops_low_severity_for_pr_wire_or_opinion_blog() {
         // 非 trusted 域(opinion_blog/pr_wire/uncertain)继续按严格 high/medium 门槛,
         // 防止 seekingalpha listicle、律所 PR 灌进来。
-        let store = open_store();
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         for (id, site, source_class) in [
             ("n_low_opinion", "seekingalpha.com", "opinion_blog"),
@@ -336,17 +350,19 @@ mod tests {
                     Severity::Low,
                     now - chrono::Duration::hours(1),
                 ))
+                .await
                 .unwrap();
         }
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn keeps_medium_severity() {
-        let store = open_store();
+    #[tokio::test]
+    async fn keeps_medium_severity() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -358,17 +374,19 @@ mod tests {
                 Severity::Medium,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].event.severity, Severity::Medium);
     }
 
-    #[test]
-    fn excludes_already_broadcast_event_ids() {
-        let store = open_store();
+    #[tokio::test]
+    async fn excludes_already_broadcast_event_ids() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -380,6 +398,7 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         // 模拟上一批次已成功广播过这条
         store
@@ -391,17 +410,19 @@ mod tests {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn does_not_dedup_against_per_actor_digest_channel() {
+    #[tokio::test]
+    async fn does_not_dedup_against_per_actor_digest_channel() {
         // per-actor digest_item / sink 推过的事件,全局 digest 仍可纳入候选。
-        let store = open_store();
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -413,6 +434,7 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -423,16 +445,18 @@ mod tests {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 1, "per-actor digest 不应影响全局候选池");
     }
 
-    #[test]
-    fn respects_lookback_window() {
-        let store = open_store();
+    #[tokio::test]
+    async fn respects_lookback_window() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -444,6 +468,7 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(48),
             ))
+            .await
             .unwrap();
         store
             .insert_event(&news_event(
@@ -455,17 +480,19 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(2),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].event.id, "n_recent");
     }
 
-    #[test]
-    fn returns_in_descending_occurred_order() {
-        let store = open_store();
+    #[tokio::test]
+    async fn returns_in_descending_occurred_order() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -477,6 +504,7 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(5),
             ))
+            .await
             .unwrap();
         store
             .insert_event(&news_event(
@@ -488,18 +516,20 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(1),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].event.id, "n_latest");
         assert_eq!(candidates[1].event.id, "n_first");
     }
 
-    #[test]
-    fn lookback_caps_at_max_constant() {
-        let store = open_store();
+    #[tokio::test]
+    async fn lookback_caps_at_max_constant() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         // 5 天前的事件,即使 lookback_hours = 999 也不应被拉出来(MAX = 72h)。
         store
@@ -512,18 +542,20 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(5 * 24),
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 9999, 9999)
+            .await
             .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn collects_rss_sources_alongside_fmp() {
+    #[tokio::test]
+    async fn collects_rss_sources_alongside_fmp() {
         // RSS 源(Bloomberg/SpaceNews/STAT)入 events 表 source = "rss:{handle}";
         // collector 必须把它们和 fmp.stock_news 一起拉出来。
-        let store = open_store();
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
@@ -535,6 +567,7 @@ mod tests {
                 Severity::High,
                 now - chrono::Duration::hours(2),
             ))
+            .await
             .unwrap();
         store
             .insert_event(&news_event_with_source(
@@ -547,6 +580,7 @@ mod tests {
                 now - chrono::Duration::hours(1),
                 "rss:bloomberg_markets",
             ))
+            .await
             .unwrap();
         store
             .insert_event(&news_event_with_source(
@@ -559,9 +593,11 @@ mod tests {
                 now - chrono::Duration::minutes(30),
                 "rss:spacenews",
             ))
+            .await
             .unwrap();
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
+            .await
             .unwrap();
         assert_eq!(candidates.len(), 3);
         let sources: Vec<&str> = candidates

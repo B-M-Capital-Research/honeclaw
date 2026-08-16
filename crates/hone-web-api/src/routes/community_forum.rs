@@ -174,12 +174,16 @@ pub(crate) async fn handle_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     match read_store(&state).await {
         Ok(store) => Json(ForumPage {
             items: visible_posts(&store, &actor_key, is_admin),
@@ -200,7 +204,7 @@ pub(crate) async fn handle_create_post(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -480,12 +484,16 @@ pub(crate) async fn handle_attachment(
     headers: HeaderMap,
     AxumPath((post_id, attachment_id)): AxumPath<(String, String)>,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     let store = match read_store(&state).await {
         Ok(value) => value,
         Err(error) => return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
@@ -540,12 +548,16 @@ async fn mutate_post<F>(state: &AppState, headers: &HeaderMap, post_id: &str, mu
 where
     F: FnOnce(&mut ForumPostRecord, &str, bool, DateTime<Utc>) -> Result<(), (StatusCode, String)>,
 {
-    let user = match crate::routes::public::require_public_user(state, headers) {
+    let user = match crate::routes::public::require_public_user(state, headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
     let actor_key = forum_actor_key(&user.user_id);
-    let is_admin = state.web_auth.is_web_admin(&user.user_id).unwrap_or(false);
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
     let _guard = FORUM_WRITE_LOCK.lock().await;
     let mut store = match read_store(state).await {
         Ok(value) => value,

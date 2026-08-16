@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
@@ -198,6 +199,41 @@ pub struct CloudHealth {
 pub struct CloudPgRuntime {
     config: PostgresConfig,
     isolated_test_connection: Option<String>,
+}
+
+static CLOUD_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
+static CLOUD_SCHEMA_INIT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Ensure the shared production schema once per process without blocking a Tokio worker.
+///
+/// A failed initialization does not set the ready flag, so the next caller can retry.
+/// Isolated `pg_temp` test connections must call their schema initializer directly.
+pub async fn ensure_cloud_schema_once(
+    postgres: &CloudPgRuntime,
+    operation_timeout: Option<Duration>,
+) -> HoneResult<()> {
+    if CLOUD_SCHEMA_READY.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    let _guard = CLOUD_SCHEMA_INIT.lock().await;
+    if CLOUD_SCHEMA_READY.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    let operation = postgres.ensure_schema();
+    match operation_timeout {
+        Some(timeout) => match tokio::time::timeout(timeout, operation).await {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(HoneError::Storage(format!(
+                    "cloud schema operation timed out after {}ms",
+                    timeout.as_millis()
+                )));
+            }
+        },
+        None => operation.await?,
+    }
+    CLOUD_SCHEMA_READY.store(true, Ordering::Release);
+    Ok(())
 }
 
 /// A session-scoped lock held on a dedicated PostgreSQL connection so two

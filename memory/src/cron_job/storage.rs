@@ -9,7 +9,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use super::CronJobStorage;
-use super::run_cloud_cron;
+use super::cloud_cron_operation;
 use super::schedule::{
     DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot_in,
     normalize_schedule_date, normalized_repeat, normalized_tags, prompt_schedule_conflict,
@@ -182,9 +182,11 @@ fn due_job_dedup_key(job: &CronJob) -> String {
 }
 
 impl CronJobStorage {
-    pub fn list_all_jobs(&self) -> Vec<(ActorIdentity, CronJob)> {
+    pub async fn list_all_jobs(&self) -> Vec<(ActorIdentity, CronJob)> {
         let postgres = self.postgres.clone();
-        return match run_cloud_cron(async move { postgres.list_cron_job_records().await }) {
+        return match cloud_cron_operation(async move { postgres.list_cron_job_records().await })
+            .await
+        {
             Ok(records) => records
                 .into_iter()
                 .filter_map(cron_pair_from_cloud_record)
@@ -200,13 +202,13 @@ impl CronJobStorage {
     ///
     /// Mutation paths must use this method so a cloud or local read failure
     /// cannot be mistaken for an empty task list and reported as success.
-    pub fn try_load_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<CronJobData> {
+    pub async fn try_load_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<CronJobData> {
         let postgres = self.postgres.clone();
         let actor_key = actor.storage_key();
-        let records =
-            run_cloud_cron(
-                async move { postgres.list_cron_job_records_for_actor(&actor_key).await },
-            )?;
+        let records = cloud_cron_operation(async move {
+            postgres.list_cron_job_records_for_actor(&actor_key).await
+        })
+        .await?;
         return Ok(CronJobData {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
@@ -227,8 +229,8 @@ impl CronJobStorage {
     }
 
     /// 加载 actor 的定时任务数据
-    pub fn load_jobs(&self, actor: &ActorIdentity) -> CronJobData {
-        match self.try_load_jobs(actor) {
+    pub async fn load_jobs(&self, actor: &ActorIdentity) -> CronJobData {
+        match self.try_load_jobs(actor).await {
             Ok(data) => data,
             Err(error) => {
                 warn!(
@@ -246,7 +248,7 @@ impl CronJobStorage {
     }
 
     /// 保存 actor 的定时任务数据
-    pub fn save_jobs(
+    pub async fn save_jobs(
         &self,
         actor: &ActorIdentity,
         data: &CronJobData,
@@ -268,7 +270,7 @@ impl CronJobStorage {
                 })
             })
             .collect::<hone_core::HoneResult<Vec<_>>>()?;
-        return run_cloud_cron(async move {
+        return cloud_cron_operation(async move {
             let existing = postgres.list_cron_job_records_for_actor(&actor_key).await?;
             let wanted = records
                 .iter()
@@ -292,16 +294,17 @@ impl CronJobStorage {
                     .await?;
             }
             Ok(())
-        });
+        })
+        .await;
     }
 
-    pub fn get_job(
+    pub async fn get_job(
         &self,
         job_id: &str,
         actor: Option<&ActorIdentity>,
     ) -> Option<(ActorIdentity, CronJob)> {
         if let Some(actor) = actor {
-            let data = self.load_jobs(actor);
+            let data = self.load_jobs(actor).await;
             return data
                 .jobs
                 .into_iter()
@@ -310,15 +313,16 @@ impl CronJobStorage {
         }
 
         self.list_all_jobs()
+            .await
             .into_iter()
             .find(|(_, job)| job.id == job_id)
     }
 
-    pub fn list_channel_targets(&self) -> Vec<ChannelTargetRecord> {
+    pub async fn list_channel_targets(&self) -> Vec<ChannelTargetRecord> {
         let mut records: BTreeMap<(String, Option<String>, String), ChannelTargetRecord> =
             BTreeMap::new();
 
-        for (actor, job) in self.list_all_jobs() {
+        for (actor, job) in self.list_all_jobs().await {
             let target = job.channel_target.trim();
             if target.is_empty() {
                 continue;
@@ -359,6 +363,7 @@ impl CronJobStorage {
                 limit: 1000,
                 ..super::ExecutionFilter::default()
             })
+            .await
             .unwrap_or_default();
         for execution in executions {
             let target = execution.channel_target.trim();
@@ -394,7 +399,7 @@ impl CronJobStorage {
     }
 
     /// 添加定时任务
-    pub fn add_job(
+    pub async fn add_job(
         &self,
         actor: &ActorIdentity,
         name: &str,
@@ -410,7 +415,7 @@ impl CronJobStorage {
         tags: Option<Vec<String>>,
         bypass_limits: bool,
     ) -> serde_json::Value {
-        let mut data = self.load_jobs(actor);
+        let mut data = self.load_jobs(actor).await;
         let channel_target = channel_target.trim();
         if channel_target.is_empty() {
             return serde_json::json!({
@@ -484,7 +489,7 @@ impl CronJobStorage {
 
         let job_value = serde_json::to_value(&job).unwrap_or_default();
         data.jobs.push(job);
-        if let Err(error) = self.save_jobs(actor, &data) {
+        if let Err(error) = self.save_jobs(actor, &data).await {
             return serde_json::json!({
                 "success": false,
                 "error": format!("保存定时任务失败: {error}")
@@ -495,12 +500,12 @@ impl CronJobStorage {
     }
 
     /// 删除定时任务
-    pub fn remove_job(
+    pub async fn remove_job(
         &self,
         actor: &ActorIdentity,
         job_id: &str,
     ) -> hone_core::HoneResult<serde_json::Value> {
-        let mut data = self.try_load_jobs(actor)?;
+        let mut data = self.try_load_jobs(actor).await?;
         let original_len = data.jobs.len();
         data.jobs.retain(|j| j.id != job_id);
         if data.jobs.len() == original_len {
@@ -510,7 +515,7 @@ impl CronJobStorage {
         }
         data.pending_updates
             .retain(|pending| pending.job_id != job_id);
-        self.save_jobs(actor, &data)?;
+        self.save_jobs(actor, &data).await?;
         Ok(serde_json::json!({"success": true, "removed_job_id": job_id}))
     }
 
@@ -519,20 +524,23 @@ impl CronJobStorage {
     /// This is intentionally actor-scoped and idempotent. Persistence errors
     /// are propagated so callers never tell a user that cancellation succeeded
     /// while durable jobs are still present.
-    pub fn remove_all_jobs(&self, actor: &ActorIdentity) -> hone_core::HoneResult<Vec<CronJob>> {
-        let mut data = self.try_load_jobs(actor)?;
+    pub async fn remove_all_jobs(
+        &self,
+        actor: &ActorIdentity,
+    ) -> hone_core::HoneResult<Vec<CronJob>> {
+        let mut data = self.try_load_jobs(actor).await?;
         let removed = std::mem::take(&mut data.jobs);
         data.pending_updates.clear();
-        self.save_jobs(actor, &data)?;
+        self.save_jobs(actor, &data).await?;
         Ok(removed)
     }
 
     /// 列出 actor 的所有定时任务
-    pub fn list_jobs(&self, actor: &ActorIdentity) -> Vec<CronJob> {
-        self.load_jobs(actor).jobs
+    pub async fn list_jobs(&self, actor: &ActorIdentity) -> Vec<CronJob> {
+        self.load_jobs(actor).await.jobs
     }
 
-    pub fn update_job(
+    pub async fn update_job(
         &self,
         job_id: &str,
         actor: Option<&ActorIdentity>,
@@ -583,9 +591,10 @@ impl CronJobStorage {
             }
             Ok(())
         })
+        .await
     }
 
-    pub fn toggle_job(
+    pub async fn toggle_job(
         &self,
         job_id: &str,
         actor: Option<&ActorIdentity>,
@@ -595,19 +604,20 @@ impl CronJobStorage {
             job.enabled = !job.enabled;
             Ok(())
         })
+        .await
     }
 
-    pub fn delete_job(
+    pub async fn delete_job(
         &self,
         job_id: &str,
         actor: Option<&ActorIdentity>,
     ) -> hone_core::HoneResult<Option<(ActorIdentity, CronJob)>> {
         if let Some(actor) = actor {
-            return self.delete_job_for_actor(job_id, actor);
+            return self.delete_job_for_actor(job_id, actor).await;
         }
 
-        for actor in self.list_unique_cron_actors() {
-            if let Some(removed) = self.delete_job_for_actor(job_id, &actor)? {
+        for actor in self.list_unique_cron_actors().await {
+            if let Some(removed) = self.delete_job_for_actor(job_id, &actor).await? {
                 return Ok(Some(removed));
             }
         }
@@ -616,8 +626,8 @@ impl CronJobStorage {
     }
 
     /// 标记任务已执行
-    pub fn mark_job_run(&self, actor: &ActorIdentity, job_id: &str) {
-        let mut data = self.load_jobs(actor);
+    pub async fn mark_job_run(&self, actor: &ActorIdentity, job_id: &str) {
+        let mut data = self.load_jobs(actor).await;
         let now = hone_core::local_now_rfc3339();
         for job in &mut data.jobs {
             if job.id == job_id {
@@ -628,7 +638,7 @@ impl CronJobStorage {
                 break;
             }
         }
-        let _ = self.save_jobs(actor, &data);
+        let _ = self.save_jobs(actor, &data).await;
     }
 
     /// 扫描所有 actor 的 cron 文件，返回当前时刻应触发的任务列表。
@@ -641,7 +651,7 @@ impl CronJobStorage {
     /// 4. 按 `repeat` 过滤星期/工作日/交易日/假日
     /// 5. `last_run_at` 未命中当前周期（heartbeat 以半点槽，weekly 以 ISO 周，once 只跑一次）
     /// 6. 跨文件去重（同一 `channel:job_id:target` 只返回一次）
-    pub fn get_due_jobs_at(
+    pub async fn get_due_jobs_at(
         &self,
         now: DateTime<FixedOffset>,
         channels: &[&str],
@@ -657,12 +667,12 @@ impl CronJobStorage {
 
         let postgres = self.postgres.clone();
         let owner_id = cron_owner_id();
-        for (actor, mut job) in self.list_all_jobs() {
+        for (actor, mut job) in self.list_all_jobs().await {
             if repair_prompt_schedule_mismatch(&mut job) {
-                let mut data = self.load_jobs(&actor);
+                let mut data = self.load_jobs(&actor).await;
                 if let Some(saved) = data.jobs.iter_mut().find(|saved| saved.id == job.id) {
                     *saved = job.clone();
-                    if let Err(error) = self.save_jobs(&actor, &data) {
+                    if let Err(error) = self.save_jobs(&actor, &data).await {
                         warn!(
                             actor = %actor.storage_key(),
                             job_id = %job.id,
@@ -705,7 +715,7 @@ impl CronJobStorage {
 
             let job_key = cron_claim_job_key(&actor, &job);
             let due_key = cron_claim_due_key(&job, repeat_kind, current_total, current_day);
-            let claim = run_cloud_cron({
+            let claim = cloud_cron_operation({
                 let postgres = postgres.clone();
                 let owner_id = owner_id.clone();
                 async move {
@@ -714,7 +724,7 @@ impl CronJobStorage {
                         .await
                 }
             });
-            match claim {
+            match claim.await {
                 Ok(true) => due.push((actor, job)),
                 Ok(false) => {}
                 Err(error) => warn!(
@@ -728,7 +738,7 @@ impl CronJobStorage {
     }
 
     #[cfg(test)]
-    pub fn get_due_jobs(
+    pub async fn get_due_jobs(
         &self,
         current_hour: i32,
         current_minute: i32,
@@ -741,10 +751,10 @@ impl CronJobStorage {
             .and_then(|value| value.with_second(0))
             .expect("valid test-local cron time");
         debug_assert_eq!(now.weekday().num_days_from_monday(), current_weekday);
-        self.get_due_jobs_at(now, channels)
+        self.get_due_jobs_at(now, channels).await
     }
 
-    fn mutate_job<F>(
+    async fn mutate_job<F>(
         &self,
         job_id: &str,
         actor: Option<&ActorIdentity>,
@@ -755,12 +765,15 @@ impl CronJobStorage {
         F: FnMut(&mut CronJob) -> hone_core::HoneResult<()>,
     {
         if let Some(actor) = actor {
-            return self.mutate_job_for_actor(job_id, actor, bypass_limits, &mut mutator);
+            return self
+                .mutate_job_for_actor(job_id, actor, bypass_limits, &mut mutator)
+                .await;
         }
 
-        for actor in self.list_unique_cron_actors() {
-            if let Some(updated) =
-                self.mutate_job_for_actor(job_id, &actor, bypass_limits, &mut mutator)?
+        for actor in self.list_unique_cron_actors().await {
+            if let Some(updated) = self
+                .mutate_job_for_actor(job_id, &actor, bypass_limits, &mut mutator)
+                .await?
             {
                 return Ok(Some(updated));
             }
@@ -769,15 +782,15 @@ impl CronJobStorage {
         Ok(None)
     }
 
-    fn list_unique_cron_actors(&self) -> Vec<ActorIdentity> {
+    async fn list_unique_cron_actors(&self) -> Vec<ActorIdentity> {
         let mut actors = BTreeMap::new();
-        for (actor, _) in self.list_all_jobs() {
+        for (actor, _) in self.list_all_jobs().await {
             actors.entry(actor.storage_key()).or_insert(actor);
         }
         actors.into_values().collect()
     }
 
-    fn mutate_job_for_actor<F>(
+    async fn mutate_job_for_actor<F>(
         &self,
         job_id: &str,
         actor: &ActorIdentity,
@@ -787,7 +800,7 @@ impl CronJobStorage {
     where
         F: FnMut(&mut CronJob) -> hone_core::HoneResult<()>,
     {
-        let mut data = self.load_jobs(actor);
+        let mut data = self.load_jobs(actor).await;
         let Some(index) = data.jobs.iter().position(|job| job.id == job_id) else {
             return Ok(None);
         };
@@ -803,23 +816,23 @@ impl CronJobStorage {
         {
             return Err(hone_core::HoneError::Tool(cron_enabled_limit_error()));
         }
-        self.save_jobs(actor, &data)?;
+        self.save_jobs(actor, &data).await?;
         Ok(Some((actor.clone(), updated)))
     }
 
-    fn delete_job_for_actor(
+    async fn delete_job_for_actor(
         &self,
         job_id: &str,
         actor: &ActorIdentity,
     ) -> hone_core::HoneResult<Option<(ActorIdentity, CronJob)>> {
-        let mut data = self.try_load_jobs(actor)?;
+        let mut data = self.try_load_jobs(actor).await?;
         let Some(index) = data.jobs.iter().position(|job| job.id == job_id) else {
             return Ok(None);
         };
         let removed = data.jobs.remove(index);
         data.pending_updates
             .retain(|pending| pending.job_id != job_id);
-        self.save_jobs(actor, &data)?;
+        self.save_jobs(actor, &data).await?;
         Ok(Some((actor.clone(), removed)))
     }
 }
@@ -907,8 +920,8 @@ mod timezone_regression_tests {
         }
     }
 
-    #[test]
-    fn non_eight_timezone_drives_cron_date_key_and_rendering() {
+    #[tokio::test]
+    async fn non_eight_timezone_drives_cron_date_key_and_rendering() {
         let timezone = hone_core::RuntimeTimezone::parse_iana("America/New_York").unwrap();
         let instant = Utc.with_ymd_and_hms(2026, 1, 15, 4, 32, 0).unwrap();
         let local = timezone.at_utc(instant);

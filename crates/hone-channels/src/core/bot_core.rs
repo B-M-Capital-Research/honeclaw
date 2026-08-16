@@ -44,7 +44,7 @@ use crate::session_compactor::SessionCompactor;
 use super::logging::printable_or_default;
 
 #[cfg(test)]
-fn isolated_test_postgres(postgres: CloudPgRuntime) -> CloudPgRuntime {
+async fn isolated_test_postgres(postgres: CloudPgRuntime) -> CloudPgRuntime {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
@@ -56,13 +56,10 @@ fn isolated_test_postgres(postgres: CloudPgRuntime) -> CloudPgRuntime {
     let postgres = postgres
         .with_isolated_test_connection(namespace)
         .expect("PostgreSQL test namespace must be valid");
-    let schema_postgres = postgres.clone();
-    hone_core::cloud_sync::run_cloud_sync(
-        async move { schema_postgres.ensure_schema().await },
-        None,
-        "channels PostgreSQL test schema",
-    )
-    .expect("failed to initialize isolated PostgreSQL test schema");
+    postgres
+        .ensure_schema()
+        .await
+        .expect("failed to initialize isolated PostgreSQL test schema");
     postgres
 }
 
@@ -99,38 +96,58 @@ pub struct HoneBotCore {
 impl Drop for HoneBotCore {
     fn drop(&mut self) {
         let postgres = self.cloud_pg_runtime.clone();
-        let _ = hone_core::cloud_sync::run_cloud_sync(
-            async move { postgres.drop_isolated_memory_test_schema().await },
-            None,
-            "channels PostgreSQL test schema cleanup",
-        );
+        // `Drop` 不能 async；仅测试实例在独立线程的临时 runtime 中同步回收
+        // 隔离 schema。生产存储调用链不经过这里，也不再共享 bridge runtime。
+        let _ = std::thread::Builder::new()
+            .name("hone-channels-test-pg-cleanup".into())
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| error.to_string())?;
+                runtime
+                    .block_on(postgres.drop_isolated_memory_test_schema())
+                    .map_err(|error| error.to_string())
+            })
+            .and_then(|thread| {
+                thread
+                    .join()
+                    .map_err(|_| std::io::Error::other("channels PostgreSQL cleanup panicked"))?
+                    .map_err(std::io::Error::other)
+            });
         self.cloud_pg_runtime.evict_cached_test_client();
     }
 }
 
 impl HoneBotCore {
     /// 从配置创建
-    pub fn new(config: HoneConfig) -> Self {
+    pub async fn new(config: HoneConfig) -> Self {
         hone_core::configure_runtime_timezone(config.timezone.as_deref())
             .expect("runtime timezone must be a validated IANA name");
         let cloud_pg_runtime = CloudPgRuntime::from_cloud_config(&config.cloud)
             .expect("PostgreSQL must be configured for the runtime");
         #[cfg(test)]
-        let cloud_pg_runtime = isolated_test_postgres(cloud_pg_runtime);
+        let cloud_pg_runtime = isolated_test_postgres(cloud_pg_runtime).await;
         let session_storage =
             SessionStorage::new_cloud(&config.storage.sessions_dir, cloud_pg_runtime.clone())
+                .await
                 .expect("failed to initialize PostgreSQL session storage");
         let conversation_quota_storage =
             ConversationQuotaStorage::new_cloud(cloud_pg_runtime.clone())
+                .await
                 .expect("failed to initialize PostgreSQL conversation quota storage");
         #[cfg(test)]
         let delivered_push_context_store = Some(
-            EventStore::new(cloud_pg_runtime.clone()).unwrap_or_else(|err| {
-                panic!("failed to open isolated PostgreSQL delivered push context store: {err:#}")
-            }),
+            EventStore::new(cloud_pg_runtime.clone())
+                .await
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "failed to open isolated PostgreSQL delivered push context store: {err:#}"
+                    )
+                }),
         );
         #[cfg(not(test))]
-        let delivered_push_context_store = match EventStore::new(cloud_pg_runtime.clone()) {
+        let delivered_push_context_store = match EventStore::new(cloud_pg_runtime.clone()).await {
             Ok(store) => Some(store),
             Err(err) => {
                 tracing::warn!("failed to open PostgreSQL delivered push context store: {err:#}");
@@ -156,7 +173,7 @@ impl HoneBotCore {
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
-        let llm_audit = Self::create_llm_audit_sink(&config, cloud_pg_runtime.clone());
+        let llm_audit = Self::create_llm_audit_sink(&config, cloud_pg_runtime.clone()).await;
         let workflow_runner_http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -183,9 +200,9 @@ impl HoneBotCore {
     }
 
     /// 从配置文件创建
-    pub fn from_config_file(path: &str) -> hone_core::HoneResult<Self> {
+    pub async fn from_config_file(path: &str) -> hone_core::HoneResult<Self> {
         let config = HoneConfig::from_file(path)?;
-        Ok(Self::new(config))
+        Ok(Self::new(config).await)
     }
 
     /// 创建 LLM Provider
@@ -261,7 +278,7 @@ impl HoneBotCore {
         }
     }
 
-    fn create_llm_audit_sink(
+    async fn create_llm_audit_sink(
         config: &HoneConfig,
         postgres: CloudPgRuntime,
     ) -> Option<Arc<dyn LlmAuditSink>> {
@@ -269,7 +286,7 @@ impl HoneBotCore {
             return None;
         }
 
-        match LlmAuditStorage::new_cloud(postgres, config.storage.llm_audit_retention_days) {
+        match LlmAuditStorage::new_cloud(postgres, config.storage.llm_audit_retention_days).await {
             Ok(storage) => Some(Arc::new(storage)),
             Err(err) => {
                 tracing::warn!("Failed to create LLM audit storage: {}", err);
@@ -590,18 +607,19 @@ impl HoneBotCore {
     /// - `hone-console-page`：`vec!["imessage", "web"]`
     /// - `hone-feishu`：`vec!["feishu"]`
     /// - `hone-telegram`：`vec!["telegram"]`
-    pub fn create_scheduler(
+    pub async fn create_scheduler(
         &self,
         channels: Vec<String>,
     ) -> (HoneScheduler, mpsc::Receiver<SchedulerEvent>) {
-        let storage = Arc::new(self.cron_job_storage());
+        let storage = Arc::new(self.cron_job_storage().await);
         let (tx, rx) = mpsc::channel(64);
         (HoneScheduler::new(storage, tx, channels), rx)
     }
 
-    pub fn cron_job_storage(&self) -> CronJobStorage {
+    pub async fn cron_job_storage(&self) -> CronJobStorage {
         let task_runs_dir = Some(self.configured_runtime_dir());
         CronJobStorage::new_cloud(self.cloud_pg_runtime.clone())
+            .await
             .unwrap_or_else(|error| panic!("{}", cloud_cron_storage_failure(&error)))
             .with_task_runs_dir(task_runs_dir)
     }

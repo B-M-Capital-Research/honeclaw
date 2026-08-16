@@ -369,7 +369,7 @@ impl OutboundSink for WebBroadcastSink {
     }
 }
 
-fn build_event_engine_sink(
+async fn build_event_engine_sink(
     core_cfg: &HoneConfig,
     push_tx: broadcast::Sender<PushEvent>,
 ) -> Arc<dyn OutboundSink> {
@@ -391,7 +391,7 @@ fn build_event_engine_sink(
         && !core_cfg.feishu.app_id.trim().is_empty()
         && !core_cfg.feishu.app_secret.trim().is_empty()
     {
-        let direct_actor_targets = feishu_direct_actor_contact_targets(core_cfg);
+        let direct_actor_targets = feishu_direct_actor_contact_targets(core_cfg).await;
         multi = multi.with_channel(
             "feishu",
             Arc::new(
@@ -422,31 +422,34 @@ fn build_event_engine_sink(
     Arc::new(multi)
 }
 
-fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
-    let storage = match CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
-        .ok_or_else(|| "PostgreSQL must be configured for cron contact lookup".to_string())
-        .and_then(|postgres| CronJobStorage::new_cloud(postgres).map_err(|error| error.to_string()))
-    {
+async fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
+    let storage_result = match CloudPgRuntime::from_cloud_config(&core_cfg.cloud) {
+        Some(postgres) => CronJobStorage::new_cloud(postgres)
+            .await
+            .map_err(|error| error.to_string()),
+        None => Err("PostgreSQL must be configured for cron contact lookup".to_string()),
+    };
+    let storage = match storage_result {
         Ok(storage) => storage,
         Err(error) => {
             warn!(%error, "failed to initialize PostgreSQL cron storage for Feishu contacts");
             return Vec::new();
         }
     };
-    let session_storage = CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
-        .ok_or_else(|| "PostgreSQL must be configured for Feishu contact lookup".to_string())
-        .and_then(|pg| {
-            SessionStorage::new_cloud(&core_cfg.storage.sessions_dir, pg)
-                .map_err(|error| error.to_string())
-        });
+    let session_storage = match CloudPgRuntime::from_cloud_config(&core_cfg.cloud) {
+        Some(postgres) => SessionStorage::new_cloud(&core_cfg.storage.sessions_dir, postgres)
+            .await
+            .map_err(|error| error.to_string()),
+        None => Err("PostgreSQL must be configured for Feishu contact lookup".to_string()),
+    };
     let sessions = match session_storage {
-        Ok(storage) => sessions_or_empty(storage.list_sessions()),
+        Ok(storage) => sessions_or_empty(storage.list_sessions().await),
         Err(error) => {
             warn!(%error, "failed to initialize PostgreSQL sessions for Feishu direct actor contacts");
             Vec::new()
         }
     };
-    feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets(), sessions)
+    feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets().await, sessions)
 }
 
 fn sessions_or_empty(primary: hone_core::HoneResult<Vec<Session>>) -> Vec<Session> {
@@ -695,15 +698,17 @@ pub async fn start_server(
     config.apply_runtime_overrides(data_dir, skills_dir, Some(Path::new(config_path)));
     config.ensure_runtime_dirs();
 
-    let core = Arc::new(hone_channels::HoneBotCore::new(config));
+    let core = Arc::new(hone_channels::HoneBotCore::new(config).await);
     let cloud_postgres = CloudPgRuntime::from_cloud_config(&core.config.cloud)
         .ok_or_else(|| "Web Auth/Billing 初始化失败: PostgreSQL 未配置".to_string())?;
     let web_auth = Arc::new(
         hone_memory::WebAuthStorage::new_cloud(cloud_postgres.clone())
+            .await
             .map_err(|e| format!("Web Auth PostgreSQL 存储初始化失败: {e}"))?,
     );
     let billing = Arc::new(
         hone_memory::BillingStorage::new_cloud(cloud_postgres)
+            .await
             .map_err(|e| format!("Billing PostgreSQL 存储初始化失败: {e}"))?,
     );
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────
@@ -912,7 +917,7 @@ pub async fn start_server(
         };
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
-        let sink = build_event_engine_sink(&state.core.config, state.push_tx.clone());
+        let sink = build_event_engine_sink(&state.core.config, state.push_tx.clone()).await;
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
         let sec_filings_enrichment = build_sec_filings_enrichment_llm(&state.core.config);
         if let Some(created) = &sec_filings_enrichment {
@@ -1070,7 +1075,7 @@ pub async fn start_server(
         if state.core.config.imessage.enabled {
             scheduler_channels.insert(0, "imessage".to_string());
         }
-        let (scheduler, event_rx) = state.core.create_scheduler(scheduler_channels);
+        let (scheduler, event_rx) = state.core.create_scheduler(scheduler_channels).await;
         task_handles.push(tokio::spawn(async move { scheduler.start().await }));
         let state_for_scheduler = state.clone();
         task_handles.push(tokio::spawn(async move {

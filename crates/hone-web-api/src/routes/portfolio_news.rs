@@ -109,7 +109,7 @@ pub(crate) async fn handle_get_portfolio_news(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers) {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -123,7 +123,7 @@ pub(crate) async fn handle_get_portfolio_news(
         }
     };
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = storage.load(&actor).ok().flatten();
+    let portfolio = storage.load(&actor).await.ok().flatten();
     let symbols = portfolio
         .as_ref()
         .map(portfolio_symbols)
@@ -178,7 +178,7 @@ pub(crate) async fn overview_card(
     use crate::routes::research_overview::{OverviewCard, short_summary};
     let mut card = OverviewCard::waiting("portfolio-news", "持仓重点新闻", "按你的持仓筛选");
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
-    let portfolio = storage.load(actor).ok().flatten();
+    let portfolio = storage.load(actor).await.ok().flatten();
     let symbols = portfolio
         .as_ref()
         .map(portfolio_symbols)
@@ -246,6 +246,7 @@ async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
     let storage = PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
     let portfolios = storage
         .list_all()
+        .await
         .into_iter()
         .filter(|(_, portfolio)| !portfolio_symbols(portfolio).is_empty())
         .collect::<Vec<_>>();

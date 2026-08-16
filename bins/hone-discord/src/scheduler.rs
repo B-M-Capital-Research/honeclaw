@@ -22,14 +22,15 @@ pub(crate) async fn handle_scheduler_events(
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: discord）");
     hone_scheduler::recover_stale_started_rows(
-        &core.cron_job_storage(),
+        &core.cron_job_storage().await,
         "discord",
         core.config
             .agent
             .overall_timeout()
             .saturating_add(std::time::Duration::from_secs(30)),
         "discord_scheduler_startup",
-    );
+    )
+    .await;
     while let Some(event) = event_rx.recv().await {
         if event.channel != "discord" {
             continue;
@@ -42,7 +43,7 @@ pub(crate) async fn handle_scheduler_events(
             let Some(_slot) = hone_scheduler::acquire_job_slot().await else {
                 return;
             };
-            let storage = core_clone.cron_job_storage();
+            let storage = core_clone.cron_job_storage().await;
             let prompt_options = PromptOptions {
                 is_admin: core_clone.is_admin_actor(&event.actor),
                 ..PromptOptions::default()
@@ -67,33 +68,35 @@ pub(crate) async fn handle_scheduler_events(
                     "[Discord] 心跳任务未命中，本轮不发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "noop".to_string()
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "noop".to_string()
+                            },
+                            message_send_status: if result.error.is_some() {
+                                "skipped_error".to_string()
+                            } else {
+                                "skipped_noop".to_string()
+                            },
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: result.error.clone(),
+                            detail: execution_detail_with_delivery_key(
+                                result.metadata.clone(),
+                                &event.delivery_key,
+                            ),
                         },
-                        message_send_status: if result.error.is_some() {
-                            "skipped_error".to_string()
-                        } else {
-                            "skipped_noop".to_string()
-                        },
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: result.error.clone(),
-                        detail: execution_detail_with_delivery_key(
-                            result.metadata.clone(),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                    )
+                    .await;
                 return;
             }
             let response = result
@@ -112,32 +115,34 @@ pub(crate) async fn handle_scheduler_events(
                         "[Discord] 定时任务目标解析失败: job={} target={}",
                         event.job_name, event.channel_target
                     );
-                    let _ = storage.record_execution_event(
-                        &event.actor,
-                        &event.job_id,
-                        &event.job_name,
-                        &event.channel_target,
-                        event.heartbeat,
-                        CronJobExecutionInput {
-                            execution_status: if result.error.is_some() {
-                                "execution_failed".to_string()
-                            } else {
-                                "completed".to_string()
+                    let _ = storage
+                        .record_execution_event(
+                            &event.actor,
+                            &event.job_id,
+                            &event.job_name,
+                            &event.channel_target,
+                            event.heartbeat,
+                            CronJobExecutionInput {
+                                execution_status: if result.error.is_some() {
+                                    "execution_failed".to_string()
+                                } else {
+                                    "completed".to_string()
+                                },
+                                message_send_status: "target_resolution_failed".to_string(),
+                                should_deliver: true,
+                                delivered: false,
+                                response_preview: Some(response.clone()),
+                                error_message: Some("Discord 定时任务目标解析失败".to_string()),
+                                detail: execution_detail_with_delivery_key(
+                                    json!({
+                                        "failure_kind": "discord_target_resolution_failed",
+                                        "scheduler": result.metadata,
+                                    }),
+                                    &event.delivery_key,
+                                ),
                             },
-                            message_send_status: "target_resolution_failed".to_string(),
-                            should_deliver: true,
-                            delivered: false,
-                            response_preview: Some(response.clone()),
-                            error_message: Some("Discord 定时任务目标解析失败".to_string()),
-                            detail: execution_detail_with_delivery_key(
-                                json!({
-                                    "failure_kind": "discord_target_resolution_failed",
-                                    "scheduler": result.metadata,
-                                }),
-                                &event.delivery_key,
-                            ),
-                        },
-                    );
+                        )
+                        .await;
                     return;
                 }
             };
@@ -145,30 +150,32 @@ pub(crate) async fn handle_scheduler_events(
             let segments =
                 split_into_segments(&response, core_clone.config.discord.max_message_length);
             let context_segments = segments.clone();
-            if !scheduler_event_is_active(&storage, &event) {
+            if !scheduler_event_is_active(&storage, &event).await {
                 info!(
                     "[Discord] 定时任务已取消，抑制发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: "noop".to_string(),
-                        message_send_status: "skipped_cancelled".to_string(),
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: None,
-                        detail: execution_detail_with_delivery_key(
-                            json!({"skipped": "job_cancelled"}),
-                            &event.delivery_key,
-                        ),
-                    },
-                );
+                let _ = storage
+                    .record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: "noop".to_string(),
+                            message_send_status: "skipped_cancelled".to_string(),
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: None,
+                            detail: execution_detail_with_delivery_key(
+                                json!({"skipped": "job_cancelled"}),
+                                &event.delivery_key,
+                            ),
+                        },
+                    )
+                    .await;
                 return;
             }
             let send_result = send_or_edit_segments(
@@ -203,39 +210,42 @@ pub(crate) async fn handle_scheduler_events(
                     &event,
                     &result,
                     &delivered_context,
-                );
+                )
+                .await;
             }
-            let _ = storage.record_execution_event(
-                &event.actor,
-                &event.job_id,
-                &event.job_name,
-                &event.channel_target,
-                event.heartbeat,
-                CronJobExecutionInput {
-                    execution_status: if result.error.is_some() {
-                        "execution_failed".to_string()
-                    } else {
-                        "completed".to_string()
+            let _ = storage
+                .record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status,
+                        should_deliver: true,
+                        delivered: send_result.sent > 0,
+                        response_preview: Some(response),
+                        error_message: scheduler_error_message(
+                            result.error.clone(),
+                            send_result.error.clone(),
+                            send_result.sent,
+                            send_result.total,
+                        ),
+                        detail: scheduler_delivery_detail(
+                            result.metadata,
+                            &event.delivery_key,
+                            send_result.sent,
+                            send_result.total,
+                            send_result.error.as_deref(),
+                        ),
                     },
-                    message_send_status,
-                    should_deliver: true,
-                    delivered: send_result.sent > 0,
-                    response_preview: Some(response),
-                    error_message: scheduler_error_message(
-                        result.error.clone(),
-                        send_result.error.clone(),
-                        send_result.sent,
-                        send_result.total,
-                    ),
-                    detail: scheduler_delivery_detail(
-                        result.metadata,
-                        &event.delivery_key,
-                        send_result.sent,
-                        send_result.total,
-                        send_result.error.as_deref(),
-                    ),
-                },
-            );
+                )
+                .await;
         });
     }
 }

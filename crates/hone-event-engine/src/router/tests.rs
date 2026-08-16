@@ -86,7 +86,7 @@ fn price_band_event(symbol: &str, direction: &str, band_bps: i64, pct: f64) -> M
     }
 }
 
-fn router_with_aapl_actor() -> (
+async fn router_with_aapl_actor() -> (
     NotificationRouter,
     Arc<CapturingSink>,
     Arc<EventStore>,
@@ -99,7 +99,7 @@ fn router_with_aapl_actor() -> (
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     (
         NotificationRouter::new(
@@ -116,7 +116,7 @@ fn router_with_aapl_actor() -> (
 
 #[tokio::test]
 async fn high_severity_goes_to_sink_immediately() {
-    let (router, sink, store, _tmp) = router_with_aapl_actor();
+    let (router, sink, store, _tmp) = router_with_aapl_actor().await;
     let (sent, pending) = router
         .dispatch(&earnings_event_with_severity(Severity::High))
         .await
@@ -135,6 +135,7 @@ async fn high_severity_goes_to_sink_immediately() {
             12_000,
             60_000,
         )
+        .await
         .unwrap();
     assert_eq!(delivered_context.records.len(), 1);
     assert!(delivered_context.records[0].body.contains("财报发布"));
@@ -157,7 +158,7 @@ async fn reviewed_earnings_uses_each_actors_own_mainline() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_storage = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
 
@@ -170,12 +171,14 @@ async fn reviewed_earnings_uses_each_actors_own_mainline() {
             &actor("long-term"),
             &prefs_for("AI 数据层扩容与企业级 SSD 客户采用"),
         )
+        .await
         .unwrap();
     prefs_storage
         .save(
             &actor("cycle"),
             &prefs_for("NAND ASP、库存与供给纪律的周期拐点"),
         )
+        .await
         .unwrap();
 
     let router = NotificationRouter::new(
@@ -252,7 +255,7 @@ async fn t0_earnings_delivery_does_not_wait_for_background_continuity_review() {
         }
     }
 
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let continuity = Arc::new(BlockingContinuity {
         started: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
@@ -293,7 +296,7 @@ async fn high_daily_cap_demotes_excess_to_digest() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -320,9 +323,9 @@ async fn high_daily_cap_demotes_excess_to_digest() {
     let h1 = mk("h1");
     let h2 = mk("h2");
     let h3 = mk("h3");
-    store.insert_event(&h1).unwrap();
-    store.insert_event(&h2).unwrap();
-    store.insert_event(&h3).unwrap();
+    store.insert_event(&h1).await.unwrap();
+    store.insert_event(&h2).await.unwrap();
+    store.insert_event(&h3).await.unwrap();
     let (s1, _) = router.dispatch(&h1).await.unwrap();
     let (s2, _) = router.dispatch(&h2).await.unwrap();
     // 前两条正常走 sink
@@ -345,6 +348,7 @@ async fn high_daily_cap_demotes_excess_to_digest() {
     assert_eq!(
         store
             .count_high_sent_since("imessage::::u1", since)
+            .await
             .unwrap(),
         2
     );
@@ -359,7 +363,7 @@ async fn high_daily_cap_zero_means_no_cap() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     // cap = 0 应该关闭所有限流,N 条 High 全部进 sink
     let router = NotificationRouter::new(
@@ -388,7 +392,7 @@ async fn same_symbol_cooldown_demotes_second_high_to_digest() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -412,12 +416,12 @@ async fn same_symbol_cooldown_demotes_second_high_to_digest() {
     };
     // 第一条必须先入 events 表,这样 JOIN 才能找到 symbol;生产路径由 poller 完成入库。
     let a = mk("h1");
-    store.insert_event(&a).unwrap();
+    store.insert_event(&a).await.unwrap();
     let (s1, _) = router.dispatch(&a).await.unwrap();
     assert_eq!(s1, 1, "第一条 AAPL High 应走 sink");
 
     let b = mk("h2");
-    store.insert_event(&b).unwrap();
+    store.insert_event(&b).await.unwrap();
     let (s2, p2) = router.dispatch(&b).await.unwrap();
     assert_eq!(s2, 0, "60min 冷却内第二条应降级");
     assert_eq!(p2, 1);
@@ -426,7 +430,7 @@ async fn same_symbol_cooldown_demotes_second_high_to_digest() {
     let mut c = mk("h3");
     c.symbols = vec!["NVDA".into()];
     // NVDA 未在订阅里,应无命中 → 0 sent, 0 pending
-    store.insert_event(&c).unwrap();
+    store.insert_event(&c).await.unwrap();
     let (s3, p3) = router.dispatch(&c).await.unwrap();
     assert_eq!(s3 + p3, 0, "未订阅 NVDA,不应 dispatch");
 }
@@ -455,7 +459,7 @@ async fn analyst_grade_two_firms_same_symbol_both_pass() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -466,12 +470,12 @@ async fn analyst_grade_two_firms_same_symbol_both_pass() {
     .with_same_symbol_cooldown_minutes(60);
 
     let goldman = analyst_grade_event("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
-    store.insert_event(&goldman).unwrap();
+    store.insert_event(&goldman).await.unwrap();
     assert_eq!(router.dispatch(&goldman).await.unwrap(), (1, 0));
 
     // 同 ticker 不同投行,60min 冷却内仍应直推
     let raymond = analyst_grade_event("grade:SNDK:t2:Raymond James", "SNDK", "Raymond James");
-    store.insert_event(&raymond).unwrap();
+    store.insert_event(&raymond).await.unwrap();
     assert_eq!(
         router.dispatch(&raymond).await.unwrap(),
         (1, 0),
@@ -489,7 +493,7 @@ async fn analyst_grade_same_news_url_fanout_demotes_second_firm() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -518,8 +522,8 @@ async fn analyst_grade_same_news_url_fanout_demotes_second_firm() {
         "newGrade": "Buy",
         "newsURL": url
     });
-    store.insert_event(&jefferies).unwrap();
-    store.insert_event(&btig).unwrap();
+    store.insert_event(&jefferies).await.unwrap();
+    store.insert_event(&btig).await.unwrap();
 
     assert_eq!(router.dispatch(&jefferies).await.unwrap(), (1, 0));
     assert_eq!(
@@ -542,7 +546,7 @@ async fn analyst_grade_same_firm_same_symbol_demotes() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -553,12 +557,12 @@ async fn analyst_grade_same_firm_same_symbol_demotes() {
     .with_same_symbol_cooldown_minutes(60);
 
     let first = analyst_grade_event("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
-    store.insert_event(&first).unwrap();
+    store.insert_event(&first).await.unwrap();
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
 
     // 同投行同 ticker 60min 内仍应降级 —— 防"同投行刷数据"
     let second = analyst_grade_event("grade:SNDK:t2:Goldman Sachs", "SNDK", "Goldman Sachs");
-    store.insert_event(&second).unwrap();
+    store.insert_event(&second).await.unwrap();
     assert_eq!(
         router.dispatch(&second).await.unwrap(),
         (0, 1),
@@ -575,7 +579,7 @@ async fn analyst_grade_missing_grading_company_falls_back_to_global_cooldown() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -599,11 +603,11 @@ async fn analyst_grade_missing_grading_company_falls_back_to_global_cooldown() {
         payload: serde_json::json!({"action": "upgrade"}),
     };
     let a = mk("grade:SNDK:t1:unknown_a");
-    store.insert_event(&a).unwrap();
+    store.insert_event(&a).await.unwrap();
     assert_eq!(router.dispatch(&a).await.unwrap(), (1, 0));
 
     let b = mk("grade:SNDK:t2:unknown_b");
-    store.insert_event(&b).unwrap();
+    store.insert_event(&b).await.unwrap();
     assert_eq!(
         router.dispatch(&b).await.unwrap(),
         (0, 1),
@@ -620,7 +624,7 @@ async fn cooldown_zero_means_no_throttle() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -633,7 +637,7 @@ async fn cooldown_zero_means_no_throttle() {
     for i in 0..3 {
         let mut event = earnings_event_with_severity(Severity::High);
         event.id = format!("h{i}");
-        store.insert_event(&event).unwrap();
+        store.insert_event(&event).await.unwrap();
         let (sent_count, _) = router.dispatch(&event).await.unwrap();
         assert_eq!(sent_count, 1, "cooldown=0 时不应降级");
     }
@@ -651,7 +655,7 @@ async fn price_band_bypasses_generic_same_symbol_cooldown() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -664,8 +668,8 @@ async fn price_band_bypasses_generic_same_symbol_cooldown() {
 
     let first = price_band_event("AAOI", "up", 600, 6.18);
     let second = price_band_event("AAOI", "up", 800, 8.12);
-    store.insert_event(&first).unwrap();
-    store.insert_event(&second).unwrap();
+    store.insert_event(&first).await.unwrap();
+    store.insert_event(&second).await.unwrap();
 
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
     assert_eq!(
@@ -687,7 +691,7 @@ async fn price_band_advance_rule_demotes_band_below_min_advance() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -702,9 +706,9 @@ async fn price_band_advance_rule_demotes_band_below_min_advance() {
     // 也应直接降级(不依赖 store 防重)。
     let same_again = price_band_event("AAOI", "up", 600, 6.50);
     let advanced = price_band_event("AAOI", "up", 800, 8.12);
-    store.insert_event(&first).unwrap();
-    store.insert_event(&same_again).unwrap();
-    store.insert_event(&advanced).unwrap();
+    store.insert_event(&first).await.unwrap();
+    store.insert_event(&same_again).await.unwrap();
+    store.insert_event(&advanced).await.unwrap();
 
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
     assert_eq!(
@@ -731,7 +735,7 @@ async fn price_band_advance_rule_passes_full_aaoi_2026_05_01_sequence() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -750,7 +754,7 @@ async fn price_band_advance_rule_passes_full_aaoi_2026_05_01_sequence() {
         price_band_event("AAOI", "up", 1600, 16.30),
     ];
     for ev in &bands {
-        store.insert_event(ev).unwrap();
+        store.insert_event(ev).await.unwrap();
     }
     for ev in &bands {
         assert_eq!(
@@ -774,7 +778,7 @@ async fn price_band_advance_rule_separates_up_and_down_lanes() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -786,8 +790,8 @@ async fn price_band_advance_rule_separates_up_and_down_lanes() {
 
     let up = price_band_event("AAOI", "up", 1200, 12.50);
     let down = price_band_event("AAOI", "down", 600, -6.30);
-    store.insert_event(&up).unwrap();
-    store.insert_event(&down).unwrap();
+    store.insert_event(&up).await.unwrap();
+    store.insert_event(&down).await.unwrap();
 
     assert_eq!(router.dispatch(&up).await.unwrap(), (1, 0));
     assert_eq!(
@@ -809,7 +813,7 @@ async fn price_band_advance_rule_disabled_when_zero() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -822,8 +826,8 @@ async fn price_band_advance_rule_disabled_when_zero() {
     let first = price_band_event("AAOI", "up", 800, 8.10);
     // 反过来推 6%(在 advance>0 下会被降级),advance=0 应允许直推。
     let lower = price_band_event("AAOI", "up", 600, 6.20);
-    store.insert_event(&first).unwrap();
-    store.insert_event(&lower).unwrap();
+    store.insert_event(&first).await.unwrap();
+    store.insert_event(&lower).await.unwrap();
 
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
     assert_eq!(router.dispatch(&lower).await.unwrap(), (1, 0));
@@ -841,7 +845,7 @@ async fn actor_price_ladder_enforces_first_threshold_and_four_point_realerts() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -856,6 +860,7 @@ async fn actor_price_ladder_enforces_first_threshold_and_four_point_realerts() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -882,7 +887,7 @@ async fn actor_price_ladder_enforces_first_threshold_and_four_point_realerts() {
     ];
     for (direction, band_bps, pct, expected) in cases {
         let event = price_band_event("AAOI", direction, band_bps, pct);
-        store.insert_event(&event).unwrap();
+        store.insert_event(&event).await.unwrap();
         let actual = router.dispatch(&event).await.unwrap();
         assert_eq!(
             actual, expected,
@@ -903,7 +908,7 @@ async fn actor_price_policy_filters_against_effective_not_shared_event_severity(
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -915,6 +920,7 @@ async fn actor_price_policy_filters_against_effective_not_shared_event_severity(
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -927,8 +933,8 @@ async fn actor_price_policy_filters_against_effective_not_shared_event_severity(
 
     let below_actor_threshold = price_band_event("AAOI", "up", 600, 6.2);
     let at_actor_threshold = price_band_event("AAOI", "up", 800, 8.2);
-    store.insert_event(&below_actor_threshold).unwrap();
-    store.insert_event(&at_actor_threshold).unwrap();
+    store.insert_event(&below_actor_threshold).await.unwrap();
+    store.insert_event(&at_actor_threshold).await.unwrap();
 
     assert_eq!(
         router.dispatch(&below_actor_threshold).await.unwrap(),
@@ -950,7 +956,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -962,6 +968,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -979,7 +986,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
         (1600, 16.2, (0, 1)),
     ] {
         let event = price_band_event("AAOI", "up", band_bps, pct);
-        store.insert_event(&event).unwrap();
+        store.insert_event(&event).await.unwrap();
         assert_eq!(router.dispatch(&event).await.unwrap(), expected);
     }
     assert_eq!(sink.calls.lock().unwrap().len(), 2);
@@ -987,7 +994,7 @@ async fn actor_price_ladder_still_obeys_the_shared_daily_high_cap() {
 
 #[tokio::test]
 async fn medium_and_low_are_deferred_to_digest() {
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let (sent_m, pending_m) = router
         .dispatch(&earnings_event_with_severity(Severity::Medium))
         .await
@@ -1020,7 +1027,7 @@ async fn polisher_body_overrides_default_template() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1050,7 +1057,7 @@ async fn structured_earnings_review_is_not_collapsed_by_plain_polisher() {
         }
     }
 
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let router = router.with_polisher(Arc::new(DestructivePolisher));
     let mut event = earnings_event_with_severity(Severity::High);
     event.summary = "结论：增长改善\n关键证据：收入增长；现金流转正\n反向项：消费端承压\n后续核验：电话会核验指引".into();
@@ -1077,7 +1084,7 @@ async fn disabled_prefs_skip_send_and_enqueue() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -1088,6 +1095,7 @@ async fn disabled_prefs_skip_send_and_enqueue() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1137,7 +1145,7 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
 
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     use crate::prefs::PrefsProvider;
@@ -1149,6 +1157,7 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1193,7 +1202,7 @@ async fn macro_high_is_digest_until_due_window_then_immediate() {
     reg.register(Box::new(AlwaysMatch(actor("u1"))));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1231,7 +1240,7 @@ async fn far_earnings_preview_is_low_priority_digest() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1259,7 +1268,7 @@ async fn legal_ad_high_is_demoted_before_sink() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1296,7 +1305,7 @@ async fn low_news_upgrades_to_medium_when_same_day_hard_signal_exists() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     // 先落一条硬信号
@@ -1315,7 +1324,7 @@ async fn low_news_upgrades_to_medium_when_same_day_hard_signal_exists() {
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    store.insert_event(&hard).unwrap();
+    store.insert_event(&hard).await.unwrap();
 
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1351,7 +1360,7 @@ async fn opinion_blog_news_does_not_upgrade_on_hard_signal() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     let hard = MarketEvent {
@@ -1369,7 +1378,7 @@ async fn opinion_blog_news_does_not_upgrade_on_hard_signal() {
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    store.insert_event(&hard).unwrap();
+    store.insert_event(&hard).await.unwrap();
 
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1409,7 +1418,7 @@ async fn low_news_upgrades_inside_earnings_window() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     let now = Utc::now();
@@ -1425,7 +1434,7 @@ async fn low_news_upgrades_inside_earnings_window() {
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    store.insert_event(&earnings).unwrap();
+    store.insert_event(&earnings).await.unwrap();
 
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1455,7 +1464,7 @@ async fn low_news_upgrades_inside_earnings_window() {
 async fn low_news_stays_low_without_same_day_signal() {
     // 无硬信号时 Low 新闻维持 Low,仍然入 digest(pending=1),但 severity 未升。
     // 间接校验:digest enqueue 行为不变,且未发生 sink 立即推。
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let news = MarketEvent {
         id: "news:AAPL:2".into(),
         kind: EventKind::NewsCritical,
@@ -1485,7 +1494,7 @@ async fn globally_disabled_kind_is_dropped_before_prefs() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1541,7 +1550,7 @@ async fn llm_classifier_upgrades_uncertain_news_to_medium_for_actor() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1591,7 +1600,7 @@ async fn llm_classifier_keeps_low_when_not_important() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1642,7 +1651,7 @@ async fn llm_classifier_skipped_for_trusted_source() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let counter = Arc::new(AtomicUsize::new(0));
     let router = NotificationRouter::new(
@@ -1694,7 +1703,7 @@ async fn llm_classifier_does_not_resurrect_legal_ad_templates() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1745,7 +1754,7 @@ async fn per_actor_importance_prompt_overrides_default() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -1756,6 +1765,7 @@ async fn per_actor_importance_prompt_overrides_default() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let captured = Arc::new(Mutex::new(Vec::new()));
     let router = NotificationRouter::new(
@@ -1797,7 +1807,7 @@ async fn news_upgrade_per_symbol_cap_limits_burst_within_tick() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     // 先落一条硬信号,使 maybe_upgrade_news 满足窗口条件
@@ -1813,7 +1823,7 @@ async fn news_upgrade_per_symbol_cap_limits_burst_within_tick() {
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    store.insert_event(&hard).unwrap();
+    store.insert_event(&hard).await.unwrap();
 
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1866,7 +1876,7 @@ async fn news_upgrade_cap_zero_means_unlimited() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     let hard = MarketEvent {
@@ -1881,7 +1891,7 @@ async fn news_upgrade_cap_zero_means_unlimited() {
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    store.insert_event(&hard).unwrap();
+    store.insert_event(&hard).await.unwrap();
 
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -1918,7 +1928,7 @@ async fn news_upgrade_per_tick_cap_limits_cross_symbol_burst() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let now = Utc::now();
     for sym in ["AAPL", "AMD", "GEV", "MU"] {
@@ -1934,7 +1944,7 @@ async fn news_upgrade_per_tick_cap_limits_cross_symbol_burst() {
             source: "test".into(),
             payload: serde_json::Value::Null,
         };
-        store.insert_event(&hard).unwrap();
+        store.insert_event(&hard).await.unwrap();
     }
 
     let router = NotificationRouter::new(
@@ -1982,7 +1992,7 @@ async fn news_upgrade_tick_stats_capture_upgrades_and_skips() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let now = Utc::now();
     for sym in ["AAPL", "AMD", "GEV"] {
@@ -1999,6 +2009,7 @@ async fn news_upgrade_tick_stats_capture_upgrades_and_skips() {
                 source: "test".into(),
                 payload: serde_json::Value::Null,
             })
+            .await
             .unwrap();
     }
 
@@ -2054,7 +2065,7 @@ async fn per_actor_price_threshold_below_system_floor_stays_digest() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2065,6 +2076,7 @@ async fn per_actor_price_threshold_below_system_floor_stays_digest() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2108,7 +2120,7 @@ async fn large_position_can_use_sensitive_price_threshold() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2120,6 +2132,7 @@ async fn large_position_can_use_sensitive_price_threshold() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2167,7 +2180,7 @@ async fn directional_price_thresholds_use_move_direction() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2179,6 +2192,7 @@ async fn directional_price_thresholds_use_move_direction() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2227,7 +2241,7 @@ async fn price_close_direct_disabled_keeps_closing_move_in_digest() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2238,6 +2252,7 @@ async fn price_close_direct_disabled_keeps_closing_move_in_digest() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2279,7 +2294,7 @@ async fn price_close_direct_enabled_allows_closing_move_promotion() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2290,6 +2305,7 @@ async fn price_close_direct_enabled_allows_closing_move_promotion() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2334,7 +2350,7 @@ async fn per_actor_immediate_kinds_promotes_weekly52_high() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2345,6 +2361,7 @@ async fn per_actor_immediate_kinds_promotes_weekly52_high() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2399,7 +2416,7 @@ async fn per_actor_immediate_kinds_does_not_resurrect_low_signal_news() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2410,6 +2427,7 @@ async fn per_actor_immediate_kinds_does_not_resurrect_low_signal_news() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2448,7 +2466,7 @@ async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2459,6 +2477,7 @@ async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2502,7 +2521,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2513,6 +2532,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2546,7 +2566,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
         vec!["AAPL".into()],
     )));
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2555,7 +2575,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
         digest,
     );
     let event = earnings_event_with_severity(Severity::High);
-    store.insert_event(&event).unwrap();
+    store.insert_event(&event).await.unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "dispatch 计数代表 sink 调用成功");
     assert_eq!(pending, 0);
@@ -2563,6 +2583,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
     assert_eq!(
         store
             .count_high_sent_since("imessage::::u1", since)
+            .await
             .unwrap(),
         0,
         "dryrun status 不应被 count_high_sent_since 当成真实 sent"
@@ -2572,7 +2593,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
 #[tokio::test]
 async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
     // 不设 prefs override 时,Low PriceAlert 与 Medium Weekly52High 仍走 digest。
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let price_low = MarketEvent {
         id: "price:AAPL:legacy".into(),
         kind: EventKind::PriceAlert {
@@ -2596,7 +2617,7 @@ async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
 
 #[tokio::test]
 async fn event_without_subscribers_is_no_op() {
-    let (router, sink, _store, _tmp) = router_with_aapl_actor();
+    let (router, sink, _store, _tmp) = router_with_aapl_actor().await;
     let mut event = earnings_event_with_severity(Severity::High);
     event.symbols = vec!["TSLA".into()]; // 无人持仓
     let (sent, pending) = router.dispatch(&event).await.unwrap();
@@ -2620,7 +2641,7 @@ fn quiet_hours_around_now() -> crate::prefs::QuietHours {
     }
 }
 
-fn router_with_quiet_hours_for_aapl(
+async fn router_with_quiet_hours_for_aapl(
     qh: crate::prefs::QuietHours,
 ) -> (
     NotificationRouter,
@@ -2635,7 +2656,7 @@ fn router_with_quiet_hours_for_aapl(
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_dir = dir.path().join("prefs");
     let prefs_storage = crate::prefs::FilePrefsStorage::new(&prefs_dir).unwrap();
@@ -2643,7 +2664,9 @@ fn router_with_quiet_hours_for_aapl(
     prefs.quiet_hours = Some(qh);
     // 测试统一用 UTC 解释 quiet 区间,避免 router 默认 CST 偏移让 around_now 窗口失准
     prefs.timezone = Some("UTC".into());
-    crate::prefs::PrefsProvider::save(&prefs_storage, &actor("u1"), &prefs).unwrap();
+    crate::prefs::PrefsProvider::save(&prefs_storage, &actor("u1"), &prefs)
+        .await
+        .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
         sink.clone(),
@@ -2657,10 +2680,10 @@ fn router_with_quiet_hours_for_aapl(
 #[tokio::test]
 async fn quiet_held_logs_status_and_skips_sink() {
     let qh = quiet_hours_around_now();
-    let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let mut event = earnings_event_with_severity(Severity::High);
     event.id = "earnings_in_quiet".into();
-    store.insert_event(&event).unwrap();
+    store.insert_event(&event).await.unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(
         sent, 0,
@@ -2675,6 +2698,7 @@ async fn quiet_held_logs_status_and_skips_sink() {
     let since = Utc::now() - chrono::Duration::minutes(1);
     let held = store
         .list_quiet_held_since("imessage::::u1", since)
+        .await
         .unwrap();
     assert_eq!(held.len(), 1, "should have exactly 1 quiet_held event");
     assert_eq!(held[0].0.id, "earnings_in_quiet");
@@ -2684,7 +2708,7 @@ async fn quiet_held_logs_status_and_skips_sink() {
 async fn exempt_kind_bypasses_quiet_hold() {
     let mut qh = quiet_hours_around_now();
     qh.exempt_kinds = vec!["earnings_released".into()];
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::High); // EarningsReleased
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "exempt kind must still go to sink during quiet");
@@ -2703,7 +2727,7 @@ async fn quiet_outside_window_does_not_hold() {
         to: format!("{:02}:00", to_h),
         exempt_kinds: Vec::new(),
     };
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::High);
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1);
@@ -2714,7 +2738,7 @@ async fn quiet_outside_window_does_not_hold() {
 async fn quiet_does_not_hold_medium_to_digest() {
     // 验证 quiet_hours 只拦 High,Medium 仍走 digest enqueue
     let qh = quiet_hours_around_now();
-    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh).await;
     let event = earnings_event_with_severity(Severity::Medium);
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
@@ -2724,7 +2748,7 @@ async fn quiet_does_not_hold_medium_to_digest() {
 
 // ── 盘中 band High 批内合流(2026-08 开盘连环 DM 审计)──────────────────
 
-fn router_with_multi_symbol_actor(
+async fn router_with_multi_symbol_actor(
     symbols: &[&str],
 ) -> (
     NotificationRouter,
@@ -2742,7 +2766,7 @@ fn router_with_multi_symbol_actor(
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     (
         NotificationRouter::new(
@@ -2762,7 +2786,7 @@ fn router_with_multi_symbol_actor(
 #[tokio::test]
 async fn batched_band_highs_merge_into_single_burst_message() {
     let symbols = ["AAOI", "BE", "CRWV", "LITE", "MU", "NBIS", "SNDK"];
-    let (router, sink, store, _tmp) = router_with_multi_symbol_actor(&symbols);
+    let (router, sink, store, _tmp) = router_with_multi_symbol_actor(&symbols).await;
     router.begin_dispatch_batch();
     let mut immediate = 0;
     for sym in &symbols {
@@ -2791,6 +2815,7 @@ async fn batched_band_highs_merge_into_single_burst_message() {
                 limit: 5,
                 ..Default::default()
             })
+            .await
             .unwrap();
         assert!(
             logs.iter()
@@ -2803,7 +2828,7 @@ async fn batched_band_highs_merge_into_single_burst_message() {
 /// 低于合并阈值(<3)时维持逐条即时推送,行为与旧版一致。
 #[tokio::test]
 async fn batched_band_highs_below_threshold_send_individually() {
-    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI", "BE"]);
+    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI", "BE"]).await;
     router.begin_dispatch_batch();
     for sym in ["AAOI", "BE"] {
         router
@@ -2821,7 +2846,7 @@ async fn batched_band_highs_below_threshold_send_individually() {
 /// 未激活批模式(直接调 dispatch)时,band High 仍然逐条即时出站。
 #[tokio::test]
 async fn unbatched_band_high_sends_immediately() {
-    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI"]);
+    let (router, sink, _store, _tmp) = router_with_multi_symbol_actor(&["AAOI"]).await;
     let (sent, _) = router
         .dispatch(&price_band_event("AAOI", "up", 800, 8.0))
         .await
@@ -2857,7 +2882,7 @@ async fn position_context_is_injected_and_rendered_for_held_symbol() {
 
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     prefs_store
@@ -2869,6 +2894,7 @@ async fn position_context_is_injected_and_rendered_for_held_symbol() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),
@@ -2917,7 +2943,7 @@ async fn position_context_is_injected_and_rendered_for_held_symbol() {
 /// 未持有标的的 actor(仅公司档案订阅等)推送正文不含持仓行。
 #[tokio::test]
 async fn no_position_line_for_actor_without_holding() {
-    let (router, sink, _store, _dir) = router_with_aapl_actor();
+    let (router, sink, _store, _dir) = router_with_aapl_actor().await;
     let ev = MarketEvent {
         id: "price_band:AAPL:2026-08-14:up:800".into(),
         kind: EventKind::PriceAlert {
@@ -2949,7 +2975,7 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
 
     // 30 日窗口内的历史:一条真实下调 + 一条汇总摘要(3 下调/2 重申)
@@ -2971,6 +2997,7 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
             10,
             serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Hold"}),
         ))
+        .await
         .unwrap();
     store
         .insert_event(&mk(
@@ -2981,6 +3008,7 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
                 "counts": {"downgrade": 3, "upgrade": 0, "initiated": 0, "reiterated": 2}
             }),
         ))
+        .await
         .unwrap();
     // 40 天前的事件必须被窗口排除
     store
@@ -2989,6 +3017,7 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
             40,
             serde_json::json!({"action": "downgrade", "previousGrade": "Buy", "newGrade": "Sell"}),
         ))
+        .await
         .unwrap();
 
     let router = NotificationRouter::new(
@@ -3019,7 +3048,7 @@ async fn analyst_consensus_anchor_is_injected_and_rendered() {
 /// 「📅 3 天后财报」倒计时;窗口外(>14 天)不带。
 #[tokio::test]
 async fn price_alert_carries_earnings_countdown_when_upcoming() {
-    let (router, sink, store, _dir) = router_with_aapl_actor();
+    let (router, sink, store, _dir) = router_with_aapl_actor().await;
     let earnings_at = Utc::now() + chrono::Duration::days(3);
     store
         .insert_event(&MarketEvent {
@@ -3034,6 +3063,7 @@ async fn price_alert_carries_earnings_countdown_when_upcoming() {
             source: "fmp.earnings_calendar".into(),
             payload: serde_json::json!({}),
         })
+        .await
         .unwrap();
 
     let ev = MarketEvent {
@@ -3065,7 +3095,7 @@ async fn price_alert_carries_earnings_countdown_when_upcoming() {
 /// 无 upcoming 财报 → 价格警报不带倒计时行(与旧输出一致)。
 #[tokio::test]
 async fn price_alert_without_upcoming_earnings_has_no_countdown() {
-    let (router, sink, _store, _dir) = router_with_aapl_actor();
+    let (router, sink, _store, _dir) = router_with_aapl_actor().await;
     let ev = MarketEvent {
         id: "price_band:AAPL:2026-08-14:up:800".into(),
         kind: EventKind::PriceAlert {
@@ -3100,7 +3130,7 @@ async fn cross_ticker_mainline_link_is_rendered() {
     )));
     let sink = Arc::new(CapturingSink::default());
     let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
     let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
     let mut mainlines = std::collections::HashMap::new();
@@ -3120,6 +3150,7 @@ async fn cross_ticker_mainline_link_is_rendered() {
                 ..Default::default()
             },
         )
+        .await
         .unwrap();
     let router = NotificationRouter::new(
         Arc::new(SharedRegistry::from_registry(reg)),

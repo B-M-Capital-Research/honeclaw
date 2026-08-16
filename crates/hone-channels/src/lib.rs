@@ -40,7 +40,9 @@ pub use agent_session::{
     AgentSessionErrorKind, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
     AgentTurnOrigin, GeminiStreamOptions, MessageMetadata, restore_context,
 };
-pub use bootstrap::{ChannelRuntimeBootstrap, bootstrap_channel_runtime};
+pub use bootstrap::{
+    ChannelRuntimeBootstrap, bootstrap_channel_runtime, bootstrap_channel_runtime_async,
+};
 pub use ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, ChatMode,
     GroupPretriggerWindowRegistry, GroupTrigger, GroupTriggerMode, IncomingEnvelope,

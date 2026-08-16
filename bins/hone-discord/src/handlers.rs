@@ -530,13 +530,15 @@ impl DiscordHandler {
         if self
             .core
             .session_storage
-            .load_session(&session_id)?
+            .load_session(&session_id)
+            .await?
             .is_none()
         {
             let _ = self
                 .core
                 .session_storage
-                .create_session_for_identity(&session_identity, Some(&actor));
+                .create_session_for_identity(&session_identity, Some(&actor))
+                .await;
         }
         let buffered_messages = if self.core.config.group_context.pretrigger_window_enabled {
             self.pretrigger
@@ -549,7 +551,8 @@ impl DiscordHandler {
             &self.core.session_storage,
             &session_id,
             &buffered_messages,
-        )?;
+        )
+        .await?;
 
         let raw_attachments = collect_raw_attachments(msg).await;
         let attachments = ingest_raw_attachments(

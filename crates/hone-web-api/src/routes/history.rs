@@ -45,6 +45,7 @@ pub(crate) async fn handle_history(
         .core
         .session_storage
         .get_messages(&session_id, None)
+        .await
         .unwrap_or_default();
 
     let history = history_from_messages(&messages);

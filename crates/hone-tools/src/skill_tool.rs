@@ -60,14 +60,14 @@ impl SkillTool {
             .with_registry_path(self.registry_path.clone())
     }
 
-    fn persist_invoked_skill(&self, payload: &Value) -> hone_core::HoneResult<()> {
+    async fn persist_invoked_skill(&self, payload: &Value) -> hone_core::HoneResult<()> {
         let session_id = std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
         if session_id.trim().is_empty() {
             return Ok(());
         }
         let sessions_dir = resolve_sessions_dir()?;
-        let storage = hone_memory::SessionStorage::new(sessions_dir);
-        let session = match storage.load_session(&session_id)? {
+        let storage = hone_memory::SessionStorage::new(sessions_dir).await;
+        let session = match storage.load_session(&session_id).await? {
             Some(session) => session,
             None => return Ok(()),
         };
@@ -93,7 +93,7 @@ impl SkillTool {
             INVOKED_SKILLS_METADATA_KEY.to_string(),
             Value::Array(skills),
         );
-        let _ = storage.update_metadata(&session_id, metadata)?;
+        let _ = storage.update_metadata(&session_id, metadata).await?;
         Ok(())
     }
 
@@ -1013,9 +1013,10 @@ mod tests {
         )
         .expect("skill");
 
-        let storage = SessionStorage::new(&sessions_dir);
+        let storage = SessionStorage::new(&sessions_dir).await;
         let session_id = storage
             .create_session(Some("session-persist"), None, None)
+            .await
             .expect("create session");
 
         let tool = SkillTool::new(
@@ -1047,6 +1048,7 @@ mod tests {
 
         let session = storage
             .load_session(&session_id)
+            .await
             .expect("load session")
             .expect("session exists");
         let invoked = session
@@ -1615,7 +1617,7 @@ impl Tool for SkillTool {
                     "paths": skill.paths,
                     "updated_at": hone_core::local_now_rfc3339(),
                 });
-                let _ = self.persist_invoked_skill(&payload);
+                let _ = self.persist_invoked_skill(&payload).await;
                 if script_requested {
                     let execution_succeeded = render_success.as_bool().unwrap_or(false);
                     let validated_report_markdown = execution_succeeded
