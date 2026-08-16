@@ -7396,6 +7396,17 @@
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、JSON malformed、非结构化失败跳过、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
 
+## 最新运行态复核（2026-08-16 10:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 06:01-10:02 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=72`、`JsonNoop=29`、`PlainTextSuppressed=3`、`JsonUnknownStatus=2`、`JsonTriggered=2`、`PlainTextNoop=1`。
+  - 同窗还有 `HeartbeatDiag=271`、`run_start=72`、`run_finish=72`、`deliver=36`、`duplicate_suppressed=18`。
+  - 36 条 deliver 中继续命中 `noop / 无新增 / 无触发 / hone_quote_time / data_fetch / 工具调用上限 / 跌20% / 当前配置 / NVIDIA 与 TSMC / fenced JSON` 等静默语义、上下文污染、工具口径、目标漂移或协议外泄信号。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、未知状态、非结构化抑制、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
 ## 最新运行态复核（2026-08-16 02:02 CST）
 
 - `data/logs/hone-console-page-source.log`

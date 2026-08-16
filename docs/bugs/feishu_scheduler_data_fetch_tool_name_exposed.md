@@ -981,6 +981,17 @@ Fixed
   - 这是既有 Feishu scheduler / direct 内部工具名、provider 字段和行情实现口径外露的同根复发，不新建重复缺陷。
   - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
 
+## 最新运行态复核（2026-08-16 10:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-16 06:01-10:02 CST。
+  - 多条 heartbeat deliver 候选继续写出内部行情字段或工具口径：`光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`持仓重大事件心跳提醒` 明写 `hone_quote_time.beijing`、`data_fetch`、`工具调用已达上限`、`工具额度已耗尽`、`本轮行情未完成核验` 等用户不应看到的实现口径。
+  - 这些样本均进入 heartbeat deliver 或 duplicate suppression 候选，说明业务主体仍在生成 / 投递路径中，只是文案边界退化。
+  - 未见 runtime 重启 / revision 切换或确认加载 2026-08-15 共享净化层修复的证据。
+- 本轮判断
+  - 这是既有 scheduler / heartbeat 内部工具名、provider 字段和行情实现口径外露的同根待部署复核样本，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度生成和出站候选仍完成，用户仍能看到监控内容；问题主要是用户可见文案边界、产品感和可信度退化。因未确认修复已部署，本轮不回退代码级 `Fixed`，继续等待 live runtime 自然复核，非 P1。
+
 ## 最新运行态复核（2026-08-16 02:02 CST）
 
 - `data/logs/hone-console-page-source.log`
