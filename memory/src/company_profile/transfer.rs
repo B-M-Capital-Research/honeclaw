@@ -209,7 +209,7 @@ impl CompanyProfileStorage {
         })
     }
 
-    pub fn describe_import_conflict(
+    pub async fn describe_import_conflict(
         &self,
         bundle_bytes: &[u8],
         imported_profile_id: &str,
@@ -228,7 +228,8 @@ impl CompanyProfileStorage {
             .find(|document| document.profile_id == imported_profile_id)
             .ok_or_else(|| format!("画像包中不存在公司画像: {imported_profile_id}"))?;
         let existing_document = self
-            .get_profile(&conflict.existing.profile_id)?
+            .get_profile(&conflict.existing.profile_id)
+            .await?
             .ok_or_else(|| format!("目标画像不存在: {}", conflict.existing.profile_id))?;
         build_conflict_detail(
             conflict,
@@ -238,7 +239,7 @@ impl CompanyProfileStorage {
         )
     }
 
-    pub fn apply_import_resolution(
+    pub async fn apply_import_resolution(
         &self,
         bundle_bytes: &[u8],
         input: CompanyProfileImportResolutionInput,
@@ -343,12 +344,14 @@ impl CompanyProfileStorage {
                         skipped_event_ids: Vec::new(),
                     })
                 }
-                CompanyProfileImportResolutionStrategy::MergeSections => self
-                    .merge_imported_sections(
+                CompanyProfileImportResolutionStrategy::MergeSections => {
+                    self.merge_imported_sections(
                         &conflict.existing.profile_id,
                         imported_document,
                         &input,
-                    ),
+                    )
+                    .await
+                }
             },
         }
     }
@@ -504,14 +507,15 @@ impl CompanyProfileStorage {
         Ok(events)
     }
 
-    fn merge_imported_sections(
+    async fn merge_imported_sections(
         &self,
         target_profile_id: &str,
         imported_document: &CompanyProfileDocument,
         input: &CompanyProfileImportResolutionInput,
     ) -> Result<CompanyProfileImportResolutionResult, String> {
         let existing_document = self
-            .get_profile(target_profile_id)?
+            .get_profile(target_profile_id)
+            .await?
             .ok_or_else(|| format!("目标画像不存在: {target_profile_id}"))?;
         let mergeable_titles = mergeable_section_titles(imported_document, &existing_document);
         let selected_titles = if input.section_titles.is_empty() {
@@ -546,7 +550,8 @@ impl CompanyProfileStorage {
             changed_sections.push(canonical_title.clone());
         }
         if !updates.is_empty() {
-            self.rewrite_sections(target_profile_id, &updates)?
+            self.rewrite_sections(target_profile_id, &updates)
+                .await?
                 .ok_or_else(|| format!("回写画像失败: {target_profile_id}"))?;
         }
 
@@ -575,7 +580,7 @@ impl CompanyProfileStorage {
         }
 
         if updates.is_empty() && !imported_event_ids.is_empty() {
-            let _ = self.touch_profile_updated_at(target_profile_id)?;
+            let _ = self.touch_profile_updated_at(target_profile_id).await?;
         }
 
         Ok(CompanyProfileImportResolutionResult {

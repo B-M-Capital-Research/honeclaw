@@ -512,7 +512,7 @@ pub async fn registry_from_portfolios_and_profiles(
     profiles: &CompanyProfileStorage,
 ) -> SubscriptionRegistry {
     let mut registry = registry_from_portfolios(portfolios).await;
-    for space in profiles.list_profile_spaces() {
+    for space in profiles.list_profile_spaces().await {
         let Ok(actor) = ActorIdentity::new(space.channel, space.user_id, space.channel_scope)
         else {
             continue;
@@ -520,7 +520,7 @@ pub async fn registry_from_portfolios_and_profiles(
         if !actor.is_direct() {
             continue;
         }
-        for profile in profiles.for_actor(&actor).list_profiles() {
+        for profile in profiles.for_actor(&actor).list_profiles().await {
             let symbol = profile.stock_code.trim();
             if !profile.tracking_enabled || symbol.is_empty() {
                 continue;
@@ -668,6 +668,7 @@ mod tests {
                     }),
                     initial_sections: BTreeMap::new(),
                 })
+                .await
                 .expect("create tracked profile");
         }
 

@@ -79,7 +79,8 @@ pub(crate) async fn handle_company_profiles(
         .core
         .company_profile_storage
         .for_actor(&actor)
-        .list_profiles_raw();
+        .list_profiles_raw()
+        .await;
     Json(json!({ "profiles": profiles })).into_response()
 }
 
@@ -97,6 +98,7 @@ pub(crate) async fn handle_company_profile_detail(
         .company_profile_storage
         .for_actor(&actor)
         .get_profile_raw(&id)
+        .await
     {
         Ok(Some(profile)) => Json(json!({ "profile": profile })).into_response(),
         Ok(None) => json_error(StatusCode::NOT_FOUND, "company profile not found"),
@@ -118,6 +120,7 @@ pub(crate) async fn handle_delete_company_profile(
         .company_profile_storage
         .for_actor(&actor)
         .delete_profile(&id)
+        .await
     {
         Ok(true) => {
             clear_company_profile_spaces_cache();

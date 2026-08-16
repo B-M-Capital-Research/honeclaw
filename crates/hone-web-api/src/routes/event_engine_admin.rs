@@ -364,7 +364,8 @@ pub(crate) async fn handle_get_mainline_context(
 
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     let profile_summaries = profile_summaries_from_sources(&profiles);
 
     Json(json!({
@@ -404,7 +405,8 @@ pub(crate) async fn handle_get_actor_company_profile(
     }
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     match profiles.iter().find(|p| p.ticker == target) {
         Some(p) => Json(json!({
             "ticker": p.ticker,

@@ -145,8 +145,8 @@ impl NotificationRouter {
             // T0 推送不能等待第二次、actor-scoped 的 Grok 对账。A 级画像在后台
             // 把本季事实与旧问题/承诺逐项核对并落入 append-only 研究账本；失败
             // 只影响深度卡，不阻塞已核验的即时事实卡。
-            self.schedule_earnings_material_record(&actor, event);
-            self.schedule_earnings_continuity(&actor, event);
+            self.schedule_earnings_material_record(&actor, event).await;
+            self.schedule_earnings_continuity(&actor, event).await;
             // 结构化财报卡已经对该 actor 成功交付时，同一新闻稿型
             // 8-K 不再入摘要。只认 sent/dryrun 成功证据；财报卡失败或
             // quiet-held 时保留 SEC 项，queued 时由 digest buffer 保留优先级
@@ -842,7 +842,7 @@ fn render_price_burst(items: &[(MarketEvent, Severity)], fmt: RenderFormat) -> S
 }
 
 impl NotificationRouter {
-    fn schedule_earnings_material_record(
+    async fn schedule_earnings_material_record(
         &self,
         actor: &hone_core::ActorIdentity,
         event: &MarketEvent,
@@ -879,9 +879,9 @@ impl NotificationRouter {
             return;
         }
         let actor = actor.clone();
-        tokio::task::spawn_blocking(move || {
+        tokio::spawn(async move {
             for material in materials {
-                if let Some(outcome) = reconciler.record_material(&actor, &material) {
+                if let Some(outcome) = reconciler.record_material(&actor, &material).await {
                     tracing::info!(
                         actor = %actor_key(&actor),
                         event_id = %material.id,
@@ -896,14 +896,18 @@ impl NotificationRouter {
         });
     }
 
-    fn schedule_earnings_continuity(&self, actor: &hone_core::ActorIdentity, event: &MarketEvent) {
+    async fn schedule_earnings_continuity(
+        &self,
+        actor: &hone_core::ActorIdentity,
+        event: &MarketEvent,
+    ) {
         if continuity_review_stage(event).is_none() {
             return;
         }
         let Some(reconciler) = self.earnings_continuity.clone() else {
             return;
         };
-        if !reconciler.should_schedule(actor, event) {
+        if !reconciler.should_schedule(actor, event).await {
             return;
         }
         let job_key = match self.store.enqueue_earnings_continuity_job(actor, event) {
@@ -956,7 +960,7 @@ async fn run_earnings_continuity_jobs_once(
     let jobs = store.claim_due_earnings_continuity_jobs(chrono::Utc::now(), limit)?;
     let claimed = jobs.len();
     for job in jobs {
-        if !reconciler.should_schedule(&job.actor, &job.event) {
+        if !reconciler.should_schedule(&job.actor, &job.event).await {
             let completed = store.complete_earnings_continuity_job(&job.job_key, job.attempts)?;
             if !completed {
                 tracing::warn!(

@@ -307,8 +307,8 @@ async fn process_company(
     )
     .expect("benchmark actor");
     let storage = CompanyProfileStorage::new(&root);
-    let profile_id = create_profile(&storage, &actor, &company).profile_id;
-    seed_questions(&storage, &actor, &profile_id, &company.seed_questions);
+    let profile_id = create_profile(&storage, &actor, &company).await.profile_id;
+    seed_questions(&storage, &actor, &profile_id, &company.seed_questions).await;
     let reviewer = LlmEarningsTranscriptReviewer::new(provider.clone(), model.clone());
     let continuity = LlmEarningsContinuityReconciler::new(
         provider,
@@ -457,6 +457,7 @@ async fn replay_one(
     let before_mainline = storage
         .for_actor(actor)
         .get_profile(profile_id)
+        .await
         .ok()
         .flatten()
         .and_then(|profile| profile.section("投资主线"));
@@ -467,6 +468,7 @@ async fn replay_one(
     let after_profile = storage
         .for_actor(actor)
         .get_profile(profile_id)
+        .await
         .ok()
         .flatten();
     let after_mainline = after_profile
@@ -566,7 +568,7 @@ fn normalize_transcript(raw: &str) -> String {
     lines.join("\n")
 }
 
-fn create_profile(
+async fn create_profile(
     storage: &CompanyProfileStorage,
     actor: &ActorIdentity,
     company: &CompanyFixture,
@@ -599,11 +601,12 @@ fn create_profile(
             }),
             initial_sections: sections,
         })
+        .await
         .expect("create transcript benchmark profile")
         .0
 }
 
-fn seed_questions(
+async fn seed_questions(
     storage: &CompanyProfileStorage,
     actor: &ActorIdentity,
     profile_id: &str,
@@ -644,6 +647,7 @@ fn seed_questions(
                 research_updates: updates,
             },
         )
+        .await
         .expect("seed transcript questions")
         .expect("seed transcript event");
 }

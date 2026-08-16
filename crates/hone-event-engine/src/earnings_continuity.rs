@@ -116,13 +116,13 @@ pub struct EarningsResearchMaterialOutcome {
 #[async_trait]
 pub trait EarningsContinuityReconciler: Send + Sync {
     /// 只有 actor 自己启用的 A 级画像才进入付费连续性对账队列。
-    fn should_schedule(&self, _actor: &ActorIdentity, _event: &MarketEvent) -> bool {
+    async fn should_schedule(&self, _actor: &ActorIdentity, _event: &MarketEvent) -> bool {
         true
     }
 
     /// transcript / 10-Q(10-K) 作为同一季度研究对象的追加材料归档。
     /// 这里不调用模型，也不修改研究账本状态；默认实现保持测试替身兼容。
-    fn record_material(
+    async fn record_material(
         &self,
         _actor: &ActorIdentity,
         _event: &MarketEvent,
@@ -158,7 +158,7 @@ impl LlmEarningsContinuityReconciler {
         }
     }
 
-    fn load_profile(
+    async fn load_profile(
         &self,
         actor: &ActorIdentity,
         event: &MarketEvent,
@@ -168,12 +168,16 @@ impl LlmEarningsContinuityReconciler {
             return None;
         }
         let actor_storage = self.storage.for_actor(actor);
-        let profile_id = actor_storage.find_profile_id(None, Some(symbol))?;
-        let profile = actor_storage.get_profile(&profile_id).ok().flatten()?;
+        let profile_id = actor_storage.find_profile_id(None, Some(symbol)).await?;
+        let profile = actor_storage
+            .get_profile(&profile_id)
+            .await
+            .ok()
+            .flatten()?;
         profile.metadata.tracking.enabled.then_some(profile)
     }
 
-    fn load_target_profile(
+    async fn load_target_profile(
         &self,
         actor: &ActorIdentity,
         event: &MarketEvent,
@@ -181,7 +185,7 @@ impl LlmEarningsContinuityReconciler {
         if continuity_review_stage(event).is_none() {
             return None;
         }
-        let profile = self.load_profile(actor, event)?;
+        let profile = self.load_profile(actor, event).await?;
         (profile.metadata.tracking.enabled
             && matches!(profile.metadata.tracking.coverage_tier, CoverageTier::A))
         .then_some(profile)
@@ -190,11 +194,11 @@ impl LlmEarningsContinuityReconciler {
 
 #[async_trait]
 impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
-    fn should_schedule(&self, actor: &ActorIdentity, event: &MarketEvent) -> bool {
-        self.load_target_profile(actor, event).is_some()
+    async fn should_schedule(&self, actor: &ActorIdentity, event: &MarketEvent) -> bool {
+        self.load_target_profile(actor, event).await.is_some()
     }
 
-    fn record_material(
+    async fn record_material(
         &self,
         actor: &ActorIdentity,
         event: &MarketEvent,
@@ -204,7 +208,7 @@ impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
             return None;
         }
         let research_object_key = earnings_research_object_key_for_event(event)?;
-        let profile = self.load_profile(actor, event)?;
+        let profile = self.load_profile(actor, event).await?;
         if matches!(profile.metadata.tracking.coverage_tier, CoverageTier::C) {
             return None;
         }
@@ -252,6 +256,7 @@ impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
                     research_updates: Vec::new(),
                 },
             )
+            .await
             .map_err(|error| {
                 tracing::warn!(
                     actor = %actor_key(actor),
@@ -275,7 +280,7 @@ impl EarningsContinuityReconciler for LlmEarningsContinuityReconciler {
         actor: &ActorIdentity,
         event: &MarketEvent,
     ) -> Option<EarningsContinuityOutcome> {
-        let profile = self.load_target_profile(actor, event)?;
+        let profile = self.load_target_profile(actor, event).await?;
         let research_object_key = earnings_research_object_key(event);
         let stage = continuity_review_stage(event)?;
         if let Some(existing) = existing_outcome(&profile, &research_object_key, stage) {
@@ -377,6 +382,7 @@ impl LlmEarningsContinuityReconciler {
                     research_updates: updates.clone(),
                 },
             )
+            .await
             .map_err(|error| {
                 tracing::warn!(
                     actor = %actor_key(actor),
@@ -389,6 +395,7 @@ impl LlmEarningsContinuityReconciler {
             .flatten()?;
         let refreshed = actor_storage
             .get_profile(&profile.profile_id)
+            .await
             .ok()
             .flatten()?;
         let refreshed_ledger = refreshed.research_ledger();
@@ -971,8 +978,8 @@ mod tests {
         ActorIdentity::new("discord", "pro", None::<&str>).unwrap()
     }
 
-    #[test]
-    fn institutional_continuity_fixture_covers_six_archetypes_and_four_quarters() {
+    #[tokio::test]
+    async fn institutional_continuity_fixture_covers_six_archetypes_and_four_quarters() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/event_engine/earnings_continuity_baseline_2026-08-06.json"
         ))
@@ -1069,8 +1076,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn reaffirmed_commitment_cannot_be_closed_as_confirmed() {
+    #[tokio::test]
+    async fn reaffirmed_commitment_cannot_be_closed_as_confirmed() {
         let item = ledger_item(ResearchItemKind::ManagementCommitment);
         let update = ExistingResearchItemUpdate {
             item_id: item.item_id.clone(),
@@ -1085,8 +1092,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn only_evidenced_fulfillment_closes_management_commitment() {
+    #[tokio::test]
+    async fn only_evidenced_fulfillment_closes_management_commitment() {
         let item = ledger_item(ResearchItemKind::ManagementCommitment);
         let mut update = ExistingResearchItemUpdate {
             item_id: item.item_id.clone(),
@@ -1110,8 +1117,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn question_and_commitment_resolution_vocabularies_do_not_cross() {
+    #[tokio::test]
+    async fn question_and_commitment_resolution_vocabularies_do_not_cross() {
         let item = ledger_item(ResearchItemKind::OpenQuestion);
         let update = ExistingResearchItemUpdate {
             item_id: item.item_id.clone(),
@@ -1126,8 +1133,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn open_without_new_resolution_never_erases_partial_progress() {
+    #[tokio::test]
+    async fn open_without_new_resolution_never_erases_partial_progress() {
         let mut item = ledger_item(ResearchItemKind::OpenQuestion);
         item.status = ResearchItemStatus::PartiallyAnswered;
         let update = ExistingResearchItemUpdate {
@@ -1143,7 +1150,7 @@ mod tests {
         );
     }
 
-    fn tracked_profile(storage: &CompanyProfileStorage) -> CompanyProfileDocument {
+    async fn tracked_profile(storage: &CompanyProfileStorage) -> CompanyProfileDocument {
         let scoped = storage.for_actor(&actor());
         let mut sections = BTreeMap::new();
         sections.insert(
@@ -1164,6 +1171,7 @@ mod tests {
                 }),
                 initial_sections: sections,
             })
+            .await
             .unwrap()
             .0
     }
@@ -1172,7 +1180,7 @@ mod tests {
     async fn reconciliation_records_auditable_items_and_is_restart_idempotent() {
         let dir = tempdir().unwrap();
         let storage = CompanyProfileStorage::new(dir.path());
-        let profile = tracked_profile(&storage);
+        let profile = tracked_profile(&storage).await;
         let provider = Arc::new(StaticProvider {
             response: json!({
                 "thesis_effect": "watch",
@@ -1218,7 +1226,7 @@ mod tests {
     async fn reviewed_transcript_gets_a_distinct_same_quarter_reconciliation() {
         let dir = tempdir().unwrap();
         let storage = CompanyProfileStorage::new(dir.path());
-        let profile = tracked_profile(&storage);
+        let profile = tracked_profile(&storage).await;
         let provider = Arc::new(StaticProvider {
             response: json!({
                 "thesis_effect": "strengthen",
@@ -1261,7 +1269,7 @@ mod tests {
                 }]
             }
         });
-        assert!(reconciler.should_schedule(&actor(), &transcript));
+        assert!(reconciler.should_schedule(&actor(), &transcript).await);
         let transcript_outcome = reconciler
             .reconcile(&actor(), &transcript)
             .await
@@ -1284,6 +1292,7 @@ mod tests {
         let refreshed = storage
             .for_actor(&actor())
             .get_profile(&profile.profile_id)
+            .await
             .unwrap()
             .unwrap();
         assert!(refreshed.events.iter().any(|event| {
@@ -1292,11 +1301,11 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn transcript_is_appended_to_the_same_quarter_without_spending_model_tokens() {
+    #[tokio::test]
+    async fn transcript_is_appended_to_the_same_quarter_without_spending_model_tokens() {
         let dir = tempdir().unwrap();
         let storage = CompanyProfileStorage::new(dir.path());
-        let profile = tracked_profile(&storage);
+        let profile = tracked_profile(&storage).await;
         let provider = Arc::new(StaticProvider {
             response: "not used".to_string(),
             calls: Mutex::new(0),
@@ -1318,9 +1327,11 @@ mod tests {
 
         let first = reconciler
             .record_material(&actor(), &transcript)
+            .await
             .expect("material recorded");
         let second = reconciler
             .record_material(&actor(), &transcript)
+            .await
             .expect("idempotent existing material");
         assert_eq!(first.research_object_key, "sec:sndk:q2");
         assert_eq!(first.recorded_event_id, second.recorded_event_id);
@@ -1329,6 +1340,7 @@ mod tests {
         let refreshed = storage
             .for_actor(&actor())
             .get_profile(&profile.profile_id)
+            .await
             .unwrap()
             .unwrap();
         let material = refreshed
@@ -1344,11 +1356,11 @@ mod tests {
         assert!(material.markdown.contains("不自动加强、削弱或改写"));
     }
 
-    #[test]
-    fn material_archival_follows_a_b_not_c_coverage_depth() {
+    #[tokio::test]
+    async fn material_archival_follows_a_b_not_c_coverage_depth() {
         let dir = tempdir().unwrap();
         let storage = CompanyProfileStorage::new(dir.path());
-        let profile = tracked_profile(&storage);
+        let profile = tracked_profile(&storage).await;
         let scoped = storage.for_actor(&actor());
         scoped
             .set_tracking(
@@ -1359,6 +1371,7 @@ mod tests {
                     ..TrackingConfig::default()
                 },
             )
+            .await
             .unwrap();
         let provider = Arc::new(StaticProvider {
             response: "not used".to_string(),
@@ -1375,7 +1388,12 @@ mod tests {
         transcript.payload = json!({
             "hone_earnings_research_object_key": "sec:sndk:q2"
         });
-        assert!(reconciler.record_material(&actor(), &transcript).is_some());
+        assert!(
+            reconciler
+                .record_material(&actor(), &transcript)
+                .await
+                .is_some()
+        );
 
         scoped
             .set_tracking(
@@ -1386,18 +1404,24 @@ mod tests {
                     ..TrackingConfig::default()
                 },
             )
+            .await
             .unwrap();
         transcript.id = "transcript-c".to_string();
         transcript.occurred_at += chrono::Duration::days(1);
-        assert!(reconciler.record_material(&actor(), &transcript).is_none());
+        assert!(
+            reconciler
+                .record_material(&actor(), &transcript)
+                .await
+                .is_none()
+        );
         assert_eq!(*provider.calls.lock().unwrap(), 0);
     }
 
-    #[test]
-    fn omitted_existing_items_are_carried_forward_as_open() {
+    #[tokio::test]
+    async fn omitted_existing_items_are_carried_forward_as_open() {
         let dir = tempdir().unwrap();
         let storage = CompanyProfileStorage::new(dir.path());
-        let mut profile = tracked_profile(&storage);
+        let mut profile = tracked_profile(&storage).await;
         let item = ResearchLedgerItem {
             item_id: "open_question-old".to_string(),
             kind: ResearchItemKind::OpenQuestion,

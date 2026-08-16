@@ -70,7 +70,8 @@ pub(crate) async fn handle_get_digest_context(
     // sandbox 里现存的画像列表
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     let profile_summaries = profile_summaries_from_sources(&profiles);
 
     Json(json!({
@@ -203,7 +204,8 @@ pub(crate) async fn handle_get_company_profile(
 
     let sandbox_base = hone_channels::sandbox_base_dir();
     let profiles =
-        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None)
+            .await;
     let hit = profiles.iter().find(|p| p.ticker == target);
     match hit {
         Some(p) => Json(json!({

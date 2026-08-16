@@ -386,7 +386,7 @@ pub fn actor_sandbox_dir(base: &Path, actor: &ActorIdentity) -> PathBuf {
         .join(actor.scoped_user_fs_key())
 }
 
-pub fn scan_profiles_for_actor(
+pub async fn scan_profiles_for_actor(
     sandbox_base: &Path,
     actor: &ActorIdentity,
     holdings_filter: Option<&[String]>,
@@ -395,8 +395,8 @@ pub fn scan_profiles_for_actor(
     let holdings_set: Option<std::collections::HashSet<String>> =
         holdings_filter.map(|hs| hs.iter().map(|h| h.to_uppercase()).collect());
     let mut profiles = Vec::new();
-    for summary in storage.list_profiles_raw() {
-        let Ok(Some(document)) = storage.get_profile_raw(&summary.profile_id) else {
+    for summary in storage.list_profiles_raw().await {
+        let Ok(Some(document)) = storage.get_profile_raw(&summary.profile_id).await else {
             continue;
         };
         let tickers = extract_tickers(&document.markdown);
@@ -433,7 +433,7 @@ pub async fn distill_and_persist_one(
     actor: &ActorIdentity,
     holdings: &[String],
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
-    let profiles = scan_profiles_for_actor(sandbox_base, actor, Some(holdings));
+    let profiles = scan_profiles_for_actor(sandbox_base, actor, Some(holdings)).await;
     let distilled_mainlines = distill_from_profiles(distiller, profiles, holdings).await;
     merge_into_prefs(prefs_storage, actor, distilled_mainlines)
 }
