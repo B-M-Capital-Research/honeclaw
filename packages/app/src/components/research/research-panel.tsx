@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, type JSX, type ParentProps } from "solid-js";
+import { Show, createEffect, onCleanup, type JSX, type ParentProps } from "solid-js";
 import { Portal } from "solid-js/web";
 import "./research.css";
 
@@ -107,8 +107,12 @@ export function ResearchPanelHead(props: {
 }) {
   return (
     <header class={`research-panel__head${props.signal ? ` is-${props.signal}` : ""}`}>
+      {/* Kicker, refresh and close share one band. The action used to own a
+          row of its own under the meta line, which spent ~50px of vertical
+          space on a single secondary button and read as an orphan. */}
       <div class="research-panel__head-top">
         <p class="research-panel__kicker">{props.kicker}</p>
+        {props.action ? <div class="research-panel__head-action">{props.action}</div> : null}
         <button
           type="button"
           class="research-panel__close"
@@ -127,7 +131,69 @@ export function ResearchPanelHead(props: {
       </div>
       {props.summary ? <p class="research-panel__summary">{props.summary}</p> : null}
       {props.meta ? <p class="research-panel__meta">{props.meta}</p> : null}
-      {props.action ? <div class="research-panel__head-action">{props.action}</div> : null}
     </header>
   );
+}
+
+/** Roughly four lines of CJK body copy in a panel card. */
+const LONGFORM_LIMIT = 150;
+
+/**
+ * Source excerpts, verbatim.
+ *
+ * Panels used to print a full article body — sometimes a thousand characters —
+ * as one unbroken paragraph, which stretched a timeline to several screens per
+ * entry. Clamping it with `-webkit-line-clamp` would be worse: the reader would
+ * see a truncated sentence with no way to finish it. So anything past roughly
+ * four lines collapses into a `<details>` whose closed state shows the first two
+ * lines and an explicit "展开原文", and whose open state shows every character.
+ *
+ * Short text stays a plain paragraph — a disclosure control around two lines is
+ * chrome nobody asked for.
+ */
+export function ResearchLongform(props: {
+  text?: string | null;
+  /** Extra class on the paragraph, so panel type scales still apply. */
+  class?: string;
+  /** Override the fold threshold when a panel's card is unusually narrow. */
+  limit?: number;
+}) {
+  const text = () => (props.text ?? "").trim();
+  const folded = () => text().length > (props.limit ?? LONGFORM_LIMIT);
+  return (
+    <Show
+      when={folded()}
+      fallback={
+        <Show when={text()}>
+          <p class={props.class}>{text()}</p>
+        </Show>
+      }
+    >
+      {/* Type scale is inherited from the details element, so a panel styles
+          `.research-longform` next to its own `p` rule and both states match. */}
+      <details class={`research-longform${props.class ? ` ${props.class}` : ""}`}>
+        <summary>
+          <span class="research-longform__preview">{text()}</span>
+          <b class="research-longform__toggle" aria-hidden="true" />
+        </summary>
+        <p class="research-longform__full">{text()}</p>
+      </details>
+    </Show>
+  );
+}
+
+/**
+ * `MM-DD HH:mm`, without the year and without the run timezone.
+ *
+ * Every panel head already prints the run timezone once in its provenance
+ * line, so repeating it on each row bought nothing and cost a wide column in
+ * the timeline. Anything the pattern does not recognise is passed through
+ * untouched rather than guessed at.
+ */
+export function shortLocalTimestamp(value?: string | null) {
+  const trimmed = (value ?? "").trim().replace(/^\d{4}[-/]/, "");
+  const match = trimmed.match(/^(\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}:\d{2}))?/);
+  if (!match) return trimmed;
+  const day = `${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+  return match[3] ? `${day} ${match[3]}` : day;
 }

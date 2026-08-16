@@ -109,22 +109,7 @@
   color: var(--hone-ink-950);
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.34);
 }
-/* Refresh control, hosted by the shared head's action slot. */
-.daily-signal-reread {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
-  background: var(--hone-control-surface);
-  color: var(--hone-link);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.daily-signal-reread:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+/* The refresh control is skinned once, in research.css. */
 /* Chrome around the single scroll container. Without an explicit basis these
    flex siblings shrink against the body's content height. The body keeps
    `flex: 1 1 auto` from the shared shell and stays the only scroller. */
@@ -133,10 +118,10 @@
   flex: 0 0 auto;
 }
 
+/* `.research-scroller` owns the sideways overflow and the right-edge fade. */
 .daily-signal-tabs {
   min-height: 42px;
   padding: 0 25px;
-  display: flex;
   align-items: flex-end;
   gap: 20px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
@@ -361,7 +346,10 @@
   display: grid;
   gap: 6px;
 }
-.daily-signal-card p {
+/* The folded reason inherits from `.research-longform`, so the two-line
+   preview and the expanded text read identically. */
+.daily-signal-card p,
+.daily-signal-card .research-longform {
   margin: 0;
   color: #52605b;
   font-size: 11px;
@@ -474,10 +462,18 @@
   color: #7c8783;
   line-height: 1.45;
 }
-.daily-signal-sources > p {
+/* The full report body is the longest text in the panel; past four lines it
+   arrives folded rather than pushing the data sources off the screen. */
+.daily-signal-sources > p,
+.daily-signal-sources > .research-longform {
   color: #55625e;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.daily-signal-sources > p,
+.daily-signal-sources .research-longform__full {
+  white-space: pre-wrap;
 }
 .daily-signal-sources > a {
   padding: 11px 0;
@@ -663,7 +659,9 @@
   border-color: color-mix(in srgb, var(--signal-color) 20%, #343d3a);
 }
 [data-theme="dark"] .daily-signal-card p,
-[data-theme="dark"] .daily-signal-sources > p {
+[data-theme="dark"] .daily-signal-card .research-longform,
+[data-theme="dark"] .daily-signal-sources > p,
+[data-theme="dark"] .daily-signal-sources > .research-longform {
   color: #b7c0bc;
 }
 [data-theme="dark"] .daily-signal-gauge__track {

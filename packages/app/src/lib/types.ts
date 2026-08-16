@@ -1346,29 +1346,38 @@ export type InfluencerDigestSnapshot = {
     item_count: number;
     last_published_at?: string | null;
   }>;
-  items: Array<{
-    id: string;
-    author_id: string;
-    author_name: string;
-    public_handle: string;
-    title: string;
-    published_at: string;
-    published_at_local: string;
-    source_url: string;
-    aggregation_source?: string | null;
-    aggregation_url?: string | null;
-    post_kind: string;
-    source_excerpt: string;
-    summary: string;
-    stance: string;
-    horizon: string;
-    content_type: string;
-    topics: string[];
-    tickers: string[];
-    counterpoint: string;
-    analysis_status: string;
-  }>;
+  items: InfluencerDigestItem[];
   disclaimer: string;
+};
+
+export type InfluencerDigestItem = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  public_handle: string;
+  title: string;
+  published_at: string;
+  published_at_local: string;
+  source_url: string;
+  aggregation_source?: string | null;
+  aggregation_url?: string | null;
+  post_kind: string;
+  /** Short form kept for compatibility; the panel renders the full text below. */
+  source_excerpt: string;
+  /** Untruncated author text. Chinese translation first, English original next. */
+  source_text_cn?: string;
+  source_text_en?: string;
+  media_urls?: string[];
+  reply_context?: { author: string; text: string } | null;
+  metrics?: { views: number; likes: number };
+  summary: string;
+  stance: string;
+  horizon: string;
+  content_type: string;
+  topics: string[];
+  tickers: string[];
+  counterpoint: string;
+  analysis_status: string;
 };
 
 export type KeyEventChainSnapshot = {

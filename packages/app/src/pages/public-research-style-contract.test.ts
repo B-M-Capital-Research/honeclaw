@@ -81,4 +81,47 @@ describe("research desk contract", () => {
     expect(shellCss).toContain("min-height: 0");
     expect(shellCss).toContain("max-height: 100dvh");
   });
+
+  it("keeps the head to one band: kicker, refresh and close", () => {
+    // The action used to render below the meta line in a row of its own,
+    // which spent a whole row of height on one secondary control.
+    const headTop = panelShell.indexOf('class="research-panel__head-top"');
+    const action = panelShell.indexOf('class="research-panel__head-action"');
+    const close = panelShell.indexOf('class="research-panel__close"');
+    const meta = panelShell.indexOf('class="research-panel__meta"');
+    expect(headTop).toBeGreaterThan(-1);
+    expect(action).toBeGreaterThan(headTop);
+    expect(action).toBeLessThan(close);
+    expect(action).toBeLessThan(meta);
+    // One refresh skin for every panel, defined here rather than seven times.
+    expect(shellCss).toContain(".research-panel__head-action button {");
+  });
+
+  it("folds long source text into a disclosure rather than a dead ellipsis", () => {
+    expect(panelShell).toContain("export function ResearchLongform");
+    expect(panelShell).toContain("research-longform__preview");
+    expect(panelShell).toContain("research-longform__full");
+    // Two lines and an explicit way to read the rest — the clamp only ever
+    // appears inside a <details> that can open.
+    expect(shellCss).toContain(".research-longform__preview {");
+    expect(shellCss).toContain("-webkit-line-clamp: 2");
+    expect(shellCss).toContain('content: "展开原文"');
+    expect(shellCss).toContain('content: "收起原文"');
+  });
+
+  it("gives every sideways row one scroller with a faded edge", () => {
+    expect(shellCss).toContain(".research-scroller {");
+    expect(shellCss).toContain("scrollbar-width: none");
+    expect(shellCss).toContain("scroll-snap-type: x proximity");
+    expect(shellCss).toContain("mask-image: linear-gradient(");
+    expect(shellCss).toContain(".research-scroller > * {");
+    expect(shellCss).toContain("flex: 0 0 auto");
+    // Keyboard focus must never land inside the faded edge.
+    expect(shellCss).toContain(".research-scroller:focus-within {");
+  });
+
+  it("prints MM-DD HH:mm and leaves the timezone to the head", () => {
+    expect(panelShell).toContain("export function shortLocalTimestamp");
+    expect(panelShell).toContain('.replace(/^\\d{4}[-/]/, "")');
+  });
 });

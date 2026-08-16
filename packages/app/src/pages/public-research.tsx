@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicLoginForm } from "@/components/public-login-form";
+import { PublicAdminUsagePanel } from "@/components/public-admin-usage-panel";
+import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { DailySignalPanel } from "@/components/daily-signal-dashboard";
 import { CompanyRatingPanel } from "@/components/company-rating-dashboard";
@@ -51,17 +53,20 @@ type SectionDef = {
   panel?: (props: PanelProps) => ReturnType<typeof DailySignalPanel>;
   /** Sections that are full pages navigate instead of opening a panel. */
   href?: string;
+  /** Hidden entirely from non-administrators. */
+  adminOnly?: boolean;
 };
 
-type GroupKey = "signal" | "company" | "holdings" | "intel" | "library";
+type GroupKey = "signal" | "company" | "holdings" | "intel" | "admin";
 
-const GROUPS: { key: GroupKey | "all"; label: string }[] = [
+const GROUPS: { key: GroupKey | "all"; label: string; adminOnly?: boolean }[] = [
   { key: "all", label: "全部" },
   { key: "signal", label: "大盘信号" },
   { key: "company", label: "公司研究" },
   { key: "holdings", label: "我的持仓" },
   { key: "intel", label: "情报简报" },
-  { key: "library", label: "知识源" },
+  // 用户端的管理员能力集中在这里；管理台（/dashboard 等）不在此列。
+  { key: "admin", label: "管理", adminOnly: true },
 ];
 
 const SECTIONS: SectionDef[] = [
@@ -149,11 +154,12 @@ const SECTIONS: SectionDef[] = [
   {
     key: "research-library",
     title: "研究文库",
-    kicker: "你的知识源",
-    group: "library",
-    blurb: "上传资料，注入研究对话",
-    refreshAt: "手动上传",
+    kicker: "知识源与投稿核验",
+    group: "admin",
+    blurb: "上传资料、核验投稿，注入研究对话",
+    refreshAt: "手动维护",
     href: "/research-library",
+    adminOnly: true,
   },
 ];
 
@@ -191,7 +197,12 @@ export default function PublicResearchPage() {
   const [authLoading, setAuthLoading] = createSignal(!hasCachedPublicUser());
   const [cards, setCards] = createSignal<Map<string, ResearchOverviewCard>>(new Map());
   const [overviewLoading, setOverviewLoading] = createSignal(true);
-  const [group, setGroup] = createSignal<GroupKey | "all">("all");
+  const initialGroup = typeof searchParams.group === "string" ? searchParams.group : "";
+  const [group, setGroup] = createSignal<GroupKey | "all">(
+    GROUPS.some((item) => item.key === initialGroup)
+      ? (initialGroup as GroupKey | "all")
+      : "all",
+  );
   let controller: AbortController | undefined;
 
   const loadAuth = async () => {
@@ -231,15 +242,37 @@ export default function PublicResearchPage() {
     return key ? SECTIONS.find((section) => section.panel && section.key === key) : undefined;
   });
 
-  const visibleSections = createMemo(() => {
-    const active = group();
-    return active === "all"
-      ? SECTIONS
-      : SECTIONS.filter((section) => section.group === active);
+  const isAdmin = createMemo(() => user()?.is_admin === true);
+
+  const visibleGroups = createMemo(() =>
+    GROUPS.filter((item) => !item.adminOnly || isAdmin()),
+  );
+
+  const allowedSections = createMemo(() =>
+    SECTIONS.filter((section) => !section.adminOnly || isAdmin()),
+  );
+
+  // 非管理员即使拿到 ?group=admin 的链接也回落到「全部」，而不是看到空网格。
+  const activeGroup = createMemo(() => {
+    const current = group();
+    return visibleGroups().some((item) => item.key === current) ? current : "all";
   });
 
+  const visibleSections = createMemo(() => {
+    const active = activeGroup();
+    return active === "all"
+      ? allowedSections().filter((section) => section.group !== "admin")
+      : allowedSections().filter((section) => section.group === active);
+  });
+
+  const dailySections = createMemo(() =>
+    allowedSections().filter((section) => section.group !== "admin"),
+  );
+
   const readyCount = createMemo(
-    () => SECTIONS.filter((section) => cardState(cards().get(section.key)) === "ready").length,
+    () =>
+      dailySections().filter((section) => cardState(cards().get(section.key)) === "ready")
+        .length,
   );
 
   const openSection = (section: SectionDef) => {
@@ -276,7 +309,7 @@ export default function PublicResearchPage() {
                   <p>
                     每日研究产品的家。
                     <Show when={!overviewLoading()}>
-                      <b>今日 {readyCount()} / {SECTIONS.length} 项已更新。</b>
+                      <b>今日 {readyCount()} / {dailySections().length} 项已更新。</b>
                     </Show>
                     缺数据时明示，不用模拟值补位。
                   </p>
@@ -284,11 +317,11 @@ export default function PublicResearchPage() {
               </header>
 
               <nav class="public-research-tabs" aria-label="研究分类">
-                <For each={GROUPS}>
+                <For each={visibleGroups()}>
                   {(item) => (
                     <button
                       type="button"
-                      classList={{ "is-active": group() === item.key }}
+                      classList={{ "is-active": activeGroup() === item.key }}
                       onClick={() => setGroup(item.key)}
                     >
                       {item.label}
@@ -362,6 +395,14 @@ export default function PublicResearchPage() {
                       );
                     }}
                   </For>
+                </div>
+              </Show>
+
+              <Show when={activeGroup() === "admin" && isAdmin()}>
+                {/* 管理模块是宽表格，内联堆叠比塞进弹层可用得多。 */}
+                <div class="public-research-admin">
+                  <PublicAdminUsagePanel />
+                  <PublicAdminWhitelistPanel />
                 </div>
               </Show>
 

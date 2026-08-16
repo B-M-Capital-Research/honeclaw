@@ -260,3 +260,13 @@
   font-size: 16px;
   color: var(--hone-ink-400);
 }
+
+/* ── Administration ─────────────────────────────────────────────────────── */
+
+/* Wide data tables, so these stack inline instead of being crammed into a
+   modal sheet like the daily research panels. */
+.public-research-admin {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}

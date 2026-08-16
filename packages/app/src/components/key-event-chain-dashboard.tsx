@@ -1,6 +1,11 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicKeyEventChains } from "@/lib/api";
-import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
+import {
+  ResearchLongform,
+  ResearchPanel,
+  ResearchPanelHead,
+  shortLocalTimestamp,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { KeyEventChainSnapshot } from "@/lib/types";
@@ -192,13 +197,23 @@ export function KeyEventChainPanel(props: Props) {
           }
         />
 
-        <nav class="key-chain-topics" aria-label="产业主线：模型 → 应用 → 数据中心 → 算力 → 光互连 → 存储 → 电力">
+        {/* One compact chip per line. The card used to stack layer, name and a
+            spelled-out count on three rows, so six of twelve lines filled the
+            row and the rest needed a long drag. The layer is not lost: the
+            selected topic prints it directly below. */}
+        <nav
+          class="key-chain-topics research-scroller"
+          aria-label="产业主线：模型 → 应用 → 数据中心 → 算力 → 光互连 → 存储 → 电力"
+        >
           <For each={snapshot()?.topics ?? []}>
             {(item) => (
-              <button classList={{ active: topicId() === item.id }} onClick={() => setTopicId(item.id)}>
-                <em>{item.layer || "产业主线"}</em>
+              <button
+                classList={{ active: topicId() === item.id }}
+                aria-label={`${item.name} · 一手确认 ${item.confirmed_count ?? 0} 条，共 ${item.event_count} 条`}
+                onClick={() => setTopicId(item.id)}
+              >
                 <strong>{item.name}</strong>
-                <small>{item.confirmed_count ?? 0} 确认 · {item.clue_count ?? item.event_count} 线索</small>
+                <small>{item.confirmed_count ?? 0}/{item.event_count}</small>
               </button>
             )}
           </For>
@@ -225,7 +240,7 @@ export function KeyEventChainPanel(props: Props) {
                     {current().first_principle}
                   </aside>
                   <strong>{current().latest_change}</strong>
-                  <nav class="key-chain-evidence-filter" aria-label="证据筛选">
+                  <nav class="key-chain-evidence-filter research-scroller" aria-label="证据筛选">
                     <button
                       classList={{ active: evidenceFilter() === "all" }}
                       onClick={() => setEvidenceFilter("all")}
@@ -254,22 +269,30 @@ export function KeyEventChainPanel(props: Props) {
                     <For each={visibleEvents()}>
                       {(event) => (
                         <article data-verification={event.verification_status}>
-                          <time>{event.published_at_local} {snapshot()?.timezone}</time>
+                          {/* The head's meta line already names the run timezone;
+                              repeating it per row bought a wide column and no
+                              information. */}
+                          <time>{shortLocalTimestamp(event.published_at_local)}</time>
                           <div>
+                            {/* Two chips, both load-bearing: is it first-hand,
+                                and which way does it cut. Change type and source
+                                tier were the same weight as those and overlapped
+                                each other, so they read as the byline they are. */}
                             <div class="key-chain-event-meta">
-                              <b>{event.source_name}</b>
-                              <span>{changeLabel(event.change_type)}</span>
-                              <span>{sourceTierLabel(event.source_tier)}</span>
                               <span data-verification={event.verification_status}>
                                 {verificationLabel(event.verification_status)}
                               </span>
                               <span data-direction={event.direction}>{directionLabel(event.direction)}</span>
+                              <small>
+                                {event.source_name} · {changeLabel(event.change_type)} ·{" "}
+                                {sourceTierLabel(event.source_tier)}
+                              </small>
                             </div>
                             <h4>{event.title}</h4>
-                            <p>{event.excerpt}</p>
+                            <ResearchLongform text={event.excerpt} />
                             <aside class="key-chain-verification">
-                              <strong>证据口径：</strong>
-                              {event.verification_note}
+                              <strong>证据口径</strong>
+                              <span>{event.verification_note}</span>
                             </aside>
                             <aside>
                               <strong>影响：</strong>

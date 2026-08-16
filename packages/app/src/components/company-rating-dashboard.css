@@ -54,23 +54,7 @@
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-/* Refresh control, hosted by the shared head's action slot. */
-.company-rating-reread {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
-  background: var(--hone-control-surface);
-  color: var(--hone-link);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.company-rating-reread:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+/* The refresh control is skinned once, in research.css. */
 
 /* Chrome around the single scroll container. Without an explicit basis these
    flex siblings shrink against the body's huge content height — the collapsed
@@ -157,7 +141,8 @@
   font-size: 13px;
 }
 
-.company-rating-filters { display: flex; gap: 5px; }
+/* `.research-scroller` owns the sideways overflow and the right-edge fade. */
+.company-rating-filters { align-items: center; gap: 5px; }
 .company-rating-filters button {
   min-height: 34px;
   padding: 6px 10px;
@@ -267,6 +252,8 @@
   border-top: 1px solid rgba(35, 48, 45, 0.07);
 }
 
+/* May be a folded `<details>` when the thesis runs long; the type scale sits
+   on the element itself so preview and expanded text read the same. */
 .company-rating-thesis {
   margin: 16px 0;
   color: #34413d;
@@ -335,11 +322,13 @@
 .company-rating-valuation__range { position: relative; height: 8px; margin: 8px 3px; }
 .company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: 999px; background: linear-gradient(90deg, var(--hone-signal-green), var(--hone-signal-yellow) 52%, var(--hone-signal-red)); }
 .company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid white; border-radius: 999px; background: var(--hone-ink-950); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
-.company-rating-valuation__position { color: #34413d !important; font-weight: 750; }
+/* One extra step of specificity instead of `!important`: the only rule this
+   has to beat is `.company-rating-detail__grid p`. */
+.company-rating-valuation .company-rating-valuation__position { color: var(--hone-ink-800); font-weight: 750; }
 .company-rating-valuation > small { display: block; margin-top: 6px; color: #8a9490; font-size: 9px; }
 .company-rating-valuation__empty { padding: 10px; border-radius: 9px; background: #f2f1ed; }
 .company-rating-valuation__empty strong { color: #985044; font-size: 11px; }
-.company-rating-valuation__empty p { margin: 5px 0 !important; }
+.company-rating-valuation .company-rating-valuation__empty p { margin: 5px 0; }
 .company-rating-valuation__empty small { color: #8a9490; font-size: 9px; line-height: 1.5; }
 .company-rating-fundamentals {
   min-width: 0;
@@ -400,9 +389,10 @@
 [data-theme="dark"] .company-rating-methodology :is(summary, h3) { color: #e9f0ed; }
 [data-theme="dark"] .company-rating-simulation-note { color: #d9c998; }
 [data-theme="dark"] .company-rating-valuation { border-color: #263347; }
+/* `.company-rating-valuation__position` now rides `--hone-ink-800`, which is
+   already light in dark mode, so it needs no override at all. */
 [data-theme="dark"] .company-rating-valuation__cases dd,
-[data-theme="dark"] .company-rating-fundamentals dd,
-[data-theme="dark"] .company-rating-valuation__position { color: #e9f0ed !important; }
+[data-theme="dark"] .company-rating-fundamentals dd { color: #e9f0ed; }
 [data-theme="dark"] .company-rating-thesis,
 [data-theme="dark"] .company-rating-company strong,
 [data-theme="dark"] .company-rating-market strong,
@@ -421,7 +411,6 @@
   .company-rating-methodology summary { grid-template-columns: 1fr 16px; }
   .company-rating-toolbar { padding: 10px 16px; display: grid; }
   .company-rating-toolbar > label { min-width: 0; }
-  .company-rating-filters { overflow-x: auto; }
   .company-rating-dialog__body { padding: 0 12px 16px; }
   .company-rating-list__head { display: none; }
   .company-rating-row:first-child { margin-top: 10px; }
@@ -443,6 +432,5 @@
   .company-rating-methodology summary { min-height: 34px; padding: 6px 11px; }
   .company-rating-toolbar { padding: 8px 12px; gap: 7px; }
   .company-rating-toolbar > label { padding: 7px 10px; }
-  /* The row scrolls sideways; without this the chips squeeze into two lines. */
-  .company-rating-filters button { flex: 0 0 auto; min-height: 30px; padding: 4px 9px; }
+  .company-rating-filters button { min-height: 30px; padding: 4px 9px; }
 }

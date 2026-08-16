@@ -8,8 +8,10 @@ import {
 } from "solid-js";
 import { getPublicPortfolioNews } from "@/lib/api";
 import {
+  ResearchLongform,
   ResearchPanel,
   ResearchPanelHead,
+  shortLocalTimestamp,
 } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
@@ -222,7 +224,7 @@ export function PortfolioNewsPanel(props: Props) {
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
           action={
-            <button type="button" class="portfolio-news-reread" onClick={() => void load()} disabled={loading()}>
+            <button type="button" onClick={() => void load()} disabled={loading()}>
               {loading() ? "读取中…" : "重新读取"}
             </button>
           }
@@ -243,7 +245,7 @@ export function PortfolioNewsPanel(props: Props) {
           </Show>
         </div>
 
-        <div class="portfolio-news-filters" role="group" aria-label="按新闻影响筛选">
+        <div class="portfolio-news-filters research-scroller" role="group" aria-label="按新闻影响筛选">
           <For each={FILTERS}>
             {(item) => (
               <button
@@ -289,14 +291,17 @@ export function PortfolioNewsPanel(props: Props) {
                 <For each={visible()}>
                   {(item) => (
                     <article class={`is-${item.impact}`}>
+                      {/* One chip — the impact call. Horizon is a qualifier of
+                          that call, not a peer of it, and the run timezone is
+                          already in the head's provenance line. */}
                       <div class="portfolio-news-item__top">
                         <b>{item.symbol}</b>
                         <span class={`is-${item.impact}`}>{IMPACT_LABEL[item.impact]}</span>
-                        <span>{HORIZON_LABEL[item.horizon]}</span>
-                        <time>{item.published_at_local} {snapshot()?.timezone}</time>
+                        <small>{HORIZON_LABEL[item.horizon]}</small>
+                        <time>{shortLocalTimestamp(item.published_at_local)}</time>
                       </div>
                       <h3>{item.title}</h3>
-                      <p class="portfolio-news-item__summary">{item.summary}</p>
+                      <ResearchLongform class="portfolio-news-item__summary" text={item.summary} />
                       <p class="portfolio-news-item__why"><strong>为什么重要：</strong>{item.why_it_matters}</p>
                       <div class="portfolio-news-item__foot">
                         <span classList={{ "is-urgent": item.attention === "立即复核" }}>{item.attention}</span>

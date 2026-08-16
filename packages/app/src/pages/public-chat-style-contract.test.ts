@@ -57,8 +57,17 @@ describe("public chat visual contract", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
     expect(chat).toContain('onInsights={() => navigate("/community")}');
-    // 五项导航：投资助手 / 研究 / 推送 / 洞察 / 我的
+    // 五项导航：研究 / 洞察 / 投资助手 / 推送 / 我的。核心动作居中，是拇指
+    // 最好够到的位置，两侧分别是内容与个人。
     expect(workspace).toContain("<span>投资助手</span>");
+    const nav = workspace.slice(workspace.indexOf("agent-workspace-mobile-nav"));
+    const navEnd = nav.indexOf("</nav>");
+    const order = ["workspace.research", "workspace.insights", "<span>投资助手</span>", "workspace.pushes_tab", "workspace.me"]
+      .map((token) => nav.slice(0, navEnd).indexOf(token));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(workspace).toContain("agent-workspace-mobile-primary");
+    expect(workspaceCss).toContain(".agent-workspace-mobile-primary > svg");
     expect(workspace).toContain("CONTENT.chat_page.workspace.research");
     expect(workspace).toContain('routePrefetchHandlers("research")');
     expect(workspace).toContain("CONTENT.chat_page.workspace.pushes_tab");

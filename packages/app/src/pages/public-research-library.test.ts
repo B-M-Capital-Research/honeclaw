@@ -12,6 +12,7 @@ const styles = readFileSync(
 const app = readFileSync(new URL("../app.tsx", import.meta.url), "utf8");
 const api = readFileSync(new URL("../lib/api.ts", import.meta.url), "utf8");
 const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
+const research = readFileSync(new URL("./public-research.tsx", import.meta.url), "utf8");
 const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
 
 describe("unified research library", () => {
@@ -20,7 +21,10 @@ describe("unified research library", () => {
     // Reachable from the conversation through the composer tools menu.
     expect(chat).toContain('href: "/research-library"');
     expect(page).toContain("我的知识源");
-    expect(me).toContain('navigate("/research-library")');
+    // 知识源现在是管理员能力，入口在研究台「管理」分类；/me 只留指路卡。
+    expect(research).toContain('key: "research-library"');
+    expect(research).toContain("adminOnly: true");
+    expect(me).toContain('navigate("/research?group=admin")');
   });
 
   test("keeps provenance, scope and downstream authorization explicit", () => {

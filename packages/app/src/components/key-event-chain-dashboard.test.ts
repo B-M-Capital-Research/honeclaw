@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 
 const component = readFileSync(new URL("./key-event-chain-dashboard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./key-event-chain-dashboard.css", import.meta.url), "utf8");
+const shellStyles = readFileSync(
+  new URL("./research/research.css", import.meta.url),
+  "utf8",
+);
 
 describe("key event chain dashboard", () => {
   it("renders the first-principles industry chain", () => {
@@ -45,13 +49,40 @@ describe("key event chain dashboard", () => {
     expect(styles).not.toContain(".key-chain-dialog header");
   });
 
-  it("keeps the topic map a single scrollable row on phones", () => {
+  it("scrolls the topic map and the evidence filter through the shared scroller", () => {
+    // Overflow, the right-edge fade and the snap belong to one shared class,
+    // so a sideways row never cuts a card in half at the container edge.
+    expect(component).toContain('class="key-chain-topics research-scroller"');
+    expect(component).toContain('class="key-chain-evidence-filter research-scroller"');
     expect(styles).toContain(".key-chain-topics {");
-    expect(styles).toContain("flex-wrap: nowrap");
-    expect(styles).toContain("overflow-x: auto");
-    expect(styles).toContain("scrollbar-width: none");
+    // The panel must not re-declare what the shared class already owns.
+    expect(styles).not.toContain("flex-wrap: nowrap");
+    expect(styles).not.toContain("overflow-x: auto");
+    expect(shellStyles).toContain(".research-scroller {");
+    expect(shellStyles).toContain("scrollbar-width: none");
+    expect(shellStyles).toContain("scroll-snap-type: x proximity");
+    expect(shellStyles).toContain("mask-image: linear-gradient(");
+    expect(shellStyles).toContain("flex: 0 0 auto");
     // The shared shell owns the panel's only scroll container.
     expect(styles).toContain(".key-chain-body {");
+  });
+
+  it("gives each event two chips, a folded excerpt and a bare timestamp", () => {
+    // 观点变化 / 观点线索 / 待核实线索 / 中性 used to be four chips of equal
+    // weight. Verification and direction stay; change type and source tier
+    // read as the byline they are.
+    expect(component).toContain("verificationLabel(event.verification_status)");
+    expect(component).toContain("directionLabel(event.direction)");
+    expect(component).toContain("<small>");
+    expect(component).toContain("changeLabel(event.change_type)");
+    expect(component).not.toContain("<span>{changeLabel(event.change_type)}</span>");
+    expect(component).not.toContain("<span>{sourceTierLabel(event.source_tier)}</span>");
+    // Full source text folds instead of stretching the timeline.
+    expect(component).toContain("<ResearchLongform text={event.excerpt} />");
+    expect(component).not.toContain("<p>{event.excerpt}</p>");
+    // The head's meta line already prints the run timezone once.
+    expect(component).toContain("shortLocalTimestamp(event.published_at_local)");
+    expect(component).not.toContain("{event.published_at_local} {snapshot()?.timezone}");
   });
 
   it("preserves evidence and action boundaries", () => {

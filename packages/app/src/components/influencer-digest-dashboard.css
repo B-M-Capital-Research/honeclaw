@@ -25,53 +25,34 @@
   box-shadow: 0 38px 100px #070d0c52;
 }
 
-/* Head chrome (kicker, title, verdict, provenance) belongs to
-   ResearchPanelHead in research.css; only the refresh control is skinned here. */
-.influencer-digest-dialog .research-panel__head-action button {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line);
-  border-radius: 999px;
-  background: var(--hone-surface-raised);
-  color: var(--hone-coral-600);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.influencer-digest-dialog .research-panel__head-action button:disabled {
-  opacity: 0.5;
-}
+/* Head chrome — kicker, title, verdict, provenance and the refresh control —
+   all belongs to ResearchPanelHead in research.css. */
 
 /* One scrollable row of authors: on a phone the wrapped grid used to cost
-   three lines before any post was visible. */
+   three lines before any post was visible. `.research-scroller` owns the
+   overflow, the right-edge fade and the snap. */
 .influencer-authors {
   padding: 10px 26px;
-  display: flex;
-  flex-wrap: nowrap;
+  align-items: center;
   gap: 7px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
   border-bottom: 1px solid var(--hone-line);
 }
 
-.influencer-authors::-webkit-scrollbar {
-  display: none;
-}
-
 .influencer-authors button {
-  padding: 7px 10px;
+  padding: 7px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--hone-surface-raised);
   color: var(--hone-ink-600);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .influencer-authors button small {
   margin-left: 5px;
   color: var(--hone-ink-500);
+  font-size: 11px;
 }
 
 .influencer-authors button.active {
@@ -101,9 +82,11 @@
 
 .influencer-digest-body article > div:first-child {
   display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: 7px;
   color: var(--hone-ink-500);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .influencer-digest-body time {
@@ -118,39 +101,161 @@
 .influencer-digest-body p {
   margin: 0;
   color: var(--hone-ink-600);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* The post a reply answers, so the excerpt is not read out of context. */
+.influencer-quoted {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-left: 2px solid var(--hone-line);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+}
+
+.influencer-quoted cite {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--hone-ink-500);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.influencer-quoted p {
+  font-size: 10px;
+  white-space: pre-wrap;
+}
+
+.influencer-summary {
+  margin-top: 8px;
+}
+
+.influencer-summary b {
+  margin-right: 6px;
+  color: var(--hone-coral-600);
+  font-size: 9px;
+}
+
+/* Author text is the point of the panel: collapsed when a summary already
+   carries the gist, open when it does not. */
+.influencer-source {
+  margin-top: 9px;
+}
+
+/* Same affordance as the shared `.research-longform` toggle, so a disclosure
+   reads the same wherever a panel folds source text. */
+.influencer-source > summary {
+  color: var(--hone-link);
   font-size: 11px;
-  line-height: 1.65;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.influencer-source > p {
+  margin-top: 6px;
+  color: var(--hone-ink-950);
+  font-size: 11px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.influencer-source-en {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hone-line);
+}
+
+.influencer-source-en > summary {
+  color: var(--hone-ink-500);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.influencer-source-en > p {
+  margin-top: 5px;
+  color: var(--hone-ink-600);
+  font-size: 10px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.influencer-media {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.influencer-media.single {
+  grid-template-columns: minmax(0, 420px);
+}
+
+.influencer-media a {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  line-height: 0;
+}
+
+.influencer-media img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  background: var(--hone-paper-100);
 }
 
 .influencer-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  align-items: baseline;
+  gap: 6px;
   margin-top: 9px;
 }
 
 .influencer-tags span {
-  padding: 3px 6px;
-  border-radius: 7px;
+  padding: 3px 8px;
+  border-radius: 999px;
   background: var(--hone-paper-100);
   color: var(--hone-ink-500);
-  font-size: 8px;
+  font-size: 10px;
+}
+
+/* Index terms, not judgements: one quiet line rather than a dozen chips. */
+.influencer-tags small {
+  flex: 1 1 100%;
+  color: var(--hone-ink-500);
+  font-size: 10.5px;
+  line-height: 1.5;
 }
 
 .influencer-digest-body aside {
   margin-top: 9px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   border-radius: 9px;
   background: var(--hone-signal-yellow-soft);
+  color: var(--hone-ink-800);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.influencer-digest-body aside strong {
   color: var(--hone-signal-yellow);
-  font-size: 9px;
 }
 
 .influencer-digest-body article > a {
-  display: block;
+  display: inline-block;
   margin-top: 9px;
+  margin-right: 14px;
   color: var(--hone-coral-600);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -163,7 +268,8 @@
   margin: 0 0 6px;
   text-align: center;
   color: var(--hone-ink-500);
-  font-size: 8px;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .influencer-digest-dialog footer > div {
@@ -180,12 +286,16 @@
   color: var(--hone-ink-950);
 }
 
+/* Action tokens, not literal white: in dark mode coral is a light peach and
+   white type on it is unreadable. */
 .influencer-digest-dialog footer button {
   padding: 8px 13px;
   border: 0;
   border-radius: 10px;
-  background: var(--hone-coral-600);
-  color: white;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .influencer-digest-dialog footer button:disabled {
@@ -211,6 +321,11 @@
 
   .influencer-digest-body {
     padding: 12px;
+  }
+
+  .influencer-media,
+  .influencer-media.single {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .influencer-digest-dialog footer {

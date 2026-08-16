@@ -1,6 +1,10 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicWeeklyBrief } from "@/lib/api";
-import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
+import {
+  ResearchLongform,
+  ResearchPanel,
+  ResearchPanelHead,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { WeeklyBriefItem, WeeklyBriefPayload } from "@/lib/types";
@@ -98,10 +102,13 @@ function AgendaPanel(props: {
                   <For each={group.events}>
                     {(item) => (
                       <article data-category={item.category} data-importance={item.importance}>
+                        {/* Two chips at most: whether it matters and how well
+                            it is evidenced. The category already colours the
+                            card's left bar, so it reads as a quiet label. */}
                         <div class="weekly-brief-event-meta">
-                          <span>{categoryLabel(item.category)}</span>
                           <Show when={item.importance === "high"}><b>重点</b></Show>
                           <em>{evidenceLabel(item.evidence_status)}</em>
+                          <small>{categoryLabel(item.category)}</small>
                         </div>
                         <h4>
                           <Show when={item.ticker}><code>{item.ticker}</code></Show>
@@ -110,7 +117,7 @@ function AgendaPanel(props: {
                         <Show when={item.subtitle}>
                           <p class="weekly-brief-subtitle">{item.subtitle}</p>
                         </Show>
-                        <p class="weekly-brief-analysis">{item.analysis}</p>
+                        <ResearchLongform class="weekly-brief-analysis" text={item.analysis} />
                         <aside>
                           <strong>提醒关注：</strong>
                           {item.attention}

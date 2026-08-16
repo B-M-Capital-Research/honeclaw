@@ -22,20 +22,7 @@
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-/* Refresh control, hosted by the shared head's action slot. */
-.position-management-reread {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
-  background: var(--hone-control-surface);
-  color: var(--hone-link);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.position-management-reread:disabled { opacity: 0.5; cursor: default; }
+/* The refresh control is skinned once, in research.css. */
 
 /* Chrome around the single scroll container. Without an explicit basis these
    flex siblings shrink against the body's content height. The body keeps
@@ -100,9 +87,11 @@
   line-height: 1.6;
 }
 
+/* `.research-scroller` owns the sideways overflow and the right-edge fade, so
+   the six chips stop cutting off mid-word at the container edge. */
 .position-management-filters {
   padding: 8px 26px;
-  display: flex;
+  align-items: center;
   gap: 6px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
 }
@@ -303,7 +292,7 @@
   .position-management-dialog { width: 100%; height: min(94dvh, 880px); border-radius: 22px 22px 0 0; }
   .position-management-overview { padding: 10px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .position-management-summary { padding: 9px 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .position-management-filters { padding: 7px 16px; overflow-x: auto; }
+  .position-management-filters { padding: 7px 16px; }
   .position-management-body { padding: 11px 12px 15px; }
   .position-management-list summary { grid-template-columns: 82px minmax(100px, 1fr) 64px 16px; }
   .position-management-list summary > span:nth-of-type(4) { display: none; }
@@ -331,7 +320,5 @@
   .position-management-overview span,
   .position-management-summary span { font-size: 8.5px; }
   .position-management-filters { padding: 6px 12px; }
-  /* The row scrolls sideways; without this the chips squeeze into two lines. */
-  .position-management-filters button { flex: 0 0 auto; }
   .position-management-body { padding: 10px 12px 14px; }
 }

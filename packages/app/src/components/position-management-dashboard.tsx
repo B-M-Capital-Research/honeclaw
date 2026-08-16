@@ -201,7 +201,7 @@ export function PositionManagementPanel(props: Props) {
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
           action={
-            <button type="button" class="position-management-reread" onClick={() => void load()} disabled={loading()}>
+            <button type="button" onClick={() => void load()} disabled={loading()}>
               {loading() ? "读取中…" : "重新读取"}
             </button>
           }
@@ -224,7 +224,7 @@ export function PositionManagementPanel(props: Props) {
           </Show>
         </div>
 
-        <div class="position-management-filters" role="group" aria-label="按仓位建议筛选">
+        <div class="position-management-filters research-scroller" role="group" aria-label="按仓位建议筛选">
           <For each={FILTERS}>{(item) => (
             <button type="button" classList={{ "is-active": filter() === item.id }} aria-pressed={filter() === item.id} onClick={() => setFilter(item.id)}>{item.label}</button>
           )}</For>

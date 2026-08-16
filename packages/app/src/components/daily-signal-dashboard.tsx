@@ -11,6 +11,7 @@ import {
   getPublicDailySignalHistory,
 } from "@/lib/api";
 import {
+  ResearchLongform,
   ResearchPanel,
   ResearchPanelHead,
 } from "@/components/research/research-panel";
@@ -303,13 +304,13 @@ export function DailySignalPanel(props: Props) {
                   meta={report() ? provenanceLine(report()!) : undefined}
                   onClose={props.onClose}
                   action={
-                    <button type="button" class="daily-signal-reread" disabled={loading()} onClick={() => void load()}>
+                    <button type="button" disabled={loading()} onClick={() => void load()}>
                       {loading() ? "读取中…" : "重新读取快照"}
                     </button>
                   }
                 />
 
-                <nav class="daily-signal-tabs" aria-label="报告视图">
+                <nav class="daily-signal-tabs research-scroller" aria-label="报告视图">
                   <For each={[["overview", "概览"], ["history", "历史"], ["sources", "证据与口径"]] as const}>
                     {([value, label]) => <button classList={{ active: tab() === value }} onClick={() => openTab(value)}>{label}</button>}
                   </For>
@@ -358,7 +359,7 @@ export function DailySignalPanel(props: Props) {
                                     <Sparkline points={dimension.trend} />
                                     <b>{scoreLabel(dimension.score)}</b>
                                   </summary>
-                                  <div><p>{dimension.reason}</p><em>{dimension.threshold}</em>
+                                  <div><ResearchLongform text={dimension.reason} /><em>{dimension.threshold}</em>
                                     <For each={dimension.evidence}>{(item) => <a href={item.source_url} target="_blank" rel="noreferrer">{item.source} · {item.period ?? "待定"} · {item.display_value} {item.unit}</a>}</For>
                                   </div>
                                 </details>
@@ -380,7 +381,7 @@ export function DailySignalPanel(props: Props) {
                         </Show>
 
                         <Show when={tab() === "sources"}>
-                          <section class="daily-signal-sources"><h3>报告正文</h3><p>{current().full_report}</p><h3>数据源</h3><For each={current().sources}>{(source) => <a href={source.url} target="_blank" rel="noreferrer"><strong>{source.label}</strong><span>{sourceTypeLabel(source.source_type)}</span></a>}</For><h3>证据口径</h3><p>已报告事实来自外部原始资料；模型推断会明确标注；暂不可用表示当前没有有效数据。缺失值不计为零，也不自动改变正式分数。</p></section>
+                          <section class="daily-signal-sources"><h3>报告正文</h3><ResearchLongform text={current().full_report} /><h3>数据源</h3><For each={current().sources}>{(source) => <a href={source.url} target="_blank" rel="noreferrer"><strong>{source.label}</strong><span>{sourceTypeLabel(source.source_type)}</span></a>}</For><h3>证据口径</h3><p>已报告事实来自外部原始资料；模型推断会明确标注；暂不可用表示当前没有有效数据。缺失值不计为零，也不自动改变正式分数。</p></section>
                         </Show>
                       </>
                     )}

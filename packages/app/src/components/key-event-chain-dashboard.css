@@ -26,50 +26,31 @@
   box-shadow: 0 38px 100px #070d0c52;
 }
 
-/* Head chrome (kicker, title, verdict, provenance) belongs to
-   ResearchPanelHead in research.css; only the refresh control is skinned here. */
-.key-chain-dialog .research-panel__head-action button {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line);
-  border-radius: 999px;
-  background: var(--hone-surface-raised);
-  color: var(--hone-signal-green);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
+/* Head chrome — kicker, title, verdict, provenance and the refresh control —
+   all belongs to ResearchPanelHead in research.css. */
 
-.key-chain-dialog .research-panel__head-action button:disabled {
-  opacity: 0.5;
-}
-
-/* First-principles topic map: one scrollable row, never a wrapped block that
-   would push the timeline off a phone's first screen. */
+/* First-principles topic map. `.research-scroller` owns the overflow, the
+   right-edge fade and the snap; this only sets the row's own padding, rule
+   and chip skin. */
 .key-chain-topics {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  padding: 10px 26px;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 26px;
   border-bottom: 1px solid var(--hone-line);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.key-chain-topics::-webkit-scrollbar {
-  display: none;
 }
 
 .key-chain-topics button {
-  min-width: 138px;
-  padding: 8px 11px;
-  display: grid;
-  gap: 1px;
-  text-align: left;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 11px;
+  border-radius: 999px;
   background: var(--hone-surface-raised);
   color: var(--hone-ink-600);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .key-chain-topics button.active {
@@ -78,16 +59,14 @@
   color: var(--hone-signal-green);
 }
 
-.key-chain-topics em {
-  color: var(--hone-signal-yellow);
-  font-size: 7px;
-  font-style: normal;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
 .key-chain-topics small {
   color: var(--hone-ink-500);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.key-chain-topics button.active small {
+  color: inherit;
 }
 
 .key-chain-body {
@@ -107,11 +86,13 @@
 }
 
 .key-chain-topic-head > div span {
-  padding: 4px 7px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
   background: var(--hone-signal-green-soft);
   color: var(--hone-signal-green);
-  font-size: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .key-chain-topic-head h3 {
@@ -120,47 +101,53 @@
 }
 
 .key-chain-topic-head p {
-  margin: 3px 0;
+  margin: 4px 0;
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .key-chain-topic-head > aside {
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   border-left: 3px solid var(--hone-signal-green);
   background: var(--hone-signal-green-soft);
   color: var(--hone-ink-600);
-  font-size: 9px;
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
 .key-chain-topic-head > strong {
   display: block;
   margin-top: 9px;
   color: var(--hone-ink-800);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 /* Evidence ladder: all raw links vs first-hand confirmations only. */
 .key-chain-evidence-filter {
-  display: flex;
   gap: 7px;
   margin-top: 11px;
 }
 
 .key-chain-evidence-filter button {
-  padding: 5px 9px;
+  padding: 5px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--hone-surface-raised);
   color: var(--hone-ink-500);
-  font-size: 9px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
+/* Paper, not literal white: in dark mode the green token is a light mint and
+   white text on it is unreadable. */
 .key-chain-evidence-filter button.active {
   border-color: var(--hone-signal-green);
   background: var(--hone-signal-green);
-  color: white;
+  color: var(--hone-paper-50);
 }
 
 .key-chain-timeline {
@@ -178,10 +165,12 @@
   background: var(--hone-line-strong);
 }
 
+/* `MM-DD HH:mm` fits in 62px; the old column was sized for a second line of
+   timezone that the head already prints once. */
 .key-chain-timeline article {
   position: relative;
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 62px minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -206,8 +195,12 @@
 }
 
 .key-chain-timeline time {
+  padding-top: 2px;
   color: var(--hone-ink-500);
-  font-size: 9px;
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .key-chain-timeline article > div {
@@ -221,16 +214,25 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
+  align-items: baseline;
+}
+
+/* Source, change type and source tier are the byline, not four more chips
+   competing with the verification and direction badges. */
+.key-chain-event-meta small {
+  flex: 1 1 100%;
+  color: var(--hone-ink-500);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .key-chain-event-meta span,
 .key-chain-tickers span {
-  padding: 3px 6px;
-  border-radius: 7px;
+  padding: 3px 8px;
+  border-radius: 999px;
   background: var(--hone-paper-100);
   color: var(--hone-ink-500);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .key-chain-event-meta span[data-verification="confirmed"] {
@@ -257,39 +259,64 @@
 
 .key-chain-timeline h4 {
   margin: 8px 0 6px;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
-.key-chain-timeline p {
+/* The folded excerpt inherits from `.research-longform`, so both the two-line
+   preview and the expanded original read at the same size as a short one. */
+.key-chain-timeline p,
+.key-chain-timeline .research-longform {
   margin: 0;
   color: var(--hone-ink-600);
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .key-chain-timeline aside {
-  margin-top: 7px;
+  margin-top: 8px;
   color: var(--hone-ink-600);
-  font-size: 9px;
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
+/* The most important line on the card. It used to be a bold run-in label on a
+   fragment; the label is now a quiet kicker and the note owns the sentence. */
 .key-chain-verification {
-  padding: 6px 8px;
-  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 9px;
   background: var(--hone-signal-yellow-soft);
+  overflow-wrap: anywhere;
+}
+
+.key-chain-verification strong {
+  color: var(--hone-signal-yellow);
+  font-family: var(--hone-font-label);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.key-chain-verification span {
+  color: var(--hone-ink-800);
 }
 
 .key-chain-tickers {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 .key-chain-timeline a {
-  display: block;
-  margin-top: 8px;
+  display: inline-block;
+  margin-top: 9px;
   color: var(--hone-signal-green);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -302,7 +329,8 @@
   margin: 0 0 6px;
   text-align: center;
   color: var(--hone-ink-500);
-  font-size: 8px;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .key-chain-dialog footer > div {
@@ -324,7 +352,9 @@
   border: 0;
   border-radius: 10px;
   background: var(--hone-signal-green);
-  color: white;
+  color: var(--hone-paper-50);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .key-chain-dialog footer button:disabled {
@@ -357,7 +387,7 @@
   }
 
   .key-chain-timeline article {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .key-chain-timeline article > time {

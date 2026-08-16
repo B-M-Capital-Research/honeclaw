@@ -9,6 +9,7 @@ const styles = readFileSync(
   new URL("./influencer-digest-dashboard.css", import.meta.url),
   "utf8",
 );
+const shellStyles = readFileSync(new URL("./research/research.css", import.meta.url), "utf8");
 
 describe("influencer digest dashboard", () => {
   it("keeps source and opinion boundaries", () => {
@@ -61,13 +62,30 @@ describe("influencer digest dashboard", () => {
     expect(component).not.toContain("detail={snapshot()?.summary}");
   });
 
-  it("keeps the author filter a single scrollable row on phones", () => {
+  it("scrolls the author filter through the shared scroller", () => {
+    // Overflow, the right-edge fade and the snap belong to one shared class,
+    // so the row never cuts an author chip in half at the container edge.
+    expect(component).toContain('class="influencer-authors research-scroller"');
     expect(styles).toContain(".influencer-authors {");
-    expect(styles).toContain("flex-wrap: nowrap");
-    expect(styles).toContain("overflow-x: auto");
-    expect(styles).toContain("scrollbar-width: none");
+    expect(styles).not.toContain("flex-wrap: nowrap");
+    expect(styles).not.toContain("overflow-x: auto");
+    expect(shellStyles).toContain(".research-scroller {");
+    expect(shellStyles).toContain("scrollbar-width: none");
+    expect(shellStyles).toContain("scroll-snap-type: x proximity");
     // The shared shell owns the panel's only scroll container.
     expect(styles).toContain(".influencer-digest-body {");
+  });
+
+  it("keeps two judgement chips per post and drops the repeated timezone", () => {
+    // Stance and fact-vs-opinion are the calls; topics and tickers are index
+    // terms and read as one quiet line, not a dozen equal-weight chips.
+    expect(component).toContain("stanceLabel(item.stance)");
+    expect(component).toContain('item.content_type === "fact"');
+    expect(component).not.toContain("<For each={item.topics}>{(topic) => <span>{topic}</span>}</For>");
+    expect(component).not.toContain("<For each={item.tickers}>{(ticker) => <span>${ticker}</span>}</For>");
+    // The head's meta line already prints the run timezone once.
+    expect(component).toContain("shortLocalTimestamp(item.published_at_local)");
+    expect(component).not.toContain("{item.published_at_local} {snapshot()?.timezone}");
   });
 
   it("routes states and the ask prompt through the shared research kit", () => {
@@ -81,7 +99,36 @@ describe("influencer digest dashboard", () => {
     expect(component).toContain("<Show when={props.onAsk}>");
   });
 
+  it("shows the author's own words, not only the model digest", () => {
+    // The digest is labelled as ours; the post itself is one click away and
+    // already open whenever no summary was produced.
+    expect(component).toContain("HONE 摘要");
+    expect(component).toContain("<summary>作者原文</summary>");
+    expect(component).toContain('open={item.analysis_status !== "model_analyzed"}');
+    expect(component).toContain("English original");
+    // Full text, not the 600-char excerpt: translation first, English when a
+    // post was never translated, excerpt only for pre-full-text snapshots.
+    expect(component).toContain("item.source_text_cn");
+    expect(component).toContain("item.source_text_en");
+    expect(component).toContain("item.source_excerpt");
+    expect(component).toContain("englishOriginal");
+    expect(styles).toContain(".influencer-source {");
+    expect(styles).toContain("white-space: pre-wrap");
+  });
+
+  it("renders post images and the replied-to context", () => {
+    expect(component).toContain("media_urls");
+    expect(component).toContain('loading="lazy"');
+    expect(component).toContain('referrerpolicy="no-referrer"');
+    expect(component).toContain("influencer-quoted");
+    expect(component).toContain('item.post_kind === "quote" ? "引用" : "回复"');
+    expect(styles).toContain(".influencer-media {");
+    expect(styles).toContain("max-width: 100%");
+    expect(styles).toContain("border-radius: var(--hone-radius-sm)");
+  });
+
   it("uses design tokens in readable multi-line CSS for mobile and dark", () => {
+    expect(styles).not.toContain("!important");
     expect(styles).toContain("@media (max-width: 768px)");
     expect(styles).not.toContain("@media(max-width:768px)");
     expect(styles).toContain("var(--hone-paper-50)");

@@ -1,9 +1,13 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { getPublicInfluencerDigest } from "@/lib/api";
-import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
+import {
+  ResearchPanel,
+  ResearchPanelHead,
+  shortLocalTimestamp,
+} from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
-import type { InfluencerDigestSnapshot } from "@/lib/types";
+import type { InfluencerDigestItem, InfluencerDigestSnapshot } from "@/lib/types";
 import "./influencer-digest-dashboard.css";
 
 type Props = {
@@ -27,6 +31,30 @@ const statusLabel = (v: string) =>
     data_unavailable: "来源读取失败",
     stale: "上次成功快照",
   }[v] ?? "等待数据");
+
+/** Author text as published: translation first, English when a post was never
+ *  translated, and the legacy short excerpt for pre-full-text snapshots. */
+const sourceText = (item: InfluencerDigestItem) =>
+  (item.source_text_cn || "").trim() ||
+  (item.source_text_en || "").trim() ||
+  (item.source_excerpt || "").trim();
+
+/** Only a secondary fold: an untranslated post is already shown in English. */
+const englishOriginal = (item: InfluencerDigestItem) => {
+  const english = (item.source_text_en || "").trim();
+  return english === sourceText(item) ? "" : english;
+};
+
+const reach = (item: InfluencerDigestItem) => {
+  const views = item.metrics?.views ?? 0;
+  const likes = item.metrics?.likes ?? 0;
+  if (!views && !likes) return undefined;
+  const compact = (value: number) =>
+    value >= 10000 ? `${(value / 1000).toFixed(1)}k` : `${value}`;
+  return [views ? `阅读 ${compact(views)}` : undefined, likes ? `赞 ${compact(likes)}` : undefined]
+    .filter(Boolean)
+    .join(" · ");
+};
 
 /** Traffic light for the panel head: green only when sources and model both ran. */
 const statusSignal = (v: string) =>
@@ -100,43 +128,28 @@ export function InfluencerDigestPanel(props: Props) {
       generatedAtLocal: current.generated_at_local,
       status: current.status,
       authors: current.authors,
-      items: current.items.map(
-        ({
-          author_name,
-          public_handle,
-          title,
-          published_at_local,
-          source_url,
-          aggregation_source,
-          aggregation_url,
-          post_kind,
-          summary,
-          stance,
-          horizon,
-          content_type,
-          topics,
-          tickers,
-          counterpoint,
-          analysis_status,
-        }) => ({
-          author_name,
-          public_handle,
-          title,
-          published_at_local,
-          source_url,
-          aggregation_source,
-          aggregation_url,
-          post_kind,
-          summary,
-          stance,
-          horizon,
-          content_type,
-          topics,
-          tickers,
-          counterpoint,
-          analysis_status,
-        }),
-      ),
+      items: current.items.map((item) => ({
+        author_name: item.author_name,
+        public_handle: item.public_handle,
+        title: item.title,
+        published_at_local: item.published_at_local,
+        source_url: item.source_url,
+        aggregation_source: item.aggregation_source,
+        aggregation_url: item.aggregation_url,
+        post_kind: item.post_kind,
+        summary: item.summary,
+        stance: item.stance,
+        horizon: item.horizon,
+        content_type: item.content_type,
+        topics: item.topics,
+        tickers: item.tickers,
+        counterpoint: item.counterpoint,
+        analysis_status: item.analysis_status,
+        // The model answers about what the author actually wrote, not only
+        // about our 90-character digest of it.
+        source_text_cn: sourceText(item).slice(0, 600),
+        reply_context: item.reply_context ?? undefined,
+      })),
     };
     props.onAsk(
       buildSavedReportPrompt({
@@ -181,7 +194,7 @@ export function InfluencerDigestPanel(props: Props) {
           }
         />
 
-        <div class="influencer-authors">
+        <div class="influencer-authors research-scroller">
           <button classList={{ active: author() === "all" }} onClick={() => setAuthor("all")}>全部</button>
           <For each={snapshot()?.authors ?? []}>
             {(item) => (
@@ -221,10 +234,73 @@ export function InfluencerDigestPanel(props: Props) {
                       <b>{item.author_name}</b>
                       <span>{item.public_handle}</span>
                       <span>{postKindLabel(item.post_kind)}</span>
-                      <time>{item.published_at_local} {snapshot()?.timezone}</time>
+                      <Show when={reach(item)}>
+                        <span>{reach(item)}</span>
+                      </Show>
+                      {/* The head's meta line already names the run timezone. */}
+                      <time>{shortLocalTimestamp(item.published_at_local)}</time>
                     </div>
                     <h3>{item.title}</h3>
-                    <p>{item.summary || item.source_excerpt}</p>
+
+                    {/* A reply without the post it answers reads as half a
+                        conversation, so the quoted context comes first. */}
+                    <Show when={item.reply_context}>
+                      <blockquote class="influencer-quoted">
+                        <cite>
+                          {item.post_kind === "quote" ? "引用" : "回复"} {item.reply_context!.author}
+                        </cite>
+                        <p>{item.reply_context!.text}</p>
+                      </blockquote>
+                    </Show>
+
+                    <Show when={item.analysis_status === "model_analyzed" && item.summary.trim()}>
+                      <p class="influencer-summary">
+                        <b>HONE 摘要</b>
+                        {item.summary}
+                      </p>
+                    </Show>
+
+                    <Show when={sourceText(item)}>
+                      <details
+                        class="influencer-source"
+                        open={item.analysis_status !== "model_analyzed"}
+                      >
+                        <summary>作者原文</summary>
+                        <p>{sourceText(item)}</p>
+                        <Show when={englishOriginal(item)}>
+                          <details class="influencer-source-en">
+                            <summary>English original</summary>
+                            <p>{englishOriginal(item)}</p>
+                          </details>
+                        </Show>
+                      </details>
+                    </Show>
+
+                    <Show when={item.media_urls?.length}>
+                      <div
+                        class="influencer-media"
+                        classList={{ single: item.media_urls!.length === 1 }}
+                      >
+                        <For each={item.media_urls}>
+                          {(url) => (
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img
+                                src={url}
+                                alt={`${item.author_name} 原文配图`}
+                                loading="lazy"
+                                decoding="async"
+                                referrerpolicy="no-referrer"
+                              />
+                            </a>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+
+                    {/* Two chips carry the judgement — which way the author
+                        leans, and whether this is fact or opinion. Topics and
+                        tickers are index terms, so they read as one quiet line
+                        instead of a dozen chips of equal weight. */}
                     <div class="influencer-tags">
                       <span>{stanceLabel(item.stance)}</span>
                       <span>
@@ -234,8 +310,14 @@ export function InfluencerDigestPanel(props: Props) {
                             ? "作者观点"
                             : "事实与观点混合"}
                       </span>
-                      <For each={item.topics}>{(topic) => <span>{topic}</span>}</For>
-                      <For each={item.tickers}>{(ticker) => <span>${ticker}</span>}</For>
+                      <Show when={item.tickers.length || item.topics.length}>
+                        <small>
+                          {[
+                            ...item.tickers.map((ticker) => `$${ticker}`),
+                            ...item.topics,
+                          ].join(" · ")}
+                        </small>
+                      </Show>
                     </div>
                     <aside>
                       <strong>反方 / 未证实处：</strong>

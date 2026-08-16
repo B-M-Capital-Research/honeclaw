@@ -36,22 +36,8 @@
   box-shadow: 0 32px 100px rgba(0, 0, 0, 0.38);
 }
 
-/* Head chrome (kicker, title, verdict, provenance) belongs to
-   ResearchPanelHead in research.css; only the refresh control is skinned here. */
-.weekly-brief-dialog .research-panel__head-action button {
-  padding: 5px 12px;
-  border: 1px solid color-mix(in srgb, var(--hone-coral-500) 40%, var(--border-color));
-  border-radius: 999px;
-  background: var(--card-bg);
-  color: var(--hone-coral-600);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.weekly-brief-dialog .research-panel__head-action button:disabled {
-  opacity: 0.5;
-}
+/* Head chrome — kicker, title, verdict, provenance and the refresh control —
+   all belongs to ResearchPanelHead in research.css. */
 
 /* Warning band: the head already names the yellow light, so this only carries
    the specific gap. */
@@ -106,7 +92,7 @@
 }
 
 .weekly-brief-tabs button.active {
-  border-color: var(--border-color);
+  border-color: color-mix(in srgb, var(--hone-coral-500) 35%, var(--border-color));
   background: var(--card-bg);
   color: var(--text-primary);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--text-primary) 7%, transparent);
@@ -239,17 +225,16 @@
 .weekly-brief-event-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
+  gap: 6px;
+  align-items: baseline;
 }
 
-.weekly-brief-event-meta span,
 .weekly-brief-event-meta b,
 .weekly-brief-event-meta em {
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   border-radius: 999px;
-  padding: 3px 6px;
+  padding: 3px 8px;
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
@@ -260,6 +245,13 @@
 
 .weekly-brief-event-meta em {
   color: var(--text-secondary);
+}
+
+/* The category already colours the card's left bar; it is a label, not a
+   third badge of the same weight. */
+.weekly-brief-event-meta small {
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 .weekly-brief-events h4 {
@@ -278,16 +270,20 @@
   font-size: 10px;
 }
 
-.weekly-brief-subtitle {
-  margin: 4px 0 0 !important;
-  color: var(--text-secondary) !important;
-  font-size: 10px !important;
+/* One extra step of specificity instead of three `!important`s: the only rule
+   this has to beat is `.weekly-brief-events article p`. */
+.weekly-brief-events .weekly-brief-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
+/* Analysis can run past four lines, in which case it arrives folded — the
+   details element carries the type scale so both states match. */
 .weekly-brief-analysis {
   margin: 9px 0 0;
-  line-height: 1.58;
-  font-size: 11px;
+  line-height: 1.65;
+  font-size: 12px;
 }
 
 .weekly-brief-events aside {
@@ -311,8 +307,8 @@
   gap: 10px;
   margin-top: 8px;
   color: var(--text-secondary);
-  font-size: 8px;
-  line-height: 1.4;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .weekly-brief-evidence span {

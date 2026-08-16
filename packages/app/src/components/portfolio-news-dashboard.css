@@ -22,20 +22,7 @@
   box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
-/* Refresh control, hosted by the shared head's action slot. */
-.portfolio-news-reread {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
-  background: var(--hone-control-surface);
-  color: var(--hone-link);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.portfolio-news-reread:disabled { opacity: 0.5; cursor: default; }
+/* The refresh control is skinned once, in research.css. */
 
 /* Chrome around the single scroll container. Without an explicit basis these
    flex siblings shrink against the body's content height. The body keeps
@@ -77,9 +64,11 @@
   line-height: 1.6;
 }
 
+/* `.research-scroller` owns the sideways overflow and the right-edge fade, so
+   the chip row stops cutting off mid-word at the container edge. */
 .portfolio-news-filters {
   padding: 9px 26px;
-  display: flex;
+  align-items: center;
   gap: 6px;
   border-bottom: 1px solid rgba(35, 48, 45, 0.08);
 }
@@ -132,7 +121,9 @@
 }
 
 .portfolio-news-item__top b { color: var(--hone-ink-950); font-size: 13px; }
-.portfolio-news-item__top span { padding: 3px 6px; border-radius: 999px; background: #f1f0ec; }
+.portfolio-news-item__top span { padding: 3px 8px; border-radius: 999px; background: #f1f0ec; }
+/* A qualifier of the impact chip, not a second chip. */
+.portfolio-news-item__top small { color: var(--hone-ink-500); }
 .portfolio-news-item__top span.is-positive { background: var(--hone-signal-green-soft); color: var(--hone-signal-green); }
 .portfolio-news-item__top span.is-negative { background: var(--hone-signal-red-soft); color: var(--hone-signal-red); }
 .portfolio-news-item__top span.is-neutral { background: var(--hone-signal-yellow-soft); color: var(--hone-signal-yellow); }
@@ -140,12 +131,14 @@
 
 .portfolio-news-list h3 { margin: 10px 0 6px; font-size: 14px; line-height: 1.45; }
 
+/* `.portfolio-news-item__summary` may be a folded `<details>`; the type scale
+   sits on the element itself so both states read the same. */
 .portfolio-news-item__summary,
 .portfolio-news-item__why {
   margin: 0;
   color: #58645f;
-  font-size: 11px;
-  line-height: 1.65;
+  font-size: 11.5px;
+  line-height: 1.7;
 }
 
 .portfolio-news-item__why { margin-top: 5px; }
@@ -226,9 +219,10 @@
   .portfolio-news-backdrop { padding: 0; place-items: end center; }
   .portfolio-news-dialog { width: 100%; height: min(92dvh, 860px); border-radius: 22px 22px 0 0; }
   .portfolio-news-summary { padding: 11px 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .portfolio-news-filters { padding: 8px 16px; overflow-x: auto; }
+  .portfolio-news-filters { padding: 8px 16px; }
   .portfolio-news-body { padding: 12px 12px 16px; }
-  .portfolio-news-item__top time { display: none; }
+  /* `MM-DD HH:mm` fits on a phone; the timezone suffix is what did not. */
+  .portfolio-news-item__top { flex-wrap: wrap; }
   .portfolio-news-item__foot { flex-wrap: wrap; }
   .portfolio-news-item__foot a { width: 100%; margin-left: 0; }
   .portfolio-news-dialog > footer { padding: 9px 12px; }
@@ -240,7 +234,6 @@
   .portfolio-news-summary > div { padding: 6px 8px; border-radius: 9px; }
   .portfolio-news-summary strong { font-size: 15px; }
   .portfolio-news-filters { padding: 6px 12px; }
-  /* The row scrolls sideways; without this the chips squeeze into two lines. */
-  .portfolio-news-filters button { flex: 0 0 auto; padding: 5px 9px; }
+  .portfolio-news-filters button { padding: 5px 9px; }
   .portfolio-news-body { padding: 10px 12px 16px; }
 }

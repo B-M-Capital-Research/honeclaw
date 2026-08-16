@@ -14,6 +14,7 @@ import {
   type CompanyRatingFilter,
 } from "@/lib/company-rating-model";
 import {
+  ResearchLongform,
   ResearchPanel,
   ResearchPanelHead,
 } from "@/components/research/research-panel";
@@ -239,7 +240,7 @@ export function CompanyRatingPanel(props: Props) {
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
           action={
-            <button type="button" class="company-rating-reread" disabled={loading()} onClick={() => void load()}>
+            <button type="button" disabled={loading()} onClick={() => void load()}>
               {loading() ? "刷新中…" : "重新读取"}
             </button>
           }
@@ -299,7 +300,7 @@ export function CompanyRatingPanel(props: Props) {
               aria-label="搜索公司评级"
             />
           </label>
-          <div class="company-rating-filters" role="group" aria-label="按红绿灯筛选">
+          <div class="company-rating-filters research-scroller" role="group" aria-label="按红绿灯筛选">
             <For each={["all", "green", "yellow", "red", "unknown"] as CompanyRatingFilter[]}>
               {(item) => (
                 <button
@@ -370,7 +371,7 @@ export function CompanyRatingPanel(props: Props) {
                           <svg class="company-rating-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
                         </summary>
                         <div class="company-rating-detail">
-                          <p class="company-rating-thesis">{item.thesis_summary}</p>
+                          <ResearchLongform class="company-rating-thesis" text={item.thesis_summary} />
                           <Show when={item.score_cap_reason}>
                             <p class="company-rating-cap"><strong>评级被降档：</strong>{item.score_cap_reason}</p>
                           </Show>
