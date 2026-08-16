@@ -49,20 +49,15 @@ impl LlmAuditStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
     pub async fn new(path: impl AsRef<std::path::Path>, retention_days: u32) -> HoneResult<Self> {
-        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
-        let mut storage = Self::new_cloud(postgres, retention_days)?;
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path).await?;
+        let mut storage = Self::new_cloud(postgres, retention_days).await?;
         storage._test_postgres_lease = Some(lease);
         storage.prune_expired().await?;
         Ok(storage)
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime, retention_days: u32) -> HoneResult<Self> {
-        let schema_postgres = postgres.clone();
-        hone_core::cloud_sync::run_cloud_sync(
-            async move { schema_postgres.ensure_schema().await },
-            None,
-            "cloud llm audit schema operation",
-        )?;
+    pub async fn new_cloud(postgres: CloudPgRuntime, retention_days: u32) -> HoneResult<Self> {
+        hone_core::cloud_runtime::ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             postgres,
             retention_days: retention_days.max(1),

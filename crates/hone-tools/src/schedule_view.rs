@@ -135,7 +135,7 @@ pub async fn build_overview(
     defaults: &NotificationOverviewDefaults,
     _now: DateTime<Utc>,
 ) -> anyhow::Result<ScheduleOverview> {
-    let cron_storage = CronJobStorage::new(cron_jobs_dir);
+    let cron_storage = CronJobStorage::new(cron_jobs_dir).await;
     let jobs = cron_storage.list_jobs(actor).await;
     build_overview_with_cron_jobs(prefs_dir, jobs, actor, defaults).await
 }
@@ -803,7 +803,7 @@ mod tests {
         };
         prefs_storage.save(&actor_fixture(), &prefs).await.unwrap();
 
-        let cron_storage = CronJobStorage::new(&cron_dir);
+        let cron_storage = CronJobStorage::new(&cron_dir).await;
         // 02:00 触发 → 在 quiet 内
         let night_job_result = cron_storage
             .add_job(

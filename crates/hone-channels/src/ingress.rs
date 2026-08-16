@@ -543,7 +543,7 @@ mod tests {
     #[tokio::test]
     async fn persist_buffered_messages_deduplicates_by_channel_message_id() {
         let root = make_temp_dir("hone_channels_buffered_persist");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
         let session_identity = SessionIdentity::group("discord", "g:1:c:2").expect("session");
         let session_id = storage

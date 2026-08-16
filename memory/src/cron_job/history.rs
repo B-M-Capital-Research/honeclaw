@@ -509,7 +509,7 @@ mod web_push_tests {
     /// 随后互相 `remove_dir_all` 造成随机 `disk I/O error`。
     static TEMP_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-    fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
+    async fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
             "hone_web_push_{}_{}_{}",
             std::process::id(),
@@ -520,7 +520,7 @@ mod web_push_tests {
             TEMP_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).expect("mkdir");
-        let storage = CronJobStorage::new(root.join("cron"));
+        let storage = CronJobStorage::new(root.join("cron")).await;
         (storage, root)
     }
 
@@ -538,7 +538,7 @@ mod web_push_tests {
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn web_push_read_through_keeps_newer_pushes_unread() {
-        let (storage, root) = test_storage();
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("web", "web-user-1", None::<String>).expect("actor");
         let other = ActorIdentity::new("web", "web-user-2", None::<String>).expect("actor");
         storage
@@ -638,7 +638,7 @@ mod web_push_tests {
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn legacy_web_push_batch_is_idempotent_and_preserves_read_state() {
-        let (storage, root) = test_storage();
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("web", "legacy-user", None::<String>).expect("actor");
         let inputs = vec![
             input("legacy:first", "2026-07-10T09:00:00+08:00"),
@@ -690,7 +690,7 @@ mod web_push_tests {
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn stale_recovery_compares_instants_not_text_across_timezones() {
-        let (storage, root) = test_storage();
+        let (storage, root) = test_storage().await;
         let actor = ActorIdentity::new("feishu", "tz-stale-user", None::<String>).expect("actor");
 
         let started = |job: &str| CronJobExecutionInput {

@@ -2017,7 +2017,7 @@ pub struct ScheduledTaskExecution {
 /// 原生持久 Agent 若在同一 session 内生成了这条正文，会记录 observation，
 /// 下一轮只推进消费位点而不重复 prompt；Replay/严格 fallback 或 transient
 /// heartbeat 仍会得到 assistant/context 投影。
-pub fn record_confirmed_scheduled_delivery(
+pub async fn record_confirmed_scheduled_delivery(
     core: &HoneBotCore,
     event: &SchedulerEvent,
     result: &ScheduledTaskExecution,
@@ -2036,14 +2036,17 @@ pub fn record_confirmed_scheduled_delivery(
     .then(|| result.session_id.as_deref())
     .flatten();
     let source_id = format!("scheduler:{}", event.delivery_key);
-    match store.log_confirmed_delivery(
-        &source_id,
-        &event.actor,
-        "scheduler",
-        hone_event_engine::Severity::Medium,
-        delivered_body,
-        observed_native_session_id,
-    ) {
+    match store
+        .log_confirmed_delivery(
+            &source_id,
+            &event.actor,
+            "scheduler",
+            hone_event_engine::Severity::Medium,
+            delivered_body,
+            observed_native_session_id,
+        )
+        .await
+    {
         Ok(()) => true,
         Err(err) => {
             tracing::warn!(
@@ -4366,7 +4369,7 @@ pub async fn execute_scheduler_event(
     prompt_options: PromptOptions,
     run_options: AgentRunOptions,
 ) -> ScheduledTaskExecution {
-    let storage = core.cron_job_storage();
+    let storage = core.cron_job_storage().await;
     execute_scheduler_event_with_storage(core, event, prompt_options, run_options, &storage).await
 }
 
@@ -5347,8 +5350,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn heartbeat_malformed_triggered_json_recovers_truncated_message() {
+    #[tokio::test]
+    async fn heartbeat_malformed_triggered_json_recovers_truncated_message() {
         assert_eq!(
             inspect_heartbeat_result(
                 r#"{"status":"triggered","message":"【持仓重大事件】ASTS 大股东减持、BlueBird 7 发射异常，触发条件已满足"#
@@ -6575,7 +6578,7 @@ mod tests {
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "ou_skip", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -6613,7 +6616,7 @@ mod tests {
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "ou_failure", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -8431,7 +8434,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         let prefs_dir = root.join("prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("feishu", "ou_watch", None::<String>).expect("actor");
         let session_id = actor.session_id();
         core.session_storage
@@ -8489,7 +8492,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         let prefs_dir = root.join("prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("feishu", "ou_watch_all", None::<String>).expect("actor");
         let session_id = actor.session_id();
         core.session_storage
@@ -8548,7 +8551,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         let prefs_dir = root.join("prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor =
             ActorIdentity::new("feishu", "ou_watch_compact", None::<String>).expect("actor");
         let session_id = actor.session_id();
@@ -8609,7 +8612,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         let prefs_dir = root.join("prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor =
             ActorIdentity::new("feishu", "ou_watch_heartbeat", None::<String>).expect("actor");
         let session_id = actor.session_id();
@@ -8668,7 +8671,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         let prefs_dir = root.join("prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor =
             ActorIdentity::new("web", "web-user-watch-holdings", None::<String>).expect("actor");
         let session_id = actor.session_id();
@@ -8730,7 +8733,7 @@ mod tests {
         assert_eq!(detected.2, "$42-$55");
     }
 
-    fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {
+    async fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {
         let mut config = HoneConfig::default();
         let root = prefs_dir.parent().unwrap();
         config.storage.notif_prefs_dir = prefs_dir.to_string_lossy().to_string();
@@ -8738,7 +8741,7 @@ mod tests {
         config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
-        Arc::new(HoneBotCore::new(config))
+        Arc::new(HoneBotCore::new(config).await)
     }
 
     fn write_prefs_with_quiet(prefs_dir: &std::path::Path, actor: &ActorIdentity, qh: QuietHours) {
@@ -8795,14 +8798,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn confirmed_scheduled_delivery_enters_replay_context_store_only_after_ack_boundary() {
+    #[tokio::test]
+    async fn confirmed_scheduled_delivery_enters_replay_context_store_only_after_ack_boundary() {
         let root = std::env::temp_dir().join(format!(
             "hone_scheduler_delivered_context_{}",
             uuid::Uuid::new_v4()
         ));
         let prefs_dir = root.join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "scheduled-user", None::<String>).unwrap();
         let event = make_event(actor.clone(), false);
         let result = ScheduledTaskExecution {
@@ -8813,19 +8816,17 @@ mod tests {
             session_id: Some(actor.session_id()),
         };
 
-        assert!(record_confirmed_scheduled_delivery(
-            &core,
-            &event,
-            &result,
-            "SCHEDULED BODY",
-        ));
+        assert!(
+            record_confirmed_scheduled_delivery(&core, &event, &result, "SCHEDULED BODY",).await
+        );
         // 相同 delivery_key 的渠道 retry 只保留一次上下文事实。
         assert!(record_confirmed_scheduled_delivery(
             &core,
             &event,
             &result,
             "SCHEDULED BODY DUPLICATE",
-        ));
+        )
+        .await);
         let claim = core
             .delivered_push_context_store
             .as_ref()
@@ -8838,6 +8839,7 @@ mod tests {
                 12_000,
                 60_000,
             )
+            .await
             .unwrap();
         assert_eq!(claim.records.len(), 1);
         assert_eq!(claim.records[0].body, "SCHEDULED BODY");
@@ -8847,6 +8849,7 @@ mod tests {
 
     async fn persist_event_job(core: &HoneBotCore, event: &SchedulerEvent) {
         core.cron_job_storage()
+            .await
             .save_jobs(
                 &event.actor,
                 &CronJobData {
@@ -8884,7 +8887,7 @@ mod tests {
     async fn load_actor_quiet_hours_returns_none_when_file_absent() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "ghost", None::<String>).unwrap();
         assert!(load_actor_quiet_hours(&core, &actor).await.is_none());
     }
@@ -8893,7 +8896,7 @@ mod tests {
     async fn load_actor_quiet_hours_reads_field_correctly() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         write_prefs_with_quiet(
             &prefs_dir,
@@ -8917,7 +8920,7 @@ mod tests {
     async fn execute_scheduler_event_skips_during_quiet_hours() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
@@ -8942,7 +8945,7 @@ mod tests {
         // 但不会落 metadata.skipped='quiet_hours'),足以证明 quiet 闸门没拦下来。
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
 
@@ -8964,7 +8967,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
         std::fs::create_dir_all(&prefs_dir).unwrap();
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
         // 不写 prefs 文件 → quiet_hours None → 不拦截
         let event = make_event(actor, /* bypass */ false);
@@ -8984,7 +8987,7 @@ mod tests {
     async fn execute_scheduler_event_skips_cancelled_job_before_model_work() {
         let dir = tempfile::tempdir().unwrap();
         let prefs_dir = dir.path().join("notif_prefs");
-        let core = make_test_core(&prefs_dir);
+        let core = make_test_core(&prefs_dir).await;
         let actor = ActorIdentity::new("imessage", "cancelled", None::<String>).unwrap();
         let event = make_event(actor, /* bypass */ false);
         let result = execute_scheduler_event(

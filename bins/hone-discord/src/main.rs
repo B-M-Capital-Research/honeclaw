@@ -35,12 +35,13 @@ fn is_discord_invalid_auth_error(error: &str) -> bool {
 
 #[tokio::main]
 async fn main() {
-    let runtime = hone_channels::bootstrap_channel_runtime(
+    let runtime = hone_channels::bootstrap_channel_runtime_async(
         "discord",
         "Discord Bot",
         hone_core::PROCESS_LOCK_DISCORD,
         |config| config.discord.enabled,
-    );
+    )
+    .await;
     let core = runtime.core;
 
     let token = core.config.discord.bot_token.trim().to_string();
@@ -73,7 +74,7 @@ async fn main() {
         }
     };
 
-    let (scheduler, event_rx) = core.create_scheduler(vec!["discord".to_string()]);
+    let (scheduler, event_rx) = core.create_scheduler(vec!["discord".to_string()]).await;
     tokio::spawn(async move {
         scheduler.start().await;
     });

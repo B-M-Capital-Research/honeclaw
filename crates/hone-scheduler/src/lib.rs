@@ -421,7 +421,7 @@ mod tests {
     #[tokio::test]
     async fn heartbeat_history_includes_actor_cross_job_deliveries() {
         let dir = make_temp_dir("hone_scheduler_cross_job_history");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = ActorIdentity::new("feishu", "ou_cross_job", None::<String>).expect("actor");
 
         storage
@@ -473,7 +473,7 @@ mod tests {
     #[tokio::test]
     async fn heartbeat_history_keeps_same_job_delivery_when_actor_history_is_busy() {
         let dir = make_temp_dir("hone_scheduler_same_job_history");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = ActorIdentity::new("feishu", "ou_same_job", None::<String>).expect("actor");
 
         storage
@@ -534,7 +534,7 @@ mod tests {
     #[tokio::test]
     async fn scheduler_records_missing_channel_target_without_dispatching() {
         let dir = make_temp_dir("hone_scheduler_missing_target");
-        let storage = Arc::new(CronJobStorage::new(&dir));
+        let storage = Arc::new(CronJobStorage::new(&dir).await);
         let actor = ActorIdentity::new("telegram", "user_missing", None::<String>).expect("actor");
         let now = hone_core::local_now();
         let job = CronJob {
@@ -653,7 +653,7 @@ mod tests {
     #[tokio::test]
     async fn scheduler_event_activity_fails_closed_after_actor_scoped_cancellation() {
         let dir = make_temp_dir("hone_scheduler_event_activity");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = ActorIdentity::new("feishu", "ou_cancelled", None::<String>).expect("actor");
         let added = storage
             .add_job(
@@ -706,7 +706,7 @@ mod tests {
     #[tokio::test]
     async fn dispatched_once_event_remains_active_for_its_claimed_run() {
         let dir = make_temp_dir("hone_scheduler_once_event_activity");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = ActorIdentity::new("telegram", "once-user", None::<String>).expect("actor");
         let date = hone_core::local_now().date_naive().format("%F").to_string();
         let added = storage

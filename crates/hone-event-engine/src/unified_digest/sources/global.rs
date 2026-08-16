@@ -24,17 +24,15 @@ impl<'a> GlobalNewsSource<'a> {
     /// 在 `[until - lookback_hours, until)` 内拉 trusted news 候选;
     /// `dedup_lookback_hours` 决定跨批次去重看多远(参见
     /// `CandidateCollector::collect`)。
-    pub fn collect(
+    pub async fn collect(
         &self,
         until: DateTime<Utc>,
         lookback_hours: u32,
         dedup_lookback_hours: u32,
     ) -> anyhow::Result<Vec<UnifiedCandidate>> {
-        let collected_candidates = CandidateCollector::new(self.store).collect(
-            until,
-            lookback_hours,
-            dedup_lookback_hours,
-        )?;
+        let collected_candidates = CandidateCollector::new(self.store)
+            .collect(until, lookback_hours, dedup_lookback_hours)
+            .await?;
         Ok(collected_candidates
             .into_iter()
             .map(|candidate| {
@@ -80,23 +78,24 @@ mod tests {
         }
     }
 
-    fn open_store() -> EventStore {
+    async fn open_store() -> EventStore {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().join("event-store");
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         std::mem::forget(temp_dir);
         store
     }
 
-    #[test]
-    fn wraps_collector_output_with_global_origin_and_metadata() {
-        let store = open_store();
+    #[tokio::test]
+    async fn wraps_collector_output_with_global_origin_and_metadata() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news("n1", "trusted", now - chrono::Duration::hours(2)))
+            .await
             .unwrap();
         let global_source = GlobalNewsSource::new(&store);
-        let candidates = global_source.collect(now, 24, 24).unwrap();
+        let candidates = global_source.collect(now, 24, 24).await.unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].origin, ItemOrigin::Global);
         assert_eq!(candidates[0].source_class, Some(NewsSourceClass::Trusted));
@@ -112,15 +111,16 @@ mod tests {
         assert_eq!(candidates[0].seen_at, now - chrono::Duration::hours(2));
     }
 
-    #[test]
-    fn empty_when_no_trusted_news() {
-        let store = open_store();
+    #[tokio::test]
+    async fn empty_when_no_trusted_news() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news("n1", "pr_wire", now - chrono::Duration::hours(2)))
+            .await
             .unwrap();
         let global_source = GlobalNewsSource::new(&store);
-        let candidates = global_source.collect(now, 24, 24).unwrap();
+        let candidates = global_source.collect(now, 24, 24).await.unwrap();
         assert!(candidates.is_empty());
     }
 }

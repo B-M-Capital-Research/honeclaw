@@ -169,12 +169,13 @@ async fn build_group_followup_recv_extra(
 }
 
 pub(crate) async fn run() {
-    let runtime = hone_channels::bootstrap_channel_runtime(
+    let runtime = hone_channels::bootstrap_channel_runtime_async(
         "telegram",
         "Telegram Bot",
         hone_core::PROCESS_LOCK_TELEGRAM,
         |config| config.telegram.enabled,
-    );
+    )
+    .await;
     let core = runtime.core;
 
     let token = core.config.telegram.bot_token.trim().to_string();
@@ -204,7 +205,7 @@ pub(crate) async fn run() {
         media_groups: MediaGroupBuffer::new(),
     });
 
-    let (scheduler, event_rx) = core.create_scheduler(vec!["telegram".to_string()]);
+    let (scheduler, event_rx) = core.create_scheduler(vec!["telegram".to_string()]).await;
     tokio::spawn(async move {
         scheduler.start().await;
     });
@@ -1029,7 +1030,7 @@ mod tests {
         let me = bot.get_me().await.expect("telegram getMe should succeed");
         let bot_id = me.user.id.0;
         let bot_username = Arc::new(me.user.username.unwrap_or_default());
-        let core = Arc::new(hone_channels::HoneBotCore::new(config));
+        let core = Arc::new(hone_channels::HoneBotCore::new(config).await);
         let app_state = Arc::new(TelegramAppState {
             dedup: MessageDeduplicator::new(Duration::from_secs(120), 2048),
             session_locks: SessionLockRegistry::new(),
@@ -1066,7 +1067,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(Some("group-session"), None, None)
             .await
@@ -1145,7 +1146,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(Some("group-session"), None, None)
             .await

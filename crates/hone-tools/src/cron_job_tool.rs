@@ -137,14 +137,14 @@ impl CronJobTool {
             .ok_or_else(|| hone_core::HoneError::Tool("缺少 actor 身份，无法管理定时任务".into()))
     }
 
-    fn storage(&self) -> hone_core::HoneResult<&hone_memory::CronJobStorage> {
+    async fn storage(&self) -> hone_core::HoneResult<&hone_memory::CronJobStorage> {
         if let Some(storage) = self.storage.get() {
             return Ok(storage);
         }
         let storage = if let Some(postgres) = self.postgres.clone() {
-            hone_memory::CronJobStorage::new_cloud(postgres)?
+            hone_memory::CronJobStorage::new_cloud(postgres).await?
         } else {
-            hone_memory::CronJobStorage::new(&self.data_dir)
+            hone_memory::CronJobStorage::new(&self.data_dir).await
         };
         let _ = self.storage.set(storage);
         self.storage.get().ok_or_else(|| {
@@ -288,7 +288,7 @@ impl Tool for CronJobTool {
     }
 
     async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
-        let storage = self.storage()?;
+        let storage = self.storage().await?;
         let actor = self.actor()?;
         let action = args
             .get("action")
@@ -884,7 +884,7 @@ mod tests {
         assert_eq!(removed["removed_count"], 2);
         assert_eq!(removed["remaining_count"], 0);
 
-        let storage = hone_memory::CronJobStorage::new(&data_dir);
+        let storage = hone_memory::CronJobStorage::new(&data_dir).await;
         assert!(storage.list_jobs(&actor).await.is_empty());
         assert_eq!(storage.list_jobs(&other_actor).await.len(), 1);
 
@@ -964,6 +964,7 @@ mod tests {
         assert_eq!(preview_response["job"]["id"], add_response["job"]["id"]);
 
         let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir)
+            .await
             .list_jobs(&actor)
             .await;
         assert_eq!(jobs_after_preview.len(), 1);
@@ -979,6 +980,7 @@ mod tests {
         assert_eq!(confirmed_response["success"].as_bool(), Some(true));
 
         let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir)
+            .await
             .list_jobs(&actor)
             .await;
         assert!(jobs_after_confirm.is_empty());
@@ -1020,6 +1022,7 @@ mod tests {
         );
 
         let jobs = hone_memory::CronJobStorage::new(&data_dir)
+            .await
             .list_jobs(&actor)
             .await;
         assert_eq!(jobs.len(), 2);

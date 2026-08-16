@@ -219,7 +219,7 @@ impl UnifiedDigestScheduler {
 
         // ── synth 倒计时按 actor 散开(per tick 一次) ─────────────────
         let mut synth_by_actor: HashMap<ActorIdentity, Vec<MarketEvent>> = HashMap::new();
-        match self.store.list_upcoming_earnings(now, 4) {
+        match self.store.list_upcoming_earnings(now, 4).await {
             Ok(teasers) => {
                 let local_today = self.runtime_timezone.at_utc(now).date_naive();
                 let synth_pool =
@@ -257,7 +257,7 @@ impl UnifiedDigestScheduler {
             }
         }
         let since = now - chrono::Duration::hours(12);
-        match self.store.list_actors_with_quiet_held_since(since) {
+        match self.store.list_actors_with_quiet_held_since(since).await {
             Ok(keys) => {
                 for key in keys {
                     if let Some(actor_with_quiet_held) = actor_from_key(&key) {
@@ -336,7 +336,7 @@ impl UnifiedDigestScheduler {
                 // min-gap 跨 slot 防抖
                 if self.min_gap_minutes > 0 {
                     let cutoff = now - chrono::Duration::minutes(self.min_gap_minutes as i64);
-                    match self.store.last_digest_success_at(&actor_key_str) {
+                    match self.store.last_digest_success_at(&actor_key_str).await {
                         Ok(Some(last)) if last >= cutoff => {
                             info!(
                                 actor = %actor_key_str,
@@ -374,6 +374,7 @@ impl UnifiedDigestScheduler {
                 if let Ok(seen) = self
                     .store
                     .delivered_event_ids_since(&actor_key_str, day_start_utc)
+                    .await
                 {
                     let pre_count = synths_this_slot.len();
                     synths_this_slot.retain(|synth_event| !seen.contains(&synth_event.id));
@@ -462,14 +463,17 @@ impl UnifiedDigestScheduler {
                         continue;
                     }
                     if !global_pick_matches_actor_focus(&event, &focus_symbols) {
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            &actor_key_str,
-                            "global_digest_item",
-                            event.severity,
-                            "filtered_focus",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &event.id,
+                                &actor_key_str,
+                                "global_digest_item",
+                                event.severity,
+                                "filtered_focus",
+                                None,
+                            )
+                            .await;
                         continue;
                     }
                     let force_floor = match personalized_item.category {
@@ -502,7 +506,8 @@ impl UnifiedDigestScheduler {
                     other_events,
                     &self.store,
                     now,
-                );
+                )
+                .await;
                 let mut others_kept = memory.kept;
                 omitted_events.extend(memory.omitted);
                 let curation = curate_digest_events_with_omitted_at(others_kept, now);
@@ -515,7 +520,8 @@ impl UnifiedDigestScheduler {
 
                 if merged.is_empty() {
                     if !omitted_events.is_empty() {
-                        log_omitted_digest_items(&self.store, &actor_key_str, &omitted_events);
+                        log_omitted_digest_items(&self.store, &actor_key_str, &omitted_events)
+                            .await;
                     }
                     continue;
                 }
@@ -546,53 +552,63 @@ impl UnifiedDigestScheduler {
                     "failed"
                 };
                 let delivery_result = if status == "sent" {
-                    self.store.log_confirmed_delivery(
-                        &batch_id,
-                        &actor,
-                        "digest",
-                        merged[0].severity,
-                        &body,
-                        None,
-                    )
+                    self.store
+                        .log_confirmed_delivery(
+                            &batch_id,
+                            &actor,
+                            "digest",
+                            merged[0].severity,
+                            &body,
+                            None,
+                        )
+                        .await
                 } else {
-                    self.store.log_delivery(
-                        &batch_id,
-                        &actor_key_str,
-                        "digest",
-                        merged[0].severity,
-                        status,
-                        Some(&body),
-                    )
+                    self.store
+                        .log_delivery(
+                            &batch_id,
+                            &actor_key_str,
+                            "digest",
+                            merged[0].severity,
+                            status,
+                            Some(&body),
+                        )
+                        .await
                 };
                 if let Err(error) = delivery_result {
                     warn!(actor = %actor_key_str, batch_id, "digest delivery audit failed: {error:#}");
                 }
                 if send_result.is_ok() {
                     for item in &merged {
-                        let _ = self.store.log_delivery(
-                            &item.id,
-                            &actor_key_str,
-                            "digest_item",
-                            item.severity,
-                            status,
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &item.id,
+                                &actor_key_str,
+                                "digest_item",
+                                item.severity,
+                                status,
+                                None,
+                            )
+                            .await;
                     }
                     // global news 单独再落一份 `global_digest_item` 审计,便于对账。
                     for pi in &personalized {
                         if !merged.iter().any(|m| m.id == pi.candidate.event.id) {
                             continue;
                         }
-                        let _ = self.store.log_delivery(
-                            &pi.candidate.event.id,
-                            &actor_key_str,
-                            "global_digest_item",
-                            pi.candidate.event.severity,
-                            status,
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &pi.candidate.event.id,
+                                &actor_key_str,
+                                "global_digest_item",
+                                pi.candidate.event.severity,
+                                status,
+                                None,
+                            )
+                            .await;
                     }
-                    log_omitted_digest_items(&self.store, &actor_key_str, &omitted_events);
+                    log_omitted_digest_items(&self.store, &actor_key_str, &omitted_events).await;
                 }
 
                 if let Err(e) = send_result {
@@ -647,11 +663,14 @@ impl UnifiedDigestScheduler {
                 .await;
 
         let global_source = GlobalNewsSource::new(&self.store);
-        let unified_candidates = match global_source.collect(
-            now,
-            self.lookback_hours,
-            self.lookback_hours.saturating_add(2),
-        ) {
+        let unified_candidates = match global_source
+            .collect(
+                now,
+                self.lookback_hours,
+                self.lookback_hours.saturating_add(2),
+            )
+            .await
+        {
             Ok(candidates) => candidates,
             Err(e) => {
                 warn!(slot = %slot.id, "global collect failed: {e:#}");
@@ -850,7 +869,7 @@ impl UnifiedDigestScheduler {
         let mut held: Vec<MarketEvent> = Vec::new();
         let mut dropped_stale = 0usize;
         let mut recap_count = 0usize;
-        match self.store.list_quiet_held_since(actor_key_str, since) {
+        match self.store.list_quiet_held_since(actor_key_str, since).await {
             Ok(rows) => {
                 for (event, _sent_at) in rows {
                     if event.kind.is_fresh(event.occurred_at, now) {
@@ -863,14 +882,17 @@ impl UnifiedDigestScheduler {
                         held.push(mark_as_overnight_recap(event));
                         recap_count += 1;
                     } else {
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            actor_key_str,
-                            "sink",
-                            event.severity,
-                            "quiet_dropped",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &event.id,
+                                actor_key_str,
+                                "sink",
+                                event.severity,
+                                "quiet_dropped",
+                                None,
+                            )
+                            .await;
                         dropped_stale += 1;
                     }
                 }
@@ -917,14 +939,15 @@ impl UnifiedDigestScheduler {
                 .then_with(|| b.occurred_at.cmp(&a.occurred_at))
         });
         let memory =
-            suppress_recent_digest_topics_with_omitted(actor_key_str, filtered, &self.store, now);
+            suppress_recent_digest_topics_with_omitted(actor_key_str, filtered, &self.store, now)
+                .await;
         filtered = memory.kept;
         omitted_events.extend(memory.omitted);
         let curation = curate_digest_events_with_omitted_at(filtered, now);
         filtered = curation.kept;
         omitted_events.extend(curation.omitted);
         if filtered.is_empty() {
-            log_omitted_digest_items(&self.store, actor_key_str, &omitted_events);
+            log_omitted_digest_items(&self.store, actor_key_str, &omitted_events).await;
             return Ok(false);
         }
         let mut cap_overflow = 0usize;
@@ -946,39 +969,46 @@ impl UnifiedDigestScheduler {
             "failed"
         };
         let delivery_result = if status == "sent" {
-            self.store.log_confirmed_delivery(
-                &batch_id,
-                actor,
-                "digest",
-                filtered[0].severity,
-                &body,
-                None,
-            )
+            self.store
+                .log_confirmed_delivery(
+                    &batch_id,
+                    actor,
+                    "digest",
+                    filtered[0].severity,
+                    &body,
+                    None,
+                )
+                .await
         } else {
-            self.store.log_delivery(
-                &batch_id,
-                actor_key_str,
-                "digest",
-                filtered[0].severity,
-                status,
-                Some(&body),
-            )
+            self.store
+                .log_delivery(
+                    &batch_id,
+                    actor_key_str,
+                    "digest",
+                    filtered[0].severity,
+                    status,
+                    Some(&body),
+                )
+                .await
         };
         if let Err(error) = delivery_result {
             warn!(actor = %actor_key_str, batch_id, "quiet flush delivery audit failed: {error:#}");
         }
         if send_result.is_ok() {
             for item in &filtered {
-                let _ = self.store.log_delivery(
-                    &item.id,
-                    actor_key_str,
-                    "digest_item",
-                    item.severity,
-                    status,
-                    None,
-                );
+                let _ = self
+                    .store
+                    .log_delivery(
+                        &item.id,
+                        actor_key_str,
+                        "digest_item",
+                        item.severity,
+                        status,
+                        None,
+                    )
+                    .await;
             }
-            log_omitted_digest_items(&self.store, actor_key_str, &omitted_events);
+            log_omitted_digest_items(&self.store, actor_key_str, &omitted_events).await;
         }
         match send_result {
             Ok(()) => {
@@ -1163,16 +1193,18 @@ fn mark_as_overnight_recap(mut event: MarketEvent) -> MarketEvent {
     event
 }
 
-fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[MarketEvent]) {
+async fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[MarketEvent]) {
     for item in omitted {
-        let _ = store.log_delivery(
-            &item.id,
-            actor_key,
-            "digest_item",
-            item.severity,
-            "omitted",
-            None,
-        );
+        let _ = store
+            .log_delivery(
+                &item.id,
+                actor_key,
+                "digest_item",
+                item.severity,
+                "omitted",
+                None,
+            )
+            .await;
     }
 }
 

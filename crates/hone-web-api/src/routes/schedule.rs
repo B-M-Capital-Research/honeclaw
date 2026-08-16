@@ -63,7 +63,7 @@ pub(crate) async fn handle_schedule(
     };
 
     let prefs_dir = std::path::Path::new(&app_config.storage.notif_prefs_dir);
-    let cron_jobs = state.core.cron_job_storage().list_jobs(&actor).await;
+    let cron_jobs = state.core.cron_job_storage().await.list_jobs(&actor).await;
 
     let overview = build_overview_with_cron_jobs(prefs_dir, cron_jobs, &actor, &overview_defaults)
         .await

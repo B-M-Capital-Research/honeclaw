@@ -33,7 +33,7 @@ impl NotificationRouter {
     /// 这类事件的 occurred_at 是财报当日 00:00,T-1/T 新闻必须向未来扩窗才能命中。
     ///
     /// 升级是幂等 clone,原事件不被修改。
-    pub(super) fn maybe_upgrade_news(&self, event: &MarketEvent) -> MarketEvent {
+    pub(super) async fn maybe_upgrade_news(&self, event: &MarketEvent) -> MarketEvent {
         if !matches!(event.kind, EventKind::NewsCritical) || event.severity != Severity::Low {
             return event.clone();
         }
@@ -47,6 +47,7 @@ impl NotificationRouter {
             match self
                 .store
                 .symbol_signal_kinds_in_window(sym, recent_start, recent_end)
+                .await
             {
                 Ok(tags) => {
                     if let Some(hit) = tags
@@ -67,6 +68,7 @@ impl NotificationRouter {
             match self
                 .store
                 .symbol_signal_kinds_in_window(sym, earnings_start, earnings_end)
+                .await
             {
                 Ok(tags) => {
                     if tags.iter().any(|t| t == "earnings_upcoming")

@@ -106,11 +106,13 @@ impl Tool for MissedEventsTool {
             .unwrap_or(30) as usize;
 
         let store = EventStore::new(self.postgres.clone())
+            .await
             .map_err(|e| HoneError::Tool(format!("打开 PostgreSQL event store 失败: {e}")))?;
         let since = chrono::Utc::now()
             - chrono::Duration::milliseconds((since_hours * 3600.0 * 1000.0) as i64);
         let rows = store
             .list_missed_digest_items_since(&actor_key, since)
+            .await
             .map_err(|e| HoneError::Tool(format!("查询 delivery_log 失败: {e}")))?;
 
         let truncated = rows.len() > limit;

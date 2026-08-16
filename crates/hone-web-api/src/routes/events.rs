@@ -188,7 +188,7 @@ pub(crate) async fn handle_scheduler_events(
             .saturating_add(Duration::from_secs(SCHEDULER_EXECUTION_GRACE_SECS));
     for channel in ["web", "imessage"] {
         hone_scheduler::recover_stale_started_rows(
-            &state.core.cron_job_storage(),
+            &state.core.cron_job_storage().await,
             channel,
             recovery_window,
             "web_scheduler_startup",
@@ -224,7 +224,7 @@ pub(crate) async fn handle_scheduler_events(
                 error!("⏰ 调度并发闸已关闭，跳过任务: job={}", event.job_name);
                 return;
             };
-            let storage = state_clone.core.cron_job_storage();
+            let storage = state_clone.core.cron_job_storage().await;
             let _ = storage
                 .record_execution_event(
                     &event.actor,
@@ -275,7 +275,8 @@ pub(crate) async fn handle_scheduler_events(
                         &event,
                         &result,
                         response,
-                    );
+                    )
+                    .await;
                 }
                 let _ = storage
                     .record_execution_event(
@@ -419,7 +420,8 @@ pub(crate) async fn handle_scheduler_events(
                     &event,
                     &result,
                     &response,
-                );
+                )
+                .await;
             }
             let _ = storage
                 .record_execution_event(

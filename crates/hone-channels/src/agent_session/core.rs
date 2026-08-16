@@ -1847,7 +1847,7 @@ impl AgentSession {
             .await;
     }
 
-    fn claim_delivered_push_context(
+    async fn claim_delivered_push_context(
         &self,
         turn_id: &str,
         delivered_before_ms: i64,
@@ -1868,15 +1868,18 @@ impl AgentSession {
                     .then_some(self.session_id.as_str())
                 })
         };
-        match store.claim_delivered_push_context_with_native_observation(
-            &self.actor,
-            turn_id,
-            delivered_before_ms,
-            DELIVERED_PUSH_CONTEXT_MAX_RECORDS,
-            DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS,
-            DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS,
-            native_session_id,
-        ) {
+        match store
+            .claim_delivered_push_context_with_native_observation(
+                &self.actor,
+                turn_id,
+                delivered_before_ms,
+                DELIVERED_PUSH_CONTEXT_MAX_RECORDS,
+                DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS,
+                DELIVERED_PUSH_CONTEXT_CLAIM_LEASE_MS,
+                native_session_id,
+            )
+            .await
+        {
             Ok(claim) => DeliveredPushContextBatch {
                 records: claim
                     .records
@@ -1903,11 +1906,14 @@ impl AgentSession {
         }
     }
 
-    fn complete_delivered_push_context(&self, turn_id: &str) {
+    async fn complete_delivered_push_context(&self, turn_id: &str) {
         let Some(store) = self.core.delivered_push_context_store.as_ref() else {
             return;
         };
-        if let Err(err) = store.complete_delivered_push_context(&self.actor, turn_id) {
+        if let Err(err) = store
+            .complete_delivered_push_context(&self.actor, turn_id)
+            .await
+        {
             tracing::warn!(
                 channel = %self.actor.channel,
                 user_id = %self.actor.user_id,
@@ -1918,11 +1924,14 @@ impl AgentSession {
         }
     }
 
-    fn release_delivered_push_context(&self, turn_id: &str) {
+    async fn release_delivered_push_context(&self, turn_id: &str) {
         let Some(store) = self.core.delivered_push_context_store.as_ref() else {
             return;
         };
-        if let Err(err) = store.release_delivered_push_context(&self.actor, turn_id) {
+        if let Err(err) = store
+            .release_delivered_push_context(&self.actor, turn_id)
+            .await
+        {
             tracing::warn!(
                 channel = %self.actor.channel,
                 user_id = %self.actor.user_id,
@@ -2433,6 +2442,7 @@ impl AgentSession {
                 interactive_ingress_cutoff_ms,
                 &options,
             )
+            .await
         } else {
             DeliveredPushContextBatch::default()
         };
@@ -2557,7 +2567,8 @@ impl AgentSession {
         {
             Ok(prepared) => prepared,
             Err((kind, err)) => {
-                self.release_delivered_push_context(&delivered_push_turn_id);
+                self.release_delivered_push_context(&delivered_push_turn_id)
+                    .await;
                 drop(quota_guard);
                 return self.fail_run(session_id, kind, err).await;
             }
@@ -2932,7 +2943,8 @@ impl AgentSession {
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
-            self.complete_delivered_push_context(&delivered_push_turn_id);
+            self.complete_delivered_push_context(&delivered_push_turn_id)
+                .await;
             // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
             // 后续 drop 再执行 release。
             quota_guard.commit().await;
@@ -3009,7 +3021,8 @@ impl AgentSession {
             })
             .await;
         } else {
-            self.release_delivered_push_context(&delivered_push_turn_id);
+            self.release_delivered_push_context(&delivered_push_turn_id)
+                .await;
             // 失败路径：显式 drop 触发 release,让配额回到预留前的状态。
             drop(quota_guard);
             let err = response

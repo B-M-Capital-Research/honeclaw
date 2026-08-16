@@ -55,7 +55,7 @@ pub(crate) async fn store_web_scheduler_push(
     content: &str,
 ) -> hone_core::HoneResult<StoredWebPush> {
     let created_at = hone_core::local_now_rfc3339();
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     let message = storage
         .upsert_web_push_message(
             &event.actor,
@@ -89,7 +89,7 @@ pub(crate) async fn handle_list_pushes(
         .limit
         .unwrap_or(DEFAULT_PUSH_PAGE_SIZE)
         .clamp(1, MAX_PUSH_PAGE_SIZE);
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     if let Err(error) = backfill_legacy_web_pushes(&state, &actor).await {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -140,7 +140,7 @@ pub(crate) async fn handle_open_push(
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     let message = match storage.get_web_push_message(&actor, &push_id).await {
         Ok(Some(message)) => message,
         Ok(None) => return crate::routes::json_error(StatusCode::NOT_FOUND, "推送不存在"),
@@ -190,7 +190,7 @@ async fn backfill_legacy_web_pushes(
     state: &AppState,
     actor: &ActorIdentity,
 ) -> hone_core::HoneResult<usize> {
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     if storage.has_legacy_web_push_messages(actor).await? {
         return Ok(0);
     }

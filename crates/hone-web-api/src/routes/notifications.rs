@@ -108,7 +108,7 @@ pub(crate) async fn handle_notifications(
     State(state): State<Arc<AppState>>,
     Query(q): Query<NotificationsQuery>,
 ) -> Json<NotificationsResponse> {
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
 
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let now_bj = Utc::now().with_timezone(&local_offset());
@@ -135,7 +135,7 @@ pub(crate) async fn handle_notifications(
         .collect();
 
     if q.heartbeat_only != Some(true) {
-        records.extend(list_event_delivery_records(&state, &q, &since, limit));
+        records.extend(list_event_delivery_records(&state, &q, &since, limit).await);
     }
 
     records.retain(|record| record_matches_query(record, &q));
@@ -157,23 +157,26 @@ pub(crate) async fn handle_notifications(
         .into_iter()
         .map(record_from_cron)
         .collect();
-    histogram_records.extend(list_event_delivery_records(
-        &state,
-        &NotificationsQuery {
-            since: Some(histogram_since),
-            until: None,
-            channel: None,
-            user_id: None,
-            channel_scope: None,
-            job_id: None,
-            execution_status: None,
-            message_send_status: None,
-            heartbeat_only: None,
-            limit: Some(EVENT_LOG_FETCH_LIMIT),
-        },
-        "",
-        EVENT_LOG_FETCH_LIMIT,
-    ));
+    histogram_records.extend(
+        list_event_delivery_records(
+            &state,
+            &NotificationsQuery {
+                since: Some(histogram_since),
+                until: None,
+                channel: None,
+                user_id: None,
+                channel_scope: None,
+                job_id: None,
+                execution_status: None,
+                message_send_status: None,
+                heartbeat_only: None,
+                limit: Some(EVENT_LOG_FETCH_LIMIT),
+            },
+            "",
+            EVENT_LOG_FETCH_LIMIT,
+        )
+        .await,
+    );
 
     let histogram_24h = build_histogram(&histogram_records, now_bj);
     let summary_24h = build_summary(&histogram_records);
@@ -185,7 +188,7 @@ pub(crate) async fn handle_notifications(
     })
 }
 
-fn list_event_delivery_records(
+async fn list_event_delivery_records(
     state: &AppState,
     q: &NotificationsQuery,
     since: &str,
@@ -194,7 +197,7 @@ fn list_event_delivery_records(
     let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) else {
         return Vec::new();
     };
-    let Ok(store) = EventStore::new(postgres) else {
+    let Ok(store) = EventStore::new(postgres).await else {
         return Vec::new();
     };
     let effective_since = if since.trim().is_empty() {
@@ -216,6 +219,7 @@ fn list_event_delivery_records(
     };
     store
         .list_recent_delivery_logs(&filter)
+        .await
         .unwrap_or_default()
         .into_iter()
         .map(record_from_delivery)

@@ -282,11 +282,11 @@ impl EventEngine {
         }
 
         let mut store_builder = if let Some(postgres) = self.postgres.clone() {
-            EventStore::new(postgres)?
+            EventStore::new(postgres).await?
         } else {
             #[cfg(test)]
             {
-                EventStore::open(&self.store_path)?
+                EventStore::open(&self.store_path).await?
             }
             #[cfg(not(test))]
             {
@@ -298,7 +298,8 @@ impl EventEngine {
             info!(jsonl = %jsonl.display(), "events jsonl mirror enabled");
         }
         let store = Arc::new(store_builder);
-        info!(baseline = ?store.baseline_at().ok(), "event store ready");
+        let baseline = store.baseline_at().await.ok();
+        info!(baseline = ?baseline, "event store ready");
 
         // 清理任务：每 24h 扫一次 events / delivery_log。retention_days==0 禁用。
         if self.retention_days > 0 {
@@ -309,12 +310,12 @@ impl EventEngine {
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 loop {
                     ticker.tick().await;
-                    match store_cleanup.purge_events_older_than(days) {
+                    match store_cleanup.purge_events_older_than(days).await {
                         Ok(n) if n > 0 => info!(removed = n, days, "events retention sweep"),
                         Ok(_) => {}
                         Err(e) => warn!(retention_days = days, "events purge failed: {e:#}"),
                     }
-                    match store_cleanup.purge_delivery_log_older_than(days) {
+                    match store_cleanup.purge_delivery_log_older_than(days).await {
                         Ok(n) if n > 0 => {
                             info!(removed = n, days, "delivery_log retention sweep")
                         }

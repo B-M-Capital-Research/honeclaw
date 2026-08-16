@@ -409,12 +409,13 @@ pub(crate) async fn run() {
         .install_default()
         .ok();
 
-    let runtime = hone_channels::bootstrap_channel_runtime(
+    let runtime = hone_channels::bootstrap_channel_runtime_async(
         "feishu",
         "Feishu 渠道",
         hone_core::PROCESS_LOCK_FEISHU,
         |config| config.feishu.enabled,
-    );
+    )
+    .await;
     let core = runtime.core;
 
     let app_id = core.config.feishu.app_id.trim().to_string();
@@ -470,7 +471,7 @@ pub(crate) async fn run() {
     {
         warn!("HONE_FEISHU_DISABLE_SCHEDULER is set; Feishu cron scheduler is disabled");
     } else {
-        let (scheduler, event_rx) = core.create_scheduler(vec!["feishu".to_string()]);
+        let (scheduler, event_rx) = core.create_scheduler(vec!["feishu".to_string()]).await;
         let scheduler = Arc::new(scheduler);
         spawn_supervised_task("feishu_scheduler_loop", move || {
             let scheduler = scheduler.clone();
@@ -1819,7 +1820,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("hone_feishu_tail_match_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create root");
-        let storage = SessionStorage::new(root.join("sessions"));
+        let storage = SessionStorage::new(root.join("sessions")).await;
         let actor = ActorIdentity::new("feishu", "ou_quota", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)

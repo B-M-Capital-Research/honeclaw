@@ -269,6 +269,7 @@ pub(crate) async fn handle_usage_report(
     let executions = match state
         .core
         .cron_job_storage()
+        .await
         .list_recent_executions(&ExecutionFilter {
             since: Some(period_start.to_rfc3339()),
             until: Some(now.to_rfc3339()),

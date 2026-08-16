@@ -34,7 +34,7 @@ pub(crate) async fn handle_scheduler_events(
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: telegram）");
     hone_scheduler::recover_stale_started_rows(
-        &core.cron_job_storage(),
+        &core.cron_job_storage().await,
         "telegram",
         core.config
             .agent
@@ -55,7 +55,7 @@ pub(crate) async fn handle_scheduler_events(
             let Some(_slot) = hone_scheduler::acquire_job_slot().await else {
                 return;
             };
-            let storage = core_clone.cron_job_storage();
+            let storage = core_clone.cron_job_storage().await;
             let result = run_scheduled_task(&core_clone, &event, &storage).await;
             if !result.should_deliver {
                 info!(
@@ -176,7 +176,8 @@ pub(crate) async fn handle_scheduler_events(
                     &event,
                     &result,
                     &delivered_context,
-                );
+                )
+                .await;
             }
             let _ = storage
                 .record_execution_event(

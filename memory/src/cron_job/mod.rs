@@ -11,7 +11,7 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::ensure_cloud_schema_once;
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 
 pub mod history;
 pub mod schedule;
@@ -37,22 +37,25 @@ const DEFAULT_CLOUD_CRON_TIMEOUT_SECS: u64 = 15;
 impl CronJobStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(namespace: impl AsRef<std::path::Path>) -> Self {
+    pub async fn new(namespace: impl AsRef<std::path::Path>) -> Self {
         let (postgres, lease) = crate::test_postgres::isolated_postgres(namespace)
+            .await
             .expect("CronJobStorage PostgreSQL test runtime");
-        let mut storage = Self::new_cloud(postgres).expect("CronJobStorage PostgreSQL schema");
+        let mut storage = Self::new_cloud(postgres)
+            .await
+            .expect("CronJobStorage PostgreSQL schema");
         storage._test_postgres_lease = Some(lease);
         storage
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> hone_core::HoneResult<Self> {
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> hone_core::HoneResult<Self> {
         // `ensure_schema` 是 ~430 行 DDL(26 个 CREATE TABLE + 17 个 CREATE INDEX
         // + 若干 ALTER 迁移)。而 `cron_job_storage()` 是**每个调度事件**都会调一次的
         // ——此前等于每条定时任务都把全库 schema 重跑一遍。
         //
         // schema 在一个进程生命周期内不会变(换版本 = 换进程 = 会重跑),所以只需
         // 首次成功后就跳过。失败不置位,下次仍会重试。竞态下重复跑一次无害:DDL 幂等。
-        ensure_cloud_schema_once(postgres.clone(), Some(cloud_cron_operation_timeout()))?;
+        ensure_cloud_schema_once(&postgres, Some(cloud_cron_operation_timeout())).await?;
         Ok(Self {
             postgres,
             task_runs_dir: None,
@@ -305,7 +308,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn add_job_validates_params() {
         let dir = make_temp_dir("hone_cron_storage_validate");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("imessage", "u1", None);
 
         let bad_hour = storage
@@ -351,7 +354,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn add_job_rejects_empty_channel_target() {
         let dir = make_temp_dir("hone_cron_storage_empty_target");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("telegram", "user_1", None);
 
         let result = storage
@@ -381,7 +384,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn channel_target_directory_aggregates_jobs_and_execution_history() {
         let dir = make_temp_dir("hone_cron_storage_target_directory");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("telegram", "user_1", Some("g:1:c:2"));
 
         let add = storage
@@ -446,7 +449,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn due_job_and_mark_run_prevents_immediate_duplicate() {
         let dir = make_temp_dir("hone_cron_storage_due");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("imessage", "u1", None);
 
         let now_bj = chrono::Utc::now().with_timezone(&local_offset());
@@ -500,7 +503,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn due_jobs_skip_mismatched_cron_file_actor() {
         let dir = make_temp_dir("hone_cron_storage_mismatch");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_real", None);
 
         let now_bj = chrono::Utc::now().with_timezone(&local_offset());
@@ -556,7 +559,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn due_jobs_dedup_same_job_id_across_files() {
         let dir = make_temp_dir("hone_cron_storage_dup_files");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let primary_actor = actor("feishu", "ou_real", None);
         let other_actor = actor("feishu", "ou_other", None);
 
@@ -613,7 +616,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn list_jobs_isolated_by_actor_scope() {
         let dir = make_temp_dir("hone_cron_storage_scope");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor_one = actor("discord", "alice", Some("g:1:c:1"));
         let actor_two = actor("discord", "alice", Some("g:1:c:2"));
 
@@ -666,7 +669,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn remove_all_jobs_is_actor_scoped_clears_pending_updates_and_is_idempotent() {
         let dir = make_temp_dir("hone_cron_storage_remove_all");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor_one = actor("feishu", "u1", None);
         let actor_two = actor("feishu", "u2", None);
 
@@ -718,7 +721,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn remove_all_jobs_does_not_report_success_when_durable_data_is_unreadable() {
         let dir = make_temp_dir("hone_cron_storage_remove_all_corrupt");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "u1", None);
         let postgres = storage.postgres.clone();
         let actor_key = actor.storage_key();
@@ -754,7 +757,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn sixth_enabled_job_is_rejected_but_disabled_job_is_allowed() {
         let dir = make_temp_dir("hone_cron_storage_limit_add");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("discord", "alice", None);
 
         for index in 0..MAX_ENABLED_JOBS_PER_ACTOR {
@@ -794,7 +797,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn enabling_sixth_job_via_toggle_or_update_is_rejected() {
         let dir = make_temp_dir("hone_cron_storage_limit_enable");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("discord", "alice", None);
 
         let mut job_ids = Vec::new();
@@ -859,7 +862,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn heartbeat_jobs_run_once_per_half_hour_slot() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_heartbeat", None);
         let add = storage
             .add_job(
@@ -956,7 +959,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn daily_jobs_catch_up_after_missed_window_same_day() {
         let dir = make_temp_dir("hone_cron_storage_catch_up");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_catch_up", None);
 
         let add = storage
@@ -1004,7 +1007,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn daily_jobs_created_after_slot_do_not_backfill_immediately() {
         let dir = make_temp_dir("hone_cron_storage_no_backfill_new_job");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_new_job", None);
 
         let add = storage
@@ -1051,7 +1054,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn add_job_rejects_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_add");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_real", None);
 
         let result = storage
@@ -1080,7 +1083,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn due_jobs_repair_existing_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_real", None);
         let now_bj = chrono::Utc::now().with_timezone(&local_offset());
         let hour = now_bj.hour() as u32;
@@ -1146,7 +1149,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn once_jobs_with_future_date_do_not_run_today() {
         let dir = make_temp_dir("hone_cron_storage_once_date");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_once", None);
         let today = hone_core::local_now().date_naive();
         let tomorrow = today + chrono::Duration::days(1);
@@ -1183,7 +1186,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn execution_records_are_persisted_in_postgres() {
         let dir = make_temp_dir("hone_cron_storage_exec_records");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_exec", None);
 
         let add = storage
@@ -1241,7 +1244,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn discord_send_failed_without_error_is_classified_by_storage_backstop() {
         let dir = make_temp_dir("hone_cron_storage_discord_send_failed_backstop");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("discord", "g_exec", Some("channel-1"));
 
         storage
@@ -1286,7 +1289,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn execution_terminal_event_updates_matching_pending_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_pending");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_exec_update", None);
 
         let add = storage
@@ -1375,7 +1378,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn terminal_only_execution_leaves_start_and_duration_unknown() {
         let dir = make_temp_dir("hone_cron_storage_exec_terminal_only");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("web", "web-user-terminal-only", None);
 
         storage
@@ -1418,7 +1421,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn started_execution_can_be_failed_by_exact_delivery_key_watchdog() {
         let dir = make_temp_dir("hone_cron_storage_watchdog_pending");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let target_actor = actor("feishu", "ou_watchdog", None);
         let other_actor = actor("feishu", "ou_watchdog_other", None);
 
@@ -1521,7 +1524,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn stale_started_rows_can_be_recovered_as_failed() {
         let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let feishu_actor = actor("feishu", "ou_interrupted", None);
         let discord_actor = actor("discord", "du_interrupted", None);
 
@@ -1632,7 +1635,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn heartbeat_started_rows_finalize_across_two_windows() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_two_windows");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_heartbeat", None);
 
         let job_names = [
@@ -1725,7 +1728,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper() {
         let dir = make_temp_dir("hone_cron_storage_heartbeat_scheduler_wrap");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_heartbeat_wrap", None);
 
         let job_id = "j_db12f27f";
@@ -1800,7 +1803,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn execution_terminal_event_falls_back_to_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_recent_started");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_exec_update_fallback", None);
 
         let add = storage
@@ -1878,7 +1881,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_pre_fix_terminal");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_pre_fix", None);
 
         let job_id = "j_654aef9b";
@@ -1944,7 +1947,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback() {
         let dir = make_temp_dir("hone_cron_storage_legacy_started");
-        let storage = CronJobStorage::new(&dir);
+        let storage = CronJobStorage::new(&dir).await;
         let actor = actor("feishu", "ou_legacy", None);
 
         let job_id = "j_legacy";

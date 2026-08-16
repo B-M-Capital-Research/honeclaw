@@ -5,8 +5,7 @@ use hone_core::agent::{
     AgentMessage, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
     denormalize_normalized_message,
 };
-use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::ensure_cloud_schema_once;
+use hone_core::cloud_runtime::{CloudPgRuntime, ensure_cloud_schema_once};
 use hone_core::{ActorIdentity, HoneResult, SessionIdentity, compare_rfc3339, local_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -77,8 +76,8 @@ pub struct CloudPgSessionIndex {
 }
 
 impl CloudPgSessionIndex {
-    pub fn new(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self { postgres })
     }
 }
@@ -781,19 +780,24 @@ pub fn restore_tool_message(message: &SessionMessage) -> Option<(String, String,
 impl SessionStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(data_dir: impl AsRef<Path>) -> Self {
+    pub async fn new(data_dir: impl AsRef<Path>) -> Self {
         let data_dir = data_dir.as_ref().to_path_buf();
         let (postgres, lease) = crate::test_postgres::isolated_postgres(&data_dir)
+            .await
             .expect("SessionStorage PostgreSQL test runtime");
-        let mut storage =
-            Self::new_cloud(&data_dir, postgres).expect("SessionStorage PostgreSQL test schema");
+        let mut storage = Self::new_cloud(&data_dir, postgres)
+            .await
+            .expect("SessionStorage PostgreSQL test schema");
         storage._test_postgres_lease = Some(lease);
         storage
     }
 
-    pub fn new_cloud(data_dir: impl AsRef<Path>, postgres: CloudPgRuntime) -> HoneResult<Self> {
+    pub async fn new_cloud(
+        data_dir: impl AsRef<Path>,
+        postgres: CloudPgRuntime,
+    ) -> HoneResult<Self> {
         let dir = data_dir.as_ref().to_path_buf();
-        let storage = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
+        let storage = Arc::new(CloudPgSessionIndex::new(postgres).await?) as Arc<dyn SessionIndex>;
         Ok(Self {
             data_dir: dir,
             storage,
@@ -1202,7 +1206,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn update_metadata_merges_existing_values() {
         let root = make_temp_dir("hone_memory_test");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
         let session_id = storage
             .create_session(
@@ -1251,7 +1255,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn create_session_for_actor_persists_actor_identity() {
         let root = make_temp_dir("hone_memory_test");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1278,7 +1282,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn concurrent_add_message_does_not_lose_data() {
         let root = make_temp_dir("hone_memory_test_concurrent");
-        let storage = Arc::new(SessionStorage::new(&root));
+        let storage = Arc::new(SessionStorage::new(&root).await);
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1315,7 +1319,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn load_session_missing_returns_none() {
         let root = make_temp_dir("hone_memory_test_missing");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session = storage.load_session("does-not-exist").await.expect("load");
         assert!(session.is_none());
         let _ = std::fs::remove_dir_all(root);
@@ -1325,7 +1329,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn add_message_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_missing_add");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let ok = storage
             .add_message("does-not-exist", "user", "hi", None)
             .await
@@ -1338,7 +1342,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn get_messages_missing_session_returns_empty() {
         let root = make_temp_dir("hone_memory_test_missing_get");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let msgs = storage
             .get_messages("does-not-exist", None)
             .await
@@ -1351,7 +1355,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn get_messages_limit_returns_latest_in_order() {
         let root = make_temp_dir("hone_memory_test_limit");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1384,7 +1388,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn remove_last_message_if_matches_only_removes_matching_tail() {
         let root = make_temp_dir("hone_memory_test_remove_last_matching");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1436,7 +1440,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn replace_messages_overwrites_existing() {
         let root = make_temp_dir("hone_memory_test_replace");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1471,7 +1475,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn replace_messages_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_replace_missing");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let ok = storage
             .replace_messages("does-not-exist", Vec::new())
             .await
@@ -1484,7 +1488,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn create_session_rejects_parent_dir_component() {
         let root = make_temp_dir("hone_memory_test_invalid_session_id");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let err = storage
             .create_session(Some("../escape"), None, None)
             .await
@@ -1500,7 +1504,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn ensure_prompt_state_sets_frozen_time_once() {
         let root = make_temp_dir("hone_memory_test_prompt_state");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1526,7 +1530,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn replace_messages_with_summary_updates_both() {
         let root = make_temp_dir("hone_memory_test_replace_summary");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let session_id = storage
             .create_session(None, None, None)
             .await
@@ -1639,7 +1643,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn update_metadata_missing_session_returns_false() {
         let root = make_temp_dir("hone_memory_test_metadata_missing");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let ok = storage
             .update_metadata(
                 "does-not-exist",
@@ -1655,7 +1659,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn postgres_write_is_visible_on_read() {
         let root = make_temp_dir("hone_memory_test_postgres_visibility");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1678,7 +1682,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn postgres_sessions_survive_a_second_storage_handle() {
         let root = make_temp_dir("hone_memory_test_postgres_second_handle");
-        let first = SessionStorage::new(&root);
+        let first = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
         let session_id = first
             .create_session_for_actor(&actor)
@@ -1688,7 +1692,7 @@ mod tests {
             .add_message(&session_id, "user", "persisted", None)
             .await
             .expect("append");
-        let second = SessionStorage::new(&root);
+        let second = SessionStorage::new(&root).await;
         let loaded = second
             .load_session(&session_id)
             .await
@@ -1701,8 +1705,8 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn postgres_list_reflects_updates_from_another_handle() {
         let root = make_temp_dir("hone_memory_test_postgres_list");
-        let first = SessionStorage::new(&root);
-        let second = SessionStorage::new(&root);
+        let first = SessionStorage::new(&root).await;
+        let second = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "postgres-list", None::<String>).expect("actor");
         let session_id = first
             .create_session_for_actor(&actor)
@@ -1721,7 +1725,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn postgres_runtime_does_not_read_local_json() {
         let root = make_temp_dir("hone_memory_test_postgres_authority");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "bob", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1775,7 +1779,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn upsert_session_persists_rows() {
         let root = make_temp_dir("hone_session_pg_upsert");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1798,7 +1802,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn upsert_session_replaces_old_rows_and_stores_message_metadata_columns() {
         let root = make_temp_dir("hone_session_pg_replace");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("feishu", "replace", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1845,7 +1849,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn upsert_session_accepts_cloud_shadow_source_path_without_local_file() {
         let root = make_temp_dir("hone_session_pg_no_local_source");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         let actor = ActorIdentity::new("web", "no-local-source", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
@@ -1865,7 +1869,7 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn list_sessions_orders_by_updated_at_desc() {
         let root = make_temp_dir("hone_session_pg_list_order");
-        let storage = SessionStorage::new(&root);
+        let storage = SessionStorage::new(&root).await;
         for (id, updated_at) in [
             ("older", "2026-01-01T00:00:00+08:00"),
             ("newer", "2026-01-02T00:00:00+08:00"),
@@ -1898,7 +1902,9 @@ mod tests {
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn list_sessions_skips_unreadable_rows() {
         let root = make_temp_dir("hone_session_pg_invalid_json");
-        let (postgres, _lease) = crate::test_postgres::isolated_postgres(&root).expect("postgres");
+        let (postgres, _lease) = crate::test_postgres::isolated_postgres(&root)
+            .await
+            .expect("postgres");
         let invalid_postgres = postgres.clone();
         invalid_postgres
             .upsert_session_record(
@@ -1908,7 +1914,9 @@ mod tests {
             )
             .await
             .expect("insert malformed session value");
-        let storage = SessionStorage::new_cloud(&root, postgres).expect("storage");
+        let storage = SessionStorage::new_cloud(&root, postgres)
+            .await
+            .expect("storage");
         assert!(storage.list_sessions().await.expect("list").is_empty());
     }
 }

@@ -581,7 +581,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState::default();
@@ -787,7 +787,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 
@@ -826,7 +826,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 
@@ -864,7 +864,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 
@@ -920,7 +920,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState::default();
@@ -960,7 +960,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 
@@ -1025,7 +1025,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState {
@@ -1066,7 +1066,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let session_id = storage
             .create_session(Some("session-no-summary-load"), None, None)
             .await
@@ -1109,7 +1109,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 
@@ -1155,7 +1155,7 @@ mod tests {
                 .unwrap_or_default()
         ));
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
         config.agent.system_prompt = "你是 Hone。".to_string();
 

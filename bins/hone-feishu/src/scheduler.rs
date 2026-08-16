@@ -49,7 +49,7 @@ pub(crate) async fn handle_scheduler_events(
                 error!("⏰ 调度并发闸已关闭，跳过任务: job={}", event.job_name);
                 return;
             };
-            let storage = state_clone.core.cron_job_storage();
+            let storage = state_clone.core.cron_job_storage().await;
             let _ = storage
                 .record_execution_event(
                     &event.actor,
@@ -345,7 +345,8 @@ pub(crate) async fn handle_scheduler_events(
                     &event,
                     &result,
                     &response,
-                );
+                )
+                .await;
                 let _ = storage
                     .record_execution_event(
                         &event.actor,
@@ -427,6 +428,7 @@ async fn mark_scheduler_handler_watchdog_timeout(
     match state
         .core
         .cron_job_storage()
+        .await
         .mark_started_execution_failed_by_delivery_key(
             &event.actor,
             &event.job_id,
@@ -462,7 +464,7 @@ async fn recover_stale_started_rows(state: &AppState) {
     let recovery_window = scheduler_execution_timeout(state)
         .saturating_add(Duration::from_secs(SCHEDULER_STALE_RECOVERY_GRACE_SECS));
     hone_scheduler::recover_stale_started_rows(
-        &state.core.cron_job_storage(),
+        &state.core.cron_job_storage().await,
         "feishu",
         recovery_window,
         "feishu_scheduler_startup",
@@ -596,7 +598,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).expect("create temp dir");
-        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let storage = hone_memory::SessionStorage::new(root.join("sessions")).await;
         let actor =
             hone_core::ActorIdentity::new("feishu", "ou_timeout", None::<String>).expect("actor");
         let session_id = actor.session_id();

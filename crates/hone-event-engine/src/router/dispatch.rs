@@ -49,25 +49,28 @@ impl NotificationRouter {
             );
             return Ok((0, 0));
         }
-        let upgraded = self.maybe_upgrade_news(event);
+        let upgraded = self.maybe_upgrade_news(event).await;
         let routed = self.apply_system_event_policy(&upgraded);
         // 评级事件注入「近 30 日共识计数」锚点(actor 无关,dispatch 前一次算好;
         // 事件本身已入库,计数含当前这条)。查询失败不阻断分发。
-        let routed = self.annotate_analyst_consensus(routed);
+        let routed = self.annotate_analyst_consensus(routed).await;
         // 价格警报注入「N 天后财报」倒计时(同样 actor 无关)。
-        let routed = self.annotate_earnings_countdown(routed);
+        let routed = self.annotate_earnings_countdown(routed).await;
         let event = &routed;
         // 每次 dispatch 都拿最新快照——用户持仓更新后下一条事件即可感知。
         let hits = self.registry.load().resolve(event);
         if hits.is_empty() {
-            let _ = self.store.log_delivery(
-                &event.id,
-                "event_engine::::no_actor",
-                "router",
-                event.severity,
-                "no_actor",
-                None,
-            );
+            let _ = self
+                .store
+                .log_delivery(
+                    &event.id,
+                    "event_engine::::no_actor",
+                    "router",
+                    event.severity,
+                    "no_actor",
+                    None,
+                )
+                .await;
             info!(
                 event_id = %event.id,
                 kind = %kind_tag(&event.kind),
@@ -124,14 +127,17 @@ impl NotificationRouter {
                 sev = Severity::Medium;
             }
             if !user_prefs.should_deliver_with_severity(event, sev) {
-                let _ = self.store.log_delivery(
-                    &event.id,
-                    &actor_key(&actor),
-                    "prefs",
-                    sev,
-                    "filtered",
-                    None,
-                );
+                let _ = self
+                    .store
+                    .log_delivery(
+                        &event.id,
+                        &actor_key(&actor),
+                        "prefs",
+                        sev,
+                        "filtered",
+                        None,
+                    )
+                    .await;
                 info!(
                     actor = %actor_key(&actor),
                     event_id = %event.id,
@@ -152,19 +158,28 @@ impl NotificationRouter {
             // quiet-held 时保留 SEC 项，queued 时由 digest buffer 保留优先级
             // 更高的结构化卡，不能把待投递路径整体清空。
             if is_earnings_release_document_event(event) {
-                match event.url.as_deref().map(|url| {
-                    self.store
-                        .actor_has_delivered_earnings_for_document(&actor_key(&actor), url)
-                }) {
+                let delivered = if let Some(url) = event.url.as_deref() {
+                    Some(
+                        self.store
+                            .actor_has_delivered_earnings_for_document(&actor_key(&actor), url)
+                            .await,
+                    )
+                } else {
+                    None
+                };
+                match delivered {
                     Some(Ok(true)) => {
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            &actor_key(&actor),
-                            "router",
-                            sev,
-                            "superseded",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &event.id,
+                                &actor_key(&actor),
+                                "router",
+                                sev,
+                                "superseded",
+                                None,
+                            )
+                            .await;
                         info!(
                             actor = %actor_key(&actor),
                             event_id = %event.id,
@@ -192,11 +207,11 @@ impl NotificationRouter {
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
                 let since = local_day_start(chrono::Utc::now(), &self.runtime_timezone);
                 let category = event_category(event);
-                match self.store.count_high_sent_since_for_category(
-                    &actor_key(&actor),
-                    since,
-                    category,
-                ) {
+                match self
+                    .store
+                    .count_high_sent_since_for_category(&actor_key(&actor), since, category)
+                    .await
+                {
                     Ok(n) if n >= self.high_daily_cap as i64 => {
                         tracing::info!(
                             actor = %actor_key(&actor),
@@ -246,12 +261,14 @@ impl NotificationRouter {
                     let min_advance_bps = (price_policy.repeat_step_pct * 100.0).round() as i64;
                     match (
                         current_bps,
-                        self.store.last_price_band_max_bps_for_symbol_direction(
-                            &actor_key(&actor),
-                            symbol,
-                            direction,
-                            day_start,
-                        ),
+                        self.store
+                            .last_price_band_max_bps_for_symbol_direction(
+                                &actor_key(&actor),
+                                symbol,
+                                direction,
+                                day_start,
+                            )
+                            .await,
                     ) {
                         (Some(cur), Ok(Some(prev_max))) if cur < prev_max + min_advance_bps => {
                             tracing::info!(
@@ -299,12 +316,16 @@ impl NotificationRouter {
                 if let Some((symbol, news_url)) = analyst_grade_source_article_key(event) {
                     let cutoff = chrono::Utc::now()
                         - chrono::Duration::minutes(self.same_symbol_cooldown_minutes as i64);
-                    match self.store.last_high_sink_send_for_analyst_news_url(
-                        &actor_key(&actor),
-                        symbol,
-                        news_url,
-                        cutoff,
-                    ) {
+                    match self
+                        .store
+                        .last_high_sink_send_for_analyst_news_url(
+                            &actor_key(&actor),
+                            symbol,
+                            news_url,
+                            cutoff,
+                        )
+                        .await
+                    {
                         Ok(Some(ts)) => {
                             tracing::info!(
                                 actor = %actor_key(&actor),
@@ -345,12 +366,16 @@ impl NotificationRouter {
                     None
                 };
                 for sym in &event.symbols {
-                    match self.store.last_high_sink_send_for_symbol_category(
-                        &actor_key(&actor),
-                        sym,
-                        event_category(event),
-                        firm.as_deref(),
-                    ) {
+                    match self
+                        .store
+                        .last_high_sink_send_for_symbol_category(
+                            &actor_key(&actor),
+                            sym,
+                            event_category(event),
+                            firm.as_deref(),
+                        )
+                        .await
+                    {
                         Ok(Some(ts)) if ts >= cutoff => {
                             tracing::info!(
                                 actor = %actor_key(&actor),
@@ -389,14 +414,17 @@ impl NotificationRouter {
                     let kind_t = kind_tag(&event.kind);
                     let exempt = qh.exempt_kinds.iter().any(|t| t == kind_t);
                     if !exempt && tz.in_quiet_window(now, &qh.from, &qh.to) {
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            &actor_key(&actor),
-                            "sink",
-                            sev,
-                            "quiet_held",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &event.id,
+                                &actor_key(&actor),
+                                "sink",
+                                sev,
+                                "quiet_held",
+                                None,
+                            )
+                            .await;
                         tracing::info!(
                             actor = %actor_key(&actor),
                             event_id = %event.id,
@@ -454,14 +482,17 @@ impl NotificationRouter {
                             } else {
                                 "queued"
                             };
-                            let _ = self.store.log_delivery(
-                                &event.id,
-                                &actor_key(&actor),
-                                "digest",
-                                sev,
-                                status,
-                                None,
-                            );
+                            let _ = self
+                                .store
+                                .log_delivery(
+                                    &event.id,
+                                    &actor_key(&actor),
+                                    "digest",
+                                    sev,
+                                    status,
+                                    None,
+                                )
+                                .await;
                             info!(
                                 actor = %actor_key(&actor),
                                 event_id = %event.id,
@@ -484,14 +515,17 @@ impl NotificationRouter {
                                 severity = ?sev,
                                 "digest enqueue failed: {e:#}"
                             );
-                            let _ = self.store.log_delivery(
-                                &event.id,
-                                &actor_key(&actor),
-                                "digest",
-                                sev,
-                                "failed",
-                                None,
-                            );
+                            let _ = self
+                                .store
+                                .log_delivery(
+                                    &event.id,
+                                    &actor_key(&actor),
+                                    "digest",
+                                    sev,
+                                    "failed",
+                                    None,
+                                )
+                                .await;
                         }
                     }
                 }
@@ -502,7 +536,7 @@ impl NotificationRouter {
 
     /// 评级事件 → 注入近 30 日共识计数(`hone_analyst_consensus_30d`)。
     /// 非评级 / 无 symbol / 查询失败 → 原样返回。
-    fn annotate_analyst_consensus(&self, event: MarketEvent) -> MarketEvent {
+    async fn annotate_analyst_consensus(&self, event: MarketEvent) -> MarketEvent {
         if !matches!(event.kind, EventKind::AnalystGrade) {
             return event;
         }
@@ -514,6 +548,7 @@ impl NotificationRouter {
         let payloads = match self
             .store
             .list_analyst_grade_payloads_in_window(symbol, start, end)
+            .await
         {
             Ok(payloads) => payloads,
             Err(error) => {
@@ -543,7 +578,7 @@ impl NotificationRouter {
     /// 价格警报(含 52 周高/低)→ 注入「N 天后财报」倒计时。财报前的价格
     /// 异动和平常日的含义完全不同 —— 可能是抢跑,digest 里也该带上这个背景。
     /// 无 upcoming / 查询失败 → 原样返回。
-    fn annotate_earnings_countdown(&self, event: MarketEvent) -> MarketEvent {
+    async fn annotate_earnings_countdown(&self, event: MarketEvent) -> MarketEvent {
         const EARNINGS_LOOKAHEAD_DAYS: i64 = 14;
         if !matches!(
             event.kind,
@@ -555,18 +590,18 @@ impl NotificationRouter {
             return event;
         };
         let now = chrono::Utc::now();
-        let earnings_at =
-            match self
-                .store
-                .next_upcoming_earnings_for_symbol(symbol, now, EARNINGS_LOOKAHEAD_DAYS)
-            {
-                Ok(Some(at)) => at,
-                Ok(None) => return event,
-                Err(error) => {
-                    tracing::warn!(event_id = %event.id, "财报倒计时查询失败: {error:#}");
-                    return event;
-                }
-            };
+        let earnings_at = match self
+            .store
+            .next_upcoming_earnings_for_symbol(symbol, now, EARNINGS_LOOKAHEAD_DAYS)
+            .await
+        {
+            Ok(Some(at)) => at,
+            Ok(None) => return event,
+            Err(error) => {
+                tracing::warn!(event_id = %event.id, "财报倒计时查询失败: {error:#}");
+                return event;
+            }
+        };
         let days = (earnings_at.date_naive() - now.date_naive())
             .num_days()
             .max(0);
@@ -656,29 +691,35 @@ impl NotificationRouter {
                 body_preview = %body_preview(&body),
                 "sink send failed: {e:#}"
             );
-            let _ = self.store.log_delivery(
-                &event.id,
-                &actor_key(actor),
-                "sink",
-                sev,
-                "failed",
-                Some(&body),
-            );
+            let _ = self
+                .store
+                .log_delivery(
+                    &event.id,
+                    &actor_key(actor),
+                    "sink",
+                    sev,
+                    "failed",
+                    Some(&body),
+                )
+                .await;
             return false;
         }
         let success_status = self.sink.success_status_for(actor);
         let delivery_result = if success_status == "sent" {
             self.store
                 .log_confirmed_delivery(&event.id, actor, "sink", sev, &body, None)
+                .await
         } else {
-            self.store.log_delivery(
-                &event.id,
-                &actor_key(actor),
-                "sink",
-                sev,
-                success_status,
-                Some(&body),
-            )
+            self.store
+                .log_delivery(
+                    &event.id,
+                    &actor_key(actor),
+                    "sink",
+                    sev,
+                    success_status,
+                    Some(&body),
+                )
+                .await
         };
         if let Err(error) = delivery_result {
             tracing::warn!(
@@ -708,14 +749,17 @@ impl NotificationRouter {
             {
                 Ok(removed) => {
                     for superseded in removed {
-                        let _ = self.store.log_delivery(
-                            &superseded.id,
-                            &actor_key(actor),
-                            "router",
-                            superseded.severity,
-                            "superseded",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &superseded.id,
+                                &actor_key(actor),
+                                "router",
+                                superseded.severity,
+                                "superseded",
+                                None,
+                            )
+                            .await;
                     }
                 }
                 Err(error) => tracing::warn!(
@@ -769,18 +813,22 @@ impl NotificationRouter {
                     let success_status = self.sink.success_status_for(&actor);
                     for (event, sev) in &items {
                         let log_result = if success_status == "sent" {
-                            self.store.log_confirmed_delivery(
-                                &event.id, &actor, "sink", *sev, &body, None,
-                            )
+                            self.store
+                                .log_confirmed_delivery(
+                                    &event.id, &actor, "sink", *sev, &body, None,
+                                )
+                                .await
                         } else {
-                            self.store.log_delivery(
-                                &event.id,
-                                &actor_key(&actor),
-                                "sink",
-                                *sev,
-                                success_status,
-                                None,
-                            )
+                            self.store
+                                .log_delivery(
+                                    &event.id,
+                                    &actor_key(&actor),
+                                    "sink",
+                                    *sev,
+                                    success_status,
+                                    None,
+                                )
+                                .await
                         };
                         if let Err(error) = log_result {
                             tracing::warn!(
@@ -807,14 +855,17 @@ impl NotificationRouter {
                         "price burst sink send failed: {e:#}"
                     );
                     for (event, sev) in &items {
-                        let _ = self.store.log_delivery(
-                            &event.id,
-                            &actor_key(&actor),
-                            "sink",
-                            *sev,
-                            "failed",
-                            None,
-                        );
+                        let _ = self
+                            .store
+                            .log_delivery(
+                                &event.id,
+                                &actor_key(&actor),
+                                "sink",
+                                *sev,
+                                "failed",
+                                None,
+                            )
+                            .await;
                     }
                 }
             }
@@ -860,6 +911,7 @@ impl NotificationRouter {
             match self
                 .store
                 .list_earnings_research_materials(&research_object_key)
+                .await
             {
                 Ok(materials) => materials,
                 Err(error) => {
@@ -910,7 +962,11 @@ impl NotificationRouter {
         if !reconciler.should_schedule(actor, event).await {
             return;
         }
-        let job_key = match self.store.enqueue_earnings_continuity_job(actor, event) {
+        let job_key = match self
+            .store
+            .enqueue_earnings_continuity_job(actor, event)
+            .await
+        {
             Ok(Some(job_key)) => job_key,
             Ok(None) => return,
             Err(error) => {
@@ -957,11 +1013,15 @@ async fn run_earnings_continuity_jobs_once(
     reconciler: std::sync::Arc<dyn crate::earnings_continuity::EarningsContinuityReconciler>,
     limit: usize,
 ) -> anyhow::Result<usize> {
-    let jobs = store.claim_due_earnings_continuity_jobs(chrono::Utc::now(), limit)?;
+    let jobs = store
+        .claim_due_earnings_continuity_jobs(chrono::Utc::now(), limit)
+        .await?;
     let claimed = jobs.len();
     for job in jobs {
         if !reconciler.should_schedule(&job.actor, &job.event).await {
-            let completed = store.complete_earnings_continuity_job(&job.job_key, job.attempts)?;
+            let completed = store
+                .complete_earnings_continuity_job(&job.job_key, job.attempts)
+                .await?;
             if !completed {
                 tracing::warn!(
                     job_key = %job.job_key,
@@ -979,7 +1039,9 @@ async fn run_earnings_continuity_jobs_once(
             continue;
         }
         if let Some(outcome) = reconciler.reconcile(&job.actor, &job.event).await {
-            let completed = store.complete_earnings_continuity_job(&job.job_key, job.attempts)?;
+            let completed = store
+                .complete_earnings_continuity_job(&job.job_key, job.attempts)
+                .await?;
             if !completed {
                 tracing::warn!(
                     job_key = %job.job_key,
@@ -1003,12 +1065,14 @@ async fn run_earnings_continuity_jobs_once(
                 "earnings continuity ledger reconciled"
             );
         } else {
-            let retried = store.retry_earnings_continuity_job(
-                &job.job_key,
-                job.attempts,
-                "reconciler returned no durable outcome",
-                chrono::Utc::now(),
-            )?;
+            let retried = store
+                .retry_earnings_continuity_job(
+                    &job.job_key,
+                    job.attempts,
+                    "reconciler returned no durable outcome",
+                    chrono::Utc::now(),
+                )
+                .await?;
             if !retried {
                 tracing::warn!(
                     job_key = %job.job_key,

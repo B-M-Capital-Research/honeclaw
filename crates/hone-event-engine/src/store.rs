@@ -6,8 +6,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
-use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::{ensure_cloud_schema_once, run_cloud_sync};
+use hone_core::cloud_runtime::{CloudPgRuntime, ensure_cloud_schema_once};
 use hone_core::config::CloudConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use tokio_postgres::Row;
@@ -114,14 +113,14 @@ pub(crate) struct EarningsContinuityJob {
 
 impl EventStore {
     /// 打开生产 PostgreSQL event store。schema 在进程内只确保一次。
-    pub fn new(postgres: CloudPgRuntime) -> anyhow::Result<Self> {
-        ensure_cloud_schema_once(postgres.clone(), Some(event_store_operation_timeout()))?;
+    pub async fn new(postgres: CloudPgRuntime) -> anyhow::Result<Self> {
+        ensure_cloud_schema_once(&postgres, Some(event_store_operation_timeout())).await?;
         let store = Self {
             postgres,
             jsonl_path: None,
             _test_connection_lease: None,
         };
-        store.ensure_baseline(Utc::now())?;
+        store.ensure_baseline(Utc::now()).await?;
         Ok(store)
     }
 
@@ -131,7 +130,7 @@ impl EventStore {
     /// 不会污染生产 schema。同一路径的两个句柄复用连接，
     /// 用于覆盖跨 `EventStore` 句柄可见性。
     #[doc(hidden)]
-    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub async fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let cloud = CloudConfig::default();
         let postgres = CloudPgRuntime::from_cloud_config(&cloud).ok_or_else(|| {
             anyhow::anyhow!(
@@ -142,17 +141,23 @@ impl EventStore {
         let postgres = postgres.with_isolated_test_connection(namespace.clone())?;
         let test_connection_lease = acquire_test_connection_lease(&namespace, postgres.clone());
         let schema_postgres = postgres.clone();
-        run_cloud_sync(
-            async move { schema_postgres.ensure_event_store_schema().await },
-            Some(event_store_operation_timeout()),
-            "event store schema operation",
-        )?;
+        tokio::time::timeout(
+            event_store_operation_timeout(),
+            schema_postgres.ensure_event_store_schema(),
+        )
+        .await
+        .map_err(|_| {
+            HoneError::Storage(format!(
+                "event store schema operation timed out after {}ms",
+                event_store_operation_timeout().as_millis()
+            ))
+        })??;
         let store = Self {
             postgres,
             jsonl_path: None,
             _test_connection_lease: Some(test_connection_lease),
         };
-        store.ensure_baseline(Utc::now())?;
+        store.ensure_baseline(Utc::now()).await?;
         Ok(store)
     }
 
@@ -165,22 +170,25 @@ impl EventStore {
         self
     }
 
-    fn run<T, F, Fut>(&self, operation: F) -> anyhow::Result<T>
+    async fn run<T, F, Fut>(&self, operation: F) -> anyhow::Result<T>
     where
         T: Send + 'static,
         F: FnOnce(CloudPgRuntime) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = HoneResult<T>> + Send + 'static,
     {
         let postgres = self.postgres.clone();
-        run_cloud_sync(
-            async move { operation(postgres).await },
-            Some(event_store_operation_timeout()),
-            "event store operation",
-        )
-        .map_err(anyhow::Error::from)
+        tokio::time::timeout(event_store_operation_timeout(), operation(postgres))
+            .await
+            .map_err(|_| {
+                HoneError::Storage(format!(
+                    "event store operation timed out after {}ms",
+                    event_store_operation_timeout().as_millis()
+                ))
+            })?
+            .map_err(anyhow::Error::from)
     }
 
-    fn ensure_baseline(&self, now: DateTime<Utc>) -> anyhow::Result<()> {
+    async fn ensure_baseline(&self, now: DateTime<Utc>) -> anyhow::Result<()> {
         let now = now.timestamp().to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -192,21 +200,23 @@ impl EventStore {
                 .await
                 .map_err(|error| pg_store_error("initialize baseline", error))?;
             Ok(())
-        })
+        }).await
     }
 
-    pub fn baseline_at(&self) -> anyhow::Result<DateTime<Utc>> {
-        let baseline_ts = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_opt(
-                    "SELECT value::bigint FROM engine_meta WHERE key='baseline_at_ts'",
-                    &[],
-                )
-                .await
-                .map_err(|error| pg_store_error("load baseline", error))?;
-            Ok(row.map(|row| row.get::<_, i64>(0)))
-        })?;
+    pub async fn baseline_at(&self) -> anyhow::Result<DateTime<Utc>> {
+        let baseline_ts = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_opt(
+                        "SELECT value::bigint FROM engine_meta WHERE key='baseline_at_ts'",
+                        &[],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("load baseline", error))?;
+                Ok(row.map(|row| row.get::<_, i64>(0)))
+            })
+            .await?;
         let baseline_ts = baseline_ts.ok_or_else(|| anyhow::anyhow!("baseline 未初始化"))?;
         Utc.timestamp_opt(baseline_ts, 0)
             .single()
@@ -214,7 +224,7 @@ impl EventStore {
     }
 
     /// 同 id 只写入一次；冲突时返回 `false`。
-    pub fn insert_event(&self, event: &MarketEvent) -> anyhow::Result<bool> {
+    pub async fn insert_event(&self, event: &MarketEvent) -> anyhow::Result<bool> {
         let id = event.id.clone();
         let kind_json = serde_json::to_string(&event.kind)?;
         let severity = severity_tag(&event.severity).to_string();
@@ -226,40 +236,43 @@ impl EventStore {
         let source = event.source.clone();
         let payload_json = serde_json::to_string(&event.payload)?;
         let created_at_ts = Utc::now().timestamp();
-        let is_new = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let affected = client
-                .execute(
-                    r#"
+        let is_new = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let affected = client
+                    .execute(
+                        r#"
 INSERT INTO events (
   id, kind_json, severity, symbols_json, occurred_at_ts,
   title, summary, url, source, payload_json, created_at_ts
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (id) DO NOTHING
 "#,
-                    &[
-                        &id,
-                        &kind_json,
-                        &severity,
-                        &symbols_json,
-                        &occurred_at_ts,
-                        &title,
-                        &summary,
-                        &url,
-                        &source,
-                        &payload_json,
-                        &created_at_ts,
-                    ],
-                )
-                .await
-                .map_err(|error| pg_store_error("insert event", error))?;
-            Ok(affected > 0)
-        })?;
+                        &[
+                            &id,
+                            &kind_json,
+                            &severity,
+                            &symbols_json,
+                            &occurred_at_ts,
+                            &title,
+                            &summary,
+                            &url,
+                            &source,
+                            &payload_json,
+                            &created_at_ts,
+                        ],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("insert event", error))?;
+                Ok(affected > 0)
+            })
+            .await?;
         if is_new
             && earnings_research_material_kind(event) == Some("earnings_release")
             && let Some(research_object_key) = earnings_research_object_key_for_event(event)
-            && let Err(error) =
-                self.backfill_earnings_research_materials(event, &research_object_key)
+            && let Err(error) = self
+                .backfill_earnings_research_materials(event, &research_object_key)
+                .await
         {
             tracing::warn!(
                 event_id = %event.id,
@@ -278,7 +291,7 @@ ON CONFLICT (id) DO NOTHING
         Ok(is_new)
     }
 
-    pub(crate) fn link_earnings_research_object(
+    pub(crate) async fn link_earnings_research_object(
         &self,
         event: &mut MarketEvent,
     ) -> anyhow::Result<Option<String>> {
@@ -305,7 +318,8 @@ ON CONFLICT (id) DO NOTHING
             else {
                 return Ok(None);
             };
-            self.nearest_earnings_research_object_key(symbol, event.occurred_at.timestamp())?
+            self.nearest_earnings_research_object_key(symbol, event.occurred_at.timestamp())
+                .await?
         };
         if let Some(key) = research_object_key.as_deref() {
             ensure_payload_object(&mut event.payload).insert(
@@ -316,7 +330,7 @@ ON CONFLICT (id) DO NOTHING
         Ok(research_object_key)
     }
 
-    pub(crate) fn enqueue_earnings_continuity_job(
+    pub(crate) async fn enqueue_earnings_continuity_job(
         &self,
         actor: &ActorIdentity,
         event: &MarketEvent,
@@ -358,11 +372,12 @@ ON CONFLICT (job_key) DO NOTHING
                 .await
                 .map_err(|error| pg_store_error("enqueue earnings continuity job", error))?;
             Ok(())
-        })?;
+        })
+        .await?;
         Ok(Some(returned_key))
     }
 
-    pub(crate) fn claim_due_earnings_continuity_jobs(
+    pub(crate) async fn claim_due_earnings_continuity_jobs(
         &self,
         now: DateTime<Utc>,
         limit: usize,
@@ -373,11 +388,12 @@ ON CONFLICT (job_key) DO NOTHING
         let now_ts = now.timestamp();
         let lease_until_ts = now_ts + EARNINGS_CONTINUITY_LEASE_SECS;
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 WITH due AS (
   SELECT job_key
   FROM earnings_continuity_jobs
@@ -404,11 +420,12 @@ SELECT job_key, actor_json, event_json, attempts
 FROM claimed
 ORDER BY job_key
 "#,
-                    &[&now_ts, &limit, &lease_until_ts],
-                )
-                .await
-                .map_err(|error| pg_store_error("claim earnings continuity jobs", error))
-        })?;
+                        &[&now_ts, &limit, &lease_until_ts],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("claim earnings continuity jobs", error))
+            })
+            .await?;
         let mut jobs = Vec::with_capacity(rows.len());
         for row in rows {
             let job_key: String = row.get(0);
@@ -422,7 +439,8 @@ ORDER BY job_key
                         &job_key,
                         &format!("invalid actor_json: {error}"),
                         now_ts,
-                    )?;
+                    )
+                    .await?;
                     continue;
                 }
             };
@@ -433,7 +451,8 @@ ORDER BY job_key
                         &job_key,
                         &format!("invalid event_json: {error}"),
                         now_ts,
-                    )?;
+                    )
+                    .await?;
                     continue;
                 }
             };
@@ -447,7 +466,7 @@ ORDER BY job_key
         Ok(jobs)
     }
 
-    fn mark_earnings_continuity_job_dead(
+    async fn mark_earnings_continuity_job_dead(
         &self,
         job_key: &str,
         error: &str,
@@ -465,10 +484,10 @@ ORDER BY job_key
                 .await
                 .map_err(|error| pg_store_error("mark earnings continuity job dead", error))?;
             Ok(())
-        })
+        }).await
     }
 
-    pub(crate) fn complete_earnings_continuity_job(
+    pub(crate) async fn complete_earnings_continuity_job(
         &self,
         job_key: &str,
         attempts: u32,
@@ -491,9 +510,10 @@ WHERE job_key=$1 AND status='running' AND attempts=$3
                 .map_err(|error| pg_store_error("complete earnings continuity job", error))?;
             Ok(affected > 0)
         })
+        .await
     }
 
-    pub(crate) fn retry_earnings_continuity_job(
+    pub(crate) async fn retry_earnings_continuity_job(
         &self,
         job_key: &str,
         attempts: u32,
@@ -523,10 +543,14 @@ WHERE job_key=$1 AND status='running' AND attempts=$5
                 .map_err(|error| pg_store_error("retry earnings continuity job", error))?;
             Ok(affected > 0)
         })
+        .await
     }
 
     #[cfg(test)]
-    fn earnings_continuity_job_status(&self, job_key: &str) -> anyhow::Result<Option<String>> {
+    async fn earnings_continuity_job_status(
+        &self,
+        job_key: &str,
+    ) -> anyhow::Result<Option<String>> {
         let job_key = job_key.to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -539,9 +563,10 @@ WHERE job_key=$1 AND status='running' AND attempts=$5
                 .map_err(|error| pg_store_error("load earnings continuity job status", error))?;
             Ok(row.map(|row| row.get(0)))
         })
+        .await
     }
 
-    fn nearest_earnings_research_object_key(
+    async fn nearest_earnings_research_object_key(
         &self,
         symbol: &str,
         occurred_at_ts: i64,
@@ -550,11 +575,12 @@ WHERE job_key=$1 AND status='running' AND attempts=$5
         let query_symbol = symbol.clone();
         let start = occurred_at_ts - EARNINGS_RESEARCH_LINK_WINDOW_SECS;
         let end = occurred_at_ts + EARNINGS_RESEARCH_LINK_WINDOW_SECS;
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT kind_json, symbols_json, payload_json
 FROM events
 WHERE occurred_at_ts BETWEEN $1 AND $2
@@ -565,11 +591,12 @@ WHERE occurred_at_ts BETWEEN $1 AND $2
 ORDER BY abs(occurred_at_ts - $3) ASC
 LIMIT 200
 "#,
-                    &[&start, &end, &occurred_at_ts, &query_symbol],
-                )
-                .await
-                .map_err(|error| pg_store_error("find nearest earnings research object", error))
-        })?;
+                        &[&start, &end, &occurred_at_ts, &query_symbol],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("find nearest earnings research object", error))
+            })
+            .await?;
         for row in rows {
             let kind_json: String = row.get(0);
             let symbols_json: String = row.get(1);
@@ -606,7 +633,7 @@ LIMIT 200
         Ok(None)
     }
 
-    fn backfill_earnings_research_materials(
+    async fn backfill_earnings_research_materials(
         &self,
         release: &MarketEvent,
         research_object_key: &str,
@@ -674,29 +701,32 @@ WHERE occurred_at_ts BETWEEN $1 AND $2
                 .map_err(|error| pg_store_error("backfill earnings research materials", error))?;
             Ok(usize::try_from(updated).unwrap_or(usize::MAX))
         })
+        .await
     }
 
-    pub(crate) fn list_earnings_research_materials(
+    pub(crate) async fn list_earnings_research_materials(
         &self,
         research_object_key: &str,
     ) -> anyhow::Result<Vec<MarketEvent>> {
         let research_object_key = research_object_key.to_string();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
        title, summary, url, source, payload_json
 FROM events
 WHERE payload_json::jsonb ->> 'hone_earnings_research_object_key' = $1
 ORDER BY occurred_at_ts ASC, id ASC
 "#,
-                    &[&research_object_key],
-                )
-                .await
-                .map_err(|error| pg_store_error("list earnings research materials", error))
-        })?;
+                        &[&research_object_key],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list earnings research materials", error))
+            })
+            .await?;
         let mut materials = rows
             .iter()
             .map(decode_market_event)
@@ -711,7 +741,7 @@ ORDER BY occurred_at_ts ASC, id ASC
     }
 
     #[cfg(test)]
-    fn event_research_object_key(&self, event_id: &str) -> anyhow::Result<Option<String>> {
+    async fn event_research_object_key(&self, event_id: &str) -> anyhow::Result<Option<String>> {
         let event_id = event_id.to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -730,10 +760,11 @@ ORDER BY occurred_at_ts ASC, id ASC
                         .map(str::to_string)
                 }))
         })
+        .await
     }
 
     #[cfg(test)]
-    fn test_delivery_attempt_summary(
+    async fn test_delivery_attempt_summary(
         &self,
         event_id: &str,
         actor: &str,
@@ -755,10 +786,11 @@ FROM delivery_log WHERE event_id=$1 AND actor=$2
                 .map_err(|error| pg_store_error("summarize delivery attempts", error))?;
             Ok((row.get(0), row.get(1)))
         })
+        .await
     }
 
     #[cfg(test)]
-    fn test_set_delivered_at_ms(&self, source_id: &str, value: i64) -> anyhow::Result<()> {
+    async fn test_set_delivered_at_ms(&self, source_id: &str, value: i64) -> anyhow::Result<()> {
         let source_id = source_id.to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -771,10 +803,11 @@ FROM delivery_log WHERE event_id=$1 AND actor=$2
                 .map_err(|error| pg_store_error("set delivered push timestamp", error))?;
             Ok(())
         })
+        .await
     }
 
     #[cfg(test)]
-    fn test_insert_historical_delivery(&self) -> anyhow::Result<()> {
+    async fn test_insert_historical_delivery(&self) -> anyhow::Result<()> {
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
             client
@@ -789,10 +822,11 @@ VALUES ('historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH')
                 .map_err(|error| pg_store_error("insert historical delivery", error))?;
             Ok(())
         })
+        .await
     }
 
     #[cfg(test)]
-    fn test_set_event_created_at(&self, event_id: &str, value: i64) -> anyhow::Result<()> {
+    async fn test_set_event_created_at(&self, event_id: &str, value: i64) -> anyhow::Result<()> {
         let event_id = event_id.to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -805,6 +839,7 @@ VALUES ('historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH')
                 .map_err(|error| pg_store_error("set event created_at", error))?;
             Ok(())
         })
+        .await
     }
 
     fn append_jsonl_mirror(&self, event: &MarketEvent) -> anyhow::Result<()> {
@@ -821,7 +856,7 @@ VALUES ('historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH')
         Ok(())
     }
 
-    pub fn purge_events_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
+    pub async fn purge_events_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -831,9 +866,10 @@ VALUES ('historical', 'discord::::u1', 'sink', 'high', 1, 'sent', 'OLD PUSH')
                 .map_err(|error| pg_store_error("purge events", error))?;
             Ok(usize::try_from(count).unwrap_or(usize::MAX))
         })
+        .await
     }
 
-    pub fn purge_delivery_log_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
+    pub async fn purge_delivery_log_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
         let cutoff_ms = cutoff.saturating_mul(1000);
         self.run(move |postgres| async move {
@@ -855,9 +891,10 @@ RETURNING id
                 Err(error) => Err(pg_store_error("purge delivery log", error)),
             }
         })
+        .await
     }
 
-    pub fn count_events(&self) -> anyhow::Result<i64> {
+    pub async fn count_events(&self) -> anyhow::Result<i64> {
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
@@ -866,9 +903,10 @@ RETURNING id
                 .map_err(|error| pg_store_error("count events", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    pub fn contains_event(&self, event_id: &str) -> anyhow::Result<bool> {
+    pub async fn contains_event(&self, event_id: &str) -> anyhow::Result<bool> {
         let event_id = event_id.to_string();
         self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -881,9 +919,10 @@ RETURNING id
                 .map_err(|error| pg_store_error("contains event", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    pub(crate) fn actor_has_delivered_earnings_for_document(
+    pub(crate) async fn actor_has_delivered_earnings_for_document(
         &self,
         actor: &str,
         document_url: &str,
@@ -918,9 +957,10 @@ SELECT EXISTS(
                 .map_err(|error| pg_store_error("check delivered earnings document", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    pub fn symbol_signal_kinds_in_window(
+    pub async fn symbol_signal_kinds_in_window(
         &self,
         symbol: &str,
         start: DateTime<Utc>,
@@ -938,7 +978,7 @@ SELECT EXISTS(
                 )
                 .await
                 .map_err(|error| pg_store_error("list symbol signal kinds", error))
-        })?;
+        }).await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -949,7 +989,7 @@ SELECT EXISTS(
             .collect())
     }
 
-    pub fn list_analyst_grade_payloads_in_window(
+    pub async fn list_analyst_grade_payloads_in_window(
         &self,
         symbol: &str,
         start: DateTime<Utc>,
@@ -958,36 +998,39 @@ SELECT EXISTS(
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let start = start.timestamp();
         let end = end.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT payload_json FROM events
 WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
   AND symbols_json ILIKE $3
   AND kind_json LIKE '%analyst_grade%'
 "#,
-                    &[&start, &end, &needle],
-                )
-                .await
-                .map_err(|error| pg_store_error("list analyst grade payloads", error))
-        })?;
+                        &[&start, &end, &needle],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list analyst grade payloads", error))
+            })
+            .await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| serde_json::from_str(&row.get::<_, String>(0)).ok())
             .collect())
     }
 
-    pub fn today_signal_kinds(
+    pub async fn today_signal_kinds(
         &self,
         symbol: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<String>> {
         self.symbol_signal_kinds_in_window(symbol, since, Utc::now())
+            .await
     }
 
-    pub fn list_upcoming_earnings(
+    pub async fn list_upcoming_earnings(
         &self,
         now: DateTime<Utc>,
         within_days: i64,
@@ -1006,9 +1049,10 @@ WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
             end,
             "list upcoming earnings",
         )
+        .await
     }
 
-    pub fn next_upcoming_earnings_for_symbol(
+    pub async fn next_upcoming_earnings_for_symbol(
         &self,
         symbol: &str,
         now: DateTime<Utc>,
@@ -1017,27 +1061,29 @@ WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let start = now.timestamp();
         let end = (now + chrono::Duration::days(within_days)).timestamp();
-        let timestamp = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_opt(
-                    r#"
+        let timestamp = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_opt(
+                        r#"
 SELECT occurred_at_ts FROM events
 WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
   AND kind_json LIKE '%"earnings_upcoming"%'
   AND symbols_json ILIKE $3
 ORDER BY occurred_at_ts ASC LIMIT 1
 "#,
-                    &[&start, &end, &needle],
-                )
-                .await
-                .map_err(|error| pg_store_error("find next upcoming earnings", error))?;
-            Ok(row.map(|row| row.get::<_, i64>(0)))
-        })?;
+                        &[&start, &end, &needle],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("find next upcoming earnings", error))?;
+                Ok(row.map(|row| row.get::<_, i64>(0)))
+            })
+            .await?;
         Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    pub fn count_event_ids_in_window(
+    pub async fn count_event_ids_in_window(
         &self,
         id_prefix: &str,
         start: DateTime<Utc>,
@@ -1065,23 +1111,29 @@ WHERE occurred_at_ts >= $1 AND occurred_at_ts <= $2
                 .map_err(|error| pg_store_error("count event ids in window", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    pub fn count_high_sent_since(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
+    pub async fn count_high_sent_since(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<i64> {
         self.count_high_sent_since_for_category(actor, since, "all")
+            .await
     }
 
-    pub fn count_high_sent_since_for_category(
+    pub async fn count_high_sent_since_for_category(
         &self,
         actor: &str,
         since: DateTime<Utc>,
         category: &str,
     ) -> anyhow::Result<i64> {
         if category == "all" {
-            return self.count_high_sent_since_all(actor, since);
+            return self.count_high_sent_since_all(actor, since).await;
         }
         let Some(tags) = category_kind_tags(category) else {
-            return self.count_high_sent_since_all(actor, since);
+            return self.count_high_sent_since_all(actor, since).await;
         };
         let actor = actor.to_string();
         let since = since.timestamp();
@@ -1109,9 +1161,14 @@ WHERE d.actor = $1
                 .map_err(|error| pg_store_error("count high sends by category", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    fn count_high_sent_since_all(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
+    async fn count_high_sent_since_all(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<i64> {
         let actor = actor.to_string();
         let since = since.timestamp();
         self.run(move |postgres| async move {
@@ -1129,17 +1186,19 @@ WHERE actor=$1 AND severity='high' AND status='sent'
                 .map_err(|error| pg_store_error("count high sends", error))?;
             Ok(row.get(0))
         })
+        .await
     }
 
-    pub fn last_high_sink_send_for_symbol(
+    pub async fn last_high_sink_send_for_symbol(
         &self,
         actor: &str,
         symbol: &str,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
         self.last_high_sink_send_for_symbol_category(actor, symbol, "all", None)
+            .await
     }
 
-    pub fn last_high_sink_send_for_symbol_category(
+    pub async fn last_high_sink_send_for_symbol_category(
         &self,
         actor: &str,
         symbol: &str,
@@ -1147,10 +1206,10 @@ WHERE actor=$1 AND severity='high' AND status='sent'
         firm: Option<&str>,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
         if category == "all" {
-            return self.last_high_sink_send_for_symbol_all(actor, symbol);
+            return self.last_high_sink_send_for_symbol_all(actor, symbol).await;
         }
         let Some(tags) = category_kind_tags(category) else {
-            return self.last_high_sink_send_for_symbol_all(actor, symbol);
+            return self.last_high_sink_send_for_symbol_all(actor, symbol).await;
         };
         let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
@@ -1159,11 +1218,12 @@ WHERE actor=$1 AND severity='high' AND status='sent'
             .map(|tag| format!("%\"{tag}\"%"))
             .collect::<Vec<_>>();
         let firm = firm.map(str::to_string);
-        let timestamp = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_one(
-                    r#"
+        let timestamp = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_one(
+                        r#"
 SELECT max(d.sent_at_ts) FROM delivery_log d
 JOIN events e ON d.event_id = e.id
 WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
@@ -1171,42 +1231,45 @@ WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
   AND e.kind_json LIKE ANY($3::text[])
   AND ($4::text IS NULL OR e.payload_json::jsonb ->> 'gradingCompany' = $4)
 "#,
-                    &[&actor, &needle, &patterns, &firm],
-                )
-                .await
-                .map_err(|error| pg_store_error("load last high send by category", error))?;
-            Ok(row.get::<_, Option<i64>>(0))
-        })?;
+                        &[&actor, &needle, &patterns, &firm],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("load last high send by category", error))?;
+                Ok(row.get::<_, Option<i64>>(0))
+            })
+            .await?;
         Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    fn last_high_sink_send_for_symbol_all(
+    async fn last_high_sink_send_for_symbol_all(
         &self,
         actor: &str,
         symbol: &str,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
         let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let timestamp = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_one(
-                    r#"
+        let timestamp = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_one(
+                        r#"
 SELECT max(d.sent_at_ts) FROM delivery_log d
 JOIN events e ON d.event_id = e.id
 WHERE d.actor=$1 AND d.severity='high' AND d.status='sent'
   AND d.channel='sink' AND e.symbols_json ILIKE $2
 "#,
-                    &[&actor, &needle],
-                )
-                .await
-                .map_err(|error| pg_store_error("load last high send", error))?;
-            Ok(row.get::<_, Option<i64>>(0))
-        })?;
+                        &[&actor, &needle],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("load last high send", error))?;
+                Ok(row.get::<_, Option<i64>>(0))
+            })
+            .await?;
         Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    pub fn last_high_sink_send_for_analyst_news_url(
+    pub async fn last_high_sink_send_for_analyst_news_url(
         &self,
         actor: &str,
         symbol: &str,
@@ -1221,11 +1284,12 @@ WHERE d.actor=$1 AND d.severity='high' AND d.status='sent'
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let news_url = news_url.to_string();
         let since = since.timestamp();
-        let timestamp = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_one(
-                    r#"
+        let timestamp = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_one(
+                        r#"
 SELECT max(d.sent_at_ts) FROM delivery_log d
 JOIN events e ON d.event_id = e.id
 WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
@@ -1233,16 +1297,17 @@ WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
   AND e.kind_json LIKE '%"analyst_grade"%'
   AND (e.payload_json::jsonb ->> 'newsURL' = $4 OR e.url = $4)
 "#,
-                    &[&actor, &since, &needle, &news_url],
-                )
-                .await
-                .map_err(|error| pg_store_error("load analyst article send", error))?;
-            Ok(row.get::<_, Option<i64>>(0))
-        })?;
+                        &[&actor, &since, &needle, &news_url],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("load analyst article send", error))?;
+                Ok(row.get::<_, Option<i64>>(0))
+            })
+            .await?;
         Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    pub fn last_price_band_max_bps_for_symbol_direction(
+    pub async fn last_price_band_max_bps_for_symbol_direction(
         &self,
         actor: &str,
         symbol: &str,
@@ -1255,28 +1320,33 @@ WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
         let actor = actor.to_string();
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let since = since.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT e.id FROM delivery_log d
 JOIN events e ON d.event_id=e.id
 WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
   AND d.sent_at_ts >= $2 AND e.symbols_json ILIKE $3 AND e.id LIKE $4
 "#,
-                    &[&actor, &since, &needle, &pattern],
-                )
-                .await
-                .map_err(|error| pg_store_error("list delivered price bands", error))
-        })?;
+                        &[&actor, &since, &needle, &pattern],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list delivered price bands", error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| parse_bps_from_band_id(&row.get::<_, String>(0)))
             .max())
     }
 
-    pub fn last_digest_success_at(&self, actor: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
+    pub async fn last_digest_success_at(
+        &self,
+        actor: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
         let actor = actor.to_string();
         let timestamp = self.run(move |postgres| async move {
             let client = postgres.connect_cached_client().await?;
@@ -1288,22 +1358,23 @@ WHERE d.actor=$1 AND d.severity='high' AND d.status='sent' AND d.channel='sink'
                 .await
                 .map_err(|error| pg_store_error("load last digest success", error))?;
             Ok(row.get::<_, Option<i64>>(0))
-        })?;
+        }).await?;
         Ok(timestamp.and_then(|value| DateTime::<Utc>::from_timestamp(value, 0)))
     }
 
-    pub fn list_missed_digest_items_since(
+    pub async fn list_missed_digest_items_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(MarketEvent, String)>> {
         let actor = actor.to_string();
         let since = since.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
        e.title, e.summary, e.url, e.source, e.payload_json, d.status
 FROM delivery_log d JOIN events e ON d.event_id=e.id
@@ -1311,11 +1382,12 @@ WHERE d.actor=$1 AND d.channel IN ('digest_item','prefs')
   AND d.status NOT IN ('sent','dryrun','queued') AND d.sent_at_ts >= $2
 ORDER BY d.sent_at_ts DESC
 "#,
-                    &[&actor, &since],
-                )
-                .await
-                .map_err(|error| pg_store_error("list missed digest items", error))
-        })?;
+                        &[&actor, &since],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list missed digest items", error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| {
@@ -1326,7 +1398,7 @@ ORDER BY d.sent_at_ts DESC
             .collect())
     }
 
-    pub fn delivered_event_ids_since(
+    pub async fn delivered_event_ids_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
@@ -1336,10 +1408,10 @@ ORDER BY d.sent_at_ts DESC
             actor,
             since,
             "list delivered event ids",
-        )
+        ).await
     }
 
-    pub fn list_actors_with_quiet_held_since(
+    pub async fn list_actors_with_quiet_held_since(
         &self,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<String>> {
@@ -1353,33 +1425,35 @@ ORDER BY d.sent_at_ts DESC
                 )
                 .await
                 .map_err(|error| pg_store_error("list quiet-held actors", error))
-        })?;
+        }).await?;
         Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 
-    pub fn list_quiet_held_since(
+    pub async fn list_quiet_held_since(
         &self,
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(MarketEvent, i64)>> {
         let actor = actor.to_string();
         let since = since.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
        e.title, e.summary, e.url, e.source, e.payload_json, d.sent_at_ts
 FROM delivery_log d JOIN events e ON d.event_id=e.id
 WHERE d.actor=$1 AND d.channel='sink' AND d.status='quiet_held' AND d.sent_at_ts >= $2
 ORDER BY d.sent_at_ts ASC
 "#,
-                    &[&actor, &since],
-                )
-                .await
-                .map_err(|error| pg_store_error("list quiet-held events", error))
-        })?;
+                        &[&actor, &since],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list quiet-held events", error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| {
@@ -1390,47 +1464,50 @@ ORDER BY d.sent_at_ts ASC
             .collect())
     }
 
-    pub fn list_recent_digest_item_events(
+    pub async fn list_recent_digest_item_events(
         &self,
         actor: &str,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<MarketEvent>> {
         let actor = actor.to_string();
         let since = since.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
        e.title, e.summary, e.url, e.source, e.payload_json
 FROM delivery_log d JOIN events e ON d.event_id=e.id
 WHERE d.actor=$1 AND d.channel='digest_item'
   AND d.status IN ('sent','dryrun') AND d.sent_at_ts >= $2
 "#,
-                    &[&actor, &since],
-                )
-                .await
-                .map_err(|error| pg_store_error("list recent digest item events", error))
-        })?;
+                        &[&actor, &since],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list recent digest item events", error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| decode_market_event(row).ok())
             .collect())
     }
 
-    pub fn list_global_digest_news_candidates(
+    pub async fn list_global_digest_news_candidates(
         &self,
         since: DateTime<Utc>,
         until: DateTime<Utc>,
     ) -> anyhow::Result<Vec<MarketEvent>> {
         let since = since.timestamp();
         let until = until.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(
-                    r#"
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(
+                        r#"
 SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
        title, summary, url, source, payload_json
 FROM events
@@ -1443,18 +1520,19 @@ WHERE occurred_at_ts >= $1 AND occurred_at_ts < $2
   )
 ORDER BY occurred_at_ts DESC
 "#,
-                    &[&since, &until],
-                )
-                .await
-                .map_err(|error| pg_store_error("list global digest news candidates", error))
-        })?;
+                        &[&since, &until],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("list global digest news candidates", error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| decode_market_event(row).ok())
             .collect())
     }
 
-    pub fn broadcasted_event_ids_since(
+    pub async fn broadcasted_event_ids_since(
         &self,
         channel: &str,
         since: DateTime<Utc>,
@@ -1464,10 +1542,10 @@ ORDER BY occurred_at_ts DESC
             channel,
             since,
             "list broadcast event ids",
-        )
+        ).await
     }
 
-    pub fn log_delivery(
+    pub async fn log_delivery(
         &self,
         event_id: &str,
         actor: &str,
@@ -1505,9 +1583,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
                 .map_err(|error| pg_store_error("append delivery log", error))?;
             Ok(())
         })
+        .await
     }
 
-    pub fn log_confirmed_delivery(
+    pub async fn log_confirmed_delivery(
         &self,
         event_id: &str,
         actor: &ActorIdentity,
@@ -1558,9 +1637,10 @@ ON CONFLICT DO NOTHING
                 .map_err(|error| pg_store_error("record confirmed delivery", error))?;
             Ok(())
         })
+        .await
     }
 
-    pub fn claim_delivered_push_context(
+    pub async fn claim_delivered_push_context(
         &self,
         actor: &ActorIdentity,
         turn_id: &str,
@@ -1578,9 +1658,10 @@ ON CONFLICT DO NOTHING
             lease_ms,
             None,
         )
+        .await
     }
 
-    pub fn claim_delivered_push_context_with_native_observation(
+    pub async fn claim_delivered_push_context_with_native_observation(
         &self,
         actor: &ActorIdentity,
         turn_id: &str,
@@ -1597,11 +1678,12 @@ ON CONFLICT DO NOTHING
         let now_ms = Utc::now().timestamp_millis();
         let claim_expires_at_ms = now_ms.saturating_add(lease_ms.max(1));
         let consumer_native_session_id = consumer_native_session_id.map(str::to_string);
-        let (records_json, remaining_count) = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            let row = client
-                .query_one(
-                    r#"
+        let (records_json, remaining_count) = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                let row = client
+                    .query_one(
+                        r#"
 WITH existing AS MATERIALIZED (
   SELECT delivery_log_id, source_id, delivered_at_ms, body
   FROM delivered_push_context
@@ -1703,21 +1785,22 @@ SELECT
       )
   )
 "#,
-                    &[
-                        &actor,
-                        &turn_id,
-                        &delivered_before_ms,
-                        &max_records,
-                        &max_body_chars,
-                        &now_ms,
-                        &claim_expires_at_ms,
-                        &consumer_native_session_id,
-                    ],
-                )
-                .await
-                .map_err(|error| pg_store_error("claim delivered push context", error))?;
-            Ok((row.get::<_, serde_json::Value>(0), row.get::<_, i64>(1)))
-        })?;
+                        &[
+                            &actor,
+                            &turn_id,
+                            &delivered_before_ms,
+                            &max_records,
+                            &max_body_chars,
+                            &now_ms,
+                            &claim_expires_at_ms,
+                            &consumer_native_session_id,
+                        ],
+                    )
+                    .await
+                    .map_err(|error| pg_store_error("claim delivered push context", error))?;
+                Ok((row.get::<_, serde_json::Value>(0), row.get::<_, i64>(1)))
+            })
+            .await?;
         let records = records_json
             .as_array()
             .into_iter()
@@ -1737,7 +1820,7 @@ SELECT
         })
     }
 
-    pub fn complete_delivered_push_context(
+    pub async fn complete_delivered_push_context(
         &self,
         actor: &ActorIdentity,
         turn_id: &str,
@@ -1761,9 +1844,10 @@ WHERE actor=$1 AND claimed_turn_id=$2 AND consumed_at_ms IS NULL
                 .map_err(|error| pg_store_error("complete delivered push context", error))?;
             Ok(usize::try_from(count).unwrap_or(usize::MAX))
         })
+        .await
     }
 
-    pub fn release_delivered_push_context(
+    pub async fn release_delivered_push_context(
         &self,
         actor: &ActorIdentity,
         turn_id: &str,
@@ -1785,9 +1869,10 @@ WHERE actor=$1 AND claimed_turn_id=$2 AND consumed_at_ms IS NULL
                 .map_err(|error| pg_store_error("release delivered push context", error))?;
             Ok(usize::try_from(count).unwrap_or(usize::MAX))
         })
+        .await
     }
 
-    pub fn list_recent_delivery_logs(
+    pub async fn list_recent_delivery_logs(
         &self,
         filter: &DeliveryLogFilter,
     ) -> anyhow::Result<Vec<DeliveryLogRecord>> {
@@ -1854,29 +1939,32 @@ LIMIT $10
                 .map_err(|error| pg_store_error("list recent delivery logs", error))?;
             rows.iter().map(decode_delivery_log).collect()
         })
+        .await
     }
 
-    fn query_events(
+    async fn query_events(
         &self,
         sql: &'static str,
         first: i64,
         second: i64,
         operation_name: &'static str,
     ) -> anyhow::Result<Vec<MarketEvent>> {
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(sql, &[&first, &second])
-                .await
-                .map_err(|error| pg_store_error(operation_name, error))
-        })?;
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(sql, &[&first, &second])
+                    .await
+                    .map_err(|error| pg_store_error(operation_name, error))
+            })
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|row| decode_market_event(row).ok())
             .collect())
     }
 
-    fn event_ids_since(
+    async fn event_ids_since(
         &self,
         sql: &'static str,
         scope: &str,
@@ -1885,69 +1973,75 @@ LIMIT $10
     ) -> anyhow::Result<HashSet<String>> {
         let scope = scope.to_string();
         let since = since.timestamp();
-        let rows = self.run(move |postgres| async move {
-            let client = postgres.connect_cached_client().await?;
-            client
-                .query(sql, &[&scope, &since])
-                .await
-                .map_err(|error| pg_store_error(operation_name, error))
-        })?;
+        let rows = self
+            .run(move |postgres| async move {
+                let client = postgres.connect_cached_client().await?;
+                client
+                    .query(sql, &[&scope, &since])
+                    .await
+                    .map_err(|error| pg_store_error(operation_name, error))
+            })
+            .await?;
         Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 }
 
-pub fn event_breakdown_by_source(
+pub async fn event_breakdown_by_source(
     store: &EventStore,
     since: DateTime<Utc>,
     until: DateTime<Utc>,
 ) -> anyhow::Result<Vec<(String, i64)>> {
     let since = since.timestamp();
     let until = until.timestamp();
-    store.run(move |postgres| async move {
-        let client = postgres.connect_cached_client().await?;
-        let rows = client
-            .query(
-                r#"
+    store
+        .run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let rows = client
+                .query(
+                    r#"
 SELECT source, count(*)::bigint FROM events
 WHERE created_at_ts >= $1 AND created_at_ts < $2
 GROUP BY source ORDER BY 2 DESC
 "#,
-                &[&since, &until],
-            )
-            .await
-            .map_err(|error| pg_store_error("event breakdown by source", error))?;
-        Ok(rows
-            .into_iter()
-            .map(|row| (row.get(0), row.get(1)))
-            .collect())
-    })
+                    &[&since, &until],
+                )
+                .await
+                .map_err(|error| pg_store_error("event breakdown by source", error))?;
+            Ok(rows
+                .into_iter()
+                .map(|row| (row.get(0), row.get(1)))
+                .collect())
+        })
+        .await
 }
 
-pub fn delivery_breakdown_per_actor(
+pub async fn delivery_breakdown_per_actor(
     store: &EventStore,
     since: DateTime<Utc>,
     until: DateTime<Utc>,
 ) -> anyhow::Result<Vec<(String, String, i64)>> {
     let since = since.timestamp();
     let until = until.timestamp();
-    store.run(move |postgres| async move {
-        let client = postgres.connect_cached_client().await?;
-        let rows = client
-            .query(
-                r#"
+    store
+        .run(move |postgres| async move {
+            let client = postgres.connect_cached_client().await?;
+            let rows = client
+                .query(
+                    r#"
 SELECT actor, status, count(*)::bigint FROM delivery_log
 WHERE sent_at_ts >= $1 AND sent_at_ts < $2
 GROUP BY actor, status ORDER BY actor, status
 "#,
-                &[&since, &until],
-            )
-            .await
-            .map_err(|error| pg_store_error("delivery breakdown per actor", error))?;
-        Ok(rows
-            .into_iter()
-            .map(|row| (row.get(0), row.get(1), row.get(2)))
-            .collect())
-    })
+                    &[&since, &until],
+                )
+                .await
+                .map_err(|error| pg_store_error("delivery breakdown per actor", error))?;
+            Ok(rows
+                .into_iter()
+                .map(|row| (row.get(0), row.get(1), row.get(2)))
+                .collect())
+        })
+        .await
 }
 
 fn event_store_operation_timeout() -> Duration {
@@ -2188,27 +2282,32 @@ mod tests {
         event
     }
 
-    #[test]
-    fn insert_is_idempotent_per_id() {
+    #[tokio::test]
+    async fn insert_is_idempotent_per_id() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let event = sample_event("earnings:AAPL:2026-04-30");
-        assert!(store.insert_event(&event).unwrap()); // 首次
-        assert!(!store.insert_event(&event).unwrap()); // 重复
-        assert_eq!(store.count_events().unwrap(), 1);
+        assert!(store.insert_event(&event).await.unwrap()); // 首次
+        assert!(!store.insert_event(&event).await.unwrap()); // 重复
+        assert_eq!(store.count_events().await.unwrap(), 1);
     }
 
-    #[test]
-    fn transcript_and_formal_filing_link_to_the_nearest_reviewed_release() {
+    #[tokio::test]
+    async fn transcript_and_formal_filing_link_to_the_nearest_reviewed_release() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let occurred_at = Utc::now();
         let mut release = reviewed_release("release", occurred_at);
         let release_key = store
             .link_earnings_research_object(&mut release)
+            .await
             .unwrap()
             .unwrap();
-        store.insert_event(&release).unwrap();
+        store.insert_event(&release).await.unwrap();
 
         let mut transcript = sample_event("transcript");
         transcript.kind = EventKind::EarningsCallTranscript;
@@ -2221,11 +2320,12 @@ mod tests {
             let mut noise = sample_event(&format!("noise-nearest-{index}"));
             noise.symbols = vec!["AMD".into()];
             noise.occurred_at = transcript.occurred_at;
-            store.insert_event(&noise).unwrap();
+            store.insert_event(&noise).await.unwrap();
         }
         assert_eq!(
             store
                 .link_earnings_research_object(&mut transcript)
+                .await
                 .unwrap()
                 .as_deref(),
             Some(release_key.as_str())
@@ -2240,16 +2340,19 @@ mod tests {
         assert_eq!(
             store
                 .link_earnings_research_object(&mut filing)
+                .await
                 .unwrap()
                 .as_deref(),
             Some(release_key.as_str())
         );
     }
 
-    #[test]
-    fn reviewed_release_backfills_a_transcript_that_arrived_first() {
+    #[tokio::test]
+    async fn reviewed_release_backfills_a_transcript_that_arrived_first() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let occurred_at = Utc.with_ymd_and_hms(2026, 8, 5, 20, 0, 0).unwrap();
         let mut transcript = sample_event("transcript-first");
         transcript.kind = EventKind::EarningsCallTranscript;
@@ -2258,57 +2361,66 @@ mod tests {
         assert!(
             store
                 .link_earnings_research_object(&mut transcript)
+                .await
                 .unwrap()
                 .is_none()
         );
-        store.insert_event(&transcript).unwrap();
+        store.insert_event(&transcript).await.unwrap();
         for index in 0..250 {
             let mut noise = sample_event(&format!("noise-backfill-{index}"));
             noise.symbols = vec!["AMD".into()];
             noise.occurred_at = occurred_at;
-            store.insert_event(&noise).unwrap();
+            store.insert_event(&noise).await.unwrap();
         }
 
         let mut release = reviewed_release("release-later", occurred_at);
         let release_key = store
             .link_earnings_research_object(&mut release)
+            .await
             .unwrap()
             .unwrap();
-        store.insert_event(&release).unwrap();
+        store.insert_event(&release).await.unwrap();
         assert_eq!(
             store
                 .event_research_object_key("transcript-first")
+                .await
                 .unwrap()
                 .as_deref(),
             Some(release_key.as_str())
         );
         let materials = store
             .list_earnings_research_materials(&release_key)
+            .await
             .unwrap();
         assert_eq!(materials.len(), 1);
         assert_eq!(materials[0].id, "transcript-first");
     }
 
-    #[test]
-    fn continuity_job_survives_restart_retries_and_recovers_an_expired_lease() {
+    #[tokio::test]
+    async fn continuity_job_survives_restart_retries_and_recovers_an_expired_lease() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("event-store");
         let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
         let occurred_at = Utc::now();
-        let fixture = EventStore::open(&path).unwrap();
+        let fixture = EventStore::open(&path).await.unwrap();
         let mut release = reviewed_release("release-job", occurred_at);
-        fixture.link_earnings_research_object(&mut release).unwrap();
+        fixture
+            .link_earnings_research_object(&mut release)
+            .await
+            .unwrap();
         let job_key = fixture
             .enqueue_earnings_continuity_job(&actor, &release)
+            .await
             .unwrap()
             .unwrap();
 
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         // enqueue 使用真实时钟写入 next_attempt_ts；给模拟领取时钟留出一秒，
         // 避免测试恰好跨过整秒边界时把新任务误判为尚未到期。
         let first_claim_at = Utc::now() + chrono::Duration::seconds(1);
         let first = store
             .claim_due_earnings_continuity_jobs(first_claim_at, 4)
+            .await
             .unwrap();
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].job_key, job_key);
@@ -2319,15 +2431,17 @@ mod tests {
                     first_claim_at + chrono::Duration::minutes(14),
                     4,
                 )
+                .await
                 .unwrap()
                 .is_empty()
         );
 
         // 模拟进程在 running 状态崩溃：租约过期后可由新 worker 重新领取。
         drop(store);
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         let recovered = store
             .claim_due_earnings_continuity_jobs(first_claim_at + chrono::Duration::minutes(16), 4)
+            .await
             .unwrap();
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0].attempts, 2);
@@ -2336,6 +2450,7 @@ mod tests {
         assert!(
             !store
                 .complete_earnings_continuity_job(&job_key, first[0].attempts)
+                .await
                 .unwrap()
         );
         assert!(
@@ -2346,11 +2461,13 @@ mod tests {
                     "temporary provider failure",
                     first_claim_at + chrono::Duration::minutes(16),
                 )
+                .await
                 .unwrap()
         );
         assert_eq!(
             store
                 .earnings_continuity_job_status(&job_key)
+                .await
                 .unwrap()
                 .as_deref(),
             Some("retry")
@@ -2361,22 +2478,26 @@ mod tests {
                     first_claim_at + chrono::Duration::minutes(17),
                     4,
                 )
+                .await
                 .unwrap()
                 .is_empty()
         );
         let retried = store
             .claim_due_earnings_continuity_jobs(first_claim_at + chrono::Duration::minutes(19), 4)
+            .await
             .unwrap();
         assert_eq!(retried.len(), 1);
         assert_eq!(retried[0].attempts, 3);
         assert!(
             store
                 .complete_earnings_continuity_job(&job_key, retried[0].attempts)
+                .await
                 .unwrap()
         );
         assert_eq!(
             store
                 .earnings_continuity_job_status(&job_key)
+                .await
                 .unwrap()
                 .as_deref(),
             Some("completed")
@@ -2392,19 +2513,23 @@ mod tests {
         );
     }
 
-    #[test]
-    fn release_and_reviewed_transcript_have_distinct_continuity_jobs() {
+    #[tokio::test]
+    async fn release_and_reviewed_transcript_have_distinct_continuity_jobs() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = ActorIdentity::new("discord", "pro", None::<&str>).unwrap();
         let occurred_at = Utc::now();
         let mut release = reviewed_release("release-job-stage", occurred_at);
         let research_object_key = store
             .link_earnings_research_object(&mut release)
+            .await
             .unwrap()
             .unwrap();
         let release_job = store
             .enqueue_earnings_continuity_job(&actor, &release)
+            .await
             .unwrap()
             .unwrap();
 
@@ -2417,6 +2542,7 @@ mod tests {
         });
         let transcript_job = store
             .enqueue_earnings_continuity_job(&actor, &transcript)
+            .await
             .unwrap()
             .unwrap();
         assert_ne!(release_job, transcript_job);
@@ -2424,25 +2550,31 @@ mod tests {
 
         let jobs = store
             .claim_due_earnings_continuity_jobs(Utc::now() + chrono::Duration::seconds(1), 4)
+            .await
             .unwrap();
         assert_eq!(jobs.len(), 2);
     }
 
-    #[test]
-    fn contains_event_supports_cross_restart_poller_short_circuit() {
+    #[tokio::test]
+    async fn contains_event_supports_cross_restart_poller_short_circuit() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
-        assert!(!store.contains_event("earnings:SNDK:q4").unwrap());
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
+        assert!(!store.contains_event("earnings:SNDK:q4").await.unwrap());
         store
             .insert_event(&sample_event("earnings:SNDK:q4"))
+            .await
             .unwrap();
-        assert!(store.contains_event("earnings:SNDK:q4").unwrap());
+        assert!(store.contains_event("earnings:SNDK:q4").await.unwrap());
     }
 
-    #[test]
-    fn sec_fallback_is_superseded_only_after_actor_received_structured_earnings() {
+    #[tokio::test]
+    async fn sec_fallback_is_superseded_only_after_actor_received_structured_earnings() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let mut earnings = sample_event("earnings_surprise:SNDK:2026-08-05");
         earnings.kind = EventKind::EarningsReleased;
         earnings.severity = Severity::High;
@@ -2453,7 +2585,7 @@ mod tests {
             "hone_earnings_release_document_key":
                 "https://www.sec.gov/archives/sndkq4-26ex991xpressrelease.htm"
         });
-        store.insert_event(&earnings).unwrap();
+        store.insert_event(&earnings).await.unwrap();
 
         let delivered_actor = "discord::::delivered";
         let failed_actor = "discord::::failed";
@@ -2466,6 +2598,7 @@ mod tests {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2476,50 +2609,57 @@ mod tests {
                 "failed",
                 None,
             )
+            .await
             .unwrap();
 
         let lookup_url = "HTTPS://WWW.SEC.GOV/Archives/sndkq4-26ex991xpressrelease.htm#document";
         assert!(
             store
                 .actor_has_delivered_earnings_for_document(delivered_actor, lookup_url)
+                .await
                 .unwrap()
         );
         assert!(
             !store
                 .actor_has_delivered_earnings_for_document(failed_actor, lookup_url)
+                .await
                 .unwrap()
         );
     }
 
-    #[test]
-    fn distinct_ids_are_all_stored() {
+    #[tokio::test]
+    async fn distinct_ids_are_all_stored() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
-        assert!(store.insert_event(&sample_event("a")).unwrap());
-        assert!(store.insert_event(&sample_event("b")).unwrap());
-        assert!(store.insert_event(&sample_event("c")).unwrap());
-        assert_eq!(store.count_events().unwrap(), 3);
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
+        assert!(store.insert_event(&sample_event("a")).await.unwrap());
+        assert!(store.insert_event(&sample_event("b")).await.unwrap());
+        assert!(store.insert_event(&sample_event("c")).await.unwrap());
+        assert_eq!(store.count_events().await.unwrap(), 3);
     }
 
-    #[test]
-    fn baseline_is_set_on_first_open_and_preserved() {
+    #[tokio::test]
+    async fn baseline_is_set_on_first_open_and_preserved() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("event-store");
         // pg_temp 的生命周期绑定测试连接；保留 fixture lease，同时用第二个
         // EventStore 句柄覆盖生产中的重复构造不会改写 baseline。
-        let fixture = EventStore::open(&path).unwrap();
-        let baseline_a = fixture.baseline_at().unwrap();
+        let fixture = EventStore::open(&path).await.unwrap();
+        let baseline_a = fixture.baseline_at().await.unwrap();
         // 重新打开不应重写 baseline
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        let store = EventStore::open(&path).unwrap();
-        let baseline_b = store.baseline_at().unwrap();
+        let store = EventStore::open(&path).await.unwrap();
+        let baseline_b = store.baseline_at().await.unwrap();
         assert_eq!(baseline_a, baseline_b);
     }
 
-    #[test]
-    fn delivery_log_is_append_only_across_retries() {
+    #[tokio::test]
+    async fn delivery_log_is_append_only_across_retries() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         store
             .log_delivery(
                 "ev1",
@@ -2529,6 +2669,7 @@ mod tests {
                 "failed",
                 Some("body v1"),
             )
+            .await
             .unwrap();
         // 同一 (event, actor) 二次写入应保留两行，而非覆盖
         store
@@ -2540,18 +2681,22 @@ mod tests {
                 "sent",
                 Some("body v2"),
             )
+            .await
             .unwrap();
         let (attempt_count, last_status) = store
             .test_delivery_attempt_summary("ev1", "imessage:u1")
+            .await
             .unwrap();
         assert_eq!(attempt_count, 2, "delivery_log 应 append-only 保留每次尝试");
         assert_eq!(last_status, "sent");
     }
 
-    #[test]
-    fn delivered_push_context_claims_only_explicit_confirmations_in_delivery_order() {
+    #[tokio::test]
+    async fn delivered_push_context_claims_only_explicit_confirmations_in_delivery_order() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = ActorIdentity::new("discord", "u1", Some("dm-1")).unwrap();
         let other_scope = ActorIdentity::new("discord", "u1", Some("room-2")).unwrap();
         let actor_key = delivery_actor_key(&actor);
@@ -2565,6 +2710,7 @@ mod tests {
                 "failed",
                 Some("FAILED"),
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2575,6 +2721,7 @@ mod tests {
                 "queued",
                 Some("QUEUED"),
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2585,6 +2732,7 @@ mod tests {
                 "dryrun",
                 Some("DRYRUN"),
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2595,6 +2743,7 @@ mod tests {
                 "sent",
                 Some("  \n"),
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2605,15 +2754,18 @@ mod tests {
                 "sent",
                 Some("AUDIT ONLY"),
             )
+            .await
             .unwrap();
         for (source, body) in [("p1", "P1"), ("p2", "P2"), ("p3", "P3")] {
             store
                 .log_confirmed_delivery(source, &actor, "sink", Severity::High, body, None)
+                .await
                 .unwrap();
         }
         // delivery_log 保留 retry attempt；上下文按业务 source id 去重。
         store
             .log_confirmed_delivery("p1", &actor, "sink", Severity::High, "P1 DUPLICATE", None)
+            .await
             .unwrap();
         store
             .log_confirmed_delivery(
@@ -2624,11 +2776,13 @@ mod tests {
                 "OTHER SCOPE",
                 None,
             )
+            .await
             .unwrap();
 
         let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
         let first = store
             .claim_delivered_push_context(&actor, "turn-1", cutoff, 2, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(
             first
@@ -2643,6 +2797,7 @@ mod tests {
         // 同一 turn 重入必须返回相同批次，不能把 P3 偷塞进内部 retry。
         let reentered = store
             .claim_delivered_push_context(&actor, "turn-1", cutoff, 20, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(reentered.records, first.records);
         assert_eq!(reentered.remaining_count, 1);
@@ -2650,11 +2805,13 @@ mod tests {
         assert_eq!(
             store
                 .complete_delivered_push_context(&actor, "turn-1")
+                .await
                 .unwrap(),
             2
         );
         let second = store
             .claim_delivered_push_context(&actor, "turn-2", cutoff, 20, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(second.records.len(), 1);
         assert_eq!(second.records[0].body, "P3");
@@ -2663,19 +2820,23 @@ mod tests {
         assert_eq!(
             store
                 .release_delivered_push_context(&actor, "turn-2")
+                .await
                 .unwrap(),
             1
         );
         let reclaimed = store
             .claim_delivered_push_context(&actor, "turn-3", cutoff, 20, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(reclaimed.records[0].body, "P3");
         store
             .complete_delivered_push_context(&actor, "turn-3")
+            .await
             .unwrap();
         assert!(
             store
                 .claim_delivered_push_context(&actor, "turn-4", cutoff, 20, 12_000, 60_000)
+                .await
                 .unwrap()
                 .records
                 .is_empty()
@@ -2683,14 +2844,17 @@ mod tests {
 
         let other = store
             .claim_delivered_push_context(&other_scope, "turn-other", cutoff, 20, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(other.records[0].body, "OTHER SCOPE");
     }
 
-    #[test]
-    fn delivered_push_after_user_cutoff_waits_for_next_turn() {
+    #[tokio::test]
+    async fn delivered_push_after_user_cutoff_waits_for_next_turn() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = ActorIdentity::new("telegram", "u1", None::<String>).unwrap();
         store
             .log_confirmed_delivery(
@@ -2701,42 +2865,48 @@ mod tests {
                 "PUSH AFTER U1",
                 None,
             )
+            .await
             .unwrap();
         let user_cutoff = Utc::now().timestamp_millis();
         store
             .test_set_delivered_at_ms("future-push", user_cutoff + 1)
+            .await
             .unwrap();
 
         assert!(
             store
                 .claim_delivered_push_context(&actor, "u1", user_cutoff, 20, 12_000, 60_000)
+                .await
                 .unwrap()
                 .records
                 .is_empty()
         );
         let next = store
             .claim_delivered_push_context(&actor, "u2", user_cutoff + 1, 20, 12_000, 60_000)
+            .await
             .unwrap();
         assert_eq!(next.records[0].body, "PUSH AFTER U1");
     }
 
-    #[test]
-    fn delivered_push_context_crosses_store_connections_and_respects_body_budget() {
+    #[tokio::test]
+    async fn delivered_push_context_crosses_store_connections_and_respects_body_budget() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("event-store");
-        let writer = EventStore::open(&path).unwrap();
-        let reader = EventStore::open(&path).unwrap();
+        let writer = EventStore::open(&path).await.unwrap();
+        let reader = EventStore::open(&path).await.unwrap();
         let actor = ActorIdentity::new("web", "u1", Some("chat-1")).unwrap();
 
         for (source, body) in [("p1", "123456"), ("p2", "abcdef")] {
             writer
                 .log_confirmed_delivery(source, &actor, "sink", Severity::Medium, body, None)
+                .await
                 .unwrap();
         }
 
         let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
         let first = reader
             .claim_delivered_push_context(&actor, "u1", cutoff, 20, 8, 60_000)
+            .await
             .unwrap();
         assert_eq!(first.records.len(), 1);
         assert_eq!(first.records[0].body, "123456");
@@ -2744,18 +2914,22 @@ mod tests {
 
         reader
             .complete_delivered_push_context(&actor, "u1")
+            .await
             .unwrap();
         let second = writer
             .claim_delivered_push_context(&actor, "u2", cutoff, 20, 8, 60_000)
+            .await
             .unwrap();
         assert_eq!(second.records[0].body, "abcdef");
         assert_eq!(second.remaining_count, 0);
     }
 
-    #[test]
-    fn native_session_observation_skips_duplicate_but_replay_still_claims() {
+    #[tokio::test]
+    async fn native_session_observation_skips_duplicate_but_replay_still_claims() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let native_actor = ActorIdentity::new("cli", "native", None::<String>).unwrap();
         let replay_actor = ActorIdentity::new("web", "replay", None::<String>).unwrap();
         store
@@ -2767,6 +2941,7 @@ mod tests {
                 "NATIVE ALREADY SAW THIS",
                 Some(&native_actor.session_id()),
             )
+            .await
             .unwrap();
         store
             .log_confirmed_delivery(
@@ -2777,6 +2952,7 @@ mod tests {
                 "REPLAY NEEDS THIS",
                 Some(&replay_actor.session_id()),
             )
+            .await
             .unwrap();
         let cutoff = Utc::now().timestamp_millis().saturating_add(1_000);
 
@@ -2790,6 +2966,7 @@ mod tests {
                 60_000,
                 Some(&native_actor.session_id()),
             )
+            .await
             .unwrap();
         assert!(native.records.is_empty());
 
@@ -2802,21 +2979,24 @@ mod tests {
                 12_000,
                 60_000,
             )
+            .await
             .unwrap();
         assert_eq!(replay.records.len(), 1);
         assert_eq!(replay.records[0].body, "REPLAY NEEDS THIS");
     }
 
-    #[test]
-    fn opening_an_old_delivery_log_does_not_backfill_historical_context() {
+    #[tokio::test]
+    async fn opening_an_old_delivery_log_does_not_backfill_historical_context() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("event-store");
         EventStore::open(&path)
+            .await
             .unwrap()
             .test_insert_historical_delivery()
+            .await
             .unwrap();
 
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
         assert!(
             store
@@ -2828,16 +3008,19 @@ mod tests {
                     12_000,
                     60_000,
                 )
+                .await
                 .unwrap()
                 .records
                 .is_empty()
         );
     }
 
-    #[test]
-    fn list_recent_delivery_logs_keeps_operator_level_rows() {
+    #[tokio::test]
+    async fn list_recent_delivery_logs_keeps_operator_level_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         store
             .log_delivery(
                 "ev-no-actor",
@@ -2847,6 +3030,7 @@ mod tests {
                 "no_actor",
                 None,
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2857,6 +3041,7 @@ mod tests {
                 "omitted",
                 None,
             )
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2867,6 +3052,7 @@ mod tests {
                 "sent",
                 Some("body"),
             )
+            .await
             .unwrap();
 
         let rows = store
@@ -2875,21 +3061,24 @@ mod tests {
                 limit: 20,
                 ..DeliveryLogFilter::default()
             })
+            .await
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].event_id, "ev-sink");
         assert_eq!(rows[0].channel, "sink");
     }
 
-    #[test]
-    fn list_recent_delivery_logs_exposes_event_kind_type() {
+    #[tokio::test]
+    async fn list_recent_delivery_logs_exposes_event_kind_type() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let mut event = sample_event("ev-kind");
         event.kind = EventKind::SecFiling {
             form: "8-K".to_string(),
         };
-        store.insert_event(&event).unwrap();
+        store.insert_event(&event).await.unwrap();
         store
             .log_delivery(
                 "ev-kind",
@@ -2899,6 +3088,7 @@ mod tests {
                 "sent",
                 Some("body"),
             )
+            .await
             .unwrap();
 
         let rows = store
@@ -2908,31 +3098,35 @@ mod tests {
                 limit: 20,
                 ..DeliveryLogFilter::default()
             })
+            .await
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].event_kind.as_deref(), Some("sec_filing"));
     }
 
-    #[test]
-    fn jsonl_mirror_appends_once_per_new_event() {
+    #[tokio::test]
+    async fn jsonl_mirror_appends_once_per_new_event() {
         let dir = tempdir().unwrap();
         let mirror = dir.path().join("events.jsonl");
         let store = EventStore::open(dir.path().join("event-store"))
+            .await
             .unwrap()
             .with_jsonl_path(&mirror);
         let event = sample_event("e-jsonl");
-        assert!(store.insert_event(&event).unwrap());
+        assert!(store.insert_event(&event).await.unwrap());
         // 重复入库走 IGNORE，不再 append 镜像
-        assert!(!store.insert_event(&event).unwrap());
+        assert!(!store.insert_event(&event).await.unwrap());
         let lines = std::fs::read_to_string(&mirror).unwrap();
         assert_eq!(lines.lines().count(), 1);
         assert!(lines.contains("e-jsonl"));
     }
 
-    #[test]
-    fn count_high_sent_since_only_counts_high_sink_sent() {
+    #[tokio::test]
+    async fn count_high_sent_since_only_counts_high_sink_sent() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
         // 真正算数的:高优 + sink + sent —— 4 条
         for i in 0..4 {
@@ -2945,17 +3139,21 @@ mod tests {
                     "sent",
                     None,
                 )
+                .await
                 .unwrap();
         }
         // 不算数的对照组
         store
             .log_delivery("e-medium", actor, "sink", Severity::Medium, "sent", None)
+            .await
             .unwrap();
         store
             .log_delivery("e-failed", actor, "sink", Severity::High, "failed", None)
+            .await
             .unwrap();
         store
             .log_delivery("e-digest", actor, "digest", Severity::High, "sent", None)
+            .await
             .unwrap();
         store
             .log_delivery(
@@ -2966,23 +3164,27 @@ mod tests {
                 "filtered",
                 None,
             )
+            .await
             .unwrap();
         store
             .log_delivery("e-other", "tg::::u2", "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
 
         let since = Utc::now() - chrono::Duration::minutes(1);
-        assert_eq!(store.count_high_sent_since(actor, since).unwrap(), 4);
+        assert_eq!(store.count_high_sent_since(actor, since).await.unwrap(), 4);
 
         // 未来时间点:当然 0
         let future = Utc::now() + chrono::Duration::days(1);
-        assert_eq!(store.count_high_sent_since(actor, future).unwrap(), 0);
+        assert_eq!(store.count_high_sent_since(actor, future).await.unwrap(), 0);
     }
 
-    #[test]
-    fn high_counts_are_bucketed_by_event_category() {
+    #[tokio::test]
+    async fn high_counts_are_bucketed_by_event_category() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
         let mut price = sample_event("price-aapl");
         price.kind = EventKind::PriceAlert {
@@ -2991,35 +3193,41 @@ mod tests {
         };
         let mut filing = sample_event("sec-aapl");
         filing.kind = EventKind::SecFiling { form: "8-K".into() };
-        store.insert_event(&price).unwrap();
-        store.insert_event(&filing).unwrap();
+        store.insert_event(&price).await.unwrap();
+        store.insert_event(&filing).await.unwrap();
         store
             .log_delivery(&price.id, actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
         store
             .log_delivery(&filing.id, actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
 
         let since = Utc::now() - chrono::Duration::minutes(1);
         assert_eq!(
             store
                 .count_high_sent_since_for_category(actor, since, "price")
+                .await
                 .unwrap(),
             1
         );
         assert_eq!(
             store
                 .count_high_sent_since_for_category(actor, since, "filing")
+                .await
                 .unwrap(),
             1
         );
-        assert_eq!(store.count_high_sent_since(actor, since).unwrap(), 2);
+        assert_eq!(store.count_high_sent_since(actor, since).await.unwrap(), 2);
     }
 
-    #[test]
-    fn last_high_sink_send_for_symbol_matches_case_insensitive_and_ignores_other_rows() {
+    #[tokio::test]
+    async fn last_high_sink_send_for_symbol_matches_case_insensitive_and_ignores_other_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
 
         // 给 AAPL 和 NVDA 分别入库一条事件
@@ -3027,13 +3235,14 @@ mod tests {
         aapl.symbols = vec!["AAPL".into()];
         let mut nvda = sample_event("ev-nvda");
         nvda.symbols = vec!["NVDA".into()];
-        store.insert_event(&aapl).unwrap();
-        store.insert_event(&nvda).unwrap();
+        store.insert_event(&aapl).await.unwrap();
+        store.insert_event(&nvda).await.unwrap();
 
         // 初始状态:无记录
         assert!(
             store
                 .last_high_sink_send_for_symbol(actor, "AAPL")
+                .await
                 .unwrap()
                 .is_none()
         );
@@ -3041,44 +3250,55 @@ mod tests {
         // High + sink + sent AAPL —— 应命中
         store
             .log_delivery("ev-aapl", actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
         // Medium 不算,failed 不算,digest 渠道不算
         let mut medium_ev = sample_event("ev-medium");
         medium_ev.symbols = vec!["AAPL".into()];
-        store.insert_event(&medium_ev).unwrap();
+        store.insert_event(&medium_ev).await.unwrap();
         store
             .log_delivery("ev-medium", actor, "sink", Severity::Medium, "sent", None)
+            .await
             .unwrap();
         let mut failed_ev = sample_event("ev-failed");
         failed_ev.symbols = vec!["AAPL".into()];
-        store.insert_event(&failed_ev).unwrap();
+        store.insert_event(&failed_ev).await.unwrap();
         store
             .log_delivery("ev-failed", actor, "sink", Severity::High, "failed", None)
+            .await
             .unwrap();
         // 另一个 actor 的 sent 不算
         store
             .log_delivery("ev-aapl", "tg::::u2", "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
         // NVDA 的不应串到 AAPL
         store
             .log_delivery("ev-nvda", actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
 
-        let t_aapl = store.last_high_sink_send_for_symbol(actor, "aapl").unwrap();
+        let t_aapl = store
+            .last_high_sink_send_for_symbol(actor, "aapl")
+            .await
+            .unwrap();
         assert!(t_aapl.is_some(), "AAPL(小写查询)应命中");
         // 不存在的 symbol
         assert!(
             store
                 .last_high_sink_send_for_symbol(actor, "TSLA")
+                .await
                 .unwrap()
                 .is_none()
         );
     }
 
-    #[test]
-    fn last_high_sink_send_with_firm_filter_distinguishes_grading_company() {
+    #[tokio::test]
+    async fn last_high_sink_send_with_firm_filter_distinguishes_grading_company() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
 
         let mk = |id: &str, firm: &str| MarketEvent {
@@ -3095,16 +3315,18 @@ mod tests {
         };
         let goldman = mk("g1", "Goldman Sachs");
         let raymond = mk("r1", "Raymond James");
-        store.insert_event(&goldman).unwrap();
-        store.insert_event(&raymond).unwrap();
+        store.insert_event(&goldman).await.unwrap();
+        store.insert_event(&raymond).await.unwrap();
         store
             .log_delivery("g1", actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
 
         // 不带 firm 过滤 → 命中 Goldman 的 sent
         assert!(
             store
                 .last_high_sink_send_for_symbol_category(actor, "SNDK", "analyst", None)
+                .await
                 .unwrap()
                 .is_some()
         );
@@ -3117,6 +3339,7 @@ mod tests {
                     "analyst",
                     Some("Goldman Sachs"),
                 )
+                .await
                 .unwrap()
                 .is_some()
         );
@@ -3129,15 +3352,18 @@ mod tests {
                     "analyst",
                     Some("Raymond James"),
                 )
+                .await
                 .unwrap()
                 .is_none()
         );
     }
 
-    #[test]
-    fn last_high_sink_send_for_analyst_news_url_matches_same_article_fanout() {
+    #[tokio::test]
+    async fn last_high_sink_send_for_analyst_news_url_matches_same_article_fanout() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
         let url = "https://thefly.com/ajax/news_get.php?id=4346982";
 
@@ -3163,17 +3389,19 @@ mod tests {
             "RBC Capital",
             "https://thefly.com/ajax/news_get.php?id=4346812",
         );
-        store.insert_event(&needham).unwrap();
-        store.insert_event(&jefferies).unwrap();
-        store.insert_event(&other_url).unwrap();
+        store.insert_event(&needham).await.unwrap();
+        store.insert_event(&jefferies).await.unwrap();
+        store.insert_event(&other_url).await.unwrap();
         store
             .log_delivery(&needham.id, actor, "sink", Severity::High, "sent", None)
+            .await
             .unwrap();
 
         let since = Utc::now() - chrono::Duration::minutes(5);
         assert!(
             store
                 .last_high_sink_send_for_analyst_news_url(actor, "AMD", url, since)
+                .await
                 .unwrap()
                 .is_some(),
             "same ticker + same newsURL fanout should be found"
@@ -3186,6 +3414,7 @@ mod tests {
                     "https://thefly.com/ajax/news_get.php?id=4346812",
                     since,
                 )
+                .await
                 .unwrap()
                 .is_none(),
             "different source article should not be cooled"
@@ -3193,61 +3422,76 @@ mod tests {
         assert!(
             store
                 .last_high_sink_send_for_analyst_news_url(actor, "NVDA", url, since)
+                .await
                 .unwrap()
                 .is_none(),
             "same URL for another ticker should not match"
         );
     }
 
-    #[test]
-    fn event_breakdown_counts_by_source() {
+    #[tokio::test]
+    async fn event_breakdown_counts_by_source() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let mut a = sample_event("a");
         a.source = "fmp.stock_news".into();
         let mut b = sample_event("b");
         b.source = "fmp.stock_news".into();
         let mut c = sample_event("c");
         c.source = "fmp.earning_calendar".into();
-        store.insert_event(&a).unwrap();
-        store.insert_event(&b).unwrap();
-        store.insert_event(&c).unwrap();
+        store.insert_event(&a).await.unwrap();
+        store.insert_event(&b).await.unwrap();
+        store.insert_event(&c).await.unwrap();
         let since = Utc::now() - chrono::Duration::minutes(1);
         let until = Utc::now() + chrono::Duration::minutes(1);
-        let breakdown = event_breakdown_by_source(&store, since, until).unwrap();
+        let breakdown = event_breakdown_by_source(&store, since, until)
+            .await
+            .unwrap();
         // news=2 排在 earnings=1 前面
         assert_eq!(breakdown[0], ("fmp.stock_news".into(), 2));
         assert_eq!(breakdown[1], ("fmp.earning_calendar".into(), 1));
     }
 
-    #[test]
-    fn delivery_breakdown_groups_per_actor_and_status() {
+    #[tokio::test]
+    async fn delivery_breakdown_groups_per_actor_and_status() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         store
             .log_delivery("e1", "u1", "tg", Severity::High, "sent", None)
+            .await
             .unwrap();
         store
             .log_delivery("e2", "u1", "tg", Severity::Medium, "queued", None)
+            .await
             .unwrap();
         store
             .log_delivery("e3", "u1", "tg", Severity::High, "sent", None)
+            .await
             .unwrap();
         store
             .log_delivery("e4", "u2", "tg", Severity::High, "failed", None)
+            .await
             .unwrap();
         let since = Utc::now() - chrono::Duration::minutes(1);
         let until = Utc::now() + chrono::Duration::minutes(1);
-        let breakdown = delivery_breakdown_per_actor(&store, since, until).unwrap();
+        let breakdown = delivery_breakdown_per_actor(&store, since, until)
+            .await
+            .unwrap();
         assert!(breakdown.contains(&("u1".into(), "sent".into(), 2)));
         assert!(breakdown.contains(&("u1".into(), "queued".into(), 1)));
         assert!(breakdown.contains(&("u2".into(), "failed".into(), 1)));
     }
 
-    #[test]
-    fn today_signal_kinds_returns_same_day_symbol_hits() {
+    #[tokio::test]
+    async fn today_signal_kinds_returns_same_day_symbol_hits() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
 
         // 今日 AAPL 价格异动
         let mut price = sample_event("price:AAPL:today");
@@ -3256,13 +3500,13 @@ mod tests {
             window: "day".into(),
         };
         price.occurred_at = Utc::now();
-        store.insert_event(&price).unwrap();
+        store.insert_event(&price).await.unwrap();
 
         // 今日 AAPL 8-K
         let mut filing = sample_event("sec:AAPL:today");
         filing.kind = EventKind::SecFiling { form: "8-K".into() };
         filing.occurred_at = Utc::now();
-        store.insert_event(&filing).unwrap();
+        store.insert_event(&filing).await.unwrap();
 
         // 其他 ticker（不应命中）
         let mut other = sample_event("price:NVDA:today");
@@ -3272,80 +3516,89 @@ mod tests {
         };
         other.symbols = vec!["NVDA".into()];
         other.occurred_at = Utc::now();
-        store.insert_event(&other).unwrap();
+        store.insert_event(&other).await.unwrap();
 
         // 昨日 AAPL（不应命中）
         let mut stale = sample_event("earnings:AAPL:yesterday");
         stale.kind = EventKind::EarningsReleased;
         stale.occurred_at = Utc::now() - chrono::Duration::days(2);
-        store.insert_event(&stale).unwrap();
+        store.insert_event(&stale).await.unwrap();
 
         let since = Utc::now() - chrono::Duration::hours(12);
-        let mut tags = store.today_signal_kinds("AAPL", since).unwrap();
+        let mut tags = store.today_signal_kinds("AAPL", since).await.unwrap();
         tags.sort();
         assert_eq!(tags, vec!["price_alert", "sec_filing"]);
     }
 
-    #[test]
-    fn list_upcoming_earnings_returns_in_window_only() {
+    #[tokio::test]
+    async fn list_upcoming_earnings_returns_in_window_only() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
 
         // 未来 5 天后的 AAPL earnings —— 应命中(within_days=14)
         let mut future = sample_event("earnings:AAPL:2026-04-26");
         future.kind = EventKind::EarningsUpcoming;
         future.symbols = vec!["AAPL".into()];
         future.occurred_at = Utc::now() + chrono::Duration::days(5);
-        store.insert_event(&future).unwrap();
+        store.insert_event(&future).await.unwrap();
 
         // 未来 30 天后的 NVDA —— 超出 14 天窗口,应不命中
         let mut far_future = sample_event("earnings:NVDA:2026-05-21");
         far_future.kind = EventKind::EarningsUpcoming;
         far_future.symbols = vec!["NVDA".into()];
         far_future.occurred_at = Utc::now() + chrono::Duration::days(30);
-        store.insert_event(&far_future).unwrap();
+        store.insert_event(&far_future).await.unwrap();
 
         // 昨天的 TSLA earnings —— 过去,不命中
         let mut past = sample_event("earnings:TSLA:2026-04-20");
         past.kind = EventKind::EarningsUpcoming;
         past.symbols = vec!["TSLA".into()];
         past.occurred_at = Utc::now() - chrono::Duration::days(1);
-        store.insert_event(&past).unwrap();
+        store.insert_event(&past).await.unwrap();
 
         // 未来 2 天的 AAPL 8-K —— 不是 earnings_upcoming,不命中
         let mut filing = sample_event("sec:AAPL:future");
         filing.kind = EventKind::SecFiling { form: "8-K".into() };
         filing.symbols = vec!["AAPL".into()];
         filing.occurred_at = Utc::now() + chrono::Duration::days(2);
-        store.insert_event(&filing).unwrap();
+        store.insert_event(&filing).await.unwrap();
 
-        let upcoming = store.list_upcoming_earnings(Utc::now(), 14).unwrap();
+        let upcoming = store.list_upcoming_earnings(Utc::now(), 14).await.unwrap();
         assert_eq!(upcoming.len(), 1);
         assert_eq!(upcoming[0].id, "earnings:AAPL:2026-04-26");
         assert!(matches!(upcoming[0].kind, EventKind::EarningsUpcoming));
     }
 
-    #[test]
-    fn purge_events_removes_older_rows() {
+    #[tokio::test]
+    async fn purge_events_removes_older_rows() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
-        assert!(store.insert_event(&sample_event("old")).unwrap());
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
+        assert!(store.insert_event(&sample_event("old")).await.unwrap());
         // 人工把这条改到 40 天前
         let cutoff = Utc::now().timestamp() - 40 * 86_400;
-        store.test_set_event_created_at("old", cutoff).unwrap();
-        assert!(store.insert_event(&sample_event("new")).unwrap());
-        let removed = store.purge_events_older_than(30).unwrap();
+        store
+            .test_set_event_created_at("old", cutoff)
+            .await
+            .unwrap();
+        assert!(store.insert_event(&sample_event("new")).await.unwrap());
+        let removed = store.purge_events_older_than(30).await.unwrap();
         assert_eq!(removed, 1);
-        assert_eq!(store.count_events().unwrap(), 1);
+        assert_eq!(store.count_events().await.unwrap(), 1);
     }
 
     /// `delivered_event_ids_since` 是 digest synth 跨 flush 去重的底座 ——
     /// 必须只收 status=sent/dryrun、必须按 actor 隔离、必须**不需要 events 表
     /// 行**(synth 事件不会写 events 表,只在 delivery_log 留痕)。
-    #[test]
-    fn delivered_event_ids_since_filters_by_actor_status_and_time() {
+    #[tokio::test]
+    async fn delivered_event_ids_since_filters_by_actor_status_and_time() {
         let dir = tempdir().unwrap();
-        let store = EventStore::open(dir.path().join("event-store")).unwrap();
+        let store = EventStore::open(dir.path().join("event-store"))
+            .await
+            .unwrap();
         let actor = "tg::::u1";
         let other = "tg::::u2";
         let earlier = chrono::Utc::now() - chrono::Duration::hours(1);
@@ -3360,6 +3613,7 @@ mod tests {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
         // queued 不算已投递
         store
@@ -3371,6 +3625,7 @@ mod tests {
                 "queued",
                 None,
             )
+            .await
             .unwrap();
         // 其他 actor 不应混入本 actor 的结果
         store
@@ -3382,9 +3637,13 @@ mod tests {
                 "sent",
                 None,
             )
+            .await
             .unwrap();
 
-        let ids = store.delivered_event_ids_since(actor, earlier).unwrap();
+        let ids = store
+            .delivered_event_ids_since(actor, earlier)
+            .await
+            .unwrap();
         assert!(ids.contains("synth:earnings:GOOGL:2026-04-29:countdown:2026-04-26"));
         assert!(!ids.contains("synth:earnings:BE:2026-04-28:countdown:2026-04-26"));
         assert!(!ids.contains("ev-other"));

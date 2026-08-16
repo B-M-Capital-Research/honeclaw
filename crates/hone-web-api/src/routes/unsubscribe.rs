@@ -51,6 +51,7 @@ async fn resolve(state: &AppState, token: &str) -> Result<(String, String, bool)
     let (_, job) = state
         .core
         .cron_job_storage()
+        .await
         .get_job(&job_id, None)
         .await
         .ok_or(())?;
@@ -85,6 +86,7 @@ pub(crate) async fn handle_unsubscribe_submit(
             match state
                 .core
                 .cron_job_storage()
+                .await
                 .update_job(&job_id, None, updates, true)
                 .await
             {

@@ -32,12 +32,12 @@ impl<'a> SynthSource<'a> {
     }
 
     /// 取 `actor` 命中的 T-3/T-2/T-1 倒计时事件;按 `tz_offset_hours` 解释 `now` 的"今天"。
-    pub fn synthesize_for_actor(
+    pub async fn synthesize_for_actor(
         &self,
         actor: &ActorIdentity,
         now: DateTime<Utc>,
     ) -> anyhow::Result<Vec<UnifiedCandidate>> {
-        let teasers = self.store.list_upcoming_earnings(now, 4)?;
+        let teasers = self.store.list_upcoming_earnings(now, 4).await?;
         let local_today =
             hone_core::RuntimeTimezone::fixed_offset_seconds(self.tz_offset_hours * 3600)
                 .at_utc(now)
@@ -88,10 +88,10 @@ mod tests {
         }
     }
 
-    fn open_store() -> EventStore {
+    async fn open_store() -> EventStore {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().join("event-store");
-        let store = EventStore::open(&path).unwrap();
+        let store = EventStore::open(&path).await.unwrap();
         std::mem::forget(temp_dir);
         store
     }
@@ -105,9 +105,9 @@ mod tests {
         SharedRegistry::from_registry(registry)
     }
 
-    #[test]
-    fn synthesizes_t_minus_n_for_holdings_only() {
-        let store = open_store();
+    #[tokio::test]
+    async fn synthesizes_t_minus_n_for_holdings_only() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         // GOOGL 财报在 4-29(T-2),AAPL 财报在 5-04(超出 T-3 窗口)
         store
@@ -115,49 +115,61 @@ mod tests {
                 "GOOGL",
                 Utc.with_ymd_and_hms(2026, 4, 29, 20, 0, 0).unwrap(),
             ))
+            .await
             .unwrap();
         store
             .insert_event(&earnings_teaser(
                 "AAPL",
                 Utc.with_ymd_and_hms(2026, 5, 4, 20, 0, 0).unwrap(),
             ))
+            .await
             .unwrap();
         let test_actor = actor();
         let registry = registry_with_holding("GOOGL", &test_actor);
         let synth_source = SynthSource::new(&store, &registry, 0); // UTC
 
-        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        let candidates = synth_source
+            .synthesize_for_actor(&test_actor, now)
+            .await
+            .unwrap();
         assert_eq!(candidates.len(), 1);
         assert!(candidates[0].event.id.starts_with("synth:earnings:GOOGL:"));
         assert_eq!(candidates[0].origin, ItemOrigin::Synth);
     }
 
-    #[test]
-    fn skips_when_actor_has_no_matching_holding() {
-        let store = open_store();
+    #[tokio::test]
+    async fn skips_when_actor_has_no_matching_holding() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         store
             .insert_event(&earnings_teaser(
                 "GOOGL",
                 Utc.with_ymd_and_hms(2026, 4, 29, 20, 0, 0).unwrap(),
             ))
+            .await
             .unwrap();
         let test_actor = actor();
         // 只持有 NVDA;GOOGL 倒计时不应推 test_actor
         let registry = registry_with_holding("NVDA", &test_actor);
         let synth_source = SynthSource::new(&store, &registry, 0);
-        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        let candidates = synth_source
+            .synthesize_for_actor(&test_actor, now)
+            .await
+            .unwrap();
         assert!(candidates.is_empty());
     }
 
-    #[test]
-    fn empty_store_returns_empty() {
-        let store = open_store();
+    #[tokio::test]
+    async fn empty_store_returns_empty() {
+        let store = open_store().await;
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         let test_actor = actor();
         let registry = registry_with_holding("GOOGL", &test_actor);
         let synth_source = SynthSource::new(&store, &registry, 0);
-        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        let candidates = synth_source
+            .synthesize_for_actor(&test_actor, now)
+            .await
+            .unwrap();
         assert!(candidates.is_empty());
     }
 }

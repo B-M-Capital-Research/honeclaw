@@ -76,12 +76,13 @@ impl NotificationPrefsTool {
             .map_err(|e| HoneError::Tool(format!("打开 prefs 目录失败: {e}")))
     }
 
-    fn cron_storage(&self) -> HoneResult<hone_memory::CronJobStorage> {
+    async fn cron_storage(&self) -> HoneResult<hone_memory::CronJobStorage> {
         if let Some(postgres) = self.postgres.clone() {
             return hone_memory::CronJobStorage::new_cloud(postgres)
+                .await
                 .map_err(|e| HoneError::Tool(format!("打开云端 cron 存储失败: {e}")));
         }
-        Ok(hone_memory::CronJobStorage::new(&self.cron_jobs_dir))
+        Ok(hone_memory::CronJobStorage::new(&self.cron_jobs_dir).await)
     }
 }
 
@@ -581,6 +582,7 @@ impl Tool for NotificationPrefsTool {
                 // Feishu/iMessage 用项目符号列表(后两者不支持 markdown/HTML)。
                 let overview = if let Some(postgres) = self.postgres.clone() {
                     let cron_storage = hone_memory::CronJobStorage::new_cloud(postgres)
+                        .await
                         .map_err(|e| HoneError::Tool(format!("打开云端 cron 存储失败: {e}")))?;
                     crate::schedule_view::build_overview_with_cron_jobs(
                         &self.prefs_dir,
@@ -616,7 +618,7 @@ impl Tool for NotificationPrefsTool {
                 prefs.enabled = false;
             }
             "disable_all" => {
-                let removed_jobs = self.cron_storage()?.remove_all_jobs(&actor).await?;
+                let removed_jobs = self.cron_storage().await?.remove_all_jobs(&actor).await?;
                 prefs.enabled = false;
                 prefs.digest_slots = Some(Vec::new());
                 storage
@@ -907,7 +909,7 @@ mod tests {
             &cron_dir,
             digest_defaults_fixture(),
         );
-        let cron_storage = hone_memory::CronJobStorage::new(&cron_dir);
+        let cron_storage = hone_memory::CronJobStorage::new(&cron_dir).await;
         for (name, repeat) in [("daily report", "daily"), ("price heartbeat", "heartbeat")] {
             let response = cron_storage
                 .add_job(

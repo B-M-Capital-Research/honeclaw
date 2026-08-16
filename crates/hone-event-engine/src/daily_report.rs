@@ -66,8 +66,8 @@ impl DailyReport {
         }
 
         let (since, until) = local_day_bounds(now, &self.timezone);
-        let events_by_source = event_breakdown_by_source(&self.store, since, until)?;
-        let deliveries = delivery_breakdown_per_actor(&self.store, since, until)?;
+        let events_by_source = event_breakdown_by_source(&self.store, since, until).await?;
+        let deliveries = delivery_breakdown_per_actor(&self.store, since, until).await?;
 
         let body = render_body(&date, &events_by_source, &deliveries);
         write_report(&self.report_dir, &date, &body)?;
@@ -198,7 +198,11 @@ mod tests {
         use tempfile::tempdir;
 
         let temp_dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(temp_dir.path().join("event-store")).unwrap());
+        let store = Arc::new(
+            EventStore::open(temp_dir.path().join("event-store"))
+                .await
+                .unwrap(),
+        );
         let report_dir = temp_dir.path().join("reports");
 
         let report = DailyReport::new(store, &report_dir)

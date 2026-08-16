@@ -1,8 +1,8 @@
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
     CloudWebUserExternalStateRecord,
 };
-use hone_core::cloud_sync::ensure_cloud_schema_once;
 use hone_core::{HoneError, HoneResult, local_now, local_now_rfc3339, rfc3339_at_or_before};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -162,15 +162,15 @@ struct CloudWebAuthSessionRecord {
 impl WebAuthStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
-        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
-        let mut storage = Self::new_cloud(postgres)?;
+    pub async fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path).await?;
+        let mut storage = Self::new_cloud(postgres).await?;
         storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             postgres,
             _test_postgres_lease: None,
@@ -1355,10 +1355,10 @@ mod tests {
     use hone_core::cloud_runtime::CloudPgRuntime;
     use hone_core::{HoneError, HoneResult, local_now};
 
-    fn test_storage() -> WebAuthStorage {
+    async fn test_storage() -> WebAuthStorage {
         let namespace =
             std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
-        WebAuthStorage::new(namespace).expect("storage")
+        WebAuthStorage::new(namespace).await.expect("storage")
     }
 
     /// 和 `inspect_cloud_external_state` 同理:清理必须走测试自己那条隔离连接,
@@ -1456,7 +1456,7 @@ WHERE s.user_id = $1
 
     #[tokio::test]
     async fn cloud_invite_records_never_serialize_or_restore_plaintext_api_keys() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1483,7 +1483,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn create_and_list_invites_round_trip() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1509,7 +1509,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn active_invite_user_by_phone_is_sms_login_whitelist() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1538,7 +1538,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn web_admin_role_is_storage_authoritative() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let user = storage
             .create_invite_user("13871396421")
             .await
@@ -1568,7 +1568,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn web_admin_summary_list_uses_minimal_fields_and_excludes_non_phone_accounts() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let admin = storage
             .create_invite_user("13871396421")
             .await
@@ -1627,7 +1627,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn public_admin_create_limit_counts_only_successful_creates() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let admin = storage
             .create_invite_user("13871396421")
             .await
@@ -1700,7 +1700,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn non_admin_cannot_create_or_disable_whitelist_users() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let ordinary = storage
             .create_invite_user("13800138000")
             .await
@@ -1736,7 +1736,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn admin_disable_is_audited_clears_sessions_and_protects_admins() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let admin = storage
             .create_invite_user("13871396421")
             .await
@@ -1808,7 +1808,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn record_tos_acceptance_updates_public_login_terms() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1832,7 +1832,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn api_key_lookup_updates_last_used_and_reset_invalidates_old_key() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1872,7 +1872,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn existing_user_can_generate_api_key_once_without_plaintext_replay() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1909,7 +1909,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn invite_login_creates_session_and_authenticates() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1955,7 +1955,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -1998,7 +1998,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn detailed_auth_reports_expired_and_missing_sessions() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2051,7 +2051,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn repeated_invite_logins_keep_existing_sessions() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2093,7 +2093,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn deleting_session_invalidates_authentication() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2120,7 +2120,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn revoking_invite_invalidates_existing_session_and_blocks_future_login() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2158,7 +2158,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn reactivating_invite_allows_login_again() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2188,7 +2188,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn resetting_invite_rotates_code_and_invalidates_existing_session() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2233,7 +2233,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn invite_login_requires_matching_phone_number() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("+86 138-0013-8000")
             .await
@@ -2258,7 +2258,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn invalid_phone_number_is_rejected_when_creating_invite() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let error = storage
             .create_invite_user("abc")
             .await
@@ -2271,7 +2271,7 @@ WHERE s.user_id = $1
     async fn postgres_schema_keeps_invite_columns_and_defaults() {
         let root =
             std::env::temp_dir().join(format!("hone_web_auth_migrate_{}", uuid::Uuid::new_v4()));
-        let storage = WebAuthStorage::new(&root).expect("postgres storage");
+        let storage = WebAuthStorage::new(&root).await.expect("postgres storage");
         let postgres = storage.postgres.clone();
         let columns = await_web_auth(async move {
             let client = postgres.connect_cached_client().await?;
@@ -2306,7 +2306,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn set_password_roundtrip_and_find_by_phone() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2369,7 +2369,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn create_session_for_user_respects_ttl_parameter() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2421,7 +2421,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn create_session_for_user_rejects_revoked() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .create_invite_user("13800138000")
             .await
@@ -2442,7 +2442,7 @@ WHERE s.user_id = $1
     #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
     async fn international_email_identity_is_provider_neutral_and_verifiable() {
-        let storage = test_storage();
+        let storage = test_storage().await;
         let created = storage
             .ensure_international_email_user("Buyer@Example.com")
             .await
@@ -2509,6 +2509,7 @@ WHERE s.user_id = $1
         // 表现是「单独跑过、和别人一起跑挂」——2026-08-16 在 CI 上就是这么红的
         // (本地空过是因为开发库的 `public` 里恰好有真实的表)。
         let storage = WebAuthStorage::new("web_auth_external_state_round_trip")
+            .await
             .expect("cloud web auth storage");
         let email = format!("pg-web-auth-{}@example.com", uuid::Uuid::new_v4().simple());
 

@@ -60,7 +60,7 @@ pub(crate) async fn handle_list_subscriptions(
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let mut jobs = state.core.cron_job_storage().list_jobs(&actor).await;
+    let mut jobs = state.core.cron_job_storage().await.list_jobs(&actor).await;
     // Active ones first: someone opening this page is usually looking for
     // something still firing, not something they already stopped.
     jobs.sort_by(|left, right| {
@@ -98,7 +98,7 @@ pub(crate) async fn handle_update_subscription(
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     // Scoping the lookup to the caller is what stops one user editing
     // another's schedule by guessing a job id.
     let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)).await else {
@@ -164,7 +164,7 @@ pub(crate) async fn handle_unsubscribe_subscription(
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    let storage = state.core.cron_job_storage();
+    let storage = state.core.cron_job_storage().await;
     let Some((_, existing)) = storage.get_job(&job_id, Some(&actor)).await else {
         return crate::routes::json_error(StatusCode::NOT_FOUND, "未找到该订阅".to_string());
     };

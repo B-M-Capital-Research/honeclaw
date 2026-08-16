@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::DateTime;
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::ensure_cloud_schema_once;
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::{HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -112,15 +112,15 @@ pub struct BillingStorage {
 impl BillingStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
-        let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
-        let mut storage = Self::new_cloud(postgres)?;
+    pub async fn new(path: impl AsRef<std::path::Path>) -> HoneResult<Self> {
+        let (postgres, lease) = crate::test_postgres::isolated_postgres(path).await?;
+        let mut storage = Self::new_cloud(postgres).await?;
         storage._test_postgres_lease = Some(lease);
         Ok(storage)
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             postgres,
             _test_postgres_lease: None,
@@ -554,7 +554,7 @@ mod tests {
 
     async fn test_storage() -> BillingStorage {
         let root = std::env::temp_dir().join(format!("hone-billing-{}", uuid::Uuid::new_v4()));
-        let storage = BillingStorage::new(&root).expect("billing");
+        let storage = BillingStorage::new(&root).await.expect("billing");
         let postgres = storage.postgres.clone();
         let client = postgres
             .connect_cached_client()

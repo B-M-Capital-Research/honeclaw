@@ -9,7 +9,6 @@ pub mod audit;
 pub mod build_info;
 pub mod channel_process;
 pub mod cloud_runtime;
-pub mod cloud_sync;
 pub mod config;
 pub mod context_window;
 pub mod email;

@@ -112,7 +112,7 @@ impl WeeklyReport {
                 continue;
             }
             let week_rows = self.fetch_week_rows(&positions).await;
-            let body = self.render_for_actor(now, &positions, &week_rows);
+            let body = self.render_for_actor(now, &positions, &week_rows).await;
             if body.trim().is_empty() {
                 continue;
             }
@@ -170,7 +170,7 @@ impl WeeklyReport {
         out
     }
 
-    fn render_for_actor(
+    async fn render_for_actor(
         &self,
         now: DateTime<Utc>,
         positions: &HashMap<String, PositionSnapshot>,
@@ -180,23 +180,23 @@ impl WeeklyReport {
         if let Some(pnl) = render_week_pnl(positions, week_rows) {
             sections.push(pnl);
         }
-        if let Some(revisions) = self.render_analyst_revisions(now, positions) {
+        if let Some(revisions) = self.render_analyst_revisions(now, positions).await {
             sections.push(revisions);
         }
-        if let Some(quality) = self.render_push_quality(now) {
+        if let Some(quality) = self.render_push_quality(now).await {
             sections.push(quality);
         }
         if let Some(cron_health) = self.render_cron_health(now) {
             sections.push(cron_health);
         }
-        if let Some(earnings) = self.render_upcoming_earnings(now, positions) {
+        if let Some(earnings) = self.render_upcoming_earnings(now, positions).await {
             sections.push(earnings);
         }
         sections.join("\n\n")
     }
 
     /// 近 7 日各持仓标的的评级净修正(全零标的省略)。
-    fn render_analyst_revisions(
+    async fn render_analyst_revisions(
         &self,
         now: DateTime<Utc>,
         positions: &HashMap<String, PositionSnapshot>,
@@ -209,6 +209,7 @@ impl WeeklyReport {
             let payloads = self
                 .store
                 .list_analyst_grade_payloads_in_window(symbol, since, now)
+                .await
                 .unwrap_or_default();
             let counts = consensus_counts_from_payloads(&payloads);
             if counts.total() == 0 {
@@ -237,10 +238,11 @@ impl WeeklyReport {
 
     /// 近 7 日推送质量:delivery 状态分布 + 两道防线的拦截量
     /// (`replay_push_quality_audit` 的同口径线上版)。
-    fn render_push_quality(&self, now: DateTime<Utc>) -> Option<String> {
+    async fn render_push_quality(&self, now: DateTime<Utc>) -> Option<String> {
         let since = now - Duration::days(7);
-        let deliveries =
-            crate::store::delivery_breakdown_per_actor(&self.store, since, now).ok()?;
+        let deliveries = crate::store::delivery_breakdown_per_actor(&self.store, since, now)
+            .await
+            .ok()?;
         let mut by_status: HashMap<String, i64> = HashMap::new();
         for (_, status, count) in &deliveries {
             *by_status.entry(status.clone()).or_default() += count;
@@ -248,10 +250,12 @@ impl WeeklyReport {
         let roundups_intercepted = self
             .store
             .count_event_ids_in_window("grade_roundup:", since, now)
+            .await
             .unwrap_or(0);
         let band_events = self
             .store
             .count_event_ids_in_window("price_band:", since, now)
+            .await
             .unwrap_or(0);
         let sent = by_status.get("sent").copied().unwrap_or(0);
         let queued = by_status.get("queued").copied().unwrap_or(0);
@@ -321,12 +325,12 @@ impl WeeklyReport {
     }
 
     /// 未来 7 天持仓标的的财报日历。
-    fn render_upcoming_earnings(
+    async fn render_upcoming_earnings(
         &self,
         now: DateTime<Utc>,
         positions: &HashMap<String, PositionSnapshot>,
     ) -> Option<String> {
-        let upcoming = self.store.list_upcoming_earnings(now, 7).ok()?;
+        let upcoming = self.store.list_upcoming_earnings(now, 7).await.ok()?;
         let mut lines: Vec<String> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for event in upcoming {
@@ -447,12 +451,12 @@ mod tests {
 
     /// 定时任务健康:从 `task_runs.jsonl` 聚合 cron.* 的成败,只统计 7 日窗口内。
     /// 没接 task_runs_dir 或窗口内无记录时整段省略,绝不编数字。
-    #[test]
-    fn cron_health_summarizes_task_runs_and_omits_when_unavailable() {
+    #[tokio::test]
+    async fn cron_health_summarizes_task_runs_and_omits_when_unavailable() {
         use crate::router::LogSink;
         use crate::subscription::SubscriptionRegistry;
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
         let make = |runs_dir: Option<PathBuf>| {
             let mut report = WeeklyReport::new(
                 store.clone(),
@@ -508,7 +512,7 @@ mod tests {
         use crate::router::LogSink;
         use crate::subscription::SubscriptionRegistry;
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).await.unwrap());
         let report = WeeklyReport::new(
             store,
             Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new())),

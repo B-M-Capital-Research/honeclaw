@@ -1,5 +1,5 @@
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::cloud_sync::ensure_cloud_schema_once;
+use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::{ActorIdentity, HoneError, HoneResult, local_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -94,8 +94,8 @@ impl ConversationQuotaStorage {
         })
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        ensure_cloud_schema_once(postgres.clone(), None)?;
+    pub async fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        ensure_cloud_schema_once(&postgres, None).await?;
         Ok(Self {
             backend: ConversationQuotaBackend::Cloud { postgres },
         })

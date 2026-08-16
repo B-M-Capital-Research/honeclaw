@@ -66,7 +66,7 @@ impl SkillTool {
             return Ok(());
         }
         let sessions_dir = resolve_sessions_dir()?;
-        let storage = hone_memory::SessionStorage::new(sessions_dir);
+        let storage = hone_memory::SessionStorage::new(sessions_dir).await;
         let session = match storage.load_session(&session_id).await? {
             Some(session) => session,
             None => return Ok(()),
@@ -1013,7 +1013,7 @@ mod tests {
         )
         .expect("skill");
 
-        let storage = SessionStorage::new(&sessions_dir);
+        let storage = SessionStorage::new(&sessions_dir).await;
         let session_id = storage
             .create_session(Some("session-persist"), None, None)
             .await

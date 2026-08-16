@@ -41,14 +41,14 @@ pub(crate) async fn process_events(
     let (mut new_count, mut duplicate_count, mut sent_count, mut pending_digest_count) =
         (0u32, 0u32, 0u32, 0u32);
     for mut event in events {
-        if let Err(error) = store.link_earnings_research_object(&mut event) {
+        if let Err(error) = store.link_earnings_research_object(&mut event).await {
             warn!(
                 poller = name,
                 event_id = %event.id,
                 "earnings research object linking failed: {error:#}"
             );
         }
-        let is_new = match store.insert_event(&event) {
+        let is_new = match store.insert_event(&event).await {
             Ok(is_new) => is_new,
             Err(e) => {
                 warn!(poller = name, "insert_event failed: {e:#}");
@@ -270,7 +270,11 @@ mod tests {
     #[tokio::test]
     async fn earnings_chain_is_personalized_idempotent_and_single_delivery_per_document() {
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
+        let store = Arc::new(
+            EventStore::open(dir.path().join("event-store"))
+                .await
+                .unwrap(),
+        );
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
         let mut registry = SubscriptionRegistry::new();
@@ -360,15 +364,20 @@ mod tests {
                 limit: 20,
                 ..DeliveryLogFilter::default()
             })
+            .await
             .unwrap();
         assert_eq!(superseded.len(), 4);
-        assert_eq!(store.count_events().unwrap(), 3);
+        assert_eq!(store.count_events().await.unwrap(), 3);
     }
 
     #[tokio::test]
     async fn failed_structured_earnings_delivery_keeps_sec_digest_fallback() {
         let dir = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(dir.path().join("event-store")).unwrap());
+        let store = Arc::new(
+            EventStore::open(dir.path().join("event-store"))
+                .await
+                .unwrap(),
+        );
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         let mut registry = SubscriptionRegistry::new();
         let target = actor("failed");
@@ -408,6 +417,7 @@ mod tests {
                 limit: 20,
                 ..DeliveryLogFilter::default()
             })
+            .await
             .unwrap();
         assert_eq!(failures.len(), 1);
         assert_eq!(failures[0].event_id, "earnings_surprise:SNDK:2026-08-05");

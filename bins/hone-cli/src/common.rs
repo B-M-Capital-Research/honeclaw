@@ -144,11 +144,11 @@ pub(crate) fn load_cli_config(
     Ok((config, paths))
 }
 
-pub(crate) fn load_cli_core(
+pub(crate) async fn load_cli_core(
     explicit_config: Option<&Path>,
 ) -> HoneResult<(Arc<HoneBotCore>, ResolvedRuntimePaths)> {
     let (config, paths) = load_cli_config(explicit_config, false)?;
-    Ok((Arc::new(HoneBotCore::new(config)), paths))
+    Ok((Arc::new(HoneBotCore::new(config).await), paths))
 }
 
 #[cfg(test)]
