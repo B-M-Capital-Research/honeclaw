@@ -9068,6 +9068,46 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
 }
 
 #[tokio::test]
+async fn macro_production_prompts_do_not_enter_security_resolution_or_error() {
+    let root = make_temp_dir("hone_channels_macro_production_prompts");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core(&root, llm).await;
+    let actor = ActorIdentity::new("web", "macro-production", None::<String>).expect("actor");
+
+    for input in [
+        "1. 当日/近期重要宏观数据与预期差：就业、非农、初请、CPI、PCE、ISM、零售销售等；2. 美联储和利率相关…",
+        "这是用户持有股票和ETF的每日新闻汇总与月度持仓复盘任务。北京时间每天08:00执行。请先读取用户当前持仓与关注列表，覆盖美股持仓 TEM、TSLA、FNMA、DBRG、ABSI、SGOV、SBET、RXRX、IBKR、AIRO，以及A股ETF 512690、563020、159797、515180；…",
+    ] {
+        let mut runtime_input = input.to_string();
+        let result = prepare_verified_investment_turn(
+            &core,
+            &actor,
+            "macro-production",
+            false,
+            input,
+            AgentTurnOrigin::Scheduled,
+            "2026-08-17 12:00",
+            &mut runtime_input,
+            &mut 0,
+            None,
+        )
+        .await;
+        assert!(
+            matches!(result, Ok(None)),
+            "production prompt must bypass deterministic security resolution: {result:?}"
+        );
+        assert!(
+            runtime_input.contains("主 Agent 工具循环")
+                || runtime_input.contains("用户持仓 / 关注真相源"),
+            "the prompt must delegate to a non-Securities path: {runtime_input}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_whole_answer() {
     let input = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
     for channel in ["web", "discord", "telegram", "feishu"] {

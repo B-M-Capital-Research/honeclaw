@@ -15,6 +15,7 @@ pub mod email;
 pub mod error;
 pub mod heartbeat;
 pub mod logging;
+pub mod macro_indicator;
 pub mod process_lock;
 pub mod provider_symbol;
 pub mod quiet;
