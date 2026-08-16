@@ -11,6 +11,15 @@ const styles = readFileSync(
 );
 const shellStyles = readFileSync(new URL("./research/research.css", import.meta.url), "utf8");
 
+const feed = readFileSync(
+  new URL("./research/research-feed.tsx", import.meta.url),
+  "utf8",
+);
+const feedStyles = readFileSync(
+  new URL("./research/research-feed.css", import.meta.url),
+  "utf8",
+);
+
 describe("influencer digest dashboard", () => {
   it("keeps source and opinion boundaries", () => {
     expect(component).toContain("大V速报");
@@ -99,12 +108,16 @@ describe("influencer digest dashboard", () => {
     expect(component).toContain("<Show when={props.onAsk}>");
   });
 
-  it("shows the author's own words, not only the model digest", () => {
-    // The digest is labelled as ours; the post itself is one click away and
-    // already open whenever no summary was produced.
-    expect(component).toContain("HONE 摘要");
-    expect(component).toContain("<summary>作者原文</summary>");
-    expect(component).toContain('open={item.analysis_status !== "model_analyzed"}');
+  it("leads with the author's own words and folds our reading away", () => {
+    // The feed reads like a feed: the post is the body, never a disclosure,
+    // and it is not preceded by a restated title or by our digest. Everything
+    // HONE inferred sits behind one line.
+    expect(component).toContain("<ResearchFeed>");
+    expect(component).toContain("<ResearchFeedItem");
+    expect(component).toContain("{sourceText(item) || item.title}");
+    expect(component).not.toContain("<summary>作者原文</summary>");
+    expect(component).not.toContain("HONE 摘要");
+    expect(component).toContain('analysisLabel="HONE 解读"');
     expect(component).toContain("English original");
     // Full text, not the 600-char excerpt: translation first, English when a
     // post was never translated, excerpt only for pre-full-text snapshots.
@@ -112,19 +125,22 @@ describe("influencer digest dashboard", () => {
     expect(component).toContain("item.source_text_en");
     expect(component).toContain("item.source_excerpt");
     expect(component).toContain("englishOriginal");
-    expect(styles).toContain(".influencer-source {");
-    expect(styles).toContain("white-space: pre-wrap");
+    expect(feedStyles).toContain("white-space: pre-wrap");
   });
 
   it("renders post images and the replied-to context", () => {
     expect(component).toContain("media_urls");
-    expect(component).toContain('loading="lazy"');
-    expect(component).toContain('referrerpolicy="no-referrer"');
-    expect(component).toContain("influencer-quoted");
     expect(component).toContain('item.post_kind === "quote" ? "引用" : "回复"');
-    expect(styles).toContain(".influencer-media {");
-    expect(styles).toContain("max-width: 100%");
-    expect(styles).toContain("border-radius: var(--hone-radius-sm)");
+    // Lazy loading is deliberately absent: the panel pins the page for its
+    // iOS-safe scroll lock, and Chrome then never resolves the intersection
+    // for images inside the portal, so they would sit visible and unloaded.
+    // Asserted on the element, since the rationale comment names the attribute.
+    const imgTag = feed.slice(feed.indexOf("<img"), feed.indexOf("/>", feed.indexOf("<img")));
+    expect(imgTag).not.toContain("loading");
+    expect(feed).toContain('referrerpolicy="no-referrer"');
+    expect(feedStyles).toContain(".research-feed-item__media {");
+    expect(feedStyles).toContain("aspect-ratio: 16 / 10");
+    expect(feedStyles).toContain("border-radius: var(--hone-radius-sm)");
   });
 
   it("uses design tokens in readable multi-line CSS for mobile and dark", () => {

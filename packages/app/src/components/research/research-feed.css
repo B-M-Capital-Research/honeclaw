@@ -1,0 +1,207 @@
+/* Shared feed. Tokens only — no literal colors in this layer. */
+
+.research-feed {
+  display: grid;
+  gap: 0;
+}
+
+.research-feed-item {
+  display: grid;
+  gap: 8px;
+  padding: 16px 2px 18px;
+  border-bottom: 1px solid var(--hone-line);
+}
+
+.research-feed-item:last-child {
+  border-bottom: 0;
+}
+
+/* Optional left accent for feeds whose items carry a state (verification,
+   impact). Kept as a hairline so it never competes with the text. */
+.research-feed-item[class*="is-"] {
+  padding-left: 12px;
+  border-left: 2px solid var(--hone-signal-neutral);
+}
+
+.research-feed-item.is-green { border-left-color: var(--hone-signal-green); }
+.research-feed-item.is-yellow { border-left-color: var(--hone-signal-yellow); }
+.research-feed-item.is-orange { border-left-color: var(--hone-signal-orange); }
+.research-feed-item.is-red { border-left-color: var(--hone-signal-red); }
+
+.research-feed-item__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12.5px;
+  color: var(--hone-ink-500);
+}
+
+.research-feed-item__head b {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--hone-ink-950);
+}
+
+.research-feed-item__handle {
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+}
+
+.research-feed-item__meta {
+  font-size: 12px;
+}
+
+.research-feed-item__head time {
+  margin-left: auto;
+  font-family: var(--hone-font-label);
+  font-size: 11.5px;
+  color: var(--hone-ink-400);
+}
+
+/* The post itself. Sized to be read, not skimmed past. */
+.research-feed-item__body {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--hone-ink-950);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.research-feed-item__body p {
+  margin: 0 0 8px;
+}
+
+.research-feed-item__body p:last-child {
+  margin-bottom: 0;
+}
+
+.research-feed-item__quoted {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
+}
+
+.research-feed-item__quoted cite {
+  display: block;
+  margin-bottom: 3px;
+  font-style: normal;
+  font-family: var(--hone-font-label);
+  font-size: 11.5px;
+  color: var(--hone-ink-500);
+}
+
+.research-feed-item__quoted p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--hone-ink-600);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.research-feed-item__media {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.research-feed-item__media.single {
+  grid-template-columns: minmax(0, 460px);
+}
+
+.research-feed-item__media a {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  line-height: 0;
+}
+
+.research-feed-item__media img {
+  display: block;
+  width: 100%;
+  /* Reserve the box so the feed does not jump as pictures arrive. */
+  aspect-ratio: 16 / 10;
+  height: auto;
+  max-height: 340px;
+  object-fit: cover;
+  background: var(--hone-paper-100);
+}
+
+@media (max-width: 700px) {
+  .research-feed-item__media {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* HONE's own reading of the post. One line until asked. */
+.research-feed-item__analysis {
+  font-size: 13px;
+}
+
+.research-feed-item__analysis > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 3px 0;
+  color: var(--hone-ink-500);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.research-feed-item__analysis > summary::-webkit-details-marker {
+  display: none;
+}
+
+.research-feed-item__analysis > summary::after {
+  content: "▾";
+  font-size: 10px;
+}
+
+.research-feed-item__analysis[open] > summary::after {
+  content: "▴";
+}
+
+.research-feed-item__analysis > summary:hover {
+  color: var(--hone-ink-800);
+}
+
+.research-feed-item__analysis > div {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+.research-feed-item__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12.5px;
+}
+
+.research-feed-item__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--hone-link);
+  text-decoration: none;
+}
+
+.research-feed-item__links a:hover {
+  text-decoration: underline;
+}
+
+.research-feed-item__links i {
+  font-style: normal;
+  font-size: 10px;
+}

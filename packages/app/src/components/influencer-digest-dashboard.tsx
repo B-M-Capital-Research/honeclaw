@@ -5,6 +5,7 @@ import {
   ResearchPanelHead,
   shortLocalTimestamp,
 } from "@/components/research/research-panel";
+import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
 import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { InfluencerDigestItem, InfluencerDigestSnapshot } from "@/lib/types";
@@ -227,118 +228,72 @@ export function InfluencerDigestPanel(props: Props) {
                 />
               }
             >
-              <For each={visible()}>
-                {(item) => (
-                  <article>
-                    <div>
-                      <b>{item.author_name}</b>
-                      <span>{item.public_handle}</span>
-                      <span>{postKindLabel(item.post_kind)}</span>
-                      <Show when={reach(item)}>
-                        <span>{reach(item)}</span>
-                      </Show>
-                      {/* The head's meta line already names the run timezone. */}
-                      <time>{shortLocalTimestamp(item.published_at_local)}</time>
-                    </div>
-                    <h3>{item.title}</h3>
-
-                    {/* A reply without the post it answers reads as half a
-                        conversation, so the quoted context comes first. */}
-                    <Show when={item.reply_context}>
-                      <blockquote class="influencer-quoted">
-                        <cite>
-                          {item.post_kind === "quote" ? "引用" : "回复"} {item.reply_context!.author}
-                        </cite>
-                        <p>{item.reply_context!.text}</p>
-                      </blockquote>
-                    </Show>
-
-                    <Show when={item.analysis_status === "model_analyzed" && item.summary.trim()}>
-                      <p class="influencer-summary">
-                        <b>HONE 摘要</b>
-                        {item.summary}
-                      </p>
-                    </Show>
-
-                    <Show when={sourceText(item)}>
-                      <details
-                        class="influencer-source"
-                        open={item.analysis_status !== "model_analyzed"}
-                      >
-                        <summary>作者原文</summary>
-                        <p>{sourceText(item)}</p>
-                        <Show when={englishOriginal(item)}>
-                          <details class="influencer-source-en">
-                            <summary>English original</summary>
-                            <p>{englishOriginal(item)}</p>
-                          </details>
-                        </Show>
+              <ResearchFeed>
+                <For each={visible()}>
+                  {(item) => (
+                  <ResearchFeedItem
+                    author={item.author_name}
+                    handle={item.public_handle}
+                    time={shortLocalTimestamp(item.published_at_local)}
+                    meta={[postKindLabel(item.post_kind), reach(item)].filter(Boolean) as string[]}
+                    quoted={
+                      item.reply_context
+                        ? {
+                            label: `${item.post_kind === "quote" ? "引用" : "回复"} ${item.reply_context.author}`,
+                            text: item.reply_context.text,
+                          }
+                        : undefined
+                    }
+                    media={item.media_urls}
+                    mediaAlt={`${item.author_name} 原文配图`}
+                    links={[
+                      { href: item.source_url, label: "查看作者原文" },
+                      ...(item.aggregation_url
+                        ? [{ href: item.aggregation_url, label: `${item.aggregation_source} · 翻译/聚合源` }]
+                        : []),
+                    ]}
+                    analysisLabel="HONE 解读"
+                    analysis={
+                      item.analysis_status === "model_analyzed" ? (
+                        <>
+                          <Show when={item.summary.trim()}>
+                            <p>{item.summary}</p>
+                          </Show>
+                          <Show when={item.counterpoint.trim()}>
+                            <p>
+                              <b>反方 / 未证实处：</b>
+                              {item.counterpoint}
+                            </p>
+                          </Show>
+                          <p class="influencer-analysis-terms">
+                            {[
+                              stanceLabel(item.stance),
+                              item.content_type === "fact"
+                                ? "事实陈述"
+                                : item.content_type === "opinion"
+                                  ? "作者观点"
+                                  : "事实与观点混合",
+                              ...item.tickers.map((ticker) => `$${ticker}`),
+                              ...item.topics,
+                            ].join(" · ")}
+                          </p>
+                        </>
+                      ) : undefined
+                    }
+                  >
+                    {/* The post itself, in the author's words. The title line
+                        used to repeat this text's first line above it. */}
+                    <p>{sourceText(item) || item.title}</p>
+                    <Show when={englishOriginal(item)}>
+                      <details class="influencer-source-en">
+                        <summary>English original</summary>
+                        <p>{englishOriginal(item)}</p>
                       </details>
                     </Show>
-
-                    <Show when={item.media_urls?.length}>
-                      <div
-                        class="influencer-media"
-                        classList={{ single: item.media_urls!.length === 1 }}
-                      >
-                        <For each={item.media_urls}>
-                          {(url) => (
-                            <a href={url} target="_blank" rel="noreferrer">
-                              {/* Deliberately not `loading="lazy"`. The panel
-                                  pins the page with `body { position: fixed }`
-                                  for its iOS-safe scroll lock, and Chrome then
-                                  stops resolving the viewport intersection for
-                                  images inside this portal — they sit visible
-                                  and never request. The panel mounts on open
-                                  and holds at most a day of posts, so decoding
-                                  off the main thread is enough. */}
-                              <img
-                                src={url}
-                                alt={`${item.author_name} 原文配图`}
-                                decoding="async"
-                                referrerpolicy="no-referrer"
-                              />
-                            </a>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-
-                    {/* Two chips carry the judgement — which way the author
-                        leans, and whether this is fact or opinion. Topics and
-                        tickers are index terms, so they read as one quiet line
-                        instead of a dozen chips of equal weight. */}
-                    <div class="influencer-tags">
-                      <span>{stanceLabel(item.stance)}</span>
-                      <span>
-                        {item.content_type === "fact"
-                          ? "事实陈述"
-                          : item.content_type === "opinion"
-                            ? "作者观点"
-                            : "事实与观点混合"}
-                      </span>
-                      <Show when={item.tickers.length || item.topics.length}>
-                        <small>
-                          {[
-                            ...item.tickers.map((ticker) => `$${ticker}`),
-                            ...item.topics,
-                          ].join(" · ")}
-                        </small>
-                      </Show>
-                    </div>
-                    <aside>
-                      <strong>反方 / 未证实处：</strong>
-                      {item.counterpoint}
-                    </aside>
-                    <a href={item.source_url} target="_blank" rel="noreferrer">查看作者原文 ↗</a>
-                    <Show when={item.aggregation_url}>
-                      <a href={item.aggregation_url!} target="_blank" rel="noreferrer">
-                        {item.aggregation_source} · 翻译/聚合源 ↗
-                      </a>
-                    </Show>
-                  </article>
-                )}
-              </For>
+                  </ResearchFeedItem>
+                  )}
+                </For>
+              </ResearchFeed>
             </Show>
           </Show>
         </div>
