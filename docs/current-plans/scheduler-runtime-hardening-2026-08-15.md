@@ -2,7 +2,7 @@
 
 - status: `in_progress`
 - created_at: `2026-08-15`
-- updated_at: `2026-08-15`
+- updated_at: `2026-08-16`
 - owner: `Claude`（接手自 Codex）
 - related_files:
   - `crates/hone-channels/src/scheduler.rs`
@@ -11,7 +11,11 @@
   - `crates/hone-web-api/src/routes/meta.rs`
   - `crates/hone-event-engine/src/weekly_report.rs`
   - `crates/hone-llm/src/openai_compatible.rs`
+  - `crates/hone-core/src/cloud_sync.rs`
   - `crates/hone-core/src/cloud_runtime.rs`
+  - `crates/hone-event-engine/src/global_digest/mainline_cron.rs`
+  - `crates/hone-event-engine/src/global_digest/mainline_distill.rs`
+  - `memory/src/company_profile/storage.rs`
   - `memory/src/cron_job/mod.rs`
   - `memory/src/cron_job/storage.rs`
   - `memory/src/cron_job/history.rs`
@@ -66,6 +70,43 @@
 - **P1-3 僵尸记录回收覆盖四个渠道**（此前只有飞书）
 - **P1-4 `/api/meta` 挂起与部署探针** —— `docs/bugs/meta_route_hangs_on_binary_hash_and_unbounded_pg_probe.md`
 
+### role=all CPU 修复（2026-08-16）
+
+- **A1 cloud sync worker 配置**（`b82b2017`）：删除固定 `worker_threads(2)`；
+  默认 worker 数严格等于 `std::thread::available_parallelism()`，探测失败回退到
+  `NonZeroUsize::MIN`，并允许 `HONE_CLOUD_SYNC_WORKER_THREADS` 用合法非零整数覆盖。
+  e2-standard-2 默认仍为 2；该项解决硬编码和运维覆盖，不把超配线程当作 CPU 修复。
+- **A2 mainline cloud 画像读取放大**（`270a6cb5`）：确认 cron 按 actor 串行，
+  actor 内 ticker LLM 最多 6 路并发、另有 1 次 style 调用；一轮调用量为
+  `sum_actor(profile_ticker_matches + 1)`，最坏 `O(actor * ticker)`，且没有跨 actor
+  cache。actor 私有画像会进入 prompt，所以同 ticker 不保证同答案，不能按 ticker
+  无条件跨用户复用。
+- CPU 热点不在 LLM 等待：LLM HTTP future 运行在 Web/event-engine Tokio runtime；
+  采样中打满的 `hone-cloud-sync` 线程只执行 `run_cloud_sync` 提交的 PostgreSQL
+  future。旧 `scan_profiles_for_actor` 先 `list_profiles_raw()`，随后对每个 profile
+  调 `get_profile_raw()`；cloud 两个方法每次都重新读取该 actor 的全部文件，并由
+  `list_company_profile_files()` 新建连接。若 actor 有 `P_a` 个 profile、`F_a` 个
+  profile/event 文件，单轮读取量为 `sum((P_a + 1) * F_a)`，并伴随
+  `sum(P_a + 1)` 次连接/查询；与 JSON/Markdown 小段解析相比，PG 握手、协议驱动、
+  行解码和内容复制才会落在 `hone-cloud-sync` worker 上。
+- 修复增加单次批量 raw-document 读取：每个 actor 只调用一次
+  `cloud_files_for_actor()`，在线性单遍中组装全部 profile/event document；mainline
+  直接消费批量结果。画像读取降为 `sum(F_a)` 和每 actor 1 次查询，LLM 个性化语义、
+  6 路并发、失败 ticker 的 6 小时再试与 prefs 写入不变。`collector.rs` 只服务新闻
+  候选收集，与 mainline cron 没有调用关系。
+- 失败策略现状：ticker/provider 失败仍会写本轮蒸馏时间，缺失 ticker 最早 6 小时后
+  重试；没有 mainline 级指数退避或跨 actor 熔断。OpenRouter 会遍历配置的 client/key
+  并做兼容 fallback；OpenAI-compatible 对特定 transport error 最多额外重试一次，
+  固定等待 2 秒。本轮没有改这些语义。
+- 定向验证：`cargo test -p hone-core cloud_sync --lib -- --nocapture`（4 passed）；
+  `cargo test -p hone-memory company_profile --lib -- --nocapture`（26 passed）；
+  `cargo test -p hone-event-engine mainline --lib -- --nocapture`（41 passed）。
+- 完整验收：workspace all-targets 为 2,588 passed / 0 failed / 113 ignored；
+  `hone-memory --ignored` 为 93 passed / 0 failed；`tests/regression/run_ci.sh` 最终退出 0。
+  regression 首次因 worktree 缺少 lockfile 已声明的 `@happy-dom/global-registrator`
+  在加载阶段失败；执行 `bun install --frozen-lockfile` 后从头重跑通过，lockfile 与工作树
+  均未变化。没有 SQL/schema 改动，因此不触发已有数据老库迁移验证。
+
 接手时对 Codex 已有改动的复核修正（均已合入）：
 
 1. `started_at`/`duration_ms` 的迁移原本写在 `ensure_schema` /
@@ -93,7 +134,8 @@
 ### 待办
 
 - P0-2 余项：周报增加"定时任务健康"section
-- 本地 source-runtime 部署验收 → GCE 部署 → 重新开 `role=all` → 生产波次对比
+- A1/A2 已按用户要求仅本地提交、未 push；后续先把提交接入可部署分支，再做本地
+  source-runtime 验收 → GCE 部署 → 重新开 `role=all` → 生产波次对比
 
 ## Risks / Open Questions
 

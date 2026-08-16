@@ -19,7 +19,7 @@
 - **调度与定时任务体系化整治**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/scheduler-runtime-hardening-2026-08-15.md`
-  - 摘要：先将当前 GCE 从 `runtime_role=all` 回滚到 Web-only 并恢复 Feishu 独立 worker 止血，再修复心跳契约重试、cron 健康可见性、齐射/并发/流式重试、cloud runtime/全表扫描、僵尸记录回收与 meta/部署探针，完成全仓门禁、真实 LLM 冒烟、精确部署和生产波次观察
+  - 摘要：生产已保持 Web-only 止血；心跳契约重试、cron 观测、齐射/并发/流式重试、cloud runtime、僵尸记录回收与 meta/部署探针已修。2026-08-16 进一步删除 cloud-sync 固定双 worker，并确认 role=all CPU 热点来自 mainline 对每个 actor 画像做 `P+1` 次全量 PG 读取/重复建连，已收敛为每 actor 一次批量读取且通过完整 Rust/PG/regression 门禁；本地提交尚未 push，仍待接入可部署分支后重新灰度 `role=all` 并做生产波次对比
 
 - **2026-08-11 全产品压力/功能验收与上线**
   - 状态：`blocked`
