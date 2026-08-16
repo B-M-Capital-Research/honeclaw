@@ -273,3 +273,30 @@ TTL 跟随既有 `ttl_for_data_type` 的宏观档位。
 ## 实施记录
 
 （Codex 在此追加：分歧、实测到的真凶促升路径、变异验证结果）
+
+### Track B（2026-08-17）
+
+- status: `blocked`（实现与定向验证完成；完整门禁受 PostgreSQL 环境阻塞，Git commit 受 worktree 元数据只读权限阻塞）
+- 代码分歧：红线列出的测试名 `scheduled_and_heartbeat_skip_macro_regulatory_and_name_components`
+  在当前基线不存在；同一位置的既有测试实际名为
+  `scheduler_and_heartbeat_skip_macro_regulatory_and_name_components`。本 Track 只按实际名称执行，
+  不修改或补造该既有测试。
+- 实现：数字码、显式码、名称三条 `EntityMatch::Unresolved` 路径都只剔除原 mention，
+  不产生替代证券映射；部分成功时把原 mention 写入 `InvestmentResponseContract.unverified_mentions`
+  并在 `canonical_fact_block()` / `retry_block()` 披露，全部未解析时转入
+  `EntityResolutionScope::AgentToolDiscovery`，不再返回实体解析错误。
+- 新增回归：混合三候选保留两个已核验实体并披露一个缺口、全部未解析降级、数字码未解析、
+  名称未解析；定向结果 `passed=4 failed=0`。红线 5 条既有测试逐条执行，结果
+  `passed=5 failed=0`，测试正文未修改；`investment_response_guard::tests::` 全组结果
+  `passed=117 failed=0`。
+- 变异验证：分别把数字码、显式码、名称的 `Unresolved` 分支恢复为原 `return Err` 语义，
+  对应新测试均转红（每轮 `passed=0 failed=1`）；随后恢复实现并复跑 `passed=4 failed=0`。
+- 完整门禁：已执行
+  `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`。
+  Docker Desktop 的 LaunchServices / executable 启动失败，沙箱也拒绝既有 PostgreSQL socket 与
+  临时 PostgreSQL 的共享内存 bootstrap；命令最终在 `hone-channels` 因
+  `Postgres 连接失败` 中止。中止前其它 test binary 合计 `passed=180 failed=0`，
+  `hone-channels` 最终行 `passed=645 failed=172 ignored=1`；Track B 新测在该轮仍全部通过。
+- 提交阻塞：本 worktree 的实际 Git 元数据位于主 worktree 的
+  `/Users/zhangxuanren/Workspace/honeclaw/.git/worktrees/honeclaw-l1`，当前执行沙箱只有读权限；
+  `git add` 无法创建 `index.lock`，因此本轮未能生成 commit，且没有 push。
