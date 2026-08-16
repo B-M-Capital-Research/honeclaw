@@ -208,7 +208,7 @@ impl WebAuthStorage {
         let user_id = user.user_id.clone();
         let phone_number = user.phone_number.clone();
         let external_state = cloud_external_state_record(&user_id, &external_state)?;
-        await_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_invite_user_record_with_external_state(
                     &user_id,
@@ -236,7 +236,7 @@ impl WebAuthStorage {
         let postgres = self.postgres.clone();
         let field = field.to_string();
         let value = value.to_string();
-        await_web_auth(async move { postgres.find_web_invite_user_record(&field, &value).await })
+        (async move { postgres.find_web_invite_user_record(&field, &value).await })
             .await?
             .map(cloud_record_from_value)
             .transpose()
@@ -256,13 +256,11 @@ impl WebAuthStorage {
     async fn load_external_state(&self, user_id: &str) -> HoneResult<WebUserExternalState> {
         let postgres = self.postgres.clone();
         let user_id = user_id.to_string();
-        return await_web_auth(async move {
-            postgres.find_web_user_external_state_record(&user_id).await
-        })
-        .await?
-        .map(cloud_external_state_from_record)
-        .transpose()
-        .map(|state| state.unwrap_or_default());
+        return (async move { postgres.find_web_user_external_state_record(&user_id).await })
+            .await?
+            .map(cloud_external_state_from_record)
+            .transpose()
+            .map(|state| state.unwrap_or_default());
     }
 
     async fn save_external_state(
@@ -272,7 +270,7 @@ impl WebAuthStorage {
     ) -> HoneResult<()> {
         let postgres = self.postgres.clone();
         let external_state = cloud_external_state_record(&user.user_id, &state)?;
-        return await_web_auth(async move {
+        return (async move {
             postgres
                 .upsert_web_user_external_state_record(&external_state)
                 .await
@@ -287,17 +285,15 @@ impl WebAuthStorage {
         let email = normalize_email_address(email_address)?;
 
         let postgres = self.postgres.clone();
-        return await_web_auth(async move {
-            postgres.find_web_invite_user_record_by_email(&email).await
-        })
-        .await?
-        .map(|(record, external_state)| {
-            Ok((
-                cloud_record_from_value(record)?.user,
-                cloud_external_state_from_record(external_state)?,
-            ))
-        })
-        .transpose();
+        return (async move { postgres.find_web_invite_user_record_by_email(&email).await })
+            .await?
+            .map(|(record, external_state)| {
+                Ok((
+                    cloud_record_from_value(record)?.user,
+                    cloud_external_state_from_record(external_state)?,
+                ))
+            })
+            .transpose();
     }
 
     async fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
@@ -307,7 +303,7 @@ impl WebAuthStorage {
         let session_hash = session.session_hash.clone();
         let user_id = session.user_id.clone();
         let expires_at = session.expires_at.clone();
-        await_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(&session_hash, &user_id, record, Some(&expires_at))
                 .await
@@ -318,7 +314,7 @@ impl WebAuthStorage {
     async fn cloud_purge_expired_sessions(&self, now: &str) -> HoneResult<()> {
         let postgres = self.postgres.clone();
         let now = now.to_string();
-        await_web_auth(async move {
+        (async move {
             postgres.purge_expired_web_auth_sessions(&now).await?;
             Ok(())
         })
@@ -328,8 +324,7 @@ impl WebAuthStorage {
     pub async fn is_web_admin(&self, user_id: &str) -> HoneResult<bool> {
         let postgres = self.postgres.clone();
         let user_id = user_id.to_string();
-        return await_web_auth(async move { postgres.web_invite_user_is_admin(&user_id).await })
-            .await;
+        return (async move { postgres.web_invite_user_is_admin(&user_id).await }).await;
     }
 
     pub async fn set_web_admin_by_phone(
@@ -340,7 +335,7 @@ impl WebAuthStorage {
         let phone_number = validate_phone_number(phone_number)?;
 
         let postgres = self.postgres.clone();
-        return await_web_auth(async move {
+        return (async move {
             postgres
                 .set_web_invite_user_admin_by_phone(&phone_number, is_admin)
                 .await
@@ -353,7 +348,7 @@ impl WebAuthStorage {
 
         let postgres = self.postgres.clone();
         let admin_user_id = admin_user_id.to_string();
-        return await_web_auth(async move {
+        return (async move {
             postgres
                 .web_admin_create_count_for_date(&admin_user_id, &local_date)
                 .await
@@ -401,7 +396,7 @@ impl WebAuthStorage {
         let record = serde_json::to_value(record)
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
         let admin_user_id = admin_user_id.to_string();
-        let outcome = await_web_auth(async move {
+        let outcome = (async move {
             postgres
                 .create_web_invite_user_record_by_admin(
                     &admin_user_id,
@@ -443,7 +438,7 @@ impl WebAuthStorage {
         let postgres = self.postgres.clone();
         let admin_user_id = admin_user_id.to_string();
         let target_user_id = target_user_id.to_string();
-        let outcome = await_web_auth(async move {
+        let outcome = (async move {
             postgres
                 .disable_web_invite_user_by_admin(
                     &admin_user_id,
@@ -638,8 +633,7 @@ impl WebAuthStorage {
 
     pub async fn list_invite_users(&self) -> HoneResult<Vec<WebInviteUser>> {
         let postgres = self.postgres.clone();
-        let records =
-            await_web_auth(async move { postgres.list_web_invite_user_records().await }).await?;
+        let records = (async move { postgres.list_web_invite_user_records().await }).await?;
         return records
             .into_iter()
             .map(Self::cloud_record_to_user)
@@ -649,8 +643,7 @@ impl WebAuthStorage {
 
     pub async fn list_web_admin_invite_summaries(&self) -> HoneResult<Vec<WebAdminInviteSummary>> {
         let postgres = self.postgres.clone();
-        let records =
-            await_web_auth(async move { postgres.list_web_admin_invite_summaries().await }).await?;
+        let records = (async move { postgres.list_web_admin_invite_summaries().await }).await?;
         return Ok(records
             .into_iter()
             .map(|record| WebAdminInviteSummary {
@@ -834,7 +827,7 @@ impl WebAuthStorage {
         let token_hash = hash_session_token(session_token);
 
         let postgres = self.postgres.clone();
-        let value = await_web_auth({
+        let value = ({
             let token_hash = token_hash.clone();
             let session_token = session_token.to_string();
             async move {
@@ -878,7 +871,7 @@ impl WebAuthStorage {
 
         let postgres = self.postgres.clone();
         let session_token = session_token.to_string();
-        return await_web_auth(async move {
+        return (async move {
             postgres
                 .delete_web_auth_session(&token_hash, &session_token)
                 .await
@@ -892,7 +885,7 @@ impl WebAuthStorage {
         let postgres = self.postgres.clone();
         self.cloud_purge_expired_sessions(&now).await?;
         let user_id = user_id.to_string();
-        return await_web_auth(async move {
+        return (async move {
             postgres
                 .count_active_web_auth_sessions(&user_id, &now)
                 .await
@@ -915,7 +908,7 @@ impl WebAuthStorage {
         let cleared_session_count = if revoked {
             let postgres = self.postgres.clone();
             let user_id_owned = user_id.to_string();
-            await_web_auth(async move {
+            (async move {
                 postgres
                     .delete_web_auth_sessions_for_user(&user_id_owned)
                     .await
@@ -943,7 +936,7 @@ impl WebAuthStorage {
         let invite_code = generate_unique_invite_code_cloud(self).await?;
         let postgres = self.postgres.clone();
         let user_id_owned = user_id.to_string();
-        let cleared_session_count = await_web_auth(async move {
+        let cleared_session_count = (async move {
             postgres
                 .delete_web_auth_sessions_for_user(&user_id_owned)
                 .await
@@ -1079,13 +1072,6 @@ impl WebAuthStorage {
             last_seen_at: created_at,
         }));
     }
-}
-
-async fn await_web_auth<T, F>(future: F) -> HoneResult<T>
-where
-    F: std::future::Future<Output = HoneResult<T>>,
-{
-    future.await
 }
 
 async fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
@@ -1349,8 +1335,8 @@ mod tests {
     use super::{
         CloudWebInviteRecord, EmailVerificationResult, SESSION_TTL_DAYS_LONG,
         SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebAdminInviteCreateOutcome,
-        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, await_web_auth,
-        generate_api_key, generate_invite_code, generate_session_token, hash_session_token,
+        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, generate_api_key,
+        generate_invite_code, generate_session_token, hash_session_token,
     };
     use hone_core::cloud_runtime::CloudPgRuntime;
     use hone_core::{HoneError, HoneResult, local_now};
@@ -1401,7 +1387,7 @@ mod tests {
         postgres: CloudPgRuntime,
         user_id: String,
     ) -> HoneResult<(Option<String>, Option<String>, Option<String>, bool)> {
-        await_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1591,7 +1577,7 @@ WHERE s.user_id = $1
             .expect("disable member");
         let postgres = storage.postgres.clone();
         let international_user_id = international.user_id.clone();
-        await_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             client
                 .execute(
@@ -1600,7 +1586,7 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(())
+            Ok::<(), HoneError>(())
         })
         .await.expect("clear international placeholder phone");
 
@@ -1790,7 +1776,7 @@ WHERE s.user_id = $1
 
         let postgres = storage.postgres.clone();
         let admin_user_id = admin.user_id.clone();
-        let audit_count = await_web_auth(async move {
+        let audit_count = (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1799,7 +1785,7 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(row.get::<_, i64>(0))
+            Ok::<i64, HoneError>(row.get::<_, i64>(0))
         })
         .await.expect("audit");
         assert_eq!(audit_count, 1);
@@ -1879,7 +1865,7 @@ WHERE s.user_id = $1
             .expect("create");
         let postgres = storage.postgres.clone();
         let user_id = created.user_id.clone();
-        await_web_auth(async move {
+        (async move {
             let client = postgres.connect_cached_client().await?;
             client
                 .execute(
@@ -1888,7 +1874,7 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(())
+            Ok::<(), HoneError>(())
         })
         .await.expect("clear key");
         let generated = storage
@@ -1928,7 +1914,7 @@ WHERE s.user_id = $1
         assert_eq!(authed.user_id, created.user_id);
         let postgres = storage.postgres.clone();
         let user_id = created.user_id.clone();
-        let stored_token: String = await_web_auth(async move {
+        let stored_token: String = (async move {
             let client = postgres.connect_cached_client().await?;
             let row = client
                 .query_one(
@@ -1937,7 +1923,7 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(row.get(0))
+            Ok::<String, HoneError>(row.get(0))
         })
         .await
         .expect("stored token");
@@ -1973,7 +1959,7 @@ WHERE s.user_id = $1
         };
         let postgres = storage.postgres.clone();
         let record_value = serde_json::to_value(&record).expect("record");
-        await_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(
                     legacy_token,
@@ -2017,7 +2003,7 @@ WHERE s.user_id = $1
         };
         let postgres = storage.postgres.clone();
         let record_value = serde_json::to_value(&record).expect("record");
-        await_web_auth(async move {
+        (async move {
             postgres
                 .upsert_web_auth_session_record(
                     &token_hash,
@@ -2273,7 +2259,7 @@ WHERE s.user_id = $1
             std::env::temp_dir().join(format!("hone_web_auth_migrate_{}", uuid::Uuid::new_v4()));
         let storage = WebAuthStorage::new(&root).await.expect("postgres storage");
         let postgres = storage.postgres.clone();
-        let columns = await_web_auth(async move {
+        let columns = (async move {
             let client = postgres.connect_cached_client().await?;
             let rows = client
                 .query(
@@ -2282,7 +2268,11 @@ WHERE s.user_id = $1
                 )
                 .await
                 .map_err(|error| HoneError::Config(error.to_string()))?;
-            Ok(rows.into_iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>())
+            Ok::<Vec<String>, HoneError>(
+                rows.into_iter()
+                    .map(|row| row.get::<_, String>(0))
+                    .collect::<Vec<_>>(),
+            )
         })
         .await.expect("columns");
         assert!(columns.iter().any(|column| column == "phone_number"));
