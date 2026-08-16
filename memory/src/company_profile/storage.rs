@@ -366,6 +366,38 @@ impl CompanyProfileStorage {
         profiles
     }
 
+    /// 列出当前 actor 的完整原始画像，且每个后端只做一次批量读取。
+    ///
+    /// 与 `list_profiles_raw()` 后逐项调用 `get_profile_raw()` 相比，cloud 后端不会
+    /// 为每个 profile 重复拉取该 actor 的全部文件；本地后端也只遍历一次目录。
+    pub fn list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
+        if self.cloud.is_some() {
+            return self.cloud_list_profile_documents_raw();
+        }
+
+        let Ok(root_dir) = self.scoped_root() else {
+            return Vec::new();
+        };
+        let entries = match fs::read_dir(&root_dir) {
+            Ok(entries) => entries,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut profiles = Vec::new();
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let Some(document) = self.load_raw_profile_by_dir(&dir).ok().flatten() else {
+                continue;
+            };
+            profiles.push(document);
+        }
+        sort_raw_profile_documents(&mut profiles);
+        profiles
+    }
+
     pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
         if self.cloud.is_some() {
             return self.cloud_get_profile(profile_id);
@@ -1176,6 +1208,17 @@ impl CompanyProfileStorage {
         profiles
     }
 
+    fn cloud_list_profile_documents_raw(&self) -> Vec<RawProfileDocument> {
+        let files = match self.cloud_files_for_actor() {
+            Ok(files) => files,
+            Err(error) => {
+                tracing::warn!("cloud raw company profile document list failed: {error}");
+                return Vec::new();
+            }
+        };
+        raw_profile_documents_from_cloud_files(files)
+    }
+
     fn cloud_list_profile_spaces(&self, raw: bool) -> Vec<ProfileSpaceSummary> {
         let files = match self.cloud_all_files() {
             Ok(files) => files,
@@ -1281,6 +1324,72 @@ fn event_counts_by_profile(files: &[CloudCompanyProfileFileRecord]) -> HashMap<S
         }
     }
     counts
+}
+
+#[derive(Default)]
+struct RawCloudProfileParts {
+    profile: Option<(String, String, String)>,
+    events: Vec<RawProfileEventDocument>,
+}
+
+fn raw_profile_documents_from_cloud_files(
+    files: Vec<CloudCompanyProfileFileRecord>,
+) -> Vec<RawProfileDocument> {
+    let mut grouped = BTreeMap::<String, RawCloudProfileParts>::new();
+    for file in files {
+        let profile_id = file.profile_id;
+        let entry = grouped.entry(profile_id.clone()).or_default();
+        if file.relative_path == "profile.md" {
+            let title = extract_title_from_markdown(&file.content, &profile_id);
+            entry.profile = Some((title, file.updated_at, file.content));
+            continue;
+        }
+        if !file.relative_path.starts_with("events/") || !file.relative_path.ends_with(".md") {
+            continue;
+        }
+        let filename = file.relative_path.trim_start_matches("events/").to_string();
+        let id = filename.trim_end_matches(".md").to_string();
+        entry.events.push(RawProfileEventDocument {
+            id,
+            title: extract_title_from_markdown(&file.content, &file.relative_path),
+            filename,
+            updated_at: Some(file.updated_at),
+            markdown: file.content,
+        });
+    }
+
+    let mut profiles = grouped
+        .into_iter()
+        .filter_map(|(profile_id, mut parts)| {
+            let (title, updated_at, markdown) = parts.profile?;
+            parts.events.sort_by(|a, b| {
+                b.updated_at
+                    .as_deref()
+                    .unwrap_or_default()
+                    .cmp(a.updated_at.as_deref().unwrap_or_default())
+                    .then_with(|| b.filename.cmp(&a.filename))
+            });
+            Some(RawProfileDocument {
+                profile_id,
+                title,
+                updated_at: Some(updated_at),
+                markdown,
+                events: parts.events,
+            })
+        })
+        .collect::<Vec<_>>();
+    sort_raw_profile_documents(&mut profiles);
+    profiles
+}
+
+fn sort_raw_profile_documents(profiles: &mut [RawProfileDocument]) {
+    profiles.sort_by(|a, b| {
+        b.updated_at
+            .as_deref()
+            .unwrap_or_default()
+            .cmp(a.updated_at.as_deref().unwrap_or_default())
+            .then_with(|| a.title.cmp(&b.title))
+    });
 }
 
 fn unique_strings(values: &[String]) -> Vec<String> {
@@ -1427,4 +1536,69 @@ fn alias_union(
         }
     }
     combined
+}
+
+#[cfg(test)]
+mod raw_profile_document_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn cloud_file(
+        profile_id: &str,
+        relative_path: &str,
+        content: &str,
+        updated_at: &str,
+    ) -> CloudCompanyProfileFileRecord {
+        CloudCompanyProfileFileRecord {
+            actor_storage_key: "telegram__direct__test".to_string(),
+            actor: json!({"channel": "telegram", "user_id": "test"}),
+            profile_id: profile_id.to_string(),
+            relative_path: relative_path.to_string(),
+            content: content.to_string(),
+            updated_at: updated_at.to_string(),
+        }
+    }
+
+    #[test]
+    fn cloud_files_are_assembled_into_all_raw_documents_in_one_batch() {
+        let documents = raw_profile_documents_from_cloud_files(vec![
+            cloud_file(
+                "MU",
+                "events/older.md",
+                "# Older event",
+                "2026-08-14T00:00:00Z",
+            ),
+            cloud_file(
+                "MU",
+                "profile.md",
+                "# Micron\n\nticker: MU",
+                "2026-08-15T00:00:00Z",
+            ),
+            cloud_file(
+                "MU",
+                "events/newer.md",
+                "# Newer event",
+                "2026-08-16T00:00:00Z",
+            ),
+            cloud_file(
+                "AAPL",
+                "profile.md",
+                "# Apple\n\nticker: AAPL",
+                "2026-08-16T00:00:00Z",
+            ),
+            cloud_file(
+                "orphan",
+                "events/ignored.md",
+                "# Missing profile",
+                "2026-08-16T00:00:00Z",
+            ),
+        ]);
+
+        assert_eq!(documents.len(), 2);
+        assert_eq!(documents[0].profile_id, "AAPL");
+        assert_eq!(documents[1].profile_id, "MU");
+        assert_eq!(documents[1].events.len(), 2);
+        assert_eq!(documents[1].events[0].filename, "newer.md");
+        assert_eq!(documents[1].events[1].filename, "older.md");
+    }
 }

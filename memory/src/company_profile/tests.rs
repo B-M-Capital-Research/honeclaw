@@ -630,6 +630,12 @@ fn raw_listing_reads_plain_markdown_profiles() {
     assert_eq!(profiles[0].title, "Plain Profile");
     assert_eq!(profiles[0].event_count, 1);
 
+    let documents = base.for_actor(&actor).list_profile_documents_raw();
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].profile_id, "plain-profile");
+    assert_eq!(documents[0].title, "Plain Profile");
+    assert_eq!(documents[0].events.len(), 1);
+
     let detail = base
         .for_actor(&actor)
         .get_profile_raw("plain-profile")

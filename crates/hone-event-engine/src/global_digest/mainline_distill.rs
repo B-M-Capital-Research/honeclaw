@@ -395,14 +395,11 @@ pub fn scan_profiles_for_actor(
     let holdings_set: Option<std::collections::HashSet<String>> =
         holdings_filter.map(|hs| hs.iter().map(|h| h.to_uppercase()).collect());
     let mut profiles = Vec::new();
-    for summary in storage.list_profiles_raw() {
-        let Ok(Some(document)) = storage.get_profile_raw(&summary.profile_id) else {
-            continue;
-        };
+    for document in storage.list_profile_documents_raw() {
         let tickers = extract_tickers(&document.markdown);
         if tickers.is_empty() {
             tracing::warn!(
-                dir = %summary.profile_id,
+                dir = %document.profile_id,
                 "mainline_distill: profile.md 没找到 ticker 标识,跳过"
             );
             continue;
@@ -415,7 +412,7 @@ pub fn scan_profiles_for_actor(
             }
             profiles.push(ProfileSource {
                 ticker,
-                dir_name: summary.profile_id.clone(),
+                dir_name: document.profile_id.clone(),
                 markdown: document.markdown.clone(),
             });
         }
