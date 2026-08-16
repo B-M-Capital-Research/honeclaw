@@ -286,7 +286,8 @@ impl<'a> SessionCompactor<'a> {
                         Some(auxiliary_model.clone()),
                         request_payload.clone(),
                     )
-                });
+                })
+                .await;
                 tracing::error!("[HoneBotCore] LLM summarization failed: {}", err);
                 return Ok(CompactSessionOutcome {
                     compacted: false,
@@ -321,7 +322,8 @@ impl<'a> SessionCompactor<'a> {
                 Some(auxiliary_model),
                 request_payload,
             )
-        });
+        })
+        .await;
         tracing::info!(
             "[SessionCompress] session={} provider={} model={} elapsed_ms={} summary_chars={}",
             session_id,
@@ -403,9 +405,9 @@ impl<'a> SessionCompactor<'a> {
         })
     }
 
-    fn record_llm_audit(&self, record: LlmAuditRecord) {
+    async fn record_llm_audit(&self, record: LlmAuditRecord) {
         if let Some(sink) = &self.core.llm_audit
-            && let Err(err) = sink.record(record)
+            && let Err(err) = sink.record(record).await
         {
             tracing::warn!("[LlmAudit] failed to persist record: {}", err);
         }

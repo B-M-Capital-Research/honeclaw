@@ -1,5 +1,4 @@
 use hone_core::cloud_runtime::{CloudLlmAuditFilter, CloudPgRuntime};
-use hone_core::cloud_sync::run_cloud_sync;
 use hone_core::{HoneError, HoneResult, LlmAuditRecord, LlmAuditSink};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -49,17 +48,21 @@ pub struct LlmAuditStorage {
 impl LlmAuditStorage {
     /// PostgreSQL-backed test constructor. The path is only an isolation namespace.
     #[doc(hidden)]
-    pub fn new(path: impl AsRef<std::path::Path>, retention_days: u32) -> HoneResult<Self> {
+    pub async fn new(path: impl AsRef<std::path::Path>, retention_days: u32) -> HoneResult<Self> {
         let (postgres, lease) = crate::test_postgres::isolated_postgres(path)?;
         let mut storage = Self::new_cloud(postgres, retention_days)?;
         storage._test_postgres_lease = Some(lease);
-        storage.prune_expired()?;
+        storage.prune_expired().await?;
         Ok(storage)
     }
 
     pub fn new_cloud(postgres: CloudPgRuntime, retention_days: u32) -> HoneResult<Self> {
         let schema_postgres = postgres.clone();
-        run_cloud_llm_audit(async move { schema_postgres.ensure_schema().await })?;
+        hone_core::cloud_sync::run_cloud_sync(
+            async move { schema_postgres.ensure_schema().await },
+            None,
+            "cloud llm audit schema operation",
+        )?;
         Ok(Self {
             postgres,
             retention_days: retention_days.max(1),
@@ -68,31 +71,28 @@ impl LlmAuditStorage {
         })
     }
 
-    pub fn prune_expired(&self) -> HoneResult<()> {
+    pub async fn prune_expired(&self) -> HoneResult<()> {
         let cutoff = (hone_core::local_now() - chrono::Duration::days(self.retention_days as i64))
             .to_rfc3339();
         let postgres = self.postgres.clone();
-        run_cloud_llm_audit(async move {
-            postgres.prune_llm_audit_records(&cutoff).await?;
-            Ok(())
-        })
+        postgres.prune_llm_audit_records(&cutoff).await?;
+        Ok(())
     }
 
     #[cfg(test)]
-    pub fn count_records(&self) -> HoneResult<i64> {
-        let postgres = self.postgres.clone();
-        run_cloud_llm_audit(async move { postgres.count_llm_audit_records().await })
+    pub async fn count_records(&self) -> HoneResult<i64> {
+        self.postgres.count_llm_audit_records().await
     }
 
-    fn maybe_prune_after_write(&self) -> HoneResult<()> {
+    async fn maybe_prune_after_write(&self) -> HoneResult<()> {
         let count = self.write_count.fetch_add(1, Ordering::Relaxed) + 1;
         if count.is_multiple_of(100) {
-            self.prune_expired()?;
+            self.prune_expired().await?;
         }
         Ok(())
     }
 
-    pub fn list_audit_records(
+    pub async fn list_audit_records(
         &self,
         filter: &AuditQueryFilter,
     ) -> HoneResult<(Vec<AuditRecordSummary>, i64)> {
@@ -110,10 +110,7 @@ impl LlmAuditStorage {
             page: filter.page,
             page_size: filter.page_size,
         };
-        let (records, total) =
-            run_cloud_llm_audit(
-                async move { postgres.list_llm_audit_records(cloud_filter).await },
-            )?;
+        let (records, total) = postgres.list_llm_audit_records(cloud_filter).await?;
         let summaries = records
             .into_iter()
             .filter_map(|value| {
@@ -125,21 +122,23 @@ impl LlmAuditStorage {
         Ok((summaries, total))
     }
 
-    pub fn get_audit_record(&self, id: &str) -> HoneResult<Option<LlmAuditRecord>> {
+    pub async fn get_audit_record(&self, id: &str) -> HoneResult<Option<LlmAuditRecord>> {
         let postgres = self.postgres.clone();
         let id = id.to_string();
-        run_cloud_llm_audit(async move { postgres.get_llm_audit_record(&id).await })?
+        postgres
+            .get_llm_audit_record(&id)
+            .await?
             .map(serde_json::from_value::<LlmAuditRecord>)
             .transpose()
             .map_err(|error| HoneError::Serialization(error.to_string()))
     }
 }
 
+#[async_trait::async_trait]
 impl LlmAuditSink for LlmAuditStorage {
-    fn record(&self, record: LlmAuditRecord) -> HoneResult<()> {
-        let postgres = self.postgres.clone();
-        run_cloud_llm_audit(async move { postgres.upsert_llm_audit_record(record).await })?;
-        self.maybe_prune_after_write()
+    async fn record(&self, record: LlmAuditRecord) -> HoneResult<()> {
+        self.postgres.upsert_llm_audit_record(record).await?;
+        self.maybe_prune_after_write().await
     }
 }
 
@@ -166,26 +165,18 @@ fn audit_summary_from_record(record: LlmAuditRecord) -> AuditRecordSummary {
     }
 }
 
-fn run_cloud_llm_audit<T, F>(future: F) -> HoneResult<T>
-where
-    T: Send + 'static,
-    F: std::future::Future<Output = HoneResult<T>> + Send + 'static,
-{
-    run_cloud_sync(future, None, "cloud llm audit operation")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use hone_core::{ActorIdentity, LlmAuditRecord};
     use serde_json::{Value, json};
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn record_and_prune_expired_rows() {
+    async fn record_and_prune_expired_rows() {
         let namespace =
             std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
-        let storage = LlmAuditStorage::new(namespace, 30).expect("storage");
+        let storage = LlmAuditStorage::new(namespace, 30).await.expect("storage");
 
         let mut fresh = LlmAuditRecord::new(
             "Actor_feishu__direct__alice",
@@ -198,7 +189,7 @@ mod tests {
         );
         fresh.success = true;
         fresh.response = Some(json!({"content":"hello"}));
-        storage.record(fresh).expect("record fresh");
+        storage.record(fresh).await.expect("record fresh");
 
         let stale = LlmAuditRecord {
             id: uuid::Uuid::new_v4().to_string(),
@@ -219,19 +210,19 @@ mod tests {
             completion_tokens: None,
             total_tokens: None,
         };
-        storage.record(stale).expect("record stale");
+        storage.record(stale).await.expect("record stale");
 
-        assert_eq!(storage.count_records().expect("count"), 2);
-        storage.prune_expired().expect("prune");
-        assert_eq!(storage.count_records().expect("count after"), 1);
+        assert_eq!(storage.count_records().await.expect("count"), 2);
+        storage.prune_expired().await.expect("prune");
+        assert_eq!(storage.count_records().await.expect("count after"), 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn query_audit_records_with_filters() {
+    async fn query_audit_records_with_filters() {
         let namespace =
             std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
-        let storage = LlmAuditStorage::new(namespace, 30).expect("storage");
+        let storage = LlmAuditStorage::new(namespace, 30).await.expect("storage");
 
         let mut chat_audit_record = LlmAuditRecord::new(
             "sess1",
@@ -243,7 +234,7 @@ mod tests {
             json!({"q": 1}),
         );
         chat_audit_record.success = true;
-        storage.record(chat_audit_record.clone()).unwrap();
+        storage.record(chat_audit_record.clone()).await.unwrap();
 
         let mut search_audit_record = LlmAuditRecord::new(
             "sess2",
@@ -256,11 +247,12 @@ mod tests {
         );
         search_audit_record.success = false;
         search_audit_record.latency_ms = Some(150);
-        storage.record(search_audit_record.clone()).unwrap();
+        storage.record(search_audit_record.clone()).await.unwrap();
 
         // 1. 无条件过滤
         let all_records_result = storage
             .list_audit_records(&AuditQueryFilter::default())
+            .await
             .unwrap();
         assert_eq!(all_records_result.1, 2);
 
@@ -270,6 +262,7 @@ mod tests {
                 actor_channel: Some("feishu".to_string()),
                 ..Default::default()
             })
+            .await
             .unwrap();
         assert_eq!(filtered_records.1, 1);
         assert_eq!(
@@ -285,6 +278,7 @@ mod tests {
                 success: Some(true),
                 ..Default::default()
             })
+            .await
             .unwrap();
         assert_eq!(successful_records_result.1, 1);
         assert_eq!(successful_records_result.0[0].session_id, "sess1");
@@ -296,6 +290,7 @@ mod tests {
                 page_size: Some(1),
                 ..Default::default()
             })
+            .await
             .unwrap();
         assert_eq!(first_page_result.1, 2); // Total count is 2
         assert_eq!(first_page_result.0.len(), 1);
@@ -303,20 +298,23 @@ mod tests {
         // 5. Test detail query
         let detail = storage
             .get_audit_record(&chat_audit_record.id)
+            .await
             .unwrap()
             .unwrap();
         assert_eq!(detail.request, json!({"q": 1}));
         assert_eq!(detail.session_id, "sess1");
 
-        let missing = storage.get_audit_record("not-exist").unwrap();
+        let missing = storage.get_audit_record("not-exist").await.unwrap();
         assert!(missing.is_none());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
-    fn postgres_schema_persists_token_counts() {
+    async fn postgres_schema_persists_token_counts() {
         let root = std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
-        let storage = LlmAuditStorage::new(&root, 30).expect("postgres storage");
+        let storage = LlmAuditStorage::new(&root, 30)
+            .await
+            .expect("postgres storage");
 
         let mut record = LlmAuditRecord::new(
             "sess-legacy",
@@ -334,10 +332,12 @@ mod tests {
         record.total_tokens = Some(18);
         storage
             .record(record.clone())
+            .await
             .expect("record with token counts");
 
         let detail = storage
             .get_audit_record(&record.id)
+            .await
             .expect("detail query")
             .expect("detail exists");
         assert_eq!(detail.prompt_tokens, Some(11));
@@ -346,6 +346,7 @@ mod tests {
 
         let (records, total) = storage
             .list_audit_records(&AuditQueryFilter::default())
+            .await
             .expect("list query");
         assert_eq!(total, 1);
         assert_eq!(records[0].prompt_tokens, Some(11));

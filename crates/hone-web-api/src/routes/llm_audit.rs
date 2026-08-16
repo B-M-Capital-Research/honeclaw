@@ -32,7 +32,7 @@ pub(crate) async fn handle_llm_audit_list(
         }
     };
 
-    match storage.list_audit_records(&filter) {
+    match storage.list_audit_records(&filter).await {
         Ok((records, total)) => Json(json!({ "records": records, "total": total })).into_response(),
         Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -61,7 +61,7 @@ pub(crate) async fn handle_llm_audit_detail(
         }
     };
 
-    match storage.get_audit_record(&id) {
+    match storage.get_audit_record(&id).await {
         Ok(Some(record)) => Json(record).into_response(),
         Ok(None) => json_error(StatusCode::NOT_FOUND, "Audit record not found"),
         Err(e) => json_error(
