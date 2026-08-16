@@ -454,3 +454,23 @@ cargo run -q -p hone-channels --example entity_scan_explain -- --origin schedule
   但本执行沙箱禁止本地端口 / Unix socket 访问，`scripts/dev_pg.sh up` 报 Docker 不可访问，
   测试内本地 FMP stub 也报 `bind: Operation not permitted`；门禁在 `hone-channels` 停止，
   累计 `passed=822 failed=172`。失败集中为 PostgreSQL 连接和本地 bind 环境错误，不能记为门禁通过。
+### Track D — L3 宏观取数打通
+
+- status: `done`
+- 实现：仅在 `data_fetch` 的 `data_type` schema enum 中补充 `macro`；macro bundle 新增
+  `economic_calendar`，沿用 FMP `/v3/economic_calendar`，窗口为 UTC
+  `today..today+7d`，继续复用既有 macro TTL、JSON 解析和 coverage。
+- 范围：未改动其余 8 个已知 schema 缺口；未改动
+  `crates/hone-channels/src/investment_response_guard.rs`。
+- 回归：`cargo test -p hone-tools macro_ -- --nocapture` →
+  `passed=2 failed=0`。
+- 变异验证：临时删除 `macro` enum 项时 schema 回归测试
+  `passed=0 failed=1`；临时删除 `economic_calendar` component 时窗口/端点回归测试
+  `passed=0 failed=1`；恢复后两条均转绿。
+- workspace 门禁：已运行
+  `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`；
+  已执行的 test-result 合计 `passed=821 failed=172`（`ignored=1`），在
+  `hone-channels` 因 PostgreSQL 无法连接、沙箱禁止 loopback FMP stub 绑定及其导致的
+  env-lock poison 级联而停止。
+  前置 `bash scripts/dev_pg.sh up` 返回 Docker 不可访问；Track D 定向测试无失败。
+- 分歧：计划描述与代码实现没有发现分歧；全量门禁失败属于当前执行环境前置条件。
