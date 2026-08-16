@@ -2,25 +2,53 @@
 //!
 //! `CloudPgRuntime` 的连接驱动必须挂在长驻 Tokio runtime 上。同步存储 API
 //! 不能为每次调用临时创建 runtime，也不能在已有 Tokio worker 上直接
-//! `Handle::block_on`。这里集中维护一套固定两 worker 的长驻 runtime，并在
-//! Tokio 上下文内用 channel 等待结果。
+//! `Handle::block_on`。这里集中维护一套按进程可用 CPU 数量伸缩的长驻 runtime，
+//! 并在 Tokio 上下文内用 channel 等待结果。
 
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::cloud_runtime::CloudPgRuntime;
 use crate::{HoneError, HoneResult};
 
+const CLOUD_SYNC_WORKER_THREADS_ENV: &str = "HONE_CLOUD_SYNC_WORKER_THREADS";
+
 static CLOUD_SYNC_RUNTIME: std::sync::LazyLock<std::io::Result<tokio::runtime::Runtime>> =
     std::sync::LazyLock::new(|| {
         tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(cloud_sync_worker_threads())
             .thread_name("hone-cloud-sync")
             .enable_all()
             .build()
     });
 
 static CLOUD_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
+
+fn cloud_sync_worker_threads() -> usize {
+    let available = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+    resolve_cloud_sync_worker_threads(
+        available,
+        std::env::var(CLOUD_SYNC_WORKER_THREADS_ENV).ok().as_deref(),
+    )
+}
+
+fn resolve_cloud_sync_worker_threads(available: NonZeroUsize, configured: Option<&str>) -> usize {
+    match configured.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => match value.parse::<NonZeroUsize>() {
+            Ok(worker_threads) => worker_threads.get(),
+            Err(error) => {
+                tracing::warn!(
+                    env = CLOUD_SYNC_WORKER_THREADS_ENV,
+                    value,
+                    "cloud sync worker thread override 无效，回退到可用 CPU 数: {error}"
+                );
+                available.get()
+            }
+        },
+        None => available.get(),
+    }
+}
 
 fn cloud_sync_runtime() -> HoneResult<&'static tokio::runtime::Runtime> {
     CLOUD_SYNC_RUNTIME
@@ -101,6 +129,19 @@ pub fn ensure_cloud_schema_once(
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    #[test]
+    fn worker_thread_override_takes_precedence_over_available_parallelism() {
+        let available = NonZeroUsize::new(7).expect("non-zero available parallelism");
+
+        assert_eq!(resolve_cloud_sync_worker_threads(available, Some("11")), 11);
+        assert_eq!(resolve_cloud_sync_worker_threads(available, None), 7);
+        assert_eq!(resolve_cloud_sync_worker_threads(available, Some("0")), 7);
+        assert_eq!(
+            resolve_cloud_sync_worker_threads(available, Some("invalid")),
+            7
+        );
+    }
 
     #[test]
     fn timeout_bounds_a_stuck_operation() {
