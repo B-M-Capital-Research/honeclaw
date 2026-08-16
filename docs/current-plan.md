@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-08-16
-状态：有 13 个活跃任务
+状态：有 15 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/company-major-push-cost-2026-08-16.md`
+  - 摘要：生产实测 749 持仓/323 去重公司/61 actor、472 份画像内容零重复但仅 28 人有画像；主线蒸馏因"缺失 ticker 永远触发 6h 重试且触发即全量重蒸"每天空转 ~2000 次 grok 调用，P0 用内容哈希增量化（零语义损失）；P1 把 High 即时推送的 LLM 润色从每持有人一次收敛为每事件一次，仓位/主线个性化降级到模板追加层。P2（digest company-major 化）已设计、待 P0/P1 生产数据后决策。实施等 track-B（存储 async 化）合并后进行，避免与 `prefs.rs`/`dispatch.rs` 重写撞车
 
 - **调度与定时任务体系化整治**
   - 状态：`in_progress`
