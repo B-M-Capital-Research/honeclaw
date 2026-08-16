@@ -43,7 +43,25 @@ pub fn render_immediate_with_mainline(
     if matches!(fmt, RenderFormat::FeishuPost) {
         return render_immediate_feishu_post(event, mainline);
     }
+    let mut out = render_core_inner(event, fmt, mainline);
+    if let Some(appendix) = render_immediate_appendix(event, fmt) {
+        out.push_str("\n\n");
+        out.push_str(&appendix);
+    }
+    out
+}
 
+/// 跨 actor 恒定的通用正文(头/标题/主体,不含 actor 附注与 URL)——LLM 润色的
+/// 输入单元:同一事件对全部持有人只需润色一次。mainline 只被结构化财报事件消费,
+/// 而该类事件不走润色,所以这里恒传 `None`。
+pub fn render_immediate_core(event: &MarketEvent, fmt: RenderFormat) -> String {
+    if matches!(fmt, RenderFormat::FeishuPost) {
+        return render_immediate_feishu_post(event, None);
+    }
+    render_core_inner(event, fmt, None)
+}
+
+fn render_core_inner(event: &MarketEvent, fmt: RenderFormat, mainline: Option<&str>) -> String {
     let tag = severity_tag(event.severity);
     let head = header_line(event);
     let head_plain = if tag.is_empty() {
@@ -56,7 +74,7 @@ pub fn render_immediate_with_mainline(
         RenderFormat::Plain => head_plain.clone(),
         RenderFormat::TelegramHtml => format!("<b>{}</b>", escape_html(&head_plain)),
         RenderFormat::DiscordMarkdown => format!("**{}**", escape_md(&head_plain)),
-        RenderFormat::FeishuPost => unreachable!("handled above"),
+        RenderFormat::FeishuPost => unreachable!("core rendering never sees FeishuPost"),
     };
     let title_out = render_inline(&event.title, fmt);
 
@@ -68,7 +86,12 @@ pub fn render_immediate_with_mainline(
         out.push_str("\n\n");
         out.push_str(&render_inline(body_trim, fmt));
     }
+    out
+}
 
+/// actor 附注(财报倒计时/评级共识/持仓/主线关联)+ URL。纯模板产物,永远不进
+/// LLM;润色路径把它拼在润色输出之后,个性化信息不再被 140 字压缩吃掉。
+pub fn render_immediate_appendix(event: &MarketEvent, fmt: RenderFormat) -> Option<String> {
     let context_lines: Vec<String> = [
         earnings_countdown_line(event),
         analyst_consensus_line(event),
@@ -78,16 +101,19 @@ pub fn render_immediate_with_mainline(
     .into_iter()
     .flatten()
     .collect();
-    if !context_lines.is_empty() {
-        out.push_str("\n\n");
-        out.push_str(&render_inline(&context_lines.join("\n"), fmt));
-    }
 
-    if let Some(u) = event.user_visible_url() {
-        out.push_str("\n\n");
-        out.push_str(&render_link(u, fmt));
+    let mut parts: Vec<String> = Vec::new();
+    if !context_lines.is_empty() {
+        parts.push(render_inline(&context_lines.join("\n"), fmt));
     }
-    out
+    if let Some(u) = event.user_visible_url() {
+        parts.push(render_link(u, fmt));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
+    }
 }
 
 /// 财报倒计时行(router 注入的 `hone_days_to_earnings`)。财报前的价格异动

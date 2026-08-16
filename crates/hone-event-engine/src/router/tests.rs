@@ -1066,6 +1066,147 @@ async fn structured_earnings_review_is_not_collapsed_by_plain_polisher() {
     assert!(!calls[0].1.contains("TOO SHORT"));
 }
 
+/// 双持有人价格直推事件的共享润色 harness:两人仓位不同(13 股 vs 7 股),
+/// 断言可据此区分各自正文。
+fn two_holder_price_router(
+    polisher: Arc<dyn crate::polisher::BodyPolisher>,
+) -> (NotificationRouter, Arc<CapturingSink>, tempfile::TempDir) {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+    use crate::subscription::PositionSnapshot;
+
+    let mut reg = SubscriptionRegistry::new();
+    let dir = tempdir().unwrap();
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    for (user, shares) in [("u1", 13.0), ("u2", 7.0)] {
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor(user),
+            vec!["SNDK".into()],
+        )));
+        let mut positions = std::collections::HashMap::new();
+        positions.insert(
+            "SNDK".to_string(),
+            PositionSnapshot {
+                shares,
+                avg_cost: 404.19,
+                weight_pct: Some(25.0),
+            },
+        );
+        reg.register_positions(actor(user), positions);
+        prefs_store
+            .save(
+                &actor(user),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(4.0),
+                    large_position_weight_pct: Some(20.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    let sink = Arc::new(CapturingSink::default());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    )
+    .with_prefs(prefs_store)
+    .with_price_policy_defaults(PriceAlertPolicyDefaults {
+        min_direct_pct: 6.0,
+        ..Default::default()
+    })
+    .with_polisher(polisher);
+    (router, sink, dir)
+}
+
+fn sndk_price_event() -> MarketEvent {
+    MarketEvent {
+        id: "price_low:SNDK:2026-08-16".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 450,
+            window: "day".into(),
+        },
+        severity: Severity::Low,
+        symbols: vec!["SNDK".into()],
+        occurred_at: Utc::now(),
+        title: "SNDK +4.50%".into(),
+        summary: "当前 380.00，日涨 +4.50%".into(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::json!({
+            "changesPercentage": 4.5,
+            "hone_price": 380.0,
+            "hone_price_pct": 4.5
+        }),
+    }
+}
+
+#[tokio::test]
+async fn polish_runs_once_per_event_across_holders_and_keeps_position_lines() {
+    use crate::polisher::BodyPolisher;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingPolisher(AtomicUsize);
+    #[async_trait]
+    impl BodyPolisher for CountingPolisher {
+        async fn polish(&self, _e: &MarketEvent, _b: &str) -> Option<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Some("POLISHED CORE".into())
+        }
+    }
+
+    let polisher = Arc::new(CountingPolisher(AtomicUsize::new(0)));
+    let (router, sink, _dir) = two_holder_price_router(polisher.clone());
+    let (sent, _) = router.dispatch(&sndk_price_event()).await.unwrap();
+    assert_eq!(sent, 2);
+    // 两个持有人共享同一次润色调用
+    assert_eq!(polisher.0.load(Ordering::SeqCst), 1);
+    let calls = sink.calls.lock().unwrap();
+    let bodies: std::collections::HashMap<String, String> = calls
+        .iter()
+        .map(|(who, body)| (who.clone(), body.clone()))
+        .collect();
+    for (user, shares_line) in [("u1", "持仓 13 股"), ("u2", "持仓 7 股")] {
+        let body = bodies
+            .iter()
+            .find(|(who, _)| who.contains(user))
+            .map(|(_, b)| b)
+            .unwrap_or_else(|| panic!("missing delivery for {user}: {bodies:?}"));
+        assert!(body.starts_with("POLISHED CORE"), "body={body}");
+        // 各自的仓位行由模板拼接在润色输出之后,不被 140 字压缩吃掉
+        assert!(body.contains(shares_line), "body={body}");
+    }
+}
+
+#[tokio::test]
+async fn polish_failure_is_attempted_once_and_falls_back_to_full_body() {
+    use crate::polisher::BodyPolisher;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct FailingPolisher(AtomicUsize);
+    #[async_trait]
+    impl BodyPolisher for FailingPolisher {
+        async fn polish(&self, _e: &MarketEvent, _b: &str) -> Option<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            None
+        }
+    }
+
+    let polisher = Arc::new(FailingPolisher(AtomicUsize::new(0)));
+    let (router, sink, _dir) = two_holder_price_router(polisher.clone());
+    let (sent, _) = router.dispatch(&sndk_price_event()).await.unwrap();
+    assert_eq!(sent, 2, "润色失败不得丢投递");
+    // 失败也记忆化:同一输入不为第二个持有人重试
+    assert_eq!(polisher.0.load(Ordering::SeqCst), 1);
+    let calls = sink.calls.lock().unwrap();
+    for (_, body) in calls.iter() {
+        assert!(body.contains("SNDK +4.50%"), "body={body}");
+        assert!(body.contains("持仓"), "body={body}");
+    }
+}
+
 #[tokio::test]
 async fn disabled_prefs_skip_send_and_enqueue() {
     use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
