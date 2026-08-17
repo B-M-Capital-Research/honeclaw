@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::runners::types::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::resolve_tool_reasoning;
@@ -33,6 +33,19 @@ fn is_mcp_startup_lifecycle_update(update: &Value) -> bool {
         .and_then(Value::as_str)
         .and_then(|tool_call_id| tool_call_id.strip_prefix("mcp_startup."))
         .is_some_and(|server_name| !server_name.is_empty())
+}
+
+fn initial_terminal_tool_result(update: &Value) -> Option<Value> {
+    let status = update.get("status").and_then(Value::as_str)?;
+    match status {
+        "completed" => extract_tool_result(update).or_else(|| Some(json!({"status": status}))),
+        "failed" | "cancelled" => {
+            let mut result = extract_tool_failure(update)?;
+            result["status"] = Value::String(status.to_string());
+            Some(result)
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -263,6 +276,9 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                     flush_pending_assistant_message(state);
                 }
                 capture_tool_start(state, update, &tool);
+                if let Some(result) = initial_terminal_tool_result(update) {
+                    capture_tool_finish(state, update, &tool, result);
+                }
             }
             let default_reasoning = resolve_tool_reasoning(&tool, extract_acp_reasoning(update));
             let rendered = tool_status_renderer.map(|renderer| {

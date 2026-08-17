@@ -139,6 +139,43 @@ async fn codex_acp_cancelled_mcp_startup_is_not_a_visible_or_accounted_tool_call
 }
 
 #[tokio::test]
+async fn terminal_tool_call_event_finishes_without_followup_update() {
+    let (emitter, _) = collecting_emitter();
+    for status in ["completed", "failed", "cancelled"] {
+        let mut state = AcpPromptState::default();
+        let tool_call_id = format!("exec-view-image-{status}");
+        handle_acp_session_update(
+            &json!({
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": tool_call_id,
+                    "kind": "other",
+                    "title": "View Image /var/folders/example.png",
+                    "status": status
+                }
+            }),
+            &emitter,
+            Some(&mut state),
+        )
+        .await;
+
+        assert!(state.pending_tool_calls.is_empty(), "status={status}");
+        assert!(
+            state.completed_tool_call_ids.contains(&tool_call_id),
+            "status={status}"
+        );
+        assert_eq!(state.finished_tool_calls.len(), 1, "status={status}");
+        assert_eq!(
+            state.finished_tool_calls[0].result["status"], status,
+            "status={status}"
+        );
+
+        finalize_pending_tool_calls(&mut state, "unknown_after_missing_acp_result");
+        assert_eq!(state.finished_tool_calls.len(), 1, "status={status}");
+    }
+}
+
+#[tokio::test]
 async fn failed_persistent_tool_update_is_always_captured_with_real_arguments() {
     let mut state = AcpPromptState::default();
     let (emitter, _) = collecting_emitter();

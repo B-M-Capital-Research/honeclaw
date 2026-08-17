@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-08-03
+- updated_at: 2026-08-17
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -46,6 +46,7 @@
   - `docs/handoffs/2026-07-29-codex-acp-discord-runtime-recovery.md`
   - `docs/handoffs/2026-08-02-acp-tool-status-projection.md`
   - `docs/handoffs/2026-08-03-codex-single-native-session.md`
+  - `docs/handoffs/2026-08-17-acp-initial-terminal-tool-call.md`
 
 ## Goal
 
@@ -83,6 +84,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-08-01 native-turn contract follow-up (done; identity subdecision superseded 2026-08-03; parent plan remains active): replaced the seed/reseed user-message convention with an explicit runner conversation strategy. Persistent Codex sessions receive Hone instructions through Codex's native `developer_instructions` configuration and every ACP `session/prompt` contains only the canonical current user turn. Native compaction never causes Hone to replay system instructions, local transcript, historical user/assistant messages, tool calls, or tool results. The original mode/fingerprint generation-rotation rule is historical and replaced by the 2026-08-03 stable persisted-ID binding. OpenCode remains a fresh-session Hone-replay adapter until its own resume/event contract is independently proven.
 - 2026-08-02 MCP startup and execute-status follow-up (done; parent plan remains active): `codex-acp 1.1.7` can report a cancelled MCP startup watcher as a synthetic terminal `tool_call` with `toolCallId=mcp_startup.<server>` and `status=failed`. Hone now retains that adapter lifecycle telemetry in the raw ACP log while excluding it from visible progress, pending/restored tool state, and business tool counts. Structured MCP calls and actual shell execution are distinguished from `rawInput`; MCP calls use bounded tool/argument summaries, shell calls use safe categories without arguments, secrets, or full paths, and completion events inherit the same start summary when Codex omits start metadata. Discord, Telegram, and Feishu direct/group projections share the Full/Compact rendering contract, while iMessage forwards safe tool-start state to its console pending view.
 - 2026-08-02 version-aware dialect and source-deployment follow-up (done locally; GCE rollout paused): keep the existing Codex/OpenCode conversation ownership split, but replace static observed-version labels with one shared runtime adapter profile selected from actual CLI/adapter probes. Known profiles bind adapter identity, detected version, compatibility status, stream dialect, and fixture provenance; unknown newer versions run only through an explicit conservative compatibility policy with visible telemetry, while older/structurally incompatible versions fail before a turn. Runtime metadata exposes sanitized build provenance and selected profiles. Direct source deployment is one repository-owned state machine with active-turn drain, exact PID/lock release, startup/readiness separation, all-service rollback, immutable commit provenance, and no credential output. A real preflight found the existing `com.honeclaw.source.runtime` parent/child topology, so the state machine now explicitly migrates that supervisor to persistent revision-bound Web/Discord LaunchAgents, rejects unknown port owners, and restores the old plist/job on failure. Final local implementation revision `ee9da19a9ac3d30e5df52c32dff7c40a387948dd` is deployed and accepted; GCE rollout is deliberately paused by user direction.
+- 2026-08-17 initial-terminal tool-call follow-up (implementation done; full gate blocked): shared ACP ingest now closes a tool directly when its first `tool_call` event already carries the explicit terminal status `completed`, `failed`, or `cancelled`. `pending` / `in_progress` calls still require a terminal update, and a two-stage `tool_call_update status=completed` without a result keeps the existing conservative unknown-result behavior. Focused and mutation regressions pass, but the workspace PostgreSQL gate cannot complete inside the current socket-restricted sandbox, so commit remains pending external gate evidence.
 
 ### 2026-08-02 version-aware dialect and deployment acceptance checklist
 
@@ -126,6 +128,14 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - [x] Run the repository gates, synchronize ADR/decision/invariant/repo-map/handoff/archive evidence, and commit only the reviewed task files.
 
 ## Validation
+
+### 2026-08-17 首事件终态工具调用回归
+
+- [x] 用与生产 `View Image` 相同的无独立 result 的 `tool_call status=completed` 形状，证明 pending 被清空且不会被 `finalize_pending_tool_calls` 改写成 `unknown_after_missing_acp_result`。
+- [x] 同一回归覆盖明确 `failed` / `cancelled` 终态；未知状态不视为终态，既有 `in_progress` pending 断言保持通过。
+- [x] 注释首事件终态收口调用后，定向测试变红为 `0 passed; 1 failed`；恢复后公共 ACP 组为 `25 passed; 0 failed`。
+- [x] 显式 `rustfmt --check` 与 `git diff --check` 通过；仓库 changed-file 脚本只报告分支内既有 `key_event_chain.rs`，未覆盖本轮文件，因此不把它冒充本轮格式证据。
+- [ ] 在具备本机 PostgreSQL socket 权限的普通终端重新运行 `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`，记录最终 passed/failed 数字后再 commit。当前沙箱内尝试在 `hone-channels` 中止于 PostgreSQL `Operation not permitted`，其 `654 passed; 173 failed; 1 ignored` 仅是无效环境结果。
 
 ### 2026-08-03 Discord/Codex 唯一原生会话验收清单
 

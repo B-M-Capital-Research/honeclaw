@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-16
+最后更新：2026-08-17
 状态：有 15 个活跃任务
 
 ## 说明
@@ -87,4 +87,4 @@
 - **ACP 对齐的 Agent Runtime 全栈重构**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/acp-runtime-refactor.md`
-  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档。2026-08-01 会话所有权收敛为显式 `NativePersistent / StructuredReplay / EphemeralCompiledPrompt` 策略与对应输入类型：Codex ACP 通过 `CODEX_CONFIG.developer_instructions` 接收指令，每个 `session/prompt` 无论新建、续轮或 compact 后都只有当前北京时间与当前用户/附件内容，不再保留任何 seed/reseed、历史对话或工具结果拼装路径；OpenCode 保持 fresh-session replay。2026-08-03 已进一步收紧为“每个持久 SessionIdentity 只有一个 Codex 原生 session”：提示词指纹和重启不得自动分叉，首次 `session/new` ID 必须在首个 prompt 前检查点持久化，resume 失败继续 fail closed，真实 ACP 探针不得污染用户 Codex Desktop 任务列表。Codex ACP `1.1.7` 与 OpenCode `1.18.11` 仍采用独立版本化流式方言；不得回归 Codex current-turn-only 与 OpenCode 独立上下文契约
+  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档。2026-08-01 会话所有权收敛为显式 `NativePersistent / StructuredReplay / EphemeralCompiledPrompt` 策略与对应输入类型：Codex ACP 通过 `CODEX_CONFIG.developer_instructions` 接收指令，每个 `session/prompt` 无论新建、续轮或 compact 后都只有当前北京时间与当前用户/附件内容，不再保留任何 seed/reseed、历史对话或工具结果拼装路径；OpenCode 保持 fresh-session replay。2026-08-03 已进一步收紧为“每个持久 SessionIdentity 只有一个 Codex 原生 session”：提示词指纹和重启不得自动分叉，首次 `session/new` ID 必须在首个 prompt 前检查点持久化，resume 失败继续 fail closed，真实 ACP 探针不得污染用户 Codex Desktop 任务列表。2026-08-17 已补上首个 `tool_call` 自带 `completed` / `failed` / `cancelled` 时的直接终态登记并通过变异回归；完整 PostgreSQL workspace 门禁受当前沙箱 socket 权限阻塞，尚未 commit。Codex ACP `1.1.7` 与 OpenCode `1.18.11` 仍采用独立版本化流式方言；不得回归 Codex current-turn-only 与 OpenCode 独立上下文契约
