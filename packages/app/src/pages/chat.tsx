@@ -2213,7 +2213,6 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
         { href: "/research?panel=daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
         { href: "/research?panel=daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
         { href: "/research?panel=company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
-        { href: "/valuation-lab", title: copy().valuation_lab_title, desc: copy().tools_valuation_desc },
       ],
     },
     {
@@ -2236,6 +2235,7 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
           {
             label: copy().tools_group_admin,
             items: [
+              { href: "/valuation-lab", title: copy().valuation_lab_title, desc: copy().tools_valuation_desc },
               { href: "/research?group=admin", title: copy().research_library_title, desc: copy().tools_library_desc },
             ],
           },

@@ -305,7 +305,11 @@ pub(crate) async fn handle_get_valuation_lab(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
+    // Temporarily admin-only until the public rollout. The 19:20 worker and
+    // rating-input projection stay unchanged.
+    if let Err(response) =
+        crate::routes::public_admin::require_public_admin_for_read(&state, &headers).await
+    {
         return response;
     }
     let snapshot = read_snapshot(&state)
