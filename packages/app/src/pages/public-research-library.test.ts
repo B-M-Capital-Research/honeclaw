@@ -18,8 +18,9 @@ const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
 describe("unified research library", () => {
   test("has a discoverable signed-in route and chat entry", () => {
     expect(app).toContain('path="/research-library"');
-    // Reachable from the conversation through the composer tools menu.
-    expect(chat).toContain('href: "/research-library"');
+    // Reachable from the conversation through the composer tools menu, which
+    // routes administrators at the research desk's administration group.
+    expect(chat).toContain('href: "/research?group=admin"');
     expect(page).toContain("我的知识源");
     // 知识源现在是管理员能力，入口在研究台「管理」分类；/me 只留指路卡。
     expect(research).toContain('key: "research-library"');

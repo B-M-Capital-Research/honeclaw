@@ -40,6 +40,16 @@ describe("research desk contract", () => {
     expect(page).toContain("setSearchParams({ panel: undefined })");
   });
 
+  it("parks valuation lab under the admin group until public rollout", () => {
+    const block = page.slice(
+      page.indexOf('key: "valuation-lab"'),
+      page.indexOf('key: "portfolio-news"'),
+    );
+    expect(block).toContain('group: "admin"');
+    expect(block).toContain("adminOnly: true");
+    expect(page).toContain('{ key: "admin", label: "管理", adminOnly: true }');
+  });
+
   it("paints the grid from one aggregate call and degrades to static cards", () => {
     expect(page).toContain("getPublicResearchOverview");
     // Two API touchpoints on the page itself (auth + overview), each named

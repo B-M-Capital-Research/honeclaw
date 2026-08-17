@@ -6,12 +6,30 @@ const page = readFileSync(new URL("./public-valuation-lab.tsx", import.meta.url)
 const css = readFileSync(new URL("./public-valuation-lab.css", import.meta.url), "utf8");
 const app = readFileSync(new URL("../app.tsx", import.meta.url), "utf8");
 const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
+const research = readFileSync(new URL("./public-research.tsx", import.meta.url), "utf8");
 
 describe("daily valuation lab", () => {
-  test("is reachable from signed-in HONE", () => {
+  test("is reachable from the administrator tools menu", () => {
     expect(app).toContain('path="/valuation-lab"');
-    // Reachable from the conversation through the composer tools menu.
+    // Still reachable from conversation, but only inside the admin group.
     expect(chat).toContain('href: "/valuation-lab"');
+    expect(chat).toContain("tools_group_admin");
+    const daily = chat.slice(
+      chat.indexOf("tools_group_daily"),
+      chat.indexOf("tools_group_intel"),
+    );
+    expect(daily).not.toContain('href: "/valuation-lab"');
+  });
+
+  test("is parked under the research-desk admin group until public rollout", () => {
+    const block = research.slice(
+      research.indexOf('key: "valuation-lab"'),
+      research.indexOf('key: "portfolio-news"'),
+    );
+    expect(block).toContain('group: "admin"');
+    expect(block).toContain("adminOnly: true");
+    expect(page).toContain('setView("forbidden")');
+    expect(page).toContain("暂未对全部用户开放");
   });
 
   test("lives in the research navigation section", () => {

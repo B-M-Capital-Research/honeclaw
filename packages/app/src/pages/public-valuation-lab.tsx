@@ -1,17 +1,26 @@
 import { Title } from "@solidjs/meta";
+import { useNavigate } from "@solidjs/router";
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
-import { getPublicValuationLab, isUnauthorizedApiError } from "@/lib/api";
-import type { ValuationLabItem, ValuationLabSnapshot } from "@/lib/types";
+import { ApiError, getPublicAuthMe, getPublicValuationLab } from "@/lib/api";
+import {
+  cachedPublicUser,
+  setCachedPublicUser,
+} from "@/lib/public-session-cache";
+import type {
+  PublicAuthUserInfo,
+  ValuationLabItem,
+  ValuationLabSnapshot,
+} from "@/lib/types";
 
 import "./public-foundation.css";
 import "./public-site.css";
 import "./public-polish.css";
 import "./public-valuation-lab.css";
 
-type ViewState = "loading" | "ready" | "login" | "error";
+type ViewState = "loading" | "ready" | "login" | "forbidden" | "error";
 type Filter = "all" | "ready" | "review" | "unavailable";
 
 function money(value: number | null | undefined, currency = "USD") {
@@ -39,7 +48,11 @@ function statusLabel(item: ValuationLabItem) {
 }
 
 export default function PublicValuationLabPage() {
-  const [view, setView] = createSignal<ViewState>("loading");
+  const navigate = useNavigate();
+  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
+  const [view, setView] = createSignal<ViewState>(
+    cachedPublicUser()?.is_admin ? "loading" : cachedPublicUser() ? "forbidden" : "loading",
+  );
   const [snapshot, setSnapshot] = createSignal<ValuationLabSnapshot>();
   const [filter, setFilter] = createSignal<Filter>("all");
   const [query, setQuery] = createSignal("");
@@ -47,7 +60,30 @@ export default function PublicValuationLabPage() {
   const [loading, setLoading] = createSignal(false);
   let controller: AbortController | undefined;
 
+  const bootstrap = async () => {
+    try {
+      const me = await getPublicAuthMe();
+      setUser(me);
+      setCachedPublicUser(me);
+      if (!me.is_admin) {
+        setView("forbidden");
+        return;
+      }
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === "AbortError") return;
+      setUser(null);
+      setCachedPublicUser(null);
+      setView("login");
+      return;
+    }
+    await load();
+  };
+
   const load = async () => {
+    if (user()?.is_admin !== true) {
+      setView("forbidden");
+      return;
+    }
     controller?.abort();
     controller = new AbortController();
     setLoading(true);
@@ -57,7 +93,8 @@ export default function PublicValuationLabPage() {
       setView("ready");
     } catch (cause) {
       if (cause instanceof Error && cause.name === "AbortError") return;
-      if (isUnauthorizedApiError(cause)) setView("login");
+      if (cause instanceof ApiError && cause.status === 401) setView("login");
+      else if (cause instanceof ApiError && cause.status === 403) setView("forbidden");
       else {
         setError(cause instanceof Error ? cause.message : String(cause));
         setView("error");
@@ -67,7 +104,7 @@ export default function PublicValuationLabPage() {
     }
   };
 
-  onMount(() => void load());
+  onMount(() => void bootstrap());
   onCleanup(() => controller?.abort());
 
   const visible = createMemo(() => {
@@ -90,9 +127,21 @@ export default function PublicValuationLabPage() {
       <Show when={view() !== "loading"} fallback={<div class="valuation-lab-loading">正在读取当日估值…</div>}>
         <Show
           when={view() !== "login"}
-          fallback={<PublicLoginForm title="登录后查看估值实验室" subtitle="估值区间只用于研究，不会自动执行交易。" onLogin={() => void load()} />}
+          fallback={<PublicLoginForm title="登录后查看估值实验室" subtitle="估值区间只用于研究，不会自动执行交易。" onLogin={() => void bootstrap()} />}
         >
           <PublicWorkspaceShell active="research" topbarLabel="估值实验室">
+            <Show
+              when={view() !== "forbidden"}
+              fallback={
+                <main class="valuation-lab-page">
+                  <section class="valuation-lab-empty">
+                    <strong>暂未对全部用户开放</strong>
+                    <span>估值实验室先放在研究台的管理分类里，仅管理员可见。</span>
+                    <button type="button" onClick={() => navigate("/research")}>返回研究台</button>
+                  </section>
+                </main>
+              }
+            >
             <main class="valuation-lab-page">
               <header class="valuation-lab-hero">
                 <div>
@@ -203,6 +252,7 @@ export default function PublicValuationLabPage() {
                 <p>{snapshot()?.disclaimer}</p>
               </footer>
             </main>
+            </Show>
           </PublicWorkspaceShell>
         </Show>
       </Show>

@@ -9798,6 +9798,57 @@ fn identifier_is_conceptual_use(symbol: &str, normalized_context: &str) -> bool 
     if matches!(symbol, "S" | "P" | "500") && normalized_context.contains("s&p") {
         return true;
     }
+    if symbol == "13F" {
+        return true;
+    }
+    let product_or_theme_symbol = matches!(
+        symbol,
+        "AI" | "API" | "ASIC" | "CPU" | "CPO" | "DRAM" | "GPU" | "HBM" | "NAND" | "PCB" | "SSD"
+    );
+    let product_or_theme_marker = [
+        "flash",
+        "infrastructure",
+        "theme",
+        "supply chain",
+        "storage",
+        "产品",
+        "主题",
+        "产业链",
+        "存储",
+        "日报",
+        "要闻",
+        "观察",
+        "行业动态",
+        "赛道",
+    ]
+    .iter()
+    .any(|marker| normalized_context.contains(marker));
+    if product_or_theme_symbol && product_or_theme_marker {
+        return true;
+    }
+    let filing_or_macro_symbol = matches!(
+        symbol,
+        "FOMC" | "GDP" | "NFP" | "PCE" | "PMI" | "SEC" | "FDA" | "NASA" | "PDUFA"
+    );
+    let filing_or_macro_marker = [
+        "13f",
+        "disclosure",
+        "filing",
+        "macro",
+        "公开披露",
+        "公告",
+        "披露",
+        "操作",
+        "纪要",
+        "降息",
+        "概率",
+        "宏观",
+    ]
+    .iter()
+    .any(|marker| normalized_context.contains(marker));
+    if filing_or_macro_symbol && filing_or_macro_marker {
+        return true;
+    }
     let concept_marker = [
         "行业",
         "板块",
@@ -14494,6 +14545,29 @@ mod tests {
     }
 
     #[test]
+    fn scheduler_storage_chain_prompt_does_not_promote_theme_acronyms_to_tickers() {
+        let prompt = "盘前美股要闻与SNDK/MU存储产业链日报：跟踪 SNDK、MU、WDC、STX、SOXX、QQQ、LRCX、KLAC、AMAT，并补充 AI、SSD、NAND、DRAM 存储行业动态。";
+        let mentions = plain_ticker_mentions(prompt, AgentTurnOrigin::Scheduled);
+        assert_eq!(
+            mentions
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            [
+                "SNDK", "MU", "WDC", "STX", "SOXX", "QQQ", "LRCX", "KLAC", "AMAT"
+            ],
+            "{mentions:?}"
+        );
+        assert!(
+            !matches!(
+                extract_entity_scope(prompt, AgentTurnOrigin::Scheduled),
+                EntityResolutionScope::Broad(_)
+            ),
+            "mixed ticker task should not be collapsed into a broad non-security summary"
+        );
+    }
+
+    #[test]
     fn macro_indicator_binding_forces_tentative_without_dropping_candidate() {
         let input = "PCE 新闻";
         let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
@@ -14506,6 +14580,23 @@ mod tests {
             extract_entity_scope(input, AgentTurnOrigin::Scheduled),
             EntityResolutionScope::AgentToolDiscovery(_)
         ));
+    }
+
+    #[test]
+    fn scheduler_disclosure_prompt_does_not_treat_13f_as_a_security() {
+        let prompt = "跟踪 Nancy Pelosi、Cathie Wood / ARK Invest、Berkshire、Li Lu、Dan Bin 的美股操作与公开披露，重点核对最新 13F filing。";
+        let mentions = plain_ticker_mentions(prompt, AgentTurnOrigin::Scheduled);
+        assert!(
+            mentions.is_empty(),
+            "institution/disclosure prompt must not be downgraded into securities: {mentions:?}"
+        );
+        assert!(
+            !matches!(
+                extract_entity_scope(prompt, AgentTurnOrigin::Scheduled),
+                EntityResolutionScope::Securities(_)
+            ),
+            "disclosure prompt must not enter the deterministic securities path"
+        );
     }
 
     #[test]

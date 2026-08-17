@@ -100,11 +100,20 @@ pub(crate) async fn handle_get_research_overview(
                 OverviewCard::waiting("company-ratings", "公司评级", "52 家研究基线")
             }),
     );
-    cards.push(
-        super::valuation_lab::overview_card(&state)
-            .await
-            .unwrap_or_else(|| OverviewCard::waiting("valuation-lab", "估值实验室", "三情景估值")),
-    );
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
+    if is_admin {
+        cards.push(
+            super::valuation_lab::overview_card(&state)
+                .await
+                .unwrap_or_else(|| {
+                    OverviewCard::waiting("valuation-lab", "估值实验室", "三情景估值")
+                }),
+        );
+    }
     let portfolio_news_card = match actor.as_ref() {
         Some(actor) => super::portfolio_news::overview_card(&state, actor).await,
         None => None,

@@ -101,10 +101,12 @@ const SECTIONS: SectionDef[] = [
     key: "valuation-lab",
     title: "估值实验室",
     kicker: "三情景估值",
-    group: "company",
+    // 先停在管理分类里，等模型稳定后再对全部用户开放。
+    group: "admin",
     blurb: "悲观 / 基准 / 乐观情景与关键假设",
     refreshAt: "每日 19:20",
     href: "/valuation-lab",
+    adminOnly: true,
   },
   {
     key: "portfolio-news",
