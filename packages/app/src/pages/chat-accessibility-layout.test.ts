@@ -31,7 +31,7 @@ describe("chat accessibility layout", () => {
     // The daily research products live on /research. The chat page keeps one
     // tool row and must never re-grow eager-fetching dashboard mounts or the
     // old launcher rail.
-    expect(chat).toContain("<ChatToolsMenu />");
+    expect(chat).toContain("<ChatToolsMenu isAdmin=");
     expect(chat).toContain('navigate("/research")');
     expect(chat).not.toContain("chat-feature-rail");
     expect(chat).not.toContain("Dashboard onAsk=");

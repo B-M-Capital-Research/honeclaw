@@ -2155,77 +2155,145 @@ function FinanceCalendarQuickAction(props: {
  * primary. Destinations now collapse into this menu and the row beside it
  * keeps only actions that stay in the chat.
  */
-function ChatToolsMenu() {
+/**
+ * The composer's research-tools menu.
+ *
+ * Rendered through a Portal on purpose: the chip row it sits in is a
+ * horizontally scrollable strip (`overflow-x: auto; overflow-y: hidden`), and
+ * an absolutely positioned child of a scroll container gets clipped by it —
+ * on phones the menu was being laid out correctly and then cut away entirely,
+ * so tapping 工具 looked like nothing happened.
+ */
+function ChatToolsMenu(props: { isAdmin: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = createSignal(false);
-  let wrapRef: HTMLDivElement | undefined;
+  const [anchor, setAnchor] = createSignal<DOMRect>();
+  let triggerRef: HTMLButtonElement | undefined;
+
+  const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
 
   createEffect(() => {
     if (!open()) return;
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      if (wrapRef && !wrapRef.contains(event.target as Node)) setOpen(false);
-    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onPointerDown);
+    const reposition = () => {
+      if (triggerRef) setAnchor(triggerRef.getBoundingClientRect());
+    };
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", reposition);
     onCleanup(() => {
-      document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", reposition);
     });
   });
+
+  const toggle = () => {
+    if (open()) {
+      setOpen(false);
+      return;
+    }
+    if (triggerRef) setAnchor(triggerRef.getBoundingClientRect());
+    setOpen(true);
+  };
 
   const go = (href: string) => {
     setOpen(false);
     navigate(href);
   };
 
-  const destinations = [
+  // Each daily research product is addressable, so the menu can drop the
+  // reader at the exact panel instead of only at the desk's front door.
+  const copy = () => CONTENT.chat_page.workspace;
+  const groups = () => [
     {
-      href: "/research",
-      title: CONTENT.chat_page.workspace.research_desk_entry,
-      desc: CONTENT.chat_page.workspace.tools_research_desc,
+      label: copy().tools_group_daily,
+      items: [
+        { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
+        { href: "/research?panel=daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
+        { href: "/research?panel=daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
+        { href: "/research?panel=company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
+        { href: "/valuation-lab", title: copy().valuation_lab_title, desc: copy().tools_valuation_desc },
+      ],
     },
     {
-      href: "/valuation-lab",
-      title: CONTENT.chat_page.workspace.valuation_lab_title,
-      desc: CONTENT.chat_page.workspace.valuation_lab_subtitle,
+      label: copy().tools_group_intel,
+      items: [
+        { href: "/research?panel=influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
+        { href: "/research?panel=key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
+        { href: "/research?panel=weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
+      ],
     },
     {
-      href: "/research-library",
-      title: CONTENT.chat_page.workspace.research_library_title,
-      desc: CONTENT.chat_page.workspace.research_library_subtitle,
+      label: copy().tools_group_holdings,
+      items: [
+        { href: "/research?panel=portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
+        { href: "/research?panel=position-management", title: copy().tools_position_title, desc: copy().tools_position_desc },
+      ],
     },
+    ...(props.isAdmin
+      ? [
+          {
+            label: copy().tools_group_admin,
+            items: [
+              { href: "/research?group=admin", title: copy().research_library_title, desc: copy().tools_library_desc },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (
-    <div class="chat-tools" ref={wrapRef}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
         class="chat-tools__trigger"
         aria-haspopup="menu"
         aria-expanded={open()}
         {...routePrefetchHandlers("research")}
-        onClick={() => setOpen(!open())}
+        onClick={toggle}
       >
         <AgentWorkspaceIcon name="research" size={15} />
         <span>{CONTENT.chat_page.workspace.tools_label}</span>
       </button>
       <Show when={open()}>
-        <div class="chat-tools__menu" role="menu">
-          <p class="chat-tools__group">{CONTENT.chat_page.workspace.tools_group_research}</p>
-          <For each={destinations}>
-            {(item) => (
-              <button type="button" role="menuitem" onClick={() => go(item.href)}>
-                <b>{item.title}</b>
-                <small>{item.desc}</small>
-              </button>
-            )}
-          </For>
-        </div>
+        <Portal>
+          <div class="chat-tools__backdrop" onClick={() => setOpen(false)}>
+            <div
+              class="chat-tools__menu"
+              classList={{ "is-sheet": isPhone() }}
+              role="menu"
+              style={
+                isPhone()
+                  ? undefined
+                  : {
+                      left: `${Math.round(anchor()?.left ?? 16)}px`,
+                      bottom: `${Math.round(window.innerHeight - (anchor()?.top ?? 0) + 8)}px`,
+                    }
+              }
+              onClick={(event) => event.stopPropagation()}
+            >
+              <For each={groups()}>
+                {(group) => (
+                  <>
+                    <p class="chat-tools__group">{group.label}</p>
+                    <For each={group.items}>
+                      {(item) => (
+                        <button type="button" role="menuitem" onClick={() => go(item.href)}>
+                          <b>{item.title}</b>
+                          <small>{item.desc}</small>
+                        </button>
+                      )}
+                    </For>
+                  </>
+                )}
+              </For>
+            </div>
+          </div>
+        </Portal>
       </Show>
-    </div>
+    </>
   );
 }
 
@@ -2348,7 +2416,7 @@ function Composer(props: {
       }}
     >
       <div class="public-chat-proactive-tip-wrap">
-        <ChatToolsMenu />
+        <ChatToolsMenu isAdmin={props.isAdmin} />
         <ProactiveModeTips openRequest={props.trackingOpenRequest} />
         <Show when={props.isAdmin}>
           <EarningsResearchQuickAction

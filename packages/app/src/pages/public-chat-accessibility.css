@@ -36,14 +36,23 @@
   opacity: 0.86;
 }
 
+/* Portalled, so the scrollable chip row cannot clip it. Anchored to the
+   trigger on a pointer; a bottom sheet on phones, where a 268px popover
+   floating over the composer is neither reachable nor legible. */
+.chat-tools__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
 .chat-tools__menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  z-index: 40;
+  position: fixed;
   display: grid;
-  gap: 2px;
-  width: min(268px, calc(100vw - 32px));
+  gap: 1px;
+  width: min(280px, calc(100vw - 32px));
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   border: 1px solid var(--hone-line);
   border-radius: var(--hone-radius-md);
@@ -51,13 +60,28 @@
   box-shadow: var(--hone-shadow-md);
 }
 
+.chat-tools__menu.is-sheet {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-height: 72dvh;
+  padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: var(--hone-radius-lg) var(--hone-radius-lg) 0 0;
+}
+
 .chat-tools__group {
-  margin: 2px 8px 4px;
+  margin: 8px 8px 4px;
   font-family: var(--hone-font-label);
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--hone-ink-400);
+}
+
+.chat-tools__menu > p:first-child {
+  margin-top: 2px;
 }
 
 .chat-tools__menu button {
