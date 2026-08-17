@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-17 18:00-22:03 CST（UTC 2026-08-17 10:00-14:03）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:00 CST deliver preview 转为 NVIDIA 关税解释，正文强调“50%以上关税”缺乏支撑、Section 232 税率等政策事实；未稳定执行原 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_3c52d213` / `job=持仓财报与重大新闻心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 21:31 CST deliver preview 转为 AMD MI350 vs NVIDIA Blackwell 技术竞争和 HBM4 行业分析；22:01 CST 又围绕 WDC/NAND 和用户问的 WDC 组织正文，偏离“持仓财报与重大新闻”定时核验目标。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒`。
+  - 22:00 CST deliver preview 转为“配置已达工具调用上限”和当前心跳任务配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-16 22:02-2026-08-17 02:04 CST（UTC 2026-08-16 14:02-18:04）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 22:30 / 01:30 CST deliver preview 转为“跌 20% 是否买入”的泛投资方法论；01:00 CST 转为 NVIDIA 的主要客户与商业关系说明；02:00 CST 转为特朗普关税政策梳理及对 NVDA 的影响，未稳定执行原 AI / 科技持仓观察列表关键事件核验。
