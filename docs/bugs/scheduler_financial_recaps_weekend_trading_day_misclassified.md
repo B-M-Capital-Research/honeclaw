@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-08-17 22:00-2026-08-18 02:03 CST` source runtime 复核同根继续复发：
+    - `data/sessions.sqlite3` 本窗仍无新增真实 message，因此本轮以 `data/logs/hone-console-page-source.log` 为证据源。
+    - 00:00 CST `持仓重大事件心跳提醒` raw / deliver preview 把北京时间 2026-08-18 00:00 和纽约 2026-08-17 周一交易日上下文写成 `New York 2026-08-17 12:00 noon Sunday` / “纽约周日正午，美股休市”，但实际纽约日期是 2026-08-17 周一；01:30 CST 同 job 又把 `2026-08-17 13:30 New York` 写成 Saturday afternoon。
+    - 同窗多条 heartbeat / scheduler 已生成和送达，问题主要影响金融时间口径与正文可信度，不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
   - `2026-08-17 18:00-22:03 CST` source runtime 复核同根继续复发：
     - `data/sessions.sqlite3` 本窗仍无新增真实 message，因此本轮以 `data/logs/hone-console-page-source.log` 为证据源。
     - 18:00 CST `存储板块关键事件心跳提醒` deliver preview 继续写 `美股周一（劳动节翌日）未完成实时校验，以最近可得收盘价为准`，但实际 2026-08-17 是普通周一，不是美国 Labor Day 或其翌日；该时间口径会误导用户理解行情新鲜度和交易日状态。

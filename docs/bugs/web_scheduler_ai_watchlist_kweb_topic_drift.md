@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-17 22:00-2026-08-18 02:03 CST（UTC 2026-08-17 14:00-18:03）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 00:00 CST raw / deliver preview 转为当前推送日程、静音时段、定时推送和即时推配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 00:00 / 02:00 CST raw preview 继续围绕 NVDA H200 / AMD MI325X 关税、polysilicon tariffs 或 Section 232 解释收口，而不是稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_3c52d213` / `job=持仓财报与重大新闻心跳提醒` / `target=web-user-499a1c6331c4`。
+  - 00:00-02:00 CST 多轮在 SNDK / AAOI 工具上限和旧新闻语境下生成长表或 duplicate suppression，不稳定围绕“持仓财报与重大新闻”目标完成全量筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-17 18:00-22:03 CST（UTC 2026-08-17 10:00-14:03）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 22:00 CST deliver preview 转为 NVIDIA 关税解释，正文强调“50%以上关税”缺乏支撑、Section 232 税率等政策事实；未稳定执行原 AI / 科技持仓观察列表关键事件核验。
