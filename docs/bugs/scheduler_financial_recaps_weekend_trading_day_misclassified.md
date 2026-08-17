@@ -8,6 +8,12 @@
 
 ## 修复进展
 
+- `2026-08-18 06:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-18 02:03-06:01 CST 近窗仅检出 1 条旧 baseline `duplicate_suppressed` 样本：05:01 CST `持仓财报与重大新闻心跳提醒` matched preview 仍写 `美股当前为周日非交易时段`，但该文本来自 2026-08-17 08:30 的历史 matched preview，不是本轮新生成 deliver。
+    - 同窗有非文档代码提交 `1bd62a3b fix: guard scheduler market calendar drift`，继续强化 scheduler market calendar guard；未见 runtime 重启 / revision 切换或确认 live 已加载该修复。
+  - 判断：本轮没有确认 live 新生成内容继续把 2026-08-17 纽约周一包装为周日或周末交易日，且最新提交属于同缺陷代码级修复延续；因此状态保持 `Fixed/P3`，等待自然部署复核。若后续确认修复 revision 已加载后仍在 deliver 中生成显式日期 / 星期冲突，再回退为 `New`。
+
 - `2026-08-17` `bug-2` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`
     - 新增 scheduler / heartbeat 统一的 `market calendar mismatch` 守卫，覆盖两类高置信坏样本：

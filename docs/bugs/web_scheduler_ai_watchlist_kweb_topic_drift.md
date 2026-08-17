@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-18 02:03-06:01 CST（UTC 2026-08-17 18:03-22:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 04:00 CST raw / deliver preview 转为当前推送日程、即时推、勿扰时段和定时推配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
+  - 06:00 CST deliver preview 明确写“你只发了一个句号，没有具体问题”，随后输出当前已核验行情摘要；这更像直聊上下文澄清，而不是围绕持仓重大事件心跳目标完成全量筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-17 22:00-2026-08-18 02:03 CST（UTC 2026-08-17 14:00-18:03）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 00:00 CST raw / deliver preview 转为当前推送日程、静音时段、定时推送和即时推配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
