@@ -2515,8 +2515,37 @@ fn chinese_weekday_number(label: &str) -> Option<u32> {
     }
 }
 
+fn english_weekday_number(label: &str) -> Option<u32> {
+    match label.to_ascii_lowercase().as_str() {
+        "mon" | "monday" => Some(1),
+        "tue" | "tues" | "tuesday" => Some(2),
+        "wed" | "weds" | "wednesday" => Some(3),
+        "thu" | "thur" | "thurs" | "thursday" => Some(4),
+        "fri" | "friday" => Some(5),
+        "sat" | "saturday" => Some(6),
+        "sun" | "sunday" => Some(7),
+        _ => None,
+    }
+}
+
+fn floor_char_boundary(text: &str, mut idx: usize) -> usize {
+    idx = idx.min(text.len());
+    while idx > 0 && !text.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
+}
+
+fn ceil_char_boundary(text: &str, mut idx: usize) -> usize {
+    idx = idx.min(text.len());
+    while idx < text.len() && !text.is_char_boundary(idx) {
+        idx += 1;
+    }
+    idx
+}
+
 fn text_has_date_weekday_mismatch(text: &str) -> bool {
-    static RE_DATE_WEEKDAY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    static RE_DATE_WEEKDAY_ZH: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
             r"(?x)
             (?P<year>20\d{2})[-年/](?P<month>\d{1,2})[-月/](?P<day>\d{1,2})日?
@@ -2526,8 +2555,18 @@ fn text_has_date_weekday_mismatch(text: &str) -> bool {
         )
         .expect("valid date weekday regex")
     });
+    static RE_DATE_WEEKDAY_EN: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?ix)
+            (?P<year>20\d{2})[-/](?P<month>\d{1,2})[-/](?P<day>\d{1,2})
+            [^\n。；;，,]{0,24}
+            \b(?P<weekday>mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b
+            ",
+        )
+        .expect("valid english date weekday regex")
+    });
 
-    for captures in RE_DATE_WEEKDAY.captures_iter(text) {
+    for captures in RE_DATE_WEEKDAY_ZH.captures_iter(text) {
         let year = captures
             .name("year")
             .and_then(|m| m.as_str().parse::<i32>().ok());
@@ -2551,7 +2590,149 @@ fn text_has_date_weekday_mismatch(text: &str) -> bool {
             return true;
         }
     }
+
+    for captures in RE_DATE_WEEKDAY_EN.captures_iter(text) {
+        let year = captures
+            .name("year")
+            .and_then(|m| m.as_str().parse::<i32>().ok());
+        let month = captures
+            .name("month")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let day = captures
+            .name("day")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let weekday = captures
+            .name("weekday")
+            .and_then(|m| english_weekday_number(m.as_str()));
+        let (Some(year), Some(month), Some(day), Some(weekday)) = (year, month, day, weekday)
+        else {
+            continue;
+        };
+        let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) else {
+            continue;
+        };
+        if date.weekday().number_from_monday() != weekday {
+            return true;
+        }
+    }
+
     false
+}
+
+fn text_has_weekend_market_session_claim(text: &str) -> bool {
+    static RE_NUMERIC_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?x)(?P<year>20\d{2})[-年/](?P<month>\d{1,2})[-月/](?P<day>\d{1,2})日?")
+            .expect("valid numeric date regex")
+    });
+
+    for captures in RE_NUMERIC_DATE.captures_iter(text) {
+        let year = captures
+            .name("year")
+            .and_then(|m| m.as_str().parse::<i32>().ok());
+        let month = captures
+            .name("month")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let day = captures
+            .name("day")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+            continue;
+        };
+        let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) else {
+            continue;
+        };
+        if !matches!(date.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+            continue;
+        }
+        let Some(matched) = captures.get(0) else {
+            continue;
+        };
+        let start = floor_char_boundary(text, matched.start().saturating_sub(48));
+        let end = ceil_char_boundary(text, matched.end() + 96);
+        let window = compact_lowercase_text(&text[start..end]);
+        let claims_active_session = [
+            "盘前",
+            "盘中",
+            "盘后",
+            "开市",
+            "开盘",
+            "收盘",
+            "常规盘",
+            "交易时段",
+            "交易日",
+            "盘前时段",
+            "盘中时段",
+            "日内交易",
+            "美东盘中",
+            "盘后财经",
+            "premarket",
+            "postmarket",
+            "intraday",
+            "regularsession",
+            "marketopen",
+            "tradingday",
+        ]
+        .iter()
+        .any(|term| window.contains(term));
+        let explicitly_closed = [
+            "周末休市",
+            "休市阶段",
+            "非交易时段",
+            "不开市",
+            "已休市",
+            "marketclosed",
+            "weekendclosed",
+        ]
+        .iter()
+        .any(|term| window.contains(term));
+        if claims_active_session && !explicitly_closed {
+            return true;
+        }
+    }
+    false
+}
+
+fn text_has_market_calendar_mismatch(text: &str) -> bool {
+    text_has_date_weekday_mismatch(text) || text_has_weekend_market_session_claim(text)
+}
+
+fn rewrite_market_calendar_mismatch_message(text: &str) -> String {
+    let retained_segments = split_commodity_message_segments(text)
+        .into_iter()
+        .filter(|segment| !text_has_market_calendar_mismatch(segment))
+        .filter(|segment| !segment.trim().is_empty())
+        .take(4)
+        .collect::<Vec<_>>();
+
+    let mut rewritten = "【时间口径提示】本轮金融复盘正文包含自相矛盾的交易日、星期或开休市表述，已移除原时间判断；涉及盘前、盘后、收盘、休市与最近完整交易日的结论，请以下一轮重新核验为准。"
+        .to_string();
+    if !retained_segments.is_empty() {
+        rewritten.push_str("\n【仍可保留的非时间结论】");
+        for segment in retained_segments {
+            rewritten.push_str("\n- ");
+            rewritten.push_str(segment.trim());
+        }
+    }
+    rewritten
+}
+
+fn guard_market_calendar_mismatch_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
+    if !text_has_market_calendar_mismatch(text) {
+        return None;
+    }
+    if !event.heartbeat
+        && !scheduler_event_is_broad_market_review(event)
+        && !text_has_broad_market_review_context(text)
+    {
+        return None;
+    }
+
+    let rewritten = rewrite_market_calendar_mismatch_message(text);
+    if rewritten.trim() == text.trim() {
+        None
+    } else {
+        Some(rewritten)
+    }
 }
 
 fn text_has_unverified_commodity_market_claim(text: &str) -> bool {
@@ -2818,6 +2999,15 @@ fn text_is_predominantly_commodity_related(text: &str) -> bool {
 fn scheduler_metadata_with_commodity_guard(original: &str, guarded: &str) -> Value {
     json!({
         "commodity_causality_guarded": true,
+        "raw_preview": truncate_for_log(original.trim(), 280),
+        "guarded_preview": truncate_for_log(guarded.trim(), 200),
+        "deliver_preview": truncate_for_log(guarded.trim(), 200),
+    })
+}
+
+fn scheduler_metadata_with_market_calendar_guard(original: &str, guarded: &str) -> Value {
+    json!({
+        "market_calendar_guarded": true,
         "raw_preview": truncate_for_log(original.trim(), 280),
         "guarded_preview": truncate_for_log(guarded.trim(), 200),
         "deliver_preview": truncate_for_log(guarded.trim(), 200),
@@ -4570,6 +4760,26 @@ pub async fn execute_scheduler_event_with_storage(
                     };
                 }
                 if let Some(guarded_content) =
+                    guard_market_calendar_mismatch_for_event(&sanitized, event)
+                {
+                    tracing::info!(
+                        "[SchedulerDiag] market_calendar_guarded job_id={} job={} target={}",
+                        event.job_id,
+                        event.job_name,
+                        event.channel_target,
+                    );
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: guarded_content.clone(),
+                        error: None,
+                        metadata: scheduler_metadata_with_market_calendar_guard(
+                            &sanitized,
+                            &guarded_content,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
+                if let Some(guarded_content) =
                     guard_commodity_causality_for_event(&sanitized, event)
                 {
                     tracing::info!(
@@ -4659,6 +4869,20 @@ pub async fn execute_scheduler_event_with_storage(
                             lower,
                             upper,
                             &recovered_content,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
+                if let Some(guarded_content) =
+                    guard_market_calendar_mismatch_for_event(&recovered_content, event)
+                {
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: guarded_content.clone(),
+                        error: None,
+                        metadata: scheduler_metadata_with_market_calendar_guard(
+                            &recovered_content,
+                            &guarded_content,
                         ),
                         session_id: Some(session_id),
                     };
@@ -4804,6 +5028,29 @@ pub async fn execute_scheduler_event_with_storage(
                         "direct_trade_instruction_guarded".to_string(),
                         Value::Bool(true),
                     );
+                    map.insert(
+                        "guarded_preview".to_string(),
+                        Value::String(truncate_for_log(execution.content.trim(), 200)),
+                    );
+                }
+            }
+            if execution.should_deliver
+                && let Some(guarded_content) =
+                    guard_market_calendar_mismatch_for_event(&execution.content, event)
+            {
+                tracing::info!(
+                    "[HeartbeatDiag] market_calendar_guarded job_id={} job={} target={}",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                );
+                execution.content = guarded_content;
+                update_heartbeat_delivery_preview_metadata(
+                    &mut execution.metadata,
+                    &execution.content,
+                );
+                if let Value::Object(map) = &mut execution.metadata {
+                    map.insert("market_calendar_guarded".to_string(), Value::Bool(true));
                     map.insert(
                         "guarded_preview".to_string(),
                         Value::String(truncate_for_log(execution.content.trim(), 200)),
@@ -5137,11 +5384,12 @@ mod tests {
         detect_unstable_watchlist_price_anchor, detect_verified_quote_price_mismatch,
         execute_scheduler_event, extract_all_ticker_hit_zones_from_source,
         extract_scheduler_verified_quote_prices, guard_commodity_causality_for_event,
-        guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
-        heartbeat_contract_recovery_profile, heartbeat_duplicate_preview_match,
-        heartbeat_execution_from_content, heartbeat_execution_from_content_at,
-        heartbeat_execution_from_content_at_local, heartbeat_execution_from_runner_error,
-        heartbeat_max_tool_calls, heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
+        guard_direct_trade_instruction_for_event, guard_market_calendar_mismatch_for_event,
+        has_skip_delivery_signal, heartbeat_contract_recovery_profile,
+        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
+        heartbeat_execution_from_content_at, heartbeat_execution_from_content_at_local,
+        heartbeat_execution_from_runner_error, heartbeat_max_tool_calls,
+        heartbeat_plain_text_indicates_noop, heartbeat_recovery_reason,
         heartbeat_recovery_reason_label, heartbeat_runner_selection,
         heartbeat_tool_call_limits_for_profile, inspect_heartbeat_result,
         is_empty_success_fallback, is_stale_market_data_success_fallback, load_actor_quiet_hours,
@@ -8353,6 +8601,102 @@ mod tests {
         assert!(
             guard_commodity_causality_for_event(
                 "【每日美股大盘风险简报】当前运行时时区 2026年5月30日20:00，美股周末休市，本轮按 2026-05-29 最近完整交易日收盘口径评估。结论：Nasdaq、S&P 500 和 QQQ 的风险偏好仍偏强，AI 硬件盈利兑现、半导体高位震荡和追涨赔率是正文主体。\n风险提示：利率与油价压制有所缓和，但高位偏热和低波动更需要警惕；油价只是宏观风险变量，不能把本轮大盘风险简报改写成原油/大宗商品归因。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn market_calendar_guard_rewrites_explicit_date_weekday_mismatch() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-market-calendar".to_string(),
+            job_name: "每日美股大盘风险仪表盘".to_string(),
+            task_prompt: "盘前先确认北京时间与纽约交易日状态，再输出美股风险仪表盘。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-market-calendar".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_market_calendar_mismatch_for_event(
+            "【每日美股大盘风险仪表盘】当前北京时间 2026-08-17 20:30，对应 New York 2026-08-17 08:30 Sunday，美股今日休市，仅能按旧收盘口径复盘。Nasdaq、S&P 500 与 QQQ 风险偏好仍偏热。",
+            &event,
+        )
+        .expect("guarded");
+
+        assert!(guarded.contains("时间口径提示"));
+        assert!(guarded.contains("重新核验"));
+    }
+
+    #[test]
+    fn market_calendar_guard_rewrites_weekend_trading_session_claim() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("web", "web-user-market", None::<String>).expect("actor"),
+            job_id: "job-weekend-session".to_string(),
+            job_name: "AAPL + NVDA + BE 关键事件提醒".to_string(),
+            task_prompt: "每半小时检查这几个标的的关键事件，若未触发则返回 noop。".to_string(),
+            channel: "web".to_string(),
+            channel_scope: None,
+            channel_target: "web-user-market".to_string(),
+            delivery_key: "delivery-weekend-session".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 9,
+            schedule_minute: 30,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_market_calendar_mismatch_for_event(
+            "【AAPL + NVDA + BE 关键事件提醒】行情口径：NY 2026-07-25 09:45 ET 盘中最新可得；美股当前处于正常交易时段，AAPL 与 NVDA 盘前未见新增重大事件。",
+            &event,
+        )
+        .expect("guarded");
+
+        assert!(guarded.contains("时间口径提示"));
+        assert!(!guarded.contains("盘中最新可得"));
+    }
+
+    #[test]
+    fn market_calendar_guard_skips_consistent_weekend_closed_copy() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-weekend-ok".to_string(),
+            job_name: "每日美股大盘温度检查".to_string(),
+            task_prompt: "周末按最近完整交易日收盘口径检查 Nasdaq、S&P 500、Greed 情绪与追涨赔率。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-weekend-ok".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_market_calendar_mismatch_for_event(
+                "【每日美股大盘温度检查】当前运行时时区 2026年5月30日20:00，美东时间周六08:00，美股现货与期货均处于周末休市阶段，只能按最近完整交易日收盘口径复盘。Nasdaq 与 S&P 500 风险偏好仍偏热。",
                 &event,
             )
             .is_none()

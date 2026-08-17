@@ -3,8 +3,30 @@
 - **发现时间**: 2026-07-13 07:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复进展
+
+- `2026-08-17` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - 新增 scheduler / heartbeat 统一的 `market calendar mismatch` 守卫，覆盖两类高置信坏样本：
+      - 显式 `日期 + 星期` 自相矛盾，包括中文 `2026-07-24（周四）` 和英文 `2026-08-17 ... Sunday`。
+      - 显式周末日期被写成 `盘前 / 盘中 / 收盘 / 正常交易时段` 等交易窗口。
+    - 命中后会把用户可见正文改写为保守的时间口径提示，只保留不依赖错误交易日判断的非时间结论，避免把周末、错误星期或错误市场时段继续当成已核验事实送达。
+    - 普通 scheduler 和 heartbeat 出站路径都接入了同一守卫，避免只修一条链路。
+  - 新增回归：
+    - `market_calendar_guard_rewrites_explicit_date_weekday_mismatch`
+    - `market_calendar_guard_rewrites_weekend_trading_session_claim`
+    - `market_calendar_guard_skips_consistent_weekend_closed_copy`
+  - 验证：
+    - `cargo test -p hone-channels market_calendar_guard_rewrites_explicit_date_weekday_mismatch --lib -- --nocapture`
+    - `cargo test -p hone-channels market_calendar_guard_rewrites_weekend_trading_session_claim --lib -- --nocapture`
+    - `cargo test -p hone-channels market_calendar_guard_skips_consistent_weekend_closed_copy --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮按当前运行日期 `2026-08-17` 回写。文档中已有的 `2026-08-18` 条目是仓库里先前留下的未来日期巡检文本，本次没有把它们当作“当前运行态”事实来重新判级。
+    - 当前仍未重启 live runtime，先按代码级 `Fixed` 记录；后续若自然部署后的真实窗口继续把明确周末日期包装成交易日或把显式日期配错星期，再按新样本重新打开。
 
 ## 证据来源
 
