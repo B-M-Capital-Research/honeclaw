@@ -2259,7 +2259,11 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
       </button>
       <Show when={open()}>
         <Portal>
-          <div class="chat-tools__backdrop" onClick={() => setOpen(false)}>
+          <div
+            class="chat-tools__backdrop"
+            classList={{ "is-sheet-backdrop": isPhone() }}
+            onClick={() => setOpen(false)}
+          >
             <div
               class="chat-tools__menu"
               classList={{ "is-sheet": isPhone() }}
@@ -2274,6 +2278,14 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
               }
               onClick={(event) => event.stopPropagation()}
             >
+              <Show when={isPhone()}>
+                <div class="chat-tools__sheet-head">
+                  <strong>{CONTENT.chat_page.workspace.tools_group_research}</strong>
+                  <button type="button" onClick={() => setOpen(false)}>
+                    {CONTENT.chat_page.workspace.tools_close}
+                  </button>
+                </div>
+              </Show>
               <For each={groups()}>
                 {(group) => (
                   <>
