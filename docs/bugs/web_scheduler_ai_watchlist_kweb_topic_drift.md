@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-18 10:00-14:01 CST（UTC 2026-08-18 02:00-06:01）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 11:00 CST deliver preview 转为美股整体、标普、纳指、零售销售、AI 半导体和就业数据复盘；12:30 CST 转为当前推送日程、即时推和定时推配置说明；13:00 CST 转为 AAPL 单项评级和目标价分析；14:00 CST 又回到当前推送配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 11:00 / 11:30 / 12:30 / 13:30 CST 多轮 deliver preview 写“你只发了 NVDA，没有具体问题”，更像直聊澄清，而不是围绕 NVDA 关键事件心跳目标完成自主核验。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-18 02:03-06:01 CST（UTC 2026-08-17 18:03-22:01）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 04:00 CST raw / deliver preview 转为当前推送日程、即时推、勿扰时段和定时推配置说明，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
