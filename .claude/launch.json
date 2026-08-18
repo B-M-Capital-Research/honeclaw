@@ -19,6 +19,24 @@
         "4174"
       ],
       "port": 4174
+    },
+    {
+      "name": "public-app-prod",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "HONE_APP_OUT_DIR=dist-public",
+        "bun",
+        "run",
+        "--cwd",
+        "packages/app",
+        "preview",
+        "--",
+        "--outDir",
+        "dist-public",
+        "--port",
+        "4180"
+      ],
+      "port": 4180
     }
   ]
 }

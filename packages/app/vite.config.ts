@@ -39,6 +39,14 @@ export default defineConfig({
       // 该包未被打包进来，需要保持 external。
       // Tauri API 需要在桌面产物中正常打包，否则运行时会留下裸模块导入。
       external: ["d3-sankey"],
+      output: {
+        // 打开 /chat 会拉起二十多个分块，其中十几个不到 5 KB：下载各自只要
+        // 几毫秒，一次往返却躲不掉。在延迟高的链路上，代价全在请求个数上，
+        // 跟体积没关系。把碎块并进它们的邻居，省下的是往返次数。
+        // 阈值取 24 KB：再往上（48 KB）请求数不再下降，只是徒增合并范围；
+        // 再往下（8 KB）会漏掉一批 10 KB 上下的碎块。
+        experimentalMinChunkSize: 24 * 1024,
+      },
     },
   },
   resolve: {
