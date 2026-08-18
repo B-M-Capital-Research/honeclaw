@@ -489,6 +489,9 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     let (copy_rewritten, removed_copy) = rewrite_user_visible_internal_copy(&sanitized);
     sanitized = copy_rewritten;
     removed_internal |= removed_copy;
+    let (style_sanitized, removed_style) = strip_leading_rich_text_style_fragment(&sanitized);
+    sanitized = style_sanitized;
+    removed_internal |= removed_style;
     sanitized = RE_WS.replace_all(&sanitized, " ").to_string();
     sanitized = RE_NL.replace_all(&sanitized, "\n\n").to_string();
     sanitized = sanitized.trim().to_string();
@@ -498,6 +501,58 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
         removed_internal,
         content: sanitized,
     }
+}
+
+fn strip_leading_rich_text_style_fragment(text: &str) -> (String, bool) {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return (text.to_string(), false);
+    }
+
+    let style_marker_count = [
+        "font-size",
+        "line-height",
+        "font-weight",
+        "font-family",
+        "letter-spacing",
+        "background:",
+        "padding:",
+        "margin:",
+        "color:",
+        "style=",
+    ]
+    .iter()
+    .filter(|marker| trimmed.contains(**marker))
+    .count();
+    if style_marker_count < 2 {
+        return (text.to_string(), false);
+    }
+
+    let cut_at = trimmed
+        .find('>')
+        .map(|idx| idx + 1)
+        .or_else(|| trimmed.find('\n').map(|idx| idx + 1));
+    let Some(cut_at) = cut_at else {
+        return (text.to_string(), false);
+    };
+    if cut_at > 240 {
+        return (text.to_string(), false);
+    }
+
+    let candidate = trimmed[..cut_at].trim();
+    let resembles_style_fragment = candidate.contains("font-size")
+        || candidate.contains("line-height")
+        || candidate.contains("font-weight")
+        || candidate.contains("style=");
+    if !resembles_style_fragment {
+        return (text.to_string(), false);
+    }
+
+    let remainder = trimmed[cut_at..].trim_start();
+    if remainder.is_empty() {
+        return (String::new(), true);
+    }
+    (remainder.to_string(), true)
 }
 
 /// Security-only cleanup for a completed Interactive Agent answer.
@@ -1920,6 +1975,28 @@ mod tests {
         assert!(sanitized.removed_internal);
         assert_eq!(sanitized.content, "来源：公开行情页 与 公开行情页。");
         assert!(!sanitized.content.contains("公开行情页.com"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_leading_rich_text_style_fragment() {
+        let raw = "`drift` 0px `weight` 400; font-size: 13px; line-height: 1.6;\">数据时间：北京时间 2026-08-18 02:30；行情口径：本轮仅使用可核验资料。\n\nNVDA 出现新增催化。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "数据时间：北京时间 2026-08-18 02:30；行情口径：本轮仅使用可核验资料。\n\nNVDA 出现新增催化。"
+        );
+        assert!(!sanitized.content.contains("font-size"));
+        assert!(!sanitized.content.contains("line-height"));
+        assert!(!sanitized.content.contains("`drift`"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_keeps_regular_business_copy_with_gt_symbol() {
+        let raw = "结论：未来两个季度自由现金流 > 市场预期，估值中枢才有上修基础。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(!sanitized.removed_internal);
+        assert_eq!(sanitized.content, raw);
     }
 
     #[test]

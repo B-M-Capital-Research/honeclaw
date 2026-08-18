@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -43,8 +43,9 @@ New
 
 ## 当前实现效果
 
-- `deliver_preview` 开头直接保留了 CSS / 富文本片段，破坏消息首屏可读性。
-- 该样本仍完成 heartbeat 执行与送达候选生成，问题集中在用户可见输出净化层。
+- 2026-08-18 `bug-2` 已在共享 `sanitize_user_visible_output()` 中补充前缀富文本 / CSS 残片剥离：当前缀同时命中 `font-size`、`line-height`、`font-weight`、`style=` 等明显样式信号时，会在首个 `>` 或换行边界前裁掉污染片段，只保留后续业务正文。
+- 新增回归 `sanitize_user_visible_output_strips_leading_rich_text_style_fragment`，并补一条反例 `sanitize_user_visible_output_keeps_regular_business_copy_with_gt_symbol`，避免把正常业务文案里的 `>` 误删。
+- 该修复属于代码级 `Fixed`；当前未做 live runtime 重启或自然部署后的运行态复核，因此暂不记 `Closed`。
 
 ## 用户影响
 
@@ -57,8 +58,13 @@ New
 - 直接根因是 heartbeat deliver 出站净化没有覆盖富文本 style / CSS 残片。
 - 与 `web_heartbeat_raw_tool_call_tag_leak.md`、`scheduler_heartbeat_trigger_json_payload_leak.md` 同属 Web heartbeat 出站结构污染族，但本缺陷的污染形态是 CSS / 富文本残片，不是 raw tool-call tag 或 fenced JSON 协议载荷，因此单独登记。
 
+## 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_strips_leading_rich_text_style_fragment --lib -- --nocapture`
+- `cargo test -p hone-channels sanitize_user_visible_output_keeps_regular_business_copy_with_gt_symbol --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+
 ## 下一步建议
 
-1. 在共享用户可见净化层增加 HTML style / CSS fragment 剥离规则，覆盖 `font-size`、`line-height`、`weight`、`drift` 等残片形态。
-2. 为 scheduler delivery text 增加回归：正文前缀含 CSS / inline style 时，最终用户可见文本必须从业务正文开始。
-3. 复核 Web heartbeat 渲染链路，确认是模型生成、Markdown/HTML 转换还是卡片降级过程中产生该残片。
+1. 等 live runtime 自然部署后，复查 Web heartbeat `deliver_preview` 是否仍出现 `font-size` / `line-height` 类残片。
+2. 若运行态仍复发，再继续追查上游生成、Markdown/HTML 转换或卡片降级链路中的具体污染源。
