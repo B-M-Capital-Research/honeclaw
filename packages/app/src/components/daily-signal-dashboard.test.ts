@@ -45,7 +45,7 @@ describe("daily signal dashboard contract", () => {
     expect(component).not.toContain("daily-signal-meta");
     expect(styles).not.toContain(".daily-signal-header");
     expect(styles).not.toContain(".daily-signal-meta");
-    // The hero keeps only what the head cannot show: gauge and deltas.
+    // The hero keeps only what the head cannot show: the scale and the deltas.
     expect(component).toContain("较昨日");
     expect(component).toContain("原始风险");
   });
@@ -63,8 +63,11 @@ describe("daily signal dashboard contract", () => {
   test("has responsive layouts styled from the shared token system", () => {
     expect(styles).toContain("@media (max-width: 700px)");
     expect(styles).toContain("var(--hone-");
-    expect(styles).toContain("daily-signal-gauge");
-    // Below the shared sheet breakpoint the hero shrinks so the gauge and the
+    // The half-circle dial reprinted the score the head already leads with,
+    // and charged a fixed 240px column for it.
+    expect(styles).toContain("daily-signal-scale");
+    expect(styles).not.toContain("daily-signal-gauge");
+    // Below the shared sheet breakpoint the hero shrinks so the scale and the
     // deltas both clear the fold without a scroll.
     expect(styles).toContain("@media (max-width: 760px)");
   });

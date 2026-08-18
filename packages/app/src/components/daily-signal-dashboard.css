@@ -15,11 +15,11 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  border: 1px solid rgba(35, 48, 45, 0.11);
-  border-radius: 17px;
-  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: color-mix(in srgb, var(--hone-surface-raised) 90%, transparent);
   color: var(--hone-ink-950);
-  box-shadow: 0 9px 26px rgba(23, 32, 31, 0.06);
+  box-shadow: var(--hone-shadow-sm);
   cursor: pointer;
   text-align: left;
   transition: transform 160ms ease, box-shadow 160ms ease;
@@ -27,7 +27,7 @@
 
 .daily-signal-launcher:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgba(23, 32, 31, 0.1);
+  box-shadow: var(--hone-shadow-md);
 }
 .daily-signal-launcher__light,
 .daily-signal-card summary > i,
@@ -38,8 +38,8 @@
   height: 11px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--signal-color, #98a19e);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal-color, #98a19e) 12%, transparent);
+  background: var(--signal-color, var(--hone-signal-neutral));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal-color, var(--hone-signal-neutral)) 12%, transparent);
 }
 .daily-signal-launcher > span:nth-child(2) {
   min-width: 0;
@@ -47,12 +47,12 @@
   gap: 2px;
 }
 .daily-signal-launcher strong {
-  font-size: 14px;
+  font-size: var(--hone-text-md);
 }
 .daily-signal-launcher small {
   overflow: hidden;
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -60,7 +60,7 @@
   width: 17px;
   margin-left: auto;
   fill: none;
-  stroke: #84908b;
+  stroke: var(--hone-ink-500);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -84,30 +84,11 @@
 }
 .daily-signal-launcher.is-unknown,
 .daily-signal-dialog .is-unknown {
-  --signal-color: #8e9995;
+  --signal-color: var(--hone-signal-neutral);
 }
 
-.daily-signal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10060;
-  padding: 24px;
-  display: grid;
-  place-items: center;
-  background: rgba(17, 25, 23, 0.5);
-  backdrop-filter: blur(10px);
-}
 .daily-signal-dialog {
-  width: min(1080px, 100%);
-  height: min(850px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 25px;
-  background: #fbfaf7;
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.34);
 }
 /* The refresh control is skinned once, in research.css. */
 /* Chrome around the single scroll container. Without an explicit basis these
@@ -124,7 +105,7 @@
   padding: 0 25px;
   align-items: flex-end;
   gap: 20px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 .daily-signal-tabs button {
   height: 42px;
@@ -132,15 +113,18 @@
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: #78827e;
+  color: var(--hone-ink-500);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   cursor: pointer;
 }
+/* Ink, not coral: `--hone-coral-600` and `--hone-signal-red` resolve to the
+   same #b94432, so a red underline inside a traffic-light panel read as a red
+   light rather than as "this tab is selected". */
 .daily-signal-tabs button.active {
-  border-color: var(--hone-coral-600);
-  color: #1f2b28;
-  font-weight: 750;
+  border-color: var(--hone-ink-950);
+  color: var(--hone-ink-950);
+  font-weight: 700;
 }
 .daily-signal-body {
   flex: 1;
@@ -152,13 +136,13 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  color: #74807b;
+  color: var(--hone-ink-500);
   text-align: center;
 }
 .daily-signal-state > i {
   width: 32px;
   height: 32px;
-  border: 3px solid #e0e4e1;
+  border: 3px solid var(--hone-paper-200);
   border-top-color: var(--hone-coral-600);
   border-radius: 50%;
   animation: daily-signal-spin 0.8s linear infinite;
@@ -171,58 +155,56 @@
 .daily-signal-state button {
   padding: 8px 13px;
   border: 0;
-  border-radius: 9px;
-  background: #26322f;
-  color: white;
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-inverse-bg);
+  color: var(--hone-inverse-fg);
 }
+/* No box. The panel was boxes all the way down — a 24px hero frame around a
+   10px alert frame around ten 16px cards — so the borders read louder than
+   the content. The scale already carries the signal color; whitespace and one
+   rule separate the hero from what follows. */
 .daily-signal-hero {
-  margin-bottom: 14px;
-  padding: 18px 22px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
   display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 22px;
-  border: 1px solid color-mix(in srgb, var(--signal-color) 18%, #dfe3e0);
-  border-radius: 20px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--signal-color) 6%, white), white);
+  gap: 12px;
+  border-bottom: 1px solid var(--hone-line);
 }
-.daily-signal-gauge {
+/* Position on the scale, not a second printing of the number. */
+.daily-signal-scale {
+  display: grid;
+  gap: 5px;
+}
+
+.daily-signal-scale__track {
   position: relative;
-  height: 126px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
 }
-.daily-signal-gauge svg {
-  width: 220px;
-  height: 122px;
-  overflow: visible;
+
+.daily-signal-scale__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--signal-color);
 }
-.daily-signal-gauge path {
-  fill: none;
-  stroke-width: 16;
-  stroke-linecap: round;
+
+.daily-signal-scale__ticks {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
 }
-.daily-signal-gauge__track {
-  stroke: #e9ebe8;
+
+.daily-signal-scale__ticks > span:nth-child(2) {
+  color: var(--hone-ink-600);
 }
-.daily-signal-gauge__value {
-  stroke: var(--signal-color);
-}
-.daily-signal-gauge__copy {
-  position: absolute;
-  inset: 51px 0 auto;
-  width: 220px;
-  display: grid;
-  justify-items: center;
-}
-.daily-signal-gauge__copy strong {
-  font-size: 34px;
-  letter-spacing: -0.05em;
-}
-.daily-signal-gauge__copy span {
-  color: #7a8581;
-  font-size: 10px;
-}
+
 .daily-signal-hero__summary {
   min-width: 0;
-  align-self: center;
 }
 .daily-signal-badges {
   display: flex;
@@ -232,17 +214,17 @@
 }
 .daily-signal-badges > * {
   padding: 5px 9px;
-  border-radius: 999px;
-  background: #eef1ee;
-  color: #52605b;
-  font-size: 10px;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-2xs);
 }
 /* Whatever the summary said beyond its lead sentence, which is in the head. */
 .daily-signal-hero__summary > p {
   margin: 10px 0 0;
   max-width: 650px;
   color: var(--hone-ink-600);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   line-height: 1.6;
 }
 .daily-signal-hero dl {
@@ -255,42 +237,68 @@
   gap: 2px;
 }
 .daily-signal-hero dt {
-  color: #87918d;
-  font-size: 10px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+}
+
+/* 健康分越高越好、原始风险越高越险 —— 两个反向量纲并排，方向要写出来。 */
+.daily-signal-hero dt small {
+  color: var(--hone-ink-500);
+  font-size: inherit;
+  opacity: 0.85;
 }
 .daily-signal-hero dd {
   margin: 0;
-  font-size: 14px;
-  font-weight: 750;
+  font-size: var(--hone-text-md);
+  font-weight: 700;
 }
+/* A filled red block outshouted every dimension below it, including the ones
+   the alert is about. The rule carries the urgency; the text stays readable. */
 .daily-signal-alerts {
-  margin-bottom: 14px;
-  padding: 12px 15px;
-  border: 1px solid #f0d5c9;
-  border-radius: 13px;
-  background: #fff7f3;
-  color: #8b493c;
+  margin-bottom: 16px;
+  padding: 1px 0 1px 12px;
+  border-left: 2px solid var(--hone-signal-red);
+  color: var(--hone-ink-800);
 }
 .daily-signal-alerts strong {
-  font-size: 11px;
+  color: var(--hone-signal-red-ink);
+  font-size: var(--hone-text-2xs);
 }
 .daily-signal-alerts p {
   margin: 5px 0 0;
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
+/* Ten dimensions are ten rows of the same shape — a table, not ten cards.
+   As cards they cost twenty borders, twenty 16px corners and a white fill
+   apiece, and because each row sized its own columns the scores never lined
+   up between the left and right halves. Fixed columns plus one hairline per
+   row give the eye the vertical rails it was missing, and drop the row from
+   64px to ~44px so all ten fit above the fold. */
 .daily-signal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  gap: 0 30px;
+  border-top: 1px solid var(--hone-line);
 }
-.daily-signal-card,
+.daily-signal-card {
+  border-bottom: 1px solid var(--hone-line);
+}
 .daily-company-card {
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-radius: 14px;
-  background: white;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
   overflow: hidden;
 }
-.daily-signal-card summary,
+/* Dot · name+trend · shape · score — the same four columns on every row. */
+.daily-signal-card summary {
+  padding: 10px 2px;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) 72px 44px;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
 .daily-company-card summary {
   min-height: 64px;
   padding: 10px 13px;
@@ -312,37 +320,49 @@
 }
 .daily-signal-card summary strong,
 .daily-company-card summary strong {
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 .daily-signal-card summary small,
 .daily-company-card summary small {
-  color: #84908b;
-  font-size: 9px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
 }
 .daily-signal-card summary > b,
 .daily-company-card summary > b {
   min-width: 31px;
   color: var(--signal-color);
-  font-size: 14px;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-md);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .daily-signal-sparkline {
-  width: 80px;
-  height: 32px;
-  margin-left: auto;
+  width: 100%;
+  height: 26px;
 }
+/* Neutral on purpose. The dot, the line and the number used to be the same
+   signal color — one fact stated three times — and worse, the line plots the
+   raw level while the color encodes the momentum-derived score, so a shared
+   hue asserted an agreement that does not exist. The score keeps the color;
+   the line just shows the shape. */
 .daily-signal-sparkline polyline {
   fill: none;
-  stroke: var(--signal-color);
-  stroke-width: 2;
+  stroke: var(--hone-ink-500);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+
+/* Which end is today. */
+.daily-signal-sparkline__now {
+  fill: var(--hone-ink-800);
 }
 .daily-signal-no-trend {
   margin-left: auto;
-  color: #a1a9a6;
+  color: var(--hone-ink-500);
 }
 .daily-signal-card > div {
-  padding: 0 14px 13px 34px;
+  padding: 0 2px 12px 19px;
   display: grid;
   gap: 6px;
 }
@@ -351,18 +371,18 @@
 .daily-signal-card p,
 .daily-signal-card .research-longform {
   margin: 0;
-  color: #52605b;
-  font-size: 11px;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-2xs);
   line-height: 1.55;
 }
 .daily-signal-card em {
-  color: #87918d;
-  font-size: 9px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
   font-style: normal;
 }
 .daily-signal-card a {
-  color: #b75643;
-  font-size: 9px;
+  color: var(--hone-link);
+  font-size: var(--hone-text-2xs);
   text-decoration: none;
 }
 .daily-signal-section {
@@ -372,7 +392,7 @@
 .daily-signal-history h3,
 .daily-signal-sources h3 {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--hone-text-md);
 }
 .daily-company-grid {
   display: grid;
@@ -387,28 +407,28 @@
 }
 .daily-company-card__meta span {
   padding: 4px 7px;
-  border-radius: 7px;
-  background: #f3f4f2;
-  color: #6f7a76;
-  font-size: 9px;
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
 }
 .daily-company-card > p {
   margin: 0;
   padding: 7px 13px 7px 34px;
   display: flex;
   justify-content: space-between;
-  border-top: 1px solid #f0f1ef;
-  font-size: 10px;
+  border-top: 1px solid var(--hone-line);
+  font-size: var(--hone-text-2xs);
 }
 .daily-company-card > p span {
   display: grid;
   gap: 2px;
 }
 .daily-company-card > p small {
-  color: #8b9491;
+  color: var(--hone-ink-500);
 }
 .daily-company-card > p b {
-  color: #4a5753;
+  color: var(--hone-ink-800);
 }
 .daily-hardware-grid {
   display: grid;
@@ -421,23 +441,23 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 7px;
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-radius: 12px;
-  background: white;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
 }
 .daily-hardware-item strong {
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
 .daily-hardware-item span {
   grid-column: 2;
-  color: #87918d;
-  font-size: 9px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
 }
 .daily-hardware-item b {
   grid-column: 3;
   grid-row: 1 / span 2;
   color: var(--signal-color);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 .daily-signal-history,
 .daily-signal-sources {
@@ -450,24 +470,24 @@
   grid-template-columns: auto 90px 55px 1fr;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 .daily-signal-history time,
 .daily-signal-history strong,
 .daily-signal-history span {
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
 .daily-signal-history small {
   grid-column: 2 / -1;
-  color: #7c8783;
+  color: var(--hone-ink-500);
   line-height: 1.45;
 }
 /* The full report body is the longest text in the panel; past four lines it
    arrives folded rather than pushing the data sources off the screen. */
 .daily-signal-sources > p,
 .daily-signal-sources > .research-longform {
-  color: #55625e;
-  font-size: 12px;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-xs);
   line-height: 1.7;
 }
 
@@ -479,18 +499,18 @@
   padding: 11px 0;
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
-  color: #b45341;
-  font-size: 11px;
+  border-bottom: 1px solid var(--hone-line);
+  color: var(--hone-link);
+  font-size: var(--hone-text-2xs);
   text-decoration: none;
 }
 .daily-signal-sources > a span {
-  color: #89928f;
+  color: var(--hone-ink-500);
 }
 .daily-signal-footer {
   padding: 12px 25px 14px;
-  border-top: 1px solid rgba(35, 48, 45, 0.09);
-  background: rgba(251, 250, 247, 0.96);
+  border-top: 1px solid var(--hone-line);
+  background: var(--hone-paper-50);
 }
 .daily-signal-footer form {
   display: flex;
@@ -501,21 +521,21 @@
   min-width: 0;
   height: 38px;
   padding: 0 12px;
-  border: 1px solid rgba(35, 48, 45, 0.13);
-  border-radius: 11px;
-  background: white;
-  color: #26322f;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 .daily-signal-footer button {
   padding: 0 14px;
   border: 0;
-  border-radius: 11px;
-  background: #27332f;
-  color: white;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-inverse-bg);
+  color: var(--hone-inverse-fg);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -525,8 +545,8 @@
 }
 .daily-signal-footer > p {
   margin: 8px 0 0;
-  color: #929a97;
-  font-size: 9px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
   text-align: center;
 }
 
@@ -538,22 +558,13 @@
   .daily-signal-launcher {
     min-height: 54px;
     padding: 8px 10px;
-    border-radius: 14px;
+    border-radius: var(--hone-radius-md);
   }
   .daily-signal-launcher small {
     max-width: 120px;
   }
   .daily-signal-launcher > svg {
     display: none;
-  }
-  .daily-signal-backdrop {
-    padding: 0;
-    align-items: end;
-  }
-  .daily-signal-dialog {
-    width: 100%;
-    height: min(92dvh, 900px);
-    border-radius: 22px 22px 0 0;
   }
   .daily-signal-tabs {
     padding: 0 17px;
@@ -564,17 +575,9 @@
   }
   .daily-signal-hero {
     padding: 14px;
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: 4px;
+    gap: 10px;
   }
-  .daily-signal-hero__summary {
-    text-align: center;
-  }
-  .daily-signal-badges,
-  .daily-signal-hero dl {
-    justify-content: center;
-  }
+
   .daily-signal-grid,
   .daily-company-grid {
     grid-template-columns: 1fr;
@@ -591,27 +594,13 @@
 }
 
 /* Sheet mode. The head already carries score, signal and one sentence, so the
-   hero only has to fit the gauge and the deltas the head cannot show — both
+   hero only has to fit the scale and the deltas the head cannot show — both
    have to clear the fold without a scroll. */
 @media (max-width: 760px) {
   .daily-signal-hero {
     margin-bottom: 10px;
     padding: 10px 12px;
     gap: 2px;
-  }
-  .daily-signal-gauge {
-    height: 84px;
-  }
-  .daily-signal-gauge svg {
-    width: 150px;
-    height: 83px;
-  }
-  .daily-signal-gauge__copy {
-    inset: 35px 0 auto;
-    width: 150px;
-  }
-  .daily-signal-gauge__copy strong {
-    font-size: 24px;
   }
   .daily-signal-badges > * {
     padding: 3px 8px;
@@ -622,7 +611,7 @@
   }
   .daily-signal-hero__summary > p {
     margin-top: 8px;
-    font-size: 11.5px;
+    font-size: var(--hone-text-2xs);
   }
   .daily-signal-hero dl div {
     grid-template-columns: auto auto;
@@ -630,48 +619,41 @@
     gap: 5px;
   }
   .daily-signal-hero dd {
-    font-size: 12px;
+    font-size: var(--hone-text-xs);
   }
 }
 
 [data-theme="dark"] .daily-signal-launcher {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(31, 38, 36, 0.9);
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
   box-shadow: none;
-}
-[data-theme="dark"] .daily-signal-dialog {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: #181f1d;
 }
 [data-theme="dark"] .daily-signal-tabs,
 [data-theme="dark"] .daily-signal-footer {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--hone-line);
 }
 [data-theme="dark"] .daily-signal-card,
 [data-theme="dark"] .daily-company-card,
 [data-theme="dark"] .daily-hardware-item {
-  border-color: rgba(255, 255, 255, 0.09);
-  background: #222a27;
-  color: #edf1ee;
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
 }
-[data-theme="dark"] .daily-signal-hero {
-  background: color-mix(in srgb, var(--signal-color) 7%, #202725);
-  border-color: color-mix(in srgb, var(--signal-color) 20%, #343d3a);
-}
+
 [data-theme="dark"] .daily-signal-card p,
 [data-theme="dark"] .daily-signal-card .research-longform,
 [data-theme="dark"] .daily-signal-sources > p,
 [data-theme="dark"] .daily-signal-sources > .research-longform {
-  color: #b7c0bc;
+  color: var(--hone-ink-600);
 }
-[data-theme="dark"] .daily-signal-gauge__track {
-  stroke: #343c39;
+[data-theme="dark"] .daily-signal-scale__track {
+  background: var(--hone-paper-200);
 }
 [data-theme="dark"] .daily-signal-footer {
-  background: #181f1d;
+  background: var(--hone-paper-50);
 }
 [data-theme="dark"] .daily-signal-footer input {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #252d2a;
-  color: #eef1ef;
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
 }
