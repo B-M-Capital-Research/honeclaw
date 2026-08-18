@@ -1104,9 +1104,8 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
             "volume": volume,
         });
         if let Some(reference) = previous_close.filter(|reference| *reference > 0.0) {
-            let pct = (close - reference) / reference * 100.0;
             summary["pct_change_vs_prev_session_close"] =
-                serde_json::json!((pct * 100.0).round() / 100.0);
+                serde_json::json!(round_to_hundredths((close - reference) / reference * 100.0));
         }
         previous_close = Some(*close);
         summaries.push(summary);
@@ -1122,6 +1121,7 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         "low": latest.5,
         "volume": latest.6,
         "hone_session_summaries": summaries,
+        "hone_session_policy": "每个窗口的 pct_change_vs_prev_session_close 由服务端按该窗口收盘价与上一窗口收盘价算出，是这些时段涨跌幅的唯一可发布来源。展示某个时段的涨跌时，价格与涨跌幅必须取自同一个窗口对象；不要跨窗口拼接，也不要拿 quote 的价格去配这里的百分比。",
         "hone_now_new_york": now_new_york.format("%Y-%m-%d %H:%M %Z").to_string(),
         "hone_now_session": extended_hours_session(now_new_york.time()),
     }))
@@ -1299,6 +1299,8 @@ fn attach_quote_evidence_quality(value: &mut Value) {
         }),
     );
 
+    attach_quote_change_basis(fields, change_percent_consistent);
+
     // Provider money fields are raw units. Converting 45_570_000_000 into 亿 is
     // arithmetic, and arithmetic done in prose is where a market cap becomes
     // ten times too large. Render it once, here, and have the answer copy it.
@@ -1328,6 +1330,85 @@ fn attach_quote_evidence_quality(value: &mut Value) {
         );
         fields.insert("hone_display".to_string(), Value::Object(display));
     }
+}
+
+/// The one percentage change this quote can honestly support, divided here.
+///
+/// A quote carries two prices, `previousClose` and `price`, and the move
+/// between them means a different thing depending on when `price` was sampled:
+/// during a regular session it is the day's change, before the open it is the
+/// pre-market move against yesterday's close. A row showing both a regular
+/// change and a pre-market change is therefore reading two sources, and mixing
+/// them is invisible in prose — a table can pair a close from one moment with a
+/// percentage from another and still look complete. That is how a +8.88% day
+/// was published as +5.08%, against a reference price that existed nowhere.
+///
+/// So the server divides, names what it divided, and states what this quote
+/// cannot prove. `changesPercentage` is deliberately not the answer: the
+/// provider's baseline moment is not necessarily the one being displayed.
+fn attach_quote_change_basis(
+    fields: &mut serde_json::Map<String, Value>,
+    provider_agrees: bool,
+) {
+    let positive = |key: &str| finite_number(fields.get(key)).filter(|value| *value > 0.0);
+    let (Some(from), Some(to)) = (positive("previousClose"), positive("price")) else {
+        return;
+    };
+
+    // The sample time is what decides the name. Without it the move is real but
+    // unnameable, so it is reported without claiming a session.
+    let sampled = fields
+        .get("timestamp")
+        .and_then(Value::as_i64)
+        .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
+        .map(|utc| utc.with_timezone(&chrono_tz::America::New_York));
+    let session = sampled.map(|new_york| extended_hours_session(new_york.time()));
+    let label = match session {
+        Some("regular") => "常规时段涨跌（最新价较上一交易日收盘）",
+        Some("pre") => "盘前最新价较上一常规收盘",
+        Some("post") => "盘后最新价较上一常规收盘",
+        _ => "最新价较上一常规收盘（采样时段未知，不要称其为盘前或盘后）",
+    };
+
+    let mut basis = serde_json::json!({
+        "pct": round_to_hundredths((to - from) / from * 100.0),
+        "label": label,
+        "from": from,
+        "from_label": "上一常规交易日收盘（provider previousClose）",
+        "to": to,
+        "policy": "涨跌幅一律引用本块的 pct。不要自己拿两个价格相除，也不要直接抄 provider 的 changesPercentage——它的基准时刻未必是你正在展示的那一个。同一行里的价格与涨跌幅必须来自同一时刻；跨时刻必须分行或逐个标注时间戳。",
+    });
+    if let Some(new_york) = sampled {
+        basis["to_at_new_york"] = Value::String(new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string());
+    }
+    if let Some(session) = session {
+        basis["to_session"] = Value::String(session.to_string());
+    }
+    if !provider_agrees {
+        // Both numbers are kept: the recomputed one is what may be published,
+        // and the provider's is what must not be, but silently dropping it
+        // would hide that the source disagreed at all.
+        basis["provider_change_percent"] = finite_number(fields.get("changesPercentage"))
+            .map_or(Value::Null, |value| serde_json::json!(value));
+        basis["provider_agrees"] = Value::Bool(false);
+        basis["warning"] = Value::String(
+            "provider 的 changesPercentage 与本块两条腿算出的结果不一致，只能使用 pct。".to_string(),
+        );
+    }
+    if session != Some("regular") {
+        // The day has rolled past the close; this quote's two legs can no
+        // longer produce yesterday's regular change. Publishing one anyway is
+        // exactly the mistake this block exists to stop.
+        basis["cannot_prove"] = Value::String(
+            "本 quote 只能证明上面这一个涨跌幅。若还要展示常规时段涨跌，必须另取 extended_hours 中 session=regular 窗口的 pct_change_vs_prev_session_close，不能把本块的数字改个名字充当。".to_string(),
+        );
+    }
+
+    fields.insert("hone_change_basis".to_string(), basis);
+}
+
+fn round_to_hundredths(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
 }
 
 /// 1e8 is 一亿 and 1e12 is 一万亿. Getting this wrong by one power of ten is
@@ -2132,7 +2213,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2140,7 +2221,7 @@ impl Tool for DataFetchTool {
             ToolParameter {
                 name: "data_type".to_string(),
                 param_type: "string".to_string(),
-                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回 profile、各组件覆盖状态、数值质量标记和当前上市证据。hone_security_listing_evidence.status=active_listing 时不得用旧收购/退市记忆否认当前上市。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论。".to_string(),
+                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回 profile、各组件覆盖状态、数值质量标记和当前上市证据。hone_security_listing_evidence.status=active_listing 时不得用旧收购/退市记忆否认当前上市。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论；涨跌幅一律引用同一 quote 里 hone_change_basis 的 pct 与 label，不要自己相除或抄 changesPercentage。".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "quote".into(),
@@ -2562,6 +2643,7 @@ mod tests {
         effective_data_fetch_data_type, effective_data_fetch_security_target,
         effective_data_fetch_target, extended_hours_session, financial_score_semantics,
         fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
+        round_to_hundredths,
         normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
         price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
         should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
@@ -2640,6 +2722,141 @@ mod tests {
                 .iter()
                 .any(|warning| warning == "quote_year_range_mismatch")
         );
+    }
+
+    /// 2026-08-17 16:00 EDT — SanDisk's close on the day it rose 8.88%.
+    const SNDK_CLOSE_TIMESTAMP: i64 = 1_786_996_800;
+    /// 2026-08-18 05:07 EDT — the pre-market sample the next morning.
+    const SNDK_PRE_TIMESTAMP: i64 = 1_787_044_020;
+
+    #[test]
+    fn a_regular_session_quote_carries_its_own_division() {
+        // The published answer said +5.08%, which implies a previous close of
+        // 1,700.47 that appears in no source. The server now divides.
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "SNDK",
+            "price": 1786.85,
+            "previousClose": 1641.11,
+            "change": 145.74,
+            "changesPercentage": 8.88,
+            "timestamp": SNDK_CLOSE_TIMESTAMP
+        }]));
+        let basis = &normalized[0]["hone_change_basis"];
+
+        assert_eq!(basis["pct"], 8.88);
+        assert_eq!(basis["from"], 1641.11);
+        assert_eq!(basis["to"], 1786.85);
+        assert_eq!(basis["to_session"], "regular");
+        assert!(
+            basis["label"].as_str().expect("label").contains("常规时段"),
+            "a regular-session sample is the day's change and must be named so"
+        );
+        // A regular quote can prove its own day, so it carries no caveat.
+        assert!(basis.get("cannot_prove").is_none());
+
+        let rendered = basis.to_string();
+        assert!(
+            !rendered.contains("5.08") && !rendered.contains("1700.47"),
+            "the wrong percentage and its phantom reference price must be underivable"
+        );
+    }
+
+    #[test]
+    fn a_pre_market_quote_is_named_pre_market_and_disclaims_the_regular_day() {
+        // −6.91% implied a base of 1,805.00, another price from nowhere; and
+        // the same row also claimed a regular change this quote cannot supply.
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "SNDK",
+            "price": 1680.27,
+            "previousClose": 1786.85,
+            "change": -106.58,
+            "changesPercentage": -5.96,
+            "timestamp": SNDK_PRE_TIMESTAMP
+        }]));
+        let basis = &normalized[0]["hone_change_basis"];
+
+        assert_eq!(basis["pct"], -5.96);
+        assert_eq!(basis["to_session"], "pre");
+        assert!(basis["label"].as_str().expect("label").contains("盘前"));
+        assert!(
+            basis["cannot_prove"]
+                .as_str()
+                .expect("a non-regular sample cannot prove the regular day")
+                .contains("extended_hours"),
+            "it must name where the regular change has to come from instead"
+        );
+
+        let rendered = basis.to_string();
+        assert!(
+            !rendered.contains("6.91") && !rendered.contains("1805"),
+            "the wrong pre-market percentage and its phantom base must be underivable"
+        );
+    }
+
+    #[test]
+    fn a_disagreeing_provider_percentage_is_reported_but_not_the_answer() {
+        // The provider's baseline moment is not necessarily the displayed one,
+        // so its own percentage is evidence of disagreement, never the value.
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "SNDK",
+            "price": 1786.85,
+            "previousClose": 1641.11,
+            "change": 145.74,
+            "changesPercentage": 5.08,
+            "timestamp": SNDK_CLOSE_TIMESTAMP
+        }]));
+        let basis = &normalized[0]["hone_change_basis"];
+
+        assert_eq!(basis["pct"], 8.88);
+        assert_eq!(basis["provider_change_percent"], 5.08);
+        assert_eq!(basis["provider_agrees"], false);
+        assert_eq!(
+            normalized[0]["hone_evidence_quality"]["usable_for_change_claims"],
+            false
+        );
+    }
+
+    #[test]
+    fn a_quote_without_two_usable_legs_publishes_no_percentage() {
+        // Better a missing number than one divided against an absent base.
+        for incomplete in [
+            json!({"symbol": "SNDK", "price": 1786.85}),
+            json!({"symbol": "SNDK", "previousClose": 1641.11}),
+            json!({"symbol": "SNDK", "price": 1786.85, "previousClose": 0.0}),
+        ] {
+            let normalized = normalize_quote_timestamp_metadata(json!([incomplete]));
+            assert!(
+                normalized[0].get("hone_change_basis").is_none(),
+                "an incomplete pair must yield no percentage at all"
+            );
+        }
+    }
+
+    #[test]
+    fn an_untimed_quote_refuses_to_claim_a_session() {
+        // Without a sample time the move is real but unnameable; calling it
+        // pre-market anyway is how a row ends up mislabelled.
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "SNDK",
+            "price": 1680.27,
+            "previousClose": 1786.85
+        }]));
+        let basis = &normalized[0]["hone_change_basis"];
+
+        assert_eq!(basis["pct"], -5.96);
+        assert!(basis.get("to_session").is_none());
+        assert!(basis.get("to_at_new_york").is_none());
+        // The label mentions 盘前/盘后 only to forbid them, so what matters is
+        // that it asserts no session of its own.
+        assert!(basis["label"].as_str().expect("label").contains("未知"));
+        assert!(basis.get("cannot_prove").is_some());
+    }
+
+    #[test]
+    fn session_summaries_and_the_quote_round_percentages_identically() {
+        // Two places once rounded with their own copy of the same expression.
+        assert_eq!(round_to_hundredths(8.884_9), 8.88);
+        assert_eq!(round_to_hundredths(-5.964_9), -5.96);
     }
 
     #[test]

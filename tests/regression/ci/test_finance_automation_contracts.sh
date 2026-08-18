@@ -773,11 +773,30 @@ else
   record fail "49.no-vocabulary-decides-what-is-a-security" "a hand-kept word list can again decide what counts as a security, silently erasing real listings that share its shape"
 fi
 
+if contains 'fn attach_quote_change_basis' "$DATA_FETCH" \
+  && contains 'hone_change_basis' "$DATA_FETCH" \
+  && contains 'fn round_to_hundredths' "$DATA_FETCH" \
+  && contains 'cannot_prove' "$DATA_FETCH" \
+  && contains 'provider_change_percent' "$DATA_FETCH" \
+  && contains 'a_regular_session_quote_carries_its_own_division' "$DATA_FETCH" \
+  && contains 'a_pre_market_quote_is_named_pre_market_and_disclaims_the_regular_day' "$DATA_FETCH" \
+  && contains 'a_quote_without_two_usable_legs_publishes_no_percentage' "$DATA_FETCH" \
+  && contains 'an_untimed_quote_refuses_to_claim_a_session' "$DATA_FETCH" \
+  && contains 'a_disagreeing_provider_percentage_is_reported_but_not_the_answer' "$DATA_FETCH" \
+  && contains 'hone_session_policy' "$DATA_FETCH" \
+  && contains 'hone_change_basis.pct' "$INVESTMENT_GUARD" \
+  && contains '不要直接抄 provider 的 `changesPercentage`' "$INVESTMENT_GUARD" \
+  && contains '同一行里的价格与涨跌幅必须来自同一时刻' "$INVESTMENT_GUARD"; then
+  record success "50.percent-change-is-divided-by-the-server" "the server divides each quote's own two legs, names the result by the session it was sampled in, reports a disagreeing provider percentage without adopting it, and refuses to supply a regular-session change a pre-market quote cannot prove"
+else
+  record fail "50.percent-change-is-divided-by-the-server" "a percentage can again be produced in prose from mismatched legs, so a row can pair a close from one moment with a change from another and still look complete"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 49 ]; then
-  echo "[ERROR] acceptance failed: expected all 49 successes"
+if [ "$success" -lt 50 ]; then
+  echo "[ERROR] acceptance failed: expected all 50 successes"
   exit 1
 fi
 
