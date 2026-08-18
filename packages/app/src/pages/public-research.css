@@ -7,7 +7,7 @@
   align-items: center;
   justify-content: center;
   color: var(--hone-ink-500);
-  font-size: 14px;
+  font-size: var(--hone-text-md);
 }
 
 .public-research-main {
@@ -19,7 +19,7 @@
 .public-research-header h1 {
   margin: 0 0 6px;
   font-family: var(--hone-font-display);
-  font-size: 24px;
+  font-size: var(--hone-text-xl);
   font-weight: 700;
   color: var(--hone-ink-950);
 }
@@ -27,7 +27,7 @@
 .public-research-header p {
   margin: 0;
   max-width: 48em;
-  font-size: 13.5px;
+  font-size: var(--hone-text-sm);
   line-height: 1.65;
   color: var(--hone-ink-500);
 }
@@ -56,10 +56,10 @@
   flex: 0 0 auto;
   padding: 7px 14px;
   border: 1px solid var(--hone-line);
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-600);
-  font-size: 13px;
+  font-size: var(--hone-text-sm);
   cursor: pointer;
   transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease),
     background 0.15s var(--hone-ease);
@@ -70,197 +70,253 @@
   color: var(--hone-ink-950);
 }
 
+/* A filled black pill was the heaviest element on a page of cream and sage,
+   which put the strongest emphasis on a filter rather than on the research.
+   Paper + full-strength ink reads as selected without shouting. */
 .public-research-tabs button.is-active {
-  border-color: transparent;
-  background: var(--hone-inverse-bg);
-  color: var(--hone-inverse-fg);
+  border-color: var(--hone-line-strong);
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-950);
   font-weight: 600;
 }
 
-/* ── Cards ──────────────────────────────────────────────────────────────── */
+/* ── Layers ─────────────────────────────────────────────────────────────── */
 
-.public-research-grid {
+/* Outermost is the conclusion, innermost is the evidence.
+   The desk used to open as eight identical cards in a 3-column grid: every
+   section, including the two traffic lights that ARE the day's verdict, was a
+   closed box you had to click to learn anything from. Three tiers now, each
+   with its own typographic voice so they never read as one undifferentiated
+   wall — verdicts state a score, findings state a sentence, and everything
+   still waiting gets one quiet row. Detail lives behind the panel. */
+
+.public-research-layers {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 26px;
 }
 
-@media (max-width: 980px) {
-  .public-research-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* ── Tier 1: the verdicts ───────────────────────────────────────────────── */
+
+.public-research-verdicts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 34px;
+  border-top: 1px solid var(--hone-line);
+  border-bottom: 1px solid var(--hone-line);
 }
 
-@media (max-width: 620px) {
-  .public-research-main {
-    padding: 20px 14px 40px;
-  }
-
-  .public-research-grid {
+@media (max-width: 720px) {
+  .public-research-verdicts {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .public-research-verdict + .public-research-verdict {
+    border-top: 1px solid var(--hone-line);
+  }
 }
 
-.public-research-card {
+/* No border, no fill, no corner radius: the number carries the weight. */
+.public-research-verdict {
   display: grid;
-  gap: 9px;
-  padding: 15px 17px;
+  gap: 5px;
+  padding: 16px 2px;
+  border: 0;
+  background: none;
   text-align: left;
   cursor: pointer;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
-  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
-  box-shadow: var(--hone-shadow-sm);
-  transition: border-color 0.16s var(--hone-ease), transform 0.16s var(--hone-ease);
 }
 
-.public-research-card:hover {
-  border-color: var(--hone-line-strong);
-  transform: translateY(-1px);
-}
-
-/* A section with nothing to show today recedes: no shadow, no headline
-   number, muted type. The point is to make "有数据 / 没数据" legible from
-   across the grid instead of buried in a status chip. */
-.public-research-card.is-state-waiting,
-.public-research-card.is-state-empty {
-  background: transparent;
-  border-style: dashed;
-  box-shadow: none;
-}
-
-.public-research-card.is-state-waiting .public-research-card__title strong,
-.public-research-card.is-state-empty .public-research-card__title strong {
-  color: var(--hone-ink-600);
-}
-
-.public-research-card__top {
+.public-research-verdict__top {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: baseline;
+  gap: 10px;
 }
 
-.public-research-card__kicker {
+.public-research-verdict__top strong {
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-lg);
+  font-weight: 700;
+}
+
+.public-research-verdict__top b {
+  margin-left: auto;
   font-family: var(--hone-font-label);
-  font-size: 10.5px;
+  font-size: var(--hone-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.public-research-verdict__top em {
+  padding: 2px 8px;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral-ink);
+  font-size: var(--hone-text-2xs);
+  font-style: normal;
+}
+
+.public-research-verdict__note {
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-sm);
+  line-height: 1.6;
+}
+
+.public-research-verdict:hover .public-research-verdict__note {
+  color: var(--hone-ink-950);
+}
+
+.public-research-verdict.is-green .public-research-verdict__top b { color: var(--hone-signal-green-ink); }
+.public-research-verdict.is-yellow .public-research-verdict__top b { color: var(--hone-signal-yellow-ink); }
+.public-research-verdict.is-orange .public-research-verdict__top b { color: var(--hone-signal-orange-ink); }
+.public-research-verdict.is-red .public-research-verdict__top b { color: var(--hone-signal-red-ink); }
+
+.public-research-verdict.is-green .public-research-verdict__top em {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green-ink);
+}
+
+.public-research-verdict.is-yellow .public-research-verdict__top em {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow-ink);
+}
+
+.public-research-verdict.is-orange .public-research-verdict__top em {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange-ink);
+}
+
+.public-research-verdict.is-red .public-research-verdict__top em {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red-ink);
+}
+
+/* 管理员能看到尚未对普通用户放出的板块，得能一眼分辨哪些是。 */
+.public-research-gated {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow-ink);
+  font-size: var(--hone-text-2xs);
+  font-style: normal;
+  white-space: nowrap;
+}
+
+/* ── Tier 2: the findings ───────────────────────────────────────────────── */
+
+.public-research-findings {
+  display: grid;
+  gap: 2px;
+}
+
+.public-research-findings h2 {
+  margin: 0 0 6px;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--hone-ink-500);
 }
 
-.public-research-card__state {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: 0 0 auto;
-  font-size: 11.5px;
-  color: var(--hone-ink-400);
-}
-
-/* Only a snapshot from today gets the green treatment; an older one stays
-   neutral so the colour never contradicts the words next to it. */
-.public-research-card.is-fresh .public-research-card__state {
-  color: var(--hone-signal-green);
-}
-
-.public-research-card__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.public-research-card__title {
-  display: flex;
+/* A finding is a sentence with a source, so it reads as a line of prose with
+   a label — not as a tile whose content you have to go and fetch. */
+.public-research-findings button {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 8px;
+  gap: 14px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--hone-line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--hone-ink-950);
 }
 
-.public-research-card__title strong {
-  font-size: 16.5px;
-  font-weight: 700;
-}
-
-.public-research-card__title b {
-  margin-left: auto;
-  font-family: var(--hone-font-label);
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--hone-ink-800);
-}
-
-.public-research-card__signal {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--hone-signal-neutral-soft);
-  color: var(--hone-signal-neutral);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.public-research-card.is-green .public-research-card__signal {
-  background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
-}
-
-.public-research-card.is-yellow .public-research-card__signal {
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-}
-
-.public-research-card.is-orange .public-research-card__signal {
-  background: var(--hone-signal-orange-soft);
-  color: var(--hone-signal-orange);
-}
-
-.public-research-card.is-red .public-research-card__signal {
-  background: var(--hone-signal-red-soft);
-  color: var(--hone-signal-red);
-}
-
-.public-research-card__summary {
-  display: -webkit-box;
-  overflow: hidden;
-  min-height: 2.9em;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--hone-ink-600);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.public-research-card__foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 20px;
-  font-size: 11.5px;
-  color: var(--hone-ink-500);
-}
-
-.public-research-card__metric {
-  padding: 2px 8px;
-  border-radius: 999px;
+.public-research-findings button:hover {
   background: var(--hone-paper-100);
 }
 
-.public-research-card__hint {
-  color: var(--hone-ink-400);
+.public-research-findings__label {
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
 }
 
-.public-research-card__foot time {
+.public-research-findings__text {
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-sm);
+  line-height: 1.6;
+}
+
+.public-research-findings__metric {
   font-family: var(--hone-font-label);
-  font-size: 11px;
-  color: var(--hone-ink-400);
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-500);
+  white-space: nowrap;
 }
 
-.public-research-card__go {
-  margin-left: auto;
-  font-style: normal;
-  font-size: 16px;
-  color: var(--hone-ink-400);
+@media (max-width: 620px) {
+  .public-research-findings button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 10px;
+  }
+
+  .public-research-findings__text {
+    grid-column: 1 / -1;
+  }
+}
+
+/* A section whose newest snapshot is not today says so, wherever it appears.
+   Silence means current — that is the whole contract, so the exception has to
+   be legible in the verdict and finding tiers too, not only in the pills. */
+.public-research-age {
+  color: var(--hone-signal-yellow-ink);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.public-research-findings__metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* ── Tier 3: not yet ────────────────────────────────────────────────────── */
+
+/* Sections with nothing to say today get one row between them, not a card
+   each. They stay reachable; they just stop competing for the eye. */
+.public-research-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.public-research-pending button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px dashed var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: none;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-xs);
+  cursor: pointer;
+}
+
+.public-research-pending button:hover {
+  border-style: solid;
+  color: var(--hone-ink-950);
+}
+
+.public-research-pending small {
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
 }
 
 /* ── Administration ─────────────────────────────────────────────────────── */
@@ -271,17 +327,4 @@
   display: grid;
   gap: 14px;
   margin-top: 14px;
-}
-
-/* Marks a section users cannot reach yet, so an administrator reviewing the
-   desk can tell released from still-being-polished at a glance. */
-.public-research-card__gated {
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
-  font-style: normal;
-  letter-spacing: 0;
-  text-transform: none;
 }

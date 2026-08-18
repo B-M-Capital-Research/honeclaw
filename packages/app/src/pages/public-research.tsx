@@ -202,12 +202,18 @@ function daysBetween(from: string, to: string) {
 }
 
 /**
- * How fresh this section actually is.
+ * Only a section that deviates from today gets a label, and it says how.
  *
- * The label used to read "今日已更新" for any snapshot that merely existed, so
- * a report written last night still claimed to be today's — the panel then
- * opened on visibly older content and the card looked like a lie. The day is
- * compared against the server's calendar day, and anything older says so.
+ * Two separate corrections meet here. The badge used to read "今日已更新" for
+ * any snapshot that merely existed, so a report written last night still
+ * claimed to be today's and the panel then opened on visibly older content.
+ * And it was worn by six of eight cards at once — a mark repeating on almost
+ * every card carries no information while costing a fixed slot in each.
+ *
+ * So freshness is measured against the server's calendar day, and a section
+ * that is genuinely current says nothing at all: the header already prints
+ * the "N / M 项已更新" tally, and the per-card slot is spent only on the ones
+ * that deviate from it.
  */
 function stateLabel(
   state: CardState,
@@ -218,17 +224,15 @@ function stateLabel(
   if (state === "empty") return "今日无新增";
   if (card?.status === "stale") return "沿用上次快照";
   const reportDate = card?.report_date ?? undefined;
-  if (!reportDate || !today) return "已更新";
+  if (!reportDate || !today) return "";
   const age = daysBetween(reportDate, today);
-  if (age === undefined) return "已更新";
-  if (age <= 0) return "今日已更新";
-  if (age === 1) return "昨日更新";
-  return `${age} 天前更新`;
+  if (age === undefined || age <= 0) return "";
+  return age === 1 ? "昨日更新" : `${age} 天前更新`;
 }
 
 /**
  * Today's date alone is not freshness: a section can be stamped today and
- * still have produced nothing usable. The green marker claims "there is
+ * still have produced nothing usable. The header tally claims "there is
  * something here, and it is today's", so it requires both.
  */
 function isFreshToday(
@@ -239,6 +243,23 @@ function isFreshToday(
   if (!card?.report_date || !today) return false;
   if (state && state !== "ready") return false;
   return (daysBetween(card.report_date, today) ?? 1) <= 0;
+}
+
+/**
+ * The card blurb is one sentence, cut on a sentence boundary.
+ *
+ * A two-line `-webkit-line-clamp` alone truncates mid-clause — the AI card
+ * read "…本版只使…" and the second line was spent saying nothing. Cutting at
+ * the first terminator keeps the line whole; the clamp stays as the backstop
+ * for a first sentence that is itself too long.
+ */
+function leadSentence(text: string) {
+  const trimmed = text.trim();
+  const end = trimmed.search(/[。；！？](?![）」』】])/);
+  if (end === -1 || end > 56) return trimmed;
+  const cut = trimmed.slice(0, end + 1);
+  // 分号只是分句，留在句末会读成话还没说完。
+  return cut.endsWith("；") ? cut.slice(0, -1) : cut;
 }
 
 export default function PublicResearchPage() {
@@ -322,6 +343,31 @@ export default function PublicResearchPage() {
     allowedSections().filter((section) => section.panel || section.href),
   );
 
+  /**
+   * Three tiers, outermost first.
+   *
+   * The desk used to open as eight identical cards — every section a closed
+   * container you had to click to learn anything, including the two that ARE
+   * the day's verdict. Now the outer layer states conclusions and the detail
+   * stays behind the panel: the traffic lights lead with their score and
+   * phase, sections that produced a finding print that finding as a line of
+   * prose, and sections still waiting collapse into a single quiet row.
+   */
+  const verdictSections = createMemo(() =>
+    visibleSections().filter((section) => cards().get(section.key)?.signal),
+  );
+
+  const findingSections = createMemo(() =>
+    visibleSections().filter((section) => {
+      const card = cards().get(section.key);
+      return !card?.signal && cardState(card) === "ready";
+    }),
+  );
+
+  const pendingSections = createMemo(() =>
+    visibleSections().filter((section) => cardState(cards().get(section.key)) !== "ready"),
+  );
+
   const readyCount = createMemo(
     () =>
       dailySections().filter((section) => {
@@ -384,73 +430,94 @@ export default function PublicResearchPage() {
                 when={!overviewLoading() || cards().size > 0}
                 fallback={<ResearchState kind="loading" message="正在读取今日研究总览…" />}
               >
-                <div class="public-research-grid">
-                  <For each={visibleSections()}>
-                    {(section) => {
-                      const card = () => cards().get(section.key);
-                      const state = () => cardState(card());
-                      return (
-                        <button
-                          type="button"
-                          class="public-research-card"
-                          classList={{
-                            [`is-${card()?.signal ?? "none"}`]: true,
-                            [`is-state-${state()}`]: true,
-                            "is-fresh": isFreshToday(card(), reportToday(), state()),
-                          }}
-                          onClick={() => openSection(section)}
-                        >
-                          <span class="public-research-card__top">
-                            <span class="public-research-card__kicker">
-                              {section.kicker}
-                              <Show when={section.adminOnly}>
-                                <em class="public-research-card__gated">未发布</em>
-                              </Show>
-                            </span>
-                            <span class="public-research-card__state">
-                              <Show when={isFreshToday(card(), reportToday(), state())}>
-                                <i class="public-research-card__dot" aria-hidden="true" />
-                              </Show>
-                              {stateLabel(state(), card(), reportToday())}
-                            </span>
-                          </span>
-
-                          <span class="public-research-card__title">
-                            <strong>{section.title}</strong>
-                            <Show when={state() === "ready" && card()?.score != null}>
-                              <b>{card()!.score!.toFixed(1)}</b>
-                            </Show>
-                            <Show when={state() === "ready" && card()?.signal}>
-                              <em class="public-research-card__signal">
-                                {SIGNAL_LABELS[card()!.signal!] ?? card()!.signal}
-                              </em>
-                            </Show>
-                          </span>
-
-                          <span class="public-research-card__summary">
-                            {state() === "ready"
-                              ? card()?.summary || section.blurb
-                              : section.blurb}
-                          </span>
-
-                          <span class="public-research-card__foot">
-                            <Show
-                              when={state() === "ready"}
-                              fallback={<span class="public-research-card__hint">{section.refreshAt}更新</span>}
+                <div class="public-research-layers">
+                  {/* 判断层：红绿灯本身就是结论，不该藏在卡片后面。 */}
+                  <Show when={verdictSections().length}>
+                    <section class="public-research-verdicts">
+                      <For each={verdictSections()}>
+                        {(section) => {
+                          const card = () => cards().get(section.key);
+                          return (
+                            <button
+                              type="button"
+                              class="public-research-verdict"
+                              classList={{ [`is-${card()?.signal ?? "none"}`]: true }}
+                              onClick={() => openSection(section)}
                             >
-                              <Show when={card()?.metric}>
-                                <span class="public-research-card__metric">{card()!.metric}</span>
+                              <span class="public-research-verdict__top">
+                                <strong>{section.title}</strong>
+                                <Show when={section.adminOnly}>
+                                  <i class="public-research-gated">未发布</i>
+                                </Show>
+                                <b>{card()?.score?.toFixed(1)}</b>
+                                <em>{SIGNAL_LABELS[card()!.signal!] ?? card()!.signal}</em>
+                              </span>
+                              <span class="public-research-verdict__note">
+                                {leadSentence(card()?.summary || section.blurb)}
+                              </span>
+                              <Show when={stateLabel(cardState(card()), card(), reportToday())}>
+                                {(age) => <span class="public-research-age">{age()}</span>}
                               </Show>
-                              <Show when={card()?.report_date}>
-                                <time>{card()!.report_date}</time>
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </section>
+                  </Show>
+
+                  {/* 洞察层：一行一个结论，而不是一格一个入口。 */}
+                  <Show when={findingSections().length}>
+                    <section class="public-research-findings">
+                      <h2>今日要点</h2>
+                      <For each={findingSections()}>
+                        {(section) => {
+                          const card = () => cards().get(section.key);
+                          return (
+                            <button type="button" onClick={() => openSection(section)}>
+                              <span class="public-research-findings__label">
+                                {section.title}
+                                <Show when={section.adminOnly}>
+                                  <i class="public-research-gated">未发布</i>
+                                </Show>
+                              </span>
+                              <span class="public-research-findings__text">
+                                {leadSentence(card()?.summary || section.blurb)}
+                              </span>
+                              <span class="public-research-findings__metric">
+                                <Show when={stateLabel(cardState(card()), card(), reportToday())}>
+                                  {(age) => <b class="public-research-age">{age()}</b>}
+                                </Show>
+                                <Show when={card()?.metric}>{card()!.metric}</Show>
+                              </span>
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </section>
+                  </Show>
+
+                  {/* 还没有内容的模块不配占一整格，一行说清楚就够。 */}
+                  <Show when={pendingSections().length}>
+                    <section class="public-research-pending">
+                      <For each={pendingSections()}>
+                        {(section) => {
+                          const card = () => cards().get(section.key);
+                          return (
+                            <button type="button" onClick={() => openSection(section)}>
+                              {section.title}
+                              <Show when={section.adminOnly}>
+                                <i class="public-research-gated">未发布</i>
                               </Show>
-                            </Show>
-                            <i class="public-research-card__go" aria-hidden="true">›</i>
-                          </span>
-                        </button>
-                      );
-                    }}
-                  </For>
+                              <small>
+                                {stateLabel(cardState(card()), card(), reportToday()) || "今日无新增"} ·{" "}
+                                {section.refreshAt}
+                              </small>
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </section>
+                  </Show>
                 </div>
               </Show>
 
