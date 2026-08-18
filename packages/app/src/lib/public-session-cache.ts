@@ -29,11 +29,39 @@ export function setCachedPublicUser(user: PublicAuthUserInfo | null) {
     setCachedCommunityFeedSignal(null);
   }
   setCachedPublicUserSignal(user === null ? null : { ...user });
+  try {
+    if (user === null) localStorage.removeItem(SESSION_HINT_KEY);
+    else localStorage.setItem(SESSION_HINT_KEY, "1");
+  } catch {
+    // Storage is unavailable; the in-memory signal still works for this tab.
+  }
 }
 
 /** A route may render optimistically only when something is actually known. */
 export function hasCachedPublicUser(): boolean {
   return cachedPublicUser() !== null;
+}
+
+/**
+ * A non-secret marker that this browser recently held a session.
+ *
+ * The signal above lives in memory, so it answers nothing on a fresh page
+ * load — exactly when a page most needs to know whether it may start its
+ * independent authenticated requests instead of queueing them behind the
+ * first round trip. This survives the reload; it carries no identity and no
+ * credential, and the server remains the only authority on whether a request
+ * is allowed. The cost of a stale marker is one rejected request.
+ */
+const SESSION_HINT_KEY = "hone.session.hint";
+
+export function hadRecentSession(): boolean {
+  if (cachedPublicUser() !== null) return true;
+  try {
+    return localStorage.getItem(SESSION_HINT_KEY) === "1";
+  } catch {
+    // Private mode or blocked storage: the page simply does not warm-start.
+    return false;
+  }
 }
 
 /**

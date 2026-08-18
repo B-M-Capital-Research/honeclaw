@@ -30,6 +30,10 @@ import {
 } from "@/components/public-agent-workspace";
 import { routePrefetchHandlers } from "@/lib/route-prefetch";
 import {
+  hadRecentSession,
+  setCachedPublicUser,
+} from "@/lib/public-session-cache";
+import {
   ResearchPanelFor,
   isResearchPanelKey,
   type ResearchPanelKey,
@@ -2722,9 +2726,19 @@ export default function PublicChatPage() {
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
   let pushUserId: string | undefined;
+  /** Owner marker for loads started before the session id is known. */
+  const WARM_START_OWNER = "__warm_start__";
   let workspaceLoadedFor: string | undefined;
   let initialBottomPending = true;
 
+  /**
+   * Re-reads the unread flag on focus and on the minute timer.
+   *
+   * The first paint does not call this: `loadWorkspaceAside` already fetches
+   * the same feed with `limit: 3` and that response carries `unread` too, so
+   * asking for `limit: 1` on top of it was one request for an answer the page
+   * was about to receive anyway.
+   */
   const refreshCommunityUnread = async () => {
     if (authState() !== "ready" || !currentUser()) return;
     try {
@@ -2735,12 +2749,17 @@ export default function PublicChatPage() {
     }
   };
 
-  createEffect(() => {
-    const user = currentUser();
-    if (authState() !== "ready" || !user || workspaceLoadedFor === user.user_id) {
-      return;
-    }
-    workspaceLoadedFor = user.user_id;
+  /**
+   * Side panels the conversation does not depend on.
+   *
+   * These used to wait for `authState` to turn ready, which only happens after
+   * the bootstrap round trip returns — so on a slow link the badges and the
+   * workspace rail started loading only once the slowest request had finished,
+   * and landed a full round trip later than they had to. Nothing here reads
+   * bootstrap's result; they only need to know somebody is signed in, and the
+   * cached session answers that locally.
+   */
+  const loadWorkspaceAside = () => {
     void Promise.allSettled([
       getPublicCommunity({ limit: 3 }).then((community) => {
         setWorkspaceCommunity(community.items);
@@ -2750,6 +2769,19 @@ export default function PublicChatPage() {
         setWorkspaceCalendar,
       ),
     ]);
+  };
+
+  createEffect(() => {
+    const user = currentUser();
+    if (authState() !== "ready" || !user || workspaceLoadedFor === user.user_id) {
+      return;
+    }
+    // The warm start already fetched these; adopt its result for this user
+    // rather than fetching the same two endpoints a second time.
+    const warmed = workspaceLoadedFor === WARM_START_OWNER;
+    workspaceLoadedFor = user.user_id;
+    if (warmed) return;
+    loadWorkspaceAside();
   });
 
   const scrollToBottom = () => {
@@ -3028,9 +3060,13 @@ export default function PublicChatPage() {
       dailyLimit: user.daily_limit,
     });
     setCurrentUser(user);
+    // Record the session locally so the next visit can start its independent
+    // side loads immediately instead of waiting to learn it is signed in.
+    setCachedPublicUser(user);
   };
 
   const logoutPublicChat = () => {
+    setCachedPublicUser(null);
     void publicLogout();
     pushUserId = undefined;
     setPushDetailOpen(false);
@@ -3211,7 +3247,6 @@ export default function PublicChatPage() {
         if (options.resetWindow) {
         }
       });
-      void refreshCommunityUnread();
       if (shouldKeepBottom) {
         pinToBottom(1200);
       } else if (previousScrollTop !== undefined) {
@@ -3345,7 +3380,11 @@ export default function PublicChatPage() {
     const userId = currentUser()?.user_id;
     if (authState() !== "ready" || !userId) return;
     if (pushUserId === userId) return;
+    // The warm start already read the badge for this browser's session; adopt
+    // its count instead of resetting to zero and asking a second time.
+    const warmed = pushUserId === WARM_START_OWNER;
     pushUserId = userId;
+    if (warmed) return;
     setPushUnreadCount(0);
     void refreshPushUnread();
   });
@@ -3380,6 +3419,15 @@ export default function PublicChatPage() {
       passive: false,
       capture: true,
     });
+    // Warm start: a returning reader already has a cached session, so the
+    // independent side loads race the bootstrap request instead of queueing
+    // behind it. A stale cache costs one harmless 401 that is swallowed below.
+    if (hadRecentSession()) {
+      workspaceLoadedFor = WARM_START_OWNER;
+      pushUserId = WARM_START_OWNER;
+      loadWorkspaceAside();
+      void refreshPushUnread();
+    }
     void restoreSession({ resetWindow: true });
     onCleanup(() => {
       if (viewportMeta) {
