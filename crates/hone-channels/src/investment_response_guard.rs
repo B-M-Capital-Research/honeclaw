@@ -3051,6 +3051,55 @@ fn is_us_extended_session(at: chrono::DateTime<chrono_tz::Tz>) -> bool {
 /// the enrichment must carry extended data in all of them — a Local
 /// afternoon is the New York overnight right after the post session where
 /// "昨晚盘后为什么跌" happened.
+/// How to name the clock in text a person reads.
+///
+/// The runtime timezone is configurable, so the label cannot simply be
+/// hardcoded — but "运行时时区 2026-08-18 15:52" is not something anyone says.
+/// A Shanghai runtime, which is what this product runs on, gets the words its
+/// users actually use; anywhere else keeps the real zone name so the line
+/// never claims a clock it is not reading.
+pub(crate) fn local_clock_label() -> String {
+    let name = hone_core::runtime_timezone_name();
+    match name.as_str() {
+        "Asia/Shanghai" | "Asia/Chongqing" | "Asia/Hong_Kong" | "PRC" => "北京时间".to_string(),
+        other => format!("{other} 时间"),
+    }
+}
+
+/// The session in the words traders use, plus what comes next.
+///
+/// A user asking about "今天盘前" eight minutes before pre-market opens is not
+/// making a mistake worth correcting; they want to know what is happening.
+/// Telling them the next session opens shortly is an answer. Telling them
+/// their premise is false is not.
+pub(crate) fn us_session_phase_label(new_york: chrono::DateTime<chrono_tz::Tz>) -> String {
+    let phase = match us_session_at(new_york) {
+        "pre" => "盘前",
+        "regular" => "盘中",
+        "post" => "盘后",
+        _ => "休市",
+    };
+    match next_us_session_start(new_york) {
+        Some((next_phase, minutes)) if minutes <= 180 => {
+            format!("{phase}（距{next_phase}开始还有约 {minutes} 分钟）")
+        }
+        _ => phase.to_string(),
+    }
+}
+
+/// Minutes until the next session boundary, so the turn can say "还有 8 分钟"
+/// instead of leaving the model to work it out from two clocks.
+fn next_us_session_start(new_york: chrono::DateTime<chrono_tz::Tz>) -> Option<(&'static str, i64)> {
+    use chrono::Timelike;
+    let minutes_now = i64::from(new_york.hour()) * 60 + i64::from(new_york.minute());
+    // Boundaries in New York minutes-of-day, in order.
+    let boundaries = [(4 * 60, "盘前"), (9 * 60 + 30, "盘中"), (16 * 60, "盘后")];
+    boundaries
+        .into_iter()
+        .find(|(start, _)| *start > minutes_now)
+        .map(|(start, phase)| (phase, start - minutes_now))
+}
+
 pub(crate) fn us_session_at(at: chrono::DateTime<chrono_tz::Tz>) -> &'static str {
     if matches!(at.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
         return "closed";
@@ -8398,14 +8447,10 @@ fn append_agent_entity_discovery_context(
     // mapped to. This states the mapping; it interprets no user wording.
     {
         let new_york = answer_time_in_new_york(answer_time);
-        let session_label = match us_session_at(new_york) {
-            "pre" => "盘前（04:00-09:30 ET）",
-            "regular" => "常规交易时段（09:30-16:00 ET）",
-            "post" => "盘后（16:00-20:00 ET）",
-            _ => "闭市（隔夜或周末）",
-        };
+        let session_label = us_session_phase_label(new_york);
+        let clock_label = local_clock_label();
         runtime_input.push_str(&format!(
-            "\n\n【美股时段对齐：服务端时钟事实】当前运行时时区 {answer_time}，对应纽约时间 {}，美股此刻处于{session_label}。换算：盘前=纽约 04:00-09:30（北京 16:00-21:30），常规=09:30-16:00（北京 21:30-04:00），盘后=16:00-20:00（北京 04:00-08:00），其余闭市。普通 quote 的 price/changesPercentage 只反映最近一个已完成或进行中的常规时段（纽约日历日见 market_date_new_york）；闭市、盘前或盘后期间它不包含当前变动，这些时段的价格与涨跌必须用 `data_fetch(extended_hours)`，其 `hone_session_summaries` 按 纽约日期+时段 给出开盘/收盘/高低与相对上一时段收盘的涨跌幅。用户说的\u{201c}盘后/盘前\u{201d}指上述纽约时段；\u{201c}夜盘/昨晚/今晚\u{201d}通常指北京夜间对应的美股时段——先按上面的当前时刻换算出目标纽约日期与时段再取数，不要凭直觉猜日期。若用户点名的对象经本轮工具核验并非上市证券（例如私营公司），直接说明这一点并列出最接近的上市候选（附公司全名）请用户确认；不得把近似 ticker 的行情直接当作该对象的答案发布。",
+            "\n\n【美股时段对齐：服务端时钟事实】当前{clock_label} {answer_time}，对应纽约时间 {}，美股目前处于{session_label}。换算：盘前=纽约 04:00-09:30（北京 16:00-21:30），盘中=09:30-16:00（北京 21:30-04:00），盘后=16:00-20:00（北京 04:00-08:00），其余为休市。普通 quote 的 price/changesPercentage 只反映最近一个已完成或进行中的盘中时段（纽约日历日见 market_date_new_york）；休市、盘前或盘后期间它不包含当前变动，这些时段的价格与涨跌用 `data_fetch(extended_hours)`，其 `hone_session_summaries` 按 纽约日期+时段 给出开盘/收盘/高低与相对上一时段收盘的涨跌幅。\n用户嘴里的时段词是口语，不精确：“夜盘”“昨晚”“今晚”“盘前”经常混着用，指的多半就是“离现在最近的那段美股行情”。不要拿时段定义去纠正用户，也不要因为字面对不上就说“你的前提与事实不符”——先按上面的当前时刻判断哪些时段确实已经产生数据，取其中与用户意图最接近的那一段来回答，并写清是纽约哪一天、哪个时段。若用户问的那个时段此刻确实还没开始，就直接说明它何时开始（上面已给出还有多少分钟），再顺势把最近一段已经发生的行情讲清楚，而不是空手收尾。\n日期只写纽约日历日，例如“纽约 8 月 17 日盘后”；不要把纽约日历日称作“今天”“昨天”——本地日期与纽约日期常常差一天，这样称呼必然出错。若用户点名的对象经本轮工具核验并非上市证券（例如私营公司），直接说明这一点并列出最接近的上市候选（附公司全名）请用户确认；不得把近似 ticker 的行情直接当作该对象的答案发布。",
             new_york.format("%Y-%m-%d %H:%M %Z"),
         ));
     }
@@ -14338,6 +14383,69 @@ mod tests {
     /// before anything could check it — and no grammar signal in this scanner
     /// separates "ARM 的财报" from "AI 板块" anyway, which is why the judgment
     /// belongs to something that reads the sentence.
+    /// A user asking about "今天盘前" eight minutes before pre-market opens is
+    /// not making a mistake. The turn should be able to say when it opens.
+    #[test]
+    fn the_session_phase_reads_like_a_trader_would_say_it() {
+        let at = |hour: u32, minute: u32| {
+            chrono_tz::America::New_York
+                .with_ymd_and_hms(2026, 8, 18, hour, minute, 0)
+                .single()
+                .expect("new york time")
+        };
+
+        // 北京 15:52 = 纽约 03:52, eight minutes before pre-market.
+        let label = super::us_session_phase_label(at(3, 52));
+        assert!(label.starts_with("休市"), "{label}");
+        assert!(label.contains("盘前"), "{label}");
+        assert!(label.contains("8 分钟"), "{label}");
+
+        assert!(super::us_session_phase_label(at(5, 0)).starts_with("盘前"));
+        assert!(super::us_session_phase_label(at(11, 0)).starts_with("盘中"));
+        assert!(super::us_session_phase_label(at(17, 0)).starts_with("盘后"));
+
+        // Far from any boundary the countdown is noise, so it is dropped.
+        assert_eq!(super::us_session_phase_label(at(22, 0)), "休市");
+    }
+
+    #[test]
+    fn the_clock_is_named_the_way_its_readers_name_it() {
+        // The runtime timezone is configurable, so the label follows it rather
+        // than claiming a clock the server is not reading.
+        let label = super::local_clock_label();
+        assert!(!label.is_empty());
+        assert!(!label.contains("运行时时区"), "{label}");
+    }
+
+    #[test]
+    fn the_alignment_block_stops_correcting_the_user() {
+        let mut runtime_input = String::new();
+        super::append_agent_entity_discovery_context(
+            &mut runtime_input,
+            "今天盘前为什么美股下跌呢",
+            &[],
+            "2026-08-18 15:52",
+        );
+        // Colloquial session words must not be treated as a false premise.
+        assert!(
+            runtime_input.contains("不要拿时段定义去纠正用户"),
+            "{runtime_input}"
+        );
+        assert!(runtime_input.contains(f_premise()), "{runtime_input}");
+        // A New York calendar day must never be called 今天 from a local clock
+        // that is often a day apart.
+        assert!(
+            runtime_input.contains("不要把纽约日历日称作"),
+            "{runtime_input}"
+        );
+        // And the old machine-speak is gone.
+        assert!(!runtime_input.contains("当前运行时时区"), "{runtime_input}");
+    }
+
+    fn f_premise() -> &'static str {
+        "“你的前提与事实不符”"
+    }
+
     #[test]
     fn scheduled_scans_keep_real_listings_that_look_like_common_words() {
         for (symbol, company) in [
