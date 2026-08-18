@@ -5,6 +5,16 @@
 - **严重等级**: P3
 - **状态**: Fixed
 
+## 最新运行态复核（2026-08-18 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-18 18:00-22:02 CST。
+  - 21:31 CST `job_id=j_218175e9` / `job=TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` / `target=web-user-879a3b18fce2` 进入 `HeartbeatDiag deliver`，`parse_kind=PlainTextTriggered`，`deliver_preview` 仍以 fenced JSON 和 `"status": "triggered"` 协议载荷开头。
+  - 同窗 `scheduler_heartbeat_unknown_status_silent_skip.md` 继续记录 heartbeat parse / raw 信号分裂：`PlainTextTriggered=74`、`JsonNoop=19`、`PlainTextSuppressed=8`、`JsonTriggered=5`、`PlainTextNoop=3`。
+- 判断：
+  - 该样本晚于文档内代码级修复记录，但本轮仍未确认 live runtime 已加载 2026-08-15 heartbeat delivery leak 修复；因此只作为待部署复核证据，不将本缺陷从 `Fixed/P3` 回退为活跃态。
+  - 若后续确认 live 已加载修复 revision 后仍出现 fenced JSON / `status=triggered` 作为用户可见 deliver，应重新打开为 `New/P3` 并同步导航页。
+
 ## 修复记录（2026-06-22 03:28 CST）
 
 - 本轮在 `sanitize_scheduler_delivery_text(...)` 增加 heartbeat / scheduler 正文尾随结构化字段残片裁剪：
