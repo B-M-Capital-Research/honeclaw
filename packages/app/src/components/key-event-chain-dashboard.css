@@ -3,27 +3,8 @@
    ride the --hone-signal-* traffic-light tokens so dark mode adapts without
    a bespoke dark-theme override block. */
 
-.key-chain-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10058;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #11191780;
-  backdrop-filter: blur(10px);
-}
-
 .key-chain-dialog {
-  width: min(1080px, 100%);
-  height: min(850px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 24px;
-  background: var(--hone-paper-50);
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px #070d0c52;
 }
 
 /* Head chrome — kicker, title, verdict, provenance and the refresh control —
@@ -45,10 +26,10 @@
   gap: 6px;
   padding: 6px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-600);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -61,7 +42,7 @@
 
 .key-chain-topics small {
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -87,23 +68,23 @@
 
 .key-chain-topic-head > div span {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-signal-green-soft);
   color: var(--hone-signal-green);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   white-space: nowrap;
 }
 
 .key-chain-topic-head h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--hone-text-xl);
 }
 
 .key-chain-topic-head p {
   margin: 4px 0;
   color: var(--hone-ink-500);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   line-height: 1.6;
 }
 
@@ -113,7 +94,7 @@
   border-left: 3px solid var(--hone-signal-green);
   background: var(--hone-signal-green-soft);
   color: var(--hone-ink-600);
-  font-size: 11.5px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
 
@@ -121,7 +102,7 @@
   display: block;
   margin-top: 9px;
   color: var(--hone-ink-800);
-  font-size: 13px;
+  font-size: var(--hone-text-sm);
   line-height: 1.55;
 }
 
@@ -134,10 +115,10 @@
 .key-chain-evidence-filter button {
   padding: 5px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -156,7 +137,7 @@
 .key-chain-analysis-terms {
   color: var(--hone-ink-500);
   font-family: var(--hone-font-label);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 .key-chain-dialog footer {
@@ -168,7 +149,7 @@
   margin: 0 0 6px;
   text-align: center;
   color: var(--hone-ink-500);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
@@ -181,7 +162,7 @@
   flex: 1;
   padding: 9px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
 }
@@ -189,7 +170,7 @@
 .key-chain-dialog footer button {
   padding: 8px 13px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-signal-green);
   color: var(--hone-paper-50);
   font-weight: 700;
@@ -201,17 +182,6 @@
 }
 
 @media (max-width: 768px) {
-  .key-chain-backdrop {
-    padding: 0;
-    place-items: end;
-  }
-
-  .key-chain-dialog {
-    width: 100%;
-    height: 93dvh;
-    border-radius: 22px 22px 0 0;
-  }
-
   .key-chain-topics {
     padding-left: 16px;
     padding-right: 16px;

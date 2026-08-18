@@ -13,28 +13,8 @@
   --bg-primary: var(--hone-paper-50);
 }
 
-.weekly-brief-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10059;
-  background: rgba(4, 10, 11, 0.7);
-  backdrop-filter: blur(9px);
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-
 .weekly-brief-dialog {
-  width: min(1040px, 100%);
-  height: min(820px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  border-radius: 24px;
-  background: var(--bg-primary);
   color: var(--text-primary);
-  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.38);
 }
 
 /* Head chrome — kicker, title, verdict, provenance and the refresh control —
@@ -46,11 +26,11 @@
   flex: 0 0 auto;
   margin: 10px 26px 0;
   padding: 9px 12px;
-  border-radius: 11px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-signal-yellow-soft);
   display: flex;
   gap: 8px;
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.45;
 }
 
@@ -65,7 +45,7 @@
   gap: 7px;
   margin: 10px 26px;
   padding: 4px;
-  border-radius: 13px;
+  border-radius: var(--hone-radius-sm);
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
@@ -76,20 +56,20 @@
   gap: 7px;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 750;
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
   cursor: pointer;
 }
 
 .weekly-brief-tabs button b {
   min-width: 20px;
   padding: 2px 5px;
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  font-size: 9px;
+  font-size: var(--hone-text-2xs);
 }
 
 .weekly-brief-tabs button.active {
@@ -109,7 +89,7 @@
 .weekly-brief-week {
   min-width: 0;
   border: 1px solid var(--border-color);
-  border-radius: 17px;
+  border-radius: var(--hone-radius-md);
   background: var(--card-bg);
   overflow: hidden;
 }
@@ -125,11 +105,11 @@
 
 .weekly-brief-week > header h3 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--hone-text-lg);
 }
 
 .weekly-brief-week > header time {
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -158,11 +138,11 @@
 }
 
 .weekly-brief-date strong {
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 .weekly-brief-date span {
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   color: var(--text-secondary);
 }
 
@@ -174,7 +154,7 @@
 .weekly-brief-events article {
   padding: 12px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 13px;
+  border-radius: var(--hone-radius-sm);
   background: color-mix(in srgb, var(--bg-primary) 56%, var(--card-bg));
 }
 
@@ -187,11 +167,11 @@
   align-items: baseline;
   margin: 5px 0 0;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
 }
 
 .weekly-brief-event-meta b {
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   padding: 2px 7px;
   color: var(--hone-signal-yellow);
   background: var(--hone-signal-yellow-soft);
@@ -199,18 +179,18 @@
 
 .weekly-brief-events h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--hone-text-md);
   line-height: 1.4;
 }
 
 .weekly-brief-events code {
   margin-right: 7px;
   padding: 2px 5px;
-  border-radius: 5px;
+  border-radius: var(--hone-radius-xs);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   color: var(--text-secondary);
   font-family: var(--hone-font-label);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
 }
 
 /* The card's three paragraphs — subtitle, analysis, follow-up — each scope
@@ -219,7 +199,7 @@
 .weekly-brief-events .weekly-brief-subtitle {
   margin: 4px 0 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
 
 /* The reading of the event, in full. It used to arrive inside a disclosure
@@ -227,14 +207,14 @@
 .weekly-brief-events .weekly-brief-analysis {
   margin: 9px 0 0;
   line-height: 1.65;
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 /* Follow-up guidance. It used to sit in a yellow box, which read as a warning
    it never was; yellow here is reserved for coverage gaps and 重点. */
 .weekly-brief-events .weekly-brief-attention {
   margin: 5px 0 0;
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
   color: var(--text-secondary);
 }
@@ -250,7 +230,7 @@
   gap: 10px;
   margin-top: 8px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
@@ -267,10 +247,10 @@
 .weekly-brief-method {
   margin: 12px 0 0;
   padding: 9px 12px;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
@@ -288,7 +268,7 @@
 .weekly-brief-footer > p {
   margin: 0 0 7px;
   color: var(--text-secondary);
-  font-size: 8px;
+  font-size: var(--hone-text-2xs);
   text-align: center;
 }
 
@@ -301,7 +281,7 @@
   flex: 1;
   min-width: 0;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   padding: 9px 11px;
   background: var(--card-bg);
   color: var(--text-primary);
@@ -309,10 +289,10 @@
 
 .weekly-brief-footer button {
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   padding: 0 14px;
   background: var(--hone-coral-600);
-  color: #fff;
+  color: var(--hone-inverse-fg);
   font-weight: 700;
 }
 
@@ -321,18 +301,6 @@
 }
 
 @media (max-width: 800px) {
-  .weekly-brief-backdrop {
-    padding: 0;
-    place-items: end;
-  }
-
-  .weekly-brief-dialog {
-    height: 94dvh;
-    width: 100%;
-    border: 0;
-    border-radius: 22px 22px 0 0;
-  }
-
   .weekly-brief-coverage {
     margin: 9px 16px 0;
     display: grid;
@@ -347,7 +315,7 @@
   }
 
   .weekly-brief-tabs button span {
-    font-size: 10px;
+    font-size: var(--hone-text-2xs);
   }
 
   .weekly-brief-content {
@@ -404,7 +372,7 @@
   }
 
   .weekly-brief-footer input {
-    font-size: 16px;
+    font-size: var(--hone-text-lg);
   }
 
   .weekly-brief-footer button {

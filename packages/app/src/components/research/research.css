@@ -105,7 +105,7 @@
   margin: 0 auto 0 0;
   overflow: hidden;
   font-family: var(--hone-font-label);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-overflow: ellipsis;
@@ -145,57 +145,57 @@
 .research-panel__headline h2 {
   margin: 0;
   font-family: var(--hone-font-display);
-  font-size: 23px;
+  font-size: var(--hone-text-xl);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .research-panel__headline b {
   font-family: var(--hone-font-label);
-  font-size: 22px;
+  font-size: var(--hone-text-xl);
   font-weight: 600;
   color: var(--hone-ink-800);
 }
 
 .research-panel__signal {
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-signal-neutral-soft);
-  color: var(--hone-signal-neutral);
-  font-size: 12px;
+  color: var(--hone-signal-neutral-ink);
+  font-size: var(--hone-text-xs);
   font-weight: 600;
 }
 
 .research-panel__head.is-green .research-panel__signal {
   background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
+  color: var(--hone-signal-green-ink);
 }
 
 .research-panel__head.is-yellow .research-panel__signal {
   background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
+  color: var(--hone-signal-yellow-ink);
 }
 
 .research-panel__head.is-orange .research-panel__signal {
   background: var(--hone-signal-orange-soft);
-  color: var(--hone-signal-orange);
+  color: var(--hone-signal-orange-ink);
 }
 
 .research-panel__head.is-red .research-panel__signal {
   background: var(--hone-signal-red-soft);
-  color: var(--hone-signal-red);
+  color: var(--hone-signal-red-ink);
 }
 
 .research-panel__summary {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--hone-text-md);
   line-height: 1.6;
   color: var(--hone-ink-800);
 }
 
 .research-panel__meta {
   margin: 0;
-  font-size: 11.5px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
   color: var(--hone-ink-400);
 }
@@ -206,11 +206,11 @@
   }
 
   .research-panel__headline h2 {
-    font-size: 20px;
+    font-size: var(--hone-text-xl);
   }
 
   .research-panel__summary {
-    font-size: 13.5px;
+    font-size: var(--hone-text-sm);
   }
 }
 
@@ -305,7 +305,7 @@
 .research-longform__toggle {
   flex: 0 0 auto;
   color: var(--hone-link);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -335,7 +335,7 @@
 }
 
 .research-state strong {
-  font-size: 15px;
+  font-size: var(--hone-text-lg);
   font-weight: 600;
   color: var(--hone-ink-800);
 }
@@ -347,7 +347,7 @@
 .research-state p {
   margin: 0;
   max-width: 42em;
-  font-size: 13px;
+  font-size: var(--hone-text-sm);
   line-height: 1.6;
 }
 
@@ -355,10 +355,10 @@
   margin-top: 8px;
   padding: 7px 18px;
   border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-control-surface);
   color: var(--hone-ink-800);
-  font-size: 13px;
+  font-size: var(--hone-text-sm);
   cursor: pointer;
   transition: border-color 0.15s var(--hone-ease);
 }

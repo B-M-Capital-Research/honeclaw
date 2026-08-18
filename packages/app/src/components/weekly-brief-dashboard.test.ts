@@ -35,7 +35,10 @@ describe("weekly brief dashboard", () => {
     expect(component).not.toContain("<img");
     expect(component).toContain("weekly-brief-tabs");
     expect(component).toContain("activeView");
-    expect(styles).toContain("width: min(1040px, 100%)");
+    // Sheet width belongs to `.research-panel` in research.css — this panel
+    // used to declare its own on the same node, which is the collision the
+    // shared shell exists to prevent.
+    expect(styles).not.toContain("width: min(");
     expect(styles).toContain("@media (max-width: 800px)");
     expect(styles).not.toContain("@media(max-width:800px)");
   });

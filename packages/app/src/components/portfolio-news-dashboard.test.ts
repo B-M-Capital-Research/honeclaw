@@ -121,7 +121,6 @@ describe("portfolio news dashboard contract", () => {
   test("uses hone design tokens with dark and mobile layouts", () => {
     expect(styles).toContain("var(--hone-ink-950)");
     expect(styles).toContain("var(--hone-ink-500)");
-    expect(styles).toContain("var(--hone-paper-50)");
     expect(styles).toContain("var(--hone-line)");
     expect(styles).toContain("var(--hone-signal-green)");
     expect(styles).toContain("var(--hone-signal-red)");

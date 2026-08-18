@@ -76,7 +76,9 @@ describe("position management dashboard contract", () => {
     // Sheet mode: both count strips collapse so advice rows clear the fold.
     expect(styles).toContain("@media (max-width: 760px)");
     expect(styles).toContain('[data-theme="dark"]');
-    expect(styles).toContain("94dvh");
+    // Sheet height is the shared shell's (`max-height: min(86vh, 920px)`,
+    // `100dvh` on phones); a second dvh cap here would race it.
+    expect(styles).not.toContain("dvh");
   });
 
   it("has no manual refresh button and no ask-the-chat footer", () => {

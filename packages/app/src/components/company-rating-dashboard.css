@@ -1,14 +1,14 @@
 .company-rating-dialog button:focus-visible,
 .company-rating-dialog input:focus-visible,
 .company-rating-row summary:focus-visible {
-  outline: 3px solid rgba(240, 100, 73, 0.22);
+  outline: 3px solid color-mix(in srgb, var(--hone-coral-500) 22%, transparent);
   outline-offset: 2px;
 }
 
 .company-rating-light {
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   display: inline-block;
 }
 
@@ -29,29 +29,8 @@
   stroke-linejoin: round;
 }
 
-.company-rating-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10050;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(17, 25, 23, 0.48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
 .company-rating-dialog {
-  width: min(1040px, 100%);
-  height: min(820px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 24px;
-  background: #fbfaf7;
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
 /* The refresh control is skinned once, in research.css. */
@@ -69,9 +48,9 @@
 
 .company-rating-methodology {
   margin: 10px 26px 0;
-  border: 1px solid rgba(35, 48, 45, 0.1);
-  border-radius: 12px;
-  background: #f7f6f2;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
   overflow: hidden;
 }
 
@@ -82,15 +61,15 @@
   grid-template-columns: 1fr auto 16px;
   align-items: center;
   gap: 10px;
-  color: #34413d;
+  color: var(--hone-ink-800);
   cursor: pointer;
   list-style: none;
 }
 
 .company-rating-methodology summary::-webkit-details-marker { display: none; }
-.company-rating-methodology summary span { font-size: 12px; font-weight: 800; }
-.company-rating-methodology summary strong { color: #985044; font-size: 11px; }
-.company-rating-methodology summary i { color: #84908b; font-style: normal; transition: transform 160ms ease; }
+.company-rating-methodology summary span { font-size: var(--hone-text-xs); font-weight: 700; }
+.company-rating-methodology summary strong { color: var(--hone-coral-600); font-size: var(--hone-text-2xs); }
+.company-rating-methodology summary i { color: var(--hone-ink-500); font-style: normal; transition: transform 160ms ease; }
 .company-rating-methodology[open] summary i { transform: rotate(180deg); }
 
 .company-rating-methodology > div {
@@ -102,19 +81,19 @@
 
 .company-rating-methodology section {
   padding: 10px;
-  border-radius: 9px;
-  background: white;
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-surface-raised);
 }
 
-.company-rating-methodology h3 { margin: 0 0 5px; color: #34413d; font-size: 11px; }
-.company-rating-methodology p { margin: 0; color: #69736f; font-size: 10.5px; line-height: 1.55; }
+.company-rating-methodology h3 { margin: 0 0 5px; color: var(--hone-ink-800); font-size: var(--hone-text-2xs); }
+.company-rating-methodology p { margin: 0; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); line-height: 1.55; }
 
 .company-rating-toolbar {
   padding: 12px 26px;
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .company-rating-toolbar > label {
@@ -124,10 +103,10 @@
   align-items: center;
   gap: 8px;
   padding: 9px 11px;
-  border: 1px solid rgba(35, 48, 45, 0.11);
-  border-radius: 11px;
-  background: white;
-  color: #8b9591;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-500);
 }
 
 .company-rating-toolbar label svg { width: 16px; height: 16px; }
@@ -138,7 +117,7 @@
   background: transparent;
   color: var(--hone-ink-950);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--hone-text-sm);
 }
 
 /* `.research-scroller` owns the sideways overflow and the right-edge fade. */
@@ -147,10 +126,10 @@
   min-height: 34px;
   padding: 6px 10px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: transparent;
   color: var(--hone-ink-500);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -161,10 +140,10 @@
 }
 
 .company-rating-filters button.is-active {
-  border-color: rgba(35, 48, 45, 0.1);
-  background: white;
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
-  box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
+  box-shadow: 0 3px 12px var(--hone-line);
 }
 
 .company-rating-dialog__body {
@@ -186,10 +165,10 @@
   top: 0;
   z-index: 2;
   padding: 11px 32px 9px 30px;
-  background: rgba(251, 250, 247, 0.95);
-  color: #8a9490;
-  font-size: 10px;
-  font-weight: 800;
+  background: color-mix(in srgb, var(--hone-paper-50) 95%, transparent);
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -198,10 +177,10 @@
 
 .company-rating-row {
   margin-bottom: 7px;
-  border: 1px solid rgba(35, 48, 45, 0.09);
+  border: 1px solid var(--hone-line);
   border-left: 3px solid var(--rating-color);
-  border-radius: 14px;
-  background: white;
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
   overflow: clip;
 }
 
@@ -213,7 +192,7 @@
   list-style: none;
 }
 .company-rating-row summary::-webkit-details-marker { display: none; }
-.company-rating-row summary:hover { background: #fdfcf9; }
+.company-rating-row summary:hover { background: var(--hone-paper-50); }
 .company-rating-row .company-rating-light {
   position: absolute;
   left: 11px;
@@ -224,10 +203,10 @@
 
 .company-rating-company,
 .company-rating-market { min-width: 0; display: grid; gap: 3px; }
-.company-rating-company strong { font-size: 15px; letter-spacing: -0.015em; }
+.company-rating-company strong { font-size: var(--hone-text-lg); letter-spacing: -0.015em; }
 .company-rating-company small,
-.company-rating-market small { overflow: hidden; color: #76817d; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
-.company-rating-market strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.company-rating-market small { overflow: hidden; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); white-space: nowrap; text-overflow: ellipsis; }
+.company-rating-market strong { font-size: var(--hone-text-sm); font-variant-numeric: tabular-nums; }
 .company-rating-market small.is-up { color: var(--hone-signal-green); }
 .company-rating-market small.is-down { color: var(--hone-signal-red); }
 .company-rating-score {
@@ -236,28 +215,28 @@
   padding: 6px 8px;
   display: grid;
   gap: 1px;
-  border-radius: 9px;
+  border-radius: var(--hone-radius-xs);
   background: color-mix(in srgb, var(--rating-color) 12%, white);
   color: var(--rating-color);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.company-rating-score strong { font-size: 15px; font-weight: 850; }
-.company-rating-score small { color: color-mix(in srgb, var(--rating-color) 75%, var(--hone-ink-500)); font-size: 8px; white-space: nowrap; }
-.company-rating-chevron { justify-self: end; color: #929b98; transition: transform 160ms ease; }
+.company-rating-score strong { font-size: var(--hone-text-lg); font-weight: 700; }
+.company-rating-score small { color: color-mix(in srgb, var(--rating-color) 75%, var(--hone-ink-500)); font-size: var(--hone-text-2xs); }
+.company-rating-chevron { justify-self: end; color: var(--hone-ink-500); transition: transform 160ms ease; }
 .company-rating-row[open] .company-rating-chevron { transform: rotate(90deg); }
 
 .company-rating-detail {
   padding: 0 20px 20px 27px;
-  border-top: 1px solid rgba(35, 48, 45, 0.07);
+  border-top: 1px solid var(--hone-line);
 }
 
 /* May be a folded `<details>` when the thesis runs long; the type scale sits
    on the element itself so preview and expanded text read the same. */
 .company-rating-thesis {
   margin: 16px 0;
-  color: #34413d;
-  font-size: 13px;
+  color: var(--hone-ink-800);
+  font-size: var(--hone-text-sm);
   line-height: 1.65;
 }
 
@@ -266,32 +245,32 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 8px 18px;
   padding: 14px;
-  border-radius: 12px;
-  background: #f7f6f2;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
 }
 
 .company-rating-dimensions > div {
   display: grid;
-  grid-template-columns: 58px 1fr 26px;
+  grid-template-columns: 68px 1fr 26px;
   align-items: center;
   gap: 7px;
   color: var(--hone-ink-500);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
 }
 .company-rating-cap {
   margin: -5px 0 14px;
   padding: 9px 11px;
   border: 1px solid color-mix(in srgb, var(--hone-signal-red) 28%, transparent);
-  border-radius: 9px;
+  border-radius: var(--hone-radius-xs);
   background: color-mix(in srgb, var(--hone-signal-red) 8%, transparent);
-  color: #834940;
-  font-size: 10px;
+  color: var(--hone-signal-red-ink);
+  font-size: var(--hone-text-2xs);
   line-height: 1.55;
 }
-.company-rating-dimensions i { height: 4px; border-radius: 99px; background: #e0e3df; overflow: hidden; }
+.company-rating-dimensions i { height: 4px; border-radius: var(--hone-radius-pill); background: var(--hone-paper-200); overflow: hidden; }
 .company-rating-dimensions i b { height: 100%; display: block; border-radius: inherit; background: var(--rating-color); }
-.company-rating-dimensions i.is-unavailable { background: repeating-linear-gradient(90deg, #d7dcda 0 4px, transparent 4px 7px); }
-.company-rating-dimensions strong { color: #35423e; text-align: right; font-variant-numeric: tabular-nums; }
+.company-rating-dimensions i.is-unavailable { background: repeating-linear-gradient(90deg, var(--hone-paper-200) 0 4px, transparent 4px 7px); }
+.company-rating-dimensions strong { color: var(--hone-ink-800); text-align: right; font-variant-numeric: tabular-nums; }
 
 .company-rating-detail__grid {
   display: grid;
@@ -299,16 +278,16 @@
   gap: 16px 24px;
   margin-top: 18px;
 }
-.company-rating-detail__grid h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.03em; }
+.company-rating-detail__grid h3 { margin: 0 0 6px; font-size: var(--hone-text-2xs); letter-spacing: 0.03em; }
 .company-rating-detail__grid p,
-.company-rating-detail__grid ul { margin: 0; color: #65706c; font-size: 11px; line-height: 1.65; }
+.company-rating-detail__grid ul { margin: 0; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); line-height: 1.65; }
 .company-rating-detail__grid ul { padding-left: 17px; }
 .company-rating-valuation {
   min-width: 0;
   padding: 12px;
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-radius: 12px;
-  background: #faf9f5;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-50);
 }
 .company-rating-valuation__cases {
   margin: 0 0 10px;
@@ -317,25 +296,25 @@
   gap: 6px;
 }
 .company-rating-valuation__cases div { min-width: 0; }
-.company-rating-valuation__cases dt { color: #8a9490; font-size: 9px; }
-.company-rating-valuation__cases dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.company-rating-valuation__cases dt { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
+.company-rating-valuation__cases dd { margin: 2px 0 0; color: var(--hone-ink-950); font-size: var(--hone-text-2xs); font-weight: 700; font-variant-numeric: tabular-nums; }
 .company-rating-valuation__range { position: relative; height: 8px; margin: 8px 3px; }
-.company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: 999px; background: linear-gradient(90deg, var(--hone-signal-green), var(--hone-signal-yellow) 52%, var(--hone-signal-red)); }
-.company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid white; border-radius: 999px; background: var(--hone-ink-950); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
+.company-rating-valuation__range i { position: absolute; inset: 2px 0; border-radius: var(--hone-radius-pill); background: linear-gradient(90deg, var(--hone-signal-green), var(--hone-signal-yellow) 52%, var(--hone-signal-red)); }
+.company-rating-valuation__range b { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border: 2px solid var(--hone-surface-raised); border-radius: var(--hone-radius-pill); background: var(--hone-ink-950); box-shadow: 0 1px 4px color-mix(in srgb, var(--hone-ink-950) 22%, transparent); }
 /* One extra step of specificity instead of `!important`: the only rule this
    has to beat is `.company-rating-detail__grid p`. */
-.company-rating-valuation .company-rating-valuation__position { color: var(--hone-ink-800); font-weight: 750; }
-.company-rating-valuation > small { display: block; margin-top: 6px; color: #8a9490; font-size: 9px; }
-.company-rating-valuation__empty { padding: 10px; border-radius: 9px; background: #f2f1ed; }
-.company-rating-valuation__empty strong { color: #985044; font-size: 11px; }
+.company-rating-valuation .company-rating-valuation__position { color: var(--hone-ink-800); font-weight: 700; }
+.company-rating-valuation > small { display: block; margin-top: 6px; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
+.company-rating-valuation__empty { padding: 10px; border-radius: var(--hone-radius-xs); background: var(--hone-paper-100); }
+.company-rating-valuation__empty strong { color: var(--hone-coral-600); font-size: var(--hone-text-2xs); }
 .company-rating-valuation .company-rating-valuation__empty p { margin: 5px 0; }
-.company-rating-valuation__empty small { color: #8a9490; font-size: 9px; line-height: 1.5; }
+.company-rating-valuation__empty small { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); line-height: 1.5; }
 .company-rating-fundamentals {
   min-width: 0;
   padding: 12px;
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-radius: 12px;
-  background: #faf9f5;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-50);
 }
 .company-rating-fundamentals dl {
   display: grid;
@@ -343,10 +322,10 @@
   gap: 8px;
   margin: 0;
 }
-.company-rating-fundamentals dt { color: #8a9490; font-size: 9px; }
-.company-rating-fundamentals dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.company-rating-fundamentals small { display: block; margin-top: 9px; color: #8a9490; font-size: 9px; line-height: 1.5; }
-.company-rating-source { margin: 16px 0 0; color: #929a97; font-size: 10px; }
+.company-rating-fundamentals dt { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
+.company-rating-fundamentals dd { margin: 2px 0 0; color: var(--hone-ink-950); font-size: var(--hone-text-2xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.company-rating-fundamentals small { display: block; margin-top: 9px; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); line-height: 1.5; }
+.company-rating-source { margin: 16px 0 0; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
 
 .company-rating-simulation-note {
   display: flex;
@@ -355,56 +334,50 @@
   margin: 8px 26px 0;
   padding: 9px 12px;
   border: 1px solid color-mix(in srgb, var(--hone-signal-yellow) 28%, transparent);
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-signal-yellow-soft);
-  color: #6f5a26;
-  font-size: 10px;
+  color: var(--hone-signal-yellow-ink);
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
 .company-rating-dialog footer {
   padding: 11px 26px;
-  border-top: 1px solid rgba(35, 48, 45, 0.08);
-  color: #858f8b;
-  font-size: 10px;
+  border-top: 1px solid var(--hone-line);
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
   text-align: center;
 }
 
-[data-theme="dark"] .company-rating-dialog,
+[data-theme="dark"] .company-rating-dialog { color: var(--hone-ink-950); border-color: var(--hone-line-strong); }
 [data-theme="dark"] .company-rating-row,
 [data-theme="dark"] .company-rating-toolbar > label,
-[data-theme="dark"] .company-rating-filters button.is-active { background: #111a28; color: #ecf2ef; border-color: #263347; }
+[data-theme="dark"] .company-rating-filters button.is-active { background: var(--hone-surface-raised); color: var(--hone-ink-950); border-color: var(--hone-line-strong); }
 [data-theme="dark"] .company-rating-toolbar,
-[data-theme="dark"] .company-rating-detail { border-color: #263347; }
-[data-theme="dark"] .company-rating-list__head { background: rgba(15, 22, 35, 0.96); }
+[data-theme="dark"] .company-rating-detail { border-color: var(--hone-line-strong); }
+[data-theme="dark"] .company-rating-list__head { background: color-mix(in srgb, var(--hone-surface-raised) 96%, transparent); }
 [data-theme="dark"] .company-rating-row summary:hover,
 [data-theme="dark"] .company-rating-dimensions,
 [data-theme="dark"] .company-rating-valuation,
 [data-theme="dark"] .company-rating-fundamentals,
 [data-theme="dark"] .company-rating-valuation__empty,
-[data-theme="dark"] .company-rating-methodology { background: #172231; }
+[data-theme="dark"] .company-rating-methodology { background: var(--hone-paper-100); }
 [data-theme="dark"] .company-rating-methodology,
-[data-theme="dark"] .company-rating-methodology section { border-color: #263347; }
-[data-theme="dark"] .company-rating-methodology section { background: #111a28; }
-[data-theme="dark"] .company-rating-methodology :is(summary, h3) { color: #e9f0ed; }
-[data-theme="dark"] .company-rating-simulation-note { color: #d9c998; }
-[data-theme="dark"] .company-rating-valuation { border-color: #263347; }
+[data-theme="dark"] .company-rating-methodology section { border-color: var(--hone-line-strong); }
+[data-theme="dark"] .company-rating-methodology section { background: var(--hone-surface-raised); }
+[data-theme="dark"] .company-rating-methodology :is(summary, h3) { color: var(--hone-ink-950); }
+[data-theme="dark"] .company-rating-simulation-note { color: var(--hone-signal-yellow-ink); }
+[data-theme="dark"] .company-rating-valuation { border-color: var(--hone-line-strong); }
 /* `.company-rating-valuation__position` now rides `--hone-ink-800`, which is
    already light in dark mode, so it needs no override at all. */
 [data-theme="dark"] .company-rating-valuation__cases dd,
-[data-theme="dark"] .company-rating-fundamentals dd { color: #e9f0ed; }
+[data-theme="dark"] .company-rating-fundamentals dd { color: var(--hone-ink-950); }
 [data-theme="dark"] .company-rating-thesis,
 [data-theme="dark"] .company-rating-company strong,
 [data-theme="dark"] .company-rating-market strong,
-[data-theme="dark"] .company-rating-toolbar input { color: #e9f0ed; }
+[data-theme="dark"] .company-rating-toolbar input { color: var(--hone-ink-950); }
 
 @media (max-width: 768px) {
-  .company-rating-backdrop { padding: 0; place-items: end center; }
-  .company-rating-dialog {
-    width: 100%;
-    height: min(92dvh, 860px);
-    border-radius: 22px 22px 0 0;
-  }
   .company-rating-methodology { margin: 8px 16px 0; }
   .company-rating-methodology > div { grid-template-columns: 1fr; }
   .company-rating-methodology summary strong { display: none; }

@@ -1,25 +1,5 @@
-.position-management-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10056;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(17, 25, 23, 0.5);
-  backdrop-filter: blur(10px);
-}
-
 .position-management-dialog {
-  width: min(1080px, 100%);
-  height: min(850px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 24px;
-  background: #fbfaf7;
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
 /* The refresh control is skinned once, in research.css. */
@@ -39,19 +19,19 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 9px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .position-management-overview > div {
   padding: 10px 12px;
   display: grid;
   gap: 2px;
-  border-radius: 12px;
-  background: #f1f2ee;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
 }
 
-.position-management-overview strong { font-size: 15px; }
-.position-management-overview span { color: #7a8581; font-size: 9px; }
+.position-management-overview strong { font-size: var(--hone-text-lg); }
+.position-management-overview span { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
 .position-management-overview .is-high strong { color: var(--hone-signal-red); }
 .position-management-overview .is-elevated strong { color: var(--hone-signal-yellow); }
 .position-management-overview .is-balanced strong { color: var(--hone-signal-green); }
@@ -62,18 +42,18 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 92px));
   gap: 8px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .position-management-summary > div {
   padding: 7px 9px;
   display: grid;
-  border-radius: 10px;
-  background: #f2f1ed;
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
 }
 
-.position-management-summary strong { font-size: 16px; }
-.position-management-summary span { color: #7c8682; font-size: 9px; }
+.position-management-summary strong { font-size: var(--hone-text-lg); }
+.position-management-summary span { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
 .position-management-summary .is-review strong,
 .position-management-summary .is-reduce strong { color: var(--hone-signal-red); }
 .position-management-summary .is-increase_candidate strong { color: var(--hone-signal-green); }
@@ -83,7 +63,7 @@
   grid-column: 1 / -1;
   margin: 2px 0 0;
   color: var(--hone-ink-600);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
 
@@ -93,25 +73,25 @@
   padding: 8px 26px;
   align-items: center;
   gap: 6px;
-  border-bottom: 1px solid rgba(35, 48, 45, 0.08);
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .position-management-filters button {
   padding: 6px 10px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--hone-radius-xs);
   background: transparent;
   color: var(--hone-ink-500);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   cursor: pointer;
 }
 
 .position-management-filters button.is-active {
-  border-color: rgba(35, 48, 45, 0.1);
-  background: white;
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
-  box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
+  box-shadow: var(--hone-shadow-sm);
 }
 
 .position-management-body {
@@ -124,10 +104,10 @@
 .position-management-list { display: grid; gap: 9px; }
 
 .position-management-list details {
-  border: 1px solid rgba(35, 48, 45, 0.09);
-  border-left: 3px solid #89938f;
-  border-radius: 13px;
-  background: white;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-signal-neutral);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
   overflow: hidden;
 }
 
@@ -148,39 +128,39 @@
 
 .position-management-list summary::-webkit-details-marker { display: none; }
 .position-management-list summary > span { display: grid; }
-.position-management-list summary strong { font-size: 13px; }
-.position-management-list summary small { margin-top: 2px; color: #7b8581; font-size: 9px; }
-.position-management-list summary i { color: #7b8581; font-style: normal; }
+.position-management-list summary strong { font-size: var(--hone-text-sm); }
+.position-management-list summary small { margin-top: 2px; color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
+.position-management-list summary i { color: var(--hone-ink-500); font-style: normal; }
 
 .position-management-action {
   width: max-content;
   padding: 5px 8px;
-  border-radius: 8px;
+  border-radius: var(--hone-radius-xs);
   background: var(--hone-signal-neutral-soft);
-  color: #606b67;
-  font-size: 10px;
-  font-weight: 800;
+  color: var(--hone-signal-neutral-ink);
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
 }
 
 .position-management-action.is-review,
 .position-management-action.is-reduce {
   background: var(--hone-signal-red-soft);
-  color: var(--hone-signal-red);
+  color: var(--hone-signal-red-ink);
 }
 
 .position-management-action.is-increase_candidate {
   background: var(--hone-signal-green-soft);
-  color: var(--hone-signal-green);
+  color: var(--hone-signal-green-ink);
 }
 
 .position-management-action.is-hold {
   background: var(--hone-signal-yellow-soft);
-  color: var(--hone-signal-yellow);
+  color: var(--hone-signal-yellow-ink);
 }
 
 .position-management-detail {
   padding: 0 14px 14px;
-  border-top: 1px solid rgba(35, 48, 45, 0.07);
+  border-top: 1px solid var(--hone-line);
 }
 
 .position-management-facts {
@@ -192,19 +172,19 @@
 
 .position-management-facts span {
   padding: 4px 7px;
-  border-radius: 7px;
-  background: #f2f1ed;
-  color: #65706c;
-  font-size: 9px;
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-2xs);
 }
 
-.position-management-detail h3 { margin: 5px 0; color: #34413d; font-size: 11px; }
+.position-management-detail h3 { margin: 5px 0; color: var(--hone-ink-800); font-size: var(--hone-text-2xs); }
 
 .position-management-detail ul {
   margin: 0;
   padding-left: 18px;
-  color: #58645f;
-  font-size: 10px;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
 
@@ -217,14 +197,14 @@
 
 .position-management-evidence {
   margin: 9px 0 0;
-  color: #89928f;
-  font-size: 8px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
 .position-management-dialog > footer {
   padding: 9px 26px;
-  border-top: 1px solid rgba(35, 48, 45, 0.08);
+  border-top: 1px solid var(--hone-line);
 }
 
 .position-management-dialog > footer > div { display: flex; gap: 9px; }
@@ -233,22 +213,22 @@
   min-width: 0;
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid rgba(35, 48, 45, 0.12);
-  border-radius: 10px;
-  background: white;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
 
 .position-management-dialog > footer button {
   padding: 8px 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-signal-green);
-  color: white;
-  font-size: 11px;
-  font-weight: 750;
+  color: var(--hone-action-fg);
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -256,40 +236,42 @@
 
 .position-management-dialog > footer p {
   margin: 5px 0 0;
-  color: #858f8b;
-  font-size: 8px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
   text-align: center;
 }
 
 .position-management-dialog > footer .position-management-method {
   margin: 0 0 6px;
-  color: #6f7975;
+  color: var(--hone-ink-600);
 }
 
-[data-theme="dark"] .position-management-dialog,
 [data-theme="dark"] .position-management-list details,
 [data-theme="dark"] .position-management-filters button.is-active,
 [data-theme="dark"] .position-management-dialog > footer input {
-  background: #111a28;
-  color: #ecf2ef;
-  border-color: #263347;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  border-color: var(--hone-line-strong);
+}
+
+[data-theme="dark"] .position-management-dialog {
+  color: var(--hone-ink-950);
+  border-color: var(--hone-line-strong);
 }
 
 [data-theme="dark"] .position-management-overview > div,
 [data-theme="dark"] .position-management-summary > div,
-[data-theme="dark"] .position-management-facts span { background: #172231; }
+[data-theme="dark"] .position-management-facts span { background: var(--hone-paper-100); }
 
 [data-theme="dark"] .position-management-overview,
 [data-theme="dark"] .position-management-summary,
 [data-theme="dark"] .position-management-filters,
 [data-theme="dark"] .position-management-detail,
-[data-theme="dark"] .position-management-dialog > footer { border-color: #263347; }
+[data-theme="dark"] .position-management-dialog > footer { border-color: var(--hone-line-strong); }
 
-[data-theme="dark"] .position-management-detail h3 { color: #e9f0ed; }
+[data-theme="dark"] .position-management-detail h3 { color: var(--hone-ink-950); }
 
 @media (max-width: 768px) {
-  .position-management-backdrop { padding: 0; place-items: end center; }
-  .position-management-dialog { width: 100%; height: min(94dvh, 880px); border-radius: 22px 22px 0 0; }
   .position-management-overview { padding: 10px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .position-management-summary { padding: 9px 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .position-management-filters { padding: 7px 16px; }
@@ -313,12 +295,12 @@
   .position-management-overview > div,
   .position-management-summary > div {
     padding: 6px 8px;
-    border-radius: 9px;
+    border-radius: var(--hone-radius-xs);
   }
   .position-management-overview strong,
-  .position-management-summary strong { font-size: 13px; }
+  .position-management-summary strong { font-size: var(--hone-text-sm); }
   .position-management-overview span,
-  .position-management-summary span { font-size: 8.5px; }
+  .position-management-summary span { font-size: var(--hone-text-2xs); }
   .position-management-filters { padding: 6px 12px; }
   .position-management-body { padding: 10px 12px 14px; }
 }

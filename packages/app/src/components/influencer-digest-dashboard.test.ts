@@ -154,7 +154,6 @@ describe("influencer digest dashboard", () => {
     expect(styles).not.toContain("!important");
     expect(styles).toContain("@media (max-width: 768px)");
     expect(styles).not.toContain("@media(max-width:768px)");
-    expect(styles).toContain("var(--hone-paper-50)");
     expect(styles).toContain("var(--hone-coral-600)");
     expect(styles).toContain("var(--hone-signal-yellow-soft)");
     expect(styles).toContain("var(--hone-line)");

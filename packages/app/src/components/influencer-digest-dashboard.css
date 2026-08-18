@@ -2,27 +2,8 @@
    Surfaces and accents use --hone-* tokens so dark mode adapts without a
    bespoke dark-theme override block. */
 
-.influencer-digest-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10057;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #11191780;
-  backdrop-filter: blur(10px);
-}
-
 .influencer-digest-dialog {
-  width: min(1050px, 100%);
-  height: min(830px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 24px;
-  background: var(--hone-paper-50);
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px #070d0c52;
 }
 
 /* Head chrome — kicker, title, verdict, provenance and the refresh control —
@@ -41,10 +22,10 @@
 .influencer-authors button {
   padding: 7px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-600);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -52,7 +33,7 @@
 .influencer-authors button small {
   margin-left: 5px;
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
 }
 
 .influencer-authors button.active {
@@ -78,7 +59,7 @@
 .influencer-analysis-terms {
   color: var(--hone-ink-500);
   font-family: var(--hone-font-label);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 /* The post a reply answers, so the excerpt is not read out of context. */
@@ -94,13 +75,13 @@
   display: block;
   margin-bottom: 3px;
   color: var(--hone-ink-500);
-  font-size: 9px;
+  font-size: var(--hone-text-2xs);
   font-style: normal;
   font-weight: 700;
 }
 
 .influencer-quoted p {
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   white-space: pre-wrap;
 }
 
@@ -111,7 +92,7 @@
 .influencer-summary b {
   margin-right: 6px;
   color: var(--hone-coral-600);
-  font-size: 9px;
+  font-size: var(--hone-text-2xs);
 }
 
 /* Author text is the point of the panel: collapsed when a summary already
@@ -124,7 +105,7 @@
    reads the same wherever a panel folds source text. */
 .influencer-source > summary {
   color: var(--hone-link);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -132,7 +113,7 @@
 .influencer-source > p {
   margin-top: 6px;
   color: var(--hone-ink-950);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -146,14 +127,14 @@
 
 .influencer-source-en > summary {
   color: var(--hone-ink-500);
-  font-size: 10.5px;
+  font-size: var(--hone-text-2xs);
   cursor: pointer;
 }
 
 .influencer-source-en > p {
   margin-top: 5px;
   color: var(--hone-ink-600);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -203,27 +184,27 @@
 
 .influencer-tags span {
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--hone-radius-pill);
   background: var(--hone-paper-100);
   color: var(--hone-ink-500);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
 }
 
 /* Index terms, not judgements: one quiet line rather than a dozen chips. */
 .influencer-tags small {
   flex: 1 1 100%;
   color: var(--hone-ink-500);
-  font-size: 10.5px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
 .influencer-digest-body aside {
   margin-top: 9px;
   padding: 9px 11px;
-  border-radius: 9px;
+  border-radius: var(--hone-radius-xs);
   background: var(--hone-signal-yellow-soft);
   color: var(--hone-ink-800);
-  font-size: 11.5px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
 
@@ -236,7 +217,7 @@
   margin-top: 9px;
   margin-right: 14px;
   color: var(--hone-coral-600);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-weight: 600;
   text-decoration: none;
 }
@@ -250,7 +231,7 @@
   margin: 0 0 6px;
   text-align: center;
   color: var(--hone-ink-500);
-  font-size: 10px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.5;
 }
 
@@ -263,7 +244,7 @@
   flex: 1;
   padding: 9px 11px;
   border: 1px solid var(--hone-line);
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
 }
@@ -273,7 +254,7 @@
 .influencer-digest-dialog footer button {
   padding: 8px 13px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-action-bg);
   color: var(--hone-action-fg);
   font-weight: 700;
@@ -285,17 +266,6 @@
 }
 
 @media (max-width: 768px) {
-  .influencer-digest-backdrop {
-    padding: 0;
-    place-items: end;
-  }
-
-  .influencer-digest-dialog {
-    width: 100%;
-    height: 93dvh;
-    border-radius: 22px 22px 0 0;
-  }
-
   .influencer-authors {
     padding-left: 16px;
     padding-right: 16px;

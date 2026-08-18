@@ -2,27 +2,8 @@
    Surfaces and accents use --hone-* tokens so dark mode adapts without a
    bespoke dark-theme override block. */
 
-.portfolio-news-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10055;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(17, 25, 23, 0.48);
-  backdrop-filter: blur(10px);
-}
-
 .portfolio-news-dialog {
-  width: min(1040px, 100%);
-  height: min(820px, calc(100dvh - 48px));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 24px;
-  background: var(--hone-paper-50);
   color: var(--hone-ink-950);
-  box-shadow: 0 38px 100px rgba(7, 13, 12, 0.32);
 }
 
 /* The refresh control is skinned once, in research.css. */
@@ -48,12 +29,12 @@
 .portfolio-news-summary > div {
   padding: 9px 10px;
   display: grid;
-  border-radius: 11px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-paper-100);
 }
 
-.portfolio-news-summary strong { font-size: 18px; }
-.portfolio-news-summary span { color: var(--hone-ink-500); font-size: 9px; }
+.portfolio-news-summary strong { font-size: var(--hone-text-lg); }
+.portfolio-news-summary span { color: var(--hone-ink-500); font-size: var(--hone-text-2xs); }
 .portfolio-news-summary .is-negative strong { color: var(--hone-signal-red); }
 .portfolio-news-summary .is-positive strong { color: var(--hone-signal-green); }
 .portfolio-news-summary .is-review strong { color: var(--hone-signal-orange); }
@@ -63,7 +44,7 @@
   grid-column: 1 / -1;
   margin: 2px 0 0;
   color: var(--hone-ink-600);
-  font-size: 11.5px;
+  font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
 
@@ -79,10 +60,10 @@
 .portfolio-news-filters button {
   padding: 6px 11px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--hone-radius-xs);
   background: transparent;
   color: var(--hone-ink-500);
-  font-size: 11px;
+  font-size: var(--hone-text-2xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -91,7 +72,7 @@
   border-color: var(--hone-line);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
-  box-shadow: 0 3px 12px rgba(23, 32, 31, 0.05);
+  box-shadow: 0 3px 12px var(--hone-line);
 }
 
 .portfolio-news-body {
@@ -107,7 +88,7 @@
 .portfolio-news-analysis-terms {
   color: var(--hone-ink-500);
   font-family: var(--hone-font-label);
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 .portfolio-news-dialog > footer {
@@ -122,11 +103,11 @@
   flex: 1;
   padding: 10px 12px;
   border: 1px solid var(--hone-line);
-  border-radius: 11px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--hone-text-xs);
 }
 
 /* Action tokens, not literal white: in dark mode coral is a light peach and
@@ -134,11 +115,11 @@
 .portfolio-news-dialog > footer button {
   padding: 8px 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--hone-radius-sm);
   background: var(--hone-action-bg);
   color: var(--hone-action-fg);
-  font-size: 11px;
-  font-weight: 750;
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -147,13 +128,11 @@
 .portfolio-news-dialog > footer p {
   margin: 6px 0 0;
   color: var(--hone-ink-500);
-  font-size: 9px;
+  font-size: var(--hone-text-2xs);
   text-align: center;
 }
 
 @media (max-width: 768px) {
-  .portfolio-news-backdrop { padding: 0; place-items: end center; }
-  .portfolio-news-dialog { width: 100%; height: min(92dvh, 860px); border-radius: 22px 22px 0 0; }
   .portfolio-news-summary { padding: 11px 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .portfolio-news-filters { padding: 8px 16px; }
   .portfolio-news-body { padding: 12px 12px 16px; }
@@ -163,8 +142,8 @@
 /* Sheet mode: head, one compact count row, filters — then news, above the fold. */
 @media (max-width: 760px) {
   .portfolio-news-summary { padding: 8px 12px; gap: 6px; }
-  .portfolio-news-summary > div { padding: 6px 8px; border-radius: 9px; }
-  .portfolio-news-summary strong { font-size: 15px; }
+  .portfolio-news-summary > div { padding: 6px 8px; border-radius: var(--hone-radius-xs); }
+  .portfolio-news-summary strong { font-size: var(--hone-text-lg); }
   .portfolio-news-filters { padding: 6px 12px; }
   .portfolio-news-filters button { padding: 5px 9px; }
   .portfolio-news-body { padding: 10px 12px 16px; }
