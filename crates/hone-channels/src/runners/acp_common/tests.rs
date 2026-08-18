@@ -14,7 +14,9 @@ use tokio::sync::Mutex;
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::runners::types::{AgentRunnerEmitter, AgentRunnerEvent};
-use crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE;
+use crate::tool_trace::{
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, missing_acp_terminal_tool_result,
+};
 
 use super::failure::acp_failure_to_runner_result;
 use super::ingest::{acp_prompt_succeeded, handle_acp_session_update, ingest_acp_message_chunk};
@@ -172,6 +174,73 @@ async fn terminal_tool_call_event_finishes_without_followup_update() {
 
         finalize_pending_tool_calls(&mut state, "unknown_after_missing_acp_result");
         assert_eq!(state.finished_tool_calls.len(), 1, "status={status}");
+    }
+}
+
+#[tokio::test]
+async fn payload_free_web_search_completion_finishes_but_a_write_tool_stays_unknown() {
+    // Production 2026-08-18: a 74-tool turn failed with "codex acp prompt ended
+    // before tool completion" while every tool in the ACP stream had reached a
+    // terminal status. 17 `Web search` completions that day carried only a
+    // status, and the update path required an extractable payload before it
+    // would close the call, so read-only searches stayed pending and poisoned
+    // otherwise-successful turns.
+    //
+    // The same payload-free completion from a write tool must still fail
+    // closed: we cannot claim a mutation landed when nothing confirmed it.
+    let (emitter, _) = collecting_emitter();
+
+    for (title, arguments, expect_finished) in [
+        ("Web search", json!({}), true),
+        (
+            "hone/cron_job",
+            json!({"action": "add", "name": "NBIS"}),
+            false,
+        ),
+    ] {
+        let mut state = AcpPromptState::default();
+        let tool_call_id = format!("exec-{title}");
+        handle_acp_session_update(
+            &json!({
+                "update": {
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": tool_call_id,
+                    "title": title,
+                    "arguments": arguments,
+                    "status": "in_progress"
+                }
+            }),
+            &emitter,
+            Some(&mut state),
+        )
+        .await;
+        assert_eq!(state.pending_tool_calls.len(), 1, "{title}");
+
+        handle_acp_session_update(
+            &json!({
+                "update": {
+                    "sessionUpdate": "tool_call_update",
+                    "toolCallId": tool_call_id,
+                    "status": "completed"
+                }
+            }),
+            &emitter,
+            Some(&mut state),
+        )
+        .await;
+
+        assert_eq!(
+            state.finished_tool_calls.len(),
+            usize::from(expect_finished),
+            "{title}"
+        );
+
+        finalize_pending_tool_calls(&mut state, "unknown_after_missing_acp_result");
+        assert_eq!(
+            missing_acp_terminal_tool_result(&state.finished_tool_calls),
+            !expect_finished,
+            "{title}"
+        );
     }
 }
 

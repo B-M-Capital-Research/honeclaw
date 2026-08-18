@@ -35,10 +35,23 @@ fn is_mcp_startup_lifecycle_update(update: &Value) -> bool {
         .is_some_and(|server_name| !server_name.is_empty())
 }
 
-fn initial_terminal_tool_result(update: &Value) -> Option<Value> {
+/// A terminal ACP status closes the tool call. When the event carries no
+/// payload we may only synthesise one for tools explicitly known to be
+/// read-only: a write tool that reports `completed` without a result leaves the
+/// real world in an unknown state, and that must still reach
+/// `unknown_after_missing_acp_result` so the turn fails closed rather than
+/// claiming a mutation landed.
+///
+/// Both the first `tool_call` event and any later `tool_call_update` go through
+/// here. The two paths used to duplicate this logic and only one carried a
+/// fallback, so payload-free `Web search` completions — 17 of them on
+/// 2026-08-18 alone — left calls pending and failed otherwise-successful turns.
+fn terminal_tool_result(update: &Value, state: &AcpPromptState) -> Option<Value> {
     let status = update.get("status").and_then(Value::as_str)?;
     match status {
-        "completed" => extract_tool_result(update).or_else(|| Some(json!({"status": status}))),
+        "completed" => extract_tool_result(update).or_else(|| {
+            pending_call_is_known_read_only(state, update).then(|| json!({"status": status}))
+        }),
         "failed" | "cancelled" => {
             let mut result = extract_tool_failure(update)?;
             result["status"] = Value::String(status.to_string());
@@ -46,6 +59,18 @@ fn initial_terminal_tool_result(update: &Value) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+fn pending_call_is_known_read_only(state: &AcpPromptState, update: &Value) -> bool {
+    let Some(tool_call_id) = extract_tool_call_id(update) else {
+        return false;
+    };
+    state
+        .pending_tool_calls
+        .get(&tool_call_id)
+        .is_some_and(|record| {
+            hone_core::tool_effect::tool_call_is_known_read_only(&record.name, &record.arguments)
+        })
 }
 
 #[cfg(test)]
@@ -276,7 +301,7 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                     flush_pending_assistant_message(state);
                 }
                 capture_tool_start(state, update, &tool);
-                if let Some(result) = initial_terminal_tool_result(update) {
+                if let Some(result) = terminal_tool_result(update, state) {
                     capture_tool_finish(state, update, &tool, result);
                 }
             }
@@ -321,10 +346,10 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                 .and_then(|value| value.as_str())
                 .unwrap_or_default();
             if status == "completed" {
-                if let Some(state) = state.as_deref_mut() {
-                    if let Some(result) = extract_tool_result(update) {
-                        capture_tool_finish(state, update, &tool, result);
-                    }
+                if let Some(state) = state.as_deref_mut()
+                    && let Some(result) = terminal_tool_result(update, state)
+                {
+                    capture_tool_finish(state, update, &tool, result);
                 }
                 let rendered = tool_status_renderer.map(|renderer| {
                     renderer(
@@ -350,10 +375,10 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                     })
                     .await;
             } else if status == "failed" {
-                if let Some(state) = state.as_deref_mut() {
-                    if let Some(result) = extract_tool_failure(update) {
-                        capture_tool_finish(state, update, &tool, result);
-                    }
+                if let Some(state) = state.as_deref_mut()
+                    && let Some(result) = terminal_tool_result(update, state)
+                {
+                    capture_tool_finish(state, update, &tool, result);
                 }
                 emitter
                     .emit(AgentRunnerEvent::Progress {

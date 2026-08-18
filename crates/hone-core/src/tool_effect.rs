@@ -23,6 +23,7 @@ const KNOWN_READ_ONLY_TOOL_NAMES: &[&str] = &[
     "local_read_file",
     "local_search_files",
     "missed_events",
+    "view_image",
     "web_search",
 ];
 
@@ -35,11 +36,22 @@ fn normalized_runner_tool_name(name: &str) -> String {
     {
         normalized = normalized.get(5..).unwrap_or_default().trim();
     }
-    normalized.to_ascii_lowercase()
+    // Runners label calls with display titles ("Web search"), while the
+    // allowlist is written in canonical snake_case. Fold separators so the two
+    // spellings of one tool do not read as different tools; this normalises
+    // spelling only and never widens which tools the allowlist admits.
+    normalized.to_ascii_lowercase().replace([' ', '-'], "_")
 }
 
 fn runner_tool_name_matches(normalized: &str, candidate: &str) -> bool {
-    normalized == candidate
+    // Runner display titles inline their argument ("View Image /tmp/a.png"),
+    // so a leading-token match is required to recognise the tool at all. The
+    // separator is mandatory: `web_search` must not swallow `web_searchwrite`.
+    let leading_token = normalized
+        .strip_prefix(candidate)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('_'));
+    leading_token
+        || normalized == candidate
         || normalized == format!("hone/{candidate}")
         || normalized == format!("hone_{candidate}")
         || normalized == format!("mcp__hone__{candidate}")
