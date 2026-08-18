@@ -130,13 +130,9 @@
   font-size: 12px;
   font-weight: 750;
 }
-.valuation-lab-toolbar button.is-active,
-.valuation-lab-toolbar .valuation-lab-refresh {
+.valuation-lab-toolbar button.is-active {
   background: #203d34;
   color: #fff;
-}
-.valuation-lab-toolbar .valuation-lab-refresh {
-  border-radius: 10px;
 }
 .valuation-lab-list {
   display: grid;

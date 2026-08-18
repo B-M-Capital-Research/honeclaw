@@ -19,6 +19,10 @@ const shareCard = readFileSync(
   new URL("../components/chat-share-card.tsx", import.meta.url),
   "utf8",
 );
+const registry = readFileSync(
+  new URL("../components/research/research-panels.tsx", import.meta.url),
+  "utf8",
+);
 const researchPage = readFileSync(
   new URL("./public-research.tsx", import.meta.url),
   "utf8",
@@ -254,6 +258,12 @@ describe("public chat visual contract", () => {
       expect(chat).not.toContain(legacyMount);
     }
     expect(chat).toContain("<ChatToolsMenu isAdmin=");
+    // A tool picked from the composer opens where the reader already is —
+    // navigating to the desk would drop the conversation they were in. The
+    // panels stay lazy so the chat bundle does not carry seven dashboards.
+    expect(chat).toContain("<ResearchPanelFor");
+    expect(chat).toContain("onOpenPanel={openChatPanel}");
+    expect(registry).toContain("lazy(() =>");
     expect(researchPage).toContain('<DailySignalPanel kind="macro"');
     expect(researchPage).toContain('<DailySignalPanel kind="ai"');
     expect(researchPage).toContain("<CompanyRatingPanel");
@@ -282,13 +292,22 @@ describe("public chat visual contract", () => {
     expect(ratingCss).toContain("var(--hone-");
   });
 
-  it("keeps grounded ask-markers and discipline rules in the research panels", () => {
-    expect(portfolioNewsDashboard).toContain("HONE_SAVED_PORTFOLIO_NEWS_REPORT");
-    expect(portfolioNewsDashboard).toContain("不要自动修改仓位");
-    expect(positionManagementDashboard).toContain("HONE_SAVED_POSITION_MANAGEMENT_REPORT");
-    expect(positionManagementDashboard).toContain("不得自动修改持仓或声称已经下单");
-    expect(influencerDigestDashboard).toContain("HONE_SAVED_INFLUENCER_DIGEST");
-    expect(weeklyBriefDashboard).toContain("HONE_SAVED_WEEKLY_BRIEF");
-    expect(keyEventChainDashboard).toContain("HONE_SAVED_KEY_EVENT_CHAIN");
+  it("leaves the panels read-only: no manual refresh, no ask-the-agent footer", () => {
+    // Both controls were removed on request. The refresh button re-read the
+    // same stored snapshot, so it looked broken; the ask footer is gone with
+    // its whole prompt-envelope pipeline.
+    for (const panel of [
+      portfolioNewsDashboard,
+      positionManagementDashboard,
+      influencerDigestDashboard,
+      keyEventChainDashboard,
+      weeklyBriefDashboard,
+      ratingDashboard,
+    ]) {
+      expect(panel).not.toContain("HONE_SAVED_");
+      expect(panel).not.toContain("props.onAsk");
+      expect(panel).not.toContain("重新读取");
+      expect(panel).not.toContain("发送到对话");
+    }
   });
 });

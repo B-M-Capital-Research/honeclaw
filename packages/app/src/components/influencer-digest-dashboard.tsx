@@ -7,13 +7,11 @@ import {
 } from "@/components/research/research-panel";
 import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { InfluencerDigestItem, InfluencerDigestSnapshot } from "@/lib/types";
 import "./influencer-digest-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 
 const stanceLabel = (v: string) =>
@@ -74,7 +72,6 @@ export function InfluencerDigestPanel(props: Props) {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
   const [author, setAuthor] = createSignal("all");
-  const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
   const load = async () => {
@@ -120,56 +117,6 @@ export function InfluencerDigestPanel(props: Props) {
       .join(" · ");
   });
 
-  const send = () => {
-    const current = snapshot();
-    const query = question().trim();
-    if (!current || !query || !props.onAsk) return;
-    const report = {
-      reportDate: current.report_date,
-      generatedAtLocal: current.generated_at_local,
-      status: current.status,
-      authors: current.authors,
-      items: current.items.map((item) => ({
-        author_name: item.author_name,
-        public_handle: item.public_handle,
-        title: item.title,
-        published_at_local: item.published_at_local,
-        source_url: item.source_url,
-        aggregation_source: item.aggregation_source,
-        aggregation_url: item.aggregation_url,
-        post_kind: item.post_kind,
-        summary: item.summary,
-        stance: item.stance,
-        horizon: item.horizon,
-        content_type: item.content_type,
-        topics: item.topics,
-        tickers: item.tickers,
-        counterpoint: item.counterpoint,
-        analysis_status: item.analysis_status,
-        // The model answers about what the author actually wrote, not only
-        // about our 90-character digest of it.
-        source_text_cn: sourceText(item).slice(0, 600),
-        reply_context: item.reply_context ?? undefined,
-      })),
-    };
-    props.onAsk(
-      buildSavedReportPrompt({
-        marker: "HONE_SAVED_INFLUENCER_DIGEST",
-        payload: report,
-        subject: "已保存的大V速报",
-        question: query,
-        rules: [
-          "作者观点不等于事实或 HONE 结论",
-          "附原文链接与运行时时区",
-          "聚合翻译不是独立事实来源",
-          "不得补造未配置作者内容，不得把观点直接转换为买卖或仓位动作",
-        ],
-      }),
-    );
-    setQuestion("");
-    props.onClose();
-  };
-
   return (
     <ResearchPanel
       onClose={props.onClose}
@@ -188,11 +135,6 @@ export function InfluencerDigestPanel(props: Props) {
           summary={snapshot()?.summary}
           meta={metaLine()}
           onClose={props.onClose}
-          action={
-            <button type="button" disabled={loading()} onClick={() => void load()}>
-              {loading() ? "读取中…" : "重新读取"}
-            </button>
-          }
         />
 
         <div class="influencer-authors research-scroller">
@@ -224,7 +166,7 @@ export function InfluencerDigestPanel(props: Props) {
                 <ResearchState
                   kind="empty"
                   message="当前没有可展示的原文更新"
-                  detail="换一位作者或稍后重新读取；未配置来源不会被补造内容。"
+                  detail="换一位作者或稍后再来；未配置来源不会被补造内容。"
                 />
               }
             >
@@ -298,20 +240,9 @@ export function InfluencerDigestPanel(props: Props) {
           </Show>
         </div>
 
-        <Show when={props.onAsk}>
-          <footer>
-            <p>{snapshot()?.disclaimer}</p>
-            <div>
-              <input
-                aria-label="基于大V速报提问"
-                value={question()}
-                onInput={(event) => setQuestion(event.currentTarget.value)}
-                placeholder="基于今日观点继续提问…"
-              />
-              <button disabled={!question().trim()} onClick={send}>发送到对话</button>
-            </div>
-          </footer>
-        </Show>
+        <footer>
+          <p>{snapshot()?.disclaimer}</p>
+        </footer>
       </>
     </ResearchPanel>
   );

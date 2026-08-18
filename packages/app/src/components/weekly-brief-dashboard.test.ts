@@ -4,6 +4,16 @@ import { readFileSync } from "node:fs";
 const component = readFileSync(new URL("./weekly-brief-dashboard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./weekly-brief-dashboard.css", import.meta.url), "utf8");
 
+/**
+ * Source with comments stripped, so the "not contain" pins below can only be
+ * satisfied by real code — a stale comment must not keep a contract green.
+ */
+const code = component.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const headStart = code.indexOf("<ResearchPanelHead");
+const panelHead = code.slice(headStart, code.indexOf("/>", headStart) + 2);
+const propsStart = code.indexOf("type Props = {");
+const propsType = code.slice(propsStart, code.indexOf("};", propsStart) + 2);
+
 describe("weekly brief dashboard", () => {
   it("presents a standalone previous-week review and next-week agenda", () => {
     expect(component).toContain("周度简报");
@@ -17,8 +27,6 @@ describe("weekly brief dashboard", () => {
   it("keeps schedules separate from confirmed outcomes", () => {
     expect(component).toContain("日程已发生 · 结果待核验");
     expect(component).toContain("未来日程 · 日期或调整");
-    expect(component).toContain("未来日程不是预测");
-    expect(component).toContain("过去日程也不能据此补造公布值");
   });
 
   it("uses structured readable agenda cards instead of an image", () => {
@@ -106,15 +114,6 @@ describe("weekly brief dashboard", () => {
     expect(styles).not.toContain(".weekly-brief-method {\n  flex: 0 0 auto;");
   });
 
-  it("passes a bounded saved report into follow-up chat", () => {
-    expect(component).toContain("buildSavedReportPrompt");
-    expect(component).toContain('marker: "HONE_SAVED_WEEKLY_BRIEF"');
-    expect(component).toContain("lastWeekItems");
-    expect(component).toContain("nextWeekItems");
-    expect(component).toContain("aiOutlookItems");
-    expect(component).toContain("优先核对公司 IR、监管文件和官方数据");
-  });
-
   it("labels official AI dates without presenting unannounced dates as facts", () => {
     expect(component).toContain("官网已确认");
     expect(component).toContain("缺失日期不会被猜测补全");
@@ -127,7 +126,7 @@ describe("weekly brief dashboard", () => {
     expect(component).toContain("ResearchPanel");
     expect(component).toContain('backdropClass="weekly-brief-backdrop"');
     expect(component).toContain('dialogClass="weekly-brief-dialog"');
-    expect(component).toContain("props.onClose()");
+    expect(component).toContain("onClose={props.onClose}");
     // Mount == open, so mounting keeps the old "load on open" semantics.
     expect(component).toContain("onMount(() => void load())");
     // The shared shell owns Portal / backdrop / Escape / aria-modal.
@@ -139,7 +138,6 @@ describe("weekly brief dashboard", () => {
     // Loading / error / empty go through the shared state component.
     expect(component).toContain("ResearchState");
     expect(component).toContain("onRetry={() => void load()}");
-    expect(component).toContain("<Show when={props.onAsk}>");
   });
 
   it("drops the decorative amber theme for coral, keeping yellow for warnings only", () => {
@@ -165,5 +163,23 @@ describe("weekly brief dashboard", () => {
     expect(styles).not.toContain("#5141a8");
     expect(styles).not.toContain("#28243d");
     expect(styles).not.toContain("#c1b5ff");
+  });
+
+  it("has no manual refresh button and no ask-the-chat footer", () => {
+    // The head is kicker + close. Panels read one saved snapshot when they
+    // open, so there is no manual refresh control to press and no stale
+    // "read again" affordance implying the numbers can be recomputed here.
+    expect(panelHead).not.toContain("action=");
+    expect(code).not.toContain("重新读取");
+    expect(code).not.toContain("读取中…");
+    // 「发送到对话」is gone end to end: no composer in the footer, no prompt
+    // envelope, and no chat sink on the props.
+    expect(propsType).toBe("type Props = {\n  onClose: () => void;\n};");
+    expect(code).not.toContain("onAsk");
+    expect(code).not.toContain("发送到对话");
+    expect(code).not.toContain("buildSavedReportPrompt");
+    expect(code).not.toContain("HONE_SAVED");
+    // load() survives for exactly two callers: first paint and error retry.
+    expect(code).toContain("onMount(() => void load())");
   });
 });

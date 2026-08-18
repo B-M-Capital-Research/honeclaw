@@ -1,4 +1,4 @@
-import { Show, createEffect, onCleanup, type JSX, type ParentProps } from "solid-js";
+import { Show, createEffect, onCleanup, type ParentProps } from "solid-js";
 import { Portal } from "solid-js/web";
 import "./research.css";
 
@@ -102,17 +102,13 @@ export function ResearchPanelHead(props: {
   /** Provenance line: report date, coverage, model version. */
   meta?: string;
   onClose: () => void;
-  /** Optional trailing control, e.g. a refresh button. */
-  action?: JSX.Element;
 }) {
   return (
     <header class={`research-panel__head${props.signal ? ` is-${props.signal}` : ""}`}>
-      {/* Kicker, refresh and close share one band. The action used to own a
-          row of its own under the meta line, which spent ~50px of vertical
-          space on a single secondary button and read as an orphan. */}
+      {/* Kicker and close share one band. Panels read a saved snapshot on
+          open, so there is no manual refresh control to place here. */}
       <div class="research-panel__head-top">
         <p class="research-panel__kicker">{props.kicker}</p>
-        {props.action ? <div class="research-panel__head-action">{props.action}</div> : null}
         <button
           type="button"
           class="research-panel__close"

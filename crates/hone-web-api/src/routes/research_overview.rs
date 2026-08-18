@@ -160,7 +160,16 @@ pub(crate) async fn handle_get_research_overview(
         .filter_map(|card| card.generated_at)
         .max()
         .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
-    Json(json!({ "generated_at": generated_at, "cards": cards })).into_response()
+    // The freshness label compares against the runtime calendar day, not the
+    // reader's browser clock: a snapshot is "today's" by the schedule that
+    // produced it, and a reader abroad must not be told otherwise.
+    let report_today = hone_core::time::local_now().format("%Y-%m-%d").to_string();
+    Json(json!({
+        "generated_at": generated_at,
+        "report_today": report_today,
+        "cards": cards,
+    }))
+    .into_response()
 }
 
 #[cfg(test)]

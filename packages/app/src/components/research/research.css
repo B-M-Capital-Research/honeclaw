@@ -113,40 +113,6 @@
   color: var(--hone-ink-500);
 }
 
-/* One refresh control for every panel. Each skin used to define its own —
-   green here, coral there, link-coloured in four more — so the same button
-   changed colour as you moved between panels. */
-.research-panel__head-action {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.research-panel__head-action button {
-  padding: 5px 12px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: 999px;
-  background: var(--hone-control-surface);
-  color: var(--hone-ink-600);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
-}
-
-.research-panel__head-action button:hover:not(:disabled) {
-  border-color: var(--hone-ink-600);
-  color: var(--hone-ink-800);
-}
-
-.research-panel__head-action button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .research-panel__close {
   flex: 0 0 auto;
   display: grid;
@@ -245,12 +211,6 @@
 
   .research-panel__summary {
     font-size: 13.5px;
-  }
-
-  /* The band still has to hold kicker + refresh + close at 375px. */
-  .research-panel__head-action button {
-    padding: 4px 10px;
-    font-size: 10.5px;
   }
 }
 

@@ -17,6 +17,16 @@ const feedItem = () =>
     component.indexOf("</ResearchFeedItem>"),
   );
 
+/**
+ * Source with comments stripped, so the "not contain" pins below can only be
+ * satisfied by real code — a stale comment must not keep a contract green.
+ */
+const code = component.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const headStart = code.indexOf("<ResearchPanelHead");
+const panelHead = code.slice(headStart, code.indexOf("/>", headStart) + 2);
+const propsStart = code.indexOf("type Props = {");
+const propsType = code.slice(propsStart, code.indexOf("};", propsStart) + 2);
+
 describe("key event chain dashboard", () => {
   it("renders the first-principles industry chain", () => {
     expect(component).toContain("关键事件链");
@@ -136,13 +146,6 @@ describe("key event chain dashboard", () => {
     expect(component).toContain("href: event.source_url");
   });
 
-  it("preserves evidence and action boundaries", () => {
-    expect(component).toContain("聚合翻译和管理员研究资料不是一手事实");
-    expect(component).toContain("影响待验证时不得补造结论");
-    expect(component).toContain("buildSavedReportPrompt");
-    expect(component).toContain('marker: "HONE_SAVED_KEY_EVENT_CHAIN"');
-  });
-
   it("keeps the timeline focused after the weekly brief is extracted", () => {
     expect(component).not.toContain("过去10日复盘");
     expect(component).not.toContain("未来10日验证问题");
@@ -155,7 +158,7 @@ describe("key event chain dashboard", () => {
     expect(component).toContain("ResearchPanel");
     expect(component).toContain('backdropClass="key-chain-backdrop"');
     expect(component).toContain('dialogClass="key-chain-dialog"');
-    expect(component).toContain("props.onClose()");
+    expect(component).toContain("onClose={props.onClose}");
     // The shared shell owns Portal / backdrop / Escape / aria-modal.
     expect(component).not.toContain("Portal");
     expect(component).not.toContain("aria-modal");
@@ -165,7 +168,6 @@ describe("key event chain dashboard", () => {
     // Loading / error / empty go through the shared state component.
     expect(component).toContain("ResearchState");
     expect(component).toContain("onRetry={() => void load()}");
-    expect(component).toContain("<Show when={props.onAsk}>");
   });
 
   it("uses traffic-light tokens in readable multi-line CSS for mobile and dark", () => {
@@ -188,5 +190,23 @@ describe("key event chain dashboard", () => {
     expect(styles).not.toContain("#28745b");
     expect(styles).not.toContain("#966d19");
     expect(styles).not.toContain("#f8f0dd");
+  });
+
+  it("has no manual refresh button and no ask-the-chat footer", () => {
+    // The head is kicker + close. Panels read one saved snapshot when they
+    // open, so there is no manual refresh control to press and no stale
+    // "read again" affordance implying the numbers can be recomputed here.
+    expect(panelHead).not.toContain("action=");
+    expect(code).not.toContain("重新读取");
+    expect(code).not.toContain("读取中…");
+    // 「发送到对话」is gone end to end: no composer in the footer, no prompt
+    // envelope, and no chat sink on the props.
+    expect(propsType).toBe("type Props = {\n  onClose: () => void;\n};");
+    expect(code).not.toContain("onAsk");
+    expect(code).not.toContain("发送到对话");
+    expect(code).not.toContain("buildSavedReportPrompt");
+    expect(code).not.toContain("HONE_SAVED");
+    // load() survives for exactly two callers: first paint and error retry.
+    expect(code).toContain("onMount(() => void load())");
   });
 });

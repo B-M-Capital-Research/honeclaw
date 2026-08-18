@@ -553,7 +553,7 @@ export default function PublicResearchLibraryPage() {
                       <strong>暂时无法读取资料库</strong>
                       <span>{error()}</span>
                       <button type="button" onClick={() => void load()}>
-                        重新读取
+                        重试
                       </button>
                     </div>
                   }

@@ -2,13 +2,11 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-j
 import { getPublicWeeklyBrief } from "@/lib/api";
 import { ResearchPanel, ResearchPanelHead } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { WeeklyBriefItem, WeeklyBriefPayload } from "@/lib/types";
 import "./weekly-brief-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 
 type BriefView = "last" | "next" | "ai";
@@ -148,25 +146,20 @@ function AgendaPanel(props: { title: string; range: string; items: WeeklyBriefIt
 }
 
 export function WeeklyBriefPanel(props: Props) {
-  const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal("");
   const [report, setReport] = createSignal<WeeklyBriefPayload>();
-  const [question, setQuestion] = createSignal("");
   const [activeView, setActiveView] = createSignal<BriefView>("next");
   let controller: AbortController | undefined;
 
   const load = async () => {
     controller?.abort();
     controller = new AbortController();
-    setLoading(true);
     setError("");
     try {
       setReport(await getPublicWeeklyBrief(controller.signal));
     } catch (value) {
       if (value instanceof Error && value.name === "AbortError") return;
       setError(value instanceof Error ? value.message : "周度简报暂时无法加载");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -192,38 +185,6 @@ export function WeeklyBriefPanel(props: Props) {
       .join(" · ");
   });
 
-  const ask = () => {
-    const current = report();
-    const query = question().trim();
-    if (!current || !query || !props.onAsk) return;
-    const saved = {
-      reportDate: current.report_date,
-      generatedAtLocal: current.generated_at_local,
-      previousWeek: current.previous_week,
-      nextWeek: current.next_week,
-      aiOutlook: current.ai_outlook,
-      lastWeekItems: current.last_week_items,
-      nextWeekItems: current.next_week_items,
-      aiOutlookItems: current.ai_outlook_items,
-      earningsStatus: current.earnings_status,
-      methodologyNote: current.methodology_note,
-    };
-    props.onAsk(
-      buildSavedReportPrompt({
-        marker: "HONE_SAVED_WEEKLY_BRIEF",
-        payload: saved,
-        subject: "已保存的 HONE 周度简报",
-        question: query,
-        rules: [
-          "区分一手确认的产业变化、已经过去但结果尚未核验的日程、以及尚未发生的未来日程",
-          "未来日程不是预测，过去日程也不能据此补造公布值。涉及财报或宏观结果时优先核对公司 IR、监管文件和官方数据，附来源与运行时时区，再给出对基本面、估值和持仓风险的适当分析",
-        ],
-      }),
-    );
-    setQuestion("");
-    props.onClose();
-  };
-
   return (
     <ResearchPanel
       onClose={props.onClose}
@@ -248,11 +209,6 @@ export function WeeklyBriefPanel(props: Props) {
           summary={report()?.summary}
           meta={metaLine()}
           onClose={props.onClose}
-          action={
-            <button type="button" disabled={loading()} onClick={() => void load()}>
-              {loading() ? "读取中…" : "重新读取"}
-            </button>
-          }
         />
         <Show
           when={report()}
@@ -260,7 +216,7 @@ export function WeeklyBriefPanel(props: Props) {
             <Show
               when={!error()}
               fallback={
-                <ResearchState kind="error" message="读取失败" detail={error()} onRetry={() => void load()} retryLabel="重新读取" />
+                <ResearchState kind="error" message="读取失败" detail={error()} onRetry={() => void load()} />
               }
             >
               <ResearchState kind="loading" message="正在整理两周事件…" />
@@ -317,20 +273,9 @@ export function WeeklyBriefPanel(props: Props) {
                   {current().methodology_note}
                 </div>
               </main>
-              <Show when={props.onAsk}>
-                <footer class="weekly-brief-footer">
-                  <p>{current().disclaimer}</p>
-                  <div>
-                    <input
-                      aria-label="基于周度简报提问"
-                      value={question()}
-                      onInput={(event) => setQuestion(event.currentTarget.value)}
-                      placeholder="例如：下周最可能影响我的持仓的是哪三件事？"
-                    />
-                    <button disabled={!question().trim()} onClick={ask}>发送到对话</button>
-                  </div>
-                </footer>
-              </Show>
+              <footer class="weekly-brief-footer">
+                <p>{current().disclaimer}</p>
+              </footer>
             </>
           )}
         </Show>

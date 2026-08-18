@@ -16,7 +16,6 @@ import {
   ResearchPanelHead,
 } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
   DailySignalHistoryItem,
   DailySignalKind,
@@ -28,7 +27,6 @@ import "./daily-signal-dashboard.css";
 type Props = {
   kind: DailySignalKind;
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 
 const KIND_COPY = {
@@ -187,54 +185,12 @@ function Gauge(props: { report: DailySignalReport }) {
   );
 }
 
-function reportContext(report: DailySignalReport, question: string) {
-  const rules = [
-    "只使用上述已保存报告和当前对话",
-    "事实引用报告中的来源链接",
-    "明确区分事实、模型推断与情景",
-    "如果问题涉及数据截止时间之后的信息，先说明报告未覆盖，并询问是否另行查询最新资料",
-    "不要在回答中改写正式评分",
-  ];
-  const compact = {
-    kind: report.kind,
-    reportDate: report.report_date,
-    marketDate: report.market_date,
-    dataCutoff: report.data_cutoff,
-    generatedAtLocal: report.generated_at_local,
-    modelVersion: report.model_version,
-    status: report.status,
-    score: report.score,
-    rawScore: report.raw_score,
-    signal: report.signal,
-    phase: report.phase,
-    summary: report.summary,
-    dimensions: report.dimensions.map((item) => ({
-      label: item.label,
-      score: item.score,
-      signal: item.signal,
-      reason: item.reason,
-      evidence: item.evidence,
-    })),
-    companyScores: report.company_scores,
-    alerts: report.alerts,
-    sources: report.sources,
-  };
-  return buildSavedReportPrompt({
-    marker: "HONE_SAVED_DAILY_SIGNAL_REPORT",
-    payload: compact,
-    subject: `已保存的${report.title}（报告日 ${report.report_date}）`,
-    question,
-    rules,
-  });
-}
-
 export function DailySignalPanel(props: Props) {
   const [report, setReport] = createSignal<DailySignalReport>();
   const [history, setHistory] = createSignal<DailySignalHistoryItem[]>();
   const [tab, setTab] = createSignal<"overview" | "history" | "sources">("overview");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
-  const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
   // One request paints the panel; the 14-day history is a separate tab and
@@ -274,15 +230,6 @@ export function DailySignalPanel(props: Props) {
 
   const kind = createMemo(() => props.kind);
 
-  const ask = () => {
-    const current = report();
-    const text = question().trim();
-    if (!current || !text || !props.onAsk) return;
-    props.onAsk(reportContext(current, text));
-    setQuestion("");
-    props.onClose();
-  };
-
   return (
     <ResearchPanel
       onClose={props.onClose}
@@ -303,11 +250,6 @@ export function DailySignalPanel(props: Props) {
                   }
                   meta={report() ? provenanceLine(report()!) : undefined}
                   onClose={props.onClose}
-                  action={
-                    <button type="button" disabled={loading()} onClick={() => void load()}>
-                      {loading() ? "读取中…" : "重新读取快照"}
-                    </button>
-                  }
                 />
 
                 <nav class="daily-signal-tabs research-scroller" aria-label="报告视图">
@@ -388,14 +330,10 @@ export function DailySignalPanel(props: Props) {
                   </Show>
                 </div>
 
-                <Show when={props.onAsk && report()}>
-                  {(_) => (
+                <Show when={report()}>
+                  {(current) => (
                     <footer class="daily-signal-footer">
-                      <form onSubmit={(event) => { event.preventDefault(); ask(); }}>
-                        <input value={question()} onInput={(event) => setQuestion(event.currentTarget.value)} placeholder={`基于这份${report()!.title}继续提问…`} aria-label="基于保存报告提问" />
-                        <button type="submit" disabled={!question().trim()}>发送到对话</button>
-                      </form>
-                      <p>{report()!.disclaimer}</p>
+                      <p>{current().disclaimer}</p>
                     </footer>
                   )}
                 </Show>

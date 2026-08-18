@@ -59,9 +59,15 @@ describe("research desk contract", () => {
     expect(page).toContain("card()?.summary || section.blurb");
   });
 
-  it("hands panel questions to chat via the stash, not the URL", () => {
-    expect(page).toContain("stashResearchAsk");
-    expect(page).toContain('navigate("/chat?ask=research")');
+  it("opens a panel and closes it — it never hands a question to chat", () => {
+    // The panels are read-only views of a saved snapshot; the "发送到对话"
+    // hand-off (a sessionStorage stash plus /chat?ask=research) is gone, and
+    // the only prop the desk passes down is the close callback.
+    expect(page).toContain("<Dynamic component={section().panel!} onClose={closePanel} />");
+    expect(page).not.toContain("onAsk");
+    expect(page).not.toContain("stashResearchAsk");
+    expect(page).not.toContain("research-ask");
+    expect(page).not.toContain("ask=research");
   });
 
   it("styles with foundation tokens only, including traffic-light semantics", () => {
@@ -92,19 +98,19 @@ describe("research desk contract", () => {
     expect(shellCss).toContain("max-height: 100dvh");
   });
 
-  it("keeps the head to one band: kicker, refresh and close", () => {
-    // The action used to render below the meta line in a row of its own,
-    // which spent a whole row of height on one secondary control.
+  it("keeps the head to one band: kicker and close, with no refresh control", () => {
     const headTop = panelShell.indexOf('class="research-panel__head-top"');
-    const action = panelShell.indexOf('class="research-panel__head-action"');
     const close = panelShell.indexOf('class="research-panel__close"');
     const meta = panelShell.indexOf('class="research-panel__meta"');
     expect(headTop).toBeGreaterThan(-1);
-    expect(action).toBeGreaterThan(headTop);
-    expect(action).toBeLessThan(close);
-    expect(action).toBeLessThan(meta);
-    // One refresh skin for every panel, defined here rather than seven times.
-    expect(shellCss).toContain(".research-panel__head-action button {");
+    expect(close).toBeGreaterThan(headTop);
+    expect(close).toBeLessThan(meta);
+    // A panel reads one saved snapshot when it opens, so the head carries no
+    // manual refresh: the `action` slot and its shared skin are both gone.
+    expect(panelShell).not.toContain("props.action");
+    expect(panelShell).not.toContain("action?:");
+    expect(panelShell).not.toContain("research-panel__head-action");
+    expect(shellCss).not.toContain("research-panel__head-action");
   });
 
   it("folds long source text into a disclosure rather than a dead ellipsis", () => {

@@ -7,13 +7,11 @@ import {
 } from "@/components/research/research-panel";
 import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type { KeyEventChainSnapshot } from "@/lib/types";
 import "./key-event-chain-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 
 type EvidenceFilter = "all" | "confirmed";
@@ -93,7 +91,6 @@ export function KeyEventChainPanel(props: Props) {
   const [error, setError] = createSignal("");
   const [topicId, setTopicId] = createSignal("rubin");
   const [evidenceFilter, setEvidenceFilter] = createSignal<EvidenceFilter>("all");
-  const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
   const load = async () => {
@@ -156,37 +153,6 @@ export function KeyEventChainPanel(props: Props) {
       : events;
   });
 
-  const send = () => {
-    const report = snapshot();
-    const current = topic();
-    const query = question().trim();
-    if (!report || !current || !query || !props.onAsk) return;
-    const saved = {
-      reportDate: report.report_date,
-      generatedAtLocal: report.generated_at_local,
-      status: report.status,
-      evidenceFilter: evidenceFilter(),
-      topic: current,
-    };
-    props.onAsk(
-      buildSavedReportPrompt({
-        marker: "HONE_SAVED_KEY_EVENT_CHAIN",
-        payload: saved,
-        subject: "已保存的关键事件链",
-        question: query,
-        rules: [
-          "逐条附原文链接和运行时时区",
-          "只有 verification_status=confirmed 才可称为已确认里程碑，clue 只能作为待核实线索",
-          "区分来源事实、作者观点与 HONE 推断",
-          "聚合翻译和管理员研究资料不是一手事实",
-          "影响待验证时不得补造结论，不得直接转成买卖或仓位动作",
-        ],
-      }),
-    );
-    setQuestion("");
-    props.onClose();
-  };
-
   return (
     <ResearchPanel
       onClose={props.onClose}
@@ -205,11 +171,6 @@ export function KeyEventChainPanel(props: Props) {
           summary={snapshot()?.summary}
           meta={metaLine()}
           onClose={props.onClose}
-          action={
-            <button type="button" disabled={loading()} onClick={() => void load()}>
-              {loading() ? "读取中…" : "重新读取"}
-            </button>
-          }
         />
 
         {/* One compact chip per line. The card used to stack layer, name and a
@@ -340,20 +301,9 @@ export function KeyEventChainPanel(props: Props) {
           </Show>
         </div>
 
-        <Show when={props.onAsk}>
-          <footer>
-            <p>{snapshot()?.disclaimer}</p>
-            <div>
-              <input
-                aria-label="基于关键事件链提问"
-                value={question()}
-                onInput={(event) => setQuestion(event.currentTarget.value)}
-                placeholder="这条变化会影响哪些公司？"
-              />
-              <button disabled={!question().trim()} onClick={send}>发送到对话</button>
-            </div>
-          </footer>
-        </Show>
+        <footer>
+          <p>{snapshot()?.disclaimer}</p>
+        </footer>
       </>
     </ResearchPanel>
   );

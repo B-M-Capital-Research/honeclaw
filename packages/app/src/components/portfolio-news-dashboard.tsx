@@ -14,7 +14,6 @@ import {
 } from "@/components/research/research-panel";
 import { ResearchFeed, ResearchFeedItem } from "@/components/research/research-feed";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
   PortfolioNewsImpact,
   PortfolioNewsItem,
@@ -24,7 +23,6 @@ import "./portfolio-news-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 type Filter = "all" | PortfolioNewsImpact;
 
@@ -139,53 +137,11 @@ function provenanceLine(snapshot: PortfolioNewsSnapshot) {
     .join(" · ");
 }
 
-function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
-  const compact = {
-    reportDate: snapshot.report_date,
-    generatedAtLocal: snapshot.generated_at_local,
-    status: snapshot.status,
-    lookbackHours: snapshot.lookback_hours,
-    summary: snapshot.summary,
-    coveredSymbols: snapshot.covered_symbols,
-    missingSymbols: snapshot.missing_symbols,
-    items: snapshot.items.map((item) => ({
-      symbol: item.symbol,
-      title: item.title,
-      publishedAtLocal: item.published_at_local,
-      source: item.source,
-      sourceUrl: item.source_url,
-      impact: item.impact,
-      horizon: item.horizon,
-      thesisEffect: item.thesis_effect,
-      summary: item.summary,
-      whyItMatters: item.why_it_matters,
-      attention: item.attention,
-      confidence: item.confidence,
-      analysisStatus: item.analysis_status,
-    })),
-  };
-  return buildSavedReportPrompt({
-    marker: "HONE_SAVED_PORTFOLIO_NEWS_REPORT",
-    payload: compact,
-    subject: `已保存的持仓重点新闻分析（报告日 ${snapshot.report_date}）`,
-    question,
-    rules: [
-      "只使用上述快照和当前对话",
-      "引用新闻时附来源链接和运行时时区",
-      "明确区分来源事实与模型影响判断",
-      "待分析项目不得补造结论",
-      "数据截止时间之后的内容先说明未覆盖",
-      "不要自动修改仓位",
-    ],
-  });
-}
-
 export function PortfolioNewsPanel(props: Props) {
   const [snapshot, setSnapshot] = createSignal<PortfolioNewsSnapshot>();
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
   const [filter, setFilter] = createSignal<Filter>("all");
-  const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
   const load = async () => {
@@ -222,15 +178,6 @@ export function PortfolioNewsPanel(props: Props) {
     return [current.summary, missing].filter(Boolean).join(" ") || undefined;
   };
 
-  const sendQuestion = () => {
-    const current = snapshot();
-    const text = question().trim();
-    if (!current || !text || !props.onAsk) return;
-    props.onAsk(reportContext(current, text));
-    setQuestion("");
-    props.onClose();
-  };
-
   return (
     <ResearchPanel
       onClose={props.onClose}
@@ -257,11 +204,6 @@ export function PortfolioNewsPanel(props: Props) {
           }
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
-          action={
-            <button type="button" onClick={() => void load()} disabled={loading()}>
-              {loading() ? "读取中…" : "重新读取"}
-            </button>
-          }
         />
 
         <div class="portfolio-news-summary">
@@ -375,21 +317,9 @@ export function PortfolioNewsPanel(props: Props) {
           </Show>
         </div>
 
-        <Show when={props.onAsk}>
-          <footer>
-            <div>
-              <input
-                value={question()}
-                onInput={(event) => setQuestion(event.currentTarget.value)}
-                onKeyDown={(event) => event.key === "Enter" && sendQuestion()}
-                placeholder="基于这份持仓新闻继续提问…"
-                aria-label="基于持仓新闻提问"
-              />
-              <button type="button" disabled={!question().trim() || !snapshot()} onClick={sendQuestion}>发送到对话</button>
-            </div>
-            <p>{snapshot()?.disclaimer ?? "新闻影响分析用于研究提醒，不构成投资建议。"}</p>
-          </footer>
-        </Show>
+        <footer>
+          <p>{snapshot()?.disclaimer ?? "新闻影响分析用于研究提醒，不构成投资建议。"}</p>
+        </footer>
       </>
     </ResearchPanel>
   );

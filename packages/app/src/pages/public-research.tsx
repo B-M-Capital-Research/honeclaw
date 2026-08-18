@@ -21,7 +21,6 @@ import {
   hasCachedPublicUser,
   setCachedPublicUser,
 } from "@/lib/public-session-cache";
-import { stashResearchAsk } from "@/lib/research-ask";
 import type {
   PublicAuthUserInfo,
   ResearchOverviewCard,
@@ -39,7 +38,7 @@ import "./public-research.css";
  * button closes it; the full snapshot is fetched only at that point.
  */
 
-type PanelProps = { onClose: () => void; onAsk?: (message: string) => void };
+type PanelProps = { onClose: () => void };
 
 type SectionDef = {
   key: string;
@@ -186,10 +185,52 @@ function cardState(card: ResearchOverviewCard | undefined): CardState {
   return "ready";
 }
 
-function stateLabel(state: CardState, card: ResearchOverviewCard | undefined) {
+/** Whole days between two `YYYY-MM-DD` strings, or undefined if unparseable. */
+function daysBetween(from: string, to: string) {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return undefined;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * How fresh this section actually is.
+ *
+ * The label used to read "今日已更新" for any snapshot that merely existed, so
+ * a report written last night still claimed to be today's — the panel then
+ * opened on visibly older content and the card looked like a lie. The day is
+ * compared against the server's calendar day, and anything older says so.
+ */
+function stateLabel(
+  state: CardState,
+  card: ResearchOverviewCard | undefined,
+  today: string | undefined,
+) {
   if (state === "waiting") return "等待数据";
   if (state === "empty") return "今日无新增";
-  return card?.status === "stale" ? "沿用上次快照" : "今日已更新";
+  if (card?.status === "stale") return "沿用上次快照";
+  const reportDate = card?.report_date ?? undefined;
+  if (!reportDate || !today) return "已更新";
+  const age = daysBetween(reportDate, today);
+  if (age === undefined) return "已更新";
+  if (age <= 0) return "今日已更新";
+  if (age === 1) return "昨日更新";
+  return `${age} 天前更新`;
+}
+
+/**
+ * Today's date alone is not freshness: a section can be stamped today and
+ * still have produced nothing usable. The green marker claims "there is
+ * something here, and it is today's", so it requires both.
+ */
+function isFreshToday(
+  card: ResearchOverviewCard | undefined,
+  today: string | undefined,
+  state?: CardState,
+) {
+  if (!card?.report_date || !today) return false;
+  if (state && state !== "ready") return false;
+  return (daysBetween(card.report_date, today) ?? 1) <= 0;
 }
 
 export default function PublicResearchPage() {
@@ -198,6 +239,7 @@ export default function PublicResearchPage() {
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
   const [authLoading, setAuthLoading] = createSignal(!hasCachedPublicUser());
   const [cards, setCards] = createSignal<Map<string, ResearchOverviewCard>>(new Map());
+  const [reportToday, setReportToday] = createSignal<string>();
   const [overviewLoading, setOverviewLoading] = createSignal(true);
   const initialGroup = typeof searchParams.group === "string" ? searchParams.group : "";
   const [group, setGroup] = createSignal<GroupKey | "all">(
@@ -225,6 +267,7 @@ export default function PublicResearchPage() {
     try {
       const payload = await getPublicResearchOverview(controller.signal);
       setCards(new Map(payload.cards.map((card) => [card.key, card])));
+      setReportToday(payload.report_today ?? undefined);
     } catch {
       // The grid is a navigation surface first: cards fall back to their
       // static blurbs, every panel stays reachable.
@@ -273,8 +316,10 @@ export default function PublicResearchPage() {
 
   const readyCount = createMemo(
     () =>
-      dailySections().filter((section) => cardState(cards().get(section.key)) === "ready")
-        .length,
+      dailySections().filter((section) => {
+        const card = cards().get(section.key);
+        return isFreshToday(card, reportToday(), cardState(card));
+      }).length,
   );
 
   const openSection = (section: SectionDef) => {
@@ -287,11 +332,6 @@ export default function PublicResearchPage() {
   };
 
   const closePanel = () => setSearchParams({ panel: undefined });
-
-  const askInChat = (message: string) => {
-    stashResearchAsk(message);
-    navigate("/chat?ask=research");
-  };
 
   return (
     <Show
@@ -348,16 +388,17 @@ export default function PublicResearchPage() {
                           classList={{
                             [`is-${card()?.signal ?? "none"}`]: true,
                             [`is-state-${state()}`]: true,
+                            "is-fresh": isFreshToday(card(), reportToday(), state()),
                           }}
                           onClick={() => openSection(section)}
                         >
                           <span class="public-research-card__top">
                             <span class="public-research-card__kicker">{section.kicker}</span>
                             <span class="public-research-card__state">
-                              <Show when={state() === "ready"}>
+                              <Show when={isFreshToday(card(), reportToday(), state())}>
                                 <i class="public-research-card__dot" aria-hidden="true" />
                               </Show>
-                              {stateLabel(state(), card())}
+                              {stateLabel(state(), card(), reportToday())}
                             </span>
                           </span>
 
@@ -410,11 +451,7 @@ export default function PublicResearchPage() {
 
               <Show when={activeSection()}>
                 {(section) => (
-                  <Dynamic
-                    component={section().panel!}
-                    onClose={closePanel}
-                    onAsk={askInChat}
-                  />
+                  <Dynamic component={section().panel!} onClose={closePanel} />
                 )}
               </Show>
             </main>

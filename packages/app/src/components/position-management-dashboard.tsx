@@ -5,7 +5,6 @@ import {
   ResearchPanelHead,
 } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
-import { buildSavedReportPrompt } from "@/lib/saved-report-prompt";
 import type {
   PositionAdviceItem,
   PositionManagementAction,
@@ -15,7 +14,6 @@ import "./position-management-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 type Filter = "all" | PositionManagementAction;
 
@@ -90,52 +88,11 @@ function provenanceLine(snapshot: PositionManagementSnapshot) {
     .join(" · ");
 }
 
-function savedReportContext(snapshot: PositionManagementSnapshot, question: string) {
-  const compact = {
-    reportDate: snapshot.report_date,
-    generatedAtLocal: snapshot.generated_at_local,
-    status: snapshot.status,
-    frameworkVersion: snapshot.framework_version,
-    macro: snapshot.macro_context,
-    concentration: snapshot.concentration,
-    summary: snapshot.summary,
-    items: snapshot.items.map((item) => ({
-      symbol: item.symbol,
-      weight: item.weight,
-      action: item.action,
-      confidence: item.confidence,
-      ratingScore: item.rating_score,
-      ratingStatus: item.rating_status,
-      valuationPosition: item.valuation_position,
-      newsImpact: item.news_impact,
-      rationale: item.rationale,
-      risks: item.risks,
-      falsifiers: item.falsifiers,
-      frameworkLogic: item.framework_logic,
-      evidenceAsOf: item.evidence_as_of,
-      evidenceSources: item.evidence_sources,
-    })),
-  };
-  return buildSavedReportPrompt({
-    marker: "HONE_SAVED_POSITION_MANAGEMENT_REPORT",
-    payload: compact,
-    subject: `已保存的仓位管理建议（报告日 ${snapshot.report_date}）`,
-    question,
-    rules: [
-      "严格区分当前事实、Hari 逻辑、HONE 集中度规则和推断",
-      "不得补造缺失行情、财务、估值或新闻",
-      "先说结论，再说明反方与证伪条件",
-      "不得自动修改持仓或声称已经下单",
-    ],
-  });
-}
-
 export function PositionManagementPanel(props: Props) {
   const [snapshot, setSnapshot] = createSignal<PositionManagementSnapshot>();
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
   const [filter, setFilter] = createSignal<Filter>("all");
-  const [question, setQuestion] = createSignal("");
   let controller: AbortController | undefined;
 
   const load = async () => {
@@ -162,15 +119,6 @@ export function PositionManagementPanel(props: Props) {
     const items = snapshot()?.items ?? [];
     return filter() === "all" ? items : items.filter((item) => item.action === filter());
   });
-
-  const sendQuestion = () => {
-    const current = snapshot();
-    const text = question().trim();
-    if (!current || !text || !props.onAsk) return;
-    props.onAsk(savedReportContext(current, text));
-    setQuestion("");
-    props.onClose();
-  };
 
   return (
     <ResearchPanel
@@ -200,11 +148,6 @@ export function PositionManagementPanel(props: Props) {
           }
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
-          action={
-            <button type="button" onClick={() => void load()} disabled={loading()}>
-              {loading() ? "读取中…" : "重新读取"}
-            </button>
-          }
         />
 
         <div class="position-management-overview">
@@ -290,13 +233,10 @@ export function PositionManagementPanel(props: Props) {
           </Show>
         </div>
 
-        <Show when={props.onAsk}>
-          <footer>
-            <p class="position-management-method">{snapshot()?.methodology_note}</p>
-            <div><input value={question()} onInput={(event) => setQuestion(event.currentTarget.value)} onKeyDown={(event) => event.key === "Enter" && sendQuestion()} placeholder="基于这份仓位建议继续提问…" aria-label="基于仓位建议提问" /><button type="button" disabled={!question().trim() || !snapshot()} onClick={sendQuestion}>发送到对话</button></div>
-            <p>{snapshot()?.disclaimer ?? "仓位建议仅供研究与复核，不构成投资建议。"}</p>
-          </footer>
-        </Show>
+        <footer>
+          <p class="position-management-method">{snapshot()?.methodology_note}</p>
+          <p>{snapshot()?.disclaimer ?? "仓位建议仅供研究与复核，不构成投资建议。"}</p>
+        </footer>
       </>
     </ResearchPanel>
   );

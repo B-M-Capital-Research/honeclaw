@@ -29,7 +29,11 @@ import {
   AgentWorkspaceTopbar,
 } from "@/components/public-agent-workspace";
 import { routePrefetchHandlers } from "@/lib/route-prefetch";
-import { takeResearchAsk } from "@/lib/research-ask";
+import {
+  ResearchPanelFor,
+  isResearchPanelKey,
+  type ResearchPanelKey,
+} from "@/components/research/research-panels";
 import { PublicPrefsButton } from "@/components/public-prefs-button";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
@@ -2164,7 +2168,7 @@ function FinanceCalendarQuickAction(props: {
  * on phones the menu was being laid out correctly and then cut away entirely,
  * so tapping 工具 looked like nothing happened.
  */
-function ChatToolsMenu(props: { isAdmin: boolean }) {
+function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) => void }) {
   const navigate = useNavigate();
   const [open, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<DOMRect>();
@@ -2202,6 +2206,16 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
     navigate(href);
   };
 
+  // A research product opens where the reader already is. Navigating to the
+  // desk for it would drop the conversation they were in the middle of.
+  const openHere = (panel: string) => {
+    setOpen(false);
+    props.onOpenPanel(panel);
+  };
+
+  const activate = (item: { href: string; panel?: string }) =>
+    item.panel ? openHere(item.panel) : go(item.href);
+
   // Each daily research product is addressable, so the menu can drop the
   // reader at the exact panel instead of only at the desk's front door.
   const copy = () => CONTENT.chat_page.workspace;
@@ -2210,24 +2224,24 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
       label: copy().tools_group_daily,
       items: [
         { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
-        { href: "/research?panel=daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
-        { href: "/research?panel=daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
-        { href: "/research?panel=company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
+        { href: "/research?panel=daily-signal-macro", panel: "daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
+        { href: "/research?panel=daily-signal-ai", panel: "daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
+        { href: "/research?panel=company-ratings", panel: "company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
       ],
     },
     {
       label: copy().tools_group_intel,
       items: [
-        { href: "/research?panel=influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
-        { href: "/research?panel=key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
-        { href: "/research?panel=weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
+        { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
+        { href: "/research?panel=key-event-chain", panel: "key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
+        { href: "/research?panel=weekly-brief", panel: "weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
       ],
     },
     {
       label: copy().tools_group_holdings,
       items: [
-        { href: "/research?panel=portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
-        { href: "/research?panel=position-management", title: copy().tools_position_title, desc: copy().tools_position_desc },
+        { href: "/research?panel=portfolio-news", panel: "portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
+        { href: "/research?panel=position-management", panel: "position-management", title: copy().tools_position_title, desc: copy().tools_position_desc },
       ],
     },
     ...(props.isAdmin
@@ -2292,7 +2306,7 @@ function ChatToolsMenu(props: { isAdmin: boolean }) {
                     <p class="chat-tools__group">{group.label}</p>
                     <For each={group.items}>
                       {(item) => (
-                        <button type="button" role="menuitem" onClick={() => go(item.href)}>
+                        <button type="button" role="menuitem" onClick={() => activate(item)}>
                           <b>{item.title}</b>
                           <small>{item.desc}</small>
                         </button>
@@ -2357,6 +2371,7 @@ function Composer(props: {
   trackingOpenRequest: number;
   calendarOpenRequest: number;
   isAdmin: boolean;
+  onOpenPanel: (panel: string) => void;
   onStartEarnings: (input: EarningsWorkflowStart) => Promise<void>;
 }) {
   const [focused, setFocused] = createSignal(false);
@@ -2428,7 +2443,7 @@ function Composer(props: {
       }}
     >
       <div class="public-chat-proactive-tip-wrap">
-        <ChatToolsMenu isAdmin={props.isAdmin} />
+        <ChatToolsMenu isAdmin={props.isAdmin} onOpenPanel={props.onOpenPanel} />
         <ProactiveModeTips openRequest={props.trackingOpenRequest} />
         <Show when={props.isAdmin}>
           <EarningsResearchQuickAction
@@ -3047,6 +3062,11 @@ export default function PublicChatPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   /** A question an entry point already decided, waiting only for a ready session. */
   const [pendingAutoSend, setPendingAutoSend] = createSignal<string | undefined>();
+  /** A research panel opened from the composer's tool menu, in place. */
+  const [chatPanel, setChatPanel] = createSignal<ResearchPanelKey>();
+  const openChatPanel = (key: string) => {
+    if (isResearchPanelKey(key)) setChatPanel(key);
+  };
   createEffect(() => {
     const prefill = searchParams.q;
     if (typeof prefill !== "string" || !prefill.trim()) return;
@@ -3062,15 +3082,6 @@ export default function PublicChatPage() {
     }
     setDraft(prefill);
     focusWorkspaceComposer();
-  });
-
-  /* 研究台面板的「发送到对话」：正文可达数 KB，不走 URL，改经 sessionStorage
-     转交（见 research-ask.ts），这里只认一个一次性的 ?ask=research 标记。 */
-  createEffect(() => {
-    if (searchParams.ask !== "research") return;
-    setSearchParams({ ask: undefined }, { replace: true });
-    const message = takeResearchAsk();
-    if (message) setPendingAutoSend(message);
   });
 
   /* 「新对话」在当前服务端会话内建立一个新的可见分段。旧消息仍能从左侧
@@ -4052,6 +4063,7 @@ export default function PublicChatPage() {
                           trackingOpenRequest={trackingOpenRequest()}
                           calendarOpenRequest={calendarOpenRequest()}
                           isAdmin={currentUser()?.is_admin === true}
+                          onOpenPanel={openChatPanel}
                           onStartEarnings={startEarningsWorkflow}
                         />
                         <p class="public-chat-disclaimer">HONE 可能出错。内容仅供研究参考，不构成投资建议。</p>
@@ -4071,6 +4083,11 @@ export default function PublicChatPage() {
                   onPushesTab={() => navigate("/pushes")}
                   onAccount={() => navigate("/me")}
                 />
+                <Show when={chatPanel()}>
+                  {(panel) => (
+                    <ResearchPanelFor panel={panel()} onClose={() => setChatPanel(undefined)} />
+                  )}
+                </Show>
                 <AgentWorkspaceHistoryDrawer
                   open={historyDrawerOpen()}
                   userName={workspaceDisplayName()}

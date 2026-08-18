@@ -24,7 +24,6 @@ import "./company-rating-dashboard.css";
 
 type Props = {
   onClose: () => void;
-  onAsk?: (message: string) => void;
 };
 
 const FILTER_LABELS: Record<CompanyRatingFilter, string> = {
@@ -239,11 +238,6 @@ export function CompanyRatingPanel(props: Props) {
           }
           meta={snapshot() ? provenanceLine(snapshot()!) : undefined}
           onClose={props.onClose}
-          action={
-            <button type="button" disabled={loading()} onClick={() => void load()}>
-              {loading() ? "刷新中…" : "重新读取"}
-            </button>
-          }
         />
 
         <Show when={snapshot()?.data_status === "simulation"}>

@@ -57,7 +57,6 @@ export default function PublicValuationLabPage() {
   const [filter, setFilter] = createSignal<Filter>("all");
   const [query, setQuery] = createSignal("");
   const [error, setError] = createSignal("");
-  const [loading, setLoading] = createSignal(false);
   let controller: AbortController | undefined;
 
   const bootstrap = async () => {
@@ -86,7 +85,6 @@ export default function PublicValuationLabPage() {
     }
     controller?.abort();
     controller = new AbortController();
-    setLoading(true);
     setError("");
     try {
       setSnapshot(await getPublicValuationLab(controller.signal));
@@ -99,8 +97,6 @@ export default function PublicValuationLabPage() {
         setError(cause instanceof Error ? cause.message : String(cause));
         setView("error");
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -178,7 +174,6 @@ export default function PublicValuationLabPage() {
                     {([id, label]) => <button type="button" classList={{ "is-active": filter() === id }} onClick={() => setFilter(id)}>{label}</button>}
                   </For>
                 </div>
-                <button type="button" class="valuation-lab-refresh" disabled={loading()} onClick={() => void load()}>{loading() ? "读取中…" : "重新读取"}</button>
               </section>
 
               <Show when={view() !== "error"} fallback={<section class="valuation-lab-empty"><strong>暂时无法读取估值</strong><span>{error()}</span><button type="button" onClick={() => void load()}>重试</button></section>}>

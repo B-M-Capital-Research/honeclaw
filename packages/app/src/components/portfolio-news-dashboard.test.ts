@@ -13,6 +13,16 @@ const feedItem = () =>
     component.indexOf("</ResearchFeedItem>"),
   );
 
+/**
+ * Source with comments stripped, so the "not contain" pins below can only be
+ * satisfied by real code — a stale comment must not keep a contract green.
+ */
+const code = component.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const headStart = code.indexOf("<ResearchPanelHead");
+const panelHead = code.slice(headStart, code.indexOf("/>", headStart) + 2);
+const propsStart = code.indexOf("type Props = {");
+const propsType = code.slice(propsStart, code.indexOf("};", propsStart) + 2);
+
 describe("portfolio news dashboard contract", () => {
   test("exposes the cached report as a controlled research panel", () => {
     expect(component).toContain("export function PortfolioNewsPanel");
@@ -108,16 +118,6 @@ describe("portfolio news dashboard contract", () => {
     expect(component).toContain("待模型分析");
   });
 
-  test("sends only the saved actor report into chat and closes the panel", () => {
-    expect(component).toContain("buildSavedReportPrompt");
-    expect(component).toContain('marker: "HONE_SAVED_PORTFOLIO_NEWS_REPORT"');
-    expect(component).toContain("待分析项目不得补造结论");
-    expect(component).toContain("不要自动修改仓位");
-    // Ask footer only exists when a chat sink is provided, and asking closes.
-    expect(component).toContain("<Show when={props.onAsk}>");
-    expect(component).toContain("props.onClose()");
-  });
-
   test("uses hone design tokens with dark and mobile layouts", () => {
     expect(styles).toContain("var(--hone-ink-950)");
     expect(styles).toContain("var(--hone-ink-500)");
@@ -144,5 +144,23 @@ describe("portfolio news dashboard contract", () => {
     // Per-item impact colors are the shared feed's accent, token-backed there.
     expect(feedStyles).toContain("var(--hone-signal-red)");
     expect(feedStyles).toContain("var(--hone-signal-neutral)");
+  });
+
+  test("has no manual refresh button and no ask-the-chat footer", () => {
+    // The head is kicker + close. Panels read one saved snapshot when they
+    // open, so there is no manual refresh control to press and no stale
+    // "read again" affordance implying the numbers can be recomputed here.
+    expect(panelHead).not.toContain("action=");
+    expect(code).not.toContain("重新读取");
+    expect(code).not.toContain("读取中…");
+    // 「发送到对话」is gone end to end: no composer in the footer, no prompt
+    // envelope, and no chat sink on the props.
+    expect(propsType).toBe("type Props = {\n  onClose: () => void;\n};");
+    expect(code).not.toContain("onAsk");
+    expect(code).not.toContain("发送到对话");
+    expect(code).not.toContain("buildSavedReportPrompt");
+    expect(code).not.toContain("HONE_SAVED");
+    // load() survives for exactly two callers: first paint and error retry.
+    expect(code).toContain("onMount(() => void load())");
   });
 });

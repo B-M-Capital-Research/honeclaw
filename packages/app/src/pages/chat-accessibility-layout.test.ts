@@ -34,6 +34,8 @@ describe("chat accessibility layout", () => {
     expect(chat).toContain("<ChatToolsMenu isAdmin=");
     expect(chat).toContain('navigate("/research")');
     expect(chat).not.toContain("chat-feature-rail");
+    // The eager dashboards must not come back; the on-demand panel mount is
+    // a different thing and is asserted in the chat visual contract.
     expect(chat).not.toContain("Dashboard onAsk=");
     expect(chat).not.toContain("<DailySignalDashboard");
     // Destinations belong in the menu. A second chip row that navigates away
@@ -47,10 +49,10 @@ describe("chat accessibility layout", () => {
     expect(css).not.toContain("width: 144px !important");
   });
 
-  it("hands a research panel question to the chat through the one-shot ask marker", () => {
-    expect(chat).toContain('searchParams.ask !== "research"');
-    expect(chat).toContain("takeResearchAsk");
-    expect(chat).toContain("setPendingAutoSend(message)");
+  it("no longer carries the retired ask-the-agent hand-off", () => {
+    // The panels lost their ask footer, so the chat has nothing to collect.
+    expect(chat).not.toContain("takeResearchAsk");
+    expect(chat).not.toContain('searchParams.ask');
   });
 
   it("shows five personalized research hooks in a blank conversation", () => {

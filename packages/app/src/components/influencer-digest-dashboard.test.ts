@@ -20,14 +20,26 @@ const feedStyles = readFileSync(
   "utf8",
 );
 
+/**
+ * Source with comments stripped, so the "not contain" pins below can only be
+ * satisfied by real code — a stale comment must not keep a contract green.
+ */
+const code = component.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const headStart = code.indexOf("<ResearchPanelHead");
+const panelHead = code.slice(headStart, code.indexOf("/>", headStart) + 2);
+const propsStart = code.indexOf("type Props = {");
+const propsType = code.slice(propsStart, code.indexOf("};", propsStart) + 2);
+
 describe("influencer digest dashboard", () => {
   it("keeps source and opinion boundaries", () => {
     expect(component).toContain("大V速报");
-    expect(component).toContain("作者观点不等于事实或 HONE 结论");
     expect(component).toContain("查看作者原文");
     expect(component).toContain("翻译/聚合源");
-    expect(component).toContain("聚合翻译不是独立事实来源");
-    expect(component).toContain("不得补造未配置作者内容");
+    // Opinion never reads as fact: stance, fact/opinion split and the
+    // counterpoint are printed on the card itself.
+    expect(component).toContain("stanceLabel(item.stance)");
+    expect(component).toContain("反方 / 未证实处：");
+    expect(component).toContain("未配置来源不会被补造内容");
   });
 
   it("is cached and scheduled", () => {
@@ -42,7 +54,7 @@ describe("influencer digest dashboard", () => {
     expect(component).toContain("ResearchPanel");
     expect(component).toContain('backdropClass="influencer-digest-backdrop"');
     expect(component).toContain('dialogClass="influencer-digest-dialog"');
-    expect(component).toContain("props.onClose()");
+    expect(component).toContain("onClose={props.onClose}");
     // The shared shell owns Portal / backdrop / Escape / aria-modal.
     expect(component).not.toContain("Portal");
     expect(component).not.toContain("aria-modal");
@@ -97,15 +109,10 @@ describe("influencer digest dashboard", () => {
     expect(component).not.toContain("{item.published_at_local} {snapshot()?.timezone}");
   });
 
-  it("routes states and the ask prompt through the shared research kit", () => {
+  it("routes loading, error and empty states through the shared research kit", () => {
     expect(component).toContain("ResearchState");
     expect(component).toContain('kind="error"');
     expect(component).toContain("onRetry={() => void load()}");
-    expect(component).toContain("buildSavedReportPrompt");
-    expect(component).toContain('marker: "HONE_SAVED_INFLUENCER_DIGEST"');
-    // No onAsk → no ask footer.
-    expect(component).toContain("onAsk?: (message: string) => void");
-    expect(component).toContain("<Show when={props.onAsk}>");
   });
 
   it("leads with the author's own words and folds our reading away", () => {
@@ -159,5 +166,23 @@ describe("influencer digest dashboard", () => {
     expect(styles).not.toContain("#b65340");
     expect(styles).not.toContain("#fff4d8");
     expect(styles).not.toContain("#fff6e3");
+  });
+
+  it("has no manual refresh button and no ask-the-chat footer", () => {
+    // The head is kicker + close. Panels read one saved snapshot when they
+    // open, so there is no manual refresh control to press and no stale
+    // "read again" affordance implying the numbers can be recomputed here.
+    expect(panelHead).not.toContain("action=");
+    expect(code).not.toContain("重新读取");
+    expect(code).not.toContain("读取中…");
+    // 「发送到对话」is gone end to end: no composer in the footer, no prompt
+    // envelope, and no chat sink on the props.
+    expect(propsType).toBe("type Props = {\n  onClose: () => void;\n};");
+    expect(code).not.toContain("onAsk");
+    expect(code).not.toContain("发送到对话");
+    expect(code).not.toContain("buildSavedReportPrompt");
+    expect(code).not.toContain("HONE_SAVED");
+    // load() survives for exactly two callers: first paint and error retry.
+    expect(code).toContain("onMount(() => void load())");
   });
 });

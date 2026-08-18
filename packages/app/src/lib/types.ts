@@ -1693,5 +1693,8 @@ export type ResearchOverviewCard = {
 
 export type ResearchOverviewPayload = {
   generated_at?: string | null;
+  /** The runtime timezone's calendar day, so freshness is judged by the
+   *  schedule that produced the snapshots rather than the reader's clock. */
+  report_today?: string | null;
   cards: ResearchOverviewCard[];
 };

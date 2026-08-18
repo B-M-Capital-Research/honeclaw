@@ -159,7 +159,9 @@
   color: var(--hone-ink-400);
 }
 
-.public-research-card.is-state-ready .public-research-card__state {
+/* Only a snapshot from today gets the green treatment; an older one stays
+   neutral so the colour never contradicts the words next to it. */
+.public-research-card.is-fresh .public-research-card__state {
   color: var(--hone-signal-green);
 }
 
