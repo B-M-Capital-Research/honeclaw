@@ -5,6 +5,16 @@
   --hone-font-display: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --hone-font-body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --hone-font-label: "SFMono-Regular", "JetBrains Mono", monospace;
+  /* Type scale. Seven steps, and 11px is the floor: research panels used to
+     ship 8–10px CJK, which is unreadable at any pixel density. Anything that
+     wants to be smaller than 2xs wants to be shorter instead. */
+  --hone-text-2xs: 11px;
+  --hone-text-xs: 12px;
+  --hone-text-sm: 13px;
+  --hone-text-md: 14px;
+  --hone-text-lg: 16px;
+  --hone-text-xl: 20px;
+  --hone-text-2xl: 28px;
   --hone-ink-950: #17201f;
   --hone-ink-800: #2d3735;
   --hone-ink-600: #606c68;
@@ -41,9 +51,21 @@
   --hone-signal-red-soft: #f9e6e0;
   --hone-signal-neutral: #68736f;
   --hone-signal-neutral-soft: #eeece5;
+  /* Text sitting on a `-soft` chip needs its own value: the dot colors above
+     are tuned to read as dots, and three of the four failed AA as type
+     (yellow 3.39:1, orange 3.94:1, red 4.43:1). These clear 4.6:1 on their
+     own chip and 5.2:1 on white. Fills and strokes keep using the plain
+     token — only glyphs take `-ink`. */
+  --hone-signal-green-ink: #1f7a45;
+  --hone-signal-yellow-ink: #87660f;
+  --hone-signal-orange-ink: #a15420;
+  --hone-signal-red-ink: #b34230;
+  --hone-signal-neutral-ink: #616b67;
+  --hone-radius-xs: 8px;
   --hone-radius-sm: 10px;
   --hone-radius-md: 16px;
   --hone-radius-lg: 24px;
+  --hone-radius-pill: 999px;
   --hone-shadow-sm: 0 2px 10px rgba(30, 35, 32, 0.06);
   --hone-shadow-md: 0 18px 48px rgba(30, 35, 32, 0.12);
   --hone-login-shadow: 0 4px 24px rgba(23, 32, 31, 0.05);
@@ -85,6 +107,13 @@
   --hone-signal-red-soft: rgba(255, 154, 134, 0.16);
   --hone-signal-neutral: #a8b0aa;
   --hone-signal-neutral-soft: rgba(168, 176, 170, 0.16);
+  /* Dark `-soft` chips are 16% alpha over the raised surface, where the
+     display colors already clear AA (4.91–5.96:1), so ink tracks them. */
+  --hone-signal-green-ink: #7fd6a1;
+  --hone-signal-yellow-ink: #e3c06a;
+  --hone-signal-orange-ink: #e8a06a;
+  --hone-signal-red-ink: #ff9a86;
+  --hone-signal-neutral-ink: #a8b0aa;
   --hone-login-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
   --hone-focus-ring: #f5f0e5;
 }
