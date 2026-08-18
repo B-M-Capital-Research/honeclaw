@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-18 22:02-2026-08-19 02:03 CST（UTC 2026-08-18 14:02-18:03）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 01:30 CST deliver preview 转为 AI 基础设施赛道确定性 / 赔率矩阵，主体讨论液冷、交换网络、CPO、GPU 服务器 OEM 和代表性标的；02:00 CST 又在历史行情参考和工具额度受限语境下输出 AAPL / NVDA / BE 状态表，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 00:00 CST deliver preview 写“你只发了 NVDA，没有具体问题”，随后输出当前行情快照和心跳监控状态；02:00 CST 虽带行情口径，但仍更像监控状态说明而非自主筛查后的必要提醒。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-18 18:00-22:02 CST（UTC 2026-08-18 10:00-14:02）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 20:30 CST deliver preview 转为 AI 基础设施、液冷、交换网络、GPU 服务器 OEM 等赛道长分析；21:00 CST 转为当前推送配置说明；21:30 CST 又在工具额度受限后输出 AI 基础设施五大细分赛道分层，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
