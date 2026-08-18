@@ -56,15 +56,16 @@ type SectionDef = {
   adminOnly?: boolean;
 };
 
-type GroupKey = "signal" | "company" | "holdings" | "intel" | "admin";
+type GroupKey = "signal" | "admin";
 
+/**
+ * Only the macro light is released to everyone for now. Everything else is
+ * still being polished, so it sits behind 管理 where administrators can use
+ * and review it without users meeting a half-finished product.
+ */
 const GROUPS: { key: GroupKey | "all"; label: string; adminOnly?: boolean }[] = [
   { key: "all", label: "全部" },
   { key: "signal", label: "大盘信号" },
-  { key: "company", label: "公司研究" },
-  { key: "holdings", label: "我的持仓" },
-  { key: "intel", label: "情报简报" },
-  // 用户端的管理员能力集中在这里；管理台（/dashboard 等）不在此列。
   { key: "admin", label: "管理", adminOnly: true },
 ];
 
@@ -82,19 +83,21 @@ const SECTIONS: SectionDef[] = [
     key: "daily-signal-ai",
     title: "AI 红绿灯",
     kicker: "AI 增长可持续性",
-    group: "signal",
+    group: "admin",
     blurb: "需求旁证 · 商业化 · 融资 · 资本开支",
     refreshAt: "每日 20:00",
     panel: (props) => <DailySignalPanel kind="ai" {...props} />,
+    adminOnly: true,
   },
   {
     key: "company-ratings",
     title: "公司评级",
     kicker: "52 家研究基线",
-    group: "company",
+    group: "admin",
     blurb: "研究结构分与因子覆盖，缺数据时明示",
     refreshAt: "每日 19:30",
     panel: (props) => <CompanyRatingPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "valuation-lab",
@@ -111,46 +114,51 @@ const SECTIONS: SectionDef[] = [
     key: "portfolio-news",
     title: "持仓重点新闻",
     kicker: "按你的持仓筛选",
-    group: "holdings",
+    group: "admin",
     blurb: "每日新闻的持仓影响分析",
     refreshAt: "每日 20:00",
     panel: (props) => <PortfolioNewsPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "position-management",
     title: "仓位管理",
     kicker: "评分 × 宏观 × 新闻",
-    group: "holdings",
+    group: "admin",
     blurb: "结合评分与信号的每日仓位建议",
     refreshAt: "每日 20:00",
     panel: (props) => <PositionManagementPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "influencer-digest",
     title: "大V速报",
     kicker: "观点不等于事实",
-    group: "intel",
+    group: "admin",
     blurb: "注册作者的公开观点日报",
     refreshAt: "每日 19:50",
     panel: (props) => <InfluencerDigestPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "key-event-chain",
     title: "关键事件链",
     kicker: "第一性证据链",
-    group: "intel",
+    group: "admin",
     blurb: "AI 主题的里程碑与线索",
     refreshAt: "每日 19:55",
     panel: (props) => <KeyEventChainPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "weekly-brief",
     title: "周度简报",
     kicker: "回顾与前瞻",
-    group: "intel",
+    group: "admin",
     blurb: "上周回顾 · 下周日历 · 30 日展望",
     refreshAt: "每日 19:10",
     panel: (props) => <WeeklyBriefPanel {...props} />,
+    adminOnly: true,
   },
   {
     key: "research-library",
@@ -306,12 +314,12 @@ export default function PublicResearchPage() {
   const visibleSections = createMemo(() => {
     const active = activeGroup();
     return active === "all"
-      ? allowedSections().filter((section) => section.group !== "admin")
+      ? allowedSections()
       : allowedSections().filter((section) => section.group === active);
   });
 
   const dailySections = createMemo(() =>
-    allowedSections().filter((section) => section.group !== "admin"),
+    allowedSections().filter((section) => section.panel || section.href),
   );
 
   const readyCount = createMemo(
@@ -393,7 +401,12 @@ export default function PublicResearchPage() {
                           onClick={() => openSection(section)}
                         >
                           <span class="public-research-card__top">
-                            <span class="public-research-card__kicker">{section.kicker}</span>
+                            <span class="public-research-card__kicker">
+                              {section.kicker}
+                              <Show when={section.adminOnly}>
+                                <em class="public-research-card__gated">未发布</em>
+                              </Show>
+                            </span>
                             <span class="public-research-card__state">
                               <Show when={isFreshToday(card(), reportToday(), state())}>
                                 <i class="public-research-card__dot" aria-hidden="true" />

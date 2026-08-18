@@ -2225,30 +2225,22 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
       items: [
         { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
         { href: "/research?panel=daily-signal-macro", panel: "daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
-        { href: "/research?panel=daily-signal-ai", panel: "daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
-        { href: "/research?panel=company-ratings", panel: "company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
       ],
     },
-    {
-      label: copy().tools_group_intel,
-      items: [
-        { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
-        { href: "/research?panel=key-event-chain", panel: "key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
-        { href: "/research?panel=weekly-brief", panel: "weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
-      ],
-    },
-    {
-      label: copy().tools_group_holdings,
-      items: [
-        { href: "/research?panel=portfolio-news", panel: "portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
-        { href: "/research?panel=position-management", panel: "position-management", title: copy().tools_position_title, desc: copy().tools_position_desc },
-      ],
-    },
+    // Everything below the macro light is still being polished, so it stays
+    // with the administrators reviewing it rather than shipping half-done.
     ...(props.isAdmin
       ? [
           {
             label: copy().tools_group_admin,
             items: [
+              { href: "/research?panel=daily-signal-ai", panel: "daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
+              { href: "/research?panel=company-ratings", panel: "company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
+              { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
+              { href: "/research?panel=key-event-chain", panel: "key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
+              { href: "/research?panel=weekly-brief", panel: "weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
+              { href: "/research?panel=portfolio-news", panel: "portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
+              { href: "/research?panel=position-management", panel: "position-management", title: copy().tools_position_title, desc: copy().tools_position_desc },
               { href: "/valuation-lab", title: copy().valuation_lab_title, desc: copy().tools_valuation_desc },
               { href: "/research?group=admin", title: copy().research_library_title, desc: copy().tools_library_desc },
             ],

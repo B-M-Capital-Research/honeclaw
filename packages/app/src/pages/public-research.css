@@ -272,3 +272,16 @@
   gap: 14px;
   margin-top: 14px;
 }
+
+/* Marks a section users cannot reach yet, so an administrator reviewing the
+   desk can tell released from still-being-polished at a glance. */
+.public-research-card__gated {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow);
+  font-style: normal;
+  letter-spacing: 0;
+  text-transform: none;
+}

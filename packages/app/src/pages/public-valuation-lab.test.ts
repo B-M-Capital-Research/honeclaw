@@ -14,11 +14,15 @@ describe("daily valuation lab", () => {
     // Still reachable from conversation, but only inside the admin group.
     expect(chat).toContain('href: "/valuation-lab"');
     expect(chat).toContain("tools_group_admin");
+    // The publicly-visible group holds only the macro light for now, so every
+    // other destination — this one included — must sit past the admin gate.
     const daily = chat.slice(
       chat.indexOf("tools_group_daily"),
-      chat.indexOf("tools_group_intel"),
+      chat.indexOf("tools_group_admin"),
     );
     expect(daily).not.toContain('href: "/valuation-lab"');
+    expect(daily).not.toContain("panel: \"daily-signal-ai\"");
+    expect(daily).toContain("panel: \"daily-signal-macro\"");
   });
 
   test("is parked under the research-desk admin group until public rollout", () => {
