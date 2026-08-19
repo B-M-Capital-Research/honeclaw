@@ -327,6 +327,16 @@ New
 
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
 - 已验证范围：`data/runtime/logs/web.log.2026-07-13` 15:01-19:01 CST heartbeat 日志、`data/sessions.sqlite3` 同窗 session 记录与 `cron_job_runs` 停滞状态。
+
+## 最新运行态复核（2026-08-19 18:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-19 14:01-18:02 CST。
+  - 同窗有 4 条 `定时任务执行失败，跳过发送: failure_kind=execution_failed err=heartbeat 输出不是结构化 JSON，任务已标记失败`，直接表现为 heartbeat 本轮未发送。
+  - 同窗还有 82 条 `function_calling tool call rejected by global budget`，多条 deliver 明写工具调用上限、行情未完整核验或沿用上下文报价；这些仍会放大实时核验 / evidence fail-closed 后跳过或降级的风险。
+- 本轮判断
+  - 该样本仍落在“实时核验 / 完整性门禁或结构化输出失败后只给失败态、跳过发送”的既有缺陷范围，不是新的独立根因。
+  - 同窗仍有其它 heartbeat 成功 deliver，未见错投、敏感信息泄露或全渠道不可用，因此维持功能性 `P2 / New`，非 P1。
 ## 最新运行态复核（2026-07-17 23:02 CST）
 
 - `data/sessions.sqlite3`
