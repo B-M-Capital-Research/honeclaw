@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-19 10:00-14:02 CST（UTC 2026-08-19 02:00-06:02）。
+  - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
+  - 11:00 CST deliver preview 漂移为 2025 年特朗普政府对华关税历史解释，正文引用 Congress.gov / Tax Foundation / PIIE 等政策来源，与持仓重大事件心跳目标不匹配。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 11:30 / 12:30 / 13:30 CST deliver preview 多次转为 MSTR / Bitcoin NAV 关系或 MSTR 报价分析；13:00 CST deliver preview 又转为“我专注于美股科技价值投资”的产品能力介绍，未围绕 NVDA 关键事件心跳目标完成自主核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 12:30 / 13:00 CST deliver preview 转为美股三大指数 / 半导体板块系统性回调或 NVDA 单项下跌归因，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
+  - 调度和投递主链路整体仍可收口，这些样本主要影响 heartbeat 内容焦点与目标约束，因此仍按质量性 `P3`；为何不影响功能链路：同窗其它 heartbeat/event-engine 仍运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-18 22:02-2026-08-19 02:03 CST（UTC 2026-08-18 14:02-18:03）。
   - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
   - 01:30 CST deliver preview 转为 AI 基础设施赛道确定性 / 赔率矩阵，主体讨论液冷、交换网络、CPO、GPU 服务器 OEM 和代表性标的；02:00 CST 又在历史行情参考和工具额度受限语境下输出 AAPL / NVDA / BE 状态表，未稳定覆盖 AAPL / NVDA / BE 全目标关键事件筛查。
