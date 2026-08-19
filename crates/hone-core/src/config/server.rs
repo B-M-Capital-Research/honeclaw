@@ -210,6 +210,8 @@ fn default_local_workflow_validate_code_env() -> String {
 pub struct NanoBananaConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default = "default_nb_provider")]
+    pub provider: String,
     #[serde(default = "default_nb_base_url")]
     pub base_url: String,
     #[serde(default = "default_nb_model")]
@@ -225,6 +227,10 @@ fn default_true() -> bool {
 }
 fn default_image_count() -> u32 {
     3
+}
+
+fn default_nb_provider() -> String {
+    "openrouter".to_string()
 }
 
 fn default_nb_base_url() -> String {

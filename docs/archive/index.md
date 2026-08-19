@@ -2671,3 +2671,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Verification: workspace tests 2575 passed / 0 failed across 30 targets; 92 ignored hone-memory PostgreSQL tests passed; 22 CI-safe regressions passed; Web 486 passed / 0 failed; cloud doctor reported PostgreSQL healthy and schema ensured; `cargo tree -i rusqlite --workspace` showed only `hone-cli` and `hone-imessage`
 - Current conclusion: PostgreSQL is the only Hone runtime database backend. All alternate storage configuration, shadow/backfill tooling, stale fixtures, prompts, policies, and current architecture/runbook references are removed. `hone-cli` retains a read-only historical event-store importer, while `hone-imessage` independently reads macOS `chat.db`; neither is runtime persistence.
 - Next entry point: no migration work remains. Future storage changes must preserve the PostgreSQL authority and treat the two read-only consumers as narrow compatibility boundaries.
+
+### Atlas Cloud Optional Image Provider
+
+- Status: done locally; external PR pending at archive time
+- Date: 2026-08-20
+- Plan: `docs/archive/plans/atlascloud-image-provider-2026-08-20.md`
+- Handoff: `docs/handoffs/2026-08-20-atlascloud-image-provider.md`
+- Decision / ADR: none; this extends the existing image adapter without changing the default
+- Related PRs / commits: external PR pending at archive time
+- Related regressions: `hone-integrations` local HTTP contract tests; `hone-core` config tests
+- Current conclusion: `nano_banana` keeps OpenRouter as its default and can optionally select Atlas Cloud credentials, submit one paid generation request, and perform bounded GET-only prediction polling while preserving the existing output/download contract.
+- Next entry point: `crates/hone-integrations/src/nano_banana.rs`; verify the live model schema before adding any model-specific request fields.
