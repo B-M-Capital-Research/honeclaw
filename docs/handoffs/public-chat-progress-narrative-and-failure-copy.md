@@ -99,16 +99,25 @@
   与指引上调，含估值参考、风险与证伪、时段状态；全文零核验/门禁类流程词。
   遗留观察：首行中「昨日常规收盘 $61.17（+9.35%）」的百分比与同行
   +24.09% 口径不一致，疑似模型引用了错误的涨跌基准字段，待后续跟踪。
-- **前端 Pages 未随推送更新（既有故障，先于本次改动）**：08-18 08:30Z 起
-  所有 main push 的 Cloudflare Pages check 均为 0 秒「Deployed successfully」
-  （构建被跳过并复用旧产物）；线上入口 `index-BlhCBdRQ.js` 对应源码早于
-  `561bcbab`（该 tip 本地重建为 `AXAiQvqf`，且入口 CSS hash 与本地一致，
-  排除工具链漂移）。本机、仓库 Secrets 均无 Cloudflare 凭证，Chrome 未登录
-  dash.cloudflare.com，无法代为触发；需要登录面板检查 honeclaw 项目
-  Settings→Builds（build watch paths / 暂停开关）并 Retry 最新 main 部署。
-  在此之前，旧前端 + 新后端的实际体验：回答质量与失败文案已生效，状态行
-  逐步更新为新文案，刷新恢复时可见完整 steps trail；发送过程中的实时
-  trail 与绿勾样式需等前端发布。
+- **前端 Pages 实际部署成功（此前一度误判为故障，已用面板证据更正）**：
+  `69933303` 的 Pages 构建 09:39Z 完成（真实 50s 构建，配置为
+  `bun install --frozen-lockfile && bun run build:web:public` →
+  `/packages/app/dist-public`），生产别名 hone-claw.com 指向 tip 部署。
+  误判原因与教训：GitHub check-run 的 started==completed 只是 Cloudflare
+  在构建结束时一次性上报的习惯，不代表构建被跳过；跨环境比较入口
+  `index-*.js` hash 也不可靠（Pages 的 bun/环境变量与本地不同，
+  同源码 hash 可不同）。**验证前端是否上线的正确方法**：直接抓生产
+  懒加载分块 grep 本次改动的字面标记（本次用 `chat-CQWd35xn.js` 含
+  `is-done` / `pub-assistant-turn-steps` 证实），或登录面板看部署详情
+  的构建时长与别名。
+- 生产 UI 复验（管理员 codex 路线）：「tsla盘前现在什么价，为什么」正确
+  报出盘前 $344.50 与「距盘中开始约 52 分钟」的服务端时钟事实，分时段
+  给出盘后/盘前涨跌，归因分主次（费半急杀为主、Moderna 资金轮动为次）。
+  管理员轮因 codex 线程复用常在数秒内完成，进度轨迹一闪而过；轨迹的
+  完整可见性主要服务公开用户的 strict 链路（预取+工具循环耗时更长）。
+  遗留观察（模型服从度余量，可后续拧 prompt）：正文出现过一次
+  「根据 extended_hours 核验的盘前数据」（工具名+核验字样）；TEM 首行
+  「+9.35%」与 +24.09% 基准口径不一致。
 
 ## 风险与后续
 
