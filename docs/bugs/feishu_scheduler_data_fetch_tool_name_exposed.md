@@ -22,6 +22,12 @@ Fixed
 
 ## 最新进展
 
+- 2026-08-21 02:02 CST 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
+  - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：22:01-02:01 CST 多轮 heartbeat 写出 `hone_quote_time.beijing`、`provider timestamp`、工具调用已达上限、行情接口调用受限或 `latest available` 等用户不应看到的实现口径；代表样本包括 22:30 / 23:00 / 00:30 / 01:30 / 02:00 CST `NVDA 关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`。
+  - 当前未见 runtime 重启 / revision 切换或确认加载 2026-08-15 共享净化层修复的证据，因此仅作为待部署复核样本，不回退代码级 `Fixed`。
+  - 这些 heartbeat 消息业务主体已执行并进入送达候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 - 2026-08-20 22:02 CST 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/sessions.sqlite3` 在本轮窗口仍未追入真实运行，用户可见证据改从 `data/logs/hone-console-page-source.log` 的 heartbeat deliver preview 复核。
   - source log 同窗有多条用户可见候选继续外露内部行情工具 / 字段口径：18:01-22:02 CST `hone_quote_time` 命中 20 条、`provider timestamp` 命中 7 条、工具预算拒绝 195 条；代表样本包括 18:30 / 19:30 / 20:30 / 22:00 CST 多条 heartbeat 写出 `hone_quote_time.beijing`、`provider timestamp`、工具调用已达上限或行情核验受限。

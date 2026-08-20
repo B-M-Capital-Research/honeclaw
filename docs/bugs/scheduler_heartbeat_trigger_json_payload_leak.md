@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-08-21 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-20 22:01-2026-08-21 02:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 00:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段；01:30 CST 同任务再次以 fenced `json` / `status=triggered` / `triggered` 开头进入用户可见候选。
+    - 02:00 CST 同任务还出现 `deliver_chars=11`、`deliver_preview="```json\n```"` 的空 fenced JSON 壳；同窗 parse 分布仍有 `JsonTriggered=3`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered=70` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-20 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-20 14:01-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
