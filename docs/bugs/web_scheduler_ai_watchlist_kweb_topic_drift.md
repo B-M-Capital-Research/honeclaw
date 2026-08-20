@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-21 02:01-06:01 CST（UTC 2026-08-20 18:01-22:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 02:30 CST deliver preview 转为 NBIS 可转债融资长文；03:00 CST 又转为 TQQQ 杠杆 ETF 投教和支撑位分析；05:00 / 06:00 CST 转为 TEM 单项量价异动 / 13F 减持说明，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 02:31 CST deliver preview 输出“AAPL — Tim Cook 将于9月卸任，硬件负责人John Ternus接任CEO”这类高风险未核验事件，且未稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - 同窗仍有 `deliver=33`、`duplicate_suppressed=9`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-20 22:01-2026-08-21 02:01 CST（UTC 2026-08-20 14:01-18:01）。
   - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
   - 00:30 CST deliver preview 转为“你的推送日程”，列出定时推送、即时推、严重度阈值和勿扰设置，而不是执行 AI / 科技持仓观察关键事件核验；01:00 CST 同任务又转为 TQQQ 杠杆 ETF 投教和持有期限建议。
