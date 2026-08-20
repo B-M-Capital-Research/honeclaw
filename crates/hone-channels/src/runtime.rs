@@ -1010,6 +1010,7 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("stream ended before done")
         || lowered.contains("stream reached done")
         || lowered.contains("stream emitted payload")
+        || lowered.contains("internal-only output")
 }
 
 fn strip_internal_workflow_prelude(text: &str) -> Option<String> {
@@ -2072,6 +2073,13 @@ mod tests {
         assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
         assert!(!err.contains("CLI/ACP"));
         assert!(!err.contains("function-calling"));
+    }
+
+    #[test]
+    fn user_visible_error_message_rewrites_internal_only_output_errors() {
+        let err = user_visible_error_message(Some("agent returned internal-only output"));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(!err.contains("internal-only output"));
     }
 
     #[test]

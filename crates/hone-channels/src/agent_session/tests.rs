@@ -157,6 +157,23 @@ async fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecover
 }
 
 #[tokio::test]
+async fn failed_assistant_persisted_message_hides_internal_only_output_error() {
+    let response = AgentResponse {
+        content: String::new(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: false,
+        error: Some("agent returned internal-only output".to_string()),
+    };
+
+    assert!(recover_failed_read_only_user_visible_output(&response).is_none());
+    assert_eq!(
+        failed_assistant_persisted_message(&response),
+        "抱歉，这次处理失败了。请稍后再试。"
+    );
+}
+
+#[tokio::test]
 async fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
     let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Local offset");
     let original = offset
@@ -525,8 +542,7 @@ struct MockLlmState {
 
 const MOCK_SERVICE_OWNED_PREFIX_TOKEN: &str = "{{service_owned_initial_prefix}}";
 const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
-const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str =
-    "；行情口径：运行时时区=Asia/Shanghai；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str = "；行情口径：运行时时区=Asia/Shanghai；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
 fn service_owned_prefix_from_messages(messages: &[Message]) -> Option<String> {
     messages.iter().rev().find_map(|message| {
@@ -7473,7 +7489,10 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         .collect::<Vec<_>>();
     assert_eq!(
         visible_chunks,
-        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7737,7 +7756,13 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
     assert_eq!(visible_chunks.concat(), expected_answer);
     // The committed canonical header streams first; the body follows as
     // one deferred tail once the answer is finalized.
-    assert_eq!(visible_chunks, [service_prefix.as_str(), &expected_answer[service_prefix.len()..]]);
+    assert_eq!(
+        visible_chunks,
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -7887,7 +7912,10 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -9817,7 +9845,10 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(

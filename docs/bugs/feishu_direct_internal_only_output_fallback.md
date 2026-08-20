@@ -3,8 +3,24 @@
 - 发现时间：2026-07-27 15:03 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
+
+## 修复进展
+
+- **2026-08-20 代码级修复，状态更新为 `Fixed`**：
+  - `crates/hone-channels/src/runtime.rs`
+    - `looks_internal_error_detail()` 现把 `agent returned internal-only output` 识别为内部错误细节，统一映射到通用用户态失败文案，避免内部占位短语进入用户可见 final。
+  - `crates/hone-channels/src/agent_session/tests.rs`
+    - 新增 `failed_assistant_persisted_message_hides_internal_only_output_error` 回归，锁定 `AgentFailed + internal-only output` 只能持久化脱敏失败文案。
+  - `crates/hone-channels/src/runtime.rs`
+    - 新增 `user_visible_error_message_rewrites_internal_only_output_errors` 回归，锁定统一错误映射不会把该内部占位原样返回给用户。
+  - 验证：
+    - `cargo test -p hone-channels user_visible_error_message_rewrites_internal_only_output_errors --lib -- --nocapture`
+    - `cargo test -p hone-channels failed_assistant_persisted_message_hides_internal_only_output_error --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮完成代码与回归闭环，但未重启或重建任何运行态服务；live 复核仍待后续自然部署窗口观察。
 
 ## 证据来源
 
