@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-08-20 18:01 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-20 14:01-18:01 CST（UTC `2026-08-20T06:01:34Z` 之后）。
+    - 14:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，却输出“你的推送日程 / 定时推送 / 即时推”等配置管理信息，并因此落成 `heartbeat 输出不是结构化 JSON` 执行失败，不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+    - 15:30 CST `AI与科技持仓观察关键事件心跳提醒` deliver 转为 BE 集体诉讼截止日期重复提醒，且明写“上次已送达但距截止不足40天，建议再次确认”；该轮没有稳定围绕完整 AI / 科技持仓观察清单做触发 / noop 收口。
+  - 同窗统计：
+    - `run_start=64`、`run_finish=65`、`deliver=37`、`duplicate_suppressed=17`、`heartbeat 输出不是结构化 JSON=3`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、产品介绍、工具预算或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-20 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-20 10:02-14:02 CST（UTC `2026-08-20T02:02:03Z` 之后）。
