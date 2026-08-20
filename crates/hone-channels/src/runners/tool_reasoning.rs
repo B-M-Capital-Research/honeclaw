@@ -762,6 +762,11 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             service_owned_prefix_content,
             precommitted_service_prefix,
         )
+        .with_pre_final_prefix_commit(
+            service_owned_initial_prefix
+                .as_ref()
+                .is_some_and(|prefix| prefix.commit_before_model),
+        )
         .with_tool_observer(Some(observer))
         .with_stream_observer(Some(stream_observer))
         .with_tool_call_budget(

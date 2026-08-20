@@ -526,7 +526,7 @@ struct MockLlmState {
 const MOCK_SERVICE_OWNED_PREFIX_TOKEN: &str = "{{service_owned_initial_prefix}}";
 const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
 const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str =
-    "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+    "；行情口径：运行时时区=Asia/Shanghai；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
 fn service_owned_prefix_from_messages(messages: &[Message]) -> Option<String> {
     messages.iter().rev().find_map(|message| {
@@ -5011,6 +5011,76 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Web interactive finance turns opt back into committed terminal streaming,
+/// in the narrow shape that avoids the 75ca1957 hazard: nothing commits before
+/// the model's own final answer reproduces the canonical header
+/// (commit_before_model stays false), so the user watches the answer stream
+/// instead of a silent buffer until Done.
+#[tokio::test]
+async fn web_interactive_finance_turn_opts_into_committed_terminal_streaming() {
+    let root = make_temp_dir("hone_channels_web_terminal_stream_policy");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    })
+    .await;
+    let actor = ActorIdentity::new("web", "streaming-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+
+    let (execution, _) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            "AAPL 现在怎么样",
+            "AAPL 现在怎么样",
+            &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("web strict turn: {error}"));
+    assert_eq!(execution.runner_name, "function_calling");
+    assert!(execution.runner_request.agent_owned_finance_loop);
+    assert_eq!(
+        execution.runner_request.terminal_stream_policy,
+        crate::runners::TerminalStreamPolicy::CanonicalInvestmentHeader
+    );
+    let prefix = execution
+        .runner_request
+        .service_owned_initial_prefix
+        .as_ref()
+        .expect("web finance turns carry the server-owned header prefix");
+    assert!(
+        !prefix.commit_before_model,
+        "nothing may become irreversible before the model's own final answer"
+    );
+    let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+
+    // Non-web channels keep the buffered default: no listener there supports
+    // committed delivery, so an enabled policy would only produce rejected
+    // commit attempts.
+    let cli_actor = ActorIdentity::new("cli", "streaming-user", None::<String>).expect("actor");
+    let cli_session = AgentSession::new(core, cli_actor.clone(), "direct");
+    let (cli_execution, _) = cli_session
+        .prepare_execution_for_turn(
+            &cli_actor.session_id(),
+            "AAPL 现在怎么样",
+            "AAPL 现在怎么样",
+            &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("cli turn: {error}"));
+    assert_eq!(
+        cli_execution.runner_request.terminal_stream_policy,
+        crate::runners::TerminalStreamPolicy::Disabled
+    );
+    let _ = std::fs::remove_dir_all(&cli_execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
     let root = make_temp_dir("hone_channels_unverified_earnings_runner_override");
@@ -6937,11 +7007,11 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[1].role, "assistant");
+    // Runner wiring errors are internal detail; the persisted turn carries the
+    // product-language rewrite while logs keep the raw diagnostic.
     assert_eq!(
         messages[1].content[0].text.as_deref(),
-        Some(
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
-        )
+        Some("抱歉，这次处理失败了。请稍后再试。")
     );
     assert_eq!(
         messages[1]
@@ -7403,7 +7473,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         .collect::<Vec<_>>();
     assert_eq!(
         visible_chunks,
-        [expected_answer.as_str()],
+        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7524,6 +7594,8 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
+    // A zero-coverage clarification never satisfies the evidence floor, so the
+    // final is not early-eligible and still publishes as one whole chunk.
     assert_eq!(visible_chunks, [expected_answer.as_str()]);
     let _ = std::fs::remove_dir_all(root);
 }
@@ -7663,7 +7735,9 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
-    assert_eq!(visible_chunks, [expected_answer.as_str()]);
+    // The committed canonical header streams first; the body follows as
+    // one deferred tail once the answer is finalized.
+    assert_eq!(visible_chunks, [service_prefix.as_str(), &expected_answer[service_prefix.len()..]]);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -7813,7 +7887,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [expected_answer.as_str()],
+        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -9053,7 +9127,10 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("以‘推断：’开头")
                 && runtime_input.contains("禁止据此写‘纽交所’或‘收盘价’")
                 && runtime_input.contains("克制的是断言强度而不是覆盖面")
-                && runtime_input.ends_with("真正缺失的口径按缺口如实披露。"),
+                && runtime_input.contains("真正缺失的口径按缺口如实披露。")
+                && runtime_input.contains("【最终正文的语言边界：面向普通投资者的成品】")
+                && runtime_input
+                    .ends_with("才说明这次暂时查不到，并给出已确认的事实与建议的下一步。"),
             "{input}: {runtime_input}"
         );
     }
@@ -9108,7 +9185,7 @@ async fn macro_production_prompts_do_not_enter_security_resolution_or_error() {
 }
 
 #[tokio::test]
-async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_whole_answer() {
+async fn interactive_finance_loop_is_channel_independent_and_web_streams_the_committed_header() {
     let input = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
     for channel in ["web", "discord", "telegram", "feishu"] {
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
@@ -9140,7 +9217,13 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
         );
         assert_eq!(
             execution.runner_request.terminal_stream_policy,
-            TerminalStreamPolicy::Disabled,
+            // Only Web has a listener that supports committed delivery; other
+            // channels keep whole-answer buffering.
+            if channel == "web" {
+                TerminalStreamPolicy::CanonicalInvestmentHeader
+            } else {
+                TerminalStreamPolicy::Disabled
+            },
             "{channel}"
         );
         assert_eq!(
@@ -9208,9 +9291,11 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
         .unwrap_or_else(|(_, error)| panic!("ordinary Web turn: {error}"));
 
     assert!(execution.runner_request.agent_owned_finance_loop);
+    // Streaming is on, but only the model's own final answer may trigger a
+    // commit: nothing is authorized to publish the prefix before it.
     assert_eq!(
         execution.runner_request.terminal_stream_policy,
-        TerminalStreamPolicy::Disabled
+        TerminalStreamPolicy::CanonicalInvestmentHeader
     );
     let configured = execution
         .runner_request
@@ -9227,7 +9312,7 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
 }
 
 #[tokio::test]
-async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering() {
+async fn web_image_finance_turn_preserves_the_header_format_with_deferred_prefix_commit() {
     let root = make_temp_dir("hone_channels_image_finance_deferred_prefix");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
@@ -9253,7 +9338,7 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
     assert_eq!(execution.runner_request.max_tool_calls, Some(24));
     assert_eq!(
         execution.runner_request.terminal_stream_policy,
-        TerminalStreamPolicy::Disabled
+        TerminalStreamPolicy::CanonicalInvestmentHeader
     );
     let configured = execution
         .runner_request
@@ -9732,7 +9817,7 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [expected_answer.as_str()],
+        [service_prefix.as_str(), &expected_answer[service_prefix.len()..]],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -9873,7 +9958,10 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [result.response.content.as_str()],
+        [
+            service_prefix.as_str(),
+            &result.response.content[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -10076,7 +10164,10 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [result.response.content.as_str()],
+        [
+            service_prefix.as_str(),
+            &result.response.content[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(

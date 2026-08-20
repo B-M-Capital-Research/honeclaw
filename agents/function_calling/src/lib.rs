@@ -1142,6 +1142,12 @@ pub struct FunctionCallingAgent {
     pub preloaded_evidence_calls: u32,
     pub service_owned_initial_prefix: Option<String>,
     pub precommitted_service_prefix: Option<String>,
+    /// Whether the service authorized committing its owned prefix before the
+    /// model's own final answer reproduces it (the runner's before-model
+    /// pre-commit and this agent's post-evidence mid-loop commit). When false,
+    /// the only commit source is real final-answer bytes flowing through the
+    /// stream observer.
+    pub allow_pre_final_prefix_commit: bool,
     #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
@@ -1175,6 +1181,7 @@ impl FunctionCallingAgent {
             preloaded_evidence_calls: 0,
             service_owned_initial_prefix: None,
             precommitted_service_prefix: None,
+            allow_pre_final_prefix_commit: false,
             #[cfg(test)]
             finish_research_terminal_synthesis: false,
             step_timeout: None,
@@ -1259,6 +1266,11 @@ impl FunctionCallingAgent {
     ) -> Self {
         self.service_owned_initial_prefix = required;
         self.precommitted_service_prefix = precommitted;
+        self
+    }
+
+    pub fn with_pre_final_prefix_commit(mut self, allow: bool) -> Self {
+        self.allow_pre_final_prefix_commit = allow;
         self
     }
 
@@ -5201,11 +5213,21 @@ fn canonical_prefix_delta(
     {
         return Err(());
     }
-    let target_bytes = visible_candidate.len().min(expected_prefix.len());
+    let mut target_bytes = visible_candidate.len().min(expected_prefix.len());
+    // Once the candidate moves past the expected header line, forward its
+    // terminating newline as well: that single byte is what lets the stream
+    // observer validate the completed canonical header and commit it while
+    // the retry-unstable body stays deferred. Without it the header could
+    // only ever commit through a service-side pre-commit.
+    if visible_candidate.len() > expected_prefix.len()
+        && visible_candidate.as_bytes()[expected_prefix.len()] == b'\n'
+    {
+        target_bytes = expected_prefix.len() + 1;
+    }
     if target_bytes < forwarded_bytes {
         return Err(());
     }
-    Ok(expected_prefix[forwarded_bytes..target_bytes].to_string())
+    Ok(visible_candidate[forwarded_bytes..target_bytes].to_string())
 }
 
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
@@ -7381,6 +7403,7 @@ impl Agent for FunctionCallingAgent {
                         if finance_round_is_read_only
                             && investment_research_started
                             && service_prefix_commit_eligible
+                            && self.allow_pre_final_prefix_commit
                             && precommitted_service_prefix.is_none()
                             && let (Some(prefix), Some(observer)) = (
                                 self.service_owned_initial_prefix.as_deref(),
@@ -14668,6 +14691,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-service-prefix".to_string());
 
@@ -14790,6 +14814,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-prefix-unknown-after".to_string());
 
@@ -14849,6 +14874,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-prefix-mixed-initial".to_string());
 
@@ -14859,13 +14885,15 @@ mod tests {
         assert_eq!(response.iterations, 2);
         assert!(response.tool_calls_made.is_empty());
         assert_eq!(unknown_calls.load(Ordering::SeqCst), 0);
+        // The header line forwards together with its terminating newline so
+        // the downstream observer can validate and commit the completed line.
         assert_eq!(
             stream_observer
                 .events
                 .lock()
                 .expect("stream events")
                 .as_slice(),
-            [format!("final:{prefix}")]
+            [format!("final:{prefix}\n")]
         );
         assert_eq!(
             stream_observer.committed_visible_prefix(),

@@ -42,7 +42,7 @@ use crate::response_finalizer::{
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     DeliveredPushContext, DeliveredPushContextBatch, REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY,
-    ServiceOwnedInitialPrefix,
+    ServiceOwnedInitialPrefix, TerminalStreamPolicy,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
@@ -1630,6 +1630,18 @@ impl AgentSession {
                     commit_before_model: false,
                 },
             );
+            // Stream the final answer as it is written instead of holding the
+            // whole body until Done. This is the narrow shape that avoids the
+            // hazard which disabled streaming in 75ca1957: with
+            // commit_before_model=false nothing becomes irreversible until the
+            // model's own final answer reproduces the server-anchored header
+            // line, and only bytes the security sanitizer provably keeps
+            // (validated header, complete safe body lines) are committed.
+            // A direct final inside an active tool round streams just the
+            // header and defers its retry-unstable body; the tools-disabled
+            // terminal synthesis streams the body line by line.
+            execution.runner_request.terminal_stream_policy =
+                TerminalStreamPolicy::CanonicalInvestmentHeader;
         }
         Ok((execution, investment_context))
     }
