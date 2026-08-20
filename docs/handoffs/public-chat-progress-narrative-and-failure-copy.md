@@ -77,6 +77,39 @@
   进度 trail 的阶段映射与截断由单测覆盖；带真实 key 的完整 trail 需在
   配好 provider 的环境回归。
 
+## 生产部署记录（2026-08-20 17:3x–18:1x 北京时间）
+
+- 提交 `69933303a9bac83724bc574f4f74fed9abbd56f4` 推送 main；Runtime Image
+  run #107 构建成功，registry 权威 digest
+  `sha256:5d0e5da94f5c5a132f93fd152b47cbc9f3904d5d79954cc2132c1d5fe90b2304`
+  （workflow buildx 输出的 `4c2fd73e…` 与 crane 对 tag 的两次读数不一致，
+  以 crane/registry 为准；bundle 内嵌 revision 校验兜底）。
+- 主机（gcloud ssh）：磁盘 5.8GiB ≥ 2GiB → 本地同 revision 脚本上传并
+  SHA-256 比对（`d3633683…`）→ `stage_ghcr_runtime.sh` 按 digest 暂存
+  `[PASS]` → 两次 active-chat-runs `{"count":0}` → 临时符号链接 + `mv -Tf`
+  原子切换 → `systemctl restart hone-web` → `/api/meta` 精确
+  `69933303…`、`source=ghcr_linux_oci`、cloud_mode=cloud、PG/OSS ok、
+  `local_durable=0`、role=all；重启后 2 分钟内 journal 零 panic/ERROR。
+- 回滚保留：`253421df…`（上一版）。`hone-channel@feishu` 为 disabled 且本
+  boot 从未运行（运营侧既有状态，非本次回归）。
+- 生产 E2E（用户已登录会话，管理员 codex 路线）：同一问题
+  「tem为什么涨这么多」部署前实录为「原因本轮未完全核验」拒答；部署后
+  首行数据时间保留，结论直接归因 Moderna/Merck INTerpath-001 III 期达标
+  → 验证 Personalis（Tempus 15 亿美元收购标的）→ 叠加 Q2 首次 GAAP 盈利
+  与指引上调，含估值参考、风险与证伪、时段状态；全文零核验/门禁类流程词。
+  遗留观察：首行中「昨日常规收盘 $61.17（+9.35%）」的百分比与同行
+  +24.09% 口径不一致，疑似模型引用了错误的涨跌基准字段，待后续跟踪。
+- **前端 Pages 未随推送更新（既有故障，先于本次改动）**：08-18 08:30Z 起
+  所有 main push 的 Cloudflare Pages check 均为 0 秒「Deployed successfully」
+  （构建被跳过并复用旧产物）；线上入口 `index-BlhCBdRQ.js` 对应源码早于
+  `561bcbab`（该 tip 本地重建为 `AXAiQvqf`，且入口 CSS hash 与本地一致，
+  排除工具链漂移）。本机、仓库 Secrets 均无 Cloudflare 凭证，Chrome 未登录
+  dash.cloudflare.com，无法代为触发；需要登录面板检查 honeclaw 项目
+  Settings→Builds（build watch paths / 暂停开关）并 Retry 最新 main 部署。
+  在此之前，旧前端 + 新后端的实际体验：回答质量与失败文案已生效，状态行
+  逐步更新为新文案，刷新恢复时可见完整 steps trail；发送过程中的实时
+  trail 与绿勾样式需等前端发布。
+
 ## 风险与后续
 
 - soul.md 模板措辞变化只影响 prompt 行为，不影响 scheduled checker 的
