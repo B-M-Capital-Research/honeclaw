@@ -119,6 +119,35 @@
   「根据 extended_hours 核验的盘前数据」（工具名+核验字样）；TEM 首行
   「+9.35%」与 +24.09% 基准口径不一致。
 
+## 追加：最终回答恢复流式输出（d9620309，2026-08-20 晚）
+
+- 背景：committed terminal streaming 在 `75ca1957`（治理「不可逆表头+拒答
+  回退」）时连带停用（execution 层写死 Disabled），此后 Web 最终回答一直
+  整块缓冲到 Done。
+- 方案（只保留避开当年隐患的形态）：
+  - AgentSession 对 web 交互金融轮 opt-in `CanonicalInvestmentHeader`；
+    其它渠道与 execution 默认保持 Disabled。
+  - `commit_before_model` 维持 false，新增 `allow_pre_final_prefix_commit`
+    把 agent 取证后的「中途预提交」也收进该授权：现在**只有模型真实终稿
+    字节能触发提交**。终稿开始前的任何失败仍是干净错误卡（不会留孤表头，
+    也不会与进度轨迹抢屏）。
+  - `canonical_prefix_delta` 放行表头行的终止换行——终稿一开始流出，
+    观察者即可校验并提交规范表头（首行立即可见）；DirectFinal 正文因
+    market-move 复检可能重写而保持延迟（Done 时尾段一次补发，字节与持
+    久化一致）；terminal synthesis 终稿逐行流式。
+  - 管理员 codex 原生轮不经过该机制（本来就是秒级整段）。
+- 测试：`web_interactive_finance_turn_opts_into_committed_terminal_streaming`
+  钉住 opt-in + 不预提交；预提交契约测试改为显式授权；发布形状断言更新
+  为「表头 + 尾段」两段；零覆盖澄清（不满足证据地板）保持单块。本地
+  honeclaw_test PG 下 agent 151/151、agent_session 154/154、web-api
+  312/312；全量并行套件失败集与干净树同级（既有环境竞态，逐模块隔离
+  运行全绿）。
+- 生产验证口径：策略只作用于非管理员 strict 链路，管理员账号无法直接
+  观察；部署验收看 `/api/meta` sha + journal 零 panic，行为证据看下一
+  条真实公开用户金融问题的 `hone_agent::ttft` 日志
+  （`first_committed_prefix_ms` 出现即表头已实时提交）。若模型终稿未
+  逐字复现要求首行，流式自动退化为整块缓冲（今日行为），无损。
+
 ## 风险与后续
 
 - soul.md 模板措辞变化只影响 prompt 行为，不影响 scheduled checker 的
