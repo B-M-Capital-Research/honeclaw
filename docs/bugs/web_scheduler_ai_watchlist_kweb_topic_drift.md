@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-20 18:01-22:02 CST（UTC 2026-08-20 10:01-14:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 22:01 CST deliver preview 转为“你都能做什么”能力介绍，正文解释产品能力、市场事件引擎、公司研究、交易纪律等，而不是稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:01 CST deliver preview 转为 NBIS 下跌与可转债发行计划长文，只围绕单一相邻标的解释市场反应，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - 同窗仍有 `deliver=33`、`duplicate_suppressed=10`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-19 10:00-14:02 CST（UTC 2026-08-19 02:00-06:02）。
   - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
   - 11:00 CST deliver preview 漂移为 2025 年特朗普政府对华关税历史解释，正文引用 Congress.gov / Tax Foundation / PIIE 等政策来源，与持仓重大事件心跳目标不匹配。
