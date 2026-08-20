@@ -28,9 +28,10 @@ use crate::investment_response_guard::{
     deterministic_investment_fallback_response, enforce_server_data_time_prefix,
     forbidden_investment_tool_calls, has_main_agent_entity_discovery_seed,
     investment_contract_failure_message, investment_preflight_failure_message,
-    missing_investment_response_sections, missing_required_agent_seed_symbols,
-    prepare_verified_investment_turn, should_emit_investment_preflight,
-    uses_main_agent_entity_discovery,
+    market_session_clock_fact, missing_investment_response_sections,
+    missing_required_agent_seed_symbols, prepare_verified_investment_turn,
+    should_emit_investment_preflight, uses_main_agent_entity_discovery,
+    wants_market_session_clock_step,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -1329,6 +1330,27 @@ impl AgentSession {
                 use_native_codex_turn_input,
             )
             .await;
+        // Market questions get the session clock as a completed progress fact
+        // before any provider call: the trail opens with "which session are we
+        // actually in" instead of a silent window. Native Codex and strict
+        // fallback turns both pass through here; retry attempts reuse their
+        // prepared context and must not repeat the step.
+        if prepared_investment.is_none()
+            && !options.dedicated_earnings_workflow
+            && wants_market_session_clock_step(
+                options
+                    .entity_resolution_input
+                    .as_deref()
+                    .unwrap_or(runtime_user_input),
+                options.turn_origin,
+            )
+        {
+            self.emit(session_progress_event(
+                "session.clock",
+                Some(market_session_clock_fact(&answer_time_local)),
+            ))
+            .await;
+        }
         if options.dedicated_earnings_workflow {
             if !self.prompt_options.is_admin || options.runner_override.is_none() {
                 return Err((
@@ -1444,8 +1466,11 @@ impl AgentSession {
                 }
             };
             if emit_preturn_progress {
-                self.emit(session_progress_event("preturn.enrichment.done", None))
-                    .await;
+                self.emit(session_progress_event(
+                    "preturn.enrichment.done",
+                    (preloaded_evidence_calls > 0).then(|| preloaded_evidence_calls.to_string()),
+                ))
+                .await;
             }
             if emit_market_data_progress {
                 let completed_stage = match &contract_result {

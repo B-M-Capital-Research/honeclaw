@@ -862,6 +862,17 @@ body.public-chat-scroll-lock #root {
   margin-right: 7px;
   color: var(--hone-coral-500);
   font-weight: 900;
+  animation: hone-status-pulse 1.4s ease-in-out infinite;
+  display: inline-block;
+}
+.pub-assistant-turn-steps li.is-done {
+  color: var(--hone-ink-500, var(--hone-ink-600));
+}
+.pub-assistant-turn-steps li.is-done::before {
+  content: "✓";
+  color: var(--hone-signal-green);
+  font-weight: 700;
+  animation: none;
 }
 .pub-assistant-turn-error {
   margin: 4px 0 0;

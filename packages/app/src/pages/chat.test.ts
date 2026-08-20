@@ -305,11 +305,13 @@ describe("earnings research workflow", () => {
 
   it("keeps distinct progress checkpoints and caps the visible history", () => {
     let steps: string[] = [];
-    for (const status of ["加载技能", "核验实体", "读取财报", "读取财报", "分析差异", "构建情景", "生成报告", "生成 PDF"]) {
+    for (const status of ["加载技能", "确认时段", "核验实体", "读取行情", "读取财报", "读取财报", "分析差异", "构建情景", "生成报告", "生成 PDF"]) {
       steps = appendPublicChatProgressStep(steps, status);
     }
     expect(steps).toEqual([
+      "确认时段",
       "核验实体",
+      "读取行情",
       "读取财报",
       "分析差异",
       "构建情景",

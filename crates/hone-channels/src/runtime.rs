@@ -979,6 +979,12 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || sanitized.contains("工具执行错误")
         || sanitized.contains("序列化错误")
         || sanitized.contains("IO 错误")
+        // Runner wiring/configuration errors name CLI/ACP and prompt plumbing;
+        // to a chat user they are all "the service is not available right now".
+        || sanitized.contains("执行器不可用")
+        || sanitized.contains("执行器循环")
+        || lowered.contains("function-calling llm")
+        || lowered.contains("cli/acp")
         || lowered.contains("max_iterations_exceeded")
         || lowered.contains("bad_request_error")
         || lowered.contains("invalid params")
@@ -2056,6 +2062,16 @@ mod tests {
         assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
         assert!(!err.contains("bad_request_error"));
         assert!(!err.contains("tool_call_id"));
+    }
+
+    #[test]
+    fn user_visible_error_message_rewrites_runner_configuration_errors() {
+        let err = user_visible_error_message(Some(
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。",
+        ));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(!err.contains("CLI/ACP"));
+        assert!(!err.contains("function-calling"));
     }
 
     #[test]

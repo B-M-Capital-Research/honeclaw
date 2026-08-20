@@ -109,7 +109,7 @@ pub struct ActiveChatRun {
 
 /// Matches the client's own cap and de-duplication, so a trail recovered after
 /// a refresh reads exactly like the one that was on screen before it.
-const ACTIVE_RUN_MAX_STEPS: usize = 6;
+const ACTIVE_RUN_MAX_STEPS: usize = 8;
 
 fn append_active_run_step(steps: &mut Vec<String>, status_text: &str) {
     let normalized = status_text.trim();

@@ -67,6 +67,10 @@ export function publicEarningsWorkflowMessage(
   return template.replace("{company}", name);
 }
 
+/** How many progress steps the trail keeps; mirrors the server-side
+ * ACTIVE_RUN_MAX_STEPS so live streaming and refresh recovery agree. */
+export const PUBLIC_CHAT_MAX_PROGRESS_STEPS = 8;
+
 export function appendPublicChatProgressStep(
   current: string[] | undefined,
   status: string,
@@ -75,7 +79,7 @@ export function appendPublicChatProgressStep(
   if (!normalized) return current ?? [];
   const steps = current ?? [];
   if (steps[steps.length - 1] === normalized) return steps;
-  return [...steps, normalized].slice(-6);
+  return [...steps, normalized].slice(-PUBLIC_CHAT_MAX_PROGRESS_STEPS);
 }
 
 export type PublicChatMessage = {
@@ -233,7 +237,7 @@ export function resolvePublicChatRecovery(input: {
         steps: (activeRun.steps ?? [])
           .map((step) => step.trim())
           .filter((step, index, all) => step.length > 0 && all[index - 1] !== step)
-          .slice(-6),
+          .slice(-PUBLIC_CHAT_MAX_PROGRESS_STEPS),
       },
     };
   }

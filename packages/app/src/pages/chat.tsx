@@ -879,7 +879,17 @@ function AssistantBubble(props: {
         <Show when={(props.message.steps?.length ?? 0) > 0 && !hasContent()}>
           <ul class="pub-assistant-turn-steps">
             <For each={props.message.steps}>
-              {(step) => <li>{step}</li>}
+              {(step, index) => (
+                <li
+                  classList={{
+                    "is-done":
+                      index() < (props.message.steps?.length ?? 0) - 1 ||
+                      !pending(),
+                  }}
+                >
+                  {step}
+                </li>
+              )}
             </For>
           </ul>
         </Show>
@@ -3582,13 +3592,16 @@ export default function PublicChatPage() {
       phase: "thinking",
       statusText: CONTENT.chat_page.status.thinking,
       startedAt: Date.now(),
+      // Every send opens a progress trail: run_progress / tool_call events
+      // append human-readable steps so the wait reads as visible work instead
+      // of one static status line.
       steps: input?.earningsWorkflow
         ? [
             input.earningsWorkflow.kind === "analysis"
               ? CONTENT.chat_page.earnings.loading_analysis_skill
               : CONTENT.chat_page.earnings.loading_preview_skill,
           ]
-        : undefined,
+        : [],
     });
     if (!input) setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
