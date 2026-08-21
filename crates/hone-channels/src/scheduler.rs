@@ -1099,6 +1099,91 @@ fn heartbeat_management_drift_message(text: &str) -> bool {
     mentions_task_management && mentions_creation_flow
 }
 
+fn heartbeat_execution_context_drift_message(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if compact.is_empty() {
+        return false;
+    }
+
+    let mentions_configuration_or_capability = [
+        "当前推送配置",
+        "推送配置如下",
+        "定时推送已激活",
+        "即时推已启用",
+        "心跳每30分钟监控",
+        "未附带新的投研问题",
+        "未附带具体问题",
+        "你只输入了",
+        "没有新的用户问题",
+        "没有具体问题",
+        "我的核心能力",
+        "我是你的美股投研助理",
+        "我是一个以金融分析为核心能力的投研助理",
+        "你好，我是hone",
+        "你好！我是hone",
+        "欢迎使用",
+        "当前具备的核心能力",
+        "训练数据截止于2024",
+        "训练数据截止2024",
+        "训练数据截止",
+        "tavily实时搜索暂时不可用",
+        "搜索暂时不可用",
+        "工具调用上限",
+        "工具额度已触达",
+        "行情未完成核验",
+        "未进行本轮行情核验",
+        "本轮行情核验受限",
+        "未核验",
+        "set_immediate_kinds",
+        "notification_prefs",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    if !mentions_configuration_or_capability {
+        return false;
+    }
+
+    let lacks_concrete_trigger_message = ![
+        "检查时间",
+        "阈值",
+        "触发线",
+        "触发价",
+        "跌破",
+        "突破",
+        "低于",
+        "高于",
+        "财报",
+        "公告",
+        "并购",
+        "监管",
+        "评级",
+        "订单",
+        "指引",
+        "停牌",
+        "复牌",
+        "消息",
+        "alert",
+        "checktime",
+        "threshold",
+        "guidance",
+        "filing",
+        "earnings",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+
+    let looks_like_product_or_meta_copy =
+        ["能力", "配置", "问题", "训练数据", "工具", "核验", "搜索"]
+            .iter()
+            .any(|marker| compact.contains(marker));
+
+    lacks_concrete_trigger_message || looks_like_product_or_meta_copy
+}
+
 fn unwrap_nested_json_message(text: &str) -> String {
     if !text.starts_with('{') {
         return text.to_string();
@@ -2160,6 +2245,32 @@ fn heartbeat_execution_from_content_internal(
         "raw_preview": raw_preview,
     });
 
+    if matches!(outcome, HeartbeatOutcome::Deliver(_))
+        || heartbeat_management_drift_message(content)
+        || heartbeat_execution_context_drift_message(content)
+    {
+        if matches!(outcome, HeartbeatOutcome::Noop)
+            && matches!(parse_kind, HeartbeatParseKind::PlainTextSuppressed)
+            && (heartbeat_management_drift_message(content)
+                || heartbeat_execution_context_drift_message(content))
+        {
+            return ScheduledTaskExecution {
+                should_deliver: false,
+                content: String::new(),
+                error: None,
+                metadata: json!({
+                    "heartbeat_model": heartbeat_model,
+                    "parse_kind": format!("{:?}", parse_kind),
+                    "raw_chars": raw_chars,
+                    "starts_with_json": starts_with_json,
+                    "raw_preview": raw_preview,
+                    "management_drift_suppressed": true,
+                }),
+                session_id: None,
+            };
+        }
+    }
+
     if let Some(error) = heartbeat_parse_error_message(&parse_kind) {
         return ScheduledTaskExecution {
             should_deliver: false,
@@ -2197,7 +2308,9 @@ fn heartbeat_execution_from_content_internal(
                     session_id: None,
                 };
             }
-            if heartbeat_management_drift_message(&sanitized_message) {
+            if heartbeat_management_drift_message(&sanitized_message)
+                || heartbeat_execution_context_drift_message(&sanitized_message)
+            {
                 return ScheduledTaskExecution {
                     should_deliver: false,
                     content: String::new(),
@@ -6340,6 +6453,45 @@ mod tests {
         assert!(!execution.should_deliver);
         assert!(execution.error.is_none());
         assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_execution_context_drift_configuration_copy_is_suppressed() {
+        let content = r#"{"status":"triggered","message":"AAPL + NVDA + BE 当前推送配置如下：心跳每30分钟监控，即时推已启用。"}"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_execution_context_drift_capability_intro_is_suppressed() {
+        let content = "你好！我是 Hone，很高兴为你服务。我是一个以金融分析为核心能力的投研助理。";
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextSuppressed");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_execution_context_drift_budget_or_training_copy_is_suppressed() {
+        let content = "当前消息内容是 NVDA 心跳监控配置，未附带新的投研问题；同时 Tavily 实时搜索暂时不可用，我的训练数据截止于 2024 年。";
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextSuppressed");
         assert_eq!(
             execution.metadata["management_drift_suppressed"].as_bool(),
             Some(true)

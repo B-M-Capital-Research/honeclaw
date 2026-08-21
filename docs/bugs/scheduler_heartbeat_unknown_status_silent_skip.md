@@ -3,11 +3,18 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
 
-- `2026-08-22 02:02 CST` 真实运行态继续复发，状态维持 `New`：
+- `2026-08-21` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 为 heartbeat 结果增加执行期漂移抑制，专门拦截此前大量误落入 `PlainTextTriggered` / `JsonTriggered` 的非监控正文：`noop / 无新增` 自相矛盾文案、`hone_quote_time` / 工具上限 / 搜索降级说明、产品能力介绍、推送配置说明、`未附带新的投研问题` 等。
+  - 对于这类内容，heartbeat 现在统一静默压掉而不是继续送达或误记失败提示，减少 `PlainTextTriggered` 与 `JsonTriggered` 在静默/误发之间漂移。
+  - 新增回归：`heartbeat_execution_context_drift_configuration_copy_is_suppressed`、`heartbeat_execution_context_drift_capability_intro_is_suppressed`、`heartbeat_execution_context_drift_budget_or_training_copy_is_suppressed`；既有 `heartbeat_management_drift_*` 回归继续通过。
+  - 验证通过：`cargo test -p hone-channels heartbeat_execution_context_drift_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_management_drift_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启现网 runtime，仍需后续自然运行窗口确认 parse 分布和 deliver preview 不再复发，再考虑推进到 `Closed`。
+
+- `2026-08-21 22:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-21 22:01-2026-08-22 02:02 CST 近窗统计 `HeartbeatDiag=228`、`run_start=63`、`run_finish=63`、`deliver=31`、`duplicate_suppressed=7`、工具预算拒绝 221 条、`heartbeat 输出不是结构化 JSON=1`。
     - parse / raw 信号继续分裂：`PlainTextTriggered=60`、`JsonNoop=21`、`PlainTextNoop=9`、`JsonTriggered=3`、`PlainTextSuppressed=1`；近窗继续出现 `<think>` raw preview，且 `noop / 无新增 / hone_quote_time / 工具调用上限 / fenced JSON / 行情未完成核验` 等静默、工具口径、格式退化或行情锚语义进入 deliver 或失败路径。

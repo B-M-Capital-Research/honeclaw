@@ -14,9 +14,16 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 修复进展
+
+- `2026-08-21` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 新增 heartbeat 执行期漂移抑制：当 heartbeat 正文退化成推送配置说明、产品能力介绍、`未附带新的投研问题`、`Tavily 实时搜索暂时不可用`、`训练数据截止于 2024 年`、工具预算/行情核验受限等执行期元信息时，不再继续当作可送达提醒。
+  - 这层抑制覆盖 JSON `triggered` 和纯文本误判两条路径，统一落成 `management_drift_suppressed=true` 的静默不送达，避免继续把旧直聊/管理语义或产品介绍发成 heartbeat 正文。
+  - 新增回归：`heartbeat_execution_context_drift_configuration_copy_is_suppressed`、`heartbeat_execution_context_drift_capability_intro_is_suppressed`、`heartbeat_execution_context_drift_budget_or_training_copy_is_suppressed`。
+  - 验证通过：`cargo test -p hone-channels heartbeat_execution_context_drift_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_management_drift_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启现网 runtime，仍需后续自然运行窗口确认不再复发，再考虑推进到 `Closed`。
 
 - `2026-08-21 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
