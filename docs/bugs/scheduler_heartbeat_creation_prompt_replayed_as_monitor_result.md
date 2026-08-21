@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-08-21 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 10:02-14:02 CST（UTC `2026-08-21T02:02:08Z` 之后）。
+    - 10:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，却输出“你好，我是 Hone，专注于美股科技价值投资的独立投研 AI”及功能介绍，不是稳定执行光模块板块关键事件检查。
+    - 14:00 CST 同一 `光模块板块关键事件心跳提醒` raw preview 又写出 `cron_job` 工具不存在、无法创建或管理 heartbeat/cron tasks；最终被 `PlainTextNoop` 路径跳过，说明执行期仍会被任务创建 / 工具可用性语义污染。
+  - 同窗统计：
+    - `HeartbeatDiag=251`、`run_start=64`、`run_finish=64`、`deliver=40`、`duplicate_suppressed=18`、`tool_not_found name=cron_job=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、产品介绍、工具预算或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-20 18:01 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-20 14:01-18:01 CST（UTC `2026-08-20T06:01:34Z` 之后）。
