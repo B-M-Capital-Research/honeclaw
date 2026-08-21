@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-08-21 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 18:01-22:02 CST（UTC `2026-08-21T10:01:39Z` 之后）。
+    - 22:00 CST `持仓重大事件心跳提醒` 原任务明确要求每 30 分钟检查用户当前持仓 `SPCX/DRAM/MU/ARM/BE/WOLF/RKLB/513310` 的财报与重大新闻，并排除普通股价波动、泛行业噪音和无明确来源传闻。
+    - 同轮 `deliver_preview` 却写成“最新一期中国官方制造业 PMI 数据本轮未能核验”，并把 `Tavily 实时搜索暂时不可用`、`我的训练数据截止于 2024 年` 作为正文原因；这不是对持仓重大事件任务的稳定执行。
+  - 同窗统计：
+    - `HeartbeatDiag=207`、`run_start=56`、`run_finish=56`、`deliver=27`、`duplicate_suppressed=12`、HTTP 529 信号 95 条、`runner_error=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、工具预算、搜索降级或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-21 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-21 14:01-18:02 CST（UTC `2026-08-21T06:01:39Z` 之后）。
