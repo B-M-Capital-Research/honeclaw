@@ -18,6 +18,15 @@
 
 ## 修复进展
 
+- `2026-08-22 06:02 CST` 待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-22 02:02-06:01 CST（UTC `2026-08-21T18:00:41Z` 之后）。
+    - 04:30 CST `光模块板块关键事件心跳提醒` raw preview 写出 “No skills found. Let me proceed with the heartbeat task creation. I need to create a cron_job...” 并继续列出 `interval_minutes` / sector 等配置语义，最终落入 `JsonUnknownStatus`；这不是对已创建 heartbeat job 的稳定事件监控执行。
+    - 同窗仍有 `HeartbeatDiag=199`、`run_start=56`、`run_finish=56`、`deliver=27`、`heartbeat 输出不是结构化 JSON=2`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗非文档提交 `7efbc8e8 fix(channels): suppress heartbeat execution-context drift` 已补充执行期漂移抑制，但 source log 未见 runtime 重启 / revision 切换或确认加载该修复的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-21` `bug-2` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs` 新增 heartbeat 执行期漂移抑制：当 heartbeat 正文退化成推送配置说明、产品能力介绍、`未附带新的投研问题`、`Tavily 实时搜索暂时不可用`、`训练数据截止于 2024 年`、工具预算/行情核验受限等执行期元信息时，不再继续当作可送达提醒。
   - 这层抑制覆盖 JSON `triggered` 和纯文本误判两条路径，统一落成 `management_drift_suppressed=true` 的静默不送达，避免继续把旧直聊/管理语义或产品介绍发成 heartbeat 正文。
