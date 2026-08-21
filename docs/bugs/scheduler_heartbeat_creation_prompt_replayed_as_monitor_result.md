@@ -18,6 +18,19 @@
 
 ## 修复进展
 
+- `2026-08-21 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 14:01-18:02 CST（UTC `2026-08-21T06:01:39Z` 之后）。
+    - 15:00 CST `NVDA 关键事件心跳提醒` 已作为 heartbeat job 触发，却把执行期上下文当作用户“收到”的普通直聊确认，回复当前 NVDA 心跳监控正常运行，而不是稳定执行 NVDA 关键事件检查；该轮随后因 `heartbeat 输出不是结构化 JSON` 跳过发送。
+    - 15:30 CST `光模块板块关键事件心跳提醒` 尝试调用不存在的 `cron_job` 工具并触发 `persistent_tool_failure: read-after-write reconciliation failed`，说明执行期仍会被任务创建 / 工具可用性语义污染。
+    - 17:00 CST `NVDA 关键事件心跳提醒` 又把 heartbeat 执行转为“NVDA 已在你的持仓中，不需要重复加入关注列表”，随后因非结构化输出失败；17:30 CST `AI与科技持仓观察关键事件心跳提醒` raw preview 写出 `cron_job` 工具不存在并进入 `JsonNoop`。
+  - 同窗统计：
+    - `HeartbeatDiag=233`、`run_start=61`、`run_finish=63`、`deliver=32`、`duplicate_suppressed=15`、`tool_not_found name=cron_job=3`、`runner_error=2`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、工具可用性、持仓管理或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-21 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-21 10:02-14:02 CST（UTC `2026-08-21T02:02:08Z` 之后）。
