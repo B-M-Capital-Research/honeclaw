@@ -571,6 +571,8 @@ fn recover_portfolio_confirmation(call: &ToolCallMade) -> Option<String> {
         return None;
     }
     let label = tickers.join("、");
+    let removed_heartbeat_jobs = portfolio_job_summaries(call.result.get("removed_heartbeat_jobs"));
+    let active_heartbeat_jobs = portfolio_job_summaries(call.result.get("active_heartbeat_jobs"));
     let message = match action.as_str() {
         "add" => {
             let mut message = format!("已记录持仓：{label}");
@@ -588,10 +590,61 @@ fn recover_portfolio_confirmation(call: &ToolCallMade) -> Option<String> {
             Some("already_watching") => format!("{label} 已在关注列表中，会继续跟踪。"),
             _ => format!("已加入关注列表：{label}。后续会继续跟踪。"),
         },
-        "unwatch" => format!("已取消关注：{label}。"),
+        "unwatch" => {
+            if !removed_heartbeat_jobs.is_empty() {
+                match portfolio_first_result(call).as_deref() {
+                    Some("unwatched") => format!(
+                        "已取消关注：{label}，并停止相关心跳任务：{}。",
+                        removed_heartbeat_jobs.join("；")
+                    ),
+                    Some("not_watchlist") | Some("not_found") => format!(
+                        "{label} 当前不在关注列表中，但已停止相关心跳任务：{}。",
+                        removed_heartbeat_jobs.join("；")
+                    ),
+                    _ => format!(
+                        "已处理 {label} 的关注取消，并停止相关心跳任务：{}。",
+                        removed_heartbeat_jobs.join("；")
+                    ),
+                }
+            } else if !active_heartbeat_jobs.is_empty() {
+                match portfolio_first_result(call).as_deref() {
+                    Some("unwatched") => format!(
+                        "已取消关注：{label}。不过仍有相关 heartbeat 在运行：{}。如需一并关闭，请明确回复删除该任务。",
+                        active_heartbeat_jobs.join("；")
+                    ),
+                    Some("not_watchlist") | Some("not_found") => format!(
+                        "{label} 当前不在关注列表中，但仍有相关 heartbeat 在运行：{}。如需一并关闭，请明确回复删除该任务。",
+                        active_heartbeat_jobs.join("；")
+                    ),
+                    _ => format!(
+                        "{label} 仍有关联 heartbeat 在运行：{}。如需一并关闭，请明确回复删除该任务。",
+                        active_heartbeat_jobs.join("；")
+                    ),
+                }
+            } else {
+                format!("已取消关注：{label}。")
+            }
+        }
         _ => return None,
     };
     Some(message)
+}
+
+fn portfolio_job_summaries(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|job| {
+            let name = job.get("name").and_then(Value::as_str)?;
+            let job_id = job.get("job_id").and_then(Value::as_str).unwrap_or("");
+            if job_id.is_empty() {
+                Some(name.to_string())
+            } else {
+                Some(format!("{name}（任务 ID：{job_id}）"))
+            }
+        })
+        .collect()
 }
 
 fn recover_portfolio_view_confirmation(call: &ToolCallMade) -> Option<String> {
@@ -1177,5 +1230,51 @@ mod tests {
             recover_user_facing_tool_outcome(&[call]).as_deref(),
             Some("已关闭事件推送，并删除 2 个定时或心跳任务；当前不会再触发自动提醒。")
         );
+    }
+
+    #[test]
+    fn unwatch_confirmation_mentions_removed_heartbeat_jobs() {
+        let call = ToolCallMade {
+            name: "portfolio".to_string(),
+            arguments: json!({"action": "unwatch", "ticker": "CBRS"}),
+            result: json!({
+                "action": "unwatch",
+                "ticker": "CBRS",
+                "result": "not_found",
+                "removed_heartbeat_jobs": [{
+                    "job_id": "j_9ee85d42",
+                    "name": "Cerebras IPO与业务进展心跳监控"
+                }]
+            }),
+            tool_call_id: Some("call-1".to_string()),
+        };
+        assert_eq!(
+            recover_user_facing_tool_outcome(&[call]).as_deref(),
+            Some(
+                "CBRS 当前不在关注列表中，但已停止相关心跳任务：Cerebras IPO与业务进展心跳监控（任务 ID：j_9ee85d42）。"
+            )
+        );
+    }
+
+    #[test]
+    fn unwatch_confirmation_warns_about_remaining_heartbeat_jobs() {
+        let call = ToolCallMade {
+            name: "portfolio".to_string(),
+            arguments: json!({"action": "unwatch", "ticker": "CBRS"}),
+            result: json!({
+                "action": "unwatch",
+                "ticker": "CBRS",
+                "result": "not_watchlist",
+                "active_heartbeat_jobs": [{
+                    "job_id": "j_watch",
+                    "name": "AAPL/NVDA/CBRS 组合心跳"
+                }]
+            }),
+            tool_call_id: Some("call-1".to_string()),
+        };
+        let message = recover_user_facing_tool_outcome(&[call]).expect("message");
+        assert!(message.contains("CBRS 当前不在关注列表中"), "{message}");
+        assert!(message.contains("AAPL/NVDA/CBRS 组合心跳"), "{message}");
+        assert!(message.contains("请明确回复删除该任务"), "{message}");
     }
 }
