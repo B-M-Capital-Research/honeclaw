@@ -722,3 +722,16 @@
 - 本轮判断
   - 最新证据仍落在 FMP news 数据摄取链路持续退化的既有 P2 范围内，不是新的独立根因。
   - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。
+
+## 最新运行态复核（2026-08-22 14:01 CST）
+
+- `data/runtime/task_runs.2026-08-22.jsonl`
+  - 巡检窗口：2026-08-22 10:01-14:01 CST。
+  - `poller.fmp.news failed=8`，错误仍为脱敏后的 `stock_news` 请求发送失败。
+  - 同窗 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，`internal.daily_report` / `internal.unified_digest_scheduler` 仅周期性 `skipped`，说明 event-engine runtime 未整体停摆。
+- `data/logs/hone-console-page-source.log`
+  - 同窗 heartbeat 继续运行：`run_start=56`、`run_finish=57`、`deliver=35`、`duplicate_suppressed=14`。
+  - 日志中未见用户可见 FMP 原始错误或 API key 外泄。
+- 本轮判断
+  - 最新证据仍落在 FMP news 数据摄取链路持续退化的既有 P2 范围内，不是新的独立根因。
+  - 本窗未见用户可见 FMP 原始错误、错投或全渠道不可用；状态维持 `New`、严重等级维持 `P2`，非 P1。

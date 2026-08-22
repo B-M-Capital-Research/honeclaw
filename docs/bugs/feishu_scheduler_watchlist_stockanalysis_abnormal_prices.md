@@ -2611,3 +2611,15 @@
 - 本轮判断
   - live source 样本仍说明线上自然运行窗口需要复核，但不能证明 2026-08-10 补强修复已部署后仍复发。
   - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载最新行情锚 fail-closed 修复后，旧 `hone_quote_time` / 上下文报价锚是否仍能进入用户可见 deliver。
+
+## 最新运行态复核（2026-08-22 14:01 CST）
+
+- `git log`
+  - 近窗非文档提交 `36785584 fix(research): prioritize market data and verify financial periods` 调整 direct / data_fetch / prompt / guard 路径，但 source log 未见 runtime 重启、revision 切换或确认加载该修复的证据。
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-22 10:01-14:01 CST。
+  - 同窗 `光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`NVDA 关键事件心跳提醒`、`持仓重大事件心跳提醒` 多轮继续使用 `SNDK $1,596.08`、`AAOI $124.82`、`MRVL $237.04`、`SPCX $136.97`、`DRAM $57.68` 等精确报价锚。
+  - 多条 deliver 明写 `hone_quote_time.beijing`、工具调用上限、`MU/ARM/BE/WOLF/RKLB/513310 本轮行情工具已达上限未核验` 或距本轮检查约 6-7 小时等降级语义。
+- 本轮判断
+  - live source 样本仍说明线上自然运行窗口需要复核，但不能证明最新行情锚 fail-closed / source priority 修复已部署后仍复发。
+  - 本轮不回退代码级 `Fixed / P0`，也不新建重复缺陷；下一轮应优先确认 runtime 已加载最新修复后，旧 `hone_quote_time` / 工具上限报价锚是否仍能进入用户可见 deliver。
