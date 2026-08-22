@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-22 22:02-2026-08-23 02:01 CST。
+  - 23:00、23:30、01:30、02:00 CST 各有 heartbeat 轮次因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 落成 `failure_kind=execution_failed` 并跳过发送，覆盖 `NVDA 关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 等任务。
+  - 同窗 source runtime 仍有 `HeartbeatDiag=215`、`run_start=57`、`run_finish=58`、`deliver=31`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message/cron 增量。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-21 18:01-22:02 CST。
   - 20:00 CST `NVDA 关键事件心跳提醒` 落成 OpenAI-compatible upstream HTTP 529 `provider_http_error`，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗另有 1 条 `heartbeat 输出不是结构化 JSON`，说明 heartbeat / scheduler 在实时核验、provider 或输出契约失败后仍会 fail-closed 到跳过发送。
   - 同窗 source runtime 仍有 `HeartbeatDiag=207`、`run_start=56`、`run_finish=56`、`deliver=27`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message/cron 增量。
