@@ -6,15 +6,15 @@ Last updated: 2026-08-22
 
 ### Market Move Same-Day News And Research Activation
 
-- Status: implementation done; production rollout in progress
+- Status: done; production live
 - Date: 2026-08-22
 - Plan: `docs/archive/plans/market-move-date-grounding-2026-08-22.md`
 - Handoff: `docs/handoffs/2026-08-22-market-move-date-grounding.md`
 - Decision / ADR: no new ADR; this reuses the existing investment research flow and market-move date anchor
-- Related PRs / commits: pending direct `main` implementation commit; no PR, release, or tag
-- Related runbooks / regressions: `hone-agent` 152/152; investment response guard 136/136; WebSearch 19/19; focused three-crate compile check; PostgreSQL-backed GitHub CI required before cutover
-- Current conclusion: market-move preturn Web searches now use Tavily `day/news` so result publication dates are available, and a service-owned market-move date anchor activates the existing finance research loop before the first model response. Ordinary investment and non-finance routing stays unchanged; no structured content judge or new publication gate was added.
-- Next entry point: finish the immutable-image GCE rollout and replay the MRVL 2026-08-21 canary before user remediation.
+- Related PRs / commits: direct `main` implementation commit `e08bb4607a5a8cd559c4320db220063fc021e0b4`; no PR, release, or tag
+- Related runbooks / regressions: `hone-agent` 152/152; investment response guard 136/136; WebSearch 19/19; focused three-crate compile check; immutable Runtime Image run `32544207247`; GCE cloud-authority/public-auth/channel reconnect acceptance
+- Current conclusion: market-move preturn Web searches use Tavily `day/news`, preserve provider `published_date`, and enter the existing finance research loop before the first model response. Production runs exact revision `e08bb460…` from digest `sha256:314d82c…cbf96`; PostgreSQL/S3 authority and Feishu connectivity are healthy. GitHub CI's sole Rust failure is the unchanged `soul.md` character-budget baseline already present on the parent commit, not this diff.
+- Next entry point: obtain explicit authorization before sending an MRVL canary from a logged-in user account; handle the pre-existing `soul.md` mechanical-budget failure as an independent Prompt-governance task.
 
 ## 2026-08-17
 

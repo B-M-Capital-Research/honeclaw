@@ -32,6 +32,8 @@
 - `cargo check -p hone-tools -p hone-agent -p hone-channels`：通过。
 - `git diff --check`：通过；三个 Rust 改动文件已直接运行 rustfmt。
 - `cargo test -p hone-tools --lib`：168 passed、26 failed、1 ignored；失败项均依赖 PostgreSQL。`scripts/dev_pg.sh` 因本机无 Docker 无法启动测试库，本机也没有 PostgreSQL server binary，因此未把该环境失败记为本次代码失败。
+- GitHub CI `32544207221` 的 compile、frontend、格式步骤通过；Rust tests 在未改动的 `soul.md` 固定字符预算测试停止。父提交 `a0ffc0b2` 的 CI `32531473440` 在相同测试、相同行号、相同原因失败，因此记录为 `main` 已有基线例外，未通过改 Prompt 或抬高机械阈值规避。
+- Runtime Image `32544207247` 成功构建并校验 revision `e08bb4607a5a8cd559c4320db220063fc021e0b4` 的不可变 manifest。
 
 ## Documentation Sync
 
@@ -43,4 +45,5 @@
 
 - Tavily 的 `published_date` 是 news topic 的可选字段；缺失时运行时提示要求继续补搜或披露未核验，不能把查询日期当文章日期。
 - `day` 是相对当前时间窗口；用户明确询问更早历史日期时，Agent 仍需按绝对日期补充检索。
-- 生产发布必须等待 PostgreSQL-backed GitHub CI、不可变 GHCR digest 与 GCE 健康检查全部通过。
+- 生产已运行 revision `e08bb4607a5a8cd559c4320db220063fc021e0b4`；不可变 digest、GCE bundle、PostgreSQL/S3 authority、零活动会话、公网 JSON 401 与 Feishu 重连均已验证。
+- 未在用户的已登录账号内发送 MRVL canary；发送消息会产生外部副作用，需要另行明确授权。本次发布由定向自动化回归与生产健康/连接验收覆盖。
