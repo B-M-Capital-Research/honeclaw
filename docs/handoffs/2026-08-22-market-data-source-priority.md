@@ -14,11 +14,12 @@
   - `docs/invariants.md`
   - `docs/archive/plans/market-data-source-priority.md`
   - `docs/archive/plans/financial-report-data-verification-guidance.md`
-- related_prs: none; local uncommitted change set
+  - `docs/archive/plans/market-data-financial-guidance-production-rollout.md`
+- related_prs: none; direct `main` implementation commit `3678558483628b605aa927cfa168539a22eca84a`
 
 ## Summary
 
-明确公司或证券的交互式投研现在先把结构化行情作为第一事实来源：实体解析后优先读取 `snapshot`，不适用时组合 `quote/profile`，涉及盘前盘后时补 `extended_hours`；开放 Web 搜索随后补公告、关系、事件和因果。该顺序是 Agent 软引导和工具展示信号，不是缺数据即拒答的内容门禁。
+明确公司或证券的交互式投研现在先把结构化行情作为第一事实来源：实体解析后优先读取 `snapshot`，不适用时组合 `quote/profile`，涉及盘前盘后时补 `extended_hours`；开放 Web 搜索随后补公告、关系、事件和因果。该顺序是 Agent 软引导和工具展示信号，不是缺数据即拒答的内容门禁。实现已作为精确 revision `3678558483628b605aa927cfa168539a22eca84a` 发布到生产后端。
 
 ## What Changed
 
@@ -46,12 +47,24 @@
 - `rustfmt --edition 2024 --config skip_children=true ...` and `git diff --check`: passed.
 - Broader PostgreSQL-backed test subsets could not complete on this host: `scripts/dev_pg.sh up` reported Docker unavailable. Before the environment failure, `hone-tools` reported 169 passing / 26 PostgreSQL-dependent failures, and the broad `hone-channels prompt` filter reported 47 passing / 26 PostgreSQL-dependent failures.
 
+## Production Deployment
+
+- Implementation commit `3678558483628b605aa927cfa168539a22eca84a` was pushed directly to `main`; no PR, formal release, or `v*` tag was created.
+- GitHub Runtime Image run `32548881694` published and verified immutable digest `sha256:fc6029b42f04e2ce58b944bc6f4c9acb5fa654f808d804e9b3c4ed0d7e662676`. Secret Scan passed; the CI frontend lane passed Web tests plus Public Community Edge typecheck/tests, and the Rust lane passed changed-file formatting and workspace compile.
+- The CI Rust test lane stopped at the pre-existing unchanged `soul.md` fixed-character-budget assertion (`soul_prompt_keeps_the_full_investment_contract`): the target reported 161 passed / 1 failed in `hone-core`, and its parent revision failed the same test at the same assertion. Per the repository generative-workflow invariant, the release did not delete prompt rules or raise a mechanical content threshold to manufacture a green result.
+- Production initially had about 1.78 GiB free, below the 2 GiB staging floor. Exact old releases `2a738b12`, `253421df`, and `69933303` were individually bundle-verified, proven non-current/non-rollback with no open process references, and confirmed rebuildable from immutable GHCR tags before removal. No user data, database, skill, current runtime, or retained rollback was removed; staging began with about 5.27 GiB free.
+- The target bundle was staged by exact digest, then independently verified against its embedded revision and payload checksums. Deployment tools and the protected runtime-environment checker were copied only into validated `/tmp` directories because the remote operations checkout lacked them; their SHA-256 values matched the reviewed local revision, and the temporary directories were deleted after use. The remote checkout was not pulled or overwritten.
+- The first cutover reached lightweight readiness but `/api/meta` exceeded the initial 30-second acceptance timeout, so the prepared rollback restored `e08bb460…` automatically. The rollback served application JSON `401`, had zero active chats and no critical logs. A bounded second cutover passed its first complete meta attempt and is the accepted deployment.
+- Production now points `/opt/hone/current` to `36785584…-ghcr-runtime` and `/opt/hone/previous` to `e08bb460…-ghcr-runtime`. Two pre-cutover idle reads and all post-cutover/soak reads were zero; `hone-web.service` is active with `NRestarts=0`, the integrated Feishu stream emitted reconnect markers, and recent critical-log count is zero.
+- `/api/meta` reports exact `build.git_sha=36785584…`, `build.source=ghcr_linux_oci`, `cloud_mode=cloud`, healthy PostgreSQL and OSS, `cloud_storage_authoritative=true`, and `local_durable_dependency_count=0`. Loopback and public unauthenticated auth probes return application JSON `401`; production timezone remains `Asia/Shanghai`.
+- The running binary contains the structured-market-priority, financial-period verification, and `hone_change_basis` policy markers. An existing authenticated Chrome tab loaded the production chat and history successfully; no canary message was sent because sending a user-visible message requires action-time confirmation.
+
 ## Risks / Follow-ups
 
 - Stronger source ordering can add one model/tool round; preferring the aggregate `snapshot` is intended to contain that cost.
 - Schema order is a model hint. It does not guarantee every provider/model will choose the preferred tool, so production acceptance should inspect actual traces rather than infer success from prompt text.
-- Run three fresh canaries after deployment: a named-company overview, a two-company relationship question, and an AAOI-style current/after-hours move question. Confirm each trace resolves identity, attempts structured market data before Web, and still answers naturally when one provider component is unavailable.
+- With explicit confirmation to create visible test messages, run three fresh canaries: a named-company overview, a two-company relationship question, and an AAOI-style current/after-hours move plus a latest-period financial metric. Confirm each trace resolves identity, attempts structured market data before Web, uses the service-computed change basis, binds financial figures to the disclosed period, and still answers naturally when one provider component is unavailable.
 
 ## Next Entry Point
 
-Start with `crates/hone-channels/src/prompt.rs` for cross-runner policy and `agents/function_calling/src/lib.rs` for strict fallback behavior. Do not convert the priority into a missing-data validator or forced retry loop.
+Start with `crates/hone-channels/src/prompt.rs` for cross-runner policy and `agents/function_calling/src/lib.rs` for strict fallback behavior. For runtime rollback, require two zero-active-chat reads, atomically restore `/opt/hone/current` to the retained `e08bb460…-ghcr-runtime`, restart `hone-web.service`, and repeat exact meta/cloud/public probes. Do not convert the priority into a missing-data validator or forced retry loop.

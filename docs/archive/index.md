@@ -2688,12 +2688,12 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ### Structured Market Data Before Open Web Search
 
-- Status: done locally; no commit or production deployment
+- Status: deployed to production
 - Date: 2026-08-22
-- Plans: `docs/archive/plans/market-data-source-priority.md`, `docs/archive/plans/financial-report-data-verification-guidance.md`
+- Plans: `docs/archive/plans/market-data-source-priority.md`, `docs/archive/plans/financial-report-data-verification-guidance.md`, `docs/archive/plans/market-data-financial-guidance-production-rollout.md`
 - Handoff: `docs/handoffs/2026-08-22-market-data-source-priority.md`
 - Decision / ADR: no new ADR; the durable soft-priority rule is recorded in `docs/invariants.md`
-- Related PRs / commits: local uncommitted change set
-- Related runbooks / regressions: DataFetch 57/57 plus financial bundle guidance 1/1; WebSearch 19/19; registry 5/5; function-calling Agent 153/153; pure channel priority and financial guidance tests; channel compile; rustfmt and diff checks
-- Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate.
-- Next entry point: run named-company, relationship, AAOI-style move and fresh-report financial-metric production canaries after deployment; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
+- Related PRs / commits: direct `main` implementation commit `3678558483628b605aa927cfa168539a22eca84a`; no PR or tag
+- Related runbooks / regressions: DataFetch 57/57 plus financial bundle guidance 1/1; WebSearch 19/19; registry 5/5; function-calling Agent 153/153; pure channel priority and financial guidance tests; workspace compile; GitHub frontend/Edge and Secret Scan; Runtime Image `32548881694`; production exact-meta/cloud/public soak
+- Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate. Production runs exact revision `36785584…` from immutable digest `sha256:fc6029b4…`; PostgreSQL/OSS/cloud authority and public API acceptance are healthy, with `e08bb460…` retained for immediate rollback.
+- Next entry point: with action-time confirmation to create user-visible messages, run named-company, relationship, AAOI-style move and fresh-report financial-metric canaries; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
