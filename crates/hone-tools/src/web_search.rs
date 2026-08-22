@@ -488,7 +488,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/持股/合同/技术合作关系，或任何需要当前来源的问题时使用。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
+        "搜索互联网获取最新信息。当用户明确点名公司或证券且结构化行情工具可用时，先完成实体 search 并优先调用 snapshot（不适用时用 quote/profile，扩展时段用 extended_hours）；本工具不是价格、涨跌幅或报价时间的首选来源，而是用于随后补充实时新闻、公司动态、公告、监管文件，以及客户/供应商/投资/持股/合同/技术合作关系和事件因果。这个顺序只是 Agent 的工具选择提示，不是缺行情即禁止搜索或回答的门禁。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -639,6 +639,14 @@ mod tests {
     #[test]
     fn recency_and_topic_are_opt_in_provider_constraints() {
         let tool = WebSearchTool::new(vec!["k".to_string()], 5);
+        assert!(
+            tool.description()
+                .contains("本工具不是价格、涨跌幅或报价时间的首选来源")
+        );
+        assert!(
+            tool.description()
+                .contains("不是缺行情即禁止搜索或回答的门禁")
+        );
         let schema = tool.to_openai_schema();
         let params = schema["function"]["parameters"]["properties"]
             .as_object()

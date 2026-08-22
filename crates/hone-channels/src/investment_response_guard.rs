@@ -3202,6 +3202,10 @@ fn preturn_web_search_options(
     }
 }
 
+fn financial_report_verification_guidance() -> &'static str {
+    "\n引用营收、净利润、EPS、EBIT、EBITA、EBITDA、利润率或现金流等财报数字前，先核对最新已披露报告期与对应 `date` / `period`，并确认使用的是 `hone_latest_quarter`、`hone_ttm.period_ends` 还是 `hone_forward.forward_period_ends`；不得把 EBIT、EBITA、EBITDA 或营业利润互相替代。关键数字若可能滞后或有冲突，针对性查公司 IR、财报公告或监管文件核对报告日期和数字。这是生成前的软核对，不是逐数字双来源或缺项拒答门禁；官方二次来源不可得时，标明截至日、来源层级和具体缺口后继续回答，不反复搜索。"
+}
+
 async fn run_pre_turn_enrichment(
     core: &Arc<HoneBotCore>,
     actor: &ActorIdentity,
@@ -3633,12 +3637,17 @@ async fn run_pre_turn_enrichment(
     }
 
     let block = format!(
-        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}{}",
+        "\n\n【本轮前置检索结果：上下文，不是结论】\n         下面是服务端在你开始思考之前就已经执行的真实工具结果，属于本轮证据，可以直接引用。\n{}\n         使用规则：这些结果不锁定实体、不限定回答范围，也不代表取证已经完成。先完整阅读用户原话，判断其中哪些与用户真正的问题相关，无关的直接忽略，不要为了用上它们而改写问题。         上面的候选检索只说明服务端按扫描结果试过哪些 token，返回为空或与用户意图不符时直接放弃该候选，不要继续纠缠代码解析。         仍缺少的证据由你自己继续调用 `data_fetch`、`web_search` 或其它工具补齐；已经取得的同一工具同一参数不要重复调用。{}{}{}",
         sections.join("\n"),
         if fundamentals_count == 0 {
             ""
         } else {
             "\n本轮已附带 `financials`：年度利润表在 `data`，季度利润表/资产负债表/现金流量表在 `hone_quarterly_*`，`hone_ttm` 是最近四个已披露季度的合计（含毛利率与营业利润率），`hone_latest_quarter` 给出最新季度的环比、同比、毛利率与经营现金流，`hone_forward` 是严格晚于最新已披露季度的四个季度一致预期。涉及公司经营、业绩、财务健康或估值的问题，应当把这些已在手的口径用足——收入与利润的趋势、利润率变化、现金流与资产负债结构都属于本轮证据，不要以\u{201c}未核验\u{201d}带过；`hone_statement_coverage` 里标为 unavailable 的那张表才是真正的缺口。\n另附 `valuation`：官方 TTM 指标与比率（PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率）、企业价值、流通股、DCF，以及 `hone_score_semantics` 里的 Altman Z 与 Piotroski 分数及其区间语义。回答估值、回报率、偿债能力或财务健康时优先引用这些官方口径，不要用报表自己硬算；`coverage` 标为 empty/unavailable 的组件才是缺口。\n估值倍数以服务端算好的 `hone_valuation_basis` 为准，不要自己拿现价去除某个财报数字：`usable_for_multiple_claims=false` 时 provider 的 `pe`/`eps` 尚未包含最新季度，必须改用 `recomputed_pe` 或 `forward_pe` 并写明窗口。\n金额与股数一律直接引用服务端已换算好的 `hone_display` 字符串（市值、营收、净利、股本等），不要自己把 marketCap 之类的原始数字换算成亿或万亿——1 亿是 1e8、1 万亿是 1e12，差一个数量级在行文里看不出来却会改变整个结论。\n本轮附带了两类检索：以用户原话发起的，以及在实体核验后以标准代码与公司名重新发起的。回答“为什么涨/为什么跌”这类归因问题时，必须先通读两类结果再定性：同一天可能有多条不同性质的消息（社区反对、分析师调整、做空披露、财报前瞻等），单一来源指认的单一原因不足以写成“核心原因”。若只有一个来源支持某个原因，就如实说明它是目前检索到的唯一指认并列出同期其它已检索到的消息；若多条来源指向不同原因，全部列出并说明各自证据强度，不要因为先读到某条就收口。\n跨公司对比必须落在同一个窗口上：各公司财年结束月份不同，直接并列各自的 FY 标签会把相差一整年的周期位置放进同一张表，即使每个数字单独看都对，整张表也是错的。对比时统一使用 `hone_ttm`（并标注 `period_ends`）或 `hone_forward`（并标注 `forward_period_ends`），不得混用不同财年的 trailing 倍数与利润率。"
+        },
+        if fundamentals_count == 0 {
+            ""
+        } else {
+            financial_report_verification_guidance()
         },
         if live_extended_count + summary_extended_count == 0 {
             ""
@@ -17772,6 +17781,26 @@ mod tests {
         assert_eq!(
             super::preturn_web_search_options("nbis最近怎么看", "2026-08-22 08:48"),
             ("week", None)
+        );
+    }
+
+    #[test]
+    fn financial_report_guidance_checks_period_and_metric_without_a_refusal_gate() {
+        let guidance = super::financial_report_verification_guidance();
+
+        assert!(guidance.contains("最新已披露报告期"), "{guidance}");
+        assert!(guidance.contains("hone_ttm.period_ends"), "{guidance}");
+        assert!(
+            guidance.contains("EBIT、EBITA、EBITDA 或营业利润互相替代"),
+            "{guidance}"
+        );
+        assert!(
+            guidance.contains("不是逐数字双来源或缺项拒答门禁"),
+            "{guidance}"
+        );
+        assert!(
+            guidance.contains("标明截至日、来源层级和具体缺口后继续回答"),
+            "{guidance}"
         );
     }
 

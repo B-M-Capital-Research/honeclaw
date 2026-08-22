@@ -1346,10 +1346,7 @@ fn attach_quote_evidence_quality(value: &mut Value) {
 /// So the server divides, names what it divided, and states what this quote
 /// cannot prove. `changesPercentage` is deliberately not the answer: the
 /// provider's baseline moment is not necessarily the one being displayed.
-fn attach_quote_change_basis(
-    fields: &mut serde_json::Map<String, Value>,
-    provider_agrees: bool,
-) {
+fn attach_quote_change_basis(fields: &mut serde_json::Map<String, Value>, provider_agrees: bool) {
     let positive = |key: &str| finite_number(fields.get(key)).filter(|value| *value > 0.0);
     let (Some(from), Some(to)) = (positive("previousClose"), positive("price")) else {
         return;
@@ -1379,7 +1376,8 @@ fn attach_quote_change_basis(
         "policy": "涨跌幅一律引用本块的 pct。不要自己拿两个价格相除，也不要直接抄 provider 的 changesPercentage——它的基准时刻未必是你正在展示的那一个。同一行里的价格与涨跌幅必须来自同一时刻；跨时刻必须分行或逐个标注时间戳。",
     });
     if let Some(new_york) = sampled {
-        basis["to_at_new_york"] = Value::String(new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string());
+        basis["to_at_new_york"] =
+            Value::String(new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string());
     }
     if let Some(session) = session {
         basis["to_session"] = Value::String(session.to_string());
@@ -1392,7 +1390,8 @@ fn attach_quote_change_basis(
             .map_or(Value::Null, |value| serde_json::json!(value));
         basis["provider_agrees"] = Value::Bool(false);
         basis["warning"] = Value::String(
-            "provider 的 changesPercentage 与本块两条腿算出的结果不一致，只能使用 pct。".to_string(),
+            "provider 的 changesPercentage 与本块两条腿算出的结果不一致，只能使用 pct。"
+                .to_string(),
         );
     }
     if session != Some("regular") {
@@ -1756,7 +1755,7 @@ fn build_financials_bundle(
         // consumer of this payload keeps reading the same shape.
         "data": annual,
         "hone_statement_coverage": Value::Object(coverage),
-        "hone_financials_policy": "覆盖状态为 unavailable 的报表本轮确实没有取到，必须按缺口披露，不得由其它报表或记忆推算。金额单位以 provider 原始字段为准；毛利率等比率字段已换算为百分数。"
+        "hone_financials_policy": "引用任何财报数字前，先核对最新已披露报告期及该数字所在行的 date/period，并根据用途选择 hone_latest_quarter、hone_ttm.period_ends 或 hone_forward.forward_period_ends；“最新”只表示本 bundle 可见的最新已披露报告期，不表示尚未发布季度。季度、年度、最近四季与 forward 不得混用；EBIT、EBITA、EBITDA 与 operatingIncome/营业利润不得互相代替，原始字段没有明确给出时不得自行补算。关键数字若与其它来源冲突或 provider 窗口可能滞后，应由 Agent 针对性查公司 IR、财报公告或监管文件核对报告日期和数字。这是时效与准确性复核提示，不是逐数字双来源或缺项拒答门禁；官方二次核对不可得时，标明截至日、来源层级与具体缺口后继续回答。覆盖状态为 unavailable 的报表本轮确实没有取到，必须按缺口披露，不得由其它报表或记忆推算。金额单位以 provider 原始字段为准；毛利率等比率字段已换算为百分数。"
     });
     if let Some(quarterly) = quarterly.filter(has_meaningful_fmp_value) {
         payload["hone_quarterly_income_statement"] = quarterly;
@@ -2213,7 +2212,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2643,11 +2642,10 @@ mod tests {
         effective_data_fetch_data_type, effective_data_fetch_security_target,
         effective_data_fetch_target, extended_hours_session, financial_score_semantics,
         fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
-        round_to_hundredths,
         normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
-        price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
-        should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
-        validated_data_fetch_symbols, valuation_basis_quality,
+        price_target_consensus_quality, round_to_hundredths, sanitize_fmp_error_detail,
+        security_listing_evidence, should_cache_fmp_value, ttl_for_data_type,
+        validated_data_fetch_search_query, validated_data_fetch_symbols, valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -3322,6 +3320,11 @@ mod tests {
                 .any(|parameter| parameter.name == "supersedes_query")
         );
         assert!(tool.description().contains("必须先用 search"));
+        assert!(
+            tool.description()
+                .contains("本工具是开放 Web 搜索之前的优先事实来源")
+        );
+        assert!(tool.description().contains("不是缺行情即拒答的门禁"));
     }
 
     #[test]
@@ -4082,6 +4085,12 @@ mod tests {
         assert_eq!(latest["revenue_yoy_pct"], 371.59);
         assert_eq!(latest["gross_margin_pct"], 84.6);
         assert_eq!(latest["operating_cash_flow"], 7126.0);
+        let policy = payload["hone_financials_policy"]
+            .as_str()
+            .expect("financials policy");
+        assert!(policy.contains("先核对最新已披露报告期"));
+        assert!(policy.contains("EBIT、EBITA、EBITDA"));
+        assert!(policy.contains("不是逐数字双来源或缺项拒答门禁"));
     }
 
     #[test]

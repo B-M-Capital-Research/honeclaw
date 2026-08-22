@@ -2685,3 +2685,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Verification: workspace tests 2575 passed / 0 failed across 30 targets; 92 ignored hone-memory PostgreSQL tests passed; 22 CI-safe regressions passed; Web 486 passed / 0 failed; cloud doctor reported PostgreSQL healthy and schema ensured; `cargo tree -i rusqlite --workspace` showed only `hone-cli` and `hone-imessage`
 - Current conclusion: PostgreSQL is the only Hone runtime database backend. All alternate storage configuration, shadow/backfill tooling, stale fixtures, prompts, policies, and current architecture/runbook references are removed. `hone-cli` retains a read-only historical event-store importer, while `hone-imessage` independently reads macOS `chat.db`; neither is runtime persistence.
 - Next entry point: no migration work remains. Future storage changes must preserve the PostgreSQL authority and treat the two read-only consumers as narrow compatibility boundaries.
+
+### Structured Market Data Before Open Web Search
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-22
+- Plans: `docs/archive/plans/market-data-source-priority.md`, `docs/archive/plans/financial-report-data-verification-guidance.md`
+- Handoff: `docs/handoffs/2026-08-22-market-data-source-priority.md`
+- Decision / ADR: no new ADR; the durable soft-priority rule is recorded in `docs/invariants.md`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: DataFetch 57/57 plus financial bundle guidance 1/1; WebSearch 19/19; registry 5/5; function-calling Agent 153/153; pure channel priority and financial guidance tests; channel compile; rustfmt and diff checks
+- Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate.
+- Next entry point: run named-company, relationship, AAOI-style move and fresh-report financial-metric production canaries after deployment; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.

@@ -97,9 +97,9 @@ const AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION: &str = "【本轮尚未取�
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
 const PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION: &str = "【内部写后核验收口】上一项持久化操作返回了不确定错误，系统没有重放该写操作，而是通过同一用户范围内的只读查询取得了操作后的权威状态。当前轮次不再提供工具。请只根据原请求和只读核验结果回答操作是否已经生效；已生效就明确确认，未生效就明确说明当前状态，无法从核验结果判断的字段只披露该具体缺口。不得再次调用或建议重放写操作，不得使用“可能已执行”“状态不确定”“请重试”等模糊结论，也不要向用户提及内部错误、工具、核验机制或本说明。";
-const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前轮已进入金融研究工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
-const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；`hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得用旧收购或退市记忆否认；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
+const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题明确点名任何公司、证券、基金、指数或加密资产，第一轮优先完成结构化实体发现，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。search 返回标准 symbol 后，下一步优先为每条路线调用 DataFetch snapshot；它是 quote + profile + news + 可得盘后字段的聚合行情入口。snapshot 不适用时再组合 quote/profile；用户询问盘前、盘后或常规盘与扩展时段对比时补 extended_hours。结构化行情的工具选择优先级高于开放 Web 搜索；Web/news/filing/industry 用于随后补充公告、监管文件、关系、事件和因果等行情工具不能证明的内容。这里描述的是优先级而不是完成门禁：provider 无覆盖、工具失败或问题本身不需要行情时，不得反复补取或拒绝回答，可继续使用当前证据和开放检索并自然披露缺口。quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前轮已进入金融研究工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。标准 symbol 已确认的路线优先调用 snapshot，一次取得 quote、profile、报价源时间、服务端涨跌口径和可得盘后字段；snapshot 不适用时组合 quote/profile，问题涉及盘前、盘后或常规盘与扩展时段对比时补 extended_hours。完成或实际尝试这组结构化行情读取后，再用 Web/news/filing/industry 检索补充行情工具不能证明的公告、关系、事件与因果；互不依赖且确有时效需要时可以与行情调用同批，但应把行情调用列在 Web 之前。这个顺序是 Agent 选择信号，不是缺失即拒答的门禁；provider 无覆盖或调用失败时继续搜索和回答，不反复重试。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
+const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。明确公司/证券路线已有标准 symbol、但尚未尝试完整行情时，优先调用 snapshot；snapshot 不适用时组合 quote/profile，扩展时段问题补 extended_hours，之后再用 Web 搜索补事件和因果。这个行情优先顺序只是工具选择信号，不是终稿门禁；provider 无覆盖或调用失败时不反复补取，继续使用当前证据回答并披露具体缺口。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；`hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得用旧收购或退市记忆否认；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
 #[cfg(test)]
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
 #[cfg(test)]
@@ -111,6 +111,7 @@ const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "回答“为什么大跌/暴跌/下跌”前，先锁定用户所指对象或市场范围与目标时段，并先核验该对象在该时段是否真的发生所述波动。用户明确给出的日期、星期或时段优先；不得因为 latest quote、当前日历日或另一日新闻更容易取得，就静默改答前一日、后一日或其它波动。latest quote 的涨跌幅只证明其 provider timestamp 对应的快照，不能证明另一历史交易日。宽基指数、行业板块与单只证券必须分开；若宽基不支持用户的“大跌”前提，明确说明观察范围不一致并继续核验板块/个股或做最小澄清，不得擅自挑另一天的大跌替换问题。原因事实必须由本轮明确覆盖同一对象与同一绝对市场本地日期的 Web/news/公告原文支持；否则先回答已核验的实际波动与范围，再写“原因本轮未完全核验”。",
     "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关事实同句或紧邻句末使用本轮工具实际返回的来源标题与原始 URL 做内联引用。URL 只用于定位来源，不证明句中内容；外部事实里的数字、排名或角色、合同权利义务、产品或芯片型号、估值标签都必须直接出现在该 URL 本轮返回的 title/content/snippet 中，否则删除。不得只写来源名、域名或与事实脱节的文末来源清单，也不得使用历史会话或模型记忆中的 URL。基于已核验事实形成的判断必须另起句并以‘推断：’开头。只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。未找到证据不等于事实不存在；否定某种关系同样需要本轮来源直接支持，否则只能披露本轮检索边界。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
+    "准备在终稿引用营收、净利润、EPS、EBIT、EBITA、EBITDA、利润率、经营现金流、自由现金流或资产负债表数字时，先核对本轮 financials / earnings_outlook 中最新已披露报告期，把每个数字绑定到对应 date/period、hone_latest_quarter、hone_ttm.period_ends 或 hone_forward.forward_period_ends；“最新”只表示工具可见的最新已披露报告期，不得暗示未发布季度。检查季度、年度、最近四季与 forward 是否混用；EBIT、EBITA、EBITDA 与营业利润不得互相代替，来源未明确给出时不得自行补算。若关键数字的 provider 窗口可能滞后或来源冲突，优先针对性查公司 IR、财报公告或监管文件核对报告日期与关键数字。这是生成前的时效和准确性复核引导，不是逐数字双来源、缺项拒答或自动改写门禁；官方二次核对不可得时，按当前结构化证据标明截至日、来源层级和具体缺口后继续回答。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
     "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析。回答范围和篇幅跟随用户原问题：关系问答只回答已核验关系、必要推断和关键缺口，不得为凑单股模板扩写公司介绍、风险清单或交易建议。最终回答只面向用户问题与本轮证据。"
@@ -4232,11 +4233,17 @@ fn collect_market_move_quote_evidence(value: &Value, evidence: &mut Vec<MarketMo
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|symbol| !symbol.is_empty())
-                .zip(fields.get("changesPercentage").and_then(|value| {
-                    value
-                        .as_f64()
-                        .or_else(|| value.as_str()?.parse::<f64>().ok())
-                }))
+                .zip(
+                    fields
+                        .get("hone_change_basis")
+                        .and_then(Value::as_object)
+                        .and_then(|basis| basis.get("pct"))
+                        .and_then(|value| {
+                            value
+                                .as_f64()
+                                .or_else(|| value.as_str()?.parse::<f64>().ok())
+                        }),
+                )
                 .zip(
                     quote_time
                         .and_then(|time| time.get("market_date_new_york"))
@@ -4582,7 +4589,7 @@ fn append_market_move_quote_fact_violations(
                     };
                     if (displayed - quote.change_percentage).abs() > 0.015 {
                         violations.push(format!(
-                            "{} 的涨跌幅应来自 changesPercentage（约 {:+.2}%），不能把 change 等其它字段写成百分比",
+                            "{} 的涨跌幅应来自服务端 hone_change_basis.pct（约 {:+.2}%），不能使用 provider changesPercentage 或把 change 等其它字段写成百分比",
                             quote.symbol, quote.change_percentage
                         ));
                     }
@@ -5302,7 +5309,7 @@ fn active_business_turn_prompt(
         )
     } else {
         format!(
-            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search / quote / profile（crypto 用 crypto_quote）缺项，并按用户原始问题补关系、财务、新闻、网页或公告证据。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。宽泛关系要由你自主拆出相关的商业/客户供应/技术合同与投资持股待证维度，并尽量并行查一手来源。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交结构化 finish_research。{}",
+            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search；标准 symbol 已确认后优先调用 snapshot 获取 quote、profile、报价时间、服务端涨跌口径和可得盘后字段，snapshot 不适用时再组合 quote/profile，扩展时段问题补 extended_hours。完成或实际尝试结构化行情后，再按用户原始问题补关系、财务、新闻、网页或公告证据；这是工具选择优先级，不是缺行情即拒答的门禁。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。宽泛关系要由你自主拆出相关的商业/客户供应/技术合同与投资持股待证维度，并尽量并行查一手来源。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交结构化 finish_research。{}",
             route_guidance, finish_feedback,
         )
     }
@@ -5333,11 +5340,11 @@ fn agent_owned_business_turn_prompt(
         );
     }
     let route_guidance = format!(
-        "{route_guidance}\n【有界筛选约束】本轮最多接纳 {MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES} 条实体路线，优先用户明确点名标的，筛选结果通常最多保留 {MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES} 条新候选；达到上限后只完成已接纳路线，不再扩展公司清单。已有 Web 结果能命名候选时，当前批次直接为候选执行 identity search，不要重复泛搜。后续 snapshot / quote / profile 的 entity_route 必须逐字复制上方 guidance 中的原键，不得翻译、缩写或重命名；支持 snapshot 时优先一次完成行情与资产路由。同一工具与相同参数已有成功结果时不得重复调用。"
+        "{route_guidance}\n【有界筛选约束】本轮最多接纳 {MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES} 条实体路线，优先用户明确点名标的，筛选结果通常最多保留 {MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES} 条新候选；达到上限后只完成已接纳路线，不再扩展公司清单。已有 Web 结果能命名候选时，当前批次直接为候选执行 identity search，不要重复泛搜。后续 snapshot / quote / profile 的 entity_route 必须逐字复制上方 guidance 中的原键，不得翻译、缩写或重命名；支持 snapshot 时优先一次完成 quote、profile、报价时间、服务端涨跌口径和可得盘后字段，扩展时段问题另补 extended_hours。结构化行情的工具选择优先级高于 Web 搜索，但这不是完成门禁；provider 无覆盖或调用失败时不反复补取，继续使用当前证据和开放检索。同一工具与相同参数已有成功结果时不得重复调用。"
     );
     if !evidence_floor_satisfied {
         return format!(
-            "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。把互不依赖的候选发现放在同一批：为尚缺身份候选的每条路线分别调用 search，同时按用户原始公司名与问题主题并行调用可用的 Web/news/filing/industry 检索，优先发现一手来源。每个 search 都携带自己的 entity_route 与 identity_match；用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。quote、profile/snapshot（crypto 用 crypto_quote）等依赖标准 symbol 的调用必须等待对应 search 结果返回；当前上下文已有该路线标准 symbol 时才可并行执行，禁止猜测、补全或凭记忆构造代码。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
+            "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。先为尚缺身份候选的每条路线分别调用 search；每个 search 都携带自己的 entity_route 与 identity_match，用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。标准 symbol 已确认后优先调用 snapshot 获取完整行情与资产路由，snapshot 不适用时再组合 quote/profile（crypto 用 crypto_quote），扩展时段问题补 extended_hours；之后再按用户原始公司名与问题主题调用 Web/news/filing/industry 检索一手来源。互不依赖且确有时效需要时，行情与 Web 可同批，但应把行情调用列在 Web 之前。quote、profile/snapshot 等依赖标准 symbol 的调用必须等待对应 search 结果返回；当前上下文已有该路线标准 symbol 时才可执行，禁止猜测、补全或凭记忆构造代码。行情优先只是工具选择信号，不是终稿门禁；provider 无覆盖或调用失败时继续搜索和回答，不反复补取。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
             route_guidance,
         );
     }
@@ -8396,6 +8403,10 @@ mod tests {
                     "symbol": symbol,
                     "change": change,
                     "changesPercentage": change_percentage,
+                    "hone_change_basis": {
+                        "pct": change_percentage,
+                        "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                    },
                     "exchange": exchange,
                     "hone_quote_time": {
                         "beijing": "2026-07-25 04:00:00 +08:00",
@@ -10157,15 +10168,17 @@ mod tests {
         );
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
-                .contains("Web/news/filing/industry 候选来源检索")
+                .contains("结构化行情的工具选择优先级高于开放 Web 搜索")
         );
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
                 .contains("quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search")
         );
+        assert!(OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION.contains("不是完成门禁"));
         assert!(pending.contains("小写或混合大小写代码应先规范成标准代码并走 exact_symbol"));
-        assert!(pending.contains("把互不依赖的候选发现放在同一批"));
+        assert!(pending.contains("优先调用 snapshot 获取完整行情与资产路由"));
         assert!(pending.contains("Web/news/filing/industry 检索"));
+        assert!(pending.contains("行情优先只是工具选择信号，不是终稿门禁"));
         assert!(pending.contains("禁止猜测、补全或凭记忆构造代码"));
         assert!(pending.contains("由下一轮同一 Agent 继续取证或直接自然作答"));
         assert!(!pending.contains(prefix));
@@ -10177,6 +10190,8 @@ mod tests {
         assert!(eligible.contains("`hone_security_listing_evidence.status=active_listing`"));
         assert!(eligible.contains("不得再回答该证券未上市、已退市或应替换成旧母公司"));
         assert!(eligible.contains("高度依赖、锁定和多重绑定"));
+        assert!(eligible.contains("EBIT、EBITA、EBITDA 与营业利润不得互相代替"));
+        assert!(eligible.contains("不是逐数字双来源、缺项拒答或自动改写门禁"));
         for final_prompt in [&eligible, &forced] {
             assert!(final_prompt.contains("先锁定用户所指对象或市场范围与目标时段"));
             assert!(final_prompt.contains("不得因为 latest quote"));
@@ -15466,6 +15481,58 @@ mod tests {
     }
 
     #[test]
+    fn market_move_quote_evidence_prefers_server_change_basis() {
+        let mut context = AgentContext::new("aaoi-change-basis".to_string());
+        context.add_tool_result(
+            "tc_aaoi",
+            "data_fetch",
+            &json!({
+                "data": [{
+                    "symbol": "AAOI",
+                    "price": 124.82,
+                    "previousClose": 129.10,
+                    "changesPercentage": -3.46,
+                    "hone_change_basis": {
+                        "pct": -3.32,
+                        "label": "常规时段涨跌（最新价较上一交易日收盘）",
+                        "from": 129.10,
+                        "to": 124.82
+                    },
+                    "hone_quote_time": {
+                        "market_date_new_york": "2026-08-21"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+
+        let quotes = current_turn_market_move_quotes(&context, 0);
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].symbol, "AAOI");
+        assert_eq!(quotes[0].change_percentage, -3.32);
+
+        let mut raw_only = AgentContext::new("aaoi-raw-provider-change".to_string());
+        raw_only.add_tool_result(
+            "tc_aaoi_raw",
+            "data_fetch",
+            &json!({
+                "data": [{
+                    "symbol": "AAOI",
+                    "changesPercentage": -3.46,
+                    "hone_quote_time": {
+                        "market_date_new_york": "2026-08-21"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+        assert!(
+            current_turn_market_move_quotes(&raw_only, 0).is_empty(),
+            "raw provider changesPercentage must not become authoritative quote evidence"
+        );
+    }
+
+    #[test]
     fn market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response() {
         let runtime_input = "美股为什么大跌\n\n\
             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
@@ -15485,6 +15552,10 @@ mod tests {
                     "data": [{
                         "symbol": symbol,
                         "changesPercentage": change,
+                        "hone_change_basis": {
+                            "pct": change,
+                            "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                        },
                         "hone_quote_time": {
                             "beijing": "2026-07-25 04:00:00 +08:00",
                             "market_date_new_york": "2026-07-24"
@@ -15569,6 +15640,10 @@ mod tests {
                         "symbol": symbol,
                         "change": if symbol == "SPY" { 0.75 } else { -7.73 },
                         "changesPercentage": change,
+                        "hone_change_basis": {
+                            "pct": change,
+                            "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                        },
                         "exchange": exchange,
                         "hone_quote_time": {
                             "beijing": "2026-07-25 04:00:00 +08:00",
@@ -15611,7 +15686,7 @@ mod tests {
         let violations = market_move_final_violations(runtime_input, invalid, &context, 0);
 
         assert!(violations.iter().any(|violation| {
-            violation.contains("SPY 的涨跌幅应来自 changesPercentage（约 +0.10%）")
+            violation.contains("SPY 的涨跌幅应来自服务端 hone_change_basis.pct（约 +0.10%）")
         }));
         assert!(violations.iter().any(|violation| {
             violation.contains("普通 quote 的时间字段不证明交易时段或收盘")

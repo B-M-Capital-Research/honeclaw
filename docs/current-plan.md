@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-17
-状态：有 15 个活跃任务
+最后更新：2026-08-22
+状态：有 16 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **行情优先级与财报数字软核验生产发布**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/market-data-financial-guidance-production-rollout.md`
+  - 摘要：把结构化行情优先、AAOI 服务端涨跌幅口径与财报数字最新报告期/口径软核验发布到生产后端；等待不可变 runtime、零会话切换、精确 revision 和真实 canary 验收
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`
