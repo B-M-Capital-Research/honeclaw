@@ -119,9 +119,15 @@ group_context:
 # Nano Banana image generation config
 nano_banana:
   enabled: true
-  # Single implementation: use the OpenRouter image generation API (modalities=["image","text"])
+  # "openrouter" uses chat/completions; "atlascloud" uses asynchronous submit + polling.
+  # Provider credentials come from llm.providers.<provider>.api_key/api_keys.
+  provider: "openrouter"
   base_url: "https://openrouter.ai/api/v1"
   model: "google/gemini-2.0-flash-exp"
+  # Atlas Cloud alternative:
+  # provider: "atlascloud"
+  # base_url: "https://api.atlascloud.ai/api/v1"
+  # model: "google/nano-banana-2/text-to-image"
   default_image_count: 3
   # API key prefers the llm.providers.openrouter.api_key/api_keys pool; legacy single-key
   # OpenRouter fields remain readable during migration.
@@ -423,6 +429,14 @@ llm:
       api_keys: []
       timeout: 120
       max_retries: 3
+    # Optional Atlas Cloud route for both OpenAI-compatible LLM profiles and nano_banana.
+    # atlascloud:
+    #   kind: openai_compatible
+    #   base_url: "https://api.atlascloud.ai/v1"
+    #   api_key: ""
+    #   api_keys: []
+    #   timeout: 120
+    #   max_retries: 3
   profiles:
     main:
       provider: openrouter
