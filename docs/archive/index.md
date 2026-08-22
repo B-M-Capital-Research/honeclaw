@@ -14,7 +14,7 @@ Last updated: 2026-08-22
 - Related PRs / commits: direct `main` implementation commit `e08bb4607a5a8cd559c4320db220063fc021e0b4`; no PR, release, or tag
 - Related runbooks / regressions: `hone-agent` 152/152; investment response guard 136/136; WebSearch 19/19; focused three-crate compile check; immutable Runtime Image run `32544207247`; GCE cloud-authority/public-auth/channel reconnect acceptance
 - Current conclusion: market-move preturn Web searches use Tavily `day/news`, preserve provider `published_date`, and enter the existing finance research loop before the first model response. Production runs exact revision `e08bb460…` from digest `sha256:314d82c…cbf96`; PostgreSQL/S3 authority and Feishu connectivity are healthy. GitHub CI's sole Rust failure is the unchanged `soul.md` character-budget baseline already present on the parent commit, not this diff.
-- Next entry point: obtain explicit authorization before sending an MRVL canary from a logged-in user account; handle the pre-existing `soul.md` mechanical-budget failure as an independent Prompt-governance task.
+- Next entry point: obtain explicit authorization before sending an MRVL canary from a logged-in user account; separately handle the pre-existing `soul.md` mechanical-budget failure and audit the stale `origin.hone-claw.com` ngrok alias while preserving the healthy public Worker path.
 
 ## 2026-08-17
 

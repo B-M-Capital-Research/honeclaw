@@ -48,6 +48,7 @@
 - 发布过程中未修改生产数据库，未打正式版本 tag。
 - 没有通过用户的已登录账号发送真实消息；若获得明确授权，再用 `mrvl下跌原因是啥呢` 核对 day/news、`published_date`、首轮 Required 与 DataFetch 当前轮证据。
 - `soul.md` 字符预算基线应作为独立任务处理：先复核 Prompt 内容与生成型工作流治理，不应顺带抬高固定阈值或删减规则。
+- `hone-claw.com` 的用户 API 路径返回正常 application JSON 401，发布后也已有活动会话；但 `origin.hone-claw.com` 直连仍 307 到旧 ngrok not-found。该域名/隧道别名未被本次代码或切换修改，二进制回滚不会修复，应按 runbook 独立审计 DNS 与隧道配置。
 
 ## Next Entry Point
 

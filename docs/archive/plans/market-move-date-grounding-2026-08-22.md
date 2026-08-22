@@ -47,3 +47,4 @@
 - `day` 是相对当前时间窗口；用户明确询问更早历史日期时，Agent 仍需按绝对日期补充检索。
 - 生产已运行 revision `e08bb4607a5a8cd559c4320db220063fc021e0b4`；不可变 digest、GCE bundle、PostgreSQL/S3 authority、零活动会话、公网 JSON 401 与 Feishu 重连均已验证。
 - 未在用户的已登录账号内发送 MRVL canary；发送消息会产生外部副作用，需要另行明确授权。本次发布由定向自动化回归与生产健康/连接验收覆盖。
+- 用户入口 `hone-claw.com` 正常，但 runbook 记录的直连域名 `origin.hone-claw.com` 仍 307 到旧 ngrok not-found；这是本次未改动的 DNS/隧道入口问题，回滚二进制不能修复，需独立核查。
