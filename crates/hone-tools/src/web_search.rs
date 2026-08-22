@@ -125,6 +125,7 @@ impl WebSearchTool {
         key: &str,
         query: &str,
         time_range: Option<&str>,
+        topic: Option<&str>,
     ) -> Result<Value, String> {
         let mut body = serde_json::json!({
             "query": query,
@@ -139,6 +140,12 @@ impl WebSearchTool {
         // an actual provider constraint or a stale page can still win.
         if let Some(time_range) = time_range {
             body["time_range"] = Value::String(time_range.to_string());
+        }
+        // Tavily only returns each result's `published_date` for the news
+        // topic. Callers doing event/date attribution opt into that provider
+        // mode instead of treating a date in the query as source metadata.
+        if let Some(topic) = topic {
+            body["topic"] = Value::String(topic.to_string());
         }
 
         let response = self
@@ -303,6 +310,8 @@ fn annotate_basic_search_evidence(mut data: Value, max_results: u32) -> Value {
                 "use_only_explicit_title_or_snippet_claims": true,
                 "cite_same_result_url_inline": true,
                 "search_order_or_score_is_not_real_world_rank": true,
+                "query_date_is_not_publication_date": true,
+                "read_result_published_date_when_present": true,
                 "do_not_infer": [
                     "rank_or_priority",
                     "exclusivity",
@@ -507,6 +516,16 @@ impl Tool for WebSearchTool {
                 ]),
                 items: None,
             },
+            ToolParameter {
+                name: "topic".to_string(),
+                param_type: "string".to_string(),
+                description:
+                    "搜索主题。涨跌归因、当日催化与其它新闻事件查询使用 news；该模式会让 Tavily 在可得时为每条结果返回 published_date，必须读取该字段，不能把 query 中的日期当作文章发布日期。普通定义/关系检索可省略。"
+                        .to_string(),
+                required: false,
+                r#enum: Some(vec!["general".into(), "news".into(), "finance".into()]),
+                items: None,
+            },
         ]
     }
 
@@ -517,6 +536,11 @@ impl Tool for WebSearchTool {
             .and_then(|value| value.as_str())
             .map(str::trim)
             .filter(|value| matches!(*value, "day" | "week" | "month" | "year"));
+        let topic = args
+            .get("topic")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| matches!(*value, "general" | "news" | "finance"));
 
         if self.keys.is_empty() {
             tracing::warn!(tool = "web_search", "tavily keys are empty");
@@ -535,7 +559,7 @@ impl Tool for WebSearchTool {
                 skipped_disabled += 1;
                 continue;
             }
-            match self.search_with_key(key, query, time_range).await {
+            match self.search_with_key(key, query, time_range, topic).await {
                 Ok(data) => {
                     if let Some(credits) = data
                         .get("usage")
@@ -613,7 +637,7 @@ mod tests {
     /// definitional or historical question is not stripped of authoritative
     /// older sources.
     #[test]
-    fn time_range_is_an_opt_in_provider_constraint() {
+    fn recency_and_topic_are_opt_in_provider_constraints() {
         let tool = WebSearchTool::new(vec!["k".to_string()], 5);
         let schema = tool.to_openai_schema();
         let params = schema["function"]["parameters"]["properties"]
@@ -631,6 +655,21 @@ mod tests {
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>();
         assert_eq!(allowed, ["day", "week", "month", "year"]);
+        assert!(params.contains_key("topic"));
+        assert!(!required.iter().any(|value| value == "topic"));
+        let topics = params["topic"]["enum"]
+            .as_array()
+            .expect("topic enum")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(topics, ["general", "news", "finance"]);
+        assert_text_contains_all(
+            params["topic"]["description"]
+                .as_str()
+                .expect("topic description"),
+            &["涨跌归因", "published_date", "文章发布日期"],
+        );
     }
 
     #[test]
@@ -689,6 +728,14 @@ mod tests {
         );
         assert_eq!(
             annotated["hone_search_contract"]["claim_policy"]["search_order_or_score_is_not_real_world_rank"],
+            true
+        );
+        assert_eq!(
+            annotated["hone_search_contract"]["claim_policy"]["query_date_is_not_publication_date"],
+            true
+        );
+        assert_eq!(
+            annotated["hone_search_contract"]["claim_policy"]["read_result_published_date_when_present"],
             true
         );
         for result in annotated["results"].as_array().expect("results") {
@@ -964,7 +1011,7 @@ mod tests {
             let n = socket.read(&mut buf).await.unwrap_or(0);
             *captured_for_server.lock().expect("captured request lock") =
                 String::from_utf8_lossy(&buf[..n]).to_string();
-            let body = r#"{"results":[{"title":"ok"}],"usage":{"credits":1}}"#;
+            let body = r#"{"results":[{"title":"ok","published_date":"Fri, 21 Aug 2026 20:48:00 GMT"}],"usage":{"credits":1}}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                 body.len(),
@@ -986,10 +1033,18 @@ mod tests {
         };
 
         let result = tool
-            .execute(serde_json::json!({"query": "AAPL news"}))
+            .execute(serde_json::json!({
+                "query": "AAPL decline August 21 2026",
+                "time_range": "day",
+                "topic": "news"
+            }))
             .await
             .expect("search should succeed");
         assert_eq!(result["usage"]["credits"], 1);
+        assert_eq!(
+            result["results"][0]["published_date"],
+            "Fri, 21 Aug 2026 20:48:00 GMT"
+        );
 
         let request = captured_request
             .lock()
@@ -1007,6 +1062,8 @@ mod tests {
         assert_eq!(payload["include_raw_content"], false);
         assert_eq!(payload["include_images"], false);
         assert_eq!(payload["include_usage"], true);
+        assert_eq!(payload["time_range"], "day");
+        assert_eq!(payload["topic"], "news");
         assert!(payload.get("api_key").is_none());
     }
 }

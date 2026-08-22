@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-17
+Last updated: 2026-08-22
+
+## 2026-08-22
+
+### Market Move Same-Day News And Research Activation
+
+- Status: implementation done; production rollout in progress
+- Date: 2026-08-22
+- Plan: `docs/archive/plans/market-move-date-grounding-2026-08-22.md`
+- Handoff: `docs/handoffs/2026-08-22-market-move-date-grounding.md`
+- Decision / ADR: no new ADR; this reuses the existing investment research flow and market-move date anchor
+- Related PRs / commits: pending direct `main` implementation commit; no PR, release, or tag
+- Related runbooks / regressions: `hone-agent` 152/152; investment response guard 136/136; WebSearch 19/19; focused three-crate compile check; PostgreSQL-backed GitHub CI required before cutover
+- Current conclusion: market-move preturn Web searches now use Tavily `day/news` so result publication dates are available, and a service-owned market-move date anchor activates the existing finance research loop before the first model response. Ordinary investment and non-finance routing stays unchanged; no structured content judge or new publication gate was added.
+- Next entry point: finish the immutable-image GCE rollout and replay the MRVL 2026-08-21 canary before user remediation.
 
 ## 2026-08-17
 

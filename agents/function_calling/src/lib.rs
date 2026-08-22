@@ -98,7 +98,7 @@ const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
 const PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION: &str = "【内部写后核验收口】上一项持久化操作返回了不确定错误，系统没有重放该写操作，而是通过同一用户范围内的只读查询取得了操作后的权威状态。当前轮次不再提供工具。请只根据原请求和只读核验结果回答操作是否已经生效；已生效就明确确认，未生效就明确说明当前状态，无法从核验结果判断的字段只披露该具体缺口。不得再次调用或建议重放写操作，不得使用“可能已执行”“状态不确定”“请重试”等模糊结论，也不要向用户提及内部错误、工具、核验机制或本说明。";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前轮已进入金融研究工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
 const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；`hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得用旧收购或退市记忆否认；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
 #[cfg(test)]
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
@@ -4115,6 +4115,13 @@ fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
+fn market_move_starts_investment_research(
+    runtime_input: &str,
+    agent_owned_finance_loop: bool,
+) -> bool {
+    agent_owned_finance_loop && is_market_move_final_check_enabled(runtime_input)
+}
+
 fn chinese_weekday_label(weekday: Weekday) -> &'static str {
     match weekday {
         Weekday::Mon => "周一",
@@ -5780,7 +5787,11 @@ impl Agent for FunctionCallingAgent {
         }
         let mut total_tool_calls = 0u32;
         let mut iterations: u32 = 0;
-        let mut investment_research_started = false;
+        // A market-move request already carries a service-owned date anchor.
+        // Enter the existing finance loop from the first model round so a
+        // Web-only answer cannot bypass DataFetch identity/quote evidence.
+        let mut investment_research_started =
+            market_move_starts_investment_research(user_input, self.agent_owned_finance_loop);
         let mut research_evidence = ResearchEvidenceLedger::with_identity_route_limit(
             self.agent_owned_finance_loop
                 .then_some(MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES),
@@ -6705,8 +6716,9 @@ impl Agent for FunctionCallingAgent {
                         }
                     }
 
-                    // Once DataFetch has made this a finance-research loop, it
-                    // is read-only. Reject write-capable calls before adding a
+                    // Once the service date anchor or DataFetch has made this
+                    // a finance-research loop, it is read-only. Reject
+                    // write-capable calls before adding a
                     // tool trace, notifying observers, or entering the
                     // registry. An initial non-finance portfolio/cron request
                     // remains unaffected until the DataFetch boundary exists.
@@ -6890,10 +6902,10 @@ impl Agent for FunctionCallingAgent {
 
                     // Every nonempty Interactive turn enters the open Agent
                     // discovery path, including non-finance questions that may
-                    // use Web/file/skill tools. Activate the canonical finance
-                    // protocol only at the structural DataFetch boundary that
-                    // the investment prompt requires for every security turn;
-                    // do not infer it from a closed question vocabulary.
+                    // use Web/file/skill tools. A service-owned market-move
+                    // date anchor activates finance from the first round;
+                    // other security turns still activate only at the
+                    // structural DataFetch boundary.
                     if actionable_tool_calls.is_empty() {
                         #[cfg(test)]
                         {
@@ -12223,8 +12235,8 @@ mod tests {
                 .lock()
                 .expect("tool choice modes")
                 .as_slice(),
-            [ToolChoiceMode::Auto, ToolChoiceMode::Auto],
-            "two representative broad-market groups must open natural-final mode without identity-search deadlock"
+            [ToolChoiceMode::Required, ToolChoiceMode::Auto],
+            "a market-move turn must require initial research, then two representative broad-market groups open natural-final mode without identity-search deadlock"
         );
         let records = audit.records.lock().expect("audit records");
         let direct_final = records.last().expect("direct final audit");
@@ -15437,6 +15449,23 @@ mod tests {
     }
 
     #[test]
+    fn market_move_date_anchor_starts_existing_investment_research_flow() {
+        let runtime_input = "mrvl下跌原因是啥呢\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            目标日期候选是 2026-08-21 周五。";
+
+        assert!(market_move_starts_investment_research(runtime_input, true));
+        assert!(!market_move_starts_investment_research(
+            runtime_input,
+            false
+        ));
+        assert!(!market_move_starts_investment_research(
+            "mrvl最近怎么看",
+            true
+        ));
+    }
+
+    #[test]
     fn market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response() {
         let runtime_input = "美股为什么大跌\n\n\
             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
@@ -15748,6 +15777,7 @@ mod tests {
             vec![ChatStreamEvent::ContentDelta(corrected.clone())],
         ]);
         let seen_messages = llm.seen_messages.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
         let observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.to_string()));
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(GroundedFinanceEvidenceTool));
@@ -15772,6 +15802,23 @@ mod tests {
         assert_eq!(response.content, corrected);
         assert_eq!(response.iterations, 4);
         assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .first(),
+            Some(&ToolChoiceMode::Required),
+            "market-move turns must enter the existing investment research flow before any model answer"
+        );
+        let first_research_prompt = seen_messages
+            .lock()
+            .expect("seen messages")
+            .first()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .map(str::to_string)
+            .expect("first research prompt");
+        assert!(first_research_prompt.contains("本轮只取证，不作答"));
         assert_eq!(
             observer
                 .events
