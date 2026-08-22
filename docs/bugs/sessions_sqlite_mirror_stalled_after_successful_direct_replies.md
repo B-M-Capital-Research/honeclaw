@@ -6,6 +6,10 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-08-22 18:01 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log` 在 2026-08-22 14:01-18:01 CST 继续推进，近窗统计 `HeartbeatDiag=218`、`run_start=56`、`run_finish=59`、`deliver=37`、`duplicate_suppressed=7`；18:00-18:01 CST 仍可见 Web heartbeat run / deliver、direct 会话收口与 event-engine poller 信号。
+  - 同一窗口 `data/sessions.sqlite3` 没有追入这些真实运行。当前最大时间仍为 `sessions.updated_at=2026-08-01T14:13:46.184727+08:00`、`sessions.last_message_at=2026-08-01T14:13:46.183054+08:00`、`session_messages.timestamp=2026-08-01T14:13:46.183054+08:00`、`session_messages.imported_at=2026-08-02T20:59:58.506373+08:00`、`cron_job_runs.executed_at=2026-08-01T14:00:52.724451+08:00`、`web_push_messages.created_at=2026-07-19T13:30:44.965959+08:00`。
+  - 判断：source runtime / scheduler / event-engine 仍在运行，因此不是 `runtime_process_absent_stops_channels_and_scheduler.md` 的 P1 整体进程缺席回退；缺陷仍集中在本地 SQLite 会话 / 调度 / Web push 台账镜像没有随真实 live runtime 推进。该问题会影响缺陷巡检、调度审计、补发判断和运行态复核，维持功能性 `P2`，非 P1，不创建 GitHub Issue。
 - `2026-08-21 06:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log` 在 2026-08-21 02:01-06:01 CST 继续推进，近窗统计 `HeartbeatDiag=241`、`run_start=65`、`run_finish=67`、`deliver=33`、`duplicate_suppressed=9`、`heartbeat 输出不是结构化 JSON=3`；06:00-06:01 CST 仍可见 Web heartbeat run / deliver 与 event-engine poller / daily report 信号。
   - 同一窗口 `data/sessions.sqlite3` 没有追入这些真实运行。当前最大时间仍为 `sessions.updated_at=2026-08-01T14:13:46.184727+08:00`、`sessions.last_message_at=2026-08-01T14:13:46.183054+08:00`、`session_messages.timestamp=2026-08-01T14:13:46.183054+08:00`、`session_messages.imported_at=2026-08-02T20:59:58.506373+08:00`，并且 `cron_job_runs` / `web_push_messages` 仍未反映近窗 live 运行。
