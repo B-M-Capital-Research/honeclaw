@@ -866,6 +866,7 @@ impl HoneBotCore {
             "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
                 .to_string()
         })?;
+        let finance_research = self.config.agent.finance_research;
         Ok(Box::new(FunctionCallingReasoningRunner::new(
             llm,
             Arc::new(tool_registry),
@@ -875,6 +876,13 @@ impl HoneBotCore {
             RunnerTimeouts {
                 step: self.config.agent.step_timeout(),
                 overall: self.config.agent.overall_timeout(),
+            },
+            hone_agent::FinanceResearchBudget {
+                tool_rounds: finance_research.tool_rounds,
+                tool_calls: finance_research.tool_calls,
+                data_fetch_calls: finance_research.data_fetch_calls,
+                web_search_calls: finance_research.web_search_calls,
+                gap_closure_rounds: finance_research.gap_closure_rounds,
             },
         )))
     }

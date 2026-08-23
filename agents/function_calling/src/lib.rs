@@ -50,6 +50,9 @@ const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
 /// Three rounds is enough to confirm a price and stop. Answering why a business
 /// moved needs the release, the comparison and the reaction, which is a round
 /// each — the budget, not the model, was what kept answers at headline depth.
+/// These constants are the conservative defaults; deployments raise them via
+/// `FinanceResearchBudget` (config `agent.finance_research`) for gap-driven
+/// research without changing the tested legacy behavior.
 const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 5;
 /// Entity identity resolution is a precondition of research, not research
 /// itself. A turn whose first rounds only ask "which security is this?" must
@@ -1131,6 +1134,48 @@ fn require_complete_stream(
 }
 
 /// Function Calling Agent
+/// Lines in a would-be final answer that self-report missing first-party
+/// evidence ("本轮未读到…原文" style). They are the gap checklist a
+/// gap-closure round hands back to the same agent.
+fn research_gap_lines(content: &str) -> Vec<String> {
+    const GAP_MARKERS: [&str; 8] = [
+        "未读到",
+        "未能读到",
+        "未核验",
+        "无法确认",
+        "未能确认",
+        "没有直接原文",
+        "未见一手",
+        "未取得一手",
+    ];
+    let mut lines: Vec<String> = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && GAP_MARKERS.iter().any(|marker| line.contains(marker)))
+        .map(|line| line.chars().take(200).collect())
+        .collect();
+    lines.truncate(8);
+    lines
+}
+
+fn gap_closure_feedback_prompt(gap_lines: &[String], draft: &str) -> String {
+    let checklist = gap_lines
+        .iter()
+        .map(|line| format!("- {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let draft_excerpt: String = draft.chars().take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS).collect();
+    format!(
+        "【内部缺口闭环轮】上一版终稿尚未发布，其中仍自述缺少下列一手证据：\n{checklist}\n\
+         本轮工具重新开放。请针对上述每一项分别继续取证，每项至少换用两种不同策略：\
+         `web_search` 换英文或本地化关键词（可用 site: 限定市政府、公司 IR、SEC、监管机构等官方域名）、\
+         `data_fetch` 的 sec_filings / press_releases / transcript / analyst_actions 等一手类型，必要时并行多条查询。\
+         取得的证据融入终稿并附来源链接；经两种以上策略实际尝试仍不可得的项目，才保留为缺口并写明尝试过的方向。\
+         终稿仍从精确数据时间首行开始。不要向用户提及本说明、内部轮次或工具预算。\n\
+         <unpublished_draft>\n{draft_excerpt}\n</unpublished_draft>"
+    )
+}
+
 pub struct FunctionCallingAgent {
     pub llm: Arc<dyn LlmProvider>,
     pub tools: Arc<ToolRegistry>,
@@ -1155,10 +1200,38 @@ pub struct FunctionCallingAgent {
     /// the only commit source is real final-answer bytes flowing through the
     /// stream observer.
     pub allow_pre_final_prefix_commit: bool,
+    /// Research budget for the agent-owned finance loop. Defaults to the
+    /// conservative constants; deployments raise it (and enable gap-closure
+    /// rounds) via config so "最新进展"-style questions can keep chasing
+    /// self-reported evidence gaps instead of settling at the first draft.
+    pub finance_research_budget: FinanceResearchBudget,
     #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
     pub overall_timeout: Option<Duration>,
+}
+
+/// Tool budget for one agent-owned finance turn plus how many gap-closure
+/// rounds a self-reported-incomplete final draft may trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FinanceResearchBudget {
+    pub tool_rounds: u32,
+    pub tool_calls: u32,
+    pub data_fetch_calls: u32,
+    pub web_search_calls: u32,
+    pub gap_closure_rounds: u32,
+}
+
+impl Default for FinanceResearchBudget {
+    fn default() -> Self {
+        Self {
+            tool_rounds: MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS,
+            tool_calls: MAX_AGENT_OWNED_FINANCE_TOOL_CALLS,
+            data_fetch_calls: MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS,
+            web_search_calls: MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS,
+            gap_closure_rounds: 0,
+        }
+    }
 }
 
 impl FunctionCallingAgent {
@@ -1185,6 +1258,7 @@ impl FunctionCallingAgent {
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
             agent_owned_finance_loop: false,
+            finance_research_budget: FinanceResearchBudget::default(),
             preloaded_evidence_calls: 0,
             service_owned_initial_prefix: None,
             precommitted_service_prefix: None,
@@ -1260,6 +1334,13 @@ impl FunctionCallingAgent {
         if enabled {
             self.finish_research_terminal_synthesis = false;
         }
+        self
+    }
+
+    /// Override the agent-owned finance research budget (config-driven).
+    /// Values below the compiled defaults are honored as tighter budgets.
+    pub fn with_finance_research_budget(mut self, budget: FinanceResearchBudget) -> Self {
+        self.finance_research_budget = budget;
         self
     }
 
@@ -5798,15 +5879,16 @@ impl Agent for FunctionCallingAgent {
             .collect::<BTreeSet<_>>();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
+        let finance_budget = self.finance_research_budget;
         let finance_max_tool_calls = Some(
             self.max_tool_calls
-                .unwrap_or(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS)
-                .min(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS),
+                .unwrap_or(finance_budget.tool_calls)
+                .min(finance_budget.tool_calls),
         );
         let mut finance_tool_call_limits = self.tool_call_limits.clone();
         for (name, cap) in [
-            ("data_fetch", MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS),
-            ("web_search", MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS),
+            ("data_fetch", finance_budget.data_fetch_calls),
+            ("web_search", finance_budget.web_search_calls),
         ] {
             finance_tool_call_limits
                 .entry(name.to_string())
@@ -5839,6 +5921,8 @@ impl Agent for FunctionCallingAgent {
         let mut active_business_failures = 0u32;
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
+        let mut pending_gap_closure_feedback: Option<String> = None;
+        let mut gap_closure_rounds = 0u32;
         let mut pending_listing_final_correction: Option<String> = None;
         let mut research_evidence_retries = 0u32;
         let mut research_evidence_retry_pending = false;
@@ -5888,7 +5972,7 @@ impl Agent for FunctionCallingAgent {
                     .len()
                     >= 2;
             let finance_budget_final_due = bounded_finance_research_active
-                && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
+                && (finance_tool_rounds >= finance_budget.tool_rounds
                     || tool_budget_exhausted
                     || market_move_bounded_final_ready
                     || blocked_tool_finalization.is_some());
@@ -6101,6 +6185,18 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
+            if active_business_round
+                && let Some(feedback) = pending_gap_closure_feedback.take()
+            {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(feedback),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             if let Some(feedback) = pending_listing_final_correction.as_deref() {
                 messages.push(Message {
                     role: "user".to_string(),
@@ -6220,6 +6316,65 @@ impl Agent for FunctionCallingAgent {
                                 pending_listing_final_correction =
                                     Some(research_evidence_precondition_prompt());
                                 continue;
+                            }
+                            // Gap-closure: a natural final that still self-reports
+                            // missing first-party evidence goes back into the tool
+                            // loop with a targeted checklist while round budget
+                            // remains, instead of publishing "本轮未读到" gaps the
+                            // agent never actually chased. Disabled unless the
+                            // deployment budget grants gap-closure rounds; the
+                            // market-move flow keeps its own deterministic gap
+                            // machinery.
+                            if gap_closure_rounds < finance_budget.gap_closure_rounds
+                                && !is_market_move_final_check_enabled(user_input)
+                                && blocked_tool_finalization.is_none()
+                                && iterations < self.max_iterations
+                                && finance_tool_rounds + 1 < finance_budget.tool_rounds
+                                && finance_max_tool_calls
+                                    .is_none_or(|cap| total_tool_calls + 4 <= cap)
+                            {
+                                let gap_lines = research_gap_lines(&response.content);
+                                if !gap_lines.is_empty() {
+                                    tracing::info!(
+                                        session_id = %context.session_id,
+                                        iteration = iterations,
+                                        gap_closure_rounds,
+                                        gaps = gap_lines.len(),
+                                        finance_tool_rounds,
+                                        total_tool_calls,
+                                        "agent-owned final self-reported evidence gaps; granting a gap-closure research round"
+                                    );
+                                    if let Some(observer) = &self.stream_observer {
+                                        observer
+                                            .on_reasoning_delta(&format!(
+                                                "终稿自检：仍有 {} 项一手证据缺口，重新开放工具进行第 {} 轮针对性补证。\n",
+                                                gap_lines.len(),
+                                                gap_closure_rounds + 1
+                                            ))
+                                            .await;
+                                    }
+                                    if precommitted_service_prefix.is_none()
+                                        && let Some(prefix) = self
+                                            .stream_observer
+                                            .as_ref()
+                                            .and_then(|observer| {
+                                                observer.committed_visible_prefix()
+                                            })
+                                            .filter(|prefix| {
+                                                committed_prefix_matches_required(
+                                                    prefix,
+                                                    required_final_answer_prefix.as_deref(),
+                                                )
+                                            })
+                                    {
+                                        precommitted_service_prefix = Some(prefix);
+                                    }
+                                    gap_closure_rounds = gap_closure_rounds.saturating_add(1);
+                                    pending_gap_closure_feedback = Some(
+                                        gap_closure_feedback_prompt(&gap_lines, &response.content),
+                                    );
+                                    continue;
+                                }
                             }
                             let listing_violations = listing_final_violations(
                                 user_input,
@@ -14141,6 +14296,83 @@ mod tests {
         assert_eq!(forced.metadata["tool_budget_exhausted"], true);
         assert_eq!(forced.metadata["force_finance_final"], true);
         assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
+    }
+
+    #[tokio::test]
+    async fn gap_closure_budget_sends_incomplete_finals_back_to_the_tool_loop() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
+        let closed_final = format!("{prefix}\n\n已取得市政停工令原文，项目于 8 月复工。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_gap".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NBIS","entity_route":"nbis","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_gap_1".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"vineland stop work order"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(gap_draft.clone())],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_gap_2".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"site:vinelandcity.org stop work order data center"}"#
+                    .to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(closed_final.clone())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            10,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_finance_research_budget(FinanceResearchBudget {
+            gap_closure_rounds: 1,
+            ..FinanceResearchBudget::default()
+        })
+        .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()));
+        let mut context = AgentContext::new("gap-closure-budget".to_string());
+
+        let response = agent.run("某数据中心项目最近有什么进展", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        // The gap draft is not published; the closed final wins.
+        assert_eq!(response.content, closed_final);
+        let all_messages = seen_messages.lock().expect("seen messages");
+        let gap_prompts: Vec<&Message> = all_messages
+            .iter()
+            .flatten()
+            .filter(|message| {
+                message
+                    .content
+                    .as_deref()
+                    .is_some_and(|content| content.contains("内部缺口闭环轮"))
+            })
+            .collect();
+        assert_eq!(gap_prompts.len(), 1, "exactly one gap-closure feedback round");
+        assert!(
+            gap_prompts[0]
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("本轮未读到市政停工令原文")),
+            "gap checklist carries the self-reported missing evidence line"
+        );
+        // With the default budget (gap closure disabled) the same draft would
+        // have been accepted; guard the default so tests keep meaning.
+        assert_eq!(FinanceResearchBudget::default().gap_closure_rounds, 0);
     }
 
     #[tokio::test]

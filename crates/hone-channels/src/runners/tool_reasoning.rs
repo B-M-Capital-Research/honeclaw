@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_agent::{FunctionCallingAgent, FunctionCallingStreamObserver};
+use hone_agent::{FinanceResearchBudget, FunctionCallingAgent, FunctionCallingStreamObserver};
 use hone_agent_codex_cli::CodexCliAgent;
 use hone_core::agent::{Agent, AgentContext, AgentMessage};
 use hone_core::config::AgentConversationStrategy;
@@ -748,6 +748,7 @@ pub(crate) struct FunctionCallingReasoningRunner {
     max_iterations: u32,
     llm_audit: Option<Arc<dyn LlmAuditSink>>,
     timeouts: RunnerTimeouts,
+    finance_research_budget: FinanceResearchBudget,
 }
 
 impl FunctionCallingReasoningRunner {
@@ -758,6 +759,7 @@ impl FunctionCallingReasoningRunner {
         max_iterations: u32,
         llm_audit: Option<Arc<dyn LlmAuditSink>>,
         timeouts: RunnerTimeouts,
+        finance_research_budget: FinanceResearchBudget,
     ) -> Self {
         Self {
             llm,
@@ -766,6 +768,7 @@ impl FunctionCallingReasoningRunner {
             max_iterations,
             llm_audit,
             timeouts,
+            finance_research_budget,
         }
     }
 }
@@ -823,6 +826,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.llm_audit.clone(),
         )
         .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
+        .with_finance_research_budget(self.finance_research_budget)
         .with_preloaded_evidence_calls(request.preloaded_evidence_calls)
         .with_service_owned_initial_prefix(
             service_owned_prefix_content,

@@ -302,6 +302,12 @@ pub struct AgentConfig {
     /// 其余管理员权益。
     #[serde(default = "default_admins_use_native_runner")]
     pub admins_use_native_runner: bool,
+    /// 交互投研（agent-owned finance loop）的研究预算。默认与编译内保守值
+    /// 一致；调大后同一 Agent 可以为"最新进展"类问题多轮追证,
+    /// `gap_closure_rounds` > 0 时终稿自述的证据缺口会被送回工具循环
+    /// 做针对性补证。
+    #[serde(default)]
+    pub finance_research: FinanceResearchConfig,
     #[serde(default = "default_agent_step_timeout_seconds")]
     pub step_timeout_seconds: u64,
     #[serde(default = "default_agent_overall_timeout_seconds")]
@@ -468,6 +474,7 @@ impl Default for AgentConfig {
             codex_model: default_codex_model(),
             daily_conversation_limit: default_daily_conversation_limit(),
             admins_use_native_runner: default_admins_use_native_runner(),
+            finance_research: FinanceResearchConfig::default(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
             gemini_acp: GeminiAcpConfig::default(),
@@ -679,6 +686,47 @@ fn default_daily_conversation_limit() -> u32 {
 
 fn default_admins_use_native_runner() -> bool {
     true
+}
+
+/// 交互投研研究预算；字段语义见 hone-agent 的 `FinanceResearchBudget`。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FinanceResearchConfig {
+    #[serde(default = "default_finance_tool_rounds")]
+    pub tool_rounds: u32,
+    #[serde(default = "default_finance_tool_calls")]
+    pub tool_calls: u32,
+    #[serde(default = "default_finance_data_fetch_calls")]
+    pub data_fetch_calls: u32,
+    #[serde(default = "default_finance_web_search_calls")]
+    pub web_search_calls: u32,
+    /// 终稿自述证据缺口时允许的补证轮数；0 表示关闭缺口闭环。
+    #[serde(default)]
+    pub gap_closure_rounds: u32,
+}
+
+impl Default for FinanceResearchConfig {
+    fn default() -> Self {
+        Self {
+            tool_rounds: default_finance_tool_rounds(),
+            tool_calls: default_finance_tool_calls(),
+            data_fetch_calls: default_finance_data_fetch_calls(),
+            web_search_calls: default_finance_web_search_calls(),
+            gap_closure_rounds: 0,
+        }
+    }
+}
+
+fn default_finance_tool_rounds() -> u32 {
+    5
+}
+fn default_finance_tool_calls() -> u32 {
+    24
+}
+fn default_finance_data_fetch_calls() -> u32 {
+    20
+}
+fn default_finance_web_search_calls() -> u32 {
+    6
 }
 
 fn default_agent_step_timeout_seconds() -> u64 {

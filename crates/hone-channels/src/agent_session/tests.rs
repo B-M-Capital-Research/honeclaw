@@ -3217,7 +3217,14 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
     assert_eq!(runtime_inputs.len(), 1);
     assert!(!runtime_inputs[0].contains("<investment_draft>"));
     let events = downstream.events.lock().await;
-    assert_eq!(events.len(), 1);
+    // The deferred emitter now forwards the runner's live reasoning track, so
+    // the guard fallback's internal thought reaches downstream alongside the
+    // progress event instead of being swallowed.
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert!(
+        matches!(&events[1], AgentRunnerEvent::StreamThought { .. }),
+        "{events:?}"
+    );
     assert!(matches!(
         &events[0],
         AgentRunnerEvent::Progress {

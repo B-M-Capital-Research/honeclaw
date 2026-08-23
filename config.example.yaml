@@ -687,6 +687,18 @@ agent:
   # (and therefore llm.conversation_profile) instead of the host-capable native
   # runner above. Admin perks such as the quota bypass are unaffected.
   admins_use_native_runner: true
+  # Research budget for interactive investment turns (agent-owned finance
+  # loop). Defaults are the conservative compiled values. Raising them lets
+  # the same agent keep chasing evidence across more tool rounds, and
+  # gap_closure_rounds > 0 sends a final draft that still self-reports
+  # missing first-party evidence ("本轮未读到…原文") back into the tool loop
+  # with a targeted checklist before its gaps are accepted as honest.
+  finance_research:
+    tool_rounds: 5
+    tool_calls: 24
+    data_fetch_calls: 20
+    web_search_calls: 6
+    gap_closure_rounds: 0
   # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round
