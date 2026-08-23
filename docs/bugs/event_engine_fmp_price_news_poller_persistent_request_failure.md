@@ -14,13 +14,29 @@
 
 ## 状态
 
-- New
+- Fixed
+
+## 最新进展
+
+- 2026-08-23 `bug-2` 代码级修复：`crates/hone-event-engine/src/fmp.rs` 现将 FMP poller client 对齐到仓库既有约束。
+  - 短暂传输错误（如 `error sending request`、`error decoding response body`、`connection reset`、`operation timed out`）只在**同一把 key** 上做一次短延迟重试，不再因为一次瞬时传输抖动直接整轮失败。
+  - 仅 `401/403/429` 和明确的 key/quota 拒绝会继续轮转到下一把 key；transport/provider/parse 错误不再跨 key fan-out，避免把普通上游故障放大成整池凭据轮询。
+  - loopback FMP base URL 现在会显式 `no_proxy()`，与 `hone-tools/data_fetch.rs` 的约束保持一致，避免本机代理静默接管本地适配器请求。
+  - 新增回归：
+    - `transport_error_retries_same_key_once_before_success`
+    - `auth_error_still_falls_back_to_next_key`
+    - `provider_errors_do_not_fan_out_to_later_keys`
+    - `loopback_fmp_adapters_bypass_workstation_proxies`
+  - 验证通过：
+    - `cargo test -p hone-event-engine fmp::tests --lib -- --nocapture`
+    - `cargo check -p hone-event-engine --tests`
+  - 说明：本轮未重启 live runtime，因此先按代码级 `Fixed` 记录；后续若在确认已加载本次修复的真实运行窗口里继续复发，再回退到 `New/P2`。
 
 ## 证据来源
 
 - `data/runtime/task_runs.2026-08-23.jsonl`
-  - 2026-08-24 02:01 CST 运行态继续复发，状态维持 `New/P2`。
-  - 2026-08-23 22:01-2026-08-24 02:01 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-23T14:01:20Z` 后记录 `poller.fmp.news failed=8`，同时 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路仍在退化。
+  - 2026-08-23 02:01 CST 运行态继续复发，当时状态维持 `New/P2`。
+  - 2026-08-22 22:01-2026-08-23 02:01 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-22T14:01:20Z` 后记录 `poller.fmp.news failed=8`，同时 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路仍在退化。
   - 失败样本覆盖 `poller.fmp.news` 的 `stock_news` 请求；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
   - 同窗仍有 heartbeat `run_start=58`、`run_finish=59`、`deliver=29`，说明 scheduler 其它链路仍在推进。
   - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻事件增量、digest 候选、监控触发新鲜度和部分行情刷新，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
