@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-23 10:02-14:02 CST。
+  - 12:00 CST `持仓重大事件心跳提醒` 与 14:00 CST `存储板块关键事件心跳提醒` 均记录 `heartbeat 输出不是结构化 JSON，任务已标记失败`，随后 Web events 以 `failure_kind=execution_failed` 跳过发送。
+  - 同窗 source runtime 仍有 `HeartbeatDiag=1209`、`run_start=57`、`run_finish=57`、`deliver=57`，说明不是 Web scheduler / event-engine 全链路不可用；`data/sessions.sqlite3` 仍未追入这些 session/message/cron 增量。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-23 02:01-06:02 CST。
   - 同窗 `HeartbeatDiag=207`、`run_start=56`、`run_finish=57`、`deliver=31`，但仍出现 1 条 runner / execution 类失败信号，且 parse 分布包含 `Empty=1`；多轮 heartbeat 在工具预算受限后依赖旧报价或旧轮次信息收口，说明 required-evidence / 输出契约 fail-closed 风险仍未消失。
   - 本轮未见批量 `heartbeat 输出不是结构化 JSON` 明文复发，但 06:00 CST `光模块板块关键事件心跳提醒` 仍尝试调用不存在的 `cron_job` 工具，随后把“要确认监控关系”的直聊式文案作为 heartbeat deliver 候选并被 duplicate suppression 压掉，和既有 heartbeat 执行期任务语义漂移 / evidence fail-closed 问题同链路。
