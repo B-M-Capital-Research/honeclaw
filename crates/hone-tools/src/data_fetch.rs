@@ -78,6 +78,8 @@ pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
             | "corporate_actions"
             | "press_releases"
             | "transcript"
+            | "sec_filings"
+            | "analyst_actions"
     )
 }
 
@@ -483,6 +485,36 @@ impl DataFetchTool {
                     if limit == 0 { 10 } else { limit }
                 )),
             )],
+            // First-party SEC filing index (8-K/6-K/10-Q form types with
+            // links) over the trailing 90 days. Financing, M&A, and other
+            // "最新进展" claims should cite these over second-hand articles.
+            "sec_filings" => {
+                let today = chrono::Utc::now().date_naive();
+                let from = today - Duration::days(90);
+                vec![(
+                    "sec_filings",
+                    s(&format!(
+                        "sec-filings-search/symbol?symbol={symbol}&from={}&to={}&page=0&limit={}",
+                        from.format("%Y-%m-%d"),
+                        today.format("%Y-%m-%d"),
+                        if limit == 0 { 20 } else { limit }
+                    )),
+                )]
+            }
+            // Dated analyst rating and price-target actions.
+            // `earnings_outlook` only carries the current consensus snapshot;
+            // this stream answers "谁在什么时候调了评级/目标价、为什么".
+            "analyst_actions" => vec![
+                ("grades", s(&format!("grades?symbol={symbol}&limit=20"))),
+                (
+                    "grade_news",
+                    s(&format!("grades-news?symbol={symbol}&page=0&limit=10")),
+                ),
+                (
+                    "price_target_news",
+                    s(&format!("price-target-news?symbol={symbol}&page=0&limit=10")),
+                ),
+            ],
             "transcript" => {
                 let mut components = vec![(
                     "transcript_dates",
@@ -976,7 +1008,7 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
             Some(FMP_TTL_FINANCIALS)
         }
         "peers" | "market_hours" | "macro" => Some(FMP_TTL_PROFILE),
-        "press_releases" | "transcript" => Some(FMP_TTL_NEWS),
+        "press_releases" | "transcript" | "sec_filings" | "analyst_actions" => Some(FMP_TTL_NEWS),
         "earnings_calendar" | "earnings_outlook" => Some(FMP_TTL_EARNINGS),
         _ => None,
     }
@@ -993,6 +1025,8 @@ fn should_cache_fmp_value(data_type: &str, value: &Value) -> bool {
             | "corporate_actions"
             | "press_releases"
             | "transcript"
+            | "sec_filings"
+            | "analyst_actions"
             | "profile"
             | "search"
             | "etf_holdings"
@@ -2212,7 +2246,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -4405,6 +4439,36 @@ mod tests {
                 to.format("%Y-%m-%d")
             )
         );
+    }
+
+    #[test]
+    fn sec_filings_bundle_covers_the_trailing_ninety_days() {
+        let tool = tool_with_test_key();
+        let today = chrono::Utc::now().date_naive();
+        let from = today - Duration::days(90);
+        let components = tool
+            .stable_bundle_components("sec_filings", "NBIS", &json!({}))
+            .expect("sec_filings bundle components");
+        assert_eq!(components.len(), 1);
+        assert_eq!(
+            components[0].1,
+            format!(
+                "https://example.com/stable/sec-filings-search/symbol?symbol=NBIS&from={}&to={}&page=0&limit=20",
+                from.format("%Y-%m-%d"),
+                today.format("%Y-%m-%d")
+            )
+        );
+    }
+
+    #[test]
+    fn analyst_actions_bundle_carries_dated_grade_and_target_streams() {
+        let tool = tool_with_test_key();
+        let components = tool
+            .stable_bundle_components("analyst_actions", "NBIS", &json!({}))
+            .expect("analyst_actions bundle components");
+        let keys: Vec<&str> = components.iter().map(|(key, _)| *key).collect();
+        assert_eq!(keys, vec!["grades", "grade_news", "price_target_news"]);
+        assert!(components[0].1.ends_with("/stable/grades?symbol=NBIS&limit=20"));
     }
 
     /// A 45.57bn market cap was published as 4557 亿 — ten times too large —

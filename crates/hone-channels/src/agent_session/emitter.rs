@@ -45,12 +45,15 @@ impl AgentRunnerEmitter for DeferredUserOutputEmitter {
         match event {
             forward @ AgentRunnerEvent::Progress { .. }
             | forward @ AgentRunnerEvent::ToolStatus { .. }
+            // Live reasoning is a display-only thinking track, never part of
+            // the deferred answer text, so it streams through like tool
+            // status instead of being withheld with speculative StreamDelta.
+            | forward @ AgentRunnerEvent::StreamThought { .. }
             | forward @ AgentRunnerEvent::CommittedStreamDelta { .. } => {
                 self.inner.emit(forward).await;
             }
             AgentRunnerEvent::StreamDelta { .. }
             | AgentRunnerEvent::StreamReset
-            | AgentRunnerEvent::StreamThought { .. }
             | AgentRunnerEvent::Error { .. } => {}
         }
     }

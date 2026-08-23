@@ -295,6 +295,12 @@ pub trait FunctionCallingStreamObserver: Send + Sync {
         false
     }
 
+    /// A provider reasoning/thinking delta (deepseek `reasoning_content`,
+    /// or adapters mapping upstream reasoning summaries onto that field).
+    /// Never part of the visible answer; observers may surface it as a live
+    /// thinking track. Default keeps existing observers source-compatible.
+    async fn on_reasoning_delta(&self, _content: &str) {}
+
     async fn on_content_reset(&self);
 }
 
@@ -1631,7 +1637,12 @@ impl FunctionCallingAgent {
                         }
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta {
                     index,
                     id,
@@ -1849,7 +1860,12 @@ impl FunctionCallingAgent {
                         }
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta {
                     index,
                     id,
@@ -2064,7 +2080,12 @@ impl FunctionCallingAgent {
                         emitted_visible_content = true;
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta { .. } => unexpected_tool_call = true,
                 ChatStreamEvent::Usage(value) => usage = Some(value),
                 ChatStreamEvent::Finish(reason) => {

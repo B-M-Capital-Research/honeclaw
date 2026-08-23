@@ -29,6 +29,10 @@ struct RunnerStreamObserver {
     terminal_stream_policy: TerminalStreamPolicy,
     canonical_header_state: Mutex<CanonicalHeaderStreamState>,
     committed_visible_prefix: Arc<Mutex<Option<String>>>,
+    /// Provider reasoning deltas buffered up to sentence boundaries before
+    /// they surface as StreamThought. Token-level deltas would be
+    /// whitespace-trimmed downstream and glue words together.
+    pending_thought: Mutex<String>,
 }
 
 const CANONICAL_INVESTMENT_HEADER_START: &str = "数据时间：运行时时区 ";
@@ -299,12 +303,72 @@ impl RunnerStreamObserver {
     }
 }
 
+impl RunnerStreamObserver {
+    /// Emit any buffered reasoning before answer content starts streaming.
+    async fn flush_pending_thought(&self) {
+        let pending = {
+            let mut guard = self.pending_thought.lock().expect("pending thought");
+            std::mem::take(&mut *guard)
+        };
+        let trimmed = pending.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: trimmed.to_string(),
+            })
+            .await;
+    }
+}
+
 #[async_trait]
 impl FunctionCallingStreamObserver for RunnerStreamObserver {
+    async fn on_reasoning_delta(&self, content: &str) {
+        if content.is_empty() {
+            return;
+        }
+        // Live provider reasoning feeds the visible thinking track
+        // (web `reasoning_delta` SSE); it is never answer content, so it
+        // must not mark streamed_output. Deltas are buffered to sentence
+        // boundaries (or a generous length cap) before they surface.
+        let flushed = {
+            let mut pending = self.pending_thought.lock().expect("pending thought");
+            pending.push_str(content);
+            let boundary = pending
+                .char_indices()
+                .rev()
+                .find(|(_, ch)| matches!(ch, '。' | '！' | '？' | '.' | '!' | '?' | '\n'))
+                .map(|(idx, ch)| idx + ch.len_utf8());
+            match boundary {
+                Some(end) => {
+                    let flushed = pending[..end].to_string();
+                    pending.drain(..end);
+                    Some(flushed)
+                }
+                None if pending.chars().count() >= 160 => Some(std::mem::take(&mut *pending)),
+                None => None,
+            }
+        };
+        let Some(thought) = flushed else {
+            return;
+        };
+        let thought = thought.trim();
+        if thought.is_empty() {
+            return;
+        }
+        self.emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: thought.to_string(),
+            })
+            .await;
+    }
+
     async fn on_content_delta(&self, content: &str) {
         if content.is_empty() {
             return;
         }
+        self.flush_pending_thought().await;
         // Tool-capable rounds remain speculative even when their text happens
         // to resemble the final answer. Deferred session emitters intentionally
         // swallow this ordinary variant.
@@ -320,6 +384,7 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         if content.is_empty() {
             return;
         }
+        self.flush_pending_thought().await;
         let Some((event, committed_prefix)) = self.event_for_final_content_delta(content) else {
             return;
         };
@@ -728,6 +793,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             terminal_stream_policy: request.terminal_stream_policy,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
         let service_owned_initial_prefix = request.service_owned_initial_prefix.clone();
         let service_owned_prefix_content = service_owned_initial_prefix
@@ -826,6 +892,7 @@ mod terminal_stream_tests {
                 terminal_stream_policy: policy,
                 canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
                 committed_visible_prefix: committed_visible_prefix.clone(),
+                pending_thought: Mutex::new(String::new()),
             },
             emitter,
             committed_visible_prefix,
@@ -875,6 +942,7 @@ mod terminal_stream_tests {
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
         let prefix = "数据时间：运行时时区 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
@@ -1148,6 +1216,7 @@ mod terminal_stream_tests {
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
 
         observer
@@ -1198,6 +1267,7 @@ mod terminal_stream_tests {
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
         let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
@@ -1272,6 +1342,7 @@ mod terminal_stream_tests {
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
         let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
         observer
@@ -1334,6 +1405,7 @@ mod terminal_stream_tests {
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
         let task_observer = observer.clone();
         let task = tokio::spawn(async move {
