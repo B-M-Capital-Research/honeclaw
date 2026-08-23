@@ -962,6 +962,9 @@ body.public-chat-scroll-lock #root {
   width: min(440px, calc(100vw - 32px));
   max-height: min(720px, calc(100dvh - 40px));
   overflow: auto;
+  /* iOS Safari: without containment, inner scroll chains to the page behind
+     the fixed backdrop and drags the document along with it. */
+  overscroll-behavior: contain;
   padding: 22px;
   border: 1px solid var(--hone-line);
   border-radius: var(--hone-radius-md);

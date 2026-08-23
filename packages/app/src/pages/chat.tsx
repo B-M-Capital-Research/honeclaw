@@ -1230,8 +1230,25 @@ function AttachMenu(props: {
   );
 }
 
+/// iOS Safari lets the page behind a fixed-backdrop modal keep scrolling
+/// (worst when the keyboard opens): the document scroll-jumps under the
+/// overlay and the layout visually shatters. Lock the root scroll while a
+/// quick-action modal is open.
+function useModalScrollLock(open: () => boolean) {
+  createEffect(() => {
+    if (!open()) return;
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    onCleanup(() => {
+      root.style.overflow = previousOverflow;
+    });
+  });
+}
+
 function ProactiveModeTips(props: { openRequest?: number }) {
   const [open, setOpen] = createSignal(false);
+  useModalScrollLock(open);
   const [copiedExample, setCopiedExample] = createSignal<number | null>(null);
   let copiedTimer: number | undefined;
   let handledOpenRequest = props.openRequest ?? 0;
@@ -1452,6 +1469,19 @@ function EarningsResearchQuickAction(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string>();
   let fileInputRef: HTMLInputElement | undefined;
+  let companyInputRef: HTMLInputElement | undefined;
+  useModalScrollLock(open);
+
+  // Focusing at open pops the mobile keyboard while the sheet is still
+  // animating in; on iOS Safari that scroll-jumps the page behind the fixed
+  // backdrop and breaks the layout. Keep the convenience focus for fine
+  // pointers only.
+  createEffect(() => {
+    if (!open()) return;
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      queueMicrotask(() => companyInputRef?.focus());
+    }
+  });
   const isPreview = () => props.kind === "preview";
   const label = () =>
     isPreview()
@@ -1561,10 +1591,10 @@ function EarningsResearchQuickAction(props: {
               <label class="public-chat-earnings-field">
                 <span>公司名称或股票代码</span>
                 <input
+                  ref={companyInputRef}
                   data-testid={`earnings-${props.kind}-company`}
                   value={company()}
                   maxlength={120}
-                  autofocus
                   disabled={busy()}
                   placeholder={CONTENT.chat_page.earnings.company_placeholder}
                   onInput={(event) => setCompany(event.currentTarget.value)}
@@ -1630,6 +1660,7 @@ function FinanceCalendarQuickAction(props: {
   openRequest?: number;
 }) {
   const [open, setOpen] = createSignal(false);
+  useModalScrollLock(open);
   const [selectedMonth, setSelectedMonth] = createSignal(
     defaultFinanceCalendarMonth(),
   );
