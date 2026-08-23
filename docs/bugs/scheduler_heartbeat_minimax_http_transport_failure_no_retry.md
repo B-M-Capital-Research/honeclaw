@@ -7,6 +7,18 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-08-23 18:00-22:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-23T10:00:49Z` / 北京时间 `2026-08-23 18:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 18:30 CST 多个 Web heartbeat 任务成批落成 `provider_transport_error`，覆盖 `光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`持仓重大事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`NVDA 关键事件心跳提醒` 等。
+    - 错误体继续为 MiniMax OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`；失败后 Web events 记录跳过发送。
+  - 会话质量对照：
+    - 同窗 `run_start=76`、`run_finish=80`、`deliver=24`，后续 20:30-22:00 CST 仍有多条 heartbeat deliver 和 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 传输层成批失败，heartbeat 缺少有效自动降级”的活跃条件。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-08-21 18:01-22:02 CST 继续维持 `New`**：
   - `data/logs/hone-console-page-source.log`
     - 本轮按自动化上次运行点 `2026-08-21T10:01:39Z` / 北京时间 `2026-08-21 18:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
