@@ -223,3 +223,57 @@ fn report_run_input_includes_required_defaults() {
         })
     );
 }
+
+#[tokio::test]
+async fn web_admin_allowlist_is_honored() {
+    let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
+    config.admins.web_user_ids = vec!["web-user-1234abcd5678".to_string()];
+    let core = HoneBotCore::new(config).await;
+
+    assert!(core.is_admin("web-user-1234abcd5678", "web"));
+    assert!(!core.is_admin("web-user-other", "web"));
+
+    let actor = ActorIdentity::new("web", "web-user-1234abcd5678", None::<String>).expect("actor");
+    assert!(core.is_admin_actor(&actor));
+}
+
+#[tokio::test]
+async fn conversation_profile_builds_dedicated_interactive_llm() {
+    let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
+    let llm_yaml = r#"
+providers:
+  deepseek:
+    kind: openai_compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: test-key
+  grok_build:
+    kind: openai_compatible
+    base_url: http://127.0.0.1:8899/v1
+    api_key: local-proxy
+profiles:
+  main:
+    provider: deepseek
+    model: deepseek-v4-pro
+  conversation:
+    provider: grok_build
+    model: grok-4.6
+default_profile: main
+conversation_profile: conversation
+"#;
+    config.llm = serde_yaml::from_str(llm_yaml).expect("llm config");
+    let core = HoneBotCore::new(config).await;
+    assert!(core.llm.is_some());
+    assert!(core.conversation_llm.is_some());
+
+    // 未配置 conversation_profile 时不建独立 provider,交互对话继续走默认 LLM。
+    let mut plain = HoneConfig::default();
+    plain.timezone = Some("Asia/Shanghai".to_string());
+    let plain_core = HoneBotCore::new(plain).await;
+    assert!(plain_core.conversation_llm.is_none());
+}

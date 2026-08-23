@@ -5399,6 +5399,11 @@ async fn run_heartbeat_task(
                 .unwrap_or_default(),
             session_metadata: std::collections::HashMap::new(),
             model_override: run_options.model_override.clone(),
+            turn_origin: if event.heartbeat {
+                AgentTurnOrigin::Heartbeat
+            } else {
+                AgentTurnOrigin::Scheduled
+            },
             runner_selection: heartbeat_runner_selection(),
             allowed_tools: Some(
                 HEARTBEAT_ALLOWED_TOOLS

@@ -24,6 +24,11 @@ pub struct LlmConfig {
     pub default_profile: String,
     #[serde(default)]
     pub auxiliary_profile: String,
+    /// Profile used only for interactive user conversations (strict
+    /// function-calling route). Scheduled tasks and heartbeats keep
+    /// `default_profile` / `auxiliary_profile`. Empty means no split.
+    #[serde(default)]
+    pub conversation_profile: String,
 }
 
 impl Default for LlmConfig {
@@ -37,6 +42,7 @@ impl Default for LlmConfig {
             profiles: BTreeMap::new(),
             default_profile: String::new(),
             auxiliary_profile: String::new(),
+            conversation_profile: String::new(),
         }
     }
 }
@@ -626,6 +632,9 @@ pub struct AdminConfig {
     /// Discord 管理员用户 ID 列表（数字字符串，如 "123456789012345678"）
     #[serde(default)]
     pub discord_user_ids: Vec<String>,
+    /// Web 管理员用户 ID 列表（如 "web-user-1234abcd5678"，即 web 渠道的 actor user_id）
+    #[serde(default)]
+    pub web_user_ids: Vec<String>,
     /// 运行时管理员注册口令；建议留空并改用环境变量
     #[serde(default)]
     pub runtime_admin_registration_passphrase: String,

@@ -404,6 +404,10 @@ llm:
   provider: openrouter
   default_profile: main
   auxiliary_profile: aux
+  # Optional. Interactive user conversations (strict function-calling route)
+  # use this profile when set; scheduled tasks stay on default_profile and
+  # heartbeats stay on auxiliary_profile. Empty disables the split.
+  conversation_profile: ""
   openrouter:
     # Legacy config-only fallback. Prefer the llm.providers.openrouter.api_key/api_keys pool.
     model: "moonshotai/kimi-k2.5"

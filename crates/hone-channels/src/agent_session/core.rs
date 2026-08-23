@@ -1539,6 +1539,7 @@ impl AgentSession {
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
                 session_metadata: restored.session_metadata,
                 model_override: options.model_override.clone(),
+                turn_origin: options.turn_origin,
                 runner_selection: match options.runner_override {
                     Some(AgentRunRunnerOverride::OpencodeAcp) if self.prompt_options.is_admin => {
                         ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator

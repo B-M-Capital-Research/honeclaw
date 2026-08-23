@@ -280,6 +280,11 @@ fn assert_config_example_profile_refs(config: &HoneConfig) {
     );
     assert_profile_exists(
         config,
+        "llm.conversation_profile",
+        &config.llm.conversation_profile,
+    );
+    assert_profile_exists(
+        config,
         "event_engine.news_classifier_llm",
         &config.event_engine.news_classifier_llm,
     );

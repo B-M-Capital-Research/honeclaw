@@ -7,7 +7,7 @@ use hone_core::agent::AgentContext;
 use serde_json::Value;
 
 use crate::HoneBotCore;
-use crate::agent_session::GeminiStreamOptions;
+use crate::agent_session::{AgentTurnOrigin, GeminiStreamOptions};
 use crate::core::runtime_config_path;
 use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
@@ -63,6 +63,7 @@ pub(crate) struct ExecutionRequest {
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
     pub model_override: Option<String>,
+    pub turn_origin: AgentTurnOrigin,
     pub runner_selection: ExecutionRunnerSelection,
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
@@ -151,8 +152,12 @@ impl ExecutionService {
                     configured_runner = %self.core.config.agent.runner,
                     "untrusted actor routed to strict function-calling runner"
                 );
-                self.core
-                    .create_strict_actor_runner(&request.system_prompt, tool_registry)?
+                self.core.create_strict_actor_runner(
+                    &request.system_prompt,
+                    tool_registry,
+                    request.turn_origin == AgentTurnOrigin::Interactive
+                        && request.model_override.is_none(),
+                )?
             }
             ExecutionRunnerSelection::Configured
             | ExecutionRunnerSelection::ConfiguredTrustedAdministrator => {
@@ -354,7 +359,7 @@ fn sanitize_function_calling_context(context: &mut AgentContext) -> usize {
 mod tests {
     use super::{ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService};
     use crate::HoneBotCore;
-    use crate::agent_session::GeminiStreamOptions;
+    use crate::agent_session::{AgentTurnOrigin, GeminiStreamOptions};
     use crate::runners::TerminalStreamPolicy;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
@@ -449,6 +454,7 @@ mod tests {
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),
             model_override: None,
+            turn_origin: AgentTurnOrigin::Interactive,
             runner_selection,
             allowed_tools: None,
             max_tool_calls: None,

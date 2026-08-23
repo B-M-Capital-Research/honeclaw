@@ -81,6 +81,9 @@ pub struct HoneBotCore {
     pub(crate) cloud_pg_runtime: CloudPgRuntime,
     pub llm: Option<Arc<dyn LlmProvider>>,
     pub auxiliary_llm: Option<Arc<dyn LlmProvider>>,
+    /// 仅用于交互式用户对话的 LLM（`llm.conversation_profile`）；
+    /// 未配置时交互对话与定时任务一样走 `llm`。
+    pub conversation_llm: Option<Arc<dyn LlmProvider>>,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub session_storage: SessionStorage,
     pub conversation_quota_storage: ConversationQuotaStorage,
@@ -173,6 +176,7 @@ impl HoneBotCore {
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
+        let conversation_llm = Self::create_conversation_llm_provider(&config);
         let llm_audit = Self::create_llm_audit_sink(&config, cloud_pg_runtime.clone()).await;
         let workflow_runner_http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -187,6 +191,7 @@ impl HoneBotCore {
             cloud_pg_runtime,
             llm,
             auxiliary_llm,
+            conversation_llm,
             llm_audit,
             session_storage,
             conversation_quota_storage,
@@ -228,6 +233,24 @@ impl HoneBotCore {
             Ok(created) => Some(created.provider),
             Err(e) => {
                 tracing::warn!("Failed to create OpenRouter provider: {}", e);
+                None
+            }
+        }
+    }
+
+    /// `llm.conversation_profile` 解析失败时回退 None（交互对话继续用默认 LLM），
+    /// 只告警不阻断启动，避免一个可选档位把整个服务拦下。
+    fn create_conversation_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+        let profile = config.llm.conversation_profile.trim();
+        if profile.is_empty() {
+            return None;
+        }
+        match LlmResolver::new(config).provider_for_profile(profile, None) {
+            Ok(created) => Some(created.provider),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to create conversation LLM profile provider ({profile}); interactive conversations fall back to the default LLM: {e}"
+                );
                 None
             }
         }
@@ -301,6 +324,7 @@ impl HoneBotCore {
     /// - channel 传 "telegram" 时与 admins.telegram_user_ids 匹配
     /// - channel 传 "feishu"   时与 admins.feishu_emails / feishu_mobiles / feishu_open_ids 匹配
     /// - channel 传 "discord"  时与 admins.discord_user_ids  匹配
+    /// - channel 传 "web"      时与 admins.web_user_ids      匹配
     pub fn is_admin(&self, user_id: &str, channel: &str) -> bool {
         if user_id.is_empty() {
             return false;
@@ -331,6 +355,10 @@ impl HoneBotCore {
             }
             "discord" => admin_cfg
                 .discord_user_ids
+                .iter()
+                .any(|id| !id.is_empty() && id == user_id),
+            "web" => admin_cfg
+                .web_user_ids
                 .iter()
                 .any(|id| !id.is_empty() && id == user_id),
             "cli" => true,
@@ -820,8 +848,16 @@ impl HoneBotCore {
         &self,
         system_prompt: &str,
         tool_registry: ToolRegistry,
+        for_interactive_conversation: bool,
     ) -> Result<Box<dyn AgentRunner>, String> {
-        let llm = self.llm.clone().ok_or_else(|| {
+        // 交互式用户对话可由 `llm.conversation_profile` 单独指定模型；
+        // 定时任务/心跳（带 model_override 或非 Interactive turn）不受影响。
+        let llm = if for_interactive_conversation {
+            self.conversation_llm.clone().or_else(|| self.llm.clone())
+        } else {
+            self.llm.clone()
+        }
+        .ok_or_else(|| {
             "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
                 .to_string()
         })?;
