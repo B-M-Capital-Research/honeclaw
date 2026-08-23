@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-08-23 10:04 CST` 待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-23 06:01-10:04 CST（UTC `2026-08-22T22:01:47Z` 之后）。
+    - source log 统计 `HeartbeatDiag=203`、`run_start=56`、`run_finish=56`、`deliver=28`、`duplicate_suppressed=7`、工具预算拒绝 139 条、`heartbeat 输出不是结构化 JSON=6`、`execution_failed=9`、OpenAI-compatible `HTTP 529` 信号 9 条。
+    - parse / raw 信号仍分裂：`PlainTextTriggered=56`、`JsonNoop=15`、`PlainTextSuppressed=6`、`PlainTextNoop=2`、`JsonTriggered=1`、`JsonEmptyStatus=1`；deliver 中仍有 `noop / 无新增 / hone_quote_time / 工具上限 / fenced JSON` 等静默、工具口径或格式退化语义。
+    - 06:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 fenced JSON / `status=triggered` 协议载荷进入 deliver 候选；10:00 CST 多条 heartbeat 在 `<think>` raw preview、工具预算耗尽和旧行情锚下仍被解析成 `PlainTextTriggered` 或 `JsonNoop`。
+  - `data/sessions.sqlite3`
+    - 本地 `sessions.updated_at`、`sessions.last_message_at`、`session_messages.timestamp` 仍停在 `2026-08-01T14:13:46+08:00`，`session_messages.imported_at` 仍停在 `2026-08-02T20:59:58+08:00`；本轮运行态证据仍主要依赖 source log。
+  - 判断：近窗未见 runtime 重启 / revision 切换或确认加载 `7efbc8e8 fix(channels): suppress heartbeat execution-context drift` 的证据，因此这些样本先作为待部署复核证据，不把本缺陷从代码级 `Fixed` 回退为 `New`。同窗未见错投、敏感泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-22 22:03 CST` 待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-22 18:00-22:03 CST（UTC `2026-08-22T10:00:45Z` 之后）。
