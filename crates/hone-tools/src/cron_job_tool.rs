@@ -160,7 +160,7 @@ impl Tool for CronJobTool {
     }
 
     fn description(&self) -> &str {
-        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除单个任务）、remove_all（删除当前用户全部定时和心跳任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。用户已经明确说“取消/删除所有定时任务或心跳任务”时，直接调用 remove_all；当前这句话就是授权，不要再逐个确认或循环删除。若用户说的是“取消所有自动提醒/关闭所有自动推送”，应改用 notification_prefs(action=\"disable_all\")，它会同时关闭事件推送并删除全部定时/心跳任务。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。\n\n**与 quiet_hours 的关系**：用户在 notification_prefs 设了 quiet_hours 后，所有 cron 任务**默认遵守**该勿扰区间——区间内到点的任务会被静音跳过（cron_job_runs 落 metadata.skipped='quiet_hours'）。若某条 cron 必须严守原时刻不能被静音（如盘前 06:55 复盘），update 时传 bypass_quiet_hours=true。add 暂不接受该字段，新建任务默认遵守 quiet_hours。"
+        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除单个任务）、remove_all（删除当前用户全部定时和心跳任务）、update（修改、暂停或恢复任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）；update 传 enabled=false 暂停、enabled=true 恢复，任务定义保持不变。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。用户已经明确说“取消/删除所有定时任务或心跳任务”时，直接调用 remove_all；当前这句话就是授权，不要再逐个确认或循环删除。若用户说的是“取消所有自动提醒/关闭所有自动推送”，应改用 notification_prefs(action=\"disable_all\")，它会同时关闭事件推送并删除全部定时/心跳任务。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。\n\n**与 quiet_hours 的关系**：用户在 notification_prefs 设了 quiet_hours 后，所有 cron 任务**默认遵守**该勿扰区间——区间内到点的任务会被静音跳过（cron_job_runs 落 metadata.skipped='quiet_hours'）。若某条 cron 必须严守原时刻不能被静音（如盘前 06:55 复盘），update 时传 bypass_quiet_hours=true。add 暂不接受该字段，新建任务默认遵守 quiet_hours。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -280,6 +280,15 @@ impl Tool for CronJobTool {
                 description:
                     "仅 update 使用；true=该任务忽略用户的 quiet_hours 静音区间，到点照常执行（如 06:55 盘前复盘）；false（默认）=遵守 quiet_hours，区间内被静音跳过"
                         .to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "enabled".to_string(),
+                param_type: "boolean".to_string(),
+                description: "仅 update 使用；false=暂停任务但保留定义，true=恢复任务"
+                    .to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -482,6 +491,7 @@ impl Tool for CronJobTool {
                         .collect::<Vec<_>>()
                 });
                 let bypass_quiet_hours = args.get("bypass_quiet_hours").and_then(|v| v.as_bool());
+                let enabled = args.get("enabled").and_then(|v| v.as_bool());
                 // Only treat `name` as a field to update when job_id is also provided;
                 // otherwise `name` is the search query.
                 let new_name: Option<String> = if !job_id.is_empty() {
@@ -504,7 +514,7 @@ impl Tool for CronJobTool {
                     let matches: Vec<_> = data
                         .jobs
                         .iter()
-                        .filter(|job| job.enabled && job.name.to_lowercase().contains(&name_lower))
+                        .filter(|job| job.name.to_lowercase().contains(&name_lower))
                         .collect();
                     match matches.len() {
                         0 => {
@@ -592,7 +602,7 @@ impl Tool for CronJobTool {
                         .and_then(|v| v.as_str())
                         .map(|prompt| prompt.to_string()),
                     push: None,
-                    enabled: None,
+                    enabled,
                     channel_target: None,
                     tags,
                     bypass_quiet_hours,
@@ -694,6 +704,30 @@ mod tests {
             "name fuzzy update failed: {update_by_name}"
         );
         assert_eq!(update_by_name["job"]["schedule"]["minute"], 45);
+
+        let pause_response = tool
+            .execute(serde_json::json!({
+                "action":"update",
+                "job_id":job_id,
+                "enabled":false
+            }))
+            .await
+            .expect("pause job by id");
+        assert_eq!(pause_response["success"].as_bool(), Some(true));
+        assert_eq!(pause_response["job"]["enabled"].as_bool(), Some(false));
+
+        // Disabled jobs remain addressable by name so a later user message can
+        // restore the preserved task instead of recreating it from memory.
+        let restore_response = tool
+            .execute(serde_json::json!({
+                "action":"update",
+                "name":"morning",
+                "enabled":true
+            }))
+            .await
+            .expect("restore disabled job by name");
+        assert_eq!(restore_response["success"].as_bool(), Some(true));
+        assert_eq!(restore_response["job"]["enabled"].as_bool(), Some(true));
 
         let remove_preview = tool
             .execute(serde_json::json!({

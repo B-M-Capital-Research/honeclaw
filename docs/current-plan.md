@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-08-22
-状态：有 15 个活跃任务
+最后更新：2026-08-23
+状态：有 16 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **连续七天未主动对话用户的定时推送清理**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/inactive-user-scheduled-push-cleanup-2026-08-23.md`
+  - 摘要：按生产 PostgreSQL 的真实外部 ingress 与不计 scheduler 的 conversation quota 双口径筛选直接用户，保留任务定义并停用，逐渠道通知，同时补齐对话内原样恢复能力
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`
