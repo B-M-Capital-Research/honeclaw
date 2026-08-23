@@ -681,7 +681,12 @@ agent:
   # Only used when runner=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.6-sol"
   # Daily successful-reply quota for user conversations. Set to 0 to disable the limit.
+  # Configured admins (see `admins:`) always bypass this quota.
   daily_conversation_limit: 100
+  # When false, admin conversations also use the strict function-calling route
+  # (and therefore llm.conversation_profile) instead of the host-capable native
+  # runner above. Admin perks such as the quota bypass are unaffected.
+  admins_use_native_runner: true
   # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round

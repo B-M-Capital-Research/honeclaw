@@ -142,10 +142,25 @@ impl ExecutionService {
         );
         let native_codex_tools =
             native_codex_mcp_tools(&tool_registry, request.allowed_tools.as_deref());
-        let use_strict_fallback = request.runner_selection == ExecutionRunnerSelection::Configured
-            && self.core.actor_uses_strict_runner_fallback(&request.actor);
+        let use_strict_fallback = match request.runner_selection {
+            ExecutionRunnerSelection::Configured => {
+                self.core.actor_uses_strict_runner_fallback(&request.actor)
+            }
+            // Server-verified administrators keep the native runner unless
+            // `agent.admins_use_native_runner = false` opts them out; then
+            // admin turns run the same strict function-calling route as
+            // ordinary users (and pick up `llm.conversation_profile`).
+            ExecutionRunnerSelection::ConfiguredTrustedAdministrator => {
+                !self.core.config.agent.admins_use_native_runner
+                    && self.core.configured_runner_requires_trusted_host_access()
+            }
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator => false,
+        };
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
-            ExecutionRunnerSelection::Configured if use_strict_fallback => {
+            ExecutionRunnerSelection::Configured
+            | ExecutionRunnerSelection::ConfiguredTrustedAdministrator
+                if use_strict_fallback =>
+            {
                 tracing::warn!(
                     channel = %request.actor.channel,
                     user_id = %request.actor.user_id,

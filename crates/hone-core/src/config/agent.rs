@@ -296,6 +296,12 @@ pub struct AgentConfig {
     pub codex_model: String,
     #[serde(default = "default_daily_conversation_limit")]
     pub daily_conversation_limit: u32,
+    /// 管理员是否使用具备宿主机能力的原生 runner（codex_acp 等）。
+    /// 设为 false 时管理员对话与普通用户一样走 strict function-calling
+    /// 链路（从而使用 `llm.conversation_profile`），但保留配额豁免等
+    /// 其余管理员权益。
+    #[serde(default = "default_admins_use_native_runner")]
+    pub admins_use_native_runner: bool,
     #[serde(default = "default_agent_step_timeout_seconds")]
     pub step_timeout_seconds: u64,
     #[serde(default = "default_agent_overall_timeout_seconds")]
@@ -461,6 +467,7 @@ impl Default for AgentConfig {
             runner: default_agent_runner(),
             codex_model: default_codex_model(),
             daily_conversation_limit: default_daily_conversation_limit(),
+            admins_use_native_runner: default_admins_use_native_runner(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
             gemini_acp: GeminiAcpConfig::default(),
@@ -668,6 +675,10 @@ fn default_runtime_admin_registration_passphrase_env() -> String {
 
 fn default_daily_conversation_limit() -> u32 {
     100
+}
+
+fn default_admins_use_native_runner() -> bool {
+    true
 }
 
 fn default_agent_step_timeout_seconds() -> u64 {

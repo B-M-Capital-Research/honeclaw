@@ -812,8 +812,13 @@ impl HoneBotCore {
     /// Whether a configured host-capable runner is replaced by the actor-safe
     /// function-calling runner for this request.  Context ownership must use
     /// this effective route rather than the static configured runner name.
+    ///
+    /// `agent.admins_use_native_runner = false` 时管理员也走 strict 链路：
+    /// 保留配额豁免等管理员权益，但对话统一由 function-calling +
+    /// `llm.conversation_profile` 服务，不再拉起宿主机 CLI/ACP。
     pub(crate) fn actor_uses_strict_runner_fallback(&self, actor: &ActorIdentity) -> bool {
-        !self.is_admin_actor(actor) && self.configured_runner_requires_trusted_host_access()
+        self.configured_runner_requires_trusted_host_access()
+            && (!self.config.agent.admins_use_native_runner || !self.is_admin_actor(actor))
     }
 
     pub(crate) fn effective_runner_conversation_strategy(
