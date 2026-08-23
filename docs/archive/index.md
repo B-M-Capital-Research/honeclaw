@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
+
+## 2026-08-23
+
+### Inactive User Scheduled Push Cleanup
+
+- Status: done; production live with two documented iMessage delivery gaps
+- Date: 2026-08-23
+- Plan: `docs/archive/plans/inactive-user-scheduled-push-cleanup-2026-08-23.md`
+- Handoff: `docs/handoffs/2026-08-23-inactive-user-scheduled-push-cleanup.md`
+- Decision / ADR: no new ADR; this exposes the existing `CronJobUpdate.enabled` capability and preserves existing storage/scheduler boundaries
+- Related PRs / commits: direct `main` commit `011d73118dbf1d6b0cc09a793882dc796f23aa9f`; no PR, release, or tag
+- Related runbooks / regressions: isolated PostgreSQL cron tool regression; Runtime Image `32612578070`; GCE exact-meta/cloud/public-auth/channel reconnect acceptance
+- Current conclusion: 26 inactive direct users initially had 45 jobs paused without deletion. One notified Feishu user then actively removed 2 jobs, leaving 25 users and 43 preserved disabled jobs. Feishu 18/18 and Web 6/6 notices were acknowledged; two inactive iMessage recipients remain undelivered because no macOS channel is online. Production now accepts conversational `enabled=false/true` updates so preserved tasks can be resumed by request.
+- Next entry point: restore tagged jobs only after the owning user asks; if a real iMessage channel returns, recheck current state before sending the two missed notices.
 
 ## 2026-08-22
 
