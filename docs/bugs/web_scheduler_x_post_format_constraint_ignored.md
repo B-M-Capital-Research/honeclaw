@@ -8,6 +8,14 @@
 
 ## 证据来源
 
+- `data/logs/hone-console-page-source.log`
+  - `2026-08-24 18:01 CST` 复核同一任务复发：
+    - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
+    - 时间窗：2026-08-24 18:00-18:01 CST
+    - user turn 来源：Web scheduler `18:00 美股盘前 X 英文帖`
+    - 日志显示用户任务仍要求英文、适合直接发 X、每条约 140 英文字符以内、直接给结果、不写长解释、优先 5-8 条，并明确不要给未经核验的精确价格或涨跌幅。
+    - 实际链路成功收口：`session.persist_assistant detail=done`，`[MsgFlow/web] done ... success=true elapsed_ms=46710 iterations=2 tools=6(data_fetch) reply.chars=3860`；当前 `data/sessions.sqlite3` mirror 仍停在 2026-08-01，无法从本地 SQLite 读取本轮 final 原文。
+    - 单就 `reply.chars=3860` 已明显偏离 5-8 条、每条约 140 英文字符的短帖契约；本轮未见 send_failed、空回复、原始工具报错、`<think>`、本机路径或 JSON/Markdown 结构损坏证据。问题仍是显式格式契约未被遵守，不影响 Web scheduler 触发、生成、落库主链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 - `data/sessions.sqlite3`
   - `2026-07-25 19:02 CST` 复核同一任务复发：
     - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
