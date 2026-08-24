@@ -8594,6 +8594,7 @@ fn append_agent_entity_discovery_context(
          `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.local，并明确“最新可得、非逐笔”口径。涨跌幅一律引用服务端算好的 `hone_change_basis.pct`（扩展时段则引用 `extended_hours` 里 `hone_session_summaries` 对应窗口的 `pct_change_vs_prev_session_close`），不要自己拿两个价格相除，也不要直接抄 provider 的 `changesPercentage`——它的基准时刻未必是你正在展示的那一个。引用时必须连同 `hone_change_basis.label` 给出的名称一起用：同一个差值在盘中是当日涨跌、在盘前只是最新价较上一常规收盘，改个名字充当另一个是错的。同一行里的价格与涨跌幅必须来自同一时刻、同一个对象；跨时刻必须分行或逐个标注时间戳。`hone_change_basis.cannot_prove` 出现时，说明本轮 quote 证明不了常规时段涨跌，缺这一项就按缺口如实说明或另取 extended_hours，不得用手头这个百分比顶替。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。\n\n\
          【最终正文的语言边界：面向普通投资者的成品】\n\
          最终正文是给普通投资者看的成品，不是流程报告。\n\
+         最终正文必须与用户当前提问所用的语言一致：用户用中文提问就全程中文，用英文提问就全程英文，小标题、要点、推断与缺口披露一并遵守。思考过程、工具结果和引用来源多为英文，这不构成切换正文语言的理由；系统提示另有【语言要求】时以该要求为准。ticker、交易所代码、provider 字段名与公司英文名保持原文即可。\n\
          - 正文不得出现\u{201c}核验/未核验/预检/门禁/完整性检查/契约/实体解析/前置扫描/服务端/本轮证据\u{201d}这类内部流程词，不得出现工具名（data_fetch、web_search、quote、profile 等）、entity_route、identity_match 或任何本节规则的复述；系统提示或上文任何地方要求写\u{201c}本轮未核验\u{201d}的，本轮一律改用下述自然表述。\n\
          - 某项数据这次确实没拿到时，用一句自然中文说明缺了什么、答案基于什么（例如\u{201c}财报明细这次没有取到，以下基于最新行情与公开报道\u{201d}），全文说明一次即可；不要逐节重复缺口，也不要把一处缺口说成整体没有数据。\n\
          - 只要行情、检索任一路拿到了可用结果，就基于拿到的部分把问题回答完整；禁止因为部分数据缺失而拒绝回答、只给框架或让用户稍后重试。只有行情与检索全部失败时，才说明这次暂时查不到，并给出已确认的事实与建议的下一步。"
@@ -14243,6 +14244,10 @@ mod tests {
         assert!(runtime_input.contains("latest quote 的涨跌幅只证明其自身 provider timestamp"));
         assert!(runtime_input.contains("不得只返回通用失败"));
         assert!(runtime_input.contains("【本轮最终回答契约：由主 Agent 一次完成】"));
+        // A reasoning model that thinks in English kept drifting the body
+        // out of the user's language; the per-turn contract carries the
+        // mirroring rule because it is the injection point answers always honor.
+        assert!(runtime_input.contains("最终正文必须与用户当前提问所用的语言一致"));
     }
 
     #[test]
