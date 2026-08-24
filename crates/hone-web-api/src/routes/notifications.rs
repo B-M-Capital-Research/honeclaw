@@ -267,7 +267,7 @@ fn record_from_cron(record: CronJobExecutionRecord) -> NotificationRecord {
 
 fn record_from_delivery(record: DeliveryLogRecord) -> NotificationRecord {
     let actor = parse_actor_key(&record.actor);
-    let delivered = matches!(record.status.as_str(), "sent" | "dryrun");
+    let delivered = record.status == "sent";
     let execution_status = match record.status.as_str() {
         "failed" => "execution_failed",
         "sent" | "dryrun" => "completed",
@@ -419,7 +419,6 @@ fn message_status_matches(actual: &str, expected: &str) -> bool {
         return true;
     }
     match expected {
-        "sent" => matches!(actual, "dryrun"),
         "send_failed" => matches!(actual, "failed"),
         "skipped_noop" => matches!(
             actual,
@@ -521,7 +520,8 @@ fn classify(record: &NotificationRecord, mut emit: impl FnMut(&str)) {
     let send = record.message_send_status.as_str();
     let exec = record.execution_status.as_str();
     let kind = match send {
-        "sent" | "dryrun" => "sent",
+        "sent" => "sent",
+        "dryrun" => "skipped",
         "send_failed" | "failed" | "target_resolution_failed" | "skipped_error" => "failed",
         "duplicate_suppressed"
         | "skipped_noop"
@@ -570,8 +570,9 @@ mod tests {
     fn event_delivery_status_can_match_existing_send_failed_filter() {
         assert!(message_status_matches("failed", "send_failed"));
         assert!(message_status_matches("queued", "skipped_noop"));
-        assert!(message_status_matches("dryrun", "sent"));
+        assert!(message_status_matches("dryrun", "dryrun"));
         assert!(!message_status_matches("queued", "sent"));
+        assert!(!message_status_matches("dryrun", "sent"));
     }
 
     #[test]
@@ -600,5 +601,31 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("sec_filing")
         );
+    }
+
+    #[test]
+    fn dryrun_delivery_is_not_marked_as_delivered_or_sent() {
+        let record = record_from_delivery(DeliveryLogRecord {
+            id: 2,
+            event_id: "ev2".to_string(),
+            actor: "web::::u1".to_string(),
+            channel: "sink".to_string(),
+            severity: "high".to_string(),
+            sent_at_ts: 1_700_000_001,
+            status: "dryrun".to_string(),
+            body: Some("body".to_string()),
+            event_title: Some("title".to_string()),
+            event_summary: None,
+            event_kind: Some("news_critical".to_string()),
+            event_source: Some("event-engine".to_string()),
+            event_url: None,
+            event_symbols: vec!["AAPL".to_string()],
+        });
+        assert!(!record.delivered);
+        assert_eq!(record.execution_status, "completed");
+
+        let mut classified = String::new();
+        classify(&record, |kind| classified = kind.to_string());
+        assert_eq!(classified, "skipped");
     }
 }

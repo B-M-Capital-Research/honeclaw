@@ -3,11 +3,24 @@
 - 发现时间：2026-05-15 15:04 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
-- 修复情况：2026-08-04 06:02 运行态继续复发：event-engine Web sink 在 `web push broadcast failed: channel closed` 后退到 `[dryrun sink]`，但 dispatch 仍记 `status=sent`；这会继续把未送达的 Web push / SSE 当作已送达。2026-05-16 的手机系统通知能力边界修复仍成立，但投递结果台账语义再次不可信。
+- 状态：Fixed
+- 修复情况：2026-08-24 `bug-2` 修复：`crates/hone-web-api/src/routes/notifications.rs` 不再把 event-engine `dryrun` 映射为 `sent/delivered`，admin notifications 现明确把 fallback log 视为未送达的 skipped 记录；同时代码复核确认 `MultiChannelSink` 与 `dispatch` 在真实渠道发送失败时已保持 `failed` 语义，不会把 `channel closed` 直接落成 `sent`。
 - GitHub issue：无；当前不是 P1，未创建 issue。
 
 ## 最新进展
+
+- `2026-08-24` 代码级修复：
+  - 根因收敛：
+    - 当前 `crates/hone-event-engine/src/sinks/multi.rs` 在真实渠道发送失败后会继续向上返回错误，`crates/hone-event-engine/src/router/dispatch.rs` 会把该轮 delivery 记为 `failed`，说明“失败直接落成 sent”这部分旧判断已不符合当前代码。
+    - 仍残留的用户可见问题在 `crates/hone-web-api/src/routes/notifications.rs`：管理端把 event-engine `dryrun` 继续映射成 `delivered=true`、汇总 `sent`，会把只写到 fallback log 的记录误展示成真实送达。
+  - 本轮修复：
+    - `record_from_delivery(...)` 仅对原始 `status=sent` 记 `delivered=true`。
+    - summary / histogram 分类不再把 `dryrun` 计入 sent，而是按 skipped 展示。
+    - `message_status_matches(...)` 不再把 `dryrun` 视为 `sent` 的别名，保留显式过滤语义。
+  - 自动化验证：
+    - `cargo test -p hone-web-api notifications::tests -- --nocapture`
+    - `cargo check -p hone-web-api --tests`
+  - 结论：旧手机系统通知能力边界修复仍成立；本单剩余台账语义误报已在代码层收口，状态更新为 `Fixed`，待运行态自然部署后再看是否需要进一步关闭。
 
 - `2026-08-17 10:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`
