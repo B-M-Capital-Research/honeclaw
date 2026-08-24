@@ -874,6 +874,37 @@ body.public-chat-scroll-lock #root {
   font-weight: 700;
   animation: none;
 }
+/* 运行期的实时思考摘要：最新一句常驻展示，完整轨迹折叠可查。 */
+.pub-assistant-reasoning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--hone-line);
+  color: var(--hone-ink-600);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.pub-assistant-reasoning-live {
+  margin: 0;
+  font-style: italic;
+  word-break: break-word;
+}
+.pub-assistant-reasoning-trace {
+  margin-top: 6px;
+}
+.pub-assistant-reasoning-trace summary {
+  cursor: pointer;
+  color: var(--hone-ink-500, var(--hone-ink-600));
+  font-size: 11px;
+  user-select: none;
+}
+.pub-assistant-reasoning-trace p {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .pub-assistant-turn-error {
   margin: 4px 0 0;
   color: #b0443b;

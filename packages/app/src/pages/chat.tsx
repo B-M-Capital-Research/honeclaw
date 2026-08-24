@@ -98,6 +98,8 @@ import {
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
   appendPublicChatProgressStep,
+  appendPublicChatReasoning,
+  isPublicChatToolCompletion,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
   publicChatTerminalEventPatch,
@@ -892,6 +894,26 @@ function AssistantBubble(props: {
               )}
             </For>
           </ul>
+        </Show>
+        <Show
+          when={
+            pending() &&
+            !hasContent() &&
+            (props.message.reasoningLog?.length ?? 0) > 0
+          }
+        >
+          <div class="pub-assistant-reasoning">
+            <p class="pub-assistant-reasoning-live">
+              {(() => {
+                const log = props.message.reasoningLog ?? "";
+                return log.length > 150 ? `…${log.slice(-150)}` : log;
+              })()}
+            </p>
+            <details class="pub-assistant-reasoning-trace">
+              <summary>查看完整思考轨迹</summary>
+              <p>{props.message.reasoningLog}</p>
+            </details>
+          </div>
         </Show>
         <Show when={hasContent()}>
           <div class="pub-assistant-turn-content">
@@ -3723,24 +3745,43 @@ export default function PublicChatPage() {
               (message) => message.id === assistantId,
             );
             if (index >= 0) {
+              const statusText = publicChatToolStatusText(
+                ev.data,
+                CONTENT.chat_page.status.running,
+              );
               setMessages(index, {
                 phase: "running",
-                statusText: publicChatToolStatusText(
-                  ev.data,
-                  CONTENT.chat_page.status.running,
-                ),
-                ...(messages[index].steps
+                statusText,
+                // Completion events only refresh the status line; the action
+                // step already carries the checkmark, so appending would just
+                // spam "数据已取得" between every real action.
+                ...(messages[index].steps &&
+                !isPublicChatToolCompletion(ev.data.status)
                   ? {
                       steps: appendPublicChatProgressStep(
                         messages[index].steps,
-                        publicChatToolStatusText(
-                          ev.data,
-                          CONTENT.chat_page.status.running,
-                        ),
+                        statusText,
                       ),
                     }
                   : {}),
               });
+            }
+          }
+          if (ev.event === "reasoning_delta") {
+            const reasoning =
+              typeof ev.data.content === "string" ? ev.data.content : "";
+            if (reasoning.trim()) {
+              const index = messages.findIndex(
+                (message) => message.id === assistantId,
+              );
+              if (index >= 0) {
+                setMessages(index, {
+                  reasoningLog: appendPublicChatReasoning(
+                    messages[index].reasoningLog,
+                    reasoning,
+                  ),
+                });
+              }
             }
           }
           if (ev.event === "assistant_delta") {
