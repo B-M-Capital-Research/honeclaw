@@ -7,7 +7,7 @@
 
 ## Bug Type
 
-- Reliability / Silent Failure
+- System Error
 
 ## 严重等级
 
@@ -74,6 +74,12 @@
 
 ## 证据来源
 
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-24 22:02 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
+  - 2026-08-24 18:00-22:01 CST 同窗继续有 3 条 `heartbeat 输出不是结构化 JSON` / `execution_failed` / `跳过发送`，代表样本包括 18:01 CST `web-user-be13e1f84d14`、20:01 CST `web-user-d415e2c11ced`、21:00 CST `web-user-d415e2c11ced` 的 heartbeat 任务。
+  - 同窗 parse 分布为 `PlainTextTriggered=64`、`PlainTextSuppressed=3`、`PlainTextNoop=7`、`JsonNoop=15`、`JsonTriggered=5`、`JsonEmptyStatus=1`，仍可见模型非 JSON / `<think>` 先行输出导致的契约退化。
+  - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 heartbeat contract recovery 修复的日志证据，因此本条仍按“代码级 Fixed / 待部署复核”记录，不回退为活跃 `P1`。
+  - 影响仍集中在部分 heartbeat 轮次跳过发送；同窗还有 `run_start=56`、`run_finish=62`、`deliver=33`，未见全渠道不可用、错对象投递或数据破坏证据。本轮不创建 GitHub Issue。
 - `data/logs/hone-console-page-source.log`
   - 2026-08-24 10:02 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
   - 2026-08-24 06:00-10:02 CST 同窗继续有 3 条 `heartbeat 输出不是结构化 JSON` / `execution_failed` / `跳过发送`，代表样本包括 06:00 CST `web-user-879a3b18fce2`、06:30 CST `web-user-499a1c6331c4`、10:01 CST `web-user-be13e1f84d14` 的 heartbeat 任务。
