@@ -6325,11 +6325,21 @@ impl Agent for FunctionCallingAgent {
                             // deployment budget grants gap-closure rounds; the
                             // market-move flow keeps its own deterministic gap
                             // machinery.
+                            // Only before any user-visible byte is irreversible: this
+                            // draft was already streamed, and re-entering the tool loop
+                            // appends the next rounds' narration onto the same visible
+                            // body instead of replacing it. A committed canonical prefix
+                            // cannot be retracted, so a gap there stays a disclosed gap.
+                            let visible_stream_is_retractable = self
+                                .stream_observer
+                                .as_ref()
+                                .is_none_or(|observer| observer.committed_visible_prefix().is_none());
                             if gap_closure_rounds < finance_budget.gap_closure_rounds
                                 && !is_market_move_final_check_enabled(user_input)
                                 && blocked_tool_finalization.is_none()
                                 && iterations < self.max_iterations
                                 && finance_tool_rounds + 1 < finance_budget.tool_rounds
+                                && visible_stream_is_retractable
                                 && finance_max_tool_calls
                                     .is_none_or(|cap| total_tool_calls + 4 <= cap)
                             {
@@ -6353,22 +6363,10 @@ impl Agent for FunctionCallingAgent {
                                             ))
                                             .await;
                                     }
-                                    if precommitted_service_prefix.is_none()
-                                        && let Some(prefix) = self
-                                            .stream_observer
-                                            .as_ref()
-                                            .and_then(|observer| {
-                                                observer.committed_visible_prefix()
-                                            })
-                                            .filter(|prefix| {
-                                                committed_prefix_matches_required(
-                                                    prefix,
-                                                    required_final_answer_prefix.as_deref(),
-                                                )
-                                            })
-                                    {
-                                        precommitted_service_prefix = Some(prefix);
-                                    }
+                                    // Retract the speculative draft so the next round
+                                    // starts from a clean visible stream rather than
+                                    // appending to a published one.
+                                    self.reset_emitted_content(true).await;
                                     gap_closure_rounds = gap_closure_rounds.saturating_add(1);
                                     pending_gap_closure_feedback = Some(
                                         gap_closure_feedback_prompt(&gap_lines, &response.content),
@@ -14296,6 +14294,64 @@ mod tests {
         assert_eq!(forced.metadata["tool_budget_exhausted"], true);
         assert_eq!(forced.metadata["force_finance_final"], true);
         assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
+    }
+
+    #[tokio::test]
+    async fn gap_closure_never_reopens_a_turn_whose_visible_prefix_is_committed() {
+        // The draft has already crossed an irreversible publication boundary.
+        // Re-entering the tool loop there appends the next rounds' narration
+        // onto the published body instead of replacing it — the regression that
+        // published 23k chars of inter-round narration as the answer.
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_committed".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NBIS","entity_route":"nbis","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(gap_draft.clone())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            10,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_finance_research_budget(FinanceResearchBudget {
+            gap_closure_rounds: 2,
+            ..FinanceResearchBudget::default()
+        })
+        .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+        .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("gap-closure-committed".to_string());
+
+        let response = agent.run("某数据中心项目最近有什么进展", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        // The gap draft is published as-is; its disclosed gap stays disclosed.
+        assert_eq!(response.content, gap_draft);
+        let all = seen_messages.lock().expect("seen messages");
+        assert!(
+            !all.iter().flatten().any(|message| message
+                .content
+                .as_deref()
+                .is_some_and(|c| c.contains("内部缺口闭环轮"))),
+            "no gap-closure round may be granted once the prefix is committed"
+        );
     }
 
     #[tokio::test]
