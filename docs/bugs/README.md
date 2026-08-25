@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-08-26
+最后更新：2026-08-25
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -995,7 +995,7 @@
 | Heartbeat / scheduler 实时核验门禁失败后批量跳过提醒 | P2 | New | 2026-08-23 06:02 复核：02:01-06:02 CST 仍有 `runner_or_execution=1`、parse `Empty=1`，且 06:00 heartbeat 尝试调用不存在的 `cron_job` 后产出直聊式监控确认文案；同窗其它 heartbeat / poller 仍运行，非 P1 | [scheduler_heartbeat_required_evidence_fallback_skips_alerts.md](./scheduler_heartbeat_required_evidence_fallback_skips_alerts.md) |
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P2 | New | 2026-08-17 22:03 复核：18:30 CST Web heartbeat `AAPL + NVDA + BE 关键事件提醒` 再现 OpenAI-compatible `tool call result does not follow tool call (2013)`，近窗 3 条同类日志，落成 `provider_http_error` 并跳过发送；同窗其它 heartbeat/event-engine 仍运行，非 P1 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败 | P2 | New | 2026-08-21 22:02 复核：20:00 CST `NVDA 关键事件心跳提醒` 落成 OpenAI-compatible upstream HTTP 529 `provider_http_error` 并跳过发送；同窗其它 heartbeat 仍有送达，非全局停摆、非 P1 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务命中 MiniMax output sensitive 拒绝后跳过提醒 | P2 | New | 2026-08-25 14:02 新增：14:00 CST `存储板块关键事件心跳提醒` 命中 `output new_sensitive (1027)`，落成 `runner_error` 并跳过发送；同窗 heartbeat deliver=37 且 event-engine price/extended-hours 仍 ok，非全局停摆、非 P1。无关联 GitHub Issue | [scheduler_heartbeat_minimax_output_sensitive_refusal_skips_alert.md](./scheduler_heartbeat_minimax_output_sensitive_refusal_skips_alert.md) |
+| Heartbeat 定时任务命中 MiniMax output sensitive 拒绝后跳过提醒 | P2 | Fixed | 2026-08-25 `bug-2` 代码级修复：heartbeat 现将 `output new_sensitive (1027)` 归类为 `provider_content_safety_refusal`，并接入一次更中性、更短表述的 recovery 重试；新增 3 条 `hone-channels` 定向回归与 `cargo check -p hone-channels --tests` 通过，待 live runtime 自然部署复核 | [scheduler_heartbeat_minimax_output_sensitive_refusal_skips_alert.md](./scheduler_heartbeat_minimax_output_sensitive_refusal_skips_alert.md) |
 | Tavily web_search pay-as-you-go quota exhausted degrades realtime research | P2 | New | 2026-08-26 02:01 新增：22:01-02:01 CST `web_search` 只有 `key_count=1` 且持续被 Tavily pay-as-you-go limit 拒绝，source log 相关信号 87 条；多条 heartbeat 明写 `Web search is not available` 后用旧上下文 / 部分 quote 收口。调度、data_fetch 与部分投递仍运行，非全局停摆、非 P1。无关联 GitHub Issue | [web_search_tavily_payg_quota_exhausted_degrades_realtime_research.md](./web_search_tavily_payg_quota_exhausted_degrades_realtime_research.md) |
 | Feishu direct 短问题失败后外发 internal-only output 占位文案 | P2 | Fixed | 2026-08-20 `bug-2` 修复：`user_visible_error_message()` 现将 `agent returned internal-only output` 统一映射为脱敏通用失败文案，并新增 `failed_assistant_persisted_message_hides_internal_only_output_error` 与 `user_visible_error_message_rewrites_internal_only_output_errors` 回归；验证含 `cargo check -p hone-channels --tests` | [feishu_direct_internal_only_output_fallback.md](./feishu_direct_internal_only_output_fallback.md) |
 | Feishu direct 追问失败后只返回通用失败文案 | P2 | New | 2026-07-28 10:02 新增：09:35 用户追问 `Moonshot AI 商业模式和商业价值`，assistant final 只返回 `抱歉，这次处理失败了。请稍后再试。`，metadata 标记 `AgentFailed/run_failed=true`；同窗其它 Feishu direct / scheduler 可收口，非 P1 | [feishu_direct_agentfailed_generic_failure.md](./feishu_direct_agentfailed_generic_failure.md) |

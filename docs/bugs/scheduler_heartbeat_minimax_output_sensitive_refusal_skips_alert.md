@@ -14,7 +14,20 @@
 
 ## 状态
 
-- New
+- Fixed（代码级，待部署复核）
+
+## 最新进展
+
+- `2026-08-25` `bug-2` 已补上 heartbeat 对 provider 内容安全拒绝的单次恢复路径：
+  - `scheduler.rs` 现在会把 `output new_sensitive (1027)` 归类为 `provider_content_safety_refusal`，不再混成普通 `runner_error`。
+  - `heartbeat_recovery_reason(...)` 新增 `ContentSafetyRefusal` 分支；首次命中该类错误时，会进入现有 heartbeat budget recovery，要求模型只用更中性、更短的表述重试一次，无法安全改写时返回 `noop`，避免直接静默漏发。
+  - recovery prompt 明确要求避免渲染血腥、暴力、极端或耸动细节，只保留触发事实、关键数据与检查时间。
+- 本轮验证：
+  - `cargo test -p hone-channels heartbeat_provider_content_safety_refusal_is_classified --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_recovery_reason_covers_context_iteration_and_transport_failures --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_content_safety_recovery_prompt_mentions_neutral_short_path --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 当前仍缺 live runtime 自然部署后的运行态复核，因此状态先记为代码级 `Fixed`，不直接关闭。
 
 ## 证据来源
 
@@ -58,8 +71,7 @@
 - 这是 provider 内容安全拒绝类失败，不同于既有 MiniMax HTTP 529 / transport failure，也不同于 FMP poller 请求失败。
 - 当前 heartbeat recovery 对 `output new_sensitive (1027)` 这类上游安全拒绝缺少独立分类和降级重试策略。
 
-## 下一步建议
+## 后续复核
 
-- 为 OpenAI-compatible / MiniMax `output new_sensitive` 增加明确 failure_kind，例如 `provider_content_safety_refusal`。
-- 在 heartbeat runner 侧对该 failure_kind 使用一次安全降级 prompt，去掉可能触发内容拒绝的细节和行情扩写，只保留是否触发、缺失项与下一次重试建议。
-- 添加回归测试：模拟 provider 返回 `output new_sensitive (1027)`，验证不会把任务直接记为普通 runner error 并静默跳过。
+- 部署后需复看真实 heartbeat 窗口：同类 `output new_sensitive (1027)` 应先进入 `retry_with_budget_recovery reason=content_safety_refusal`，随后收口为合规 JSON 或 `noop`，而不是直接 `runner_error + skipped_error`。
+- 若 live 仍直接跳过发送，再继续排查是否需要在 provider / prompt 侧补更窄的 neutralization，而不是回退当前分类与 recovery。

@@ -58,6 +58,7 @@ enum HeartbeatExecutionProfile {
 enum HeartbeatRecoveryReason {
     ContextOverflow,
     MaxIterationsExceeded,
+    ContentSafetyRefusal,
     TransportError,
     ContractViolation,
 }
@@ -103,6 +104,9 @@ fn heartbeat_recovery_reason(error: &str) -> Option<HeartbeatRecoveryReason> {
         return Some(HeartbeatRecoveryReason::ContextOverflow);
     }
     let lower = error.to_ascii_lowercase();
+    if heartbeat_retryable_content_safety_error(&lower) {
+        return Some(HeartbeatRecoveryReason::ContentSafetyRefusal);
+    }
     if heartbeat_retryable_transport_error(&lower) {
         return Some(HeartbeatRecoveryReason::TransportError);
     }
@@ -120,10 +124,18 @@ fn heartbeat_retryable_transport_error(lower_error: &str) -> bool {
         || lower_error.contains("tcp connect error")
 }
 
+fn heartbeat_retryable_content_safety_error(lower_error: &str) -> bool {
+    lower_error.contains("output new_sensitive")
+        || lower_error.contains("new_sensitive (")
+        || lower_error.contains("content safety")
+        || lower_error.contains("sensitive refusal")
+}
+
 fn heartbeat_recovery_reason_label(reason: HeartbeatRecoveryReason) -> &'static str {
     match reason {
         HeartbeatRecoveryReason::ContextOverflow => "context_overflow",
         HeartbeatRecoveryReason::MaxIterationsExceeded => "max_iterations_exceeded",
+        HeartbeatRecoveryReason::ContentSafetyRefusal => "content_safety_refusal",
         HeartbeatRecoveryReason::TransportError => "transport_error",
         HeartbeatRecoveryReason::ContractViolation => "contract_violation",
     }
@@ -3245,6 +3257,9 @@ fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
         return "context_window_overflow";
     }
     let lower = error.to_ascii_lowercase();
+    if heartbeat_retryable_content_safety_error(&lower) {
+        return "provider_content_safety_refusal";
+    }
     if heartbeat_retryable_transport_error(&lower) {
         return "provider_transport_error";
     }
@@ -4605,6 +4620,9 @@ fn build_heartbeat_recovery_prompt(
         HeartbeatRecoveryReason::MaxIterationsExceeded => {
             "上一轮因为工具迭代预算耗尽失败，本轮必须减少工具调用并快速收口。"
         }
+        HeartbeatRecoveryReason::ContentSafetyRefusal => {
+            "上一轮因为上游内容安全拒绝失败，本轮必须改用更中性、更短的表达，只保留是否触发、关键事实与检查时间。"
+        }
         HeartbeatRecoveryReason::TransportError => {
             "上一轮因为上游传输抖动失败，本轮只允许走最短核验路径并快速补做一次。"
         }
@@ -4623,7 +4641,8 @@ fn build_heartbeat_recovery_prompt(
 3. 本轮最多允许 2 次工具调用：优先复用本地文件、组合和一次行情/新闻确认；若仍不能确认，直接返回 noop。\n\
 4. 不要输出分析过程、Markdown 代码块、任务配置、画像流程、工具名或内部错误。\n\
 5. 不要给直接买卖指令；只能报告触发事实和条件化风险提示。\n\
-6. 若来源、时间戳、价格口径或事件窗口无法确认，也必须返回 noop。\n\
+6. 若上一轮命中过内容安全拒绝，本轮避免渲染血腥、暴力、极端或耸动细节，只保留中性事实表述；若无法安全改写，直接返回 noop。\n\
+7. 若来源、时间戳、价格口径或事件窗口无法确认，也必须返回 noop。\n\
 \n\
 以下是需要检查的用户条件：\n{}",
         event.job_name,
@@ -7428,6 +7447,24 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_provider_content_safety_refusal_is_classified() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: stream provider error: output new_sensitive (1027)".to_string(),
+            "MiniMax-M2.7-highspeed",
+        );
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_some());
+        assert_eq!(
+            execution.metadata["failure_kind"],
+            "provider_content_safety_refusal"
+        );
+        assert_eq!(
+            execution.metadata["heartbeat_model"],
+            "MiniMax-M2.7-highspeed"
+        );
+    }
+
+    #[test]
     fn heartbeat_context_overflow_error_is_not_classified_as_noop() {
         let execution = heartbeat_execution_from_runner_error(
             "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
@@ -7494,6 +7531,12 @@ mod tests {
         );
         assert_eq!(
             heartbeat_recovery_reason(
+                "LLM 错误: stream provider error: output new_sensitive (1027)"
+            ),
+            Some(HeartbeatRecoveryReason::ContentSafetyRefusal)
+        );
+        assert_eq!(
+            heartbeat_recovery_reason(
                 "LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)"
             ),
             Some(HeartbeatRecoveryReason::TransportError)
@@ -7506,6 +7549,10 @@ mod tests {
         assert_eq!(
             heartbeat_recovery_reason_label(HeartbeatRecoveryReason::MaxIterationsExceeded),
             "max_iterations_exceeded"
+        );
+        assert_eq!(
+            heartbeat_recovery_reason_label(HeartbeatRecoveryReason::ContentSafetyRefusal),
+            "content_safety_refusal"
         );
         assert_eq!(
             heartbeat_recovery_reason_label(HeartbeatRecoveryReason::TransportError),
@@ -7636,6 +7683,34 @@ mod tests {
         assert!(prompt.contains("上游传输抖动失败"));
         assert!(prompt.contains("最短核验路径"));
         assert!(prompt.contains("只允许 `{\"status\":\"noop\"}`"));
+    }
+
+    #[test]
+    fn heartbeat_content_safety_recovery_prompt_mentions_neutral_short_path() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("discord", "alice", Some("dm")).expect("actor"),
+            job_id: "job-safety".to_string(),
+            job_name: "heartbeat".to_string(),
+            task_prompt: "检查存储板块是否出现新的重大风险事件或价格阈值触发".to_string(),
+            channel: "discord".to_string(),
+            channel_scope: Some("dm".to_string()),
+            channel_target: "alice".to_string(),
+            delivery_key: "delivery-safety".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+        let prompt =
+            build_heartbeat_recovery_prompt(&event, HeartbeatRecoveryReason::ContentSafetyRefusal);
+        assert!(prompt.contains("内容安全拒绝失败"));
+        assert!(prompt.contains("更中性、更短的表达"));
+        assert!(prompt.contains("避免渲染血腥、暴力、极端或耸动细节"));
     }
 
     #[test]
