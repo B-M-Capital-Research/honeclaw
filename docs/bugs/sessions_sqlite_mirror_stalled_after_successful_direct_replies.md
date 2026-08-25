@@ -1920,3 +1920,15 @@
 - 本轮判断
   - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像完全停滞”；这会继续误导巡检、补发判断和调度排障。
   - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-08-25 10:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-08-25 06:00-10:02 CST。
+  - `sessions.updated_at`、`sessions.last_message_at`、`session_messages.timestamp` 仍停在 2026-08-01，`session_messages.imported_at` 仍停在 2026-08-02；SQLite 未反映近窗真实运行。
+- `data/logs/hone-console-page-source.log`
+  - 同窗 source runtime 继续推进到 10:01 CST：`HeartbeatDiag=216`、`run_start=56`、`run_finish=59`、`deliver=35`、`duplicate_suppressed=7`。
+  - 同窗 `data/runtime/task_runs.2026-08-24.jsonl` / `data/runtime/task_runs.2026-08-25.jsonl` 仍有 event-engine poller ok / failed 记录，说明真实运行没有随 SQLite 镜像一起停止。
+- 本轮判断
+  - 当前坏态仍是“真实运行继续推进，而本地 session/message/cron/web push 镜像停滞”；这会继续误导巡检、补发判断和调度排障。
+  - 未见全渠道不可用、错投、数据破坏或敏感信息泄露；严重等级维持功能性 `P2 / New`，非 P1。
