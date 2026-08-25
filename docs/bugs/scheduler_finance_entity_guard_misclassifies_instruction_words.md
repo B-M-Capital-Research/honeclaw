@@ -23,7 +23,13 @@
 - 说明：
   - 本轮按当前日期 `2026-08-16` 记录代码级修复。文档里若出现 `2026-08-17` 的未来日期条目，仅保留为既有文档内容，不作为本轮已发生的运行态复核事实。
 
-## 运行态复核（2026-08-09 22:03 CST）
+## 运行态复核
+
+- `2026-08-25 22:03 CST` 真实运行态待部署复核，状态维持代码级 `Fixed/P2`：
+  - `data/logs/hone-console-page-source.log` 记录 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` / `盘前美股要闻与SNDK/MU存储产业链日报`，任务正文包含宏观指标 `PCE`、PMI、FOMC、收益率、美元指数，以及存储行业词 `AI`、`SSD`、`NAND`、`DRAM`、`HBM` 和多只存储链标的。
+  - 同轮日志显示投资 guard 批量探测 `["SNDK", "MU", "AI", "SSD", "NAND", "DRAM", "WDC", "STX", "SOXX", "QQQ", "LRCX", "KLAC", "AMAT"]`，其中产品/行业词 `AI`、`SSD` 被作为 explicit security 解析；随后 `session.persist_assistant detail=failed`，Web scheduler 以报告正文开头落成定时任务执行失败。
+  - 判断：该样本与既有 `PCE` / `NAND` / `AI` / `SSD` 误抽同根，仍是 scheduler 任务正文、宏观/行业词与持仓列表进入实体 guard / resolver 后误抽或误拦，导致 scheduler fail-closed；不新建重复缺陷。近窗无非文档代码提交，未见 live runtime 重启 / revision 切换或确认加载 2026-08-16 概念词 guard 修复的证据，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文，但同窗 source runtime 和其它 scheduler / heartbeat 仍在运行，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
 
 - `2026-08-09 18:03-22:03 CST` 真实运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log` 记录 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` / `盘前美股要闻与SNDK/MU存储产业链日报`，任务正文包含宏观指标 `PCE`、PMI、FOMC、收益率、美元指数和多只存储链标的。

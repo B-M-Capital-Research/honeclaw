@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-08-25 22:03 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-25 18:00-22:03 CST（UTC `2026-08-25T10:00:31Z` 之后）。
+    - 20:00 CST `持仓重大事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出 `SPCX 与 TSLA 的关系：四项事实，一个关键区分`，并展开共同控制权、资本结构和股权关系说明；这不是对用户当前持仓 `SPCX/DRAM/MU/ARM/BE/WOLF/RKLB/513310` 的财报或重大新闻触发 / noop 检查。
+    - 20:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出 `光模块板块全景梳理（关联用户持仓 AAOI）` 的长篇行业综述；这不是只在重大事件出现时推送的稳定监控结果。
+    - 同窗仍有 `HeartbeatDiag=226`、`run_start=56`、`run_finish=62`、`deliver=37`、`execution_failed=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-25 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-25 14:02-18:01 CST（UTC `2026-08-25T06:01:30Z` 之后）。
