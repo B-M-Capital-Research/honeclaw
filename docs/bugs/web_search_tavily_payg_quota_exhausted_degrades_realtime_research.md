@@ -19,6 +19,9 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-26 02:01-06:01 CST 巡检窗口内，Tavily / `web_search` 相关信号从上一窗 87 条升至 142 条，仍只有 `key_count=1`，pay-as-you-go limit / unavailable 持续出现。
+  - 同窗 heartbeat 仍有 `run_start=56`、`run_finish=58`、`deliver=31`、`duplicate_suppressed=9`，说明不是全局调度停摆；但多轮任务继续在 `web_search` 不可用与工具预算受限后，用旧上下文、quote 或工具上限口径收口。
+  - 本窗未见错投、敏感凭据泄露或全渠道不可用；维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
   - 2026-08-25 22:01-2026-08-26 02:01 CST 巡检窗口内，`web_search` 持续只有 `key_count=1`，Tavily 返回 pay-as-you-go limit 拒绝。
   - 同窗统计：Tavily limit / unavailable 相关日志 87 条，`tool_execute_error name=web_search` 多次出现，heartbeat 侧仍有 `run_start=56`、`run_finish=62`、`deliver=39`、`duplicate_suppressed=14`，说明不是全局调度停摆。
   - 代表样本：
