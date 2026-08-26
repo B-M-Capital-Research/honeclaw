@@ -3,9 +3,16 @@
 - **发现时间**: 2026-07-20 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 最新进展
+
+- `2026-08-26 03:xx CST` `bug-2` 代码级修复并转为 `Fixed/P2`：
+  - `agents/function_calling/src/lib.rs` 现在会在当前轮已经取得真实只读工具结果、但在形成终稿前触发 `max_iterations_exceeded:N` 时，额外给同一 Agent 一次 `tools=[]` 的无工具收口机会，而不是直接落成通用失败。
+  - 该恢复仅适用于“已有真实只读 trace、无持久化副作用”的边界；未知 effect、写工具、空 trace 仍保持失败，不放宽安全边界。
+  - 新增回归 `iteration_limit_with_known_read_only_trace_gets_one_tools_disabled_final_answer`，并将旧边界测试收紧为 `iteration_limit_fails_without_terminal_call_when_trace_is_not_known_read_only`。
+  - 验证通过：`cargo test -p hone-agent iteration_limit_with_known_read_only_trace_gets_one_tools_disabled_final_answer -- --nocapture`、`cargo test -p hone-agent iteration_limit_fails_without_terminal_call_when_trace_is_not_known_read_only -- --nocapture`、`cargo test -p hone-agent active_provider_error_recovers_with_a_tools_disabled_answer -- --nocapture`、`cargo test -p hone-channels failed_assistant_persisted_message_prefers_preserved_read_only_answer --lib -- --nocapture`。
+  - 当前未重启 live runtime，先按代码级 `Fixed` 记录；后续若线上继续出现 `max_iterations_exceeded:18` 且仍无终稿，应优先排查是否属于其它根因（如实体 guard、provider 高峰失败、证据不足导致的不同恢复链路）。
 
 - `2026-07-31 06:00-10:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -154,6 +161,13 @@
 
 ## 修复记录
 
+- `2026-08-26`：
+  - `agents/function_calling/src/lib.rs`
+    - 为“已有只读工具结果但在终稿前触发 `max_iterations_exceeded`”补一轮共享 `tools=[]` 收口，允许同一 Agent 基于当前轮证据直接生成最终答复。
+    - 保持非只读 trace、写工具与不确定副作用失败的原有 fail-closed 语义。
+  - 回归测试：
+    - `iteration_limit_with_known_read_only_trace_gets_one_tools_disabled_final_answer`
+    - `iteration_limit_fails_without_terminal_call_when_trace_is_not_known_read_only`
 - 2026-07-20 代码级修复：
   - `crates/hone-channels/src/core/bot_core.rs`
     - 将普通用户 strict fallback `function_calling` runner 的 `STRICT_ACTOR_MAX_ITERATIONS` 从 `10` 对齐到仓库当前标准预算 `18`，避免 Web / Feishu direct 与普通 scheduler 在已取得多轮有效工具结果后被过早截断。

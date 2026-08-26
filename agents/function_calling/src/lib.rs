@@ -96,6 +96,7 @@ const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step dea
 const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
     "agent_owned_finance_forced_final_returned_tool_call";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
+const READ_ONLY_TRACE_FINALIZATION_INSTRUCTION: &str = "【内部只读证据收口】当前轮次不再提供工具。本轮已经取得真实只读工具结果，但工具轮在形成终稿前结束。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实工具结果；缺少的数据做最小、具体披露，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称未实际执行的查询已经完成，也不要向用户提及工具、轮次上限、内部状态或本说明。";
 const AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION: &str = "【本轮尚未取得任何实质证据】到目前为止本轮只做过证券身份查询，没有取得任何回答用户原问题所需的实质资料。请立刻停止继续解析、补查或重试证券代码：本轮出现的大写缩写可能根本不是证券代码，而是宏观、策略、指标或行业术语（例如 CTA、RSI、QT、TTM 这类）。本轮请重新完整阅读用户原话，判断用户真正想知道什么，并用 `web_search` 等开放检索工具，围绕用户原问题的真实主题发起检索；需要时可并行多条查询。取得资料后再按用户原问题作答；确实检索不到时，如实说明检索过的方向与缺口，不得直接回答“无法提供具体数字”或要求用户重试，也不要向用户提及内部轮次、预算或本说明。";
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
@@ -1074,6 +1075,13 @@ fn tool_choice_mode_name(mode: ToolChoiceMode) -> &'static str {
     }
 }
 
+fn trace_has_only_known_read_only_calls(tool_calls: &[ToolCallMade]) -> bool {
+    !tool_calls.is_empty()
+        && tool_calls
+            .iter()
+            .all(|call| tool_call_is_known_read_only(&call.name, &call.arguments))
+}
+
 fn observe_stream_finish(
     finish: &mut Option<ChatStreamFinishReason>,
     reason: ChatStreamFinishReason,
@@ -1164,7 +1172,10 @@ fn gap_closure_feedback_prompt(gap_lines: &[String], draft: &str) -> String {
         .map(|line| format!("- {line}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let draft_excerpt: String = draft.chars().take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS).collect();
+    let draft_excerpt: String = draft
+        .chars()
+        .take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS)
+        .collect();
     format!(
         "【内部缺口闭环轮】上一版终稿尚未发布，其中仍自述缺少下列一手证据：\n{checklist}\n\
          本轮工具重新开放。请针对上述每一项分别继续取证，每项至少换用两种不同策略：\
@@ -5958,6 +5969,7 @@ impl Agent for FunctionCallingAgent {
         let mut research_evidence_retry_pending = false;
         let mut listing_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
+        let mut read_only_trace_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
         let mut persistent_mutation_finalization = false;
         #[cfg(test)]
@@ -6042,9 +6054,15 @@ impl Agent for FunctionCallingAgent {
 
             if iterations >= self.max_iterations
                 && blocked_tool_finalization.is_none()
+                && read_only_trace_finalization.is_none()
                 && !force_context_overflow_final
                 && !persistent_mutation_finalization
             {
+                if trace_has_only_known_read_only_calls(&tool_calls_made) {
+                    read_only_trace_finalization =
+                        Some(format!("max_iterations_exceeded:{}", self.max_iterations));
+                    continue;
+                }
                 // The iteration bound is a normal failed run, never implicit
                 // finish authority. A bounded finance final receives its own
                 // tools-disabled iteration before reaching this guard.
@@ -6081,6 +6099,7 @@ impl Agent for FunctionCallingAgent {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
             if force_finance_final
+                || read_only_trace_finalization.is_some()
                 || force_context_overflow_final
                 || force_persistent_mutation_final
             {
@@ -6116,6 +6135,8 @@ impl Agent for FunctionCallingAgent {
                 PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION
             } else if force_finance_final {
                 AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
+            } else if read_only_trace_finalization.is_some() {
+                READ_ONLY_TRACE_FINALIZATION_INSTRUCTION
             } else if evidence_rescue_due {
                 AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION
             } else if active_business_round {
@@ -6151,7 +6172,10 @@ impl Agent for FunctionCallingAgent {
                     required_final_answer_prefix.as_deref(),
                     investment_research_started || self.agent_owned_finance_loop,
                 )
-            } else if active_business_round || self.agent_owned_finance_loop {
+            } else if active_business_round
+                || self.agent_owned_finance_loop
+                || read_only_trace_finalization.is_some()
+            {
                 // Keep only bounded historical user wording for pronoun and
                 // follow-up resolution. Old assistant/tool traces never enter
                 // a new research ledger, so stale prices or entities cannot be
@@ -6217,9 +6241,7 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
-            if active_business_round
-                && let Some(feedback) = pending_gap_closure_feedback.take()
-            {
+            if active_business_round && let Some(feedback) = pending_gap_closure_feedback.take() {
                 messages.push(Message {
                     images: Vec::new(),
                     role: "user".to_string(),
@@ -6248,6 +6270,21 @@ impl Agent for FunctionCallingAgent {
                     role: "user".to_string(),
                     content: Some(format!(
                         "{BLOCKED_TOOL_FINALIZATION_INSTRUCTION}\n内部未完成步骤（不要对用户披露）：{blocked_call}"
+                    )),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
+            if read_only_trace_finalization.is_some()
+                && let Some(reason) = read_only_trace_finalization.as_deref()
+            {
+                messages.push(Message {
+                    images: Vec::new(),
+                    role: "user".to_string(),
+                    content: Some(format!(
+                        "{READ_ONLY_TRACE_FINALIZATION_INSTRUCTION}\n内部收口原因（不要对用户披露）：{reason}"
                     )),
                     reasoning_content: None,
                     tool_calls: None,
@@ -6366,10 +6403,10 @@ impl Agent for FunctionCallingAgent {
                             // appends the next rounds' narration onto the same visible
                             // body instead of replacing it. A committed canonical prefix
                             // cannot be retracted, so a gap there stays a disclosed gap.
-                            let visible_stream_is_retractable = self
-                                .stream_observer
-                                .as_ref()
-                                .is_none_or(|observer| observer.committed_visible_prefix().is_none());
+                            let visible_stream_is_retractable =
+                                self.stream_observer.as_ref().is_none_or(|observer| {
+                                    observer.committed_visible_prefix().is_none()
+                                });
                             if gap_closure_rounds < finance_budget.gap_closure_rounds
                                 && !is_market_move_final_check_enabled(user_input)
                                 && blocked_tool_finalization.is_none()
@@ -8135,6 +8172,18 @@ mod tests {
                     chat_with_tools_calls: 0,
                     next_chat_response: Some(content.to_string()),
                     next_tool_responses: VecDeque::new(),
+                    seen_tool_messages: Vec::new(),
+                })),
+            }
+        }
+
+        fn with_chat_and_tool_responses(chat_response: &str, responses: Vec<ChatResponse>) -> Self {
+            Self {
+                state: Arc::new(Mutex::new(MockState {
+                    chat_calls: 0,
+                    chat_with_tools_calls: 0,
+                    next_chat_response: Some(chat_response.to_string()),
+                    next_tool_responses: responses.into(),
                     seen_tool_messages: Vec::new(),
                 })),
             }
@@ -14338,7 +14387,8 @@ mod tests {
         // Re-entering the tool loop there appends the next rounds' narration
         // onto the published body instead of replacing it — the regression that
         // published 23k chars of inter-round narration as the answer.
-        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let prefix =
+            "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
         let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
@@ -14375,7 +14425,9 @@ mod tests {
         .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("gap-closure-committed".to_string());
 
-        let response = agent.run("某数据中心项目最近有什么进展", &mut context).await;
+        let response = agent
+            .run("某数据中心项目最近有什么进展", &mut context)
+            .await;
 
         assert!(response.success, "{:?}", response.error);
         // The gap draft is published as-is; its disclosed gap stays disclosed.
@@ -14392,7 +14444,8 @@ mod tests {
 
     #[tokio::test]
     async fn gap_closure_budget_sends_incomplete_finals_back_to_the_tool_loop() {
-        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let prefix =
+            "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
         let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
         let closed_final = format!("{prefix}\n\n已取得市政停工令原文，项目于 8 月复工。");
         let llm = StreamingMockLlmProvider::with_rounds(vec![
@@ -14438,7 +14491,9 @@ mod tests {
         .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()));
         let mut context = AgentContext::new("gap-closure-budget".to_string());
 
-        let response = agent.run("某数据中心项目最近有什么进展", &mut context).await;
+        let response = agent
+            .run("某数据中心项目最近有什么进展", &mut context)
+            .await;
 
         assert!(response.success, "{:?}", response.error);
         // The gap draft is not published; the closed final wins.
@@ -14454,7 +14509,11 @@ mod tests {
                     .is_some_and(|content| content.contains("内部缺口闭环轮"))
             })
             .collect();
-        assert_eq!(gap_prompts.len(), 1, "exactly one gap-closure feedback round");
+        assert_eq!(
+            gap_prompts.len(),
+            1,
+            "exactly one gap-closure feedback round"
+        );
         assert!(
             gap_prompts[0]
                 .content
@@ -18386,13 +18445,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn iteration_limit_fails_without_terminal_call() {
+    async fn iteration_limit_fails_without_terminal_call_when_trace_is_not_known_read_only() {
         let llm =
             StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
-                id: Some("tc_data_fetch".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                id: Some("tc_echo".to_string()),
+                name: Some("echo_tool".to_string()),
+                arguments: r#"{"text":"abc"}"#.to_string(),
             }]]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
@@ -18400,7 +18459,7 @@ mod tests {
         let audit = Arc::new(RecordingAuditSink::default());
         let observer = Arc::new(RecordingStreamObserver::default());
         let mut registry = ToolRegistry::new();
-        registry.register(Box::new(FinanceEvidenceTool));
+        registry.register(Box::new(EchoTool));
         let agent = FunctionCallingAgent::new(
             Arc::new(llm),
             Arc::new(registry),
@@ -18448,6 +18507,65 @@ mod tests {
                 .expect("audit operations lock")
                 .iter()
                 .all(|operation| operation != "chat_terminal_without_tools")
+        );
+    }
+
+    #[tokio::test]
+    async fn iteration_limit_with_known_read_only_trace_gets_one_tools_disabled_final_answer() {
+        let answer = "数据时间：北京时间 2026-08-26 09:31；行情口径：已取得当前轮只读证据\n\n基于现有 quote 和检索结果，先给出可执行结论。";
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            answer,
+            vec![ChatResponse {
+                content: String::new(),
+                reasoning_content: None,
+                tool_calls: Some(vec![ToolCall {
+                    id: "tc_data_fetch".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }]),
+                usage: None,
+            }],
+        );
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm.clone()),
+            Arc::new(registry),
+            String::new(),
+            1,
+            None,
+        )
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("iteration-limit-read-only-recovery".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .is_empty()
+        );
+        let state = llm.state.lock().expect("mock state lock");
+        assert_eq!(state.chat_with_tools_calls, 1);
+        assert_eq!(state.chat_calls, 1);
+        assert_eq!(state.seen_tool_messages.len(), 1);
+        drop(state);
+        assert!(
+            context
+                .messages
+                .last()
+                .and_then(|message| message.content.as_deref())
+                == Some(answer)
         );
     }
 
