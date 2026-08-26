@@ -7,6 +7,17 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-08-26 10:01-14:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-26T02:01:34Z` / 北京时间 `2026-08-26 10:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 12:00 CST `光模块板块关键事件心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗 HTTP 529 相关信号 3 条。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=56`、`deliver=24`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-08-26 06:01-10:05 CST 继续维持 `New`**：
   - `data/logs/hone-console-page-source.log`
     - 本轮按自动化上次运行点 `2026-08-25T22:01:03Z` / 北京时间 `2026-08-26 06:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
