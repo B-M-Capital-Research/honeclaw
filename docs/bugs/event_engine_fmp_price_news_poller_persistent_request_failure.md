@@ -35,6 +35,12 @@
 ## 证据来源
 
 - `data/runtime/task_runs.2026-08-25.jsonl` / `data/runtime/task_runs.2026-08-26.jsonl`
+  - 2026-08-27 06:01 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
+  - 2026-08-27 02:01-06:01 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-26T18:01:08Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=9`，同时 `poller.fmp.price ok=7`、`poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路和部分 quote batch 仍在退化。
+  - 近窗非文档提交 `cad4ffc1 fix(function-calling): recover read-only iteration exhaustion` 只涉及 function-calling 迭代耗尽收口；未见 live runtime 重启 / revision 切换或 task_runs 已加载 2026-08-23 `2d9ad5d5 fix(event-engine): retry transient fmp poller transport errors` 的确认信号，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。
+  - 失败样本覆盖 `poller.fmp.news` 的 `stock_news` 请求，以及 `poller.fmp.price` 的 `U,UAL,UBER,...,ZS` quote batch；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 heartbeat `run_start=56`、`run_finish=58`、`deliver=33`，说明 scheduler 其它链路仍在推进。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻事件增量、digest 候选、监控触发新鲜度和部分行情刷新，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
   - 2026-08-27 02:01 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
   - 2026-08-26 22:00-2026-08-27 02:01 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-26T14:00:07Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=16`，同时 `poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路和部分 quote batch 仍在退化。
   - 近窗无非文档代码提交，未见 live runtime 重启 / revision 切换或 task_runs 已加载 2026-08-23 `2d9ad5d5 fix(event-engine): retry transient fmp poller transport errors` 的确认信号，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。

@@ -7828,3 +7828,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、空状态、非结构化失败跳过、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存；没有新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露。近窗未见 live runtime 已加载相关修复的确认信号，状态维持代码级 `Fixed / P2`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-27 06:01 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-27 02:01-06:01 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=64`、`JsonNoop=20`、`JsonTriggered=4`、`PlainTextNoop=2`、`PlainTextSuppressed=1`。
+  - 同窗还有 `HeartbeatDiag=212`、`run_start=56`、`run_finish=58`、`deliver=33`、`duplicate_suppressed=7`、`execution_failed=1`、工具预算拒绝 157 条。
+  - 代表样本包括 04:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 fenced JSON / `status=triggered` 协议载荷进入 deliver；05:30-06:00 CST 多条 `PlainTextTriggered` deliver 正文继续携带 `hone_quote_time`、quote / quote_short、工具调用上限或旧行情锚。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、结构化 triggered、非结构化失败跳过、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存；没有新的独立根因。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露。近窗未见 live runtime 已加载相关修复的确认信号，状态维持代码级 `Fixed / P2`、待部署复核，非 P1。
