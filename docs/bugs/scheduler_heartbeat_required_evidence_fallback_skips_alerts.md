@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-26 06:01-10:05 CST。
+  - 同窗 source log 统计 `HeartbeatDiag=218`、`run_start=56`、`run_finish=58`、`deliver=31`、`duplicate_suppressed=13`，但仍有 `execution_failed=7`；代表样本包括 `持仓重大事件心跳提醒` 多轮 `success=true` 生成自然语言后因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 落成 `failure_kind=execution_failed` 并跳过发送。
+  - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=14`、`JsonTriggered=5`、`JsonUnknownStatus=4`、`PlainTextSuppressed=5`、`PlainTextNoop=2`，说明 heartbeat 仍在自然语言触发、结构化 noop、未知状态和协议载荷之间漂移。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-26 02:01-06:01 CST。
   - 同窗 source log 统计 `HeartbeatDiag=212`、`run_start=56`、`run_finish=58`、`deliver=31`、`duplicate_suppressed=9`，但仍有 `execution_failed=14`；代表样本包括 `持仓重大事件心跳提醒` 先 `success=true` 生成 2608 chars，随后因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 落成 `failure_kind=execution_failed` 并跳过发送。
   - 同窗 parse 分布为 `PlainTextTriggered=60`、`JsonNoop=19`、`PlainTextSuppressed=5`、`PlainTextNoop=3`、`JsonTriggered=2`，说明 heartbeat 仍在自然语言触发、结构化 noop 和协议载荷之间漂移。
