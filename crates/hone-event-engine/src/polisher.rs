@@ -59,6 +59,7 @@ impl LlmPolisher {
 
     fn build_prompt(event: &MarketEvent, default_body: &str) -> Vec<Message> {
         let system = Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(
                 "你是一个中文财经助理。对输入的市场事件默认渲染文本做一次简短润色：\n\
@@ -81,6 +82,7 @@ impl LlmPolisher {
             "url": event.url,
         });
         let user = Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user_payload.to_string()),
             reasoning_content: None,

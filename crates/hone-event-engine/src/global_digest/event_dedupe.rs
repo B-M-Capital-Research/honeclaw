@@ -163,6 +163,7 @@ impl EventDeduper for LlmEventDeduper {
 
         let prompt = Self::build_prompt(&candidates);
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(prompt),
             reasoning_content: None,

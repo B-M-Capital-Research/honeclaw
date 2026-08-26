@@ -503,6 +503,7 @@ fn build_continuity_messages(
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".to_string(),
             content: Some(DEFAULT_EARNINGS_CONTINUITY_SYSTEM_PROMPT.to_string()),
             reasoning_content: None,
@@ -511,6 +512,7 @@ fn build_continuity_messages(
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(user),
             reasoning_content: None,

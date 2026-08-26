@@ -109,6 +109,21 @@ pub struct AgentRunOptions {
     /// interactive investment preflight, first-line timestamp, and answer shape.
     /// Only trusted administrator routes may enable this profile.
     pub dedicated_earnings_workflow: bool,
+    /// Images the user attached to THIS turn, handed to a vision-capable model
+    /// as real image parts. The text pipeline still summarizes attachments for
+    /// the prompt; this is what lets the model actually see them instead of
+    /// reasoning from a filename.
+    pub turn_images: Vec<TurnImage>,
+}
+
+/// A user-attached image awaiting hand-off to the model. Held as a path so the
+/// bytes are read once, at the runner boundary, rather than carried through
+/// every layer of the turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnImage {
+    pub local_path: String,
+    pub mime_type: String,
+    pub display_name: String,
 }
 
 impl Default for AgentRunOptions {
@@ -123,6 +138,7 @@ impl Default for AgentRunOptions {
             entity_resolution_input: None,
             isolate_prior_history: false,
             dedicated_earnings_workflow: false,
+            turn_images: Vec::new(),
         }
     }
 }

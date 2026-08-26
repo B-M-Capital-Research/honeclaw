@@ -2809,6 +2809,7 @@ version = "0.15.3"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "chrono-tz",
  "flate2",

@@ -239,6 +239,7 @@ impl<'a> SessionCompactor<'a> {
         };
 
         let messages = vec![hone_llm::Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(prompt),
             reasoning_content: None,

@@ -91,6 +91,7 @@ async fn run_case(
     let prompt = build_scheduled_prompt(&event);
 
     let messages = vec![Message {
+        images: Vec::new(),
         role: "user".into(),
         content: Some(prompt),
         reasoning_content: None,

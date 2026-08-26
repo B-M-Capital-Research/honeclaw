@@ -5418,6 +5418,7 @@ async fn run_heartbeat_task(
                 .unwrap_or_default(),
             session_metadata: std::collections::HashMap::new(),
             model_override: run_options.model_override.clone(),
+            turn_images: Vec::new(),
             turn_origin: if event.heartbeat {
                 AgentTurnOrigin::Heartbeat
             } else {

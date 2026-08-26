@@ -1205,6 +1205,10 @@ pub struct FunctionCallingAgent {
     /// rounds) via config so "最新进展"-style questions can keep chasing
     /// self-reported evidence gaps instead of settling at the first draft.
     pub finance_research_budget: FinanceResearchBudget,
+    /// Images attached to the current user turn. Handed to the model as real
+    /// image parts on the turn's user message, so a vision-capable model sees
+    /// the attachment instead of reasoning from its filename.
+    pub turn_images: Vec<hone_llm::MessageImage>,
     #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
@@ -1259,6 +1263,7 @@ impl FunctionCallingAgent {
             tool_call_limits: HashMap::new(),
             agent_owned_finance_loop: false,
             finance_research_budget: FinanceResearchBudget::default(),
+            turn_images: Vec::new(),
             preloaded_evidence_calls: 0,
             service_owned_initial_prefix: None,
             precommitted_service_prefix: None,
@@ -1344,6 +1349,13 @@ impl FunctionCallingAgent {
         self
     }
 
+    /// Attach this turn's user images. They ride the current user message only;
+    /// replayed history stays text so old turns cannot resend media.
+    pub fn with_turn_images(mut self, images: Vec<hone_llm::MessageImage>) -> Self {
+        self.turn_images = images;
+        self
+    }
+
     /// Attach a trusted service-owned first line and separately record whether
     /// the Web publication sink ACKed it. An unacknowledged prefix still
     /// constrains the final model output, but never counts as visible bytes.
@@ -1425,6 +1437,7 @@ impl FunctionCallingAgent {
                 (_, None) => self.system_prompt.clone(),
             };
             messages.push(Message {
+                images: Vec::new(),
                 role: "system".to_string(),
                 content: Some(system_prompt),
                 reasoning_content: None,
@@ -1436,6 +1449,7 @@ impl FunctionCallingAgent {
 
         for msg in &context.messages[message_start..] {
             messages.push(Message {
+                images: Vec::new(),
                 role: msg.role.clone(),
                 content: msg.content.clone(),
                 reasoning_content: msg
@@ -1452,6 +1466,15 @@ impl FunctionCallingAgent {
                 tool_call_id: msg.tool_call_id.clone(),
                 name: msg.name.clone(),
             });
+        }
+
+        // This turn's attachments ride the most recent user message. Replayed
+        // history stays text-only, so an old turn can never resend its media
+        // and re-bill it on every later round.
+        if !self.turn_images.is_empty()
+            && let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
+        {
+            last_user.images = self.turn_images.clone();
         }
 
         messages
@@ -1541,6 +1564,7 @@ impl FunctionCallingAgent {
             messages.insert(
                 insert_at + offset,
                 Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(prompt.to_string()),
                     reasoning_content: None,
@@ -1554,6 +1578,7 @@ impl FunctionCallingAgent {
             messages.insert(
                 insert_at + invoked_skill_count,
                 Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(history),
                     reasoning_content: None,
@@ -1589,6 +1614,7 @@ impl FunctionCallingAgent {
         };
         vec![
             Message {
+                images: Vec::new(),
                 role: "system".to_string(),
                 content: Some(system_prompt),
                 reasoning_content: None,
@@ -1597,6 +1623,7 @@ impl FunctionCallingAgent {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".to_string(),
                 content: Some(user_input.to_string()),
                 reasoning_content: None,
@@ -1605,6 +1632,7 @@ impl FunctionCallingAgent {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".to_string(),
                 content: Some(format!(
                     "【本轮已执行工具的有界证据副本】\n{}",
@@ -2272,6 +2300,7 @@ impl FunctionCallingAgent {
         terminal_messages.retain(|message| matches!(message.role.as_str(), "system" | "user"));
         let terminal_prompt = terminal_synthesis_prompt(required_prefix, handoff);
         terminal_messages.push(Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(terminal_prompt),
             reasoning_content: None,
@@ -2498,6 +2527,7 @@ fn terminal_recovery_messages(
         prompt.push_str(&recovery_constraint);
     } else {
         recovery_messages.push(Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(recovery_constraint),
             reasoning_content: None,
@@ -6165,6 +6195,7 @@ impl Agent for FunctionCallingAgent {
                     )
                 };
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(active_turn_prompt),
                     reasoning_content: None,
@@ -6177,6 +6208,7 @@ impl Agent for FunctionCallingAgent {
                 && let Some(feedback) = pending_market_move_final_correction.as_deref()
             {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(feedback.to_string()),
                     reasoning_content: None,
@@ -6189,6 +6221,7 @@ impl Agent for FunctionCallingAgent {
                 && let Some(feedback) = pending_gap_closure_feedback.take()
             {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(feedback),
                     reasoning_content: None,
@@ -6199,6 +6232,7 @@ impl Agent for FunctionCallingAgent {
             }
             if let Some(feedback) = pending_listing_final_correction.as_deref() {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(feedback.to_string()),
                     reasoning_content: None,
@@ -6210,6 +6244,7 @@ impl Agent for FunctionCallingAgent {
             if force_finance_final && let Some(blocked_call) = blocked_tool_finalization.as_deref()
             {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(format!(
                         "{BLOCKED_TOOL_FINALIZATION_INSTRUCTION}\n内部未完成步骤（不要对用户披露）：{blocked_call}"
@@ -6223,6 +6258,7 @@ impl Agent for FunctionCallingAgent {
             #[cfg(test)]
             if !active_business_round && let Some(feedback) = pending_finish_feedback.as_deref() {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(format!(
                         "【内部工具协议纠正】{feedback} 不要向用户提及这条内部纠正；请继续正常调用可用业务工具，或直接给出非空的自然回答。"

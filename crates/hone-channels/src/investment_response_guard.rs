@@ -2313,6 +2313,7 @@ async fn discover_representative_symbols(
             bounded_evidence_json(web_evidence, EVIDENCE_ITEM_CHAR_LIMIT)
         );
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(prompt),
             reasoning_content: None,

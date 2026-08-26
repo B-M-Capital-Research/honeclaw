@@ -910,6 +910,7 @@ mod tests {
 
     fn make_request() -> AgentRunnerRequest {
         AgentRunnerRequest {
+            turn_images: Vec::new(),
             session_id: "session-1".to_string(),
             actor_label: "feishu:alice".to_string(),
             actor: ActorIdentity::new("feishu", "alice", Some("group-1")).expect("actor"),

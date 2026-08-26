@@ -349,6 +349,7 @@ fn build_pass2_baseline_messages(
 
     vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system),
             reasoning_content: None,
@@ -357,6 +358,7 @@ fn build_pass2_baseline_messages(
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user),
             reasoning_content: None,
@@ -461,6 +463,7 @@ fn build_pass2_personalize_messages(
 
     vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system),
             reasoning_content: None,
@@ -469,6 +472,7 @@ fn build_pass2_personalize_messages(
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user),
             reasoning_content: None,
@@ -615,6 +619,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
 
     vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system.into()),
             reasoning_content: None,
@@ -623,6 +628,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user),
             reasoning_content: None,

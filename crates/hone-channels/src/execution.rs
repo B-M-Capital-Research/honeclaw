@@ -63,6 +63,7 @@ pub(crate) struct ExecutionRequest {
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
     pub model_override: Option<String>,
+    pub turn_images: Vec<crate::agent_session::TurnImage>,
     pub turn_origin: AgentTurnOrigin,
     pub runner_selection: ExecutionRunnerSelection,
     pub allowed_tools: Option<Vec<String>>,
@@ -269,6 +270,7 @@ impl ExecutionService {
                 preloaded_evidence_calls: 0,
                 service_owned_initial_prefix: None,
                 terminal_stream_policy: TerminalStreamPolicy::Disabled,
+                turn_images: request.turn_images,
             },
         })
     }
@@ -456,6 +458,7 @@ mod tests {
         runner_selection: ExecutionRunnerSelection,
     ) -> ExecutionRequest {
         ExecutionRequest {
+            turn_images: Vec::new(),
             mode,
             session_id: "session-1".to_string(),
             actor,

@@ -69,6 +69,26 @@ pub struct ExtractedFileInfo {
     pub preview: Option<String>,
 }
 
+/// Attachments a vision-capable model can look at directly. Images always
+/// qualify; anything whose bytes we could not land locally does not.
+pub fn inline_viewable_attachments(
+    attachments: &[ReceivedAttachment],
+) -> Vec<(String, String, String)> {
+    attachments
+        .iter()
+        .filter(|attachment| attachment.error.is_none() && attachment.kind == AttachmentKind::Image)
+        .filter_map(|attachment| {
+            let path = attachment.local_path.clone()?;
+            let mime = attachment
+                .content_type
+                .clone()
+                .filter(|value| value.starts_with("image/"))
+                .unwrap_or_else(|| "image/png".to_string());
+            Some((path, mime, attachment.filename.clone()))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceivedAttachment {
     pub filename: String,

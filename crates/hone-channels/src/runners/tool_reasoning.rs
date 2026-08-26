@@ -741,6 +741,51 @@ impl AgentRunner for CodexCliReasoningRunner {
     }
 }
 
+/// Read this turn's attachments into inline image parts. A file that cannot be
+/// read is skipped with a warning rather than failing the turn: the text
+/// attachment summary is still in the prompt, so the turn degrades to the old
+/// behavior instead of erroring out.
+const MAX_INLINE_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
+
+fn load_turn_images(images: &[crate::agent_session::TurnImage]) -> Vec<hone_llm::MessageImage> {
+    use base64::Engine as _;
+    let mut loaded = Vec::new();
+    for image in images {
+        match std::fs::metadata(&image.local_path) {
+            Ok(meta) if meta.len() > MAX_INLINE_IMAGE_BYTES => {
+                tracing::warn!(
+                    file = %image.display_name,
+                    bytes = meta.len(),
+                    "attachment too large to inline for the model; leaving it to the text summary"
+                );
+                continue;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    file = %image.display_name,
+                    path = %image.local_path,
+                    %error,
+                    "attachment unreadable; leaving it to the text summary"
+                );
+                continue;
+            }
+        }
+        match std::fs::read(&image.local_path) {
+            Ok(bytes) => loaded.push(hone_llm::MessageImage {
+                mime_type: image.mime_type.clone(),
+                base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            }),
+            Err(error) => tracing::warn!(
+                file = %image.display_name,
+                %error,
+                "attachment read failed; leaving it to the text summary"
+            ),
+        }
+    }
+    loaded
+}
+
 pub(crate) struct FunctionCallingReasoningRunner {
     llm: Arc<dyn LlmProvider>,
     tools: Arc<ToolRegistry>,
@@ -827,6 +872,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         )
         .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
         .with_finance_research_budget(self.finance_research_budget)
+        .with_turn_images(load_turn_images(&request.turn_images))
         .with_preloaded_evidence_calls(request.preloaded_evidence_calls)
         .with_service_owned_initial_prefix(
             service_owned_prefix_content,

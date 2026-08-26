@@ -35,5 +35,5 @@ pub use self::restore::restore_context;
 pub use self::types::{
     AgentRunOptions, AgentRunQuotaMode, AgentRunRunnerOverride, AgentSessionError,
     AgentSessionErrorKind, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
-    AgentTurnOrigin, GeminiStreamOptions, MessageMetadata,
+    AgentTurnOrigin, GeminiStreamOptions, MessageMetadata, TurnImage,
 };

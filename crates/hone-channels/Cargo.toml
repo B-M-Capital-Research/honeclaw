@@ -19,6 +19,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 regex = "1"
+base64.workspace = true
 chrono.workspace = true
 chrono-tz = { workspace = true }
 futures = { workspace = true }

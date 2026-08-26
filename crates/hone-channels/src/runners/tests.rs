@@ -314,6 +314,7 @@ fn native_codex_boundary_request(
     session_metadata_checkpoint: Option<Arc<dyn AgentSessionMetadataCheckpoint>>,
 ) -> AgentRunnerRequest {
     AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "codex-boundary-contract".to_string(),
         actor_label: "cli:codex-boundary-contract".to_string(),
         actor: ActorIdentity::new("cli", "codex-boundary-contract", None::<String>).expect("actor"),

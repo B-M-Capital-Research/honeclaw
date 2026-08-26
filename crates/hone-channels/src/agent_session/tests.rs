@@ -242,6 +242,7 @@ impl AgentRunner for MockLlmRunner {
         _emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(request.conversation.current_user_turn().to_string()),
             reasoning_content: None,
@@ -1475,6 +1476,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         },
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "empty-success-session".to_string(),
         actor_label: "discord:empty-success".to_string(),
         actor: session.actor.clone(),
@@ -1563,6 +1565,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         ]))),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "transient-retry-session".to_string(),
         actor_label: "discord:transient-retry".to_string(),
         actor: session.actor.clone(),
@@ -1637,6 +1640,7 @@ async fn native_persistent_failure_never_resends_the_current_turn_automatically(
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "native-no-retry-session".to_string(),
         actor_label: "discord:native-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -1724,6 +1728,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "committed-no-retry-session".to_string(),
         actor_label: "web:committed-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -1993,6 +1998,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "persistent-no-retry-session".to_string(),
         actor_label: "discord:persistent-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -2571,6 +2577,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "unknown-tool-no-retry-session".to_string(),
         actor_label: "web:unknown-tool-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -2655,6 +2662,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "execute-once-empty-session".to_string(),
         actor_label: "discord:execute-once-empty".to_string(),
         actor: session.actor.clone(),
@@ -2748,6 +2756,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
     let policy = prepared_turn_reexecution_policy(input);
     assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "portfolio-mutation-disconnect-session".to_string(),
         actor_label: "web:portfolio-mutation-disconnect".to_string(),
         actor: session.actor.clone(),
@@ -2841,6 +2850,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
     let policy = prepared_turn_reexecution_policy(input);
     assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "deep-research-disconnect-session".to_string(),
         actor_label: "web:deep-research-disconnect".to_string(),
         actor: session.actor.clone(),
@@ -2919,6 +2929,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "post-quote-failure-session".to_string(),
         actor_label: "web:post-quote-failure".to_string(),
         actor: session.actor.clone(),
@@ -3125,6 +3136,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         runtime_inputs: runtime_inputs.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "investment-contract-session".to_string(),
         actor_label: "web:investment-contract".to_string(),
         actor: session.actor.clone(),
@@ -3275,6 +3287,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "investment-unknown-tool-session".to_string(),
         actor_label: "web:investment-unknown-tool".to_string(),
         actor: session.actor.clone(),
@@ -3399,6 +3412,7 @@ fn repair_trace_request(
     session_id: &str,
 ) -> AgentRunnerRequest {
     AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: session_id.to_string(),
         actor_label: format!("web:{session_id}"),
         actor: session.actor.clone(),
@@ -3724,6 +3738,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "fund-contract-session".to_string(),
         actor_label: "web:fund-contract".to_string(),
         actor: session.actor.clone(),
@@ -3836,6 +3851,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "visible-contract-session".to_string(),
         actor_label: "web:visible-contract".to_string(),
         actor: session.actor.clone(),
@@ -8357,6 +8373,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         runtime_inputs: runtime_inputs.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "crwv-nvidia-observational-session".to_string(),
         actor_label: "web:crwv-nvidia-observational".to_string(),
         actor: session.actor.clone(),

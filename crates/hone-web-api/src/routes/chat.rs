@@ -689,6 +689,9 @@ pub(crate) fn build_chat_sse(
     actor_result: Result<ActorIdentity, hone_core::HoneError>,
     message: String,
     attachments_count: usize,
+    // Images from this turn's attachments, handed to a vision-capable model
+    // as real image parts alongside the existing text summary.
+    turn_images: Vec<hone_channels::agent_session::TurnImage>,
     prompt_admin_override: Option<bool>,
     execution_override: Option<TrustedChatExecutionOverride>,
     reply_language: Option<hone_channels::prompt::ReplyLanguage>,
@@ -833,6 +836,7 @@ pub(crate) fn build_chat_sse(
             // investment preflight and its timestamp-first answer contract must
             // not compete with that dedicated system contract.
             dedicated_earnings_workflow: execution_override.is_some(),
+            turn_images: turn_images.clone(),
             ..AgentRunOptions::default()
         };
         let heartbeat_tx = tx.clone();
@@ -897,6 +901,7 @@ pub(crate) async fn handle_chat(
         actor_result,
         message,
         attachments_count,
+        Vec::new(),
         None,
         None,
         None,

@@ -972,7 +972,7 @@ pub(crate) async fn handle_chat(
         None
     };
 
-    let (mut combined_message, attachments_count) =
+    let (mut combined_message, attachments_count, turn_images) =
         match build_public_chat_input(&state, &actor, &user.user_id, &message, attachments).await {
             Ok(value) => value,
             Err(response) => return response,
@@ -999,6 +999,7 @@ pub(crate) async fn handle_chat(
         Ok(actor),
         combined_message,
         attachments_count,
+        turn_images,
         earnings_request.then_some(true),
         execution_override,
         reply_language,
@@ -1306,9 +1307,9 @@ async fn build_public_chat_input(
     user_id: &str,
     message: &str,
     attachments: Vec<PublicChatAttachmentInput>,
-) -> Result<(String, usize), Response> {
+) -> Result<(String, usize, Vec<hone_channels::agent_session::TurnImage>), Response> {
     if attachments.is_empty() {
-        return Ok((message.to_string(), 0));
+        return Ok((message.to_string(), 0, Vec::new()));
     }
 
     let upload_root = public_upload_dir(state, user_id);
@@ -1344,7 +1345,18 @@ async fn build_public_chat_input(
         );
     }
 
-    build_public_chat_user_input(message, &received).map(|input| (input, received.len()))
+    let turn_images = hone_channels::attachments::inline_viewable_attachments(&received)
+        .into_iter()
+        .map(
+            |(local_path, mime_type, display_name)| hone_channels::agent_session::TurnImage {
+                local_path,
+                mime_type,
+                display_name,
+            },
+        )
+        .collect();
+    build_public_chat_user_input(message, &received)
+        .map(|input| (input, received.len(), turn_images))
 }
 
 async fn public_chat_raw_attachment(
