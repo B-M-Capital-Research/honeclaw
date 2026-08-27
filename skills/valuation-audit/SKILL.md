@@ -1,7 +1,7 @@
 ---
 name: Valuation Audit
 description: Auditable valuation and entry-point methodology - reconcile every input line by line, pick methods by business model, run scenarios plus reverse valuation, close with a four-state verdict
-when_to_use: Use when the user asks whether a stock is cheap or expensive, a fair value or target price, a buy/entry/add price, margin of safety, PE/EV multiple sanity, DCF, or challenges a specific valuation number
+when_to_use: Use when the user asks whether a stock is cheap or expensive, a fair value or target price, a buy/entry/add price, margin of safety, PE/EV multiple sanity, DCF, or challenges a specific valuation number; also for open-ended single-stock research (分析下X、X怎么样、X如何) and cross-stock preference questions (X和Y更看好哪个) — the reconciliation and red-flag discipline applies there too
 user-invocable: true
 context: inline
 aliases:
@@ -19,6 +19,9 @@ aliases:
   - fair value
   - entry point
   - margin of safety
+  - 怎么样
+  - 更看好
+  - 对比分析
 allowed-tools:
   - data_fetch
   - web_search

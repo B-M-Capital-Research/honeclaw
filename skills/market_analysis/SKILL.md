@@ -1,7 +1,7 @@
 ---
 name: Market Analysis
 description: Macro, policy, and market/sector analysis plus price-move attribution, grounded in official data sources and graded causal evidence
-when_to_use: Use when the user asks about broad/regional markets, sector themes, macro data or policy (rates, Fed, Treasury, CPI, jobs), why a market or stock moved, or near-term market direction — anything market-level without a single-security research intent
+when_to_use: Use when the user asks about broad/regional markets, sector themes, macro data or policy (rates, Fed, Treasury, CPI, jobs), why a market or stock moved, near-term market direction, or single-security event attribution (为什么X涨/跌、X的重大公告/并购/借壳/里程碑怎么看) — the evidence-hierarchy workflow applies to single names as much as to the market
 user-invocable: true
 context: inline
 aliases:
