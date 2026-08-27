@@ -7,6 +7,17 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-08-27 10:01-14:01 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-27T02:01:10Z` / 北京时间 `2026-08-27 10:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 12:00 CST `持仓财报与重大新闻心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗 HTTP 529 相关信号 3 条。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=57`、`deliver=32`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-08-26 10:01-14:02 CST 继续维持 `New`**：
   - `data/logs/hone-console-page-source.log`
     - 本轮按自动化上次运行点 `2026-08-26T02:01:34Z` / 北京时间 `2026-08-26 10:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
@@ -407,3 +418,8 @@
 - 待补丁提交并进入仓库主线后，继续巡检 `cron_job_runs` 是否还出现 `error sending request for url (...)` 的同类 heartbeat 失败样本。
 - 评估 scheduler 是否仍需要 provider fallback，或在失败时保留更清晰的运维侧告警聚合。
 - 后续巡检继续关注是否还有其它 heartbeat job 在 `cron_job_runs` 中出现相同 `error sending request for url (...)`，若扩散则考虑提升优先级。
+
+## 下一步建议
+
+- 保持本缺陷在活跃队列中，优先补 heartbeat scheduler 对 MiniMax / OpenAI-compatible `HTTP 529` 和传输失败的短重试、退避或 provider fallback。
+- 修复后用真实 heartbeat 窗口复核是否还出现 `provider_http_error` 后直接 `skipped_error`，再评估是否降为 `Fixed`。
