@@ -181,12 +181,23 @@ fn ascii_term_match(input: &str, term: &str) -> bool {
 }
 
 fn explicit_symbol_match(input: &str, symbol: &str) -> bool {
+    // Short tickers normally demand exact case, because standalone lowercase
+    // words like "app" or "be" are ordinary English prose. A query written in
+    // Chinese has no such prose, so a bare ASCII token there is the ticker —
+    // and users type it lowercase ("mu 现在的估值贵不贵"), which used to miss
+    // the company card entirely.
+    let cjk_context = input.chars().any(|character| {
+        matches!(character as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)
+    });
     input
         .split(|character: char| !character.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
         .any(|token| {
             token.eq_ignore_ascii_case(symbol)
-                && (symbol.len() >= 4 || token == symbol || input.contains(&format!("${token}")))
+                && (symbol.len() >= 4
+                    || token == symbol
+                    || cjk_context
+                    || input.contains(&format!("${token}")))
         })
 }
 
@@ -543,6 +554,34 @@ mod tests {
             DEFAULT_FINANCE_DOMAIN_POLICY.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标")
         );
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("不是逐数字双来源或缺项拒答门禁"));
+    }
+
+    /// The audit found generic cycle-normalization advice actively wrong for
+    /// storage names whose earnings are partly locked by long-term agreements,
+    /// and RKLB reduced to a single Neutron option. Those company-specific
+    /// drivers live in the card's valuation framing and must reach the prompt.
+    /// The audit's own MU sample was typed "mu不是15pe？" — lowercase, so the
+    /// card never loaded and the answer lost its company-specific framing.
+    #[tokio::test]
+    async fn company_research_baseline_matches_lowercase_short_ticker_in_chinese() {
+        assert!(company_research_baseline("mu不是15pe？咋不建议买？").is_some());
+        assert!(company_research_baseline("sndk，成本1500").is_some());
+        // English prose keeps its guard: "be" and "app" stay ordinary words.
+        assert!(company_research_baseline("build an app and be concise").is_none());
+    }
+
+    #[tokio::test]
+    async fn company_research_baseline_carries_company_specific_valuation_drivers() {
+        let mu = company_research_baseline("mu 现在的估值贵不贵").expect("MU card");
+        assert!(mu.contains("长协"), "MU baseline missing LTA driver: {mu}");
+        assert!(mu.contains("HBM"), "MU baseline missing HBM driver");
+
+        let sndk = company_research_baseline("sndk 这家公司怎么样").expect("SNDK card");
+        assert!(sndk.contains("NBM"), "SNDK baseline missing NBM driver: {sndk}");
+
+        let rklb = company_research_baseline("分析下 RKLB").expect("RKLB card");
+        assert!(rklb.contains("Neutron"), "RKLB baseline missing Neutron milestones");
+        assert!(rklb.contains("稀释"), "RKLB baseline missing dilution driver");
     }
 
     #[tokio::test]

@@ -911,7 +911,7 @@
       "business_model": "存储芯片制造；价格、位元供给和产品组合共同决定利润",
       "moat": "先进 DRAM/HBM 工艺、客户认证和资本密集型供给纪律；护城河低于独占型平台但供给集中",
       "thesis_summary": "AI 推理提高 HBM 与 DRAM 内容量，长期协议可能降低周期性；仍必须用供给和中周期利润检验",
-      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "valuation_method": "先算长协/合约覆盖比例再决定周期正常化力度：把利润拆成长协锁定部分（按合约价与期限估）与现货敞口部分（做中周期正常化），HBM 按份额与产能承诺单列；再用中周期 forward P/E 与 EV/EBITDA 交叉验证。峰值利润直接套倍数会低估风险，忽略长协与回购的去周期化则会高估周期性——两头都要避免",
       "dimensions_1_to_5": {
         "scarcity": 4,
         "pricing_quality": 4,
@@ -922,9 +922,9 @@
       "static_score": 76,
       "confidence": "medium",
       "watch_items": [
-        "HBM 收入/份额和毛利",
-        "长期协议覆盖",
-        "行业资本开支和库存"
+        "长协（LTA）覆盖的 bit 比例与期限、合约价相对现货的溢折价；这是判断“还是不是纯周期股”的第一变量",
+        "HBM 收入/份额、产能承诺与毛利",
+        "回购与股本净缩减对每股口径的影响"
       ],
       "risks": [
         "2027 下半年至 2028 新供给释放",
@@ -938,7 +938,7 @@
       "transcript_sources": [
         "20260716202748-美光-逐字稿文本-1.txt"
       ],
-      "source_updated_at": "2026-07-16"
+      "source_updated_at": "2026-08-27"
     },
     {
       "name": "Nebius",
@@ -983,7 +983,7 @@
       "business_model": "NAND 制造与企业/消费 SSD，控制器和固件把闪存转化为系统产品",
       "moat": "NAND 制造、控制器、固件、长期认证和 CSP 合同组合，企业级产品转换成本较高",
       "thesis_summary": "AI 推理和 KV cache 提高企业级 SSD 需求与价值量，但仍受 NAND 供给周期约束",
-      "valuation_method": "中周期 forward P/E 与 EV/EBITDA，结合供需、合约覆盖和库存交叉验证",
+      "valuation_method": "先取 NBM（长期供货模型）已覆盖的 bit 比例与公司长期利润率模型，再决定正常化力度：覆盖部分按合约模型估，未覆盖部分做 NAND 中周期正常化；不得直接按传统 NAND 现货周期股一刀切。辅以中周期 forward P/E、EV/EBITDA 与正常化 FCF 交叉验证",
       "dimensions_1_to_5": {
         "scarcity": 4,
         "pricing_quality": 4,
@@ -994,9 +994,9 @@
       "static_score": 76,
       "confidence": "medium",
       "watch_items": [
-        "数据中心收入占比和毛利",
-        "价格与出货量贡献",
-        "NAND 行业资本开支"
+        "NBM 对各财年 bits 的覆盖比例（公司披露口径）与公司给出的长期毛利率/调整后 FCF margin 模型；这决定周期属性被削弱了多少",
+        "数据中心/企业级 SSD 收入占比和毛利",
+        "NAND 现货价格、库存与行业资本开支（决定未覆盖敞口的周期位置）"
       ],
       "risks": [
         "2027 下半年至 2028 供给增加",
@@ -1010,7 +1010,7 @@
       "transcript_sources": [
         "20260806202703-SNDK-逐字稿文本-1.txt"
       ],
-      "source_updated_at": "2026-08-06"
+      "source_updated_at": "2026-08-27"
     },
     {
       "name": "Western Digital",
@@ -1191,7 +1191,7 @@
       "business_model": "小火箭发射、太空系统、卫星部件、任务软件和端到端航天服务",
       "moat": "Electron高成功率、Neutron上限期权、Space Systems收入占比提升，纯航天资产稀缺",
       "thesis_summary": "太空经济稀缺资产，若Neutron成功，商业发射+国防+太空系统会重估。",
-      "valuation_method": "分部 EV/S 与订单质量，结合发射/交付里程碑、资本开支和稀释情景",
+      "valuation_method": "分部估值：发射服务、Space Systems（含收购带来的卫星/星座业务）分别按 EV/S 与订单质量估，Neutron 等未兑现里程碑作为期权价值单列并给零价值情景；EV 与 Forward Sales 必须计入收购对价与增发带来的完全摊薄股本，稀释情景单列。不要把公司简化成“单押 Neutron 的期权”",
       "dimensions_1_to_5": {
         "scarcity": 5,
         "pricing_quality": 4,
@@ -1202,7 +1202,9 @@
       "static_score": 72,
       "confidence": "medium",
       "watch_items": [
-        "当前价格/市值取自公开行情；逐字稿反复强调Neutron决定上限、Space Systems决定收入质量。"
+        "Neutron 里程碑（发动机/级段/台架/整箭/首飞）逐级进度，只用公司 IR、SEC 与监管/发射场一手资料核验",
+        "收购整合后的分部收入结构与订单质量；Forward Sales 倍数须按收购后口径重算",
+        "增发与可转债带来的股本稀释"
       ],
       "risks": [
         "估值高、仍亏损；Neutron延期/失败会重杀；资本开支和稀释风险。"
@@ -1214,7 +1216,7 @@
       "transcript_sources": [
         "20260423203027-RKLB-逐字稿文本-1.txt"
       ],
-      "source_updated_at": "2026-06-20"
+      "source_updated_at": "2026-08-27"
     },
     {
       "name": "Astera Labs",
