@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-27 06:00-10:01 CST。
+  - 同窗 source log 统计 `HeartbeatDiag=210`、`run_start=56`、`run_finish=61`、`deliver=27`、`duplicate_suppressed=5`，但仍有 `execution_failed=5` 与 HTTP 529 相关信号 9 条；代表样本包括 09:30 CST `光模块板块关键事件心跳提醒` 因 `persistent_tool_failure: read-after-write reconciliation failed` 跳过发送，以及 10:00 CST 多个 heartbeat 因 OpenAI-compatible upstream HTTP 529 provider 错误跳过发送。
+  - 同窗 parse 分布为 `PlainTextTriggered=54`、`JsonNoop=20`、`PlainTextSuppressed=5`、`PlainTextNoop=3`、`JsonTriggered=1`，说明 heartbeat 仍在自然语言触发、结构化 noop、suppressed 和非结构化失败之间漂移。
+  - 判断：该样本仍属于 heartbeat required-evidence / persistent-tool / provider / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-26 18:00-22:01 CST。
   - 同窗 source log 统计 `HeartbeatDiag=213`、`run_start=58`、`run_finish=58`、`deliver=29`、`duplicate_suppressed=8`，但仍有 `execution_failed=3`；代表样本包括 18:00 CST `光模块板块关键事件心跳提醒` 因 `heartbeat 输出包含未知状态，任务已标记失败` 跳过发送，以及 22:00 CST `持仓重大事件心跳提醒` 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送。
   - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=19`、`JsonUnknownStatus=4`、`PlainTextNoop=2`、`JsonEmptyStatus=2`、`JsonTriggered=1`、`PlainTextSuppressed=1`，说明 heartbeat 仍在自然语言触发、结构化 noop、空状态、未知状态和非结构化失败之间漂移。
