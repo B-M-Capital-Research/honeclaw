@@ -61,6 +61,14 @@ Use the original query-generation prompt for step 3, replacing the placeholders 
 - Cite useful sources naturally, inline or at the end. There is no per-sentence mapping, evidence manifest, fixed source section, or required citation count.
 - Before rendering, do one normal editorial check for unsupported claims. Search or remove a real gap; do not restructure an already coherent report to satisfy a machine gate.
 
+## 发布状态与单位自检（生产审计后新增）
+
+- 研究开始时调用 `data_fetch(data_type="earnings_status", ...)` 对齐目标季度的发布状态，并与宿主传入的 `mode` 互验：`hone_reporting_status_note` 显示该季度尚未发布而 mode 是 analysis、或已发布而 mode 是 preview 时，在开头说明这一冲突并以 provider/官方事实为准描述现状，不虚构另一侧。
+- preview 的素材边界：已发布历史财报 + 公司现行指引 + 明确标注的假设。终稿生成前自检一遍：任何把未发布季度写成"实际业绩/actual/已公布"的句子都要改成"指引/预期/假设"措辞；未经官方确认的重大合同、融资叙事不进 preview 正文，最多在新闻附录注明"未经公司证实"。
+- analysis 只有在 earnings_status 或公司 IR/SEC 确认该季度已发布后才成立；数字须与 press_releases / sec_filings 一致。
+- 单位反算自检：终稿的收入、EBITDA、EPS 相互反算一遍——利润率应落在 0-100% 的合理区间，EPS×稀释股本应与净利润同数量级。十倍错误几乎都发生在亿/百万换算，出现异常先修数再交稿。
+- preview 与 analysis 的内容不得互相拼接。
+
 ## Preview — original V2 prompt
 
 Use the following prompt as the content specification. Replace the placeholders with the current company, current Beijing date, aggregated search results, and fetched financial data. Do not add a different report framework before or after it.
@@ -330,4 +338,6 @@ script_payload={"company":"...","mode":"preview|analysis","report_markdown":"...
 
 Do not send `preview_audit`. The renderer owns layout only; it must not rewrite the report or demand fixed headings, counts, fields, page numbers, or prose shapes.
 
-Require `success=true`, `render_success=true`, and one `application/pdf` document artifact. Return the exact validated report plus its PDF attachment. If the renderer reports a technical failure, fix only the technical call and render once more. Research quality is owned by the workflow above, not by the PDF renderer.
+Require `success=true` and one `application/pdf` entry in `artifacts`. Return the exact validated report plus its PDF attachment. If the renderer reports a technical failure, fix only the technical call and render once more. Research quality is owned by the workflow above, not by the PDF renderer.
+
+用户要求 PDF/文件时，产物是任务的一部分：终稿里明确给出 PDF 已生成并随附；两次渲染仍失败时，在回答开头写明"PDF 未生成 + 具体原因"，正文照常交付——沉默跳过产物等于任务未完成。

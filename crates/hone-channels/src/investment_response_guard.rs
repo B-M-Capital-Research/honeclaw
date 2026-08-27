@@ -3072,7 +3072,46 @@ pub(crate) fn local_clock_label() -> String {
 /// making a mistake worth correcting; they want to know what is happening.
 /// Telling them the next session opens shortly is an answer. Telling them
 /// their premise is false is not.
+/// NYSE full-day holidays through 2027, keyed by New York calendar date. A
+/// static table because session facts are computed synchronously while the
+/// prompt is built — no tool call is possible here. Kept alongside the weekday
+/// check so a Monday holiday (Labor Day) stops reading as "盘前".
+/// Source: nyse.com/markets/hours-calendars.
+fn nyse_holiday(date: chrono::NaiveDate) -> Option<&'static str> {
+    const HOLIDAYS: &[(&str, &str)] = &[
+        ("2026-09-07", "Labor Day"),
+        ("2026-11-26", "Thanksgiving"),
+        ("2026-12-25", "Christmas"),
+        ("2027-01-01", "New Year's Day"),
+        ("2027-01-18", "Martin Luther King Jr. Day"),
+        ("2027-02-15", "Washington's Birthday"),
+        ("2027-03-26", "Good Friday"),
+        ("2027-05-31", "Memorial Day"),
+        ("2027-06-18", "Juneteenth (observed)"),
+        ("2027-07-05", "Independence Day (observed)"),
+        ("2027-09-06", "Labor Day"),
+        ("2027-11-25", "Thanksgiving"),
+        ("2027-12-24", "Christmas (observed)"),
+    ];
+    let key = date.format("%Y-%m-%d").to_string();
+    HOLIDAYS
+        .iter()
+        .find(|(day, _)| *day == key)
+        .map(|(_, name)| *name)
+}
+
 pub(crate) fn us_session_phase_label(new_york: chrono::DateTime<chrono_tz::Tz>) -> String {
+    // Weekend/holiday first: a countdown to "盘前" on a non-trading day would
+    // assert a session that is not going to open.
+    if matches!(
+        new_york.weekday(),
+        chrono::Weekday::Sat | chrono::Weekday::Sun
+    ) {
+        return "休市（周末，非交易日）".to_string();
+    }
+    if let Some(name) = nyse_holiday(new_york.date_naive()) {
+        return format!("休市（交易所假日：{name}，非交易日）");
+    }
     let phase = match us_session_at(new_york) {
         "pre" => "盘前",
         "regular" => "盘中",
@@ -3102,6 +3141,9 @@ fn next_us_session_start(new_york: chrono::DateTime<chrono_tz::Tz>) -> Option<(&
 
 pub(crate) fn us_session_at(at: chrono::DateTime<chrono_tz::Tz>) -> &'static str {
     if matches!(at.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+        return "closed";
+    }
+    if nyse_holiday(at.date_naive()).is_some() {
         return "closed";
     }
     match us_extended_session(at) {
@@ -8593,6 +8635,11 @@ fn append_agent_entity_discovery_context(
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
          本轮回答的时间锚点固定为运行时时区 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：运行时时区 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
          `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.local，并明确“最新可得、非逐笔”口径。涨跌幅一律引用服务端算好的 `hone_change_basis.pct`（扩展时段则引用 `extended_hours` 里 `hone_session_summaries` 对应窗口的 `pct_change_vs_prev_session_close`），不要自己拿两个价格相除，也不要直接抄 provider 的 `changesPercentage`——它的基准时刻未必是你正在展示的那一个。引用时必须连同 `hone_change_basis.label` 给出的名称一起用：同一个差值在盘中是当日涨跌、在盘前只是最新价较上一常规收盘，改个名字充当另一个是错的。同一行里的价格与涨跌幅必须来自同一时刻、同一个对象；跨时刻必须分行或逐个标注时间戳。`hone_change_basis.cannot_prove` 出现时，说明本轮 quote 证明不了常规时段涨跌，缺这一项就按缺口如实说明或另取 extended_hours，不得用手头这个百分比顶替。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。\n\n\
+         【数字与财报的口径纪律：软引导，不是拒答门禁】\n\
+         - 引用任何季度/年度财报数字前，先用 data_fetch(earnings_status) 或本轮已有工具结果对齐该季度的发布状态；未发布季度的数字一律明确标注为公司指引、一致预期或假设，不得写成已公布实际业绩。财报前瞻（preview）只能使用已发布历史财报+现行指引+明确标注的假设；财报分析（analysis）前先确认该季度已在官方渠道发布。\n\
+         - 关键财务数字随手标注四要素：期间（哪个季度/财年/TTM）、单位（注意亿/百万换算，勿出现 10 倍量级错）、口径（GAAP/Non-GAAP）、性质（历史实际/公司指引/一致预期/分析师假设）。给估值结论时展示可复算要素：As-of 日期、现价、分母（哪个 EPS/FCF、哪个期间）与来源，让读者能用同样输入得到同样结果。\n\
+         - 追问（例如“那回购呢”“按你说的因子三”）默认继承本对话当前正在讨论的证券实体与此前已给出的定义，先回读上文再作答；确需切换实体时明说。同一问题重复出现而结论变化时，说明是哪些数据更新导致的变化。\n\
+         - 非美股证券（港股、A股、境外基金等）provider 覆盖有限时，照常回答但说明数据来源与截至时间，并在给出估值区间或买卖参考时注明其证据强度弱于美股口径，不得用美股框架的精确度包装。\n\
          【最终正文的语言边界：面向普通投资者的成品】\n\
          最终正文是给普通投资者看的成品，不是流程报告。\n\
          最终正文必须与用户当前提问所用的语言一致：用户用中文提问就全程中文，用英文提问就全程英文，小标题、要点、推断与缺口披露一并遵守。思考过程、工具结果和引用来源多为英文，这不构成切换正文语言的理由；系统提示另有【语言要求】时以该要求为准。ticker、交易所代码、provider 字段名与公司英文名保持原文即可。\n\
@@ -12237,6 +12284,31 @@ fn bounded_evidence_json(value: &Value, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn nyse_holiday_reads_as_closed() {
+        use chrono::TimeZone;
+        // Labor Day 2026 is a Monday; without the holiday table it would
+        // read as a pre-market weekday morning.
+        let labor_day = chrono_tz::America::New_York
+            .with_ymd_and_hms(2026, 9, 7, 8, 0, 0)
+            .unwrap();
+        assert_eq!(super::us_session_at(labor_day), "closed");
+        let label = super::us_session_phase_label(labor_day);
+        assert!(label.contains("Labor Day"), "label: {label}");
+        // The prior Friday is an ordinary trading day.
+        let friday = chrono_tz::America::New_York
+            .with_ymd_and_hms(2026, 9, 4, 10, 0, 0)
+            .unwrap();
+        assert_eq!(super::us_session_at(friday), "regular");
+        // Weekend label names the weekend instead of counting down to a
+        // session that will not open.
+        let sunday = chrono_tz::America::New_York
+            .with_ymd_and_hms(2026, 9, 6, 3, 30, 0)
+            .unwrap();
+        let sunday_label = super::us_session_phase_label(sunday);
+        assert!(sunday_label.contains("周末"), "label: {sunday_label}");
+    }
     use super::{
         AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention, EntityMentionContext,
         EntityResolutionScope, InvestmentResponseContract, NumericAssetHint, NumericMarketHint,
@@ -14249,6 +14321,10 @@ mod tests {
         // out of the user's language; the per-turn contract carries the
         // mirroring rule because it is the injection point answers always honor.
         assert!(runtime_input.contains("最终正文必须与用户当前提问所用的语言一致"));
+        // Audit-driven guidance: unreported quarters must not read as actuals,
+        // and key figures carry period/unit/basis labels.
+        assert!(runtime_input.contains("数字与财报的口径纪律"));
+        assert!(runtime_input.contains("earnings_status"));
     }
 
     #[test]

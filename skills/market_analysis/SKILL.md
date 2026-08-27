@@ -1,84 +1,88 @@
 ---
 name: Market Analysis
-description: Analyze macroeconomics, policy trends, and industry momentum, then combine the result with market index data for a broader judgment
+description: Macro, policy, and market/sector analysis plus price-move attribution, grounded in official data sources and graded causal evidence
+when_to_use: Use when the user asks about broad/regional markets, sector themes, macro data or policy (rates, Fed, Treasury, CPI, jobs), why a market or stock moved, or near-term market direction — anything market-level without a single-security research intent
+user-invocable: true
+context: inline
+aliases:
+  - market analysis
+  - 大盘分析
+  - 市场分析
+  - 宏观分析
+  - 美股走势
+  - 今晚美股
+  - 为什么涨
+  - 为什么跌
+  - 异动归因
+  - 美债利率
+  - 美联储
+  - macro analysis
+  - why did it move
 allowed-tools:
-  - web_search
   - data_fetch
+  - web_search
 ---
 
-## Market Analysis Skill
+## 市场与宏观分析 Skill
 
-Use the tools according to the user's question and combine current-turn market quotes, macro evidence, and dated news to provide a deeper market view. This skill covers broad or regional markets and sector or industry themes; it must not fall back to generic chat merely because the request has no single ticker.
+覆盖四类问题：广市场/区域市场走势、行业主题、宏观数据与政策（利率/美联储/财政部/通胀/就业）、市场或个股异动归因。没有单一 ticker 不是退回闲聊的理由。
 
-This skill must always anchor the analysis to the current session time before making any macro judgment. Treat the session's current time and date as the source of truth for words such as "today", "latest", "this week", "tonight", or "just announced".
+### 工具速查
 
-### Tool Guide
+| 调用 | 用途 |
+|---|---|
+| `data_fetch(data_type="market_hours")` / `extended_hours` | 走势/预测类问题先确认交易时段事实（含休市/假日） |
+| `data_fetch(data_type="macro")` | 官方宏观数据一次全取：返回 treasury_rates（各期限国债收益率）、GDP、CPI、unemployment、federal_funds（政策利率）与 economic_calendar（未来一周数据发布安排）各组件；利率/通胀/就业问题的第一站 |
+| `data_fetch(data_type="quote"/"snapshot", ticker="...")` | 代表性基准与标的的现价、涨跌、提供方时间戳 |
+| `data_fetch(data_type="press_releases"/"sec_filings", ticker="...")` | 归因的最高层级证据：公司公告与监管文件 |
+| `data_fetch(data_type="earnings_status", ticker="...")` | 判断"财报是否刚发布"这一常见催化 |
+| `data_fetch(data_type="analyst_actions"/"news", ticker="...")` | 评级变动与当日新闻线索 |
+| `data_fetch(data_type="sector_performance")` / `gainers_losers` | 市场广度与板块强弱 |
+| `data_fetch(data_type="search", query="...")` | 先解析每个代表性指数代理/ETF/公司再引用 |
+| `web_search(query="绝对日期 + 事件")` | 官方原文定位、政策解读、事件背景 |
 
-| Tool call | Purpose |
-|---------|------|
-| `web_search(query="...")` | Fetch macroeconomic data, policy interpretation, and industry developments |
-| `data_fetch(data_type="search", query="ticker or name")` | Resolve every representative index proxy, ETF, or listed company before using it |
-| `data_fetch(data_type="quote", ticker="comma-separated exact symbols")` | Fetch same-symbol latest-available price, change, and provider timestamps for representative benchmarks |
-| `data_fetch(data_type="sector_performance")` | Fetch current sector breadth when the requested scope supports it |
-| `data_fetch(data_type="gainers_losers")` | Inspect current market leaders/laggards as breadth context, not as entity proof |
+### 通用流程（先后顺序）
 
-### Analysis Framework
+1. **时间锚定**：首行输出 `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：...`，用 Session 当前北京时间 + 本轮 quote 提供方时间戳；相对时间（今天/最新/刚刚）先改写为绝对日期再搜索。
+2. **时段核查**：回答"今晚/明天/接下来走势"前先看服务端注入的时段事实或拉 `market_hours`。目标时段休市（周末/假日）时，改答"最近一个交易时段的已核实表现 + 下一开盘时间 + 开盘前值得盯的变量"，不对不存在的交易时段做预测。
+3. **实体与现价**：每个被引用的基准/代表标的先 search 精确解析，再取同 symbol 的本轮 quote；不同市场各自保留本地日期，不互相覆盖。
+4. **官方数据先于二手报道**：能用 macro bundle 或官方原文回答的数字，先拉官方源，再看媒体怎么说。
+5. **事实/推断分离**：有日期有来源的事实、市场定价隐含的预期、以及你的因果推断，三者在文字上可见地分开。
 
-1. **Time anchor first and Interactive answer ownership**: the main Agent completes one full final answer inside the current-turn tool loop and publishes that completed body once. The Agent itself starts every Interactive market or sector answer with `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：...`, using the current Beijing time from the Session context and the current-turn quote provider timestamp, market session, and latest-available/non-tick-by-tick basis; do not emit any preamble before it
-2. **Subject and entity discovery first**: identify every requested market scope; broad-market turns resolve representative benchmarks, while sector turns discover listed representatives from current theme evidence and exact-resolve at least three same-theme securities
-3. **Current quote first**: fetch same-symbol quotes and provider timestamps for every representative before analyzing direction; never reuse prior assistant prices or let one market overwrite another in a mixed-scope request
-4. **Target session before cause**: for a decline/rally explanation, preserve the user's explicit date, weekday, and session; verify whether the named market/security actually made that move in that exact interval before explaining it. A latest quote cannot prove another historical session, and a broad index, sector, and single stock are different scopes
-5. **Query rewrite first**: convert relative-time wording into absolute market-local civil dates before calling `web_search`; keep Beijing time as the user-visible anchor. Civil-calendar hints do not prove that an exchange was open or that the quote is a close
-6. **Macro and policy**: interest rates, inflation, employment, central-bank, fiscal, and regulatory evidence only when relevant
-7. **Industry and breadth**: sector trends, representative-company dispersion, and capital flows
-8. **Fact/inference split**: dated source facts and causal inference must be visibly separate
+### 异动归因流程（"为什么涨/跌"）
 
-### Broad / Regional Market Output Contract
+1. **先核实异动本身**：拉本轮 quote 确认该标的在用户所指时段确实发生了该方向、该量级的变动，写明幅度与时段。若与用户前提不符（幅度不对、日期不对、大盘 vs 个股口径不同），先说明口径差异再继续。
+2. **证据分层采集**，从高到低：(a) 公司公告/监管文件（`press_releases` + `sec_filings`）→ (b) 交易对手方（客户/供应商/监管机构）的公告 → (c) 主流媒体报道原文（附日期）→ (d) 分析师观点。低层证据不用来顶替高层证据的位置：许可规模、合同金额、订单数量这类关键事实，找到监管或公司原始文件才算确认，只有媒体转述时标注"转述，未经原始文件核验"并降低置信度。
+3. **时效核查**：每条候选原因附发布日期。发布日早于异动日的旧闻、只有标题没有正文的摘要，列为背景而非当日催化。
+4. **催化排查清单**：`earnings_status` 查财报是否刚发布；`macro` 结果里的 economic_calendar 组件查当日宏观数据发布；`analyst_actions` 查评级/目标价变动；`news` 与绝对日期 `web_search` 补当日事件。
+5. **因果分级输出**，结论落在四态之一：
+   - **已确认催化**：有原始文件/官方数据，时间与方向吻合
+   - **较强相关**：多个独立来源同日指向，但缺原始文件
+   - **候选解释**：单一来源或时间线不完全吻合，标明为候选
+   - **无法归因**："涨跌已确认、原因本轮未确认"是合法且合格的结论——此时给出补证清单（该查哪份文件、哪个数据、何时会有增量信息）。
+6. 板块性/大盘性下跌先看 `sector_performance` 排除"个股原因"误归因：同板块齐跌时优先用宏观/板块解释。
 
-Use exactly five substantive numbered sections after the Agent-authored time and quote-basis line:
+### 宏观与利率分析流程
 
-1. Conclusion
-2. Verified market facts: one independent line per representative, with exact symbol, current-turn price, change, and quote timestamp basis
-3. Market-move reasons: dated verified events with a current-turn source domain, followed separately by causal inference; if evidence is insufficient, say `原因本轮未完全核验`
-4. Bull / Bear / Base Case and primary risks
-5. Action framing, triggers, and falsification conditions
+1. **官方源优先**：宏观问题先调一次 `data_fetch(macro)`，利率看其中 treasury_rates 组件（各期限现值与变动）、通胀看 CPI、就业看 unemployment、政策利率看 federal_funds、数据发布安排看 economic_calendar。先有官方数字，再谈归因。
+2. **官方原文优先**：FOMC 声明/纪要、财政部融资公告（refunding/buyback）类问题，用 `web_search` 定位 federalreserve.gov / treasury.gov 官方文本，归因以官方文本为准；二手报道与官方文本冲突时，指出冲突并采用官方口径。
+3. **利率归因三分解**：解释长端利率变动时至少区分三个驱动——政策利率预期、通胀补偿（盈亏平衡通胀）、期限溢价。缺任何一项的分解数据时如实披露"本轮未能完成期限溢价分解"，给方向性判断并降低置信度；不要用单一驱动（如只谈通胀补偿）解释全部变动。
+4. **概念区分（点名）**：财政部国债回购（buyback）≠ 美联储 QE。常规回购计划、单次操作规模、央行扩表购债三者分开表述；"回购翻倍"这类量级说法需要财政部原始公告支撑，找不到就写"该量级未经官方公告核验"。"救债""托底"类因果判断标注为市场叙事/推断，不作为确定性结论。
+5. **传导链模板**：宏观事件 → 利率/美元/信用利差 → 股权风险溢价 → 行业久期敏感度（长久期成长 vs 短久期价值/金融）→（如用户提及）具体持仓。每个环节标明是数据支持还是推断，链条断在哪一环就在哪一环停止确定性表述。
+6. **主因排序纪律**：列主要驱动时按证据强度排序并写明依据（官方数据 > 官方文本 > 市场定价 > 媒体解读）。同一宏观问题重复提问时，排序应基于同一套证据可复现；若本轮排序与主流共识或此前回答不同，说明是哪条新证据导致的变化。
+7. **政治叙事降温**：涉及政策动机、政治意图、党派立场的判断一律标注"推断"，放在推断段落，不进入结论主干；结论主干只保留可被官方数据或官方文本支持的部分。
 
-Do not ask “which stock?” as a substitute for a broad-market answer. In mixed-market requests, retain separate local dates, benchmark entities, and evidence for every scope.
+### 输出契约
 
-### Sector / Industry Output Contract
+- 首行永远是 Agent 自写的 `数据时间：北京时间 ...；行情口径：...`，之前不加任何铺垫。
+- **广市场/宏观答案**用五段：1) 结论 2) 已核实市场事实（每个代表标的独立一行：symbol、本轮价格、涨跌、时间戳口径；宏观数字注明发布机构与数据期）3) 归因（按上述四态分级，事实与推断分开）4) Bull / Bear / Base 与主要风险 5) 操作框架、触发条件与证伪条件。
+- **行业主题答案**用九段：主题是什么 / 相对替代方案的核心变化 / 为什么是现在与落地时间线 / 未来 2–3 年空间与主流预期（未核验数字如实标注）/ 价值链与议价权 / 上市公司对比（每个代表标的有本轮同 symbol quote）/ 高确定性、高弹性、纯概念三档映射 / 风险与证伪条件（含三情景）/ 投资框架与触发条件。代表标的来自本轮主题证据 + 精确解析，不用 SPY/QQQ 或上一轮 ticker 凑数。
+- **数字标注纪律**：关键财务与宏观数字标明期间（季度/财年/TTM/数据月份）、单位、GAAP/Non-GAAP（如适用）、性质（历史 actual / 公司指引 / 一致预期 / 分析师假设）。
+- **缺数据的出路**：披露缺口 + 给方向性判断（并说明置信度为何降低）+ 列补证清单。"证据不足"配补证清单是合格结论，空泛套话和虚假精确都不是。
 
-Use exactly nine substantive numbered sections after the Agent-authored time and quote-basis line:
+### 备忘
 
-1. What the technology or theme is
-2. Its core change versus alternatives
-3. Why it matters now and the adoption timeline
-4. The next 2–3 years of market space and mainstream views; label unsupported numbers as not verified in the current turn
-5. Value-chain layers and bargaining power
-6. Listed-company comparison, with an independent current-turn same-symbol quote for every verified representative
-7. High-certainty, high-beta, and concept-only mappings
-8. Risks and falsification conditions, including Bull / Bear / Base scenarios and verifiable catalysts
-9. Final investment framing and trigger conditions
-
-Never use SPY/QQQ or a previous-turn ticker merely to fill a sector list. Every representative must be supported by current theme evidence plus exact-symbol search and quote results.
-
-### Mandatory Query-Rewrite Rules
-
-1. If the user asks about macro data, policy headlines, geopolitical events, or uses relative time such as "today", "latest", "this week", or "just announced", first read the current session date.
-2. Rewrite the search query into an absolute-time form before search. Do not search with ambiguous wording.
-3. The rewritten query must include the exact year, month, and day. Add "latest", "today's release", or the event name only after the absolute date is present.
-4. Example rewrite:
-   User asks: "How was today's nonfarm payroll?"
-   Search query should become: "2026-04-04 latest US nonfarm payroll release"
-5. For Interactive market and sector answers, the Agent-authored Beijing data-time and quote-basis line is always the first visible line. Do not emit a preamble or a second time line.
-6. For "why did the market/stock fall" questions, the absolute search date must be the verified target-session date, not merely the current market-local calendar date. If the quote snapshot belongs to a different date, do not silently move the question to that date.
-7. If broad benchmarks do not support the user's "crash/selloff" premise, state the scope mismatch and check the named sector/security or ask one minimal clarification. Never substitute a larger move from another day. If same-date causal evidence remains weak, report the verified move and say `原因本轮未完全核验`.
-
-### Notes
-
-- Always focus on the dimensions that match the user's question instead of speaking in broad generalities
-- Use current-turn DataFetch quotes for market facts and dated `web_search` evidence for causes; do not expose raw tool names or payloads in the user-facing answer
-- Separate hard facts from market expectations or opinions in the final answer
-- For macro search, never issue a `web_search` query that omits the absolute date when the user intent is time-sensitive
-- If quotes succeeded, never claim that Hone lacks real-time/current market data or did not request it. Describe the provider result as latest available and non-tick-by-tick.
-- A failed news result does not erase valid quotes: report the verified prices and say the cause is not fully verified. A failed quote for one scope does not permit copying another scope's quote.
-- If the user asks for a trend, curve, distribution, or side-by-side visual and you already have the numbers, use the Chart Visualization skill instead of describing the chart only in prose. Native Codex loads that skill through its own skill discovery; legacy Hone runners may use `skill_tool(skill_name="chart_visualization", execute_script=true, ...)`.
+- quote 成功后如实描述为"最新可得的提供方报价（非逐笔）"，不要反过来说 Hone 缺实时数据能力。
+- 一路数据失败不连坐：新闻失败仍报已核实价格并写"原因本轮未完全核验"；某一市场 quote 失败不用另一市场的数字顶替。
+- 面向用户的答案不暴露工具名与原始 payload。
+- 用户要曲线/对比图且数字已拿到时，交给 Chart Visualization skill 出图，不用纯文字描述图形。

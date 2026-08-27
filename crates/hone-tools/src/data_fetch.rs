@@ -67,6 +67,7 @@ pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
             | "profile"
             | "snapshot"
             | "earnings_outlook"
+            | "earnings_status"
             | "financials"
             | "news"
             | "crypto_quote"
@@ -355,6 +356,9 @@ impl DataFetchTool {
             "earnings_outlook" => Err(
                 "earnings_outlook 通过证券级财报、预期、目标价、评级和行情聚合获取，不映射单一端点"
                     .to_string(),
+            ),
+            "earnings_status" => Err(
+                "earnings_status 通过财报日历与最新已发布季度聚合获取，不映射单一端点".to_string(),
             ),
             "snapshot" => {
                 Err("snapshot 通过聚合 quote/profile/news 获取，不映射单一端点".to_string())
@@ -1009,7 +1013,7 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
         }
         "peers" | "market_hours" | "macro" => Some(FMP_TTL_PROFILE),
         "press_releases" | "transcript" | "sec_filings" | "analyst_actions" => Some(FMP_TTL_NEWS),
-        "earnings_calendar" | "earnings_outlook" => Some(FMP_TTL_EARNINGS),
+        "earnings_calendar" | "earnings_outlook" | "earnings_status" => Some(FMP_TTL_EARNINGS),
         _ => None,
     }
 }
@@ -1954,6 +1958,121 @@ fn price_target_consensus_quality(value: &Value, current_price: Option<f64>) -> 
     })
 }
 
+/// Server-computed earnings reporting status. The audited failure mode this
+/// exists for: the agent citing an unreported quarter as published actuals
+/// (CRWV Q2, NBIS Q2) or misplacing a release date that already passed (SNDK).
+/// FMP's `stable/earnings` rows carry null epsActual/revenueActual until the
+/// company actually reports, which gives a provider-side published/unpublished
+/// signal that does not depend on model memory.
+fn build_earnings_status_response(
+    ticker: &str,
+    earnings: Result<Value, String>,
+    income_quarter: Result<Value, String>,
+) -> Value {
+    let mut errors = serde_json::Map::new();
+    let mut component = |name: &str, result: Result<Value, String>| match result {
+        Ok(value) => value,
+        Err(err) => {
+            errors.insert(name.to_string(), Value::String(err));
+            Value::Null
+        }
+    };
+    let earnings_value = component("earnings", earnings);
+    let income_value = component("income_quarter", income_quarter);
+
+    let today = chrono::Utc::now().date_naive();
+    let today_str = today.format("%Y-%m-%d").to_string();
+
+    let row_date = |row: &Value| -> Option<String> {
+        row.get("date")
+            .and_then(Value::as_str)
+            .map(|d| d.chars().take(10).collect())
+    };
+    let has_actual = |row: &Value| -> bool {
+        ["epsActual", "revenueActual"].iter().any(|key| {
+            row.get(*key)
+                .map(|v| !v.is_null())
+                .unwrap_or(false)
+        })
+    };
+
+    // Latest calendar row that carries published actuals, and the next row
+    // that does not (i.e. the upcoming report). Rows outside a plausible
+    // window are ignored rather than trusted blindly.
+    let mut latest_reported: Option<(String, Value)> = None;
+    let mut next_unreported: Option<(String, Value)> = None;
+    if let Some(rows) = earnings_value.as_array() {
+        for row in rows {
+            let Some(date) = row_date(row) else { continue };
+            if has_actual(row) {
+                if latest_reported
+                    .as_ref()
+                    .map(|(d, _)| date > *d)
+                    .unwrap_or(true)
+                {
+                    latest_reported = Some((date, row.clone()));
+                }
+            } else if date >= today_str
+                && next_unreported
+                    .as_ref()
+                    .map(|(d, _)| date < *d)
+                    .unwrap_or(true)
+            {
+                next_unreported = Some((date, row.clone()));
+            }
+        }
+    }
+
+    // Latest published income statement: period end + fiscal period label.
+    let latest_income = income_value
+        .as_array()
+        .and_then(|rows| rows.first())
+        .map(|row| {
+            serde_json::json!({
+                "period_end": row.get("date").cloned().unwrap_or(Value::Null),
+                "period": row.get("period").cloned().unwrap_or(Value::Null),
+                "fiscal_year": row.get("calendarYear").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .unwrap_or(Value::Null);
+
+    let note = match (&latest_reported, &next_unreported) {
+        (Some((reported_date, _)), Some((next_date, _))) => format!(
+            "截至 {today_str}（UTC），{ticker} 最新一次已发布财报日为 {reported_date}；下一次财报预计 {next_date}，该季度尚未发布，任何该季度数字只能是公司指引、一致预期或假设，不是 actual。"
+        ),
+        (Some((reported_date, _)), None) => format!(
+            "截至 {today_str}（UTC），{ticker} 最新一次已发布财报日为 {reported_date}；provider 日历中暂无下一次财报日期。"
+        ),
+        (None, Some((next_date, _))) => format!(
+            "截至 {today_str}（UTC），provider 未返回 {ticker} 已发布财报记录；下一次财报预计 {next_date}。"
+        ),
+        (None, None) => format!(
+            "截至 {today_str}（UTC），provider 未返回 {ticker} 的财报日历记录；发布状态请以公司 IR/SEC 原文确认。"
+        ),
+    };
+
+    let mut payload = serde_json::json!({
+        "data_type": "earnings_status",
+        "ticker": ticker,
+        "data": {
+            "earnings_calendar": earnings_value,
+            "latest_income_quarter": latest_income,
+        },
+        "hone_latest_reported": latest_reported
+            .map(|(date, row)| serde_json::json!({ "date": date, "row": row }))
+            .unwrap_or(Value::Null),
+        "hone_next_earnings": next_unreported
+            .map(|(date, row)| serde_json::json!({ "date": date, "row": row }))
+            .unwrap_or(Value::Null),
+        "hone_reporting_status_note": note,
+        "evidence_policy": "hone_reporting_status_note 与 hone_latest_reported/hone_next_earnings 是服务端按 provider 日历算好的发布状态事实；引用某季度财报数字前先与它对齐，未发布季度的数字一律标注为指引/预期/假设。provider 日历也可能滞后，与公司 IR 原文冲突时以 IR 为准并在正文说明。"
+    });
+    if !errors.is_empty() {
+        payload["errors"] = Value::Object(errors);
+    }
+    payload
+}
+
 fn first_positive_number(value: &Value, keys: &[&str]) -> Option<f64> {
     let row = value
         .as_array()
@@ -2246,7 +2365,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）、earnings_status（财报发布状态：服务端按 provider 日历算好某证券最新已发布财报日与下一次财报日，hone_reporting_status_note 给出“该季度是否已发布”结论；引用任何季度财报数字前、或做财报前瞻/分析前，先用它对齐发布状态，未发布季度的数字只能标注为指引/预期/假设）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2437,6 +2556,25 @@ impl Tool for DataFetchTool {
                 "ticker": ticker,
                 "data": normalized
             }));
+        }
+
+        // 财报发布状态：审计里最高危的失败模式是把未发布季度写成 actual
+        // （CRWV Q2、NBIS Q2、SNDK 时点错）。这里在服务端算好“最新已发布
+        // 季度/下一次财报日”，agent 引用事实而不是推断。
+        if data_type == "earnings_status" {
+            let earnings_url = match self.build_earnings_outlook_url("earnings", ticker) {
+                Ok(url) => url,
+                Err(err) => return Ok(serde_json::json!({ "error": err })),
+            };
+            let (earnings, income_quarter) = tokio::join!(
+                self.fetch_from_url_cached(
+                    &earnings_url,
+                    ttl_for_data_type(data_type),
+                    "earnings_status_earnings"
+                ),
+                self.fetch_data_type("income_quarter", ticker),
+            );
+            return Ok(build_earnings_status_response(ticker, earnings, income_quarter));
         }
 
         if data_type == "earnings_outlook" {
@@ -2672,6 +2810,7 @@ mod tests {
         });
     }
     use super::{
+        build_earnings_status_response,
         DataFetchTool, chinese_scaled_money, data_fetch_data_type_uses_security_target,
         effective_data_fetch_data_type, effective_data_fetch_security_target,
         effective_data_fetch_target, extended_hours_session, financial_score_semantics,
@@ -4529,5 +4668,38 @@ mod tests {
             financial_score_semantics(&json!({}))["altman_band"],
             serde_json::Value::Null
         );
+    }
+
+    #[test]
+    fn earnings_status_marks_unreported_quarters() {
+        let today = chrono::Utc::now().date_naive();
+        let past = (today - Duration::days(30)).format("%Y-%m-%d").to_string();
+        let future = (today + Duration::days(30)).format("%Y-%m-%d").to_string();
+        let earnings = serde_json::json!([
+            { "date": past, "epsActual": 1.25, "revenueActual": 1000.0 },
+            { "date": future, "epsActual": null, "revenueActual": null },
+        ]);
+        let income = serde_json::json!([
+            { "date": "2026-06-30", "period": "Q2", "calendarYear": "2026" }
+        ]);
+        let payload = build_earnings_status_response("TEST", Ok(earnings), Ok(income));
+        assert_eq!(payload["hone_latest_reported"]["date"], past);
+        assert_eq!(payload["hone_next_earnings"]["date"], future);
+        let note = payload["hone_reporting_status_note"].as_str().unwrap();
+        assert!(note.contains("尚未发布"), "note: {note}");
+        assert_eq!(payload["data"]["latest_income_quarter"]["period"], "Q2");
+    }
+
+    #[test]
+    fn earnings_status_survives_empty_calendar() {
+        let payload = build_earnings_status_response(
+            "TEST",
+            Err("upstream down".to_string()),
+            Err("upstream down".to_string()),
+        );
+        assert!(payload["hone_latest_reported"].is_null());
+        let note = payload["hone_reporting_status_note"].as_str().unwrap();
+        assert!(note.contains("IR/SEC"), "note: {note}");
+        assert!(payload["errors"]["earnings"].is_string());
     }
 }
