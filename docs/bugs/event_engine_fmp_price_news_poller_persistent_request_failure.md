@@ -35,6 +35,13 @@
 ## 证据来源
 
 - `data/runtime/task_runs.2026-08-25.jsonl` / `data/runtime/task_runs.2026-08-26.jsonl` / `data/runtime/task_runs.2026-08-27.jsonl`
+  - 2026-08-28 06:02 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
+  - 2026-08-28 02:01-06:02 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-27T18:00:13Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=9`，同时 `poller.fmp.price ok=8`、`poller.fmp.extended_hours ok=9`，说明 event-engine runtime 未整体停摆，但 news 增量链路和部分 quote batch 仍在退化。
+  - `data/logs/hone-console-page-source.log` 同窗还出现大量 extended-hours `prev_close fetch ... failed` 与 `skip ..., no prev_close` 警告，覆盖多个美股代码；不过该 poller 最终仍记录 `poller.fmp.extended_hours ok total=0`，因此本轮不把它提升为新的独立缺陷。
+  - 近窗非文档代码提交 `6abd796c fix(portfolio): replace holdings set explicitly` 只涉及持仓替换语义；未见 live runtime 重启 / revision 切换或 task_runs 已加载 2026-08-23 `2d9ad5d5 fix(event-engine): retry transient fmp poller transport errors` 的确认信号，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。
+  - 失败样本覆盖 `poller.fmp.news` 的 `stock_news` 请求，以及 `poller.fmp.price` 的 quote batch；日志中的 FMP URL 已由 runtime 脱敏为 `apikey=<redacted>`。
+  - 同窗仍有 heartbeat `run_start=56`、`run_finish=58`、`deliver=35`，说明 scheduler 其它链路仍在推进。
+  - 尚未观察到用户可见 FMP 原始错误外泄；影响集中在新闻事件增量、digest 候选、监控触发新鲜度和部分行情刷新，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
   - 2026-08-28 02:01 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
   - 2026-08-27 22:01-2026-08-28 02:01 CST 同窗继续出现 FMP 请求发送失败；task runs 从 UTC `2026-08-27T14:01:42Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=16`，同时 `poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路和 price quote batch 刷新仍在退化。
   - 近窗无非文档代码提交，未见 live runtime 重启 / revision 切换或 task_runs 已加载 2026-08-23 `2d9ad5d5 fix(event-engine): retry transient fmp poller transport errors` 的确认信号，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。
