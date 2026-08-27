@@ -28,6 +28,7 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 \
 - 非标准 ticker 约束：若用户输入的是疑似拼写错误、少字母/多字母、或并非常见证券代码的 ticker（例如 `MFST`、`MPVL` 这类只接近某个真实代码），尤其当问题涉及建仓、加仓、减仓、买点、卖点、止损、仓位等交易动作时，必须先确认用户想问的具体标的；在用户确认前，不得按“最像的代码”直接给出价格区间、仓位比例或交易建议。若这类 ticker/简称被用于强时效新闻、利好/利空、IPO、融资、收购、并购或上市进展问题，也必须先确认证券实体与来源支持；不得把近似代码直接等同为热门私营公司或未上市公司股票。\n\
 - 副作用写入确认约束：若当前 user turn 只用“这只 / 这一只 / 这个 / 它 / 上一个 ETF”之类模糊指代来要求记录持仓、更新成本、创建/修改心跳任务、建立/更新公司画像或其它会写入用户长期状态的操作，必须先短句确认唯一标的（至少确认 ticker 或唯一实体）再继续；在用户确认前，不得调用会写入 `portfolio`、`cron_job`、公司画像或其它持久化状态的工具，也不得先按上一轮最相关标的代写后再补一句“如果不是请纠正”。\n\
+- 持仓全集覆盖约束：当用户明确表达“以我这次给的为准”“只有这些股票/持仓，其他没有了”“把旧持仓都清掉，只保留这些”这类高确定性全集覆盖语义时，必须把它视为授权整体替换当前持仓，而不是只更新本轮提到的几只。此时应调用 `portfolio(action=\"replace_all\")` 并传入完整 holdings 列表；替换完成后的账户分析、持仓汇总和后续建议都只能基于这份新列表，不得继续沿用旧持仓、旧 watchlist、历史摘要或 compact summary 中未列出的标的。若用户本轮给出的列表不完整到无法安全替换，先指出缺项并确认，不得一边声称“已全部更新”一边继续把旧标的带入分析。\n\
 - 旧上下文漂移约束：在同一会话里，若当前 user turn 问的是新的板块、行业词或与上一轮不同的标的，工具调用（data_fetch / web_search 等）的首个目标必须由当前 user turn 直接推导；禁止把上一轮已讨论过的旧 ticker 或证券名称默认套用到当前请求上。若当前问题是行业/板块级，应先围绕板块关键词和代表性公司展开检索，而不是锁定单一旧 ticker。
 - 内部策略外泄约束：禁止以「底层系统纪律」「被禁止」「内部规定」「系统约束」等口吻将内部生成策略、提示规则或运行约束直接暴露给用户；若需要说明能力边界，应以中性的功能说明方式表达（例如当前不支持 XX 类内容），而不是引用内部政策文本或暗示系统有隐藏的外部限制。\n\
 - 报价字段一致性约束：同一条输出里引用的任何价格数字都必须来自同一合约标的、同一时间点、同一口径；不允许把现货价与期货合约价、不同合约月份（如 CLJ26 / CLK26）、不同时间窗口（如现价与日内高点/低点）混在一起当作同一个「现价」叙述。若确需对比不同口径，必须显式写出每个数值的合约名、时间点与口径（例如「WTI 连续合约盘中参考价 $X（运行时时区 HH:MM）」+「CME WTI May 合约结算价 $Y」），并保持数学一致性（日内低点 ≤ 最新价 ≤ 日内高点）。若最新现价与日内高低点互相矛盾、或数据源之间相差过大且无法核实，必须声明不确定并放弃给出精确数字，而不是把明显矛盾的数值拼成一条播报。\n\
@@ -186,9 +187,9 @@ fn explicit_symbol_match(input: &str, symbol: &str) -> bool {
     // Chinese has no such prose, so a bare ASCII token there is the ticker —
     // and users type it lowercase ("mu 现在的估值贵不贵"), which used to miss
     // the company card entirely.
-    let cjk_context = input.chars().any(|character| {
-        matches!(character as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)
-    });
+    let cjk_context = input.chars().any(
+        |character| matches!(character as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF),
+    );
     input
         .split(|character: char| !character.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
@@ -577,11 +578,20 @@ mod tests {
         assert!(mu.contains("HBM"), "MU baseline missing HBM driver");
 
         let sndk = company_research_baseline("sndk 这家公司怎么样").expect("SNDK card");
-        assert!(sndk.contains("NBM"), "SNDK baseline missing NBM driver: {sndk}");
+        assert!(
+            sndk.contains("NBM"),
+            "SNDK baseline missing NBM driver: {sndk}"
+        );
 
         let rklb = company_research_baseline("分析下 RKLB").expect("RKLB card");
-        assert!(rklb.contains("Neutron"), "RKLB baseline missing Neutron milestones");
-        assert!(rklb.contains("稀释"), "RKLB baseline missing dilution driver");
+        assert!(
+            rklb.contains("Neutron"),
+            "RKLB baseline missing Neutron milestones"
+        );
+        assert!(
+            rklb.contains("稀释"),
+            "RKLB baseline missing dilution driver"
+        );
     }
 
     #[tokio::test]
@@ -969,6 +979,8 @@ mod tests {
         assert!(system_prompt.contains("holdings.json"));
         assert!(system_prompt.contains("禁止通过沙盒里的"));
         assert!(system_prompt.contains("data/portfolio"));
+        assert!(system_prompt.contains("portfolio(action=\"replace_all\")"));
+        assert!(system_prompt.contains("只有这些股票/持仓，其他没有了"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }

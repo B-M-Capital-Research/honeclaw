@@ -584,6 +584,9 @@ fn recover_portfolio_confirmation(call: &ToolCallMade) -> Option<String> {
             message
         }
         "update" => format!("已更新持仓：{label}。后续跟踪会使用最新持仓记录。"),
+        "replace_all" => {
+            format!("已整体覆盖当前持仓为：{label}。未列出的旧持仓和关注已不再保留。")
+        }
         "remove" => format!("已处理持仓/关注删除请求：{label}。"),
         "watch" => match portfolio_first_result(call).as_deref() {
             Some("already_holding") => format!("{label} 已在持仓中，会继续按持仓跟踪。"),
@@ -1276,5 +1279,32 @@ mod tests {
         assert!(message.contains("CBRS 当前不在关注列表中"), "{message}");
         assert!(message.contains("AAPL/NVDA/CBRS 组合心跳"), "{message}");
         assert!(message.contains("请明确回复删除该任务"), "{message}");
+    }
+
+    #[test]
+    fn replace_all_confirmation_makes_full_replacement_explicit() {
+        let call = ToolCallMade {
+            name: "portfolio".to_string(),
+            arguments: json!({
+                "action": "replace_all",
+                "holdings": [
+                    {"ticker": "SNDK", "quantity": 50},
+                    {"ticker": "MU", "quantity": 30}
+                ]
+            }),
+            result: json!({
+                "action": "replace_all",
+                "count": 2,
+                "holdings": [
+                    {"ticker": "SNDK", "asset_type": "stock"},
+                    {"ticker": "MU", "asset_type": "stock"}
+                ]
+            }),
+            tool_call_id: Some("call-replace".to_string()),
+        };
+        assert_eq!(
+            recover_user_facing_tool_outcome(&[call]).as_deref(),
+            Some("已整体覆盖当前持仓为：SNDK、MU。未列出的旧持仓和关注已不再保留。")
+        );
     }
 }

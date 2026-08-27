@@ -106,7 +106,7 @@ impl Tool for PortfolioTool {
     }
 
     fn description(&self) -> &str {
-        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。"
+        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、replace_all（用当前列表整体覆盖全部持仓/关注）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -121,6 +121,7 @@ impl Tool for PortfolioTool {
                     "add".into(),
                     "remove".into(),
                     "update".into(),
+                    "replace_all".into(),
                     "watch".into(),
                     "unwatch".into(),
                 ]),
@@ -276,27 +277,55 @@ impl Tool for PortfolioTool {
                     "portfolio": data
                 }))
             }
-            "add" | "update" => {
+            "add" | "update" | "replace_all" => {
                 let input_holdings = parse_holdings_from_args(&args)?;
 
-                let mut portfolio = storage
-                    .load(&self.actor)
-                    .await?
-                    .unwrap_or_else(|| Portfolio {
+                let mut portfolio = if action == "replace_all" {
+                    Portfolio {
                         actor: Some(self.actor.clone()),
                         user_id: self.actor.user_id.clone(),
                         holdings: Vec::new(),
                         updated_at: chrono::Utc::now().to_rfc3339(),
-                    });
+                    }
+                } else {
+                    storage
+                        .load(&self.actor)
+                        .await?
+                        .unwrap_or_else(|| Portfolio {
+                            actor: Some(self.actor.clone()),
+                            user_id: self.actor.user_id.clone(),
+                            holdings: Vec::new(),
+                            updated_at: chrono::Utc::now().to_rfc3339(),
+                        })
+                };
+
+                let existing_watchlist = if action == "replace_all" {
+                    storage
+                        .load(&self.actor)
+                        .await?
+                        .map(|portfolio| {
+                            portfolio
+                                .holdings
+                                .into_iter()
+                                .filter(|holding| holding.tracking_only.unwrap_or(false))
+                                .map(|holding| (holding.symbol, holding.asset_type))
+                                .collect::<std::collections::BTreeSet<_>>()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    std::collections::BTreeSet::new()
+                };
 
                 let mut processed = Vec::with_capacity(input_holdings.len());
 
                 for holding in input_holdings {
-                    let promoted_from_watchlist = if let Some(existing) =
-                        portfolio.holdings.iter_mut().find(|candidate| {
-                            candidate.symbol == holding.symbol
-                                && candidate.asset_type == holding.asset_type
-                        }) {
+                    let promoted_from_watchlist = if action == "replace_all" {
+                        existing_watchlist
+                            .contains(&(holding.symbol.clone(), holding.asset_type.clone()))
+                    } else if let Some(existing) = portfolio.holdings.iter_mut().find(|candidate| {
+                        candidate.symbol == holding.symbol
+                            && candidate.asset_type == holding.asset_type
+                    }) {
                         let was_watchlist = existing.tracking_only.unwrap_or(false);
                         *existing = Holding {
                             weight: None,
@@ -309,6 +338,14 @@ impl Tool for PortfolioTool {
                         portfolio.holdings.push(holding.clone());
                         false
                     };
+                    if action == "replace_all" {
+                        portfolio.holdings.push(Holding {
+                            weight: None,
+                            name: None,
+                            tracking_only: None,
+                            ..holding.clone()
+                        });
+                    }
                     processed.push(serde_json::json!({
                         "ticker": holding.symbol,
                         "asset_type": holding.asset_type,
@@ -1312,6 +1349,68 @@ mod tests {
         assert_eq!(holdings[0]["shares"], 50.0);
         assert_eq!(holdings[0]["avg_cost"], 120.0);
         assert_eq!(holdings[0]["kind"], "holding");
+    }
+
+    #[tokio::test]
+    async fn portfolio_replace_all_clears_omitted_holdings_and_watchlist() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_replace_all");
+        let actor = ActorIdentity::new("feishu", "u_replace_all", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({"action":"watch","ticker":"GLW"}))
+            .await
+            .expect("seed watchlist");
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"QCOM",
+            "quantity":10.0,
+            "cost_basis":150.0
+        }))
+        .await
+        .expect("seed qcom");
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"INTC",
+            "quantity":20.0,
+            "cost_basis":25.0
+        }))
+        .await
+        .expect("seed intc");
+
+        let replace_response = tool
+            .execute(serde_json::json!({
+                "action":"replace_all",
+                "holdings":[
+                    {"ticker":"SNDK","quantity":50.0,"cost_basis":41.0},
+                    {"ticker":"MU","quantity":30.0,"cost_basis":118.0}
+                ]
+            }))
+            .await
+            .expect("replace all");
+
+        assert_eq!(replace_response["action"], "replace_all");
+        assert_eq!(replace_response["count"], 2);
+
+        let view_response = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view replaced portfolio");
+        let holdings = view_response["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let watchlist = view_response["portfolio"]["watchlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        assert_eq!(holdings.len(), 2);
+        assert!(watchlist.is_empty());
+        let symbols = holdings
+            .iter()
+            .filter_map(|holding| holding["symbol"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(symbols, ["SNDK", "MU"]);
     }
 
     #[test]
