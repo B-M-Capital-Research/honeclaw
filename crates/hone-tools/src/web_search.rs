@@ -55,10 +55,18 @@ impl WebSearchTool {
 
     pub fn from_config(config: &hone_core::config::HoneConfig) -> Self {
         let pool = hone_core::ApiKeyPool::new(config.search.api_keys.iter().cloned());
+        let endpoint = config
+            .search
+            .endpoint
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_TAVILY_SEARCH_ENDPOINT)
+            .to_string();
         Self {
             keys: pool.keys().to_vec(),
             max_results: low_bandwidth_max_results(config.search.max_results),
-            endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
+            endpoint,
             http: reqwest::Client::new(),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -678,6 +686,18 @@ mod tests {
                 .expect("topic description"),
             &["涨跌归因", "published_date", "文章发布日期"],
         );
+    }
+
+    #[test]
+    fn from_config_honors_endpoint_override() {
+        let mut config = hone_core::config::HoneConfig::default();
+        config.search.endpoint = Some("http://127.0.0.1:8898/search".to_string());
+        let tool = WebSearchTool::from_config(&config);
+        assert_eq!(tool.endpoint, "http://127.0.0.1:8898/search");
+        // Empty/whitespace overrides fall back to Tavily's own endpoint.
+        config.search.endpoint = Some("   ".to_string());
+        let tool = WebSearchTool::from_config(&config);
+        assert_eq!(tool.endpoint, DEFAULT_TAVILY_SEARCH_ENDPOINT);
     }
 
     #[test]

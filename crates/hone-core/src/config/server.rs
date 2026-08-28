@@ -277,6 +277,12 @@ fn default_fmp_timeout() -> u64 {
 pub struct SearchConfig {
     #[serde(default = "default_tavily")]
     pub provider: String,
+    /// Tavily-compatible search endpoint. Defaults to Tavily's own API; point
+    /// it at a local proxy (e.g. hone-gemini-proxy's /search) to front the
+    /// same wire contract with a different backend and keep Tavily as the
+    /// proxy-side fallback.
+    #[serde(default)]
+    pub endpoint: Option<String>,
     #[serde(default)]
     pub api_keys: Vec<String>,
     #[serde(default = "default_search_depth")]
