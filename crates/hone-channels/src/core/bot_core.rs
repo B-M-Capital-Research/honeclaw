@@ -867,7 +867,7 @@ impl HoneBotCore {
                 .to_string()
         })?;
         let finance_research = self.config.agent.finance_research;
-        Ok(Box::new(FunctionCallingReasoningRunner::new(
+        let mut runner = FunctionCallingReasoningRunner::new(
             llm,
             Arc::new(tool_registry),
             system_prompt.to_string(),
@@ -884,7 +884,14 @@ impl HoneBotCore {
                 web_search_calls: finance_research.web_search_calls,
                 gap_closure_rounds: finance_research.gap_closure_rounds,
             },
-        )))
+        );
+        // The conversation model's visible thinking summaries stream into the
+        // progress card; Gemini's summarizer only writes English, so route
+        // them through the auxiliary LLM for the product language.
+        if let Some(aux) = self.auxiliary_llm.clone() {
+            runner = runner.with_thought_translator(aux, Some(self.auxiliary_model_name()));
+        }
+        Ok(Box::new(runner))
     }
 
     pub fn create_actor(

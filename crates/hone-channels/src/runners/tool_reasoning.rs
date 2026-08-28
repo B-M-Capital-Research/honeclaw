@@ -23,6 +23,77 @@ pub(crate) struct RunnerToolObserver {
     pub(crate) emitter: Arc<dyn AgentRunnerEmitter>,
 }
 
+/// Translates the model's visible thinking summaries into the product
+/// language. Gemini's Code Assist path synthesizes thought summaries in
+/// English regardless of prompting (verified: system-instruction and
+/// user-turn directives are both ignored), so the harness translates each
+/// buffered sentence with the auxiliary LLM before it reaches the progress
+/// card. Best-effort: any failure falls back to the original text.
+pub(crate) struct ThoughtTranslator {
+    provider: Arc<dyn LlmProvider>,
+    model: Option<String>,
+}
+
+impl ThoughtTranslator {
+    pub(crate) fn new(provider: Arc<dyn LlmProvider>, model: Option<String>) -> Self {
+        Self { provider, model }
+    }
+
+    /// CJK-light text longer than a ticker is worth translating; Chinese
+    /// thoughts (or short symbol fragments) pass through untouched.
+    fn needs_translation(text: &str) -> bool {
+        let total = text.chars().count();
+        if total < 12 {
+            return false;
+        }
+        let cjk = text
+            .chars()
+            .filter(|ch| matches!(*ch as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF))
+            .count();
+        cjk * 100 < total * 10
+    }
+
+    async fn translate(&self, text: &str) -> Option<String> {
+        let messages = vec![
+            hone_llm::Message {
+                role: "system".to_string(),
+                content: Some(
+                    "把用户给出的一句投研模型思考摘要翻译成简体中文。保留 ticker、数字、专有名词原文；只输出译文本身，不加引号或说明。"
+                        .to_string(),
+                ),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                images: Vec::new(),
+            },
+            hone_llm::Message {
+                role: "user".to_string(),
+                content: Some(text.to_string()),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                images: Vec::new(),
+            },
+        ];
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            self.provider.chat(&messages, self.model.as_deref()),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        // The auxiliary model may be a thinking model (MiniMax emits <think>
+        // blocks in content); strip them so the progress card only shows the
+        // translation itself.
+        let translated = crate::runtime::strip_internal_reasoning_blocks(&result.content)
+            .trim()
+            .to_string();
+        if translated.is_empty() { None } else { Some(translated) }
+    }
+}
+
 struct RunnerStreamObserver {
     emitter: Arc<dyn AgentRunnerEmitter>,
     streamed_output: Arc<AtomicBool>,
@@ -33,6 +104,7 @@ struct RunnerStreamObserver {
     /// they surface as StreamThought. Token-level deltas would be
     /// whitespace-trimmed downstream and glue words together.
     pending_thought: Mutex<String>,
+    thought_translator: Option<Arc<ThoughtTranslator>>,
 }
 
 const CANONICAL_INVESTMENT_HEADER_START: &str = "数据时间：运行时时区 ";
@@ -314,11 +386,32 @@ impl RunnerStreamObserver {
         if trimmed.is_empty() {
             return;
         }
-        self.emitter
-            .emit(AgentRunnerEvent::StreamThought {
-                thought: trimmed.to_string(),
-            })
-            .await;
+        self.emit_thought(trimmed.to_string());
+    }
+
+    /// Thoughts are display-only progress, so translation runs on a spawned
+    /// task: the content stream is never gated on the auxiliary LLM, and a
+    /// translation failure falls back to the original sentence.
+    fn emit_thought(&self, thought: String) {
+        let emitter = self.emitter.clone();
+        match &self.thought_translator {
+            Some(translator) if ThoughtTranslator::needs_translation(&thought) => {
+                let translator = translator.clone();
+                tokio::spawn(async move {
+                    let text = translator.translate(&thought).await.unwrap_or(thought);
+                    emitter
+                        .emit(AgentRunnerEvent::StreamThought { thought: text })
+                        .await;
+                });
+            }
+            _ => {
+                tokio::spawn(async move {
+                    emitter
+                        .emit(AgentRunnerEvent::StreamThought { thought })
+                        .await;
+                });
+            }
+        }
     }
 }
 
@@ -357,11 +450,7 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         if thought.is_empty() {
             return;
         }
-        self.emitter
-            .emit(AgentRunnerEvent::StreamThought {
-                thought: thought.to_string(),
-            })
-            .await;
+        self.emit_thought(thought.to_string());
     }
 
     async fn on_content_delta(&self, content: &str) {
@@ -794,6 +883,7 @@ pub(crate) struct FunctionCallingReasoningRunner {
     llm_audit: Option<Arc<dyn LlmAuditSink>>,
     timeouts: RunnerTimeouts,
     finance_research_budget: FinanceResearchBudget,
+    thought_translator: Option<Arc<ThoughtTranslator>>,
 }
 
 impl FunctionCallingReasoningRunner {
@@ -814,7 +904,21 @@ impl FunctionCallingReasoningRunner {
             llm_audit,
             timeouts,
             finance_research_budget,
+            thought_translator: None,
         }
+    }
+
+    /// Route visible thinking summaries through the auxiliary LLM so the
+    /// progress card reads in the product language even when the provider
+    /// only emits English summaries (Gemini's Code Assist summarizer ignores
+    /// language directives — verified empirically).
+    pub(crate) fn with_thought_translator(
+        mut self,
+        provider: Arc<dyn LlmProvider>,
+        model: Option<String>,
+    ) -> Self {
+        self.thought_translator = Some(Arc::new(ThoughtTranslator::new(provider, model)));
+        self
     }
 }
 
@@ -842,6 +946,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: self.thought_translator.clone(),
         });
         let service_owned_initial_prefix = request.service_owned_initial_prefix.clone();
         let service_owned_prefix_content = service_owned_initial_prefix
@@ -943,10 +1048,27 @@ mod terminal_stream_tests {
                 canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
                 committed_visible_prefix: committed_visible_prefix.clone(),
                 pending_thought: Mutex::new(String::new()),
+                thought_translator: None,
             },
             emitter,
             committed_visible_prefix,
         )
+    }
+
+    #[test]
+    fn thought_translation_gate_skips_chinese_and_short_text() {
+        assert!(ThoughtTranslator::needs_translation(
+            "Analyzing the storage cycle and LTA coverage before normalizing EPS."
+        ));
+        assert!(!ThoughtTranslator::needs_translation(
+            "正在核对美光的长协覆盖比例与中周期利润率。"
+        ));
+        // Mixed text with a real Chinese share passes through untranslated.
+        assert!(!ThoughtTranslator::needs_translation(
+            "正在拉取 MU quote 与 income_quarter 数据以核对 EPS 分母。"
+        ));
+        // Ticker-sized fragments are never worth an LLM round-trip.
+        assert!(!ThoughtTranslator::needs_translation("MU EPS"));
     }
 
     #[tokio::test]
@@ -993,6 +1115,7 @@ mod terminal_stream_tests {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: None,
         };
         let prefix = "数据时间：运行时时区 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
@@ -1267,6 +1390,7 @@ mod terminal_stream_tests {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: None,
         };
 
         observer
@@ -1318,6 +1442,7 @@ mod terminal_stream_tests {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: None,
         };
         let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
@@ -1393,6 +1518,7 @@ mod terminal_stream_tests {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: None,
         });
         let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
         observer
@@ -1456,6 +1582,7 @@ mod terminal_stream_tests {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
             pending_thought: Mutex::new(String::new()),
+            thought_translator: None,
         });
         let task_observer = observer.clone();
         let task = tokio::spawn(async move {
