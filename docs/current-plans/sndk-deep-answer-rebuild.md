@@ -1,7 +1,7 @@
 # SNDK 深度投研回答重构、Gemini Flash 反代与图像识别修复
 
 - title: SNDK 深度投研回答重构、Gemini Flash 反代与图像识别修复
-- status: in_progress
+- status: blocked
 - created_at: 2026-08-29
 - updated_at: 2026-08-29
 - owner: Codex
@@ -50,5 +50,6 @@
 
 - Google 官方已经确认精确模型 ID 为 `gemini-3.7-flash`；代码支持和官方协议兼容不等于本机账号已获模型权限。
 - 当前 `bob_luna` 凭据无分组权限，`bob_claude` 目录不含 Gemini 且目标模型无通道，不能把 403/503 伪装成接入成功。
+- 同一外部阻塞已连续三轮复核：最后一次再次确认本机没有 Gemini CLI、Gemini/Google API key 或本地模型代理，唯一新发现的 `Google` 监听进程是 Google Drive；Bob Luna 仍返回 403，Bob Claude 仍返回 503。除非用户授权检查 Google AI Studio 或在本机私有配置中提供已有权限的凭据，无法继续 live 验收。
 - PPT 的未来财务数字和评分表中的生产回答可能含数据源异常；最终验证以 SEC/公司 IR 的时点和口径为准，不把 PPT 数字硬编码成事实。
 - 图像识别需要同时保留原图视觉证据和 OCR 文本；OCR 成功不能替代图形、颜色、位置和趋势识别。
