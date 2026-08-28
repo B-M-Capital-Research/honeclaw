@@ -1,7 +1,7 @@
 ---
 name: First Principles
 description: 把"受益于 AI"这类叙事压缩成一条可算、可证伪的公式——需求驱动量 × 单位用量 × 单价 → 供给约束 → 价格与量的走向 → 这家公司拿到多少收入与利润，再用本轮数据验证或推翻它
-when_to_use: Use when an answer must first establish why the business works — the demand-supply-price formula behind it — before any multiple or score。触发场景：底层公式是什么、第一性原理、这门生意的本质、需求和供给怎么推、为什么这个逻辑成立、哪个变量决定成败。稀缺度打分走 scarcity-differentiation，公司壁垒走 moat，倍数与合理价区间走 valuation-audit
+when_to_use: 触发场景：底层公式是什么、第一性原理、这门生意的本质、需求和供给怎么推、为什么这个逻辑成立、哪个变量决定成败。稀缺度打分走 scarcity-differentiation，公司壁垒走 moat，倍数与合理价区间走 valuation-audit
 user-invocable: true
 context: inline
 aliases:
@@ -23,6 +23,8 @@ allowed-tools:
 ---
 
 ## 第一性原理 Skill
+
+> `transcript` 当前订阅只返回可用日期列表，正文受限；需要管理层原话时改用 `press_releases` 或带绝对日期的 `web_search`。
 
 这一维回答的是**"为什么这门生意成立、成立到什么程度"**，产出一条能算的公式，不是一段趋势描述。框架 1 的四步（压缩成公式 → 判断是否支持长期趋势 → 用现实证据验证 → 想不清只作研究线索）定义在 `hari-invest`，这里不重写；本 skill 只规定**公式怎么写出来、挂什么变量、怎么判它成立还是不成立**。
 

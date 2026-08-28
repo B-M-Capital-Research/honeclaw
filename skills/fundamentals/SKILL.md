@@ -1,7 +1,7 @@
 ---
 name: Fundamentals
 description: 基本面这一维的取数与判定——用分部收入回答钱从哪来，用利润率与现金流的趋势回答赚得怎么样，用净现金与偿债指标回答撑不撑得住，用增长来源回答还能不能持续。每一项都要落到"这家公司现在处于什么状态"，不是把财报数字抄一遍
-when_to_use: 用户点名要看基本面、财务质量、财务情况、赚钱能力、盈利能力、毛利率、现金流、负债水平、偿债能力、收入构成、主营业务占比、靠什么赚钱、增长质量时使用；也由 stock_research、sector-to-stock、valuation-audit、etf-analysis 在需要展开财务那一维时加载。估值倍数与合理价区间走 valuation-audit，护城河走 moat，本 skill 只做"财务事实 → 公司状态"这一步
+when_to_use: 用户点名要看基本面、财务质量、财务情况、赚钱能力、盈利能力、毛利率、现金流、负债水平、偿债能力、收入构成、主营业务占比、靠什么赚钱、增长质量时使用；也被 stock_research、sector-to-stock、valuation-audit、etf-analysis 在需要展开财务那一维时加载。估值倍数与合理价区间走 valuation-audit，护城河走 moat，本 skill 只做"财务事实 → 公司状态"这一步
 user-invocable: true
 context: inline
 aliases:

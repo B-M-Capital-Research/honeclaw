@@ -21,9 +21,9 @@ aliases:
   - 客户粘性
   - 会不会被替代
   - moat
-  - competitive moat
-  - switching cost
-  - network effect
+  - competitive-moat
+  - switching-cost
+  - network-effect
 allowed-tools:
   - data_fetch
   - web_search
@@ -61,7 +61,9 @@ allowed-tools:
 | 数据与生态 | 换供应商要不要连数据和工具链一起搬 | `press_releases`、`transcript`、`web_search` | 生态方数量与增速（开发者 / ISV / 合作方）；独占数据的规模与年限；迁移成本的公开表述 |
 | 规模与产能位置 | 它在瓶颈环节占了多大一块，别人补得上吗 | `web_search`（第三方份额，必须写口径与期间）、`transcript` / `press_releases`（backlog、产能、扩产周期）、`financials` | 份额 X% 及前后两期方向；backlog 或 RPO 金额与覆盖季数 |
 
-跨分型的财务显影补一条：`valuation` 里的 ROE / ROIC。**多年高于资本成本才是"在收租"的证据**；单年高 ROIC 可能只是景气高点，周期股必须配 `income_annual` 的多年区间一起看，否则会把周期误判成壁垒。
+> `transcript` 当前订阅只返回可用日期列表，正文受限；需要管理层原话时改用 `press_releases` 或带绝对日期的 `web_search`。
+
+跨分型的财务显影补一条：`valuation` 里的 ROE / ROIC。**连续 3 年以上高于同业中位数才是"在收租"的证据**（仓库没有 WACC 字段，用 `peers` 的同业中位数做门槛，不要口算资本成本）；单年高 ROIC 可能只是景气高点，周期股必须配 `income_annual` 的多年区间一起看，否则会把周期误判成壁垒。
 
 ### 二、写成什么样才算做完
 
