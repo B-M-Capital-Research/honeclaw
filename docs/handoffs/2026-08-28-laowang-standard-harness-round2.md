@@ -219,6 +219,58 @@ when_to_use（权重 80）而不是 aliases（权重 110），让更具体的 sk
   兼容实现未必支持该字段，本轮没动；需要定向到 thefly/benzinga 这类站点时先用 query 里的机构名。
 - `key-executives` 端点实测可用（评测里有一条问「高管团队」），本轮没接，属可选。
 
+## 生产部署记录（2026-08-28 16:39–16:55 北京时间）
+
+用户批「都可以上生产」。这次是**二进制与 harness 分开发布**，因为两者的最后改动点不同：
+
+| 层 | 版本 | 理由 |
+|---|---|---|
+| 二进制 | `897f66fd` | 最后一个构建出镜像的 revision。`f047326d` 只改了非 `stock_research` 的 skill，而 `runtime-image.yml` 的 path filter 只含 `skills/stock_research/**`，所以没触发构建。`git diff --stat 897f66fd f047326d -- crates/ bins/ agents/ memory/ soul.md Cargo.toml Cargo.lock` 为空，二进制等价已证明 |
+| harness（skills + soul.md） | `f047326d`（HEAD） | harness 不随镜像走：`HONE_SKILLS_DIR=/srv/honeclaw/skills`，需单独投递 |
+
+### 发布前检查
+
+- `cargo test -p hone-tools --lib`：200 passed / 5 failed，与基线同 5 条 `skill_tool::tests::*` 漂移。
+- `cargo test -p hone-channels --lib`：826 passed / 40 failed，比暂存基线多 3 条；3 条单线程复跑全部通过，属已知并行漂移。
+- 生产磁盘 4.8G 空闲（门槛 2G），`hone-web` active。
+
+### harness 投递
+
+`git archive f047326d skills soul.md` → 29 个 skill、0 符号链接、60 文件 SHA-256 清单
+（bundle sha `ef4a174a2b7a6d5f35411bdd`），上传后本地/远端 sha 一致。dry-run 报 15 个 skill 变更
+（新增 7：analyst-coverage / etf-analysis / first-principles / fundamentals / moat /
+scarcity-differentiation / sector-to-stock；改动 8），`soul.md unchanged`。apply 输出
+`manifest OK (60 files)`，备份落在
+`/srv/honeclaw/skills/backups/pre-f047326d...-20260828T163936Z`。
+
+### 二进制切换
+
+摘要 `ghcr.io/b-m-capital-research/honeclaw-runtime:897f66fd...`
+→ `sha256:b270696064bb541dd35c107d5315bcfc9ff8748eaad1acc522bd900f0f0a1e45`，
+`stage_ghcr_runtime.sh` 报 `[PASS] verified`。两次 `/api/runtime/active-chat-runs` 均 `{"count":0}`
+后，先把 `previous` 指到 `a43f99c8`，再原子换 `current` 到 `897f66fd`，`systemctl restart hone-web`。
+
+### 发布后核对
+
+- `/proc/<MainPID>/exe` → `.../897f66fd.../bin/hone-cli`；`RELEASE_METADATA.git_sha=897f66fd...`。
+- `/api/meta`：`cloud_mode=cloud`、`local_durable_dependency_count=0`、`version=0.15.3`。
+- `/api/skills`：40 个，7 个新 skill 全部在位并能取到正文（3.6–4.2k 字）。
+- `127.0.0.1:8088/api/public/auth/me` → 401。
+- 重启后 4 分钟内 `journalctl -p err` 无条目，`skill not found` 0 次（对照发布前两天 990 次）。
+- 逐文件 SHA-256 比对：仓库 `f047326d` 的 59 个 skill 文件，生产端**全部存在且内容一致**。
+
+### 顺手处理与遗留
+
+- 清掉了生产 skills 目录里 59 个 macOS AppleDouble 垃圾文件（`._*`，时间戳 08-23 / 08-27，
+  是更早几次从 Mac 打包投递留下的，非本次产生）。清理前全部用 `file(1)` 确认类型并打包备份到
+  `backups/appledouble-20260828T165459Z.tgz`；清理后 `/api/skills` 仍是 40。它们本来也不影响加载
+  （loader 只遍历目录读 `SKILL.md`），清掉是为了让今后的逐文件比对不再有噪声。
+- `skills/README.md` 生产端比仓库少 6 行（介绍 `company-thesis-ratings` / `hari-invest` 的那段）。
+  安装脚本只投递 skill 目录、不投递顶层 README，运行时也不读它，本次未动。
+- 清理最老的 release `dfa9d8cd`，保留 `current=897f66fd` / `previous=a43f99c8` / `1e7cfc15` 三份，
+  磁盘回到 4.8G。
+- 既有偏差照旧：`/root/.docker/config.json` 里的 GHCR 凭据是手工放的，不在配置管理里。
+
 ## Next Entry Point
 
 - 同步到生产后，用同一份 131 条问题重跑路由回归（`route_sim.py`），确认线上 skills 与仓库一致。
