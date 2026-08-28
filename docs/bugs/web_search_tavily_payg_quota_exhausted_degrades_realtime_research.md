@@ -19,6 +19,10 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-28 14:01-18:02 CST 巡检窗口内，Tavily / `web_search` 相关信号 176 条，其中 pay-as-you-go limit 35 条，`tool_execute_error name=web_search` 35 条，仍只有 `key_count=1`。
+  - 代表样本包括 UTC `2026-08-28T06:30:40Z`、`2026-08-28T07:00:23Z`、`2026-08-28T09:00:49Z` 附近多次 `web_search` 因 Tavily pay-as-you-go limit 失败；同轮继续出现 `function_calling tool call rejected by global budget tool="data_fetch" limit=3` 或 DataFetch / web_search 预算拒绝。
+  - 同窗 heartbeat 仍有 `run_start=56`、`run_finish=56`、`deliver=34`、`duplicate_suppressed=16`，说明不是全局调度停摆；但多轮任务继续在 `web_search` 不可用和工具预算受限后，用旧 quote、旧上下文或“工具调用上限 / DataFetch quote 接口触发账户级速率限制”口径收口。
+  - 本窗未见错投、敏感凭据泄露或全渠道不可用；维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
   - 2026-08-28 10:00-14:02 CST 巡检窗口内，Tavily pay-as-you-go limit 26 条，`tool_execute_error name=web_search` 26 条，仍只有 `key_count=1`。
   - 代表样本包括 UTC `2026-08-28T02:00:55Z`、`2026-08-28T03:00:56Z`、`2026-08-28T06:00:55Z` 附近多次 `web_search` 因 Tavily pay-as-you-go limit 失败；同轮继续出现 `function_calling tool call rejected by global budget tool="web_search" limit=3` 或 DataFetch / web_search 预算拒绝。
   - 同窗 heartbeat 仍有 `run_start=56`、`run_finish=59`、`deliver=28`、`duplicate_suppressed=12`，说明不是全局调度停摆；但多轮任务继续在 `web_search` 不可用和工具预算受限后，用旧 quote、旧上下文或“工具调用上限 / DataFetch quote 接口触发账户级速率限制”口径收口。
