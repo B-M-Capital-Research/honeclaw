@@ -83,6 +83,7 @@ const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 2;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const MAX_LISTING_FINAL_CORRECTIONS: u32 = 1;
+const MAX_LANGUAGE_FINAL_CORRECTIONS: u32 = 1;
 /// The one structural marker an investment answer must open with. It is the
 /// existing answer contract, not a classifier vocabulary.
 const CANONICAL_RESEARCH_ANSWER_HEADER: &str = "数据时间：";
@@ -1145,6 +1146,40 @@ fn require_complete_stream(
 /// Lines in a would-be final answer that self-report missing first-party
 /// evidence ("本轮未读到…原文" style). They are the gap checklist a
 /// gap-closure round hands back to the same agent.
+/// A Chinese question answered by an essentially English body. Soft prompt
+/// guidance alone proved insufficient for long structured answers built from
+/// English sources (audited in production: a Chinese question about MRVL came
+/// back with an English report carrying only the injected Chinese first line),
+/// so the final draft gets one language-repair round before publication.
+/// Thresholds are deliberately conservative: ordinary Chinese finance answers
+/// are CJK-dense even when packed with tickers and tables.
+fn final_language_mismatch(user_input: &str, draft: &str) -> bool {
+    let cjk = |text: &str| {
+        text.chars()
+            .filter(|ch| matches!(*ch as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF))
+            .count()
+    };
+    let question_cjk = cjk(user_input);
+    if question_cjk < 2 {
+        return false;
+    }
+    let draft_letters = draft.chars().filter(char::is_ascii_alphabetic).count();
+    if draft_letters < 600 {
+        return false;
+    }
+    let draft_cjk = cjk(draft);
+    draft_cjk * 100 < draft_letters * 15
+}
+
+fn language_final_correction_prompt(draft: &str) -> String {
+    let bounded: String = draft.chars().take(24_000).collect();
+    format!(
+        "【内部终稿语言纠正】上一版终稿尚未发布正文。用户以中文提问，终稿必须全程使用简体中文。\
+         把 <unpublished_draft> 完整改写为简体中文成品：所有事实、数字、百分比、表格结构、ticker、交易所代码、链接与引用来源逐项保留，不新增、不删减、不重算任何事实；英文引用的原文标题可保留原文并附中文说明；小标题与结论一并译为中文。\
+         重写稿仍须从精确数据时间首行开始。不要向用户提及本检查。\n<unpublished_draft>\n{bounded}\n</unpublished_draft>"
+    )
+}
+
 fn research_gap_lines(content: &str) -> Vec<String> {
     const GAP_MARKERS: [&str; 8] = [
         "未读到",
@@ -5965,9 +6000,11 @@ impl Agent for FunctionCallingAgent {
         let mut pending_gap_closure_feedback: Option<String> = None;
         let mut gap_closure_rounds = 0u32;
         let mut pending_listing_final_correction: Option<String> = None;
+        let mut pending_language_final_correction: Option<String> = None;
         let mut research_evidence_retries = 0u32;
         let mut research_evidence_retry_pending = false;
         let mut listing_final_corrections = 0u32;
+        let mut language_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
         let mut read_only_trace_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
@@ -6253,6 +6290,17 @@ impl Agent for FunctionCallingAgent {
                 });
             }
             if let Some(feedback) = pending_listing_final_correction.as_deref() {
+                messages.push(Message {
+                    images: Vec::new(),
+                    role: "user".to_string(),
+                    content: Some(feedback.to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
+            if let Some(feedback) = pending_language_final_correction.as_deref() {
                 messages.push(Message {
                     images: Vec::new(),
                     role: "user".to_string(),
@@ -6554,6 +6602,32 @@ impl Agent for FunctionCallingAgent {
                                         turn_message_start,
                                     );
                                 }
+                            }
+                            // Language repair runs last so it rewrites the
+                            // already-corrected draft rather than racing the
+                            // factual correction rounds above.
+                            if final_language_mismatch(user_input, &response.content)
+                                && language_final_corrections < MAX_LANGUAGE_FINAL_CORRECTIONS
+                                && iterations < self.max_iterations
+                            {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    iteration = iterations,
+                                    "agent-owned final answered a Chinese question with an English body; granting one language-repair round"
+                                );
+                                if let Some(observer) = &self.stream_observer {
+                                    observer
+                                        .on_reasoning_delta(
+                                            "终稿自检：正文语言与提问语言不一致，正在整体改写为中文。\n",
+                                        )
+                                        .await;
+                                }
+                                language_final_corrections =
+                                    language_final_corrections.saturating_add(1);
+                                pending_language_final_correction = Some(
+                                    language_final_correction_prompt(&response.content),
+                                );
+                                continue;
                             }
                             response
                         }
@@ -7776,6 +7850,44 @@ impl Agent for FunctionCallingAgent {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn final_language_mismatch_flags_english_body_for_chinese_question() {
+        let question = "mrvl昨晚财报后为什么跌";
+        // The audited production shape: injected Chinese first line, then a
+        // long English report with a couple of Chinese marker words.
+        let english_body = format!(
+            "数据时间：运行时时区 2026-08-28 09:02；行情口径：本轮仅使用可核验资料\n\n### Conclusion\n{}\n*推断：* priced-for-perfection expectations.",
+            "Marvell delivered a fundamentally robust quarter with record revenue and accelerating data center momentum. ".repeat(12)
+        );
+        assert!(super::final_language_mismatch(question, &english_body));
+
+        // A normal Chinese finance answer stays untouched even when dense
+        // with tickers, numbers, and table markup.
+        let chinese_body = format!(
+            "数据时间：运行时时区 2026-08-28 09:02；行情口径：最新可得\n\n### 结论\n{}\n| MRVL | $222.62 | -7.80% |",
+            "美满电子本季度数据中心收入同比增长46%，指引超一致预期，盘后下跌主要来自高估值下的获利了结与情绪回落。".repeat(10)
+        );
+        assert!(!super::final_language_mismatch(question, &chinese_body));
+
+        // English question keeps English answers.
+        assert!(!super::final_language_mismatch(
+            "why did mrvl drop after earnings",
+            &english_body
+        ));
+
+        // Short English fragments never trigger a rewrite.
+        assert!(!super::final_language_mismatch(question, "Double beat; guidance raised."));
+    }
+
+    #[test]
+    fn language_final_correction_prompt_carries_draft_and_rules() {
+        let prompt = super::language_final_correction_prompt("### Conclusion\nEnglish body");
+        assert!(prompt.contains("内部终稿语言纠正"));
+        assert!(prompt.contains("<unpublished_draft>"));
+        assert!(prompt.contains("English body"));
+        assert!(prompt.contains("精确数据时间首行"));
+    }
     use super::*;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
