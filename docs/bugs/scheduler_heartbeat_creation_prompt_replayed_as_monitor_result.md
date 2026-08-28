@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-08-28 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-28 10:00-14:02 CST（UTC `2026-08-28T02:00:45Z` 之后）。
+    - 10:00 / 11:01 / 12:00 / 13:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，deliver preview 却回答 `LPO 不是股票代码`、`LPO 与 AAOI：技术关联评估`、`关于你提问的 ATM 融资`、`LPO 与 CPO` 等旧直聊 / 行业问答。
+    - 10:30-13:00 CST `AI与科技持仓观察关键事件心跳提醒` 多次转为 `区块链结算与稳定币支付基础设施` 公开市场标的分析，不是执行原 AI / 科技持仓观察关键事件筛查。
+    - 14:00 CST `NVDA 关键事件心跳提醒` raw preview 又把任务理解成用户问 `NVDA 盘后 226?` 的直聊问题，并因 `heartbeat 输出不是结构化 JSON` 跳过发送。
+    - 同窗仍有 `HeartbeatDiag=217`、`run_start=56`、`run_finish=59`、`deliver=28`、`duplicate_suppressed=12`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-25 22:03 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-25 18:00-22:03 CST（UTC `2026-08-25T10:00:31Z` 之后）。

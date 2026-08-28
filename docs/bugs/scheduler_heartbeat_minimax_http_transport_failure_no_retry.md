@@ -7,6 +7,16 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-08-28 10:00-14:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-28T02:00:45Z` / 北京时间 `2026-08-28 10:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 本窗未见新的 MiniMax / OpenAI-compatible `HTTP 529` 或 `provider_http_error`；上一窗 09:00 / 10:00 CST 多个 heartbeat 因 HTTP 529 跳过发送的证据仍是最近活跃复发样本。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=59`、`deliver=28`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据没有扩大为全渠道不可用，也没有确认修复；状态保持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
+
 - **2026-08-28 06:01-10:02 CST 继续维持 `New`**：
   - `data/logs/hone-console-page-source.log`
     - 本轮按自动化上次运行点 `2026-08-27T22:01:44Z` / 北京时间 `2026-08-28 06:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
