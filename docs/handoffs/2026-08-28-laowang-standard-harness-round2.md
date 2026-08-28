@@ -145,6 +145,80 @@ when_to_use（权重 80）而不是 aliases（权重 110），让更具体的 sk
 6. 「今天各大投行研报摘要」3/10 是**数据源缺口**（没有研报库，只能靠搜索），提示词层解决不了，
    老王自己也写了「感觉要接入 IMA 那样的数据库」。
 
+## 追加：数据能力接入与可复用视角 skill
+
+同一份评测的第二轮跟进，回答的是「FMP 有没有评级数据」「能不能把研报和评级做成 skill」
+「多建立和复用各种 SKILL」。
+
+### 数据层：枚举挡住了已经实现的能力
+
+`data_fetch` 的 `data_type` 是硬枚举，只列 15 个值，而代码里实现了 36 个。评级家族全在缺口里：
+`ratings_snapshot` / `grades_consensus` / `price_target_consensus` / `price_target_summary` /
+`analyst_actions` / `analyst_estimates` 都可达、都不在 schema、`skills/` 引用次数为 **0**
+（`analyst_actions` 3 次，其余 0）。逐个打到线上 API 实测过返回，字段写进了工具描述：
+
+- `grades_consensus` → `strongBuy/buy/hold/sell/strongSell` 家数 + `consensus`
+- `price_target_consensus` → `targetHigh/targetLow/targetConsensus/targetMedian`
+- `price_target_summary` → 近一月/一季/一年/全期家数与均值 + `publishers`
+- `ratings_snapshot` → `rating`(A+~F) + `overallScore` + 六个分项 1–5，**是 provider 量化打分卡不是投行观点**
+- `analyst_actions` → `grades` 逐条动作 + `grades_news`/`price_target_news`（`newsTitle`/`newsURL`/
+  `gradingCompany`/`previousGrade→newGrade`/`priceWhenPosted`），**最接近研报的结构化源**
+
+新增 `price_history`：`historical-price-eod/dividend-adjusted`，按 `from`/`to` 返回除权除息调整后
+日线（`adjOpen/adjHigh/adjLow/adjClose/volume`），缺省最近一年。评测里「一年前投入 100 万到今天
+总收益」那条，Hone 凭空取了 9.48 港元买入价推出「总收益约 11.7 万」——有了真实序列才谈得上算。
+用调整后价而非原始收盘价：区间内一次拆股会让原始价算出的收益错得看不出来。
+`portfolio_management` 里「当前没有历史价格序列与回测工具」这句已不成立，拆成「能算的区间收益
+与逐笔复盘」和「仍需回测框架的策略绩效」两段。
+
+`earning-call-transcript` 正文实测是 `Restricted Endpoint`（当前订阅只给日期列表），
+限制写进了工具描述，避免 skill 承诺「管理层原话」。
+
+同时把新暴露的类型补进 `data_fetch_data_type_uses_security_target`——否则一次 `price_history`
+调用不会被记成覆盖了那只证券。
+
+### 五个可复用的分析视角 skill
+
+`analyst-coverage`（投行评级/目标价/研报）、`fundamentals`、`moat`、`scarcity-differentiation`、
+`first-principles`。估值**不新建**：`valuation-audit` 就是估值 skill。
+
+它们有两个入口：用户点名该视角时由路由命中；`stock_research` / `valuation-audit` /
+`sector-to-stock` / `etf-analysis` 需要展开某一维时用 `skill_tool` 拉起来——
+`stock_research` 里新增的「哪一维要展开时加载哪个 skill」对照表就是这个复用点。
+
+判断口径一律引用 `hari-invest` 框架 1/2，不重写定义；这批只写「怎么跑出来、产出什么格式」。
+几条代表性的可判定规则：护城河至少两项当轮数字且来自分型表不同两行；基本面用「遮数字自查」
+区分罗列与判断（把数字遮住后仍能看出公司处在什么状态才算判断）；稀缺度与差异化各给 1–5 整数分
+且每分挂一条当轮证据；第一性原理必须写成可代入数字的等式并含供给段。
+
+### 路由影响
+
+新增 5 个 skill 后仓库共 29 个，而每轮只注入前 5 个。因此这批的 alias 只放**点名该视角**的词
+（护城河/壁垒、稀缺/差异化、第一性原理/底层逻辑、投行/研报/评级、基本面），不放「分析」「怎么样」。
+按 131 条真实问题模拟：**原有 top-1 掉出前五的 0 条**，空提示率 28 → 27；视角问题各自命中：
+
+| 问句 | top-3 |
+| --- | --- |
+| 分析下 AAOI 的护城河 | moat / stock_research / company-thesis-ratings |
+| MU 的底层逻辑是什么 | first-principles |
+| 存储的稀缺性怎么样 | scarcity-differentiation / valuation-audit |
+| NVDA 投行给的目标价是多少 | analyst-coverage / valuation-audit |
+| 看看 TSLA 的基本面 | fundamentals / stock_research |
+| 帮我分析一下MU（对照） | stock_research（未被抢） |
+
+`colloquial_chinese_questions_surface_their_scenario_skill` 回归测试扩到 16 条，含这 5 条视角问句
+与「帮我分析一下MU」的对照。`cargo test -p hone-tools --lib` 200 passed / 5 failed，
+失败仍是既有的同 5 条 `skill_tool::tests::*` 漂移。
+
+### 这一部分的未尽事项
+
+- 仍然没有研报全文数据源。`analyst-coverage` 的做法是两层分开：第一层 `analyst_actions` 的结构化
+  记录（谁、何时、评级/目标价怎么变、当时股价、原文链接），第二层带绝对日期的 `web_search` 补论点
+  并标明是转述。「今天各大投行研报摘要」那条 3/10 能改善到什么程度，要看下一轮评测。
+- `web_search` 没有暴露 `include_domains`。Tavily 支持，但仓库当天刚加了「Tavily 兼容端点」配置，
+  兼容实现未必支持该字段，本轮没动；需要定向到 thefly/benzinga 这类站点时先用 query 里的机构名。
+- `key-executives` 端点实测可用（评测里有一条问「高管团队」），本轮没接，属可选。
+
 ## Next Entry Point
 
 - 同步到生产后，用同一份 131 条问题重跑路由回归（`route_sim.py`），确认线上 skills 与仓库一致。

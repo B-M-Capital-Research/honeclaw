@@ -1414,6 +1414,14 @@ mod tests {
             ("给我出一张饼图吧，看看各家占比", "chart_visualization"),
             ("看看现在自动化有哪些任务", "scheduled_task"),
             ("MRVL的画像", "company_portrait"),
+            // The reusable analysis lenses only earn a slot when the user names
+            // that lens; a plain "帮我分析一下MU" above must still reach
+            // stock_research with all of them installed.
+            ("分析下 AAOI 的护城河", "moat"),
+            ("MU 的底层逻辑是什么", "first-principles"),
+            ("存储的稀缺性怎么样", "scarcity-differentiation"),
+            ("NVDA 投行给的目标价是多少", "analyst-coverage"),
+            ("看看 TSLA 的基本面", "fundamentals"),
         ];
         for (question, expected) in cases {
             let hits =
