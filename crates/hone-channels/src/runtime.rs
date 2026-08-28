@@ -20,6 +20,8 @@ const RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE: &str =
     "当前执行额度已用尽，暂时无法继续处理。请稍后再试。";
 const RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE: &str =
     "当前本机执行环境暂时不可用，请稍后再试。";
+const PERSISTENT_MUTATION_USER_ERROR_MESSAGE: &str =
+    "这次涉及持仓、关注或提醒的修改未能可靠确认结果。请先查看当前状态，再决定是否重试。";
 const CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE: &str = "定时任务管理暂时不可用，请稍后再试。";
 
 /// 流式处理结果
@@ -932,6 +934,10 @@ fn sanitized_non_empty_user_visible(raw: Option<&str>) -> Option<String> {
 fn user_actionable_error_message(sanitized: &str, lowered: &str) -> Option<String> {
     quota_rejection_user_message(sanitized)
         .or_else(|| {
+            looks_persistent_mutation_error_lowered(lowered)
+                .then(|| PERSISTENT_MUTATION_USER_ERROR_MESSAGE.to_string())
+        })
+        .or_else(|| {
             looks_runner_usage_limit_error_lowered(lowered)
                 .then(|| RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string())
         })
@@ -977,6 +983,11 @@ fn looks_runner_resource_unavailable_error_lowered(lowered: &str) -> bool {
             || lowered.contains("failed to spawn")
             || lowered.contains("binary not found")
             || lowered.contains("not found near current executable"))
+}
+
+fn looks_persistent_mutation_error_lowered(lowered: &str) -> bool {
+    lowered.contains("agent_owned_finance_persistent_tool_error")
+        || lowered.contains("persistent_tool_failure:")
 }
 
 fn looks_runner_transport_disconnect_error_lowered(lowered: &str) -> bool {
@@ -2291,6 +2302,17 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_maps_persistent_mutation_failures() {
+        for raw in [
+            "agent_owned_finance_persistent_tool_error",
+            "persistent_tool_failure: no safe read-after-write reconciliation is available",
+        ] {
+            let err = user_visible_error_message(Some(raw));
+            assert_eq!(err, PERSISTENT_MUTATION_USER_ERROR_MESSAGE, "raw={raw}");
+        }
+    }
+
+    #[test]
     fn user_visible_error_message_hides_sensitive_error_details() {
         let err = user_visible_error_message(Some(
             "upstream failed OPENROUTER_API_KEY=sk-secret Authorization: Basic basic-secret",
@@ -2355,6 +2377,14 @@ mod tests {
             err.as_deref(),
             Some(RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE)
         );
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_persistent_mutation_failures_actionable() {
+        let err = user_visible_error_message_or_none(Some(
+            "persistent_tool_failure: read-after-write reconciliation failed",
+        ));
+        assert_eq!(err.as_deref(), Some(PERSISTENT_MUTATION_USER_ERROR_MESSAGE));
     }
 
     #[test]
