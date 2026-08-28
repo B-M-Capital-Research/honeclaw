@@ -1,7 +1,7 @@
 ---
 name: Stock Research
 description: Canonical Hone security-research skill covering company and ETF/fund analysis, valuation framing, and criteria-based screening
-when_to_use: Use when the user wants company or ETF/fund research, valuation framing, or a small security shortlist based on explicit criteria
+when_to_use: Use when the user wants company or ETF/fund research, valuation framing, or a small security shortlist based on explicit criteria。宽泛提问触发词：分析、研究、了解、看看、值不值
 user-invocable: true
 context: inline
 aliases:
@@ -11,6 +11,21 @@ aliases:
   - stock selection
   - OWGZ
   - OWXG
+  - 帮我分析
+  - 分析一下
+  - 分析下
+  - 详细分析
+  - 怎么看
+  - 值得买吗
+  - 投资机会
+  - 公司分析
+  - 个股分析
+  - 基本面分析
+  - 技术分析
+  - 技术能力
+  - 介绍一下
+  - 看下
+  - 增长空间
 allowed-tools:
   - data_fetch
   - web_search
@@ -115,6 +130,56 @@ Preserve the Agent-authored first-line data timestamp and quote basis, and separ
 ### Crypto Research Route
 
 Only classify crypto from exact-symbol structured market evidence such as `exchangeShortName=CRYPTO`; do not infer it from a `USD` suffix. A confirmed crypto asset uses quote and relevant news, not stock profile, company financials, an earnings calendar, or ETF holdings. Use nine substantive numbered sections: conclusion with verified current price; asset/network/use case; supply/tokenomics/concentration; adoption/liquidity/market structure; on-chain/network/ecosystem evidence; valuation framework and assumptions; Bull/Bear/Base; catalysts/regulation/risks/falsification; and an action with trigger conditions. Label absent on-chain, supply, or ecosystem evidence as not verified in the current turn.
+
+### 深度个股分析的收口纪律
+
+适用范围：走上面 Research Mode 第 3 条九段模板的深度个股问题（`帮我分析一下 X`、`X 怎么看`、`X 还有增长空间吗`、`X 值得现在建仓吗`、`X 和 Y 怎么样`）。行情速查、ETF/基金、加密、纯新闻和宏观问题不适用。
+
+四档区间（机会区 / 持有区 / 风险区 / 数据不足）、置信度分级、「只要证据足以区分就必须选边」、稀缺性与差异化的判断口径，都在 `hari-invest` 的「判断主干」和 `references/decision-rubric.md` 里；「首行之后第一段直接给结论」的顺序由运行时的 Hari Invest 框架规定；估值方法选择、对账表、三情景算式与反向估值在 `valuation-audit`。这些不在这里重复，需要时直接照那边的口径做。这一节只补那边没写的两件事：**结论必须落到算出来的价格区间**，以及**结论之前必须先点出胜负手**。
+
+#### 1. 先点胜负手，再展开
+
+在数据时间首行与「结论：」之后的第一段里，用一到两句写清楚：**这家公司当下哪一个变量的走向，直接决定这次判断对错**。九段的其余部分都围绕它取证——护城河、财务质量、估值、Bull/Bear 都要回答这个变量现在走到哪一步、还差什么才算兑现。
+
+写法是「这次判断的成败取决于 X；X 往 A 走则……，往 B 走则……」，不是「公司有 A、B、C 三块业务，面临 D、E 两个风险」。把业务板块、驱动因素、风险点平铺成并列清单，通篇不指出哪一个是决定性的，视为未完成——这是评测里多次出现的「逻辑顺序对，但没抓住核心」。
+
+评测里被点名漏掉的胜负手，作为标定用的真实例子：
+
+| 标的 | 胜负手 | 平铺式回答漏掉了什么 |
+|---|---|---|
+| 腾讯 | 传统互联网护城河极深，但 AI 落后、Capex 明显抬升——这才是估值被压低、股价下跌的原因 | 按基本面→护城河→财务→估值铺完，没说清低估值正是市场对「AI 落后 + Capex 抬升」的定价，也就找不到合理倍数 |
+| Credo / Lumentum / AAOI | 光模块与 AEC 现在都是产能问题（AAOI 另加高债务 + 高承诺），公司 earnings call 里就有 | 护城河与稀缺性只做了定性评价，没落到份额、毛利、积压订单和产能 |
+| 零跑 | 行业极卷、产业稀缺性差、公司差异化不强——这本身就是结论 | 只做了财报复盘和情景估值，没有把行业稀缺度与公司差异化接进持仓建议 |
+
+胜负手必须由本轮证据推出，不是从这张表里挑现成答案。表上没有的公司，自己按「哪一个变量一变、结论就得改」去定。
+
+#### 2. 结论必须给出算出来的价格区间
+
+深度个股分析的结论段必须同时出现三样东西：
+
+1. **四态之一 + 置信度**（口径见 `hari-invest`）；
+2. **一个由本轮数字推出的合理价值区间，带算式**——写成「下沿 = 分母 × 倍数 = $A，上沿 = 分母 × 倍数 = $B」。分母注明期间、口径（TTM / FY1E / FY2E、GAAP / Non-GAAP）和性质（历史 actual / 公司指引 / 一致预期 / 自设假设）；倍数注明来自哪里（公司历史中枢、可比公司、正常化利润对应的倍数）。算式格式与情景拆法沿用 `valuation-audit` 第四步，不另立一套；
+3. **当前价相对该区间的位置**——写成「现价 $P，位于区间约 X% 分位 / 低于下沿 Y% / 高于上沿 Z%」，用的价格必须是本轮 quote 的那一个（同一 as-of 基准只允许一个价格）。
+
+三者缺一，这篇就没有结论。「当前评级：持有区（中置信度）」后面接一串 TTM P/E、Forward P/E，只是分档标签加倍数罗列——评测里这样写的九篇个股分析被逐条判为「没有结论」。倍数是中间量，用户要的是把倍数乘完之后的价格，以及现价站在这个价格带的哪个位置。
+
+**输入不足时怎么写**：不要退回「无法判断」。显式写出缺的是哪一项（例如「缺 FY2 一致预期 EPS」「缺净债务，EV 口径算不出来」「未取得长协覆盖比例，正常化力度定不了」），再写出**补上后结论会怎么变**：「若 FY2E EPS 站上 X，按 18x 对应 $A，现价即进入机会区；低于 X 则维持持有区」。缺项 + 补齐后的分档走向，本身就是一个合格的结论。
+
+九段中的第 6 段只有一种方法能严格算出时，按 `valuation-audit` 的口径用那一种把区间算完并披露缺项。只给单点目标价不给区间，或给了区间却不说现价在哪，都算没收口。
+
+#### 3. Bull / Bear 要落到数字链
+
+第 7 段的 Bull 与 Bear 各自至少要落到「兑现／证伪后大致是多少产能 → 多少收入 → 多少估值」这条链上的**至少一环具体数字**，并说明它把第 2 条的价格区间推向哪一侧。
+
+示例（AAOI 增发那轮点评要的推演）：Bull——若 6 亿美元 ATM 全部投入产能扩张、且新增产能按公司披露的单位经济兑现，对应约 X 万只/月的 800G 出货、约 $Y 亿年化收入，按 Z 倍 PS 对应市值 $W，即区间上沿；Bear——若稀释后产能爬坡延后一年、债务成本继续上行，收入停在 $Y′ 亿，同一倍数下对应 $W′，即区间下沿甚至以下。
+
+两边都只写「AI 需求强劲、份额有望提升」对「竞争加剧、毛利承压」，通篇不带数字，视为未完成。某一环的数字确实拿不到时，写清楚缺的是哪个量（产能、单价/ASP、合约覆盖比例、客户订单、backlog），不要用形容词补位。
+
+#### 4. 「X 技术分析」默认指技术能力
+
+用户说「X 技术分析」「分析一下 X 的技术」时，默认理解为**技术能力 / 技术路线分析**，归入基本面来做：产品代际与路线图、良率与制程、专利与认证壁垒、客户验证进度、与竞品的技术代差、研发投入与产出效率。不要默认展开均线、支撑位、阻力位、量价形态这类 K 线走势分析。
+
+只有用户明确写了 K 线、走势、均线、支撑位、阻力位、技术面、形态、MACD/RSI 这类词，才做价格走势分析。两种理解都说得通而问题又很短时，按技术能力回答，并在结尾用一句话问是否也要看价格走势。
 
 ### Valuation Mode
 

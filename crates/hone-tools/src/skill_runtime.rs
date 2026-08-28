@@ -1378,4 +1378,51 @@ mod tests {
             .expect_err("should reject escape");
         assert!(error.contains("skill script"));
     }
+
+    /// The per-turn skill hint list is what points the model at a scenario
+    /// skill: `turn_builder` calls `search_for_stage` and shows the top five.
+    /// A 2026-08-28 review of a week of production questions found the hint
+    /// list empty for 53% of them — plain Chinese phrasings like
+    /// "帮我分析一下MU" or "给我出一张饼图" matched nothing, so the canonical
+    /// research skill never surfaced. Scoring keys on punctuation-delimited
+    /// 2-16 character fragments of a skill's own fields appearing inside the
+    /// question, which makes short colloquial aliases the working lever.
+    /// These are the real questions; keep them routed.
+    #[test]
+    fn colloquial_chinese_questions_surface_their_scenario_skill() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root");
+        let runtime = SkillRuntime::new(
+            repo_root.join("skills"),
+            repo_root.join("data/custom_skills"),
+            repo_root.clone(),
+        );
+        let cases = [
+            ("帮我分析一下MU", "stock_research"),
+            ("rklb怎么看", "stock_research"),
+            ("分析港股腾讯科技。", "stock_research"),
+            ("avgo现在是否被低估，超跌？", "valuation-audit"),
+            ("aaoi为什么突然大跌", "market_analysis"),
+            ("当前最适合建仓的美股", "sector-to-stock"),
+            ("黄金股票合适吧？推荐一些", "sector-to-stock"),
+            (
+                "你好，分析一下目前纳指100ETFQQQ是否适合建仓",
+                "etf-analysis",
+            ),
+            ("给我出一张饼图吧，看看各家占比", "chart_visualization"),
+            ("看看现在自动化有哪些任务", "scheduled_task"),
+            ("MRVL的画像", "company_portrait"),
+        ];
+        for (question, expected) in cases {
+            let hits =
+                runtime.search_for_stage(question, &[], 5, &SkillStageConstraints::default());
+            let ids = hits.iter().map(|s| s.id.as_str()).collect::<Vec<_>>();
+            assert!(
+                ids.contains(&expected),
+                "{question} 应命中 {expected}，实际提示列表为 {ids:?}"
+            );
+        }
+    }
 }

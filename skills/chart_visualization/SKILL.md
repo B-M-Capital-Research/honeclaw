@@ -1,13 +1,31 @@
 ---
 name: Chart Visualization
-description: Render research-style PNG charts for trends, comparisons, distributions, and scatter relationships when a visual materially improves the answer
-when_to_use: Use when the user asks for a chart, plot, visualization, trend line, bar chart, histogram, scatter plot, or when a numeric answer is easier to understand as a visual
+description: 把已有数字渲染成 PNG 图表（趋势/对比/结构占比/分布），当纯文字讲不清楚、或用户直接要图时使用；渲染器支持 line/area/bar/scatter/histogram/horizontal_bar，饼图用 horizontal_bar 顶替
+when_to_use: 用户直接要图时使用：饼图、占比图、结构图、柱状图、条形图、折线图、趋势图、分布图、散点图、图表、画图、画一张图、出一张图、出个图、做个图、做一张图、要图片、可视化、chart、plot、graph、pie chart；用户嫌上一轮只有纯文字、没有达到我的要求、要求把结论改画成图片时同样适用
 aliases:
   - chart visualization
   - chart
   - plot
   - visualize
   - trend chart
+  - 饼图
+  - 画图
+  - 做图
+  - 出图
+  - 做个图
+  - 出张图
+  - 占比图
+  - 可视化
+  - pie chart
+  - 图表
+  - 画一张图
+  - 柱状图
+  - 折线图
+  - 趋势图
+  - 分布图
+  - 散点图
+  - 出一张图
+  - 出个图
 allowed-tools:
   - skill_tool
 user-invocable: true

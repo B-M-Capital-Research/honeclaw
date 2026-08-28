@@ -8,6 +8,7 @@ aliases:
   - company portrait
   - 公司画像
   - 长期画像
+  - 画像
 ---
 
 ## Company Portrait

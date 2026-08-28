@@ -1,7 +1,7 @@
 ---
 name: Notification Preferences
 description: 管理当前用户的市场事件推送偏好,把中文自然语言映射到 notification_prefs 工具
-when_to_use: 当用户想调整"要收什么 / 不要收什么"类的推送开关时(静音、只看重要、不要新闻、只要财报等)
+when_to_use: 当用户想调整"要收什么 / 不要收什么"类的推送开关时(静音、只看重要、不要新闻、只要财报等)。触发词：推送、提醒、通知
 user-invocable: true
 context: inline
 allowed-tools:
