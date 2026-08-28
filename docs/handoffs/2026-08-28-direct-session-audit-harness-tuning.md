@@ -129,13 +129,44 @@
   （`crates/hone-tools/src/cron_job_tool.rs:423`）确认 `confirm != "yes"` 即返回 `success:false`；
   `portfolio` action enum（`portfolio_tool.rs:44`）确认无 `get`；`cloud_cron_jobs` 单用户最多 18 个任务。
 
+## Deployment（2026-08-28，已上线）
+
+修订 `a43f99c8dce9cefb4d439eb715e5b9224b0b8793`。
+
+**harness 层**（skills + soul.md，不随镜像发布，按 runbook 单独 stage）：本地从该修订
+`git archive` 出 `skills/` + `soul.md`，生成 53 条 SHA-256 manifest，上传后在主机
+`/srv/honeclaw/.harness-stage-<rev>` 校验（manifest 通过、无符号链接），逐目录与线上比对哈希，
+只替换有差异的 11 个 skill 与 `soul.md`，先 `cp -a` 备份到
+`/srv/honeclaw/skills/backups/pre-a43f99c8-20260828T104304Z/` 再 `mv -Tf` 原子换入。
+替换的是：`chart_visualization`、`company-thesis-ratings`(新增)、`hari-invest`(新增)、
+`image_understanding`、`market_analysis`、`notification_preferences`、`options-analysis`、
+`portfolio_management`、`scheduled_task`、`stock_research`、`valuation-audit`。
+无 LIVE-ONLY skill 被动到。
+
+**镜像层**：Actions `runtime-image.yml` 出 `a43f99c8…`，主机 `crane digest` 得
+`sha256:24c9fa1b423b289567a7afedb5bdd6f5781b581076e87044ee3769c6b91cb1d4`，
+`stage_ghcr_runtime.sh` 校验通过后 `previous` → 1e7cfc15、`current` → a43f99c8 原子切换，
+`systemctl restart hone-web`。
+
+**上线后核验**：
+- `/api/skills/hari-invest` 与 `/api/skills/company-thesis-ratings` 由 `{"error":"skill not found"}`
+  变为正常返回（hari-invest markdown 2235 字符）；系统 skill 从 20 增至 22，总数 33。
+- `/srv/honeclaw/skills/stock_research/SKILL.md` 含 `Evidence Floor`；
+  `scheduled_task` 含两处 `confirm="yes"`，失实的「最多 5 个任务」已消失。
+- `/api/meta`：`cloud_mode=cloud`、PG connected、OSS connected、`local_durable_dependency_count=0`。
+- `/api/runtime/active-chat-runs` 切换前两次读、切换前一次读、重启后一次读均为 `{"count":0}`。
+- 公开端 `127.0.0.1:8088/api/public/auth/me` → `401`（未认证预期值）。
+- 运行中可执行文件解析到 `…/a43f99c8…-ghcr-runtime/bin/hone-cli`，`RELEASE_METADATA.git_sha` 一致，
+  二进制内含「数据时间：北京时间」。
+- release 保留 current + previous + 一个备用；根盘剩余 4.9G（≥ 2GiB 门槛）。
+- `hone-channel@feishu` 仍为 disabled/inactive —— 与本次改动无关，是既有运营状态。
+
 ## Risks / Follow-ups
 
-1. **生产 skill 与 soul.md 未同步（最高优先级）**。生产实际加载
-   `HONE_SKILLS_DIR=/srv/honeclaw/skills` 与 `/srv/honeclaw/soul.md`（2026-08-03），
-   与仓库 `origin/main` 相比缺 `hari-invest`、`company-thesis-ratings`，
-   `notification_preferences` 停留在没有 `get_overview` / `update_delivery_controls` 的旧版，
-   `soul.md` 落后约 74 行改动。本次所有 SKILL 改动只有同步到生产后才生效。
+1. 主机 `/root/.docker/config.json` 常驻着 GHCR 凭据（0600 root，2026-08-05 起），
+   本次 `crane digest` / stage 依赖它。`docs/runbooks/backend-deployment.md` 明确要求
+   凭据只用临时 `DOCKER_CONFIG` 目录、用完即删、不得留在主机上。这是既有偏差，
+   建议改为一次性 `read:packages` 凭据并在部署后清理。
 2. `soul.md` 已 3 万字符 + `DEFAULT_FINANCE_DOMAIN_POLICY` 二十余条 bullet 每轮全量注入，
    规则过载本身是 BURIED 类缺陷的成因。后续新增纪律优先下沉到场景 skill 与工具描述。
 3. 生产自定义 skill（`/srv/honeclaw/data/custom_skills/`，11 个）不在仓库版本管理内，
@@ -147,7 +178,10 @@
 
 ## Next Entry Point
 
-- 同步生产 harness：把 `skills/` 与 `soul.md` 按 `docs/runbooks/backend-deployment.md` 推到
-  `/srv/honeclaw`，重点确认 `hari-invest`、`company-thesis-ratings`、`notification_preferences`。
-- 之后重跑本审计的确定性指标脚本（会话取自 `cloud_sessions`，工具证据取自 journald `runner.tool`），
-  观察「无取证工具却声称已取行情」是否从 15.1% 下降。
+- 上线后回归：等 24–48 小时真实流量，按同一口径重跑确定性指标
+  （会话取自 `cloud_sessions`，工具证据取自 journald `runner.tool`，
+  记得剔除 `[定时任务触发]` / `【Invoked Skill Context】` 伪 user 消息）。
+  三条要盯的曲线：整轮零取证工具（基线 26.3%）、无取证工具却声称已取行情（基线 15.1%）、
+  首行出现内部时区占位符（基线 43%）。
+- 如需回滚：`ln -sfn /opt/hone/previous /opt/hone/current.new && mv -Tf …` 切回 1e7cfc15，
+  harness 层从 `/srv/honeclaw/skills/backups/pre-a43f99c8-20260828T104304Z/` 还原。
