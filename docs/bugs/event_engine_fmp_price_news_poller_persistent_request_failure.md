@@ -34,6 +34,13 @@
 
 ## 证据来源
 
+- `data/runtime/task_runs.2026-08-28.jsonl`
+  - 2026-08-29 06:01 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
+  - 2026-08-29 02:00-06:01 CST 同窗继续出现 FMP 请求发送失败；task runs 记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=9`，同时 `poller.fmp.price ok=15`、`poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路和部分 quote batch 仍在退化。
+  - `data/logs/hone-console-page-source.log` 同窗可见 FMP 请求 / `no prev_close` 相关信号 8861 / 1248 条，主要来自 `poller.fmp.price` quote batch 失败、`poller.fmp.news` stock_news 失败与 extended-hours prev_close 批量失败；FMP URL 仍写成 `apikey=<redacted>`，未观察到用户可见 FMP 原始错误外泄。
+  - 近窗非文档提交 `50d42fe6 fix: sanitize persistent mutation user errors` 与 FMP poller 无关，未见 live runtime 重启 / revision 切换或 task_runs 已加载 2026-08-23 `2d9ad5d5 fix(event-engine): retry transient fmp poller transport errors` 的确认信号，因此只作为待部署复核样本，不把代码级 `Fixed` 回退为 `New`。
+  - 同窗仍有 heartbeat `run_start=63`、`run_finish=63`、`deliver=36`，说明 scheduler 其它链路仍在推进。影响集中在新闻事件增量、digest 候选、监控触发新鲜度和部分行情刷新，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - `data/runtime/task_runs.2026-08-25.jsonl` / `data/runtime/task_runs.2026-08-26.jsonl` / `data/runtime/task_runs.2026-08-27.jsonl` / `data/runtime/task_runs.2026-08-28.jsonl`
   - 2026-08-29 02:02 CST 运行态待部署复核，状态继续保持代码级 `Fixed/P2`。
   - 2026-08-28 22:01-2026-08-29 02:01 CST 同窗继续出现 FMP 请求发送失败；`data/runtime/task_runs.2026-08-28.jsonl` 从 UTC `2026-08-28T14:01:47Z` 后记录 `poller.fmp.news failed=8`、`poller.fmp.price failed=16`，同时 `poller.fmp.extended_hours ok=8`，说明 event-engine runtime 未整体停摆，但 news 增量链路和 price quote batch 刷新仍在退化。
