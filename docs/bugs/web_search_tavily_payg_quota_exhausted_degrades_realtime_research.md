@@ -19,6 +19,10 @@
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 2026-08-29 02:02 CST 巡检窗口内，Tavily / `web_search` 相关信号 114 条，其中 pay-as-you-go limit 25 条，`tool_execute_error name=web_search` 25 条。
+  - 代表样本包括 UTC `2026-08-28T14:30:27Z`、`2026-08-28T15:00:28Z`、`2026-08-28T18:00:37Z` 附近多次 `web_search` 因 Tavily pay-as-you-go limit 失败；同轮继续出现 DataFetch / web_search 预算或速率限制口径。
+  - 同窗 heartbeat 仍有 `run_start=57`、`run_finish=57`、`deliver=37`、`duplicate_suppressed=9`，说明不是全局调度停摆；但多轮任务继续在 `web_search` 不可用和工具预算受限后，用旧 quote、旧上下文或“工具调用上限 / 数据未核验”口径收口。
+  - 本窗未见错投、敏感凭据泄露或全渠道不可用；维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
   - 2026-08-28 18:01-22:02 CST 巡检窗口内，Tavily / `web_search` 相关信号 157 条，其中 pay-as-you-go limit 32 条，`tool_execute_error name=web_search` 32 条。
   - 代表样本包括 UTC `2026-08-28T10:30:13Z`、`2026-08-28T11:30:14Z`、`2026-08-28T13:30:40Z` 附近多次 `web_search` 因 Tavily pay-as-you-go limit 失败；同轮继续出现 DataFetch / web_search 预算或速率限制口径。
   - 同窗 heartbeat 仍有 `run_start=57`、`run_finish=58`、`deliver=31`、`duplicate_suppressed=18`，说明不是全局调度停摆；但多轮任务继续在 `web_search` 不可用和工具预算受限后，用旧 quote、旧上下文或“工具调用上限 / DataFetch quote 接口触发账户级速率限制”口径收口。

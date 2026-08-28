@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-28 22:01-2026-08-29 02:01 CST。
+  - 同窗 source log 统计 `HeartbeatDiag=218`、`run_start=57`、`run_finish=57`、`deliver=37`、`duplicate_suppressed=9`，但仍有 `execution_failed=3`；代表样本包括 22:01-02:01 CST 多个 Web heartbeat 在工具预算、Tavily 不可用或输出结构化契约不稳定后，进入自然语言触发、结构化 noop、suppressed 或执行失败分支。
+  - 同窗 parse 分布为 `PlainTextTriggered=72`、`JsonNoop=12`、`PlainTextNoop=3`、`PlainTextSuppressed=3`、`JsonTriggered=3`，说明 heartbeat 仍在自然语言触发、结构化 noop、suppressed 和协议载荷之间漂移。
+  - 判断：该样本仍属于 heartbeat required-evidence / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-28 18:01-22:02 CST。
   - 同窗 source log 统计 `HeartbeatDiag=223`、`run_start=57`、`run_finish=58`、`deliver=31`、`duplicate_suppressed=18`，但仍有 `execution_failed=10` 与 `runner_error=2`；代表样本包括 18:30-22:00 CST 多个 Web heartbeat 因 `heartbeat 输出不是结构化 JSON`、`JsonUnknownStatus` 或结构化契约失败后跳过发送，覆盖 `持仓财报与重大新闻心跳提醒`、`光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓重大事件心跳提醒` 等。
   - 同窗 parse 分布为 `PlainTextTriggered=62`、`JsonNoop=13`、`PlainTextSuppressed=5`、`PlainTextNoop=3`、`JsonTriggered=3`、`JsonUnknownStatus=2`，说明 heartbeat 仍在自然语言触发、结构化 noop、suppressed、未知状态和非结构化失败之间漂移。
