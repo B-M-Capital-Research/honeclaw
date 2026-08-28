@@ -8,7 +8,7 @@
 - 生产状态：未部署、未推送、未修改生产配置。
 - 原 `oldwang` 脏工作树保持原状；本任务只把相关蒸馏成果按文件移入独立工作树。
 
-代码、360 轮离线验证、本地数据预取和 CI-safe 门禁已完成。唯一未闭环项是 Gemini 3.7 Flash 的真实模型调用：当前代理凭据没有相应模型组权限，返回 HTTP 403。
+代码、491 轮可追踪验证、本地数据预取和 CI-safe 门禁已完成。唯一未闭环项是 Gemini 3.7 Flash 的真实模型调用与 131 条问题 live 重答：当前代理没有 Gemini 通道。
 
 ## 已落地
 
@@ -31,39 +31,43 @@
    - 手工探针 `tests/regression/manual/test_gemini_flash_proxy.sh` 同时验证文本和真实图片，且不会打印密钥。
    - 操作说明见 `docs/runbooks/gemini-flash-proxy-and-image-understanding.md`。
 
-## 360 轮台账
+## 491 轮台账
 
 测试：
 
 ```text
 cargo test -p hone-channels --lib sndk_360_round_validation_ledger -- --nocapture
+HONE_RESCORED_ROWS_JSON=/absolute/path/rescored_rows.json \
+  cargo test -p hone-channels --lib hone_131_target_samples_extend_ledger_to_491_rounds -- --ignored --nocapture
 ```
 
 输出：
 
 ```text
 target/sndk-validation/sndk-360-round-ledger.ndjson
+target/sndk-validation/hone-491-round-validation-ledger.ndjson
 ```
 
 - 1–240：八类评分失败家族，每类 30 个输入变形。
 - 241–320：视觉+OCR、仅视觉、仅 OCR、无提取四种状态，每类 20 轮。
 - 321–360：完整 SNDK 深度回答通过本地确定性契约管线。
-- 每行包含 `round`、`category`、`input`、`expected`、`result`；不得把断言数量称为模型对话次数。
+- 361–491：评分表全部 131 条真实问题；只读取问题、旧回答、问题说明和新评分，不读取或写入用户身份字段。
+- 真实样本每行分别记录 `contract_coverage` 和 `live_model_validation`。当前前者全部通过，后者全部为 `pending_gemini_channel`；不得把断言数量称为模型对话次数。
 
 ## 验证结果
 
-- `hone-channels`：808 通过、1 忽略。
+- `hone-channels`：808 通过、2 忽略；其中评分表 131 样本测试需要显式路径，已单独执行通过。
 - `hone-core`：155 通过。
 - `hone-llm`：36 通过。
 - `hone-tools`：192 通过、1 忽略。
-- 合计：1191 通过、2 忽略、0 失败。
+- 默认相关库合计：1191 通过、3 忽略、0 失败；额外 131 样本手工测试 1 通过。
 - 财经自动化契约：49/49 通过。
 - 全部 CI-safe 脚本通过。全量串行运行在后段因磁盘耗尽中断；删除可再生 `target` 后，剩余脚本分别继续执行并全部通过。这不是测试断言失败。
 - 本地 HONE 真实探针成功预取 SNDK 身份、行情、财务和 SEC 证据；模型流随后被代理以 HTTP 403 拒绝，因此没有最终自然语言回答。测试后已删除临时凭据配置。
 
 ## 外部阻塞与继续步骤
 
-需要一组确实有 Gemini 3.7 Flash 权限的 OpenAI-compatible endpoint、API key 和精确模型 ID。拿到后：
+Google 官方已经确认精确稳定模型 ID 为 `gemini-3.7-flash`，官方 OpenAI-compatible 地址为 `https://generativelanguage.googleapis.com/v1beta/openai`。现在只需要二选一：有该模型权限的反代 endpoint/API key，或 Google Gemini API key。拿到后：
 
 1. 只在本机私有 `config.yaml` 中填写 provider/profile，不提交密钥。
 2. 设置 `HONE_GEMINI_FLASH_BASE_URL`、`HONE_GEMINI_FLASH_API_KEY`，必要时设置 `HONE_GEMINI_FLASH_MODEL`，运行手工探针。
@@ -71,4 +75,4 @@ target/sndk-validation/sndk-360-round-ledger.ndjson
 4. 用真实图片验证视觉描述与 OCR 顺序，再用本地 HONE 重跑 SNDK 深度问题。
 5. 检查最终回答满足七段因果链、当前来源、情景估值与反向估值，然后才可将计划标记完成并归档。
 
-已测试的 `gemini-3.7-flash` 及常见命名变体在现有模型组均返回 403。不要通过改名或吞掉错误把它记录为成功，也不要把密钥写进仓库、日志或交接文件。
+本机进一步核验了全部可复用入口：Luna 令牌对目录和目标模型返回 403；Claude 令牌目录只有八个 Claude 模型，对目标模型返回 503 无可用通道；Bob 登录控制台当前 31 个模型中没有 Gemini，本机也没有 Gemini CLI、Gemini API key 或监听中的 Gemini 代理。不要继续猜测模型别名，也不要通过吞掉错误把它记录为成功；密钥不得写进仓库、日志或交接文件。

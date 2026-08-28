@@ -414,8 +414,11 @@ llm:
     max_retries: 3
     max_tokens: 32768
   providers:
-    # Optional OpenAI-compatible proxy for Gemini Flash. The exact model id and
-    # credential must be verified against the proxy account before enabling.
+    # Optional OpenAI-compatible endpoint for Gemini Flash. Google documents the
+    # stable model id as gemini-3.7-flash and its compatible base URL as
+    # https://generativelanguage.googleapis.com/v1beta/openai. A local or
+    # third-party proxy may be used instead, but its account must expose that
+    # exact model and pass both the text and image probes before enabling.
     gemini_flash_proxy:
       kind: openai_compatible
       base_url: ""

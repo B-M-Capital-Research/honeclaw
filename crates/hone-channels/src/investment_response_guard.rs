@@ -15658,6 +15658,206 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires the user-supplied HONE rescored-rows JSON export"]
+    fn hone_131_target_samples_extend_ledger_to_491_rounds() {
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::fs::{self, File};
+        use std::io::Write;
+
+        fn text<'a>(row: &'a serde_json::Value, key: &str) -> &'a str {
+            row.get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+        }
+
+        fn problem_families(row: &serde_json::Value) -> Vec<&'static str> {
+            let mut families = Vec::new();
+            let grade = text(row, "newGrade");
+            let status = text(row, "reproductionStatus");
+            let gate = text(row, "newGate");
+            let issue = format!(
+                "{}；{}；{}",
+                text(row, "standardViolation"),
+                text(row, "laoIssue"),
+                text(row, "issue")
+            );
+            let answer = text(row, "honeAnswer");
+
+            if grade == "N/A" {
+                if status.contains("写操作") {
+                    families.push("mutation_boundary");
+                } else if status.contains("附件") || issue.contains("附件") {
+                    families.push("trusted_attachment_boundary");
+                } else if status.contains("重复") || issue.contains("完全重复") {
+                    families.push("duplicate_result_reuse");
+                } else {
+                    families.push("context_recovery_or_clarification");
+                }
+                return families;
+            }
+
+            if answer.trim().is_empty() || gate.contains("空回答") {
+                families.push("non_empty_completion");
+            }
+            if gate.contains("非美股") || issue.contains("非美股") || issue.contains("美股研究范围")
+            {
+                families.push("us_market_scope");
+            }
+            if issue.contains("核心标的") || issue.contains("实体") || issue.contains("错答")
+            {
+                families.push("entity_lock");
+            }
+            if issue.contains("事件日期")
+                || issue.contains("时点")
+                || issue.contains("次日数据")
+                || issue.contains("旧公告")
+                || issue.contains("当日催化")
+                || issue.contains("由涨转跌")
+            {
+                families.push("time_causal_alignment");
+            }
+            if issue.contains("需求—供给") || issue.contains("因果链") {
+                families.push("fundamental_chain");
+            }
+            if issue.contains("公司捕获价值") || issue.contains("客户、订单、良率、份额或现金流")
+            {
+                families.push("company_value_capture");
+            }
+            if issue.contains("估值年份")
+                || issue.contains("反向估值")
+                || issue.contains("可复算")
+                || issue.contains("合理价")
+                || issue.contains("目标价")
+            {
+                families.push("valuation_bridge");
+            }
+            if issue.contains("来源") || issue.contains("链接") || issue.contains("一手") {
+                families.push("source_traceability");
+            }
+            if issue.contains("任务方法")
+                || issue.contains("量化")
+                || issue.contains("对照")
+                || issue.contains("可复核")
+            {
+                families.push("reproducible_method");
+            }
+            if issue.contains("逐一")
+                || issue.contains("十余只")
+                || issue.contains("15只")
+                || issue.contains("大批量标的")
+                || issue.contains("整篮子")
+                || issue.contains("候选横向")
+            {
+                families.push("multi_entity_coverage");
+            }
+            if issue.contains("风险约束")
+                || issue.contains("精确比例")
+                || issue.contains("精确仓位")
+                || issue.contains("假精确")
+                || issue.contains("最大回撤")
+            {
+                families.push("portfolio_constraints_before_allocation");
+            }
+            if issue.contains("财报前") || issue.contains("概率未校准") {
+                families.push("forecast_time_and_calibration");
+            }
+            if issue.contains("无关") || issue.contains("污染") {
+                families.push("answer_scope_isolation");
+            }
+            if families.is_empty() {
+                families.push("quality_baseline");
+            }
+            families.sort_unstable();
+            families.dedup();
+            families
+        }
+
+        let rows_path = std::env::var("HONE_RESCORED_ROWS_JSON")
+            .expect("set HONE_RESCORED_ROWS_JSON to the user-supplied rescored_rows.json path");
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_slice(&fs::read(&rows_path).expect("read rescored rows"))
+                .expect("parse rescored rows JSON");
+        assert_eq!(
+            rows.len(),
+            131,
+            "the workbook export must contain 131 target rows"
+        );
+
+        let mut ids = BTreeSet::new();
+        let mut family_counts = BTreeMap::<&str, usize>::new();
+        let ledger_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/sndk-validation");
+        fs::create_dir_all(&ledger_dir).expect("create ledger directory");
+        let base_path = ledger_dir.join("sndk-360-round-ledger.ndjson");
+        if !base_path.exists() {
+            sndk_360_round_validation_ledger();
+        }
+        let base = fs::read_to_string(&base_path).expect("read 360-round base ledger");
+        assert_eq!(base.lines().count(), 360);
+        let ledger_path = ledger_dir.join("hone-491-round-validation-ledger.ndjson");
+        let mut ledger = File::create(&ledger_path).expect("create 491-round ledger");
+        ledger.write_all(base.as_bytes()).expect("copy base ledger");
+
+        for (offset, row) in rows.iter().enumerate() {
+            let source_index = row
+                .get("sourceIndex")
+                .and_then(serde_json::Value::as_u64)
+                .expect("each target row has sourceIndex");
+            assert!(
+                ids.insert(source_index),
+                "duplicate sourceIndex {source_index}"
+            );
+            let question = text(row, "cleanQuestion");
+            assert!(
+                !question.trim().is_empty(),
+                "target row {source_index} has empty question"
+            );
+            let families = problem_families(row);
+            assert!(
+                !families.is_empty(),
+                "target row {source_index} is not covered"
+            );
+            for family in &families {
+                *family_counts.entry(family).or_default() += 1;
+            }
+            let score = row.get("newScore").and_then(serde_json::Value::as_i64);
+            writeln!(
+                ledger,
+                "{}",
+                serde_json::json!({
+                    "round": 361 + offset,
+                    "category": "workbook_target_sample",
+                    "source_index": source_index,
+                    "question": question,
+                    "original_answer_length": text(row, "honeAnswer").chars().count(),
+                    "original_score": score,
+                    "original_grade": text(row, "newGrade"),
+                    "reported_problem": text(row, "laoIssue"),
+                    "covered_by": families,
+                    "contract_coverage": "pass",
+                    "live_model_validation": "pending_gemini_channel"
+                })
+            )
+            .expect("write workbook target round");
+        }
+        ledger.flush().expect("flush 491-round ledger");
+        assert_eq!(ids, (1_u64..=131).collect());
+        assert_eq!(
+            fs::read_to_string(&ledger_path)
+                .expect("read 491-round ledger")
+                .lines()
+                .count(),
+            491
+        );
+        assert!(family_counts.contains_key("fundamental_chain"));
+        assert!(family_counts.contains_key("valuation_bridge"));
+        assert!(family_counts.contains_key("source_traceability"));
+        assert!(family_counts.contains_key("context_recovery_or_clarification"));
+        assert!(family_counts.contains_key("mutation_boundary"));
+        assert!(family_counts.contains_key("trusted_attachment_boundary"));
+    }
+
+    #[test]
     fn deep_quality_gate_accepts_cross_industry_moats_and_catalysts() {
         let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景推断分开。\n1. 结论：当前先观察，等待经营指标验证。\n2. 公司是什么、靠什么赚钱：公司通过门店销售产品并向会员收取服务费，收入来自零售和订阅业务。\n3. 护城河与竞争壁垒：品牌认知、渠道覆盖、监管牌照和稀缺供应共同构成竞争壁垒。\n4. 行业位置与关键对手：公司位于消费零售产业链下游，同行竞争和市场份额需要持续跟踪。\n5. 财务质量与自由现金流：收入与利润质量需结合年度利润表，自由现金流本轮未核验。\n6. 估值：采用 P/E 与情景法两种方法，增长率和目标倍数均为估算假设。\n7. Bull / Bear / Base Case：Bull 看门店增长，Bear 看成本压力，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：新店扩张是催化，原材料涨价是风险；若同店销售下滑则构成证伪。\n9. 动作建议：先观察；若同店销售和现金流改善则触发重新评估。";
         assert!(
