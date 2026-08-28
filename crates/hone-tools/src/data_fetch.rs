@@ -81,6 +81,17 @@ pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
             | "transcript"
             | "sec_filings"
             | "analyst_actions"
+            | "analyst_estimates"
+            | "grades_consensus"
+            | "ratings_snapshot"
+            | "price_target_consensus"
+            | "price_target_summary"
+            | "price_history"
+            | "financial_growth"
+            | "income_annual"
+            | "income_quarter"
+            | "balance_sheet_quarter"
+            | "cash_flow_quarter"
     )
 }
 
@@ -502,6 +513,32 @@ impl DataFetchTool {
                         from.format("%Y-%m-%d"),
                         today.format("%Y-%m-%d"),
                         if limit == 0 { 20 } else { limit }
+                    )),
+                )]
+            }
+            // Dividend- and split-adjusted daily closes. Return questions
+            // ("一年前投入 100 万现在多少") and factor replays need a real
+            // series; without one the model was inventing an entry price.
+            // Adjusted, not raw: a split or dividend inside the window
+            // silently breaks any return computed from raw closes.
+            "price_history" => {
+                let today = hone_core::local_now().date_naive();
+                let parse = |key: &str| {
+                    args.get(key)
+                        .and_then(Value::as_str)
+                        .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").ok())
+                };
+                let to = parse("to").unwrap_or(today);
+                let from = parse("from").unwrap_or_else(|| to - Duration::days(365));
+                if from > to {
+                    return None;
+                }
+                vec![(
+                    "price_history",
+                    s(&format!(
+                        "historical-price-eod/dividend-adjusted?symbol={symbol}&from={}&to={}",
+                        from.format("%Y-%m-%d"),
+                        to.format("%Y-%m-%d")
                     )),
                 )]
             }
@@ -2365,7 +2402,14 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）、earnings_status（财报发布状态：服务端按 provider 日历算好某证券最新已发布财报日与下一次财报日，hone_reporting_status_note 给出“该季度是否已发布”结论；引用任何季度财报数字前、或做财报前瞻/分析前，先用它对齐发布状态，未发布季度的数字只能标注为指引/预期/假设）。\n\n**本工具的输出怎么写给用户看**：\n1. 工具名、data_type、字段名一律不出现在回答里——`data_fetch`/`DataFetch`、provider、FMP、quote、snapshot、profile、extended_hours、financials、entity_route、`hone_*` 都是内部词。说数据缺口只用业务语言：「这只港股的实时报价本轮没取到」，不要说「行情接口未稳定返回」，也不要向用户解释本轮调没调工具、为什么不调。\n2. 时段标签要有 bar 撑着：写「盘前」「盘后」价格或涨跌幅，本轮必须有该 symbol 的 extended_hours 返回；只有 quote/snapshot 时一律写成「常规时段收盘价」，不要写成「现价」或配盘后涨跌。涨跌幅逐字采用该 quote 的 `hone_change_basis.label`，同一行里的价格必须与该 label 同一时段。\n3. 倍数要写清分子分母：报任何 PE/PS/EV 倍数都要同时给出分母口径（TTM GAAP 稀释 / 调整后 / FY1E）与数值，并满足 市值 ÷ 分母 = 所报倍数；snapshot/profile 的 `pe` 与 valuation 的 `peRatioTTM` 口径不同，不得互相替代。引用 `hone_forward` / `hone_ttm` / `hone_latest_quarter` 时保留该字段本来的科目名（营收就是营收，不要写成净利润），并写出预期窗口的起止财季——窗口不是未来 12 个月就不能叫「未来一年」。\n4. 不要用关联公司顶替：用户点名的标的必须由本轮 search 解析出唯一 symbol 并取到同代码 quote 才能报它的行情。只取到母公司、被分拆方或同集团公司的行情时，写「本轮未取到 <用户所问标的> 的行情」，不得用关联公司的价格代答，也不得断言该标的没有独立行情。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）、earnings_status（财报发布状态：服务端按 provider 日历算好某证券最新已发布财报日与下一次财报日，hone_reporting_status_note 给出“该季度是否已发布”结论；引用任何季度财报数字前、或做财报前瞻/分析前，先用它对齐发布状态，未发布季度的数字只能标注为指引/预期/假设）。\n\n**本工具的输出怎么写给用户看**：\n1. 工具名、data_type、字段名一律不出现在回答里——`data_fetch`/`DataFetch`、provider、FMP、quote、snapshot、profile、extended_hours、financials、entity_route、`hone_*` 都是内部词。说数据缺口只用业务语言：「这只港股的实时报价本轮没取到」，不要说「行情接口未稳定返回」，也不要向用户解释本轮调没调工具、为什么不调。\n2. 时段标签要有 bar 撑着：写「盘前」「盘后」价格或涨跌幅，本轮必须有该 symbol 的 extended_hours 返回；只有 quote/snapshot 时一律写成「常规时段收盘价」，不要写成「现价」或配盘后涨跌。涨跌幅逐字采用该 quote 的 `hone_change_basis.label`，同一行里的价格必须与该 label 同一时段。\n3. 倍数要写清分子分母：报任何 PE/PS/EV 倍数都要同时给出分母口径（TTM GAAP 稀释 / 调整后 / FY1E）与数值，并满足 市值 ÷ 分母 = 所报倍数；snapshot/profile 的 `pe` 与 valuation 的 `peRatioTTM` 口径不同，不得互相替代。引用 `hone_forward` / `hone_ttm` / `hone_latest_quarter` 时保留该字段本来的科目名（营收就是营收，不要写成净利润），并写出预期窗口的起止财季——窗口不是未来 12 个月就不能叫「未来一年」。\n4. 不要用关联公司顶替：用户点名的标的必须由本轮 search 解析出唯一 symbol 并取到同代码 quote 才能报它的行情。只取到母公司、被分拆方或同集团公司的行情时，写「本轮未取到 <用户所问标的> 的行情」，不得用关联公司的价格代答，也不得断言该标的没有独立行情。\n\n**分析师评级与目标价家族**（这些类型一直可用，只是过去没写出来）：\n\
+- `ratings_snapshot`：provider 打分卡，字段 `rating`（A+~F 字母级）、`overallScore` 与 `discountedCashFlowScore` / `returnOnEquityScore` / `returnOnAssetsScore` / `debtToEquityScore` / `priceToEarningsScore` / `priceToBookScore`（各 1-5）。它是量化打分不是投行观点，引用时要说清这一点，别写成「机构评级」。\n\
+- `grades_consensus`：`strongBuy` / `buy` / `hold` / `sell` / `strongSell` 家数与 `consensus` 结论，用来讲卖方分布，而不是只说「一致看多」。\n\
+- `price_target_consensus`：`targetHigh` / `targetLow` / `targetConsensus` / `targetMedian`。给目标价必须带这四个中的区间，只报一个中枢等于丢掉分歧。\n\
+- `price_target_summary`：`lastMonthCount` / `lastMonthAvgPriceTarget` 及 quarter / year / allTime 同族字段，还有 `publishers`。近一月均值与近一年均值的差就是目标价的迁移方向，比单一数字有用。\n\
+- `analyst_actions`：三块合一——`grades`（`date` / `gradingCompany` / `previousGrade` / `newGrade` / `action`）、`grades_news` 与 `price_target_news`（`publishedDate` / `newsTitle` / `newsURL` / `newsPublisher` / `gradingCompany` / `newGrade` / `previousGrade` / `priceWhenPosted`）。**这是最接近「投行研报」的结构化来源**：谁、什么时候、把评级或目标价从多少改到多少、当时股价多少、原文链接在哪。\n\
+- `analyst_estimates`：未来若干季度的一致预期（营收、EPS 等），是 Forward 倍数的分母来源；引用时必须写出预期窗口的起止财季。\n\
+评级数据只是外部参照，不能代替自己的判断：先用它标出卖方分布与目标价区间，再说明自己的结论落在这个区间的哪一侧、为什么。\n\n**`price_history`**：按 `from` / `to`（`YYYY-MM-DD`，缺省取最近一年）返回**除权除息调整后**的日线，字段 `date` / `adjOpen` / `adjHigh` / `adjLow` / `adjClose` / `volume`。区间收益、\"一年前买入现在赚多少\"、按条件回放历史买点这类问题必须用它取真实序列，不得假设买入价再往下推导；用调整后价而不是原始收盘价，否则区间内的拆股或分红会让收益算错。财报电话会实录（`transcript`）当前订阅只返回可用日期列表，正文受限，需要管理层原话时改用 `press_releases` 或带绝对日期的 `web_search`。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2390,7 +2434,29 @@ impl Tool for DataFetchTool {
                     "crypto_quote".into(),
                     "etf_holdings".into(),
                     "earnings_calendar".into(),
+                    "earnings_status".into(),
                     "search".into(),
+                    "valuation".into(),
+                    "segments".into(),
+                    "peers".into(),
+                    "ownership".into(),
+                    "corporate_actions".into(),
+                    "press_releases".into(),
+                    "sec_filings".into(),
+                    "transcript".into(),
+                    "market_hours".into(),
+                    "financial_growth".into(),
+                    "income_annual".into(),
+                    "income_quarter".into(),
+                    "balance_sheet_quarter".into(),
+                    "cash_flow_quarter".into(),
+                    "analyst_actions".into(),
+                    "analyst_estimates".into(),
+                    "grades_consensus".into(),
+                    "ratings_snapshot".into(),
+                    "price_target_consensus".into(),
+                    "price_target_summary".into(),
+                    "price_history".into(),
                 ]),
                 items: None,
             },
@@ -4559,6 +4625,55 @@ mod tests {
         assert!(data_fetch_data_type_uses_security_target("valuation"));
         assert!(data_fetch_data_type_uses_security_target("segments"));
         assert!(data_fetch_data_type_uses_security_target("peers"));
+    }
+
+    /// A week of graded answers included "一年前投入 100 万，到今天总收益是多少"
+    /// and a factor replay over past buys. With no price series reachable, the
+    /// model picked an entry price out of the air and computed a return from
+    /// it. The series has to be dividend/split adjusted: a corporate action
+    /// inside the window makes a raw-close return wrong without looking wrong.
+    #[test]
+    fn price_history_defaults_to_a_year_of_adjusted_closes() {
+        let tool = tool_with_test_key();
+
+        let explicit = tool
+            .stable_bundle_components(
+                "price_history",
+                "NVDA",
+                &json!({"from": "2025-08-01", "to": "2026-08-01"}),
+            )
+            .expect("price_history components");
+        assert_eq!(
+            explicit,
+            vec![(
+                "price_history",
+                "https://example.com/stable/historical-price-eod/dividend-adjusted?symbol=NVDA&from=2025-08-01&to=2026-08-01"
+                    .to_string()
+            )]
+        );
+
+        let today = hone_core::local_now().date_naive();
+        let defaulted = tool
+            .stable_bundle_components("price_history", "NVDA", &json!({}))
+            .expect("default window");
+        assert_eq!(
+            defaulted[0].1,
+            format!(
+                "https://example.com/stable/historical-price-eod/dividend-adjusted?symbol=NVDA&from={}&to={}",
+                (today - Duration::days(365)).format("%Y-%m-%d"),
+                today.format("%Y-%m-%d")
+            )
+        );
+
+        assert!(
+            tool.stable_bundle_components(
+                "price_history",
+                "NVDA",
+                &json!({"from": "2026-08-01", "to": "2025-08-01"}),
+            )
+            .is_none()
+        );
+        assert!(data_fetch_data_type_uses_security_target("price_history"));
     }
 
     #[test]
