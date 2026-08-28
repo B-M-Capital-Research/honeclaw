@@ -53,6 +53,16 @@ pub struct ChatResult {
     pub usage: Option<TokenUsage>,
 }
 
+/// A trusted in-memory image supplied by the attachment ingress layer.
+///
+/// Providers receive bytes instead of filesystem paths so user-authored prompt
+/// text can never make the LLM adapter read an arbitrary local file.
+#[derive(Debug, Clone)]
+pub struct ImageInput {
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
 /// LLM 带工具调用的响应
 #[derive(Debug, Clone)]
 pub struct ChatResponse {
@@ -430,6 +440,19 @@ pub trait LlmProvider: Send + Sync {
         messages: &[Message],
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResult>;
+
+    /// Multimodal chat for trusted attachment bytes. Providers that do not
+    /// implement image input fail closed; callers may retain OCR as fallback.
+    async fn chat_with_images(
+        &self,
+        _prompt: &str,
+        _images: &[ImageInput],
+        _model: Option<&str>,
+    ) -> hone_core::HoneResult<ChatResult> {
+        Err(hone_core::HoneError::Llm(
+            "当前 LLM provider 不支持图片输入".to_string(),
+        ))
+    }
 
     /// 带工具的对话（Function Calling）
     async fn chat_with_tools(

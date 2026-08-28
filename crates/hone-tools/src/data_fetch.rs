@@ -6,7 +6,7 @@
 //! - 所有 Key 均失败时返回最后一次的错误信息
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -22,6 +22,10 @@ const FMP_TTL_PROFILE: StdDuration = StdDuration::from_secs(24 * 60 * 60);
 const FMP_TTL_FINANCIALS: StdDuration = StdDuration::from_secs(6 * 60 * 60);
 const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
 const MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512;
+const SEC_COMPANY_TICKERS_URL: &str = "https://www.sec.gov/files/company_tickers.json";
+const SEC_COMPANY_FACTS_BASE_URL: &str = "https://data.sec.gov/api/xbrl/companyfacts";
+const SEC_SUBMISSIONS_BASE_URL: &str = "https://data.sec.gov/submissions";
+const SEC_USER_AGENT: &str = "HONE investment research support@hone-claw.com";
 
 /// Resolve the request exactly as `DataFetchTool::execute` does. Callers that
 /// observe DataFetch attempts must use these helpers instead of re-parsing
@@ -164,6 +168,7 @@ pub struct DataFetchTool {
     timeout: u64,
     http: reqwest::Client,
     cache: Arc<Mutex<HashMap<String, CachedFmpValue>>>,
+    official_fallback_enabled: bool,
 }
 
 fn fmp_base_url_is_loopback(base_url: &str) -> bool {
@@ -206,6 +211,7 @@ impl DataFetchTool {
             base_url,
             timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            official_fallback_enabled: true,
         }
     }
 
@@ -218,6 +224,448 @@ impl DataFetchTool {
             base_url,
             timeout: config.fmp.timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            official_fallback_enabled: config.fmp.official_fallback_enabled,
+        }
+    }
+
+    /// Nasdaq's public quote endpoint is a deliberately narrow fallback for
+    /// local HONE installations that have no FMP subscription. It restores
+    /// exact-symbol identity and a dated current-price anchor; it must never be
+    /// presented as a replacement for statements, estimates or valuation
+    /// data. Unsupported data types continue to fail closed below.
+    async fn fetch_nasdaq_quote_row(&self, symbol: &str) -> Result<Value, String> {
+        let symbols = validated_data_fetch_symbols(symbol)?;
+        let [symbol] = symbols.as_slice() else {
+            return Err("Nasdaq 降级行情一次只接受一个证券代码".to_string());
+        };
+        if !symbol
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
+        {
+            return Err("Nasdaq 降级行情仅支持标准美股证券代码".to_string());
+        }
+        let encoded = url::form_urlencoded::byte_serialize(symbol.as_bytes()).collect::<String>();
+        let url = format!("https://api.nasdaq.com/api/quote/{encoded}/info?assetclass=stocks");
+        let response = self
+            .http
+            .get(url)
+            .header(
+                reqwest::header::USER_AGENT,
+                "Mozilla/5.0 (HONE investment research)",
+            )
+            .header(reqwest::header::ACCEPT, "application/json")
+            .timeout(std::time::Duration::from_secs(self.timeout.min(12)))
+            .send()
+            .await
+            .map_err(|error| format!("Nasdaq 行情请求失败: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!("Nasdaq 行情请求失败（HTTP {}）", response.status()));
+        }
+        let payload = response
+            .json::<Value>()
+            .await
+            .map_err(|error| format!("Nasdaq 行情 JSON 解析失败: {error}"))?;
+        nasdaq_quote_row(symbol, &payload)
+            .ok_or_else(|| format!("Nasdaq 没有返回 {symbol} 的可用同代码行情"))
+    }
+
+    async fn fetch_nasdaq_quote_rows(&self, symbols: &str) -> Vec<Value> {
+        let Ok(symbols) = validated_data_fetch_symbols(symbols) else {
+            return Vec::new();
+        };
+        futures::future::join_all(
+            symbols
+                .iter()
+                .map(|symbol| self.fetch_nasdaq_quote_row(symbol)),
+        )
+        .await
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect()
+    }
+
+    async fn fetch_sec_json(&self, cache_key: &str, url: &str) -> Result<Value, String> {
+        if let Some(value) = self.cached_value(cache_key) {
+            return Ok(value);
+        }
+        let response = self
+            .http
+            .get(url)
+            .header(reqwest::header::USER_AGENT, SEC_USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .timeout(std::time::Duration::from_secs(self.timeout.min(20)))
+            .send()
+            .await
+            .map_err(|error| format!("SEC 官方数据请求失败: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "SEC 官方数据请求失败（HTTP {}）",
+                response.status()
+            ));
+        }
+        let value = response
+            .json::<Value>()
+            .await
+            .map_err(|error| format!("SEC 官方数据 JSON 解析失败: {error}"))?;
+        self.store_cache_value(cache_key.to_string(), FMP_TTL_FINANCIALS, value.clone());
+        Ok(value)
+    }
+
+    async fn fetch_sec_financials(&self, symbol: &str) -> Result<Value, String> {
+        let symbols = validated_data_fetch_symbols(symbol)?;
+        let [symbol] = symbols.as_slice() else {
+            return Err("SEC 财务降级链路一次只接受一个证券代码".to_string());
+        };
+        if !symbol
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
+        {
+            return Err("SEC 财务降级链路仅支持标准美股证券代码".to_string());
+        }
+
+        let tickers = self
+            .fetch_sec_json("sec:company_tickers", SEC_COMPANY_TICKERS_URL)
+            .await?;
+        let wanted = symbol.to_ascii_uppercase();
+        let company = tickers
+            .as_object()
+            .and_then(|rows| {
+                rows.values().find(|row| {
+                    row.get("ticker")
+                        .and_then(Value::as_str)
+                        .is_some_and(|ticker| ticker.eq_ignore_ascii_case(&wanted))
+                })
+            })
+            .ok_or_else(|| format!("SEC 官方代码表未找到 {wanted}"))?;
+        let cik = company
+            .get("cik_str")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("SEC 官方代码表缺少 {wanted} 的 CIK"))?;
+        let cik_padded = format!("CIK{cik:010}");
+        let url = format!("{SEC_COMPANY_FACTS_BASE_URL}/{cik_padded}.json");
+        let facts = self
+            .fetch_sec_json(&format!("sec:companyfacts:{cik_padded}"), &url)
+            .await?;
+        Ok(normalize_sec_company_facts(&wanted, cik, &url, &facts))
+    }
+
+    /// Resolve an exact US ticker from the SEC's official ticker registry.
+    ///
+    /// Nasdaq's public quote endpoint is useful but occasionally returns an
+    /// empty/transient response. Identity resolution must not collapse with
+    /// the quote provider: a recent SEC filer can still be researched from its
+    /// filings while the current-price field is disclosed as unavailable.
+    async fn fetch_sec_identity_row(&self, symbol: &str) -> Result<Value, String> {
+        let symbols = validated_data_fetch_symbols(symbol)?;
+        let [symbol] = symbols.as_slice() else {
+            return Err("SEC 身份降级链路一次只接受一个证券代码".to_string());
+        };
+        let wanted = symbol.to_ascii_uppercase();
+        let tickers = self
+            .fetch_sec_json("sec:company_tickers", SEC_COMPANY_TICKERS_URL)
+            .await?;
+        let company = tickers
+            .as_object()
+            .and_then(|rows| {
+                rows.values().find(|row| {
+                    row.get("ticker")
+                        .and_then(Value::as_str)
+                        .is_some_and(|ticker| ticker.eq_ignore_ascii_case(&wanted))
+                })
+            })
+            .ok_or_else(|| format!("SEC 官方代码表未找到 {wanted}"))?;
+        Ok(serde_json::json!({
+            "symbol": wanted,
+            "name": company.get("title").cloned().unwrap_or(Value::Null),
+            "exchange": Value::Null,
+            "currency": "USD",
+            "cik": company.get("cik_str").cloned().unwrap_or(Value::Null),
+            "identity_source_url": SEC_COMPANY_TICKERS_URL,
+            "identity_scope": "exact_symbol_current_sec_registrant",
+        }))
+    }
+
+    async fn fetch_sec_latest_earnings_filing(&self, symbol: &str) -> Result<Value, String> {
+        let symbols = validated_data_fetch_symbols(symbol)?;
+        let [symbol] = symbols.as_slice() else {
+            return Err("SEC 财报附件降级链路一次只接受一个证券代码".to_string());
+        };
+        let tickers = self
+            .fetch_sec_json("sec:company_tickers", SEC_COMPANY_TICKERS_URL)
+            .await?;
+        let wanted = symbol.to_ascii_uppercase();
+        let company = tickers
+            .as_object()
+            .and_then(|rows| {
+                rows.values().find(|row| {
+                    row.get("ticker")
+                        .and_then(Value::as_str)
+                        .is_some_and(|ticker| ticker.eq_ignore_ascii_case(&wanted))
+                })
+            })
+            .ok_or_else(|| format!("SEC 官方代码表未找到 {wanted}"))?;
+        let cik = company
+            .get("cik_str")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("SEC 官方代码表缺少 {wanted} 的 CIK"))?;
+        let submissions_url = format!("{SEC_SUBMISSIONS_BASE_URL}/CIK{cik:010}.json");
+        let submissions = self
+            .fetch_sec_json(&format!("sec:submissions:CIK{cik:010}"), &submissions_url)
+            .await?;
+        let filing = latest_sec_earnings_filing_row(&submissions)
+            .ok_or_else(|| format!("SEC submissions 未找到 {wanted} 的近期财报型申报"))?;
+        let accession_compact = filing.accession.replace('-', "");
+        let archive_base =
+            format!("https://www.sec.gov/Archives/edgar/data/{cik}/{accession_compact}");
+        let index_url = format!("{archive_base}/index.json");
+        let index = self
+            .fetch_sec_json(&format!("sec:filing-index:{accession_compact}"), &index_url)
+            .await?;
+        let exhibit = sec_earnings_exhibit_name(&index, &filing.primary_document);
+        let exhibit_url = exhibit
+            .as_deref()
+            .map(|name| format!("{archive_base}/{name}"));
+        // Preserve the authoritative filing metadata even if SEC temporarily
+        // throttles the exhibit body. Dropping the whole object made callers
+        // incorrectly call the older Company Facts quarter “latest”.
+        let exhibit_excerpt = if let Some(url) = exhibit_url.as_deref() {
+            self.fetch_sec_html_excerpt(url).await.ok()
+        } else {
+            None
+        };
+        let coverage = if exhibit_excerpt.is_some() {
+            "latest_sec_filing_with_earnings_exhibit"
+        } else {
+            "latest_sec_filing_metadata_only"
+        };
+        Ok(serde_json::json!({
+            "ticker": wanted,
+            "form": filing.form,
+            "filing_date": filing.filing_date,
+            "report_date": filing.report_date,
+            "items": filing.items,
+            "accession_number": filing.accession,
+            "primary_document_url": format!("{archive_base}/{}", filing.primary_document),
+            "earnings_exhibit_url": exhibit_url,
+            "earnings_exhibit_excerpt": exhibit_excerpt,
+            "submissions_source_url": submissions_url,
+            "coverage": coverage,
+            "evidence_policy": "A recent 8-K/6-K earnings exhibit may be newer than SEC Company Facts. When its filing date is later, do not call the older XBRL period the latest reported quarter. Cite the SEC exhibit URL and preserve its stated reporting period."
+        }))
+    }
+
+    async fn fetch_sec_html_excerpt(&self, url: &str) -> Result<String, String> {
+        let response = self
+            .http
+            .get(url)
+            .header(reqwest::header::USER_AGENT, SEC_USER_AGENT)
+            .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
+            .timeout(std::time::Duration::from_secs(self.timeout.min(20)))
+            .send()
+            .await
+            .map_err(|error| format!("SEC 财报附件请求失败: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "SEC 财报附件请求失败（HTTP {}）",
+                response.status()
+            ));
+        }
+        let html = response
+            .text()
+            .await
+            .map_err(|error| format!("SEC 财报附件读取失败: {error}"))?;
+        // Earnings releases commonly put condensed balance-sheet and cash-flow
+        // tables after the narrative and non-GAAP reconciliations. A 14k slice
+        // captured the headline revenue but cut off OCF, capex and debt — the
+        // exact fields an investment answer needs. The prompt layer applies its
+        // own tighter bound after prioritising this filing.
+        Ok(sec_html_to_text_excerpt(&html, 26_000))
+    }
+
+    async fn fetch_sec_valuation(&self, symbol: &str) -> Result<Value, String> {
+        let (quote, financials) = tokio::join!(
+            self.fetch_nasdaq_quote_row(symbol),
+            self.fetch_sec_financials(symbol)
+        );
+        let quote = quote?;
+        let financials = financials?;
+        Ok(build_sec_valuation_inputs(symbol, quote, financials))
+    }
+
+    async fn fetch_without_fmp(&self, data_type: &str, target: &str) -> Value {
+        match data_type {
+            "quote" | "quote_short" => {
+                let data = self.fetch_nasdaq_quote_rows(target).await;
+                if data.is_empty() {
+                    serde_json::json!({
+                        "error": "未配置 FMP，且 Nasdaq 没有返回可用的同代码行情",
+                        "fallback_source": "Nasdaq official quote API"
+                    })
+                } else {
+                    serde_json::json!({
+                        "data_type": data_type,
+                        "ticker": target,
+                        "data": data,
+                        "fallback_source": "Nasdaq official quote API",
+                        "coverage": "quote_only_without_fmp",
+                    })
+                }
+            }
+            "search" => match self.fetch_nasdaq_quote_row(target).await {
+                Ok(row) => serde_json::json!({
+                    "data_type": "search",
+                    "ticker": target,
+                    "data": [{
+                        "symbol": row.get("symbol").cloned().unwrap_or(Value::Null),
+                        "name": row.get("name").cloned().unwrap_or(Value::Null),
+                        "exchange": row.get("exchange").cloned().unwrap_or(Value::Null),
+                        "currency": row.get("currency").cloned().unwrap_or(Value::Null),
+                        "stockExchange": row.get("exchange").cloned().unwrap_or(Value::Null),
+                    }],
+                    "fallback_source": "Nasdaq official quote API",
+                    "coverage": "exact_symbol_only_without_fmp",
+                }),
+                Err(nasdaq_error) => match self.fetch_sec_identity_row(target).await {
+                    Ok(row) => serde_json::json!({
+                        "data_type": "search",
+                        "ticker": target,
+                        "data": [row],
+                        "fallback_source": "SEC official company ticker registry",
+                        "coverage": "exact_symbol_identity_without_current_quote",
+                        "quote_gap": nasdaq_error,
+                    }),
+                    Err(sec_error) => serde_json::json!({
+                        "error": "Nasdaq 与 SEC 官方代码表均未返回可用的精确代码身份",
+                        "errors": {
+                            "nasdaq": nasdaq_error,
+                            "sec": sec_error,
+                        },
+                        "fallback_source": "Nasdaq official quote API + SEC official company ticker registry",
+                        "coverage": "unavailable_without_fmp",
+                    }),
+                },
+            },
+            "snapshot" => match self.fetch_nasdaq_quote_row(target).await {
+                Ok(row) => {
+                    let profile = serde_json::json!([{
+                        "symbol": row.get("symbol").cloned().unwrap_or(Value::Null),
+                        "companyName": row.get("name").cloned().unwrap_or(Value::Null),
+                        "exchangeShortName": row.get("exchange").cloned().unwrap_or(Value::Null),
+                        "currency": row.get("currency").cloned().unwrap_or(Value::Null),
+                        "isActivelyTrading": true,
+                    }]);
+                    let mut payload = self.build_snapshot_response(
+                        target,
+                        Ok(Value::Array(vec![row])),
+                        Ok(profile),
+                        Err("未配置 FMP，Nasdaq 降级链路不提供公司新闻".to_string()),
+                    );
+                    payload["fallback_source"] =
+                        Value::String("Nasdaq official quote API".to_string());
+                    payload["coverage"] =
+                        Value::String("quote_and_identity_only_without_fmp".to_string());
+                    payload
+                }
+                Err(error) => serde_json::json!({
+                    "error": error,
+                    "fallback_source": "Nasdaq official quote API",
+                }),
+            },
+            "profile" => match self.fetch_nasdaq_quote_row(target).await {
+                Ok(row) => serde_json::json!({
+                    "data_type": "profile",
+                    "ticker": target,
+                    "data": [{
+                        "symbol": row.get("symbol").cloned().unwrap_or(Value::Null),
+                        "companyName": row.get("name").cloned().unwrap_or(Value::Null),
+                        "exchangeShortName": row.get("exchange").cloned().unwrap_or(Value::Null),
+                        "currency": row.get("currency").cloned().unwrap_or(Value::Null),
+                        "isActivelyTrading": true,
+                    }],
+                    "fallback_source": "Nasdaq official quote API",
+                    "coverage": "identity_only_without_fmp",
+                }),
+                Err(error) => serde_json::json!({
+                    "error": error,
+                    "fallback_source": "Nasdaq official quote API",
+                }),
+            },
+            "financials" => match self.fetch_sec_financials(target).await {
+                Ok(data) => data,
+                Err(error) => serde_json::json!({
+                    "error": error,
+                    "fallback_source": "SEC Company Facts API",
+                    "coverage": "unavailable_without_fmp",
+                }),
+            },
+            "valuation" => match self.fetch_sec_valuation(target).await {
+                Ok(data) => data,
+                Err(error) => serde_json::json!({
+                    "error": error,
+                    "fallback_source": "Nasdaq quote + SEC Company Facts APIs",
+                    "coverage": "unavailable_without_fmp",
+                }),
+            },
+            "earnings_outlook" => {
+                let (quote, financials, latest_sec_filing) = tokio::join!(
+                    self.fetch_nasdaq_quote_row(target),
+                    self.fetch_sec_financials(target),
+                    self.fetch_sec_latest_earnings_filing(target)
+                );
+                let quote_error = quote.as_ref().err().cloned();
+                let financials_error = financials.as_ref().err().cloned();
+                let filing_error = latest_sec_filing.as_ref().err().cloned();
+                let quote_value = quote.ok().map(|row| Value::Array(vec![row]));
+                let financials_value = financials.ok();
+                let filing_value = latest_sec_filing.ok();
+                if quote_value.is_some() || financials_value.is_some() || filing_value.is_some() {
+                    let current_official_filing = filing_value.clone();
+                    serde_json::json!({
+                        "data_type": "earnings_outlook",
+                        "ticker": target,
+                        "current_official_filing": current_official_filing,
+                        "data": {
+                            "quote": quote_value,
+                            "financials": financials_value,
+                            "latest_sec_filing": filing_value,
+                            "analyst_estimates": Value::Null,
+                            "price_target_consensus": Value::Null,
+                            "ratings_snapshot": Value::Null,
+                        },
+                        "coverage": {
+                            "quote": if quote_error.is_none() { "available" } else { "unavailable_without_fmp" },
+                            "financials": if financials_error.is_none() { "available" } else { "unavailable" },
+                            "latest_sec_filing": if filing_error.is_none() { "available" } else { "unavailable" },
+                            "analyst_estimates": "unavailable_without_fmp",
+                            "price_target_consensus": "unavailable_without_fmp",
+                            "ratings_snapshot": "unavailable_without_fmp",
+                        },
+                        "component_errors": {
+                            "quote": quote_error,
+                            "financials": financials_error,
+                            "latest_sec_filing": filing_error,
+                        },
+                        "fallback_source": "Nasdaq quote + SEC Company Facts + SEC submissions/filing archives",
+                        "evidence_policy": "SEC facts are filed historical statements, not analyst estimates. Preserve each fact's period, form and filed date; do not turn cumulative cash-flow contexts into a standalone quarter.",
+                    })
+                } else {
+                    serde_json::json!({
+                        "error": "未配置 FMP，且 Nasdaq/SEC 降级链路未返回任何可用组件",
+                        "errors": {
+                            "quote": quote_error,
+                            "financials": financials_error,
+                            "latest_sec_filing": filing_error,
+                        },
+                        "fallback_source": "Nasdaq quote + SEC Company Facts + SEC submissions/filing archives",
+                    })
+                }
+            }
+            _ => serde_json::json!({
+                "error": format!(
+                    "未配置 FMP API Key；官方降级链路提供精确代码 search、quote、profile、snapshot、SEC financials、valuation 与 earnings_outlook，不提供 {data_type}"
+                ),
+                "coverage": "unsupported_without_fmp",
+            }),
         }
     }
 
@@ -1026,8 +1474,10 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
     // A single latest bar cannot answer "盘后跌了多少": at a New York
     // pre-market morning the latest bar is a pre bar, and the post session
     // where the move happened would be discarded. Summarize every session
-    // window in the data instead, each with the change from the previous
-    // window's close, so post-market and pre-market moves are first-class.
+    // window in the data instead. Keep the adjacent-window calculation for
+    // audit, but also publish session-specific canonical denominators so a
+    // regular close can never be compared with that morning's pre-market bar
+    // and mislabeled as the daily close-to-close move.
     let mut windows: Vec<(
         chrono::NaiveDate,
         u8,
@@ -1079,7 +1529,9 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
     let windows = &windows[start..];
 
     let mut summaries = Vec::with_capacity(windows.len());
-    let mut previous_close: Option<f64> = None;
+    let mut previous_session_close: Option<f64> = None;
+    let mut previous_regular_close: Option<f64> = None;
+    let mut latest_regular_date: Option<NaiveDate> = None;
     for (date, _, session, open, close, high, low, volume, _) in windows {
         let mut summary = serde_json::json!({
             "date_new_york": date.format("%Y-%m-%d").to_string(),
@@ -1090,12 +1542,45 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
             "low": low,
             "volume": volume,
         });
-        if let Some(reference) = previous_close.filter(|reference| *reference > 0.0) {
+        if let Some(reference) = previous_session_close.filter(|reference| *reference > 0.0) {
             let pct = (close - reference) / reference * 100.0;
             summary["pct_change_vs_prev_session_close"] =
                 serde_json::json!((pct * 100.0).round() / 100.0);
         }
-        previous_close = Some(*close);
+        match *session {
+            "pre" => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    let pct = (close - reference) / reference * 100.0;
+                    summary["pct_change_vs_previous_regular_close"] =
+                        serde_json::json!((pct * 100.0).round() / 100.0);
+                    summary["canonical_change_basis"] =
+                        Value::String("premarket_close_vs_previous_regular_close".to_string());
+                }
+            }
+            "regular" => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    let pct = (close - reference) / reference * 100.0;
+                    summary["pct_change_close_to_close"] =
+                        serde_json::json!((pct * 100.0).round() / 100.0);
+                    summary["previous_regular_close"] = serde_json::json!(reference);
+                    summary["canonical_change_basis"] =
+                        Value::String("regular_close_vs_previous_regular_close".to_string());
+                }
+                previous_regular_close = Some(*close);
+                latest_regular_date = Some(*date);
+            }
+            "post" if latest_regular_date == Some(*date) => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    let pct = (close - reference) / reference * 100.0;
+                    summary["pct_change_vs_regular_close"] =
+                        serde_json::json!((pct * 100.0).round() / 100.0);
+                    summary["canonical_change_basis"] =
+                        Value::String("postmarket_close_vs_same_day_regular_close".to_string());
+                }
+            }
+            _ => {}
+        }
+        previous_session_close = Some(*close);
         summaries.push(summary);
     }
 
@@ -1109,6 +1594,7 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         "low": latest.5,
         "volume": latest.6,
         "hone_session_summaries": summaries,
+        "hone_session_change_policy": "常规交易日涨跌只使用 regular 窗口的 pct_change_close_to_close（本日常规收盘相对上一常规收盘）；盘前只使用 pct_change_vs_previous_regular_close；盘后只使用 pct_change_vs_regular_close。pct_change_vs_prev_session_close 仅描述相邻窗口变化，尤其 regular 相对 pre 的数值绝不能写成日涨跌幅。",
         "hone_now_new_york": now_new_york.format("%Y-%m-%d %H:%M %Z").to_string(),
         "hone_now_session": extended_hours_session(now_new_york.time()),
     }))
@@ -1167,6 +1653,523 @@ fn normalize_quote_timestamp_metadata(mut value: Value) -> Value {
     value
 }
 
+fn parse_nasdaq_display_number(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .trim_start_matches('$')
+        .trim_end_matches('%')
+        .replace(',', "")
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
+}
+
+fn nasdaq_quote_timestamp(value: &str) -> Option<i64> {
+    let value = value.trim();
+    let date = NaiveDate::parse_from_str(value, "%b %e, %Y")
+        .or_else(|_| NaiveDate::parse_from_str(value, "%b %d, %Y"))
+        .ok()?;
+    // Nasdaq's delayed public endpoint currently exposes the market date but
+    // not an intraday clock. Normalize a completed regular-session quote to
+    // the official 16:00 New York close and label that transformation below;
+    // callers must not describe it as a realtime timestamp.
+    chrono_tz::America::New_York
+        .from_local_datetime(&date.and_hms_opt(16, 0, 0)?)
+        .single()
+        .map(|timestamp| timestamp.timestamp())
+}
+
+fn nasdaq_quote_row(expected_symbol: &str, payload: &Value) -> Option<Value> {
+    let data = payload.get("data")?;
+    let symbol = data.get("symbol")?.as_str()?.trim();
+    if !hone_core::provider_symbols_equivalent(expected_symbol, symbol) {
+        return None;
+    }
+    let primary = data.get("primaryData")?;
+    let price = parse_nasdaq_display_number(primary.get("lastSalePrice")?.as_str()?)?;
+    if price <= 0.0 {
+        return None;
+    }
+    let change = primary
+        .get("netChange")
+        .and_then(Value::as_str)
+        .and_then(parse_nasdaq_display_number);
+    let change_percentage = primary
+        .get("percentageChange")
+        .and_then(Value::as_str)
+        .and_then(parse_nasdaq_display_number);
+    let market_date = primary
+        .get("lastTradeTimestamp")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let timestamp = market_date.and_then(nasdaq_quote_timestamp);
+    let previous_close = change
+        .map(|change| price - change)
+        .filter(|value| value.is_finite() && *value > 0.0);
+    let mut row = serde_json::json!({
+        "symbol": symbol,
+        "name": data.get("companyName").cloned().unwrap_or(Value::Null),
+        "price": price,
+        "change": change,
+        "changesPercentage": change_percentage,
+        "previousClose": previous_close,
+        "timestamp": timestamp,
+        "exchange": data.get("exchange").cloned().unwrap_or(Value::Null),
+        "currency": "USD",
+        "volume": primary
+            .get("volume")
+            .and_then(Value::as_str)
+            .and_then(parse_nasdaq_display_number),
+        "hone_source": {
+            "provider": "Nasdaq official quote API",
+            "url_scope": "api.nasdaq.com/api/quote/{symbol}/info",
+            "is_realtime": primary.get("isRealTime").and_then(Value::as_bool),
+            "provider_market_date": market_date,
+            "coverage": "price_and_identity_only",
+        },
+    });
+    if let Some(timestamp) = timestamp
+        && let Some(utc) = DateTime::from_timestamp(timestamp, 0)
+    {
+        let new_york = utc.with_timezone(&chrono_tz::America::New_York);
+        let beijing = utc.with_timezone(&chrono_tz::Asia::Shanghai);
+        row["hone_quote_time"] = serde_json::json!({
+            "unix_seconds": timestamp,
+            "new_york": new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "beijing": beijing.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "market_date_new_york": new_york.format("%Y-%m-%d").to_string(),
+            "source": "Nasdaq provider market date normalized to the 16:00 New York regular close; delayed close, not a realtime intraday timestamp"
+        });
+    }
+    attach_quote_evidence_quality(&mut row);
+    Some(row)
+}
+
+fn normalize_sec_company_facts(symbol: &str, cik: u64, source_url: &str, payload: &Value) -> Value {
+    let us_gaap = payload.pointer("/facts/us-gaap").unwrap_or(&Value::Null);
+    let dei = payload.pointer("/facts/dei").unwrap_or(&Value::Null);
+    let definitions: [(&str, &Value, &[&str]); 13] = [
+        (
+            "revenue",
+            us_gaap,
+            &[
+                "RevenueFromContractWithCustomerExcludingAssessedTax",
+                "Revenues",
+                "SalesRevenueNet",
+            ],
+        ),
+        ("gross_profit", us_gaap, &["GrossProfit"]),
+        ("operating_income", us_gaap, &["OperatingIncomeLoss"]),
+        ("net_income", us_gaap, &["NetIncomeLoss"]),
+        (
+            "operating_cash_flow",
+            us_gaap,
+            &["NetCashProvidedByUsedInOperatingActivities"],
+        ),
+        (
+            "capital_expenditures",
+            us_gaap,
+            &["PaymentsToAcquirePropertyPlantAndEquipment"],
+        ),
+        (
+            "cash_and_equivalents",
+            us_gaap,
+            &[
+                "CashAndCashEquivalentsAtCarryingValue",
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+            ],
+        ),
+        ("long_term_debt_current", us_gaap, &["LongTermDebtCurrent"]),
+        (
+            "long_term_debt_noncurrent",
+            us_gaap,
+            &["LongTermDebtNoncurrent", "LongTermDebt"],
+        ),
+        (
+            "interest_expense",
+            us_gaap,
+            &["InterestExpenseDebt", "InterestExpenseNonOperating"],
+        ),
+        (
+            "stockholders_equity",
+            us_gaap,
+            &[
+                "StockholdersEquity",
+                "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+            ],
+        ),
+        (
+            "remaining_performance_obligation",
+            us_gaap,
+            &["RevenueRemainingPerformanceObligation"],
+        ),
+        (
+            "shares_outstanding",
+            dei,
+            &["EntityCommonStockSharesOutstanding"],
+        ),
+    ];
+
+    let mut metrics = serde_json::Map::new();
+    let mut latest_metric_summary = serde_json::Map::new();
+    let mut latest_filed: Option<String> = None;
+    for (name, namespace, tags) in definitions {
+        let Some((tag, fact)) = tags
+            .iter()
+            .find_map(|tag| namespace.get(*tag).map(|fact| (*tag, fact)))
+        else {
+            metrics.insert(
+                name.to_string(),
+                serde_json::json!({"status": "not_reported"}),
+            );
+            continue;
+        };
+        let observations = sec_fact_observations(fact, 5);
+        for filed in observations
+            .iter()
+            .filter_map(|row| row.get("filed").and_then(Value::as_str))
+        {
+            if latest_filed
+                .as_deref()
+                .is_none_or(|current| filed > current)
+            {
+                latest_filed = Some(filed.to_string());
+            }
+        }
+        if let Some(latest) = observations.first() {
+            latest_metric_summary.insert(name.to_string(), latest.clone());
+        }
+        metrics.insert(
+            name.to_string(),
+            serde_json::json!({
+                "status": if observations.is_empty() { "not_reported" } else { "available" },
+                "taxonomy_tag": tag,
+                "label": fact.get("label").cloned().unwrap_or(Value::Null),
+                "description": fact.get("description").cloned().unwrap_or(Value::Null),
+                "observations": observations,
+                "concept_source_url": format!(
+                    "https://data.sec.gov/api/xbrl/companyconcept/CIK{cik:010}/{}/{tag}.json",
+                    if std::ptr::eq(namespace, us_gaap) { "us-gaap" } else { "dei" }
+                ),
+            }),
+        );
+    }
+
+    serde_json::json!({
+        "data_type": "financials",
+        "ticker": symbol,
+        "data": {
+            "entity_name": payload.get("entityName").cloned().unwrap_or(Value::Null),
+            "cik": cik,
+            "fiscal_year_end": payload.get("fiscalYearEnd").cloned().unwrap_or(Value::Null),
+            "latest_filed_date": latest_filed,
+            "latest_metric_summary": latest_metric_summary,
+            "metrics": metrics,
+        },
+        "fallback_source": "SEC Company Facts API",
+        "source_url": source_url,
+        "coverage": "filed_historical_facts_only_without_fmp",
+        "hone_sec_fact_policy": "Each observation preserves start/end, filed date, SEC form, fiscal period and frame. A duration longer than roughly one quarter may be year-to-date or annual; do not present it as a standalone quarter. Compare facts only when their periods and units align. SEC Company Facts does not provide management guidance, analyst estimates or a complete debt maturity schedule.",
+    })
+}
+
+#[derive(Debug)]
+struct SecEarningsFilingRow {
+    form: String,
+    filing_date: String,
+    report_date: String,
+    accession: String,
+    primary_document: String,
+    items: String,
+}
+
+fn latest_sec_earnings_filing_row(submissions: &Value) -> Option<SecEarningsFilingRow> {
+    let recent = submissions.pointer("/filings/recent")?;
+    let forms = recent.get("form")?.as_array()?;
+    let filing_dates = recent.get("filingDate")?.as_array()?;
+    let report_dates = recent.get("reportDate")?.as_array()?;
+    let accessions = recent.get("accessionNumber")?.as_array()?;
+    let documents = recent.get("primaryDocument")?.as_array()?;
+    let items = recent.get("items").and_then(Value::as_array);
+    for index in 0..forms.len() {
+        let form = forms.get(index)?.as_str()?;
+        let filing_items = items
+            .and_then(|values| values.get(index))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let is_earnings_filing = matches!(form, "10-Q" | "10-Q/A")
+            || (matches!(form, "8-K" | "8-K/A")
+                && (filing_items.contains("2.02") || filing_items.contains("7.01")))
+            || matches!(form, "6-K" | "6-K/A");
+        if !is_earnings_filing {
+            continue;
+        }
+        return Some(SecEarningsFilingRow {
+            form: form.to_string(),
+            filing_date: filing_dates.get(index)?.as_str()?.to_string(),
+            report_date: report_dates
+                .get(index)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            accession: accessions.get(index)?.as_str()?.to_string(),
+            primary_document: documents.get(index)?.as_str()?.to_string(),
+            items: filing_items.to_string(),
+        });
+    }
+    None
+}
+
+fn sec_earnings_exhibit_name(index: &Value, primary_document: &str) -> Option<String> {
+    let items = index.pointer("/directory/item")?.as_array()?;
+    items
+        .iter()
+        .filter_map(|item| item.get("name").and_then(Value::as_str))
+        .filter(|name| !name.eq_ignore_ascii_case(primary_document))
+        .filter(|name| {
+            let lower = name.to_ascii_lowercase();
+            (lower.ends_with(".htm") || lower.ends_with(".html"))
+                && !lower.contains("-index")
+                && (lower.contains("earnings")
+                    || lower.contains("results")
+                    || lower.contains("press")
+                    || lower.starts_with("ex99")
+                    || lower.starts_with("ex-99"))
+        })
+        .min_by_key(|name| {
+            let lower = name.to_ascii_lowercase();
+            usize::from(!lower.contains("earnings")) + usize::from(!lower.contains("press"))
+        })
+        .map(str::to_string)
+}
+
+fn sec_html_to_text_excerpt(html: &str, max_chars: usize) -> String {
+    let mut text = String::with_capacity(html.len().min(max_chars.saturating_mul(8)));
+    let mut in_tag = false;
+    for character in html.chars() {
+        match character {
+            '<' => {
+                in_tag = true;
+                text.push(' ');
+            }
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(character),
+            _ => {}
+        }
+    }
+    let decoded = text
+        .replace("&nbsp;", " ")
+        .replace("&#160;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    let compact = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars = compact.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return compact;
+    }
+
+    // SEC earnings exhibits put the headline near the front but frequently put
+    // the balance sheet and cash-flow tables many pages later. A simple prefix
+    // silently removed exactly the OCF/capex/debt evidence needed for a deep
+    // company answer. Keep a concise headline plus deterministic windows around
+    // the standard table labels; this remains verbatim filing text, not an LLM
+    // summary or a company-specific parser.
+    let head_len = (max_chars / 4).max(1).min(chars.len());
+    let mut ranges = vec![(0usize, head_len)];
+    let lower = compact.to_ascii_lowercase();
+    for marker in [
+        "cash flow from operating activities",
+        "cash flows from operating activities",
+        "net cash provided by operating activities",
+        "free cash flow",
+        "purchases of property, plant and equipment",
+        "capital expenditures",
+        "condensed consolidated balance sheets",
+        "cash and cash equivalents",
+        "long-term debt",
+        "end market summary",
+    ] {
+        let Some(byte_index) = lower.find(marker) else {
+            continue;
+        };
+        let center = lower[..byte_index].chars().count();
+        let start = center.saturating_sub(220);
+        let end = (center + 2_200).min(chars.len());
+        if ranges
+            .iter()
+            .any(|(existing_start, existing_end)| start < *existing_end && end > *existing_start)
+        {
+            continue;
+        }
+        ranges.push((start, end));
+    }
+    ranges.sort_unstable_by_key(|(start, _)| *start);
+    let mut output = String::new();
+    for (start, end) in ranges {
+        if output.chars().count() >= max_chars {
+            break;
+        }
+        if !output.is_empty() {
+            output.push_str(" … ");
+        }
+        let remaining = max_chars.saturating_sub(output.chars().count());
+        output.extend(chars[start..end].iter().take(remaining));
+    }
+    output
+}
+
+fn sec_fact_observations(fact: &Value, limit: usize) -> Vec<Value> {
+    let Some(units) = fact.get("units").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let preferred = ["USD", "shares", "USD/shares", "pure"];
+    let Some((unit, rows)) = preferred
+        .iter()
+        .find_map(|unit| {
+            units
+                .get(*unit)
+                .and_then(Value::as_array)
+                .map(|rows| (*unit, rows))
+        })
+        .or_else(|| {
+            units
+                .iter()
+                .find_map(|(unit, value)| value.as_array().map(|rows| (unit.as_str(), rows)))
+        })
+    else {
+        return Vec::new();
+    };
+    let allowed_forms = ["10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "6-K"];
+    let mut rows = rows
+        .iter()
+        .filter(|row| {
+            row.get("form")
+                .and_then(Value::as_str)
+                .is_some_and(|form| allowed_forms.contains(&form))
+                && row.get("val").is_some_and(Value::is_number)
+                && row.get("end").and_then(Value::as_str).is_some()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        let left_key = format!(
+            "{}:{}:{}",
+            left.get("filed").and_then(Value::as_str).unwrap_or(""),
+            left.get("end").and_then(Value::as_str).unwrap_or(""),
+            left.get("frame").and_then(Value::as_str).unwrap_or("")
+        );
+        let right_key = format!(
+            "{}:{}:{}",
+            right.get("filed").and_then(Value::as_str).unwrap_or(""),
+            right.get("end").and_then(Value::as_str).unwrap_or(""),
+            right.get("frame").and_then(Value::as_str).unwrap_or("")
+        );
+        right_key.cmp(&left_key)
+    });
+    let mut seen = std::collections::HashSet::new();
+    rows.into_iter()
+        .filter_map(|row| {
+            let key = format!(
+                "{}:{}:{}:{}",
+                row.get("start").and_then(Value::as_str).unwrap_or("point"),
+                row.get("end").and_then(Value::as_str).unwrap_or(""),
+                row.get("form").and_then(Value::as_str).unwrap_or(""),
+                row.get("val").map(Value::to_string).unwrap_or_default()
+            );
+            if !seen.insert(key) {
+                return None;
+            }
+            let start = row.get("start").and_then(Value::as_str);
+            let end = row.get("end").and_then(Value::as_str);
+            let duration_days = start.zip(end).and_then(|(start, end)| {
+                NaiveDate::parse_from_str(end, "%Y-%m-%d")
+                    .ok()?
+                    .signed_duration_since(NaiveDate::parse_from_str(start, "%Y-%m-%d").ok()?)
+                    .num_days()
+                    .checked_add(1)
+            });
+            let period_kind = match duration_days {
+                None => "point_in_time",
+                Some(days) if (70..=110).contains(&days) => "standalone_quarter",
+                Some(days) if (160..=310).contains(&days) => "year_to_date",
+                Some(days) if (330..=390).contains(&days) => "annual",
+                Some(_) => "other_duration",
+            };
+            Some(serde_json::json!({
+                "value": row.get("val").cloned().unwrap_or(Value::Null),
+                "unit": unit,
+                "start": row.get("start").cloned().unwrap_or(Value::Null),
+                "end": row.get("end").cloned().unwrap_or(Value::Null),
+                "duration_days": duration_days,
+                "period_kind": period_kind,
+                "filed": row.get("filed").cloned().unwrap_or(Value::Null),
+                "form": row.get("form").cloned().unwrap_or(Value::Null),
+                "fiscal_year": row.get("fy").cloned().unwrap_or(Value::Null),
+                "fiscal_period": row.get("fp").cloned().unwrap_or(Value::Null),
+                "frame": row.get("frame").cloned().unwrap_or(Value::Null),
+                "accession_number": row.get("accn").cloned().unwrap_or(Value::Null),
+            }))
+        })
+        .take(limit)
+        .collect()
+}
+
+fn sec_latest_metric_value(financials: &Value, metric: &str) -> Option<f64> {
+    financials
+        .pointer(&format!("/data/metrics/{metric}/observations/0/value"))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+}
+
+fn build_sec_valuation_inputs(symbol: &str, quote: Value, financials: Value) -> Value {
+    let price = quote.get("price").and_then(Value::as_f64);
+    let shares = sec_latest_metric_value(&financials, "shares_outstanding");
+    let cash = sec_latest_metric_value(&financials, "cash_and_equivalents");
+    let debt_current = sec_latest_metric_value(&financials, "long_term_debt_current");
+    let debt_noncurrent = sec_latest_metric_value(&financials, "long_term_debt_noncurrent");
+    let market_cap = price.zip(shares).map(|(price, shares)| price * shares);
+    let total_debt = match (debt_current, debt_noncurrent) {
+        (Some(current), Some(noncurrent)) => Some(current + noncurrent),
+        (Some(current), None) => Some(current),
+        (None, Some(noncurrent)) => Some(noncurrent),
+        (None, None) => None,
+    };
+    let enterprise_value = market_cap
+        .zip(total_debt)
+        .map(|(market_cap, debt)| market_cap + debt - cash.unwrap_or(0.0));
+    let sec_source_url = financials.get("source_url").cloned().unwrap_or(Value::Null);
+    let latest_filed_date = financials
+        .pointer("/data/latest_filed_date")
+        .cloned()
+        .unwrap_or(Value::Null);
+    serde_json::json!({
+        "data_type": "valuation",
+        "ticker": symbol,
+        "data": {
+            "quote": quote,
+            "sec_source_url": sec_source_url,
+            "latest_sec_filed_date": latest_filed_date,
+            "derived_inputs": {
+                "current_price": price,
+                "shares_outstanding": shares,
+                "market_cap": market_cap,
+                "cash_and_equivalents": cash,
+                "long_term_debt_current": debt_current,
+                "long_term_debt_noncurrent": debt_noncurrent,
+                "total_debt": total_debt,
+                "enterprise_value": enterprise_value,
+            },
+        },
+        "fallback_source": "Nasdaq quote + SEC Company Facts APIs",
+        "coverage": "valuation_inputs_only_without_fmp",
+        "hone_valuation_policy": "Market capitalization is current Nasdaq price multiplied by the latest SEC shares-outstanding fact. Enterprise value adds the available current and noncurrent long-term-debt facts and subtracts available cash. Verify that debt facts share the same period end before using EV. This fallback does not provide consensus forecasts, peer multiples, historical multiple bands or a DCF fair value; disclose those gaps instead of manufacturing them.",
+    })
+}
+
 fn attach_quote_timestamp_metadata(value: &mut Value) {
     let Value::Object(fields) = value else {
         return;
@@ -1206,11 +2209,18 @@ fn attach_quote_evidence_quality(value: &mut Value) {
     let previous_close = finite_number(fields.get("previousClose"));
     let change = finite_number(fields.get("change"));
     let change_percent = finite_number(fields.get("changesPercentage"));
+    let change_inputs_complete = price.is_some()
+        && previous_close.is_some_and(|value| value > 0.0)
+        && change.is_some()
+        && change_percent.is_some();
+    if !change_inputs_complete {
+        warnings.push("quote_change_inputs_incomplete");
+    }
     let change_consistent = match (price, previous_close, change) {
         (Some(price), Some(previous_close), Some(change)) if previous_close > 0.0 => {
             approximately_equal(price - previous_close, change, 0.02, 0.002)
         }
-        _ => true,
+        _ => false,
     };
     if !change_consistent {
         warnings.push("quote_change_mismatch");
@@ -1219,7 +2229,7 @@ fn attach_quote_evidence_quality(value: &mut Value) {
         (Some(previous_close), Some(change), Some(change_percent)) if previous_close > 0.0 => {
             approximately_equal(change / previous_close * 100.0, change_percent, 0.2, 0.01)
         }
-        _ => true,
+        _ => false,
     };
     if !change_percent_consistent {
         warnings.push("quote_change_percentage_mismatch");
@@ -1267,21 +2277,47 @@ fn attach_quote_evidence_quality(value: &mut Value) {
         warnings.push("quote_price_invalid");
     }
 
+    let usable_for_change_claims = symbol_ok
+        && price_ok
+        && change_inputs_complete
+        && change_consistent
+        && change_percent_consistent;
+    let canonical_change = match (price, previous_close, change) {
+        (Some(price), Some(previous_close), Some(change))
+            if usable_for_change_claims && previous_close > 0.0 =>
+        {
+            serde_json::json!({
+                "basis": "regular_close_vs_previous_regular_close",
+                "price": price,
+                "previous_regular_close": previous_close,
+                "absolute_change": change,
+                "change_percentage": (change / previous_close * 10_000.0).round() / 100.0,
+                "provider_change_percentage": change_percent,
+                "usable": true,
+            })
+        }
+        _ => serde_json::json!({
+            "basis": "regular_close_vs_previous_regular_close",
+            "usable": false,
+            "reason": "missing_or_internally_inconsistent_quote_change_fields",
+        }),
+    };
+    fields.insert(
+        "hone_canonical_regular_change".to_string(),
+        canonical_change,
+    );
     fields.insert(
         "hone_evidence_quality".to_string(),
         serde_json::json!({
             "usable_for_price_claims": symbol_ok && price_ok,
-            "usable_for_change_claims": symbol_ok
-                && price_ok
-                && change_consistent
-                && change_percent_consistent,
+            "usable_for_change_claims": usable_for_change_claims,
             "usable_for_range_claims": symbol_ok
                 && price_ok
                 && day_range_consistent
                 && year_range_consistent,
             "usable_for_market_cap_claims": symbol_ok && price_ok && market_cap_consistent,
             "warnings": warnings,
-            "policy": "A false flag quarantines only that claim type. Preserve raw provider fields for audit; do not publish a precise claim from a quarantined field group."
+            "policy": "A false flag quarantines only that claim type. Exact regular-session change claims require complete and arithmetically consistent price, previousClose, change and changesPercentage fields. Use hone_canonical_regular_change.change_percentage for the close-to-close daily move; preserve raw provider fields only for audit and never substitute a premarket/session-to-session denominator."
         }),
     );
 
@@ -2118,7 +3154,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段。quote 中只有 `hone_evidence_quality.usable_for_change_claims=true` 时，才可使用 `hone_canonical_regular_change.change_percentage` 作为常规盘 close-to-close 日涨跌；原始 changesPercentage 不得绕过质量标记。只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段：regular 日涨跌只用 pct_change_close_to_close，pre 只用 pct_change_vs_previous_regular_close，post 只用 pct_change_vs_regular_close；pct_change_vs_prev_session_close 绝不能冒充日涨跌。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 previousClose、change、changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索）、quote（带完整性标记的常规盘行情）、quote_short（低带宽简版行情）、extended_hours（按纽约日期和时段规范化的盘前/常规盘/盘后行情）、profile、snapshot、earnings_outlook、financials、valuation、segments、peers、ownership、corporate_actions、press_releases、transcript、macro、market_hours、news、gainers_losers、sector_performance、crypto_quote、etf_holdings、earnings_calendar。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -2126,7 +3162,7 @@ impl Tool for DataFetchTool {
             ToolParameter {
                 name: "data_type".to_string(),
                 param_type: "string".to_string(),
-                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回 profile、各组件覆盖状态、数值质量标记和当前上市证据。hone_security_listing_evidence.status=active_listing 时不得用旧收购/退市记忆否认当前上市。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权，false 的字段组不得用于精确结论。".to_string(),
+                description: "数据类型。单一证券的财报时间、预期、评级和目标价研究优先使用 earnings_outlook；它返回 profile、各组件覆盖状态、数值质量标记和当前上市证据。hone_security_listing_evidence.status=active_listing 时不得用旧收购/退市记忆否认当前上市。全市场某个日期窗口才使用 earnings_calendar。quote/snapshot 内的 hone_evidence_quality 对价格、涨跌、区间和市值声明分别授权；只有 usable_for_change_claims=true 才可使用 hone_canonical_regular_change 的常规盘 close-to-close 涨跌，false 的字段组不得用于精确结论。".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "quote".into(),
@@ -2136,6 +3172,15 @@ impl Tool for DataFetchTool {
                     "snapshot".into(),
                     "earnings_outlook".into(),
                     "financials".into(),
+                    "valuation".into(),
+                    "segments".into(),
+                    "peers".into(),
+                    "ownership".into(),
+                    "corporate_actions".into(),
+                    "press_releases".into(),
+                    "transcript".into(),
+                    "macro".into(),
+                    "market_hours".into(),
                     "news".into(),
                     "gainers_losers".into(),
                     "sector_performance".into(),
@@ -2232,9 +3277,12 @@ impl Tool for DataFetchTool {
         let ticker = effective_data_fetch_target(&args);
 
         if self.keys.is_empty() {
-            return Ok(serde_json::json!({
-                "error": "未配置 FMP API Key（请在 config.yaml 中设置 fmp.api_keys）"
-            }));
+            if !self.official_fallback_enabled {
+                return Ok(serde_json::json!({
+                    "error": "未配置 FMP API Key（请在 config.yaml 中设置 fmp.api_keys）"
+                }));
+            }
+            return Ok(self.fetch_without_fmp(data_type, ticker).await);
         }
 
         if data_type == "snapshot" {
@@ -2532,12 +3580,14 @@ impl Tool for DataFetchTool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFetchTool, chinese_scaled_money, data_fetch_data_type_uses_security_target,
-        effective_data_fetch_data_type, effective_data_fetch_security_target,
-        effective_data_fetch_target, extended_hours_session, financial_score_semantics,
-        fmp_base_url_is_loopback, forward_twelve_month_summary, nonempty_fmp_error_message,
+        DataFetchTool, build_sec_valuation_inputs, chinese_scaled_money,
+        data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
+        effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
+        financial_score_semantics, fmp_base_url_is_loopback, forward_twelve_month_summary,
+        latest_sec_earnings_filing_row, nasdaq_quote_row, nonempty_fmp_error_message,
         normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
-        price_target_consensus_quality, sanitize_fmp_error_detail, security_listing_evidence,
+        normalize_sec_company_facts, price_target_consensus_quality, sanitize_fmp_error_detail,
+        sec_earnings_exhibit_name, sec_html_to_text_excerpt, security_listing_evidence,
         should_cache_fmp_value, ttl_for_data_type, validated_data_fetch_search_query,
         validated_data_fetch_symbols, valuation_basis_quality,
     };
@@ -2586,6 +3636,126 @@ mod tests {
     }
 
     #[test]
+    fn nasdaq_quote_fallback_requires_exact_symbol_and_marks_delayed_close() {
+        let payload = json!({
+            "data": {
+                "symbol": "CRWV",
+                "companyName": "CoreWeave, Inc.",
+                "exchange": "NASDAQ-GS",
+                "primaryData": {
+                    "lastSalePrice": "$90.32",
+                    "netChange": "+2.13",
+                    "percentageChange": "+2.42%",
+                    "lastTradeTimestamp": "Aug 11, 2026",
+                    "isRealTime": false,
+                    "volume": "46,381,731"
+                }
+            }
+        });
+
+        let row = nasdaq_quote_row("CRWV", &payload).expect("exact Nasdaq quote");
+        assert_eq!(row["symbol"], "CRWV");
+        assert_eq!(row["price"], 90.32);
+        assert_eq!(row["changesPercentage"], 2.42);
+        assert_eq!(row["previousClose"], 88.19);
+        assert_eq!(row["hone_source"]["is_realtime"], false);
+        assert!(
+            row["hone_quote_time"]["source"]
+                .as_str()
+                .expect("time source")
+                .contains("delayed close")
+        );
+        assert_eq!(
+            row["hone_evidence_quality"]["usable_for_price_claims"],
+            true
+        );
+        assert!(nasdaq_quote_row("MU", &payload).is_none());
+    }
+
+    #[test]
+    fn sec_fallback_preserves_periods_and_builds_only_available_valuation_inputs() {
+        let facts = json!({
+            "entityName": "Example Corp",
+            "fiscalYearEnd": "1231",
+            "facts": {
+                "us-gaap": {
+                    "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                        "label": "Revenue",
+                        "description": "Revenue",
+                        "units": {"USD": [{
+                            "start": "2026-04-01", "end": "2026-06-30",
+                            "val": 2_078_000_000_f64, "accn": "0001-26-000001",
+                            "fy": 2026, "fp": "Q2", "form": "10-Q",
+                            "filed": "2026-08-11", "frame": "CY2026Q2"
+                        }]}
+                    },
+                    "LongTermDebtCurrent": {
+                        "label": "Current debt", "units": {"USD": [{
+                            "end": "2026-06-30", "val": 1_000_000_000_f64,
+                            "accn": "0001-26-000001", "fy": 2026, "fp": "Q2",
+                            "form": "10-Q", "filed": "2026-08-11"
+                        }]}
+                    },
+                    "LongTermDebtNoncurrent": {
+                        "label": "Noncurrent debt", "units": {"USD": [{
+                            "end": "2026-06-30", "val": 3_000_000_000_f64,
+                            "accn": "0001-26-000001", "fy": 2026, "fp": "Q2",
+                            "form": "10-Q", "filed": "2026-08-11"
+                        }]}
+                    },
+                    "CashAndCashEquivalentsAtCarryingValue": {
+                        "label": "Cash", "units": {"USD": [{
+                            "end": "2026-06-30", "val": 500_000_000_f64,
+                            "accn": "0001-26-000001", "fy": 2026, "fp": "Q2",
+                            "form": "10-Q", "filed": "2026-08-11"
+                        }]}
+                    }
+                },
+                "dei": {
+                    "EntityCommonStockSharesOutstanding": {
+                        "label": "Shares outstanding", "units": {"shares": [{
+                            "end": "2026-08-01", "val": 100_000_000_f64,
+                            "accn": "0001-26-000001", "fy": 2026, "fp": "Q2",
+                            "form": "10-Q", "filed": "2026-08-11"
+                        }]}
+                    }
+                }
+            }
+        });
+        let financials =
+            normalize_sec_company_facts("TEST", 123, "https://data.sec.gov/example.json", &facts);
+        assert_eq!(
+            financials["data"]["metrics"]["revenue"]["observations"][0]["duration_days"],
+            91
+        );
+        assert_eq!(
+            financials["data"]["latest_metric_summary"]["revenue"]["period_kind"],
+            "standalone_quarter"
+        );
+        assert_eq!(financials["data"]["latest_filed_date"], "2026-08-11");
+        assert_eq!(
+            financials["data"]["metrics"]["gross_profit"]["status"],
+            "not_reported"
+        );
+
+        let valuation =
+            build_sec_valuation_inputs("TEST", json!({"symbol":"TEST", "price": 20.0}), financials);
+        assert_eq!(
+            valuation["data"]["derived_inputs"]["market_cap"],
+            2_000_000_000_f64
+        );
+        assert_eq!(
+            valuation["data"]["derived_inputs"]["total_debt"],
+            4_000_000_000_f64
+        );
+        assert_eq!(
+            valuation["data"]["derived_inputs"]["enterprise_value"],
+            5_500_000_000_f64
+        );
+        assert_eq!(valuation["coverage"], "valuation_inputs_only_without_fmp");
+    }
+
+    #[test]
     fn quote_quality_quarantines_only_inconsistent_claim_groups() {
         let normalized = normalize_quote_timestamp_metadata(json!([{
             "symbol": "MU",
@@ -2604,6 +3774,10 @@ mod tests {
 
         assert_eq!(quality["usable_for_price_claims"], true);
         assert_eq!(quality["usable_for_change_claims"], false);
+        assert_eq!(
+            normalized[0]["hone_canonical_regular_change"]["usable"],
+            false
+        );
         assert_eq!(quality["usable_for_range_claims"], false);
         assert_eq!(quality["usable_for_market_cap_claims"], true);
         assert!(
@@ -2612,6 +3786,43 @@ mod tests {
                 .expect("quality warnings")
                 .iter()
                 .any(|warning| warning == "quote_year_range_mismatch")
+        );
+    }
+
+    #[test]
+    fn quote_quality_requires_complete_consistent_change_inputs() {
+        let incomplete = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "MRVL",
+            "price": 237.04,
+            "changesPercentage": -5.57
+        }]));
+        assert_eq!(
+            incomplete[0]["hone_evidence_quality"]["usable_for_change_claims"],
+            false
+        );
+        assert_eq!(
+            incomplete[0]["hone_canonical_regular_change"]["usable"],
+            false
+        );
+
+        let consistent = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "MRVL",
+            "price": 237.04,
+            "previousClose": 251.01,
+            "change": -13.97,
+            "changesPercentage": -5.57
+        }]));
+        assert_eq!(
+            consistent[0]["hone_evidence_quality"]["usable_for_change_claims"],
+            true
+        );
+        assert_eq!(
+            consistent[0]["hone_canonical_regular_change"]["basis"],
+            "regular_close_vs_previous_regular_close"
+        );
+        assert_eq!(
+            consistent[0]["hone_canonical_regular_change"]["change_percentage"],
+            -5.57
         );
     }
 
@@ -3262,13 +4473,62 @@ mod tests {
         );
         assert_eq!(summaries[1]["close"], 90.0);
         assert_eq!(summaries[1]["pct_change_vs_prev_session_close"], -10.0);
+        assert_eq!(summaries[1]["pct_change_vs_regular_close"], -10.0);
         // Pre continues from the post close: (92 - 90) / 90 = +2.22%.
         assert_eq!(summaries[2]["pct_change_vs_prev_session_close"], 2.22);
+        // But the canonical pre-market comparison remains the prior regular
+        // close: (92 - 100) / 100 = -8%.
+        assert_eq!(summaries[2]["pct_change_vs_previous_regular_close"], -8.0);
         // The first window has no in-data reference and must not invent one.
         assert!(
             summaries[0]
                 .get("pct_change_vs_prev_session_close")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn mrvl_regular_daily_change_cannot_use_the_premarket_denominator() {
+        let payload = normalize_extended_hours_bar(
+            "mrvl",
+            &json!([
+                {"date":"2026-08-20 15:59:00","open":250.0,"close":251.01,"high":252.0,"low":249.0,"volume":5000},
+                {"date":"2026-08-21 09:29:00","open":252.0,"close":252.48,"high":253.0,"low":251.5,"volume":400},
+                {"date":"2026-08-21 15:59:00","open":249.0,"close":237.04,"high":250.0,"low":233.28,"volume":9000},
+                {"date":"2026-08-21 19:59:00","open":237.0,"close":236.10,"high":237.2,"low":235.8,"volume":600}
+            ]),
+        )
+        .expect("normalized MRVL session payload");
+
+        let summaries = payload["hone_session_summaries"]
+            .as_array()
+            .expect("session summaries");
+        let regular = summaries
+            .iter()
+            .find(|summary| {
+                summary["date_new_york"] == "2026-08-21" && summary["session"] == "regular"
+            })
+            .expect("August 21 regular session");
+        assert_eq!(regular["pct_change_vs_prev_session_close"], -6.12);
+        assert_eq!(regular["pct_change_close_to_close"], -5.57);
+        assert_eq!(regular["previous_regular_close"], 251.01);
+        assert_eq!(
+            regular["canonical_change_basis"],
+            "regular_close_vs_previous_regular_close"
+        );
+
+        let post = summaries
+            .iter()
+            .find(|summary| {
+                summary["date_new_york"] == "2026-08-21" && summary["session"] == "post"
+            })
+            .expect("August 21 post-market session");
+        assert_eq!(post["pct_change_vs_regular_close"], -0.4);
+        assert!(
+            payload["hone_session_change_policy"]
+                .as_str()
+                .expect("session policy")
+                .contains("绝不能写成日涨跌幅")
         );
     }
 
@@ -4170,6 +5430,65 @@ mod tests {
         assert_eq!(
             financial_score_semantics(&json!({}))["altman_band"],
             serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn sec_recent_earnings_filing_finds_fresh_8k_and_press_exhibit() {
+        let submissions = json!({
+            "filings": {"recent": {
+                "form": ["4", "8-K", "10-Q"],
+                "filingDate": ["2026-08-11", "2026-08-11", "2026-05-08"],
+                "reportDate": ["", "2026-08-11", "2026-03-31"],
+                "accessionNumber": ["a", "0001769628-26-000362", "b"],
+                "primaryDocument": ["form4.xml", "crwv-20260811.htm", "crwv-20260331.htm"],
+                "items": ["", "2.02,9.01", ""]
+            }}
+        });
+        let filing = latest_sec_earnings_filing_row(&submissions).expect("earnings filing");
+        assert_eq!(filing.form, "8-K");
+        assert_eq!(filing.filing_date, "2026-08-11");
+        assert_eq!(filing.accession, "0001769628-26-000362");
+
+        let index = json!({"directory":{"item":[
+            {"name":"0001769628-26-000362-index.html"},
+            {"name":"crwv-20260811.htm"},
+            {"name":"coreweave2q26earningspress.htm"}
+        ]}});
+        assert_eq!(
+            sec_earnings_exhibit_name(&index, "crwv-20260811.htm").as_deref(),
+            Some("coreweave2q26earningspress.htm")
+        );
+    }
+
+    #[test]
+    fn sec_html_excerpt_preserves_financial_text_without_markup() {
+        let html = "<html><body><h1>Second Quarter Results</h1><table><tr><td>Revenue</td><td>$2,575&nbsp;million</td></tr></table></body></html>";
+        let text = sec_html_to_text_excerpt(html, 200);
+        assert_eq!(text, "Second Quarter Results Revenue $2,575 million");
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn sec_html_excerpt_keeps_late_cash_flow_and_balance_sheet_windows() {
+        let filler = "narrative ".repeat(2_000);
+        let html = format!(
+            "<html><body><h1>Fiscal Results</h1><p>{filler}</p><h2>Condensed Consolidated Balance Sheets</h2><p>Cash and cash equivalents $4,762</p><h2>Cash Flow from Operating Activities</h2><p>$11,671</p><p>Purchases of property, plant and equipment $177</p></body></html>"
+        );
+        let text = sec_html_to_text_excerpt(&html, 2_000);
+        assert!(text.starts_with("Fiscal Results"), "{text}");
+        assert!(
+            text.contains("Condensed Consolidated Balance Sheets"),
+            "{text}"
+        );
+        assert!(text.contains("Cash and cash equivalents $4,762"), "{text}");
+        assert!(
+            text.contains("Cash Flow from Operating Activities"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Purchases of property, plant and equipment $177"),
+            "{text}"
         );
     }
 }

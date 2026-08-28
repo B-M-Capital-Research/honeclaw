@@ -875,6 +875,9 @@ fn make_test_core_with_config(
 ) -> Arc<HoneBotCore> {
     let mut config = HoneConfig::default();
     config.agent.runner = "hone_cloud".to_string();
+    // Unit tests must never reach public Nasdaq/SEC endpoints unless a test
+    // explicitly configures a loopback provider stub.
+    config.fmp.official_fallback_enabled = false;
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
     config.storage.conversation_quota_dir = root
         .join("conversation_quota")

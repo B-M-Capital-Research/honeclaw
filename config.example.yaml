@@ -151,6 +151,9 @@ fmp:
   api_keys: []
   base_url: "https://financialmodelingprep.com/api"
   timeout: 60
+  # If no FMP key is configured, allow the narrower official Nasdaq quote and
+  # SEC filing/company-facts fallback. It never supplies consensus estimates.
+  official_fallback_enabled: true
 
 # Proactive event engine: polls FMP for market events, deduplicates, and
 # dispatches to subscribers (per-holding or global). High-severity events push
@@ -411,6 +414,15 @@ llm:
     max_retries: 3
     max_tokens: 32768
   providers:
+    # Optional OpenAI-compatible proxy for Gemini Flash. The exact model id and
+    # credential must be verified against the proxy account before enabling.
+    gemini_flash_proxy:
+      kind: openai_compatible
+      base_url: ""
+      api_key: ""
+      api_keys: []
+      timeout: 120
+      max_retries: 2
     openrouter:
       # OpenRouter-specialized OpenAI-compatible provider kind.
       # Use openai_compatible for other OpenAI-compatible endpoints.
@@ -421,6 +433,12 @@ llm:
       timeout: 120
       max_retries: 3
   profiles:
+    gemini_flash:
+      provider: gemini_flash_proxy
+      model: "gemini-3.7-flash"
+      params:
+        max_tokens: 8192
+        temperature: 0.1
     main:
       provider: openrouter
       model: "moonshotai/kimi-k2.5"
@@ -695,6 +713,9 @@ agent:
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round
   overall_timeout_seconds: 1200
+  # Enable only after the proxy/model probe succeeds. Hone sends trusted image
+  # bytes to this profile; OCR remains available as a fallback.
+  image_understanding_profile: ""
   # Verbose runner debug logging is controlled by HONE_AGENT_DEBUG, not by a config field.
 
   system_prompt_path: "./soul.md"

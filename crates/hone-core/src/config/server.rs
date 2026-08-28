@@ -223,6 +223,9 @@ pub struct FmpConfig {
     pub base_url: String,
     #[serde(default = "default_fmp_timeout")]
     pub timeout: u64,
+    /// Allow the narrow Nasdaq/SEC read-only fallback when no FMP key exists.
+    #[serde(default = "default_true")]
+    pub official_fallback_enabled: bool,
 }
 
 impl Default for FmpConfig {
@@ -232,6 +235,7 @@ impl Default for FmpConfig {
             api_keys: Vec::new(),
             base_url: default_fmp_base(),
             timeout: default_fmp_timeout(),
+            official_fallback_enabled: true,
         }
     }
 }

@@ -3020,6 +3020,7 @@ version = "0.15.3"
 dependencies = [
  "async-openai",
  "async-trait",
+ "base64 0.22.1",
  "eventsource-stream",
  "futures",
  "hone-core",

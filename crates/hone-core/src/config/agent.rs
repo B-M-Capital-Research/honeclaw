@@ -294,6 +294,10 @@ pub struct AgentConfig {
     pub step_timeout_seconds: u64,
     #[serde(default = "default_agent_overall_timeout_seconds")]
     pub overall_timeout_seconds: u64,
+    /// Optional `llm.profiles` entry used for real pixel-level image analysis.
+    /// Empty keeps OCR-only behavior.
+    #[serde(default)]
+    pub image_understanding_profile: String,
     #[serde(default)]
     pub gemini_acp: GeminiAcpConfig,
     #[serde(default)]
@@ -457,6 +461,7 @@ impl Default for AgentConfig {
             daily_conversation_limit: default_daily_conversation_limit(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
+            image_understanding_profile: String::new(),
             gemini_acp: GeminiAcpConfig::default(),
             codex_acp: CodexAcpConfig::default(),
             opencode: OpencodeAcpConfig::default(),
