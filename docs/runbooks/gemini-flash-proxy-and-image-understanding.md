@@ -32,6 +32,22 @@ bash tests/regression/manual/test_gemini_flash_proxy.sh
 
 配置后重启本地 HONE，再上传一张同时包含图表与文字的图片。回答上下文应出现“图片证据提取”，视觉描述先于 OCR；两者冲突时回答必须披露不确定性。
 
+## 评分表 131 样本 live 回放
+
+`hone-cli chat --once --json --actor-id <id>` 从标准输入读取一个完整问题，并用独立 actor 返回一行 JSON。问题不会出现在进程参数中，不同样本不会共享会话上下文。
+
+先用 `HONE_REPLAY_LIMIT=1` 做单条 smoke；确认模型、图片和数据链都正常后，再显式设置 `HONE_REPLAY_CONFIRM_ALL=YES` 执行大于十条的付费调用。回放器会安全跳过真实账户写操作和缺少原附件的样本，其他样本逐条调用本地 HONE，并把回答、工具次数和最小质量检查写入新的 NDJSON；不会覆盖 491 轮契约台账。
+
+```bash
+HONE_RESCORED_ROWS_JSON='/absolute/path/rescored_rows.json' \
+HONE_REPLAY_CONFIG='/absolute/path/private-config.yaml' \
+HONE_REPLAY_LIMIT=131 \
+HONE_REPLAY_CONFIRM_ALL=YES \
+ruby tests/regression/manual/replay_hone_target_samples.rb
+```
+
+密钥只存在于私有配置或环境变量。回放输出位于 `target/sndk-validation/`，不纳入版本库。
+
 ## 当前本机结论（2026-08-29）
 
 模型 ID 已由 Google 官方文档确认，不再是待猜测项。本机现有 Bob API 状态如下：

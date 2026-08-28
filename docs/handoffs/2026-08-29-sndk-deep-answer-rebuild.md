@@ -62,6 +62,7 @@ target/sndk-validation/hone-491-round-validation-ledger.ndjson
 - `hone-tools`：192 通过、1 忽略。
 - 默认相关库合计：1191 通过、3 忽略、0 失败；额外 131 样本手工测试 1 通过。
 - 财经自动化契约：49/49 通过。
+- `hone-cli`：89/89 通过；单次 JSON/独立 actor 参数契约已覆盖，131 样本回放器的无模型 fail-closed 探针通过。
 - 全部 CI-safe 脚本通过。全量串行运行在后段因磁盘耗尽中断；删除可再生 `target` 后，剩余脚本分别继续执行并全部通过。这不是测试断言失败。
 - 本地 HONE 真实探针成功预取 SNDK 身份、行情、财务和 SEC 证据；模型流随后被代理以 HTTP 403 拒绝，因此没有最终自然语言回答。测试后已删除临时凭据配置。
 
@@ -73,6 +74,7 @@ Google 官方已经确认精确稳定模型 ID 为 `gemini-3.7-flash`，官方 O
 2. 设置 `HONE_GEMINI_FLASH_BASE_URL`、`HONE_GEMINI_FLASH_API_KEY`，必要时设置 `HONE_GEMINI_FLASH_MODEL`，运行手工探针。
 3. 探针文本和图片都通过后，设置 `agent.image_understanding_profile: gemini_flash`。
 4. 用真实图片验证视觉描述与 OCR 顺序，再用本地 HONE 重跑 SNDK 深度问题。
-5. 检查最终回答满足七段因果链、当前来源、情景估值与反向估值，然后才可将计划标记完成并归档。
+5. 先通过 `hone-cli chat --once --json --actor-id target_smoke` 做单条 smoke；随后按 runbook 运行 `tests/regression/manual/replay_hone_target_samples.rb`，逐条隔离回放评分表样本。真实账户写操作和缺失附件样本保持安全跳过。
+6. 检查最终回答满足七段因果链、当前来源、情景估值与反向估值，并核对 live ledger 没有失败，然后才可将计划标记完成并归档。
 
 本机进一步核验了全部可复用入口：Luna 令牌对目录和目标模型返回 403；Claude 令牌目录只有八个 Claude 模型，对目标模型返回 503 无可用通道；Bob 登录控制台当前 31 个模型中没有 Gemini，本机也没有 Gemini CLI、Gemini API key 或监听中的 Gemini 代理。不要继续猜测模型别名，也不要通过吞掉错误把它记录为成功；密钥不得写进仓库、日志或交接文件。

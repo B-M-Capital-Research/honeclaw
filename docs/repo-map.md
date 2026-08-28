@@ -116,7 +116,7 @@ Last updated: 2026-08-11
   - 管理端与用户端现在按端口和构建产物分离：管理端默认走 `HONE_WEB_PORT` + `packages/app/dist`，用户端默认走 `HONE_PUBLIC_WEB_PORT` + `packages/app/dist-public`
   - 用户可见的长期研究记忆入口现只保留 `/memory` 下的公司画像视图；KB 页面与知识记忆 tab 已移除
 - CLI: `bins/hone-cli/src/main.rs`
-  - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, `start`, and `web`; `web admin-ui` / `web user-ui` start or locate the admin and user Web surfaces; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL
+  - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, `start`, and `web`; `web admin-ui` / `web user-ui` start or locate the admin and user Web surfaces; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL. `chat --once --json --actor-id <id>` reads one complete prompt from standard input, emits one machine-readable result and isolates each regression actor, so target-sample replay neither exposes prompts in process arguments nor shares conversation history.
 - Standalone public macOS user app: `bins/hone-user-app/src/main.rs`; build with `scripts/build_user_app.sh` and operate it via `docs/runbooks/public-user-macos-app.md`
 - Standalone public iOS user app: `apps/hone-ios/HONE.xcodeproj`; operate it via `docs/runbooks/public-user-ios-app.md`
 - Channel runtime export: `crates/hone-channels/src/lib.rs`

@@ -1,16 +1,65 @@
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::sync::Arc;
 
 use hone_channels::HoneBotCore;
 use hone_channels::agent_session::{AgentRunOptions, AgentSession};
 use hone_channels::prompt::PromptOptions;
 
-pub(crate) async fn run_chat(core: Arc<HoneBotCore>, config_path: &str) -> Result<(), String> {
+use crate::ChatArgs;
+
+pub(crate) async fn run_chat(
+    core: Arc<HoneBotCore>,
+    config_path: &str,
+    args: ChatArgs,
+) -> Result<(), String> {
     hone_core::logging::setup_logging(&core.config.logging);
     tracing::info!("Hone CLI chat started");
     core.log_startup_routing("cli", config_path);
-    let actor = HoneBotCore::create_actor("cli", "cli_user", None)
+    let actor_id = args.actor_id.as_deref().unwrap_or("cli_user");
+    let actor = HoneBotCore::create_actor("cli", actor_id, None)
         .map_err(|e| format!("cli actor 初始化失败：{e}"))?;
+
+    if args.once {
+        let mut input = String::new();
+        io::stdin()
+            .read_to_string(&mut input)
+            .map_err(|error| format!("读取单次问题失败：{error}"))?;
+        let input = input.trim();
+        if input.is_empty() {
+            return Err("单次问题不能为空".to_string());
+        }
+        let prompt_options = PromptOptions {
+            is_admin: true,
+            ..PromptOptions::default()
+        };
+        let session = AgentSession::new(core, actor, "cli")
+            .with_restore_max_messages(None)
+            .with_prompt_options(prompt_options);
+        let response = session
+            .run(input, AgentRunOptions::default())
+            .await
+            .response;
+        if args.json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "success": response.success,
+                    "content": response.content,
+                    "error": response.error,
+                    "tool_calls_made": response.tool_calls_made.len(),
+                })
+            );
+        } else if response.success {
+            println!("{}", response.content);
+        } else {
+            println!("{}", response.error.clone().unwrap_or_default());
+        }
+        return if response.success {
+            Ok(())
+        } else {
+            Err("单次回答失败".to_string())
+        };
+    }
 
     println!("╭─────────────────────────────────────────╮");
     println!("│  🍯 Hone Financial — CLI                │");

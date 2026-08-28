@@ -38,6 +38,7 @@
 - CI-safe 回归全部通过。完整脚本第一次运行到 skill runtime 工具测试时因磁盘空间耗尽中断；清理可再生构建产物后，未执行的脚本逐一通过，财经自动化契约为 49/49。
 - 本地 HONE 真实预取已成功获取 SNDK 身份、行情、财务和 SEC 证据；随后模型流在现有代理处以 HTTP 403 终止，因此未生成最终回答。临时凭据配置已删除。
 - Gemini Flash 手工探针已覆盖文本和真实 data-URL 图片。Google 官方确认稳定 ID 为 `gemini-3.7-flash`，并确认 OpenAI-compatible `chat/completions`、函数调用和图片理解。现有 `bob_luna` 令牌返回 403；`bob_claude` 虽能读取目录，但目录仅有八个 Claude 模型，对目标模型返回 503 无可用通道；登录控制台的模型广场也没有 Gemini。取得有权限的反代分组或 Google Gemini API key 后，按 runbook 重跑即可完成最后两项 live 验收。
+- 已增加隔离的本地 live 回放入口：`hone-cli chat --once --json --actor-id` 从标准输入读取问题，131 样本回放器按样本创建独立 actor、默认只 smoke 一条、超过十条要求显式成本确认，并安全跳过真实账户写操作和缺失原附件。CLI 89 项测试与回放器 fail-closed 探针通过。
 
 ## Documentation Sync
 
