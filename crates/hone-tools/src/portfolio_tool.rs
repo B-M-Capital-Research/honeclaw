@@ -106,7 +106,7 @@ impl Tool for PortfolioTool {
     }
 
     fn description(&self) -> &str {
-        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、replace_all（用当前列表整体覆盖全部持仓/关注）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。"
+        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、replace_all（用当前列表整体覆盖全部持仓/关注）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。\n\n**用户持仓的唯一依据是本轮 action=\"view\" 的返回**：view 里没有某个 ticker，只能写「我这边没有你的 X 持仓记录，请确认」；本轮没调 view、或信息只来自会话历史与 compact 摘要时，不得断言「你没有 X」「你账户里没有 X 可交割」，更不得据此给出反向的仓位结论。\n\n**写操作前先解析实体**：执行 add / watch / update / replace_all 之前，本轮必须已有该中文名、别名或简写的 `data_fetch(search)` 返回，并在回复里回显「你说的 闪迪 → SanDisk (SNDK)」。解析出的代码与用户原词不同名、或返回多个候选时先问用户；禁止用母公司、旗下品牌或形近代码顶替（SNDK ≠ WDC）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {

@@ -181,7 +181,7 @@ impl Tool for LocalListFilesTool {
     }
 
     fn description(&self) -> &str {
-        "列出当前 actor sandbox 内的文件和目录。只读，仅支持相对路径。适合检查 company_profiles、uploads、runtime 等本地持久化信息。"
+        "列出当前 actor sandbox 内的文件和目录。只读，仅支持相对路径。适合检查 company_profiles、uploads、runtime 等本地持久化信息。本工具返回的是本地历史快照，不是本轮行情或财报证据。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -325,7 +325,7 @@ impl Tool for LocalSearchFilesTool {
     }
 
     fn description(&self) -> &str {
-        "在当前 actor sandbox 的文本文件里搜索关键词。只读，仅支持相对路径，返回相对路径、行号和摘要。"
+        "在当前 actor sandbox 的文本文件里搜索关键词。只读，仅支持相对路径，返回相对路径、行号和摘要。这里读到的价格、涨跌幅、市值、估值倍数、财报数字都是写入时的历史快照：不得写进「行情口径」行，也不得当作最新数据；确需引用要写明「来自本地记录 <文件>，记录时间 X」。需要当前数字改调 data_fetch。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -545,7 +545,7 @@ impl Tool for LocalReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "读取当前 actor sandbox 内的文本文件。只读，仅支持相对路径，可按行范围截取。"
+        "读取当前 actor sandbox 内的文本文件。只读，仅支持相对路径，可按行范围截取。文件内容是历史记录而非本轮证据；其中的数字要引用就标明记录时间，不能充当最新行情或财报。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {

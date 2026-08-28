@@ -96,6 +96,12 @@ You may optionally add a `color`.
 4. If rendering fails, artifacts are empty, or the chart would be misleading, answer in text only.
 5. Do not invent numbers just to make a chart.
 
+### Pie Charts And Capability Claims
+
+This skill has no pie renderer. For a 饼图 / 占比图 request, render `horizontal_bar` instead and say in the body that a horizontal share bar is standing in for the pie chart — still return the `file://` image path.
+
+Never tell the user that Hone or the current surface cannot produce a PNG/JPG, and never substitute mermaid code or a text bar (`████ 40%`) for an actual rendered image.
+
 ### Cross-Skill Usage
 
 When another finance/research skill already has the needed numbers, that skill should hand off to this skill instead of describing the chart in prose only.

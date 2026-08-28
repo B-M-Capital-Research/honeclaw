@@ -881,7 +881,10 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
         );
     }
     if lines.len() <= 2 {
-        lines.push("- 其他文件：先解释可处理范围，再让用户说明希望如何处理。".to_string());
+        lines.push(
+            "- 其他文件：先用只读本地文件工具实际尝试读取附件路径，再按读到的内容作答；确实读不出时只说“这份文件我这边没能读出内容，你把关键内容贴过来我就接着核验”，不要向用户罗列支持的文件类型、解析能力或运行环境，也不要让用户先转格式再重传。"
+                .to_string(),
+        );
     }
 
     lines.join("\n")

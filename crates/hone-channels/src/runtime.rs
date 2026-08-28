@@ -317,6 +317,27 @@ static RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock
     )
     .expect("valid regex")
 });
+/// `运行时时区=Asia/Shanghai` and friends: the process timezone spelled the way
+/// a config file spells it, which nobody says out loud.
+static RE_RUNTIME_TIMEZONE_ASSIGNMENT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"运行时时区\s*=\s*[A-Za-z][A-Za-z0-9_+\-]*(?:/[A-Za-z0-9_+\-]+)*")
+        .expect("valid regex")
+});
+/// The placeholder used as a clock label, i.e. immediately in front of a date:
+/// `数据时间：运行时时区 2026-08-28`, `（12/12，运行时时区 2026-05-01）`. Anchoring
+/// on the date keeps this away from the scheduler's heartbeat time normalizer,
+/// which deletes the token rather than renaming it.
+static RE_RUNTIME_TIMEZONE_BEFORE_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"运行时时区[ \t]+(?P<date>\d{4}-\d{2}-\d{2})").expect("valid regex")
+});
+/// A bare IANA identifier standing where the clock label belongs, e.g.
+/// `数据时间：Asia/Shanghai 2026-08-28 05:30`.
+static RE_DATA_TIME_IANA_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?P<field>数据时间|报价源时间)：\s*[A-Za-z][A-Za-z0-9_+\-]*(?:/[A-Za-z0-9_+\-]+)+",
+    )
+    .expect("valid regex")
+});
 static RE_RAW_TABLE_COMPONENT_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?is)(?:<table\b[^>]*columns\s*=[^>]*(?:/>|>.*?</table>)|<table\b[^>]*dataIndex\s*=[^>]*(?:/>|>.*?</table>)|<table\b[^>]*data\s*=\{[^>]*(?:/>|>.*?</table>))"#,
@@ -596,6 +617,12 @@ pub fn sanitize_agent_owned_user_visible_output(text: &str) -> SanitizedUserVisi
     let (path_sanitized, removed_paths) = redact_user_visible_local_paths(&sanitized);
     sanitized = path_sanitized.trim().to_string();
     removed_internal |= removed_paths;
+    // Safe on this path too: the streaming committer normalizes the same way
+    // before it hands bytes to the user, so the committed prefix and this
+    // final text agree on how the clock is spelled.
+    let (clock_sanitized, removed_clock) = normalize_user_visible_clock_label(&sanitized);
+    sanitized = clock_sanitized;
+    removed_internal |= removed_clock;
 
     SanitizedUserVisibleOutput {
         only_internal: removed_internal && sanitized.is_empty(),
@@ -702,6 +729,33 @@ fn redact_user_visible_local_paths(text: &str) -> (String, bool) {
         });
 
     (internal_relative_stripped.into_owned(), removed)
+}
+
+/// Spell the clock the way a reader says it.
+///
+/// `运行时时区 2026-08-18 15:52` and `数据时间：Asia/Shanghai` are the process
+/// timezone written the way a config file writes it. This only changes how the
+/// clock is named — never what the answer claims — so even the agent-owned path,
+/// which otherwise preserves the model's own market copy verbatim, applies it.
+pub(crate) fn normalize_user_visible_clock_label(text: &str) -> (String, bool) {
+    if !text.contains("运行时时区") && !RE_DATA_TIME_IANA_LABEL.is_match(text) {
+        return (text.to_string(), false);
+    }
+    let clock_label = crate::investment_response_guard::local_clock_label();
+    // Only the two labelled time fields and the `=<zone>` form are rewritten.
+    // A blanket token swap would collide with the scheduler's own heartbeat
+    // time normalization, which deletes the token instead of renaming it.
+    let mut rewritten = RE_RUNTIME_TIMEZONE_ASSIGNMENT
+        .replace_all(text, clock_label.as_str())
+        .into_owned();
+    rewritten = RE_DATA_TIME_IANA_LABEL
+        .replace_all(&rewritten, format!("${{field}}：{clock_label}").as_str())
+        .into_owned();
+    rewritten = RE_RUNTIME_TIMEZONE_BEFORE_DATE
+        .replace_all(&rewritten, format!("{clock_label} ${{date}}").as_str())
+        .into_owned();
+    let changed = rewritten != text;
+    (rewritten, changed)
 }
 
 fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
@@ -1398,11 +1452,63 @@ mod tests {
         assert!(!sanitized.only_internal);
         assert_eq!(
             sanitized.content,
-            "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。"
+            format!(
+                "数据时间：{} 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。",
+                crate::investment_response_guard::local_clock_label()
+            )
         );
         assert!(!sanitized.content.contains("hidden"));
         assert!(!sanitized.content.contains("已完成校验"));
         assert!(!sanitized.content.contains("公开页面"));
+    }
+
+    #[test]
+    fn user_visible_clock_label_replaces_the_config_spelling_everywhere() {
+        let label = crate::investment_response_guard::local_clock_label();
+
+        let raw = "数据时间：运行时时区 2026-08-28 05:30；行情口径：运行时时区=Asia/Shanghai；\n\n报价源时间：运行时时区 2026-08-28 04:00（最新可得，非逐笔）";
+        let sanitized = sanitize_agent_owned_user_visible_output(raw);
+        assert!(
+            !sanitized.content.contains("运行时时区"),
+            "{}",
+            sanitized.content
+        );
+        assert!(
+            !sanitized.content.contains("Asia/Shanghai"),
+            "{}",
+            sanitized.content
+        );
+        assert!(
+            sanitized
+                .content
+                .starts_with(&format!("数据时间：{label} 2026-08-28 05:30"))
+        );
+        assert!(
+            sanitized
+                .content
+                .contains(&format!("报价源时间：{label} 2026-08-28 04:00"))
+        );
+
+        // A bare IANA identifier standing in for the label is rewritten too.
+        let iana = sanitize_agent_owned_user_visible_output(
+            "数据时间：Asia/Shanghai 2026-08-28 09:10；行情口径：NYSE 收盘价",
+        );
+        assert!(
+            iana.content
+                .starts_with(&format!("数据时间：{label} 2026-08-28 09:10"))
+        );
+
+        // Scheduler copy keeps its own time normalizers, which key on the raw
+        // token, so the shared non-agent path must leave it alone.
+        let scheduled = sanitize_user_visible_output(
+            "【NBIS 高权重事件监控 · 运行时时区 2026-06-19 17:30】已核验到关键事件。",
+        );
+        assert!(scheduled.content.contains("运行时时区 2026-06-19 17:30"));
+
+        // Copy that never named the clock is untouched.
+        let plain = sanitize_agent_owned_user_visible_output("NVDA 今日收盘 180.25 美元。");
+        assert_eq!(plain.content, "NVDA 今日收盘 180.25 美元。");
+        assert!(!plain.removed_internal);
     }
 
     #[test]
@@ -1415,7 +1521,10 @@ mod tests {
         assert!(!sanitized.only_internal);
         assert_eq!(
             sanitized.content,
-            "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮工具结果"
+            format!(
+                "数据时间：{} 2026-07-18 21:08；行情口径：本轮工具结果",
+                crate::investment_response_guard::local_clock_label()
+            )
         );
         assert!(!sanitized.content.contains("foo"));
         assert!(!sanitized.content.contains("bar"));

@@ -365,20 +365,22 @@ impl InvestmentResponseContract {
             .map(|time| time.with_timezone(&hone_core::local_offset()))
             .collect::<Vec<_>>();
         provider_times.sort_unstable();
+        let clock = local_clock_label();
         let quote_scope = match (provider_times.first(), provider_times.last()) {
             (Some(first), Some(last)) if first != last => format!(
-                "报价源时间：运行时时区 {} 至 {}（最新可得，非逐笔）",
+                "报价源时间：{clock} {} 至 {}（最新可得，非逐笔）",
                 first.format("%Y-%m-%d %H:%M"),
                 last.format("%Y-%m-%d %H:%M")
             ),
             (Some(time), _) => format!(
-                "报价源时间：运行时时区 {}（最新可得，非逐笔）",
+                "报价源时间：{clock} {}（最新可得，非逐笔）",
                 time.format("%Y-%m-%d %H:%M")
             ),
             _ => "数据源未提供可解析的报价时间戳；以下时间仅为本轮查询时间（非逐笔）".to_string(),
         };
         format!(
-            "数据时间：运行时时区 {}；行情口径：{}",
+            "{}{}；行情口径：{}",
+            data_time_prefix(),
             generated_at.format("%Y-%m-%d %H:%M"),
             quote_scope
         )
@@ -411,7 +413,8 @@ impl InvestmentResponseContract {
             .and_then(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
             .map(|time| {
                 format!(
-                    "运行时时区 {}",
+                    "{} {}",
+                    local_clock_label(),
                     time.with_timezone(&hone_core::local_offset())
                         .format("%Y-%m-%d %H:%M")
                 )
@@ -676,7 +679,8 @@ fn safe_markdown_inline(value: &str, max_chars: usize) -> String {
 
 pub(crate) fn current_investment_data_time_line() -> String {
     format!(
-        "数据时间：运行时时区 {}；数据口径：本轮查询时间（仅下方明确标注的字段已完成核验）",
+        "{}{}；数据口径：本轮查询时间（仅下方明确标注的字段已完成核验）",
+        data_time_prefix(),
         hone_core::local_now().format("%Y-%m-%d %H:%M")
     )
 }
@@ -1104,7 +1108,8 @@ fn deterministic_market_fallback(contract: &InvestmentResponseContract) -> Optio
             .and_then(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
             .map(|time| {
                 format!(
-                    "运行时时区 {}",
+                    "{} {}",
+                    local_clock_label(),
                     time.with_timezone(&hone_core::local_offset())
                         .format("%Y-%m-%d %H:%M")
                 )
@@ -3064,6 +3069,43 @@ pub(crate) fn local_clock_label() -> String {
         "Asia/Shanghai" | "Asia/Chongqing" | "Asia/Hong_Kong" | "PRC" => "北京时间".to_string(),
         other => format!("{other} 时间"),
     }
+}
+
+/// What every visible answer opens with, in the words a person reads.
+pub(crate) fn data_time_prefix() -> String {
+    format!("数据时间：{} ", local_clock_label())
+}
+
+/// The prefix this product emitted before the clock had a human label.
+/// Stored sessions, replayed drafts and older fixtures still carry it, so
+/// every reader keeps accepting it while every writer has moved on.
+pub(crate) const LEGACY_DATA_TIME_PREFIX: &str = "数据时间：运行时时区 ";
+
+/// Both spellings a first line may legitimately arrive in, current first.
+pub(crate) fn data_time_prefixes() -> Vec<String> {
+    let current = data_time_prefix();
+    if current == LEGACY_DATA_TIME_PREFIX {
+        vec![current]
+    } else {
+        vec![current, LEGACY_DATA_TIME_PREFIX.to_string()]
+    }
+}
+
+/// The accepted prefix this line actually starts with, if any.
+///
+/// Deliberately looser than [`data_time_prefixes`]: a first line may end the
+/// clock label with a space, a full stop or a semicolon, and all three are the
+/// same claim about the same clock.
+pub(crate) fn matched_data_time_prefix(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    [
+        local_clock_label(),
+        "北京时间".to_string(),
+        "运行时时区".to_string(),
+    ]
+    .into_iter()
+    .map(|label| format!("数据时间：{label}"))
+    .find(|prefix| trimmed.starts_with(prefix.as_str()))
 }
 
 /// The session in the words traders use, plus what comes next.
@@ -5194,7 +5236,7 @@ pub(crate) fn missing_investment_response_sections(
     if !content
         .lines()
         .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.trim_start().starts_with("数据时间：运行时时区"))
+        .is_some_and(|line| matched_data_time_prefix(line).is_some())
     {
         push_missing(&mut common_missing, "首行数据时间");
     }
@@ -8629,11 +8671,12 @@ fn append_agent_entity_discovery_context(
     if let Some(context) = market_move_temporal_context(user_input, answer_time) {
         runtime_input.push_str(&context);
     }
+    let clock_label = local_clock_label();
     runtime_input.push_str(&format!(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
-         本轮回答的时间锚点固定为运行时时区 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：运行时时区 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
+         本轮回答的时间锚点固定为{clock_label} {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：{clock_label} {answer_time}；行情口径：` 开头（时区写人话，不要出现“运行时时区”“Asia/Shanghai”这类内部标识）。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
          `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.local，并明确“最新可得、非逐笔”口径。涨跌幅一律引用服务端算好的 `hone_change_basis.pct`（扩展时段则引用 `extended_hours` 里 `hone_session_summaries` 对应窗口的 `pct_change_vs_prev_session_close`），不要自己拿两个价格相除，也不要直接抄 provider 的 `changesPercentage`——它的基准时刻未必是你正在展示的那一个。引用时必须连同 `hone_change_basis.label` 给出的名称一起用：同一个差值在盘中是当日涨跌、在盘前只是最新价较上一常规收盘，改个名字充当另一个是错的。同一行里的价格与涨跌幅必须来自同一时刻、同一个对象；跨时刻必须分行或逐个标注时间戳。`hone_change_basis.cannot_prove` 出现时，说明本轮 quote 证明不了常规时段涨跌，缺这一项就按缺口如实说明或另取 extended_hours，不得用手头这个百分比顶替。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。\n\n\
          【数字与财报的口径纪律：软引导，不是拒答门禁】\n\
          - 引用任何季度/年度财报数字前，先用 data_fetch(earnings_status) 或本轮已有工具结果对齐该季度的发布状态；未发布季度的数字一律明确标注为公司指引、一致预期或假设，不得写成已公布实际业绩。财报前瞻（preview）只能使用已发布历史财报+现行指引+明确标注的假设；财报分析（analysis）前先确认该季度已在官方渠道发布。\n\
@@ -12320,7 +12363,7 @@ mod tests {
         accept_named_entity_match, accept_numeric_entity_match,
         append_agent_entity_discovery_context, apply_verified_index_route, asset_evidence_route,
         bounded_evidence_json, bounded_symbol_batches, broad_analysis_kind,
-        complete_entity_extraction_with_auxiliary, contract_failure_message,
+        complete_entity_extraction_with_auxiliary, contract_failure_message, data_time_prefix,
         dated_market_searches_at, deterministic_sector_symbols,
         deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
         entity_is_fund, explicit_dollar_mentions, extract_entity_scope,
@@ -12328,21 +12371,21 @@ mod tests {
         has_main_agent_entity_discovery_seed, has_matching_financial_data,
         has_matching_symbol_data, investment_contract_failure_message,
         investment_preflight_failure_message, is_portfolio_scope_request,
-        is_strict_quote_only_request, market_benchmark_symbols, market_move_temporal_context,
-        market_move_temporal_context_in, market_search_date_at, matching_quote_fact,
-        matching_symbol_objects_or_error, missing_deep_crypto_sections, missing_deep_fund_sections,
-        missing_deep_single_stock_sections, missing_investment_response_sections,
-        normalized_company_financial_evidence, normalized_dated_event_evidence,
-        normalized_fund_holdings_evidence, normalized_portfolio_snapshot, numeric_probe_symbols,
-        parse_entity_extraction, parse_representative_symbols, plain_ticker_mentions,
-        portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
-        quote_has_positive_matching_price, quote_timestamp_is_usable, resolve_entity_match,
-        resolve_numeric_probe_result, response_intent, response_requires_verified_price,
-        set_verified_asset_type, should_fetch_earnings_outlook, should_run_entity_stage,
-        text_contains_source_domain, ticker_mentions_cover_request,
-        unresolved_entity_fallback_scope, unsupported_financial_fact_claims,
-        unverified_mention_labels, verified_dated_sources, verified_financial_facts,
-        web_source_markers,
+        is_strict_quote_only_request, local_clock_label, market_benchmark_symbols,
+        market_move_temporal_context, market_move_temporal_context_in, market_search_date_at,
+        matching_quote_fact, matching_symbol_objects_or_error, missing_deep_crypto_sections,
+        missing_deep_fund_sections, missing_deep_single_stock_sections,
+        missing_investment_response_sections, normalized_company_financial_evidence,
+        normalized_dated_event_evidence, normalized_fund_holdings_evidence,
+        normalized_portfolio_snapshot, numeric_probe_symbols, parse_entity_extraction,
+        parse_representative_symbols, plain_ticker_mentions, portfolio_request_needs_market_data,
+        profile_without_conflicting_quote_fields, quote_has_positive_matching_price,
+        quote_timestamp_is_usable, resolve_entity_match, resolve_numeric_probe_result,
+        response_intent, response_requires_verified_price, set_verified_asset_type,
+        should_fetch_earnings_outlook, should_run_entity_stage, text_contains_source_domain,
+        ticker_mentions_cover_request, unresolved_entity_fallback_scope,
+        unsupported_financial_fact_claims, unverified_mention_labels, verified_dated_sources,
+        verified_financial_facts, web_source_markers,
     };
     use crate::agent_session::AgentTurnOrigin;
     use chrono::{TimeZone, Utc};
@@ -12696,7 +12739,10 @@ mod tests {
             "same-domain same-day sources may be deduplicated, but dated news evidence must remain"
         );
         let data_time = discovered.contract.data_time_line();
-        assert!(data_time.contains("报价源时间：运行时时区"), "{data_time}");
+        assert!(
+            data_time.contains(&format!("报价源时间：{}", local_clock_label())),
+            "{data_time}"
+        );
         assert!(data_time.contains("至"), "{data_time}");
     }
 
@@ -14201,8 +14247,11 @@ mod tests {
         assert!(answer_contract_position > discovery_position);
         let answer_contract = &runtime_input[answer_contract_position..];
         assert!(answer_contract.contains("第一可见字符必须是“数”"));
-        assert!(answer_contract.contains("数据时间：运行时时区 "));
-        assert!(answer_contract.contains("数据时间：运行时时区 2026-07-19 09:31；行情口径："));
+        assert!(answer_contract.contains(&data_time_prefix()));
+        assert!(answer_contract.contains(&format!(
+            "{}2026-07-19 09:31；行情口径：",
+            data_time_prefix()
+        )));
         assert!(answer_contract.contains("与上方 Session 上下文来自同一次时钟读取"));
         assert!(answer_contract.contains("；行情口径："));
         assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
@@ -16172,7 +16221,7 @@ mod tests {
         let draft = "数据时间：模型自行估计。\nRMBS 当前价 101.53 美元。\n1. 结论：估值偏高，先观察。\n2. 公司是什么、靠什么赚钱：公司依靠芯片接口 IP 与产品收入赚钱。\n3. 护城河与竞争壁垒：专利、接口 IP 与客户验证周期构成壁垒。\n4. 行业位置与关键对手：位于内存接口产业链，竞争对手仍需跟踪。\n5. 财务质量：本轮年度利润表可用于判断利润质量，自由现金流本轮未核验。\n6. 估值：采用 P/S 与情景法，具体倍数作为假设而非事实。\n7. Bull / Bear / Base Case：Bull 看新品，Bear 看估值，Base 看正常执行。\n8. 催化剂、风险点、证伪条件：新品是催化，竞争是风险，增长失速构成证伪。\n9. 动作建议：观察；若盈利兑现且估值回落则触发重评。";
 
         let output = enforce_server_data_time_prefix(&contract, draft);
-        assert!(output.starts_with("数据时间：运行时时区 "));
+        assert!(output.starts_with(&data_time_prefix()));
         assert_eq!(output.matches("数据时间：").count(), 1);
         let target_position = output.find("标的核验：Rambus Inc.（RMBS").unwrap();
         let quote_position = output.find("本轮同代码现价 101.53 USD").unwrap();
@@ -16189,7 +16238,7 @@ mod tests {
             missing_investment_response_sections(&contract, &output)
         );
         let finalized_visible = crate::runtime::sanitize_user_visible_output(&output).content;
-        assert!(finalized_visible.starts_with("数据时间：运行时时区 "));
+        assert!(finalized_visible.starts_with(&data_time_prefix()));
         assert!(finalized_visible.contains("标的核验：Rambus Inc.（RMBS"));
         assert!(finalized_visible.contains("本轮同代码现价 101.53 USD"));
     }
@@ -16197,7 +16246,7 @@ mod tests {
     #[test]
     fn preflight_errors_still_begin_with_server_time() {
         let output = investment_preflight_failure_message("证券实体查询暂时不可用，请稍后重试。");
-        assert!(output.starts_with("数据时间：运行时时区 "));
+        assert!(output.starts_with(&data_time_prefix()));
         assert!(output.contains("证券实体查询暂时不可用"));
         assert!(!output.contains("行情尚未完成核验"));
     }
@@ -16223,7 +16272,7 @@ mod tests {
             origin: AgentTurnOrigin::Interactive,
         };
         let output = investment_contract_failure_message(&contract, contract_failure_message());
-        assert!(output.starts_with("数据时间：运行时时区 "));
+        assert!(output.starts_with(&data_time_prefix()));
         assert!(output.contains("Rambus Inc.（RMBS）本轮同代码现价 101.53 USD"));
         assert!(!output.contains("行情尚未完成核验"));
     }

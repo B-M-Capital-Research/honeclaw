@@ -136,7 +136,6 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     ExecuteOnce,
 }
 
-const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
 const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
 const DELIVERED_PUSH_CONTEXT_MAX_RECORDS: usize = 20;
 const DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS: usize = 12_000;
@@ -472,7 +471,7 @@ pub(super) fn recover_response_with_committed_prefix(
         return false;
     }
     let trimmed_start = response.content.trim_start_matches(char::is_whitespace);
-    if trimmed_start.starts_with(SERVICE_OWNED_PREFIX_START) {
+    if crate::investment_response_guard::matched_data_time_prefix(trimmed_start).is_some() {
         let Some(first_newline) = trimmed_start.find('\n') else {
             return false;
         };
@@ -1622,8 +1621,8 @@ impl AgentSession {
             execution.runner_request.service_owned_initial_prefix = Some(
                 ServiceOwnedInitialPrefix {
                     content: format!(
-                        "数据时间：运行时时区 {answer_time_local}；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
-                        hone_core::runtime_timezone_name()
+                        "{}{answer_time_local}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
+                        crate::investment_response_guard::data_time_prefix()
                     ),
                     // Preserve the established first-line format, but publish
                     // it only with a completed usable answer. Whole-answer
@@ -2331,10 +2330,10 @@ impl AgentSession {
             ConversationQuotaReserveResult::Bypassed => Ok(None),
             ConversationQuotaReserveResult::Rejected(snapshot) => {
                 Err(hone_core::HoneError::Other(format!(
-                    "已达到今日对话上限（{}/{}，运行时时区 {}，日期 {}），请明天再试",
+                    "已达到今日对话上限（{}/{}，{} {}），请明天再试",
                     snapshot.success_count + snapshot.in_flight,
                     snapshot.limit,
-                    hone_core::runtime_timezone_name(),
+                    crate::investment_response_guard::local_clock_label(),
                     snapshot.quota_date
                 )))
             }
