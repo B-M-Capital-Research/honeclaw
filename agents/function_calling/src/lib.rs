@@ -4718,9 +4718,13 @@ fn append_market_move_quote_fact_violations(
     }
 
     let normalized_content = content.to_ascii_lowercase();
-    let close_value_claim = Regex::new(r"(?:收报|收于|收在|收)\s*[$¥€£]?\s*[0-9]")
-        .expect("market-move close value regex")
-        .is_match(content);
+    // The bare `收` alternative used to match 营收 / 回收 / 吸收 followed by a
+    // number, so any draft that quantified revenue was rejected as if it had
+    // claimed a closing price. Require an actual close verb.
+    let close_value_claim =
+        Regex::new(r"(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?)\s*[$¥€£]?\s*[0-9]")
+            .expect("market-move close value regex")
+            .is_match(content);
     if ["收盘", "收市", "常规交易收盘"]
         .iter()
         .any(|marker| content.contains(marker))
@@ -4765,6 +4769,19 @@ fn append_market_move_quote_fact_violations(
                     else {
                         continue;
                     };
+                    // A move-attribution answer is supposed to quantify the
+                    // event (dilution, margin, share, implied upside). Those
+                    // percentages sit on the same line as the ticker but are
+                    // not change claims, so only reconcile a percentage whose
+                    // lead-in does not name a different metric.
+                    let lead_in = captures
+                        .get(0)
+                        .zip(captures.get(1))
+                        .map(|(whole, number)| &line[whole.start()..number.start().min(line.len())])
+                        .unwrap_or("");
+                    if percentage_names_another_metric(lead_in) {
+                        continue;
+                    }
                     if (displayed - quote.change_percentage).abs() > 0.015 {
                         violations.push(format!(
                             "{} 的涨跌幅应来自服务端 hone_change_basis.pct（约 {:+.2}%），不能使用 provider changesPercentage 或把 change 等其它字段写成百分比",
@@ -5294,6 +5311,75 @@ fn market_move_final_correction_prompt_with_sources(
         violations.join("；"),
         bounded_market_move_draft(draft)
     )
+}
+
+/// True when the text between a ticker and a percentage names a metric other
+/// than the security's price change, so the percentage must not be reconciled
+/// against `hone_change_basis.pct`.
+fn percentage_names_another_metric(lead_in: &str) -> bool {
+    const OTHER_METRICS: &[&str] = &[
+        "毛利率",
+        "利润率",
+        "净利率",
+        "税率",
+        "费用率",
+        "占比",
+        "比例",
+        "份额",
+        "稀释",
+        "摊薄",
+        "收益率",
+        "增速",
+        "增长",
+        "复合",
+        "折价",
+        "溢价",
+        "覆盖",
+        "良率",
+        "利用率",
+        "分位",
+        "概率",
+        "中位",
+        "权重",
+        "仓位",
+        "转化",
+        "合理价",
+        "目标价",
+        "估值",
+        "隐含",
+        "空间",
+        "回报",
+        "利差",
+        "换手",
+        "股息",
+    ];
+    const OTHER_METRICS_ASCII: &[&str] = &[
+        "margin",
+        "share",
+        "dilut",
+        "yield",
+        "growth",
+        "cagr",
+        "ratio",
+        "coverage",
+        "percentile",
+        "probability",
+        "discount",
+        "premium",
+        "allocation",
+        "weight",
+        "utilization",
+        "conversion",
+        "upside",
+        "downside",
+    ];
+    if OTHER_METRICS.iter().any(|word| lead_in.contains(word)) {
+        return true;
+    }
+    let lowered = lead_in.to_ascii_lowercase();
+    OTHER_METRICS_ASCII
+        .iter()
+        .any(|word| lowered.contains(word))
 }
 
 fn format_market_move_change(change_percentage: f64) -> String {
@@ -6624,9 +6710,8 @@ impl Agent for FunctionCallingAgent {
                                 }
                                 language_final_corrections =
                                     language_final_corrections.saturating_add(1);
-                                pending_language_final_correction = Some(
-                                    language_final_correction_prompt(&response.content),
-                                );
+                                pending_language_final_correction =
+                                    Some(language_final_correction_prompt(&response.content));
                                 continue;
                             }
                             response
@@ -7877,7 +7962,10 @@ mod tests {
         ));
 
         // Short English fragments never trigger a rewrite.
-        assert!(!super::final_language_mismatch(question, "Double beat; guidance raised."));
+        assert!(!super::final_language_mismatch(
+            question,
+            "Double beat; guidance raised."
+        ));
     }
 
     #[test]
@@ -15994,6 +16082,55 @@ mod tests {
             "mrvl最近怎么看",
             true
         ));
+    }
+
+    #[test]
+    fn close_price_claim_does_not_fire_on_revenue_or_buyback_wording() {
+        // `收` used to be its own alternative, so 营收 / 回收 / 吸收 followed by a
+        // number was read as "this quote's price is a close".
+        let close_claim = |content: &str| {
+            regex::Regex::new(r"(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?)\s*[$¥€£]?\s*[0-9]")
+                .expect("close value regex")
+                .is_match(content)
+        };
+        for benign in [
+            "AAOI 单季营收 6.5 亿美元，同比下滑。",
+            "本季度净营收 8000 万美元。",
+            "公司回收 3 亿美元现金用于偿债。",
+        ] {
+            assert!(!close_claim(benign), "should not fire: {benign}");
+        }
+        for claim in [
+            "AAOI 收于 $18.20。",
+            "股价收报 18.20 美元。",
+            "常规时段收盘价 18.20 美元。",
+        ] {
+            assert!(close_claim(claim), "should fire: {claim}");
+        }
+    }
+
+    #[test]
+    fn change_basis_reconciliation_skips_percentages_that_are_other_metrics() {
+        // A move answer has to quantify the event; those percentages sit on the
+        // same line as the ticker but are not change claims.
+        for other in [
+            " 的毛利率从 ",
+            " 本次增发的稀释比例约 ",
+            " 的数据中心收入占比 ",
+            " implied upside of ",
+            " 的合理价下移约 ",
+        ] {
+            assert!(
+                percentage_names_another_metric(other),
+                "should be skipped: {other}"
+            );
+        }
+        for change in [" 下跌 ", " 当日 ", "：", " closed down "] {
+            assert!(
+                !percentage_names_another_metric(change),
+                "should still be reconciled: {change}"
+            );
+        }
     }
 
     #[test]
