@@ -916,23 +916,77 @@ fn exact_skill_summary<'a>(matches: &'a [SkillSummary], query: &str) -> Option<&
     })
 }
 
+/// `query.contains(term)` for CJK, whole-word containment for Latin fragments.
+/// Substring matching is what let `cost` fire on "cost basis" and `effect` on
+/// "effect of tariffs"; a boundary check keeps `etf` and `vix` working without
+/// firing inside a longer word.
+fn ascii_aware_fragment_match(field: &str, query: &str, term: &str) -> bool {
+    let _ = field;
+    if term.chars().any(|ch| !ch.is_ascii()) {
+        return query.contains(term);
+    }
+    let is_word = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
+    let bytes = query.as_bytes();
+    let mut from = 0usize;
+    while let Some(offset) = query[from..].find(term) {
+        let start = from + offset;
+        let end = start + term.len();
+        let before_ok = start == 0 || !is_word(bytes[start - 1] as char);
+        let after_ok = end >= bytes.len() || !is_word(bytes[end] as char);
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + 1;
+        if from >= query.len() {
+            break;
+        }
+    }
+    false
+}
+
 fn score_skill(skill: &SkillSummary, query: &str) -> i32 {
-    let mut best = score_field(&skill.id, query, 130);
-    best = best.max(score_field(&skill.display_name, query, 120));
-    best = best.max(score_field(&skill.description, query, 40));
+    let mut best = score_field_from(&skill.id, query, 130, FieldKind::Curated);
+    best = best.max(score_field_from(
+        &skill.display_name,
+        query,
+        120,
+        FieldKind::Prose,
+    ));
+    best = best.max(score_field_from(
+        &skill.description,
+        query,
+        40,
+        FieldKind::Prose,
+    ));
     if let Some(when_to_use) = &skill.when_to_use {
-        best = best.max(score_field(when_to_use, query, 80));
+        best = best.max(score_field_from(when_to_use, query, 80, FieldKind::Prose));
     }
     for alias in &skill.aliases {
-        best = best.max(score_field(alias, query, 110));
+        best = best.max(score_field_from(alias, query, 110, FieldKind::Curated));
     }
     for tool in &skill.allowed_tools {
-        best = best.max(score_field(tool, query, 20));
+        best = best.max(score_field_from(tool, query, 20, FieldKind::Curated));
     }
     best
 }
 
+/// Whether a field is a hand-picked trigger list or free prose. It only changes
+/// what the reverse-phrase fallback will accept out of a Latin-script fragment:
+/// `aliases`, `id` and `allowed_tools` are written to be matched, while
+/// `when_to_use`, `description` and `display_name` are sentences that happen to
+/// contain `to`, `an`, `is` and `this`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FieldKind {
+    Curated,
+    Prose,
+}
+
+#[cfg(test)]
 fn score_field(value: &str, query: &str, base: i32) -> i32 {
+    score_field_from(value, query, base, FieldKind::Curated)
+}
+
+fn score_field_from(value: &str, query: &str, base: i32, kind: FieldKind) -> i32 {
     let normalized = normalize_skill_text(value);
     if normalized.is_empty() || query.is_empty() {
         return 0;
@@ -969,9 +1023,23 @@ fn score_field(value: &str, query: &str, base: i32) -> i32 {
         .map(str::trim)
         .filter(|term| {
             let length = term.chars().count();
-            (2..=16).contains(&length)
+            if !(2..=16).contains(&length) {
+                return false;
+            }
+            if term.chars().any(|ch| !ch.is_ascii()) {
+                // Two CJK characters are a word. This is the case the fallback
+                // was written for.
+                return true;
+            }
+            // Two ASCII characters are almost always a stop word. Splitting an
+            // English sentence yields `to`, `an`, `is`, `this`; a question like
+            // "please translate this sentence into English" then matched five
+            // investment skills at once, purely on prose no one wrote as a
+            // trigger. Latin fragments only count when the author put them in a
+            // field meant to be matched, and only as whole words.
+            kind == FieldKind::Curated && length >= 3
         })
-        .any(|term| query.contains(term));
+        .any(|term| ascii_aware_fragment_match(&normalized, query, term));
     if reverse_phrase_match {
         return base + 200;
     }
@@ -1388,6 +1456,46 @@ mod tests {
     /// 2-16 character fragments of a skill's own fields appearing inside the
     /// question, which makes short colloquial aliases the working lever.
     /// These are the real questions; keep them routed.
+    /// A Latin fragment only counts when its author put it in a field meant to
+    /// be matched, and only as a whole word. Splitting an English `when_to_use`
+    /// sentence yields `to`, `an`, `is`, `this`; before this rule
+    /// "please translate this sentence into English" pulled five investment
+    /// skills into the turn on prose nobody wrote as a trigger.
+    #[test]
+    fn latin_stop_words_in_prose_fields_do_not_recall_a_skill() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root");
+        let runtime = SkillRuntime::new(
+            repo_root.join("skills"),
+            repo_root.join("data/custom_skills"),
+            repo_root.clone(),
+        );
+
+        for query in [
+            "please translate this sentence into English",
+            "help me write a python function",
+            "what is the weather today",
+        ] {
+            let hits = runtime.search_for_stage(query, &[], 5, &SkillStageConstraints::default());
+            assert!(
+                hits.is_empty(),
+                "{query} should not recall any skill, got {:?}",
+                hits.iter().map(|s| s.id.as_str()).collect::<Vec<_>>()
+            );
+        }
+
+        // Short curated Latin aliases still work, as whole words.
+        let etf =
+            runtime.search_for_stage("分析一下这个ETF", &[], 5, &SkillStageConstraints::default());
+        assert!(
+            etf.iter().any(|s| s.id == "etf-analysis"),
+            "curated 3-letter alias must still match, got {:?}",
+            etf.iter().map(|s| s.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn colloquial_chinese_questions_surface_their_scenario_skill() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

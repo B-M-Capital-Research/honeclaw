@@ -1,7 +1,7 @@
 ---
 name: Market Analysis
 description: Macro, policy, and market/sector analysis plus price-move attribution, grounded in official data sources and graded causal evidence
-when_to_use: Use when the user asks about broad/regional markets, sector themes, macro data or policy (rates, Fed, Treasury, CPI, jobs), why a market or stock moved, near-term market direction, or single-security event attribution (为什么X涨/跌、X的重大公告/并购/借壳/里程碑怎么看) — the evidence-hierarchy workflow applies to single names as much as to the market
+when_to_use: 用户问大盘、区域市场、板块主题，或宏观与政策（利率、美联储、美债、国债收益率、CPI、通胀、就业、非农、VIX、降息、议息）现在什么状况、接下来怎么走，或问某个市场/某只股票为什么涨跌、某个重大公告怎么看时使用。宏观取数顺序与每个指标各自的 as-of 落款在本技能的宏观流程里；要出标的清单走 sector-to-stock。Also covers single-security event attribution — the evidence-hierarchy workflow applies to single names as much as to the market
 user-invocable: true
 context: inline
 aliases:
@@ -17,7 +17,6 @@ aliases:
   - 美债利率
   - 美联储
   - macro analysis
-  - why did it move
   - 为什么大跌
   - 突然大跌
   - 由涨转跌
@@ -26,6 +25,24 @@ aliases:
   - 夜盘
   - 怎么突然
   - 今天怎么回事
+  - 宏观环境
+  - 宏观数据
+  - 宏观红绿灯
+  - 大盘环境
+  - 市场情绪
+  - 经济数据
+  - 美债
+  - 国债收益率
+  - 十年期美债
+  - 通胀
+  - 就业数据
+  - 非农
+  - 恐慌指数
+  - 降息
+  - 加息
+  - 降息概率
+  - 议息
+  - 联邦基金利率
 allowed-tools:
   - data_fetch
   - web_search

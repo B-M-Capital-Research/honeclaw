@@ -5,6 +5,8 @@ when_to_use: 用户点名要看卖方覆盖这一层时使用：今天各大投�
 user-invocable: true
 context: inline
 aliases:
+  - 评级
+  - 目标价
   - 投行研报
   - 券商研报
   - 大行研报
