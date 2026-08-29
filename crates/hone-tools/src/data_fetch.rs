@@ -168,6 +168,7 @@ pub struct DataFetchTool {
     timeout: u64,
     http: reqwest::Client,
     cache: Arc<Mutex<HashMap<String, CachedFmpValue>>>,
+    official_fallback_enabled: bool,
 }
 
 fn fmp_base_url_is_loopback(base_url: &str) -> bool {
@@ -210,6 +211,7 @@ impl DataFetchTool {
             base_url,
             timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            official_fallback_enabled: true,
         }
     }
 
@@ -222,6 +224,7 @@ impl DataFetchTool {
             base_url,
             timeout: config.fmp.timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            official_fallback_enabled: config.fmp.official_fallback_enabled,
         }
     }
 
@@ -3274,6 +3277,11 @@ impl Tool for DataFetchTool {
         let ticker = effective_data_fetch_target(&args);
 
         if self.keys.is_empty() {
+            if !self.official_fallback_enabled {
+                return Ok(serde_json::json!({
+                    "error": "未配置 FMP API Key（请在 config.yaml 中设置 fmp.api_keys）"
+                }));
+            }
             return Ok(self.fetch_without_fmp(data_type, ticker).await);
         }
 

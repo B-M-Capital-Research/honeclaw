@@ -14,15 +14,17 @@ use async_openai::{
     },
 };
 use async_trait::async_trait;
+use base64::Engine;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::{Map, Value};
 
 use crate::provider::{
-    ChatResponse, ChatResult, ChatStreamEvent, ChatStreamFinishReason, FunctionCall, LlmProvider,
-    LlmRequestOptions, Message, ToolCall, ToolChoiceMode, chat_stream_events_from_sse_data,
-    effective_tool_choice_mode_from_body, explicit_provider_error_text,
+    ChatResponse, ChatResult, ChatStreamEvent, ChatStreamFinishReason, FunctionCall, ImageInput,
+    LlmProvider, LlmRequestOptions, Message, ToolCall, ToolChoiceMode,
+    chat_stream_events_from_sse_data, effective_tool_choice_mode_from_body,
+    explicit_provider_error_text,
 };
 
 fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bool) {
@@ -727,6 +729,57 @@ mod tests {
             return serde_json::from_slice(&request[body_start..body_start + content_length])
                 .expect("json request body");
         }
+    }
+
+    #[tokio::test]
+    async fn chat_with_images_sends_real_data_url_content_parts() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let request = read_json_request(&mut socket).await;
+            assert_eq!(request["model"], "vision-test");
+            assert_eq!(request["messages"][0]["content"][0]["type"], "text");
+            assert_eq!(request["messages"][0]["content"][1]["type"], "image_url");
+            assert_eq!(
+                request["messages"][0]["content"][1]["image_url"]["url"],
+                "data:image/png;base64,iVBORw=="
+            );
+            let body = r#"{"choices":[{"message":{"content":"看见一张图"}}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("respond");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "vision-test",
+            30,
+            64,
+        )
+        .expect("provider");
+        let result = provider
+            .chat_with_images(
+                "描述图片",
+                &[ImageInput {
+                    mime_type: "image/png".to_string(),
+                    bytes: vec![0x89, 0x50, 0x4e, 0x47],
+                }],
+                None,
+            )
+            .await
+            .expect("multimodal response");
+        assert_eq!(result.content, "看见一张图");
+        assert_eq!(result.usage.and_then(|usage| usage.total_tokens), Some(7));
     }
 
     async fn stream_events_for_test_body(
@@ -1912,6 +1965,74 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
         Err(hone_core::HoneError::Llm(format!(
             "所有 OpenAI-compatible API Key 均失败（共 {} 个）。最后错误：{last_err}",
+            self.clients.len()
+        )))
+    }
+
+    async fn chat_with_images(
+        &self,
+        prompt: &str,
+        images: &[ImageInput],
+        model: Option<&str>,
+    ) -> hone_core::HoneResult<ChatResult> {
+        if images.is_empty() {
+            return self
+                .chat(
+                    &[Message {
+                        role: "user".to_string(),
+                        content: Some(prompt.to_string()),
+                        reasoning_content: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    }],
+                    model,
+                )
+                .await;
+        }
+
+        let model = model.unwrap_or(&self.model);
+        let mut content = vec![serde_json::json!({"type": "text", "text": prompt})];
+        for image in images {
+            let mime = image.mime_type.trim().to_ascii_lowercase();
+            if !mime.starts_with("image/") {
+                return Err(hone_core::HoneError::Llm(format!(
+                    "不支持的图片 MIME 类型: {}",
+                    image.mime_type
+                )));
+            }
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&image.bytes);
+            content.push(serde_json::json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": format!("data:{mime};base64,{encoded}"),
+                    "detail": "high"
+                }
+            }));
+        }
+        let mut body = Map::new();
+        body.insert("model".to_string(), Value::String(model.to_string()));
+        body.insert(
+            "messages".to_string(),
+            serde_json::json!([{"role": "user", "content": content}]),
+        );
+        self.build_profile_request_body(&mut body);
+        let request = Value::Object(body);
+
+        let mut last_err = String::new();
+        for client in &self.clients {
+            match Self::post_chat_completion_value(client, &request).await {
+                Ok(value) => {
+                    return Ok(ChatResult {
+                        content: Self::content_from_value(&value),
+                        usage: Self::usage_from_value(&value),
+                    });
+                }
+                Err(err) => last_err = err.to_string(),
+            }
+        }
+        Err(hone_core::HoneError::Llm(format!(
+            "所有 OpenAI-compatible 图片 API Key 均失败（共 {} 个）。最后错误：{last_err}",
             self.clients.len()
         )))
     }

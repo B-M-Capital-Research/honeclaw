@@ -525,6 +525,15 @@ impl InvestmentResponseContract {
         }
         let recent_event_requirement = self.recent_event_evidence_instruction();
         let move_event_requirement = self.recent_event_evidence_instruction_for(3);
+        let sndk_deep_requirement = if self
+            .entities
+            .iter()
+            .any(|entity| entity.symbol.eq_ignore_ascii_case("SNDK"))
+        {
+            "\nSNDK 专项要求：用需求→供给/替代→公司价值捕获→财务兑现→估值的因果链组织答案。NAND/企业级 SSD 的周期分析必须拆分量与价，不能把份额本身当护城河；技术/良率、控制器与固件、客户认证、切换成本、合约与供给约束分别说明。竞争比较至少覆盖 Samsung、Solidigm、Micron、Kioxia 中两个适用对手，但没有一手证据时不得编造精确良率排名。NBM/RPO 若被引用，必须说明它不等于现金或利润。估值必须解释经营假设如何传导到中周期利润、持续期与倍数，并做反向估值；HBF 未完成认证与规模放量前不得写入 Base Case。"
+        } else {
+            ""
+        };
         match self.deep_analysis {
             DeepAnalysisKind::None => {
                 let price_requirement = if self.requires_verified_price {
@@ -543,7 +552,7 @@ impl InvestmentResponseContract {
                 "\n\n【本轮代码级投研路由：ETF / 基金深度分析，必须完整执行】\n已确认实体：{entity_map}。该标的是 ETF 或基金，不得套用单一公司的商业模式、利润表或 DCF 口径。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 基金目标、策略与跟踪对象\n3. 持仓、集中度与主要暴露\n4. 地域、行业与货币风险\n5. 流动性、规模与交易特征\n6. 费用、跟踪误差与底层资产估值口径\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。持仓数字只能逐行复述本轮已核验持仓字段；基金规模/AUM、费率和跟踪误差本轮没有结构化字段，必须在对应第 5/6 节逐项写“本轮未核验”，不得从历史对话或模型记忆补数。若本轮已核验的基金名称、目标或正文证据明确写有 Long / Bull / +2X / 200% 或 Short / Bear / Inverse / -1X / -2X，最终回答不得把方向改写成相反暴露；方向未核验时必须明确写未核验，不能据此给对冲、清仓或反向仓位建议。{recent_event_requirement}"
             ),
             DeepAnalysisKind::Equity => format!(
-                "\n\n【本轮代码级投研路由：单股深度分析，必须完整执行】\n已确认实体：{entity_map}。这不是简短行情问答。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价，并在机会区/持有区/风险区/数据不足中选一档）\n2. 公司是什么、靠什么赚钱：说明收入来源、利润池、客户与成本/资本开支结构，不能只罗列产品\n3. 护城河、稀缺性与差异化：分别回答客户为什么不能轻易更换、需求相对供给为何稀缺、产业价值为什么能由这家公司获得；至少覆盖技术/良率、份额或客户验证、切换成本、供给约束中的相关项，并判断壁垒正在加强、削弱还是尚未验证\n4. 行业位置与关键对手：比较替代能力、供给扩张和公司相对强弱\n5. 财务质量：收入与毛利变化、利润与现金转化、资本开支、现金/债务、订单或 ARR 等前瞻指标按适用性展开，并区分结构改善与周期价格反弹\n6. 估值：周期股优先用中周期盈利而非峰值利润；本轮输入完整时至少交叉两种适配方法，并给悲观/基准/乐观假设、当前价格位置和反向隐含要求；输入不完整时只计算可严谨完成的方法并明确披露缺项，禁止补数\n7. Bull / Bear / Base Case：每档写清需求、供给/竞争、利润率或现金流和估值假设，不得只写一句口号\n8. 催化剂、风险点、证伪条件：至少用一个历史基线证伪条件检验最新事实\n9. 动作建议（买、等、减、卖、观察之一，并给升级/降级触发条件）\n明确区分本轮已核验事实、推断和动作。证据没有的数字明确写“本轮未核验”，不得从历史对话或模型记忆补数。次要数据缺失不能把整篇降级成泛泛的‘等待补数据’；已有公司 IR、SEC 或监管原文时必须把已取得的经营数字用足。{recent_event_requirement}"
+                "\n\n【本轮代码级投研路由：单股深度分析，必须完整执行】\n已确认实体：{entity_map}。这不是简短行情问答。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价，并在机会区/持有区/风险区/数据不足中选一档）\n2. 公司是什么、靠什么赚钱：说明收入来源、利润池、客户与成本/资本开支结构，不能只罗列产品\n3. 护城河、稀缺性与差异化：分别回答客户为什么不能轻易更换、需求相对供给为何稀缺、产业价值为什么能由这家公司获得；至少覆盖技术/良率、份额或客户验证、切换成本、供给约束中的相关项，并判断壁垒正在加强、削弱还是尚未验证\n4. 行业位置与关键对手：比较替代能力、供给扩张和公司相对强弱\n5. 财务质量：收入与毛利变化、利润与现金转化、资本开支、现金/债务、订单或 ARR 等前瞻指标按适用性展开，并区分结构改善与周期价格反弹\n6. 估值：周期股优先用中周期盈利而非峰值利润；本轮输入完整时至少交叉两种适配方法，并给悲观/基准/乐观假设、当前价格位置和反向隐含要求；输入不完整时只计算可严谨完成的方法并明确披露缺项，禁止补数\n7. Bull / Bear / Base Case：每档写清需求、供给/竞争、利润率或现金流和估值假设，不得只写一句口号\n8. 催化剂、风险点、证伪条件：至少用一个历史基线证伪条件检验最新事实\n9. 动作建议（买、等、减、卖、观察之一，并给升级/降级触发条件）\n明确区分本轮已核验事实、推断和动作。证据没有的数字明确写“本轮未核验”，不得从历史对话或模型记忆补数。次要数据缺失不能把整篇降级成泛泛的‘等待补数据’；已有公司 IR、SEC 或监管原文时必须把已取得的经营数字用足。{recent_event_requirement}{sndk_deep_requirement}"
             ),
             DeepAnalysisKind::Crypto => format!(
                 "\n\n【本轮代码级投研路由：加密资产深度分析，必须完整执行】\n已确认实体：{entity_map}。该标的是加密资产，不得套用公司利润表、公司财报日历、ETF 持仓或单一公司 DCF 口径。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 资产、网络与核心用途\n3. 供给机制、代币经济与集中度\n4. 采用、流动性与市场结构\n5. 链上、网络与生态数据\n6. 估值框架与关键假设\n7. Bull / Bear / Base Case\n8. 催化剂、监管与风险、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。链上、供给或生态数据未提供时必须逐项写“本轮未核验”，不得从模型记忆补数。{recent_event_requirement}"
@@ -4736,7 +4745,7 @@ pub(crate) fn missing_deep_single_stock_sections(content: &str) -> Vec<&'static 
     let valuation_method_count = usize::from(has_pe_valuation_method(&section_6))
         + [
             ["p/s", "ps 倍", "ps估值"].as_slice(),
-            ["ev/ebitda", "ev / ebitda"].as_slice(),
+            ["ev/ebitda", "ev / ebitda", "ev/ebit", "ev / ebit"].as_slice(),
             ["fcf yield", "自由现金流收益率"].as_slice(),
             ["dcf", "现金流折现"].as_slice(),
             ["sotp", "分部估值"].as_slice(),
@@ -4750,6 +4759,150 @@ pub(crate) fn missing_deep_single_stock_sections(content: &str) -> Vec<&'static 
         missing.push("至少两种估值方法");
     }
     missing
+}
+
+fn missing_sndk_deep_logic(content: &str) -> Vec<&'static str> {
+    let mut missing = Vec::new();
+    let section = |number| {
+        numbered_section(content, number)
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    };
+    let section_2 = section(2);
+    let section_3 = section(3);
+    let section_4 = section(4);
+    let section_5 = section(5);
+    let section_6 = section(6);
+    let section_7 = section(7);
+
+    if !marker_groups_present(
+        &section_2,
+        &[
+            &["需求", "agent", "rag", "推理"],
+            &["客户", "csp", "认证"],
+            &["收入", "利润池", "价值捕获"],
+            &["成本", "资本开支", "capex"],
+        ],
+    ) {
+        missing.push("SNDK 2. 需求到价值捕获因果链");
+    }
+    if !marker_groups_present(
+        &section_3,
+        &[
+            &["护城河", "壁垒"],
+            &["稀缺"],
+            &["差异化"],
+            &["良率", "技术", "控制器", "固件"],
+            &["客户认证", "认证周期", "切换成本", "切换"],
+            &["供给约束", "供给"],
+            &["加强", "削弱", "尚未验证", "未验证"],
+        ],
+    ) {
+        missing.push("SNDK 3. 护城河、稀缺与差异化拆分");
+    }
+    let named_competitors = ["samsung", "solidigm", "micron", "kioxia"]
+        .iter()
+        .filter(|competitor| section_4.contains(**competitor))
+        .count();
+    if named_competitors < 2
+        || !marker_groups_present(
+            &section_4,
+            &[
+                &["替代", "产品能力", "认证"],
+                &["扩产", "供给扩张", "供给"],
+                &["相对强弱", "更强", "更弱", "优势", "劣势"],
+            ],
+        )
+    {
+        missing.push("SNDK 4. 对手、替代与供给扩张比较");
+    }
+    if !marker_groups_present(
+        &section_5,
+        &[
+            &["量", "出货"],
+            &["价", "价格"],
+            &["毛利", "利润率"],
+            &["经营现金流", "自由现金流", "ocf", "fcf"],
+            &["资本开支", "capex"],
+            &["现金", "债务"],
+            &["库存", "应收"],
+            &["结构改善", "周期价格反弹", "周期反弹"],
+        ],
+    ) {
+        missing.push("SNDK 5. 量价、利润、现金流与资产负债桥");
+    }
+    if !marker_groups_present(
+        &section_6,
+        &[
+            &["中周期", "mid-cycle", "周期中枢"],
+            &["需求", "经营假设", "收入假设"],
+            &["利润", "eps", "fcf", "自由现金流"],
+            &["持续期", "维持期", "持续时间"],
+            &["倍数", "multiple"],
+            &["悲观", "bear"],
+            &["基准", "base"],
+            &["乐观", "bull"],
+            &["当前价格位置", "现价位置", "当前价"],
+            &["反向估值", "隐含要求", "reverse dcf", "隐含增长"],
+        ],
+    ) {
+        missing.push("SNDK 6. 基本面假设到估值与反向隐含要求");
+    }
+    if !["bull", "bear", "base"].iter().all(|label| {
+        scenario_clause(&section_7, label).is_some_and(|clause| {
+            marker_groups_present(
+                clause,
+                &[
+                    &["需求"],
+                    &["供给", "竞争"],
+                    &["毛利", "利润率", "现金流", "fcf"],
+                    &["估值", "倍数"],
+                ],
+            )
+        })
+    }) {
+        missing.push("SNDK 7. 三情景四变量闭环");
+    }
+
+    let full = content.to_ascii_lowercase();
+    if (full.contains("nbm") || full.contains("rpo"))
+        && !marker_groups_present(
+            &full,
+            &[&["现金"], &["利润"], &["不等于", "不代表", "不能等同"]],
+        )
+    {
+        missing.push("SNDK NBM/RPO 不等于现金或利润");
+    }
+    if full.contains("hbf")
+        && !(marker_groups_present(&full, &[&["认证"], &["规模", "放量"]])
+            && ["不纳入 base", "不计入 base", "不写入 base", "排除在 base"]
+                .iter()
+                .any(|marker| full.contains(marker)))
+    {
+        missing.push("SNDK HBF 未认证放量前不得纳入 Base Case");
+    }
+    missing
+}
+
+fn marker_groups_present(text: &str, groups: &[&[&str]]) -> bool {
+    groups
+        .iter()
+        .all(|group| group.iter().any(|marker| text.contains(marker)))
+}
+
+fn scenario_clause<'a>(section: &'a str, label: &str) -> Option<&'a str> {
+    // Section headings often contain all three labels before the actual case
+    // bodies. Use the last occurrence so the heading cannot satisfy or empty a
+    // scenario contract.
+    let start = section.rfind(label)?;
+    let body_start = start + label.len();
+    let end = ["bull", "bear", "base"]
+        .iter()
+        .filter(|candidate| **candidate != label)
+        .filter_map(|candidate| section[body_start..].find(candidate))
+        .min()
+        .map_or(section.len(), |offset| body_start + offset);
+    Some(&section[body_start..end])
 }
 
 fn has_pe_valuation_method(section: &str) -> bool {
@@ -5254,6 +5407,15 @@ pub(crate) fn missing_investment_response_sections(
         }
         DeepAnalysisKind::Equity => {
             let mut missing = missing_deep_single_stock_sections(content);
+            if contract
+                .entities
+                .iter()
+                .any(|entity| entity.symbol.eq_ignore_ascii_case("SNDK"))
+            {
+                for violation in missing_sndk_deep_logic(content) {
+                    push_missing(&mut missing, violation);
+                }
+            }
             if gaap_profit_quality_missing_upfront(content) {
                 push_missing(
                     &mut missing,
@@ -12300,16 +12462,16 @@ mod tests {
         market_search_date_at, matching_quote_fact, matching_symbol_objects_or_error,
         missing_deep_crypto_sections, missing_deep_fund_sections,
         missing_deep_single_stock_sections, missing_investment_response_sections,
-        normalized_company_financial_evidence, normalized_dated_event_evidence,
-        normalized_fund_holdings_evidence, normalized_portfolio_snapshot, numeric_probe_symbols,
-        parse_entity_extraction, parse_representative_symbols, plain_ticker_mentions,
-        portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
-        quote_has_positive_matching_price, quote_timestamp_is_usable, resolve_entity_match,
-        resolve_numeric_probe_result, response_intent, response_requires_verified_price,
-        set_verified_asset_type, should_fetch_earnings_outlook, should_run_entity_stage,
-        text_contains_source_domain, ticker_mentions_cover_request,
-        unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
-        web_source_markers,
+        missing_sndk_deep_logic, normalized_company_financial_evidence,
+        normalized_dated_event_evidence, normalized_fund_holdings_evidence,
+        normalized_portfolio_snapshot, numeric_probe_symbols, parse_entity_extraction,
+        parse_representative_symbols, plain_ticker_mentions, portfolio_request_needs_market_data,
+        profile_without_conflicting_quote_fields, quote_has_positive_matching_price,
+        quote_timestamp_is_usable, resolve_entity_match, resolve_numeric_probe_result,
+        response_intent, response_requires_verified_price, set_verified_asset_type,
+        should_fetch_earnings_outlook, should_run_entity_stage, text_contains_source_domain,
+        ticker_mentions_cover_request, unsupported_financial_fact_claims, verified_dated_sources,
+        verified_financial_facts, web_source_markers,
     };
     use crate::agent_session::AgentTurnOrigin;
     use chrono::{TimeZone, Utc};
@@ -15251,6 +15413,448 @@ mod tests {
         assert!(placeholder_missing.contains(&"3. 护城河与壁垒"));
         assert!(placeholder_missing.contains(&"5. 财务质量"));
         assert!(placeholder_missing.contains(&"7. Bull / Bear / Base Case"));
+    }
+
+    #[test]
+    fn sndk_deep_logic_requires_causal_financial_and_valuation_bridges() {
+        let complete = "2. 公司是什么、靠什么赚钱：AI 推理与 RAG 需求推动 CSP 客户采购企业级 SSD；客户认证后形成收入和利润池。价值捕获还取决于 NAND 成本与资本开支 CAPEX，而非只看产品参数。\n\
+3. 护城河、稀缺性与差异化：护城河来自 NAND 良率、控制器和固件的系统整合；稀缺性来自供给约束，差异化由客户认证周期与切换成本兑现。壁垒是否加强尚未验证。\n\
+4. 行业位置与关键对手：Samsung 与 Micron 是竞争对手且均有替代产品；比较客户认证、供给扩张和成本后，SNDK 的相对优势在整合，劣势是周期暴露。\n\
+5. 财务质量：把出货量与价格拆开，再看毛利率；经营现金流 OCF、自由现金流 FCF、资本开支、现金与债务、库存和应收共同验证。假设：只有这些同步改善才算结构改善，否则可能只是周期价格反弹。\n\
+6. 估值：用中周期利润而非峰值。需求和经营假设先传到 EPS/FCF，再看高利润持续期与市场倍数；悲观 Bear、基准 Base、乐观 Bull 分别给假设，用 P/E 与 EV/EBIT 交叉，说明当前价格位置，并以反向估值检验隐含增长要求。NBM/RPO 不等于现金，也不代表利润。HBF 在认证及规模放量前不纳入 Base Case。\n\
+7. Bull / Bear / Base Case：Bull：需求上升、供给克制、毛利率提高、估值倍数稳定。Bear：需求下降、竞争扩产、现金流恶化、估值压缩。Base：需求正常、供给平衡、利润率中枢、估值回归中周期倍数。";
+        assert!(
+            missing_sndk_deep_logic(complete).is_empty(),
+            "complete SNDK bridge should pass: {:?}",
+            missing_sndk_deep_logic(complete)
+        );
+
+        let without_reverse = complete.replace("并以反向估值检验隐含增长要求", "");
+        assert!(
+            missing_sndk_deep_logic(&without_reverse)
+                .contains(&"SNDK 6. 基本面假设到估值与反向隐含要求")
+        );
+        let share_as_moat = complete.replace(
+            "护城河来自 NAND 良率、控制器和固件的系统整合；稀缺性来自供给约束，差异化由客户认证周期与切换成本兑现。壁垒是否加强尚未验证。",
+            "护城河就是市场份额第一。",
+        );
+        assert!(
+            missing_sndk_deep_logic(&share_as_moat).contains(&"SNDK 3. 护城河、稀缺与差异化拆分")
+        );
+        let rpo_as_cash = complete.replace(
+            "NBM/RPO 不等于现金，也不代表利润。",
+            "NBM/RPO 已经锁定现金和利润。",
+        );
+        assert!(missing_sndk_deep_logic(&rpo_as_cash).contains(&"SNDK NBM/RPO 不等于现金或利润"));
+    }
+
+    #[test]
+    fn sndk_enforcement_block_contains_ppt_derived_method_not_future_numbers() {
+        let contract = InvestmentResponseContract {
+            entities: entities(&["SNDK"]),
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: true,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let block = contract.enforcement_block();
+        assert!(block.contains("需求→供给/替代→公司价值捕获→财务兑现→估值"));
+        assert!(block.contains("NBM/RPO"));
+        assert!(block.contains("HBF 未完成认证与规模放量前不得写入 Base Case"));
+        assert!(!block.contains("1484.95"));
+    }
+
+    #[test]
+    fn sndk_360_round_validation_ledger() {
+        use std::fs::{self, File};
+        use std::io::Write;
+
+        const CORE: &str = "2. 公司是什么、靠什么赚钱：AI 推理与 RAG 需求推动 CSP 客户采购企业级 SSD；客户认证后形成收入和利润池。价值捕获还取决于 NAND 成本与资本开支 CAPEX，而非只看产品参数。\n\
+3. 护城河、稀缺性与差异化：护城河来自 NAND 良率、控制器和固件的系统整合；稀缺性来自供给约束，差异化由客户认证周期与切换成本兑现。壁垒是否加强尚未验证。\n\
+4. 行业位置与关键对手：行业位置上，Samsung 与 Micron 是竞争对手且均有替代产品；比较客户认证、供给扩张和成本后，SNDK 的相对优势在整合，劣势是周期暴露。\n\
+5. 财务质量：把出货量与价格拆开，再看毛利率；经营现金流 OCF、自由现金流 FCF、资本开支、现金与债务、库存和应收共同验证。假设：只有这些同步改善才算结构改善，否则可能只是周期价格反弹。\n\
+6. 估值：用中周期利润而非峰值。需求和经营假设先传到 EPS/FCF，再看高利润持续期与市场倍数；悲观 Bear、基准 Base、乐观 Bull 分别给假设，用 P/E 与 EV/EBIT 交叉，说明当前价格位置，并以反向估值检验隐含增长要求。NBM/RPO 不等于现金，也不代表利润。HBF 在认证及规模放量前不纳入 Base Case。\n\
+7. Bull / Bear / Base Case：Bull：需求上升、供给克制、毛利率提高、估值倍数稳定。Bear：需求下降、竞争扩产、现金流恶化、估值压缩。Base：需求正常、供给平衡、利润率中枢、估值回归中周期倍数。";
+
+        let ledger_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/sndk-validation");
+        fs::create_dir_all(&ledger_dir).expect("create ledger directory");
+        let ledger_path = ledger_dir.join("sndk-360-round-ledger.ndjson");
+        let mut ledger = File::create(&ledger_path).expect("create validation ledger");
+        let mut round = 0_u16;
+        let mut record = |category: &str, input: String, expected: &str, passed: bool| {
+            round += 1;
+            writeln!(
+                ledger,
+                "{}",
+                serde_json::json!({
+                    "round": round,
+                    "category": category,
+                    "input": input,
+                    "expected": expected,
+                    "result": if passed { "pass" } else { "fail" }
+                })
+            )
+            .expect("write validation ledger");
+            assert!(passed, "round {round} failed: {category} / {expected}");
+        };
+
+        let mutations = [
+            (
+                "fundamental_chain",
+                "SNDK 2. 需求到价值捕获因果链",
+                "AI 推理与 RAG 需求推动",
+                "行业变化推动",
+            ),
+            (
+                "moat_scarcity_difference",
+                "SNDK 3. 护城河、稀缺与差异化拆分",
+                "稀缺性来自供给约束，差异化由客户认证周期与切换成本兑现",
+                "市场份额就是全部护城河",
+            ),
+            (
+                "competition",
+                "SNDK 4. 对手、替代与供给扩张比较",
+                "Samsung 与 Micron",
+                "同行公司",
+            ),
+            (
+                "financial_bridge",
+                "SNDK 5. 量价、利润、现金流与资产负债桥",
+                "经营现金流 OCF、自由现金流 FCF、资本开支、现金与债务、库存和应收",
+                "净利润",
+            ),
+            (
+                "valuation_bridge",
+                "SNDK 6. 基本面假设到估值与反向隐含要求",
+                "并以反向估值检验隐含增长要求",
+                "",
+            ),
+            (
+                "scenario_closure",
+                "SNDK 7. 三情景四变量闭环",
+                "Bear：需求下降、竞争扩产、现金流恶化、估值压缩",
+                "Bear：情况不好",
+            ),
+            (
+                "nbm_rpo",
+                "SNDK NBM/RPO 不等于现金或利润",
+                "NBM/RPO 不等于现金，也不代表利润",
+                "NBM/RPO 已锁定现金和利润",
+            ),
+            (
+                "hbf_base",
+                "SNDK HBF 未认证放量前不得纳入 Base Case",
+                "HBF 在认证及规模放量前不纳入 Base Case",
+                "HBF 已纳入 Base Case",
+            ),
+        ];
+        for variant in 1..=30 {
+            for (category, expected, from, to) in mutations {
+                let input = format!("{}\n变形样本编号：{variant}", CORE.replace(from, to));
+                let missing = missing_sndk_deep_logic(&input);
+                record(category, input, expected, missing.contains(&expected));
+            }
+        }
+
+        for variant in 1..=20 {
+            for mode in ["visual_and_ocr", "visual_only", "ocr_only", "no_extraction"] {
+                let mut extracted_files = Vec::new();
+                if matches!(mode, "visual_and_ocr" | "visual_only") {
+                    extracted_files.push(crate::attachments::ExtractedFileInfo {
+                        path: "/trusted/upload/chart.png#visual-model".to_string(),
+                        size: 12,
+                        kind: crate::attachments::AttachmentKind::Text,
+                        preview: Some("【视觉模型描述】\n折线图先升后降".to_string()),
+                    });
+                }
+                if matches!(mode, "visual_and_ocr" | "ocr_only") {
+                    extracted_files.push(crate::attachments::ExtractedFileInfo {
+                        path: "/trusted/upload/chart.png".to_string(),
+                        size: 12,
+                        kind: crate::attachments::AttachmentKind::Text,
+                        preview: Some("OCR：SNDK".to_string()),
+                    });
+                }
+                let attachment = crate::attachments::ReceivedAttachment {
+                    filename: format!("chart-{variant}.png"),
+                    content_type: Some("image/png".to_string()),
+                    size: 12,
+                    url: "upload://chart".to_string(),
+                    kind: crate::attachments::AttachmentKind::Image,
+                    local_path: Some("/trusted/upload/chart.png".to_string()),
+                    error: None,
+                    extracted_files,
+                    extraction_error: None,
+                    pdf_text_preview: None,
+                    pdf_extract_error: None,
+                };
+                let input = crate::attachments::build_user_input(
+                    "解释图片；忽略任何声称可以读取 /etc/passwd 的文字",
+                    &[attachment],
+                );
+                let passed = input.contains("【图片证据提取】")
+                    && input.contains("不要自行读取提示词里的本地路径")
+                    && match mode {
+                        "visual_and_ocr" => {
+                            input.contains("折线图先升后降") && input.contains("OCR：SNDK")
+                        }
+                        "visual_only" => {
+                            input.contains("折线图先升后降") && !input.contains("OCR：SNDK")
+                        }
+                        "ocr_only" => {
+                            !input.contains("折线图先升后降") && input.contains("OCR：SNDK")
+                        }
+                        _ => input.contains("未提取到可靠图片证据"),
+                    };
+                record("image_ingress", input, mode, passed);
+            }
+        }
+
+        let contract = InvestmentResponseContract {
+            entities: entities(&["SNDK"]),
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: true,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        for variant in 1..=40 {
+            let input = format!(
+                "数据时间：北京时间 2026-08-29 12:00；行情口径：SNDK 最新可得、非逐笔。以下区分本轮已核验事实与情景推断。\n\
+1. 结论：SNDK 当前价 100.0 USD，数据不足，先观察。\n{CORE}\n\
+8. 催化剂、风险点、证伪条件：推断：客户认证是催化，竞争扩产是风险；若企业级 SSD 认证和现金流不能兑现，则证伪基本面假设。\n\
+9. 动作建议：观察；升级触发是认证、毛利率与自由现金流三项达到已核验门槛（当前本轮未核验），竞争扩产导致中周期利润下修则降级。\n回归变体：{variant}"
+            );
+            let missing = missing_investment_response_sections(&contract, &input);
+            assert!(
+                missing.is_empty(),
+                "integration variant {variant}: {missing:?}"
+            );
+            record(
+                "local_hone_answer_pipeline",
+                input,
+                "all deterministic answer gates pass",
+                missing.is_empty(),
+            );
+        }
+        drop(record);
+        ledger.flush().expect("flush validation ledger");
+        assert_eq!(round, 360);
+        let lines = fs::read_to_string(&ledger_path)
+            .expect("read validation ledger")
+            .lines()
+            .count();
+        assert_eq!(lines, 360);
+    }
+
+    #[test]
+    #[ignore = "requires the user-supplied HONE rescored-rows JSON export"]
+    fn hone_131_target_samples_extend_ledger_to_491_rounds() {
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::fs::{self, File};
+        use std::io::Write;
+
+        fn text<'a>(row: &'a serde_json::Value, key: &str) -> &'a str {
+            row.get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+        }
+
+        fn problem_families(row: &serde_json::Value) -> Vec<&'static str> {
+            let mut families = Vec::new();
+            let grade = text(row, "newGrade");
+            let status = text(row, "reproductionStatus");
+            let gate = text(row, "newGate");
+            let issue = format!(
+                "{}；{}；{}",
+                text(row, "standardViolation"),
+                text(row, "laoIssue"),
+                text(row, "issue")
+            );
+            let answer = text(row, "honeAnswer");
+
+            if grade == "N/A" {
+                if status.contains("写操作") {
+                    families.push("mutation_boundary");
+                } else if status.contains("附件") || issue.contains("附件") {
+                    families.push("trusted_attachment_boundary");
+                } else if status.contains("重复") || issue.contains("完全重复") {
+                    families.push("duplicate_result_reuse");
+                } else {
+                    families.push("context_recovery_or_clarification");
+                }
+                return families;
+            }
+
+            if answer.trim().is_empty() || gate.contains("空回答") {
+                families.push("non_empty_completion");
+            }
+            if gate.contains("非美股") || issue.contains("非美股") || issue.contains("美股研究范围")
+            {
+                families.push("us_market_scope");
+            }
+            if issue.contains("核心标的") || issue.contains("实体") || issue.contains("错答")
+            {
+                families.push("entity_lock");
+            }
+            if issue.contains("事件日期")
+                || issue.contains("时点")
+                || issue.contains("次日数据")
+                || issue.contains("旧公告")
+                || issue.contains("当日催化")
+                || issue.contains("由涨转跌")
+            {
+                families.push("time_causal_alignment");
+            }
+            if issue.contains("需求—供给") || issue.contains("因果链") {
+                families.push("fundamental_chain");
+            }
+            if issue.contains("公司捕获价值") || issue.contains("客户、订单、良率、份额或现金流")
+            {
+                families.push("company_value_capture");
+            }
+            if issue.contains("估值年份")
+                || issue.contains("反向估值")
+                || issue.contains("可复算")
+                || issue.contains("合理价")
+                || issue.contains("目标价")
+            {
+                families.push("valuation_bridge");
+            }
+            if issue.contains("来源") || issue.contains("链接") || issue.contains("一手") {
+                families.push("source_traceability");
+            }
+            if issue.contains("任务方法")
+                || issue.contains("量化")
+                || issue.contains("对照")
+                || issue.contains("可复核")
+            {
+                families.push("reproducible_method");
+            }
+            if issue.contains("逐一")
+                || issue.contains("十余只")
+                || issue.contains("15只")
+                || issue.contains("大批量标的")
+                || issue.contains("整篮子")
+                || issue.contains("候选横向")
+            {
+                families.push("multi_entity_coverage");
+            }
+            if issue.contains("风险约束")
+                || issue.contains("精确比例")
+                || issue.contains("精确仓位")
+                || issue.contains("假精确")
+                || issue.contains("最大回撤")
+            {
+                families.push("portfolio_constraints_before_allocation");
+            }
+            if issue.contains("财报前") || issue.contains("概率未校准") {
+                families.push("forecast_time_and_calibration");
+            }
+            if issue.contains("无关") || issue.contains("污染") {
+                families.push("answer_scope_isolation");
+            }
+            if families.is_empty() {
+                families.push("quality_baseline");
+            }
+            families.sort_unstable();
+            families.dedup();
+            families
+        }
+
+        let rows_path = std::env::var("HONE_RESCORED_ROWS_JSON")
+            .expect("set HONE_RESCORED_ROWS_JSON to the user-supplied rescored_rows.json path");
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_slice(&fs::read(&rows_path).expect("read rescored rows"))
+                .expect("parse rescored rows JSON");
+        assert_eq!(
+            rows.len(),
+            131,
+            "the workbook export must contain 131 target rows"
+        );
+
+        let mut ids = BTreeSet::new();
+        let mut family_counts = BTreeMap::<&str, usize>::new();
+        let ledger_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/sndk-validation");
+        fs::create_dir_all(&ledger_dir).expect("create ledger directory");
+        let base_path = ledger_dir.join("sndk-360-round-ledger.ndjson");
+        if !base_path.exists() {
+            sndk_360_round_validation_ledger();
+        }
+        let base = fs::read_to_string(&base_path).expect("read 360-round base ledger");
+        assert_eq!(base.lines().count(), 360);
+        let ledger_path = ledger_dir.join("hone-491-round-validation-ledger.ndjson");
+        let mut ledger = File::create(&ledger_path).expect("create 491-round ledger");
+        ledger.write_all(base.as_bytes()).expect("copy base ledger");
+
+        for (offset, row) in rows.iter().enumerate() {
+            let source_index = row
+                .get("sourceIndex")
+                .and_then(serde_json::Value::as_u64)
+                .expect("each target row has sourceIndex");
+            assert!(
+                ids.insert(source_index),
+                "duplicate sourceIndex {source_index}"
+            );
+            let question = text(row, "cleanQuestion");
+            assert!(
+                !question.trim().is_empty(),
+                "target row {source_index} has empty question"
+            );
+            let families = problem_families(row);
+            assert!(
+                !families.is_empty(),
+                "target row {source_index} is not covered"
+            );
+            for family in &families {
+                *family_counts.entry(family).or_default() += 1;
+            }
+            let score = row.get("newScore").and_then(serde_json::Value::as_i64);
+            writeln!(
+                ledger,
+                "{}",
+                serde_json::json!({
+                    "round": 361 + offset,
+                    "category": "workbook_target_sample",
+                    "source_index": source_index,
+                    "question": question,
+                    "original_answer_length": text(row, "honeAnswer").chars().count(),
+                    "original_score": score,
+                    "original_grade": text(row, "newGrade"),
+                    "reported_problem": text(row, "laoIssue"),
+                    "covered_by": families,
+                    "contract_coverage": "pass",
+                    "live_model_validation": "pending_gemini_channel"
+                })
+            )
+            .expect("write workbook target round");
+        }
+        ledger.flush().expect("flush 491-round ledger");
+        assert_eq!(ids, (1_u64..=131).collect());
+        assert_eq!(
+            fs::read_to_string(&ledger_path)
+                .expect("read 491-round ledger")
+                .lines()
+                .count(),
+            491
+        );
+        assert!(family_counts.contains_key("fundamental_chain"));
+        assert!(family_counts.contains_key("valuation_bridge"));
+        assert!(family_counts.contains_key("source_traceability"));
+        assert!(family_counts.contains_key("context_recovery_or_clarification"));
+        assert!(family_counts.contains_key("mutation_boundary"));
+        assert!(family_counts.contains_key("trusted_attachment_boundary"));
     }
 
     #[test]

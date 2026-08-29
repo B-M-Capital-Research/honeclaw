@@ -881,6 +881,9 @@ fn make_test_core_with_config(
 ) -> Arc<HoneBotCore> {
     let mut config = HoneConfig::default();
     config.agent.runner = "hone_cloud".to_string();
+    // Unit tests must never reach public Nasdaq/SEC endpoints unless a test
+    // explicitly configures a loopback provider stub.
+    config.fmp.official_fallback_enabled = false;
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
     config.storage.conversation_quota_dir = root
         .join("conversation_quota")
@@ -7929,11 +7932,14 @@ async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
     // The candidate still reaches the Agent as a candidate, not a decision.
     assert!(runtime_input.contains("主 Agent 工具循环"));
     assert!(runtime_input.contains("\"candidate_symbol\":\"NBIS\""));
-    // FMP credentials are intentionally absent, but the public Nasdaq/SEC
-    // fallback should now preload exact-symbol evidence instead of degrading
-    // all the way to an evidence-free turn.
-    assert!(preloaded > 0, "{runtime_input}");
-    assert!(runtime_input.contains("【本轮前置检索结果"));
+    // FMP credentials are intentionally absent. The public Nasdaq/SEC fallback
+    // may preload evidence when the network is reachable; hermetic CI must also
+    // accept its fail-closed path instead of depending on an external service.
+    assert_eq!(
+        runtime_input.contains("【本轮前置检索结果"),
+        preloaded > 0,
+        "{runtime_input}"
+    );
     // No auxiliary model is involved in enrichment.
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);

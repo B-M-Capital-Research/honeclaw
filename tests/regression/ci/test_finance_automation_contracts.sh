@@ -714,10 +714,14 @@ fi
 
 if contains 'pub(crate) async fn extract_image_text' "$ATTACHMENT_VISION" \
   && contains 'VNRecognizeTextRequest' "$ATTACHMENT_VISION" \
-  && contains '【图片文字提取】' "$ATTACHMENT_INGEST" \
-  && contains 'runner 支持原生图片读取时，直接读取附件本地路径' "$ATTACHMENT_INGEST" \
+  && contains 'async fn chat_with_images(' "$LLM_PROVIDER" \
+  && contains '"type": "image_url"' "$OPENAI_COMPATIBLE" \
+  && contains 'data:{mime};base64,{encoded}' "$OPENAI_COMPATIBLE" \
+  && contains 'image_understanding_profile' "$ATTACHMENT_INGEST" \
+  && contains '【图片证据提取】' "$ATTACHMENT_INGEST" \
+  && contains '视觉模型描述和 OCR' "$ATTACHMENT_INGEST" \
+  && contains '不要自行读取提示词里的本地路径' "$ATTACHMENT_INGEST" \
   && ! contains '再调用 skill_tool' "$ATTACHMENT_INGEST" \
-  && contains '【图片文字提取】' "$IMAGE_SKILL" \
   && contains 'commit_before_model: false' "$AGENT_CORE" \
   && contains 'web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering' "$AGENT_TESTS" \
   && contains 'double_incomplete_natural_final_emits_no_canned_business_partial' "$AGENT_TESTS" \
@@ -732,7 +736,7 @@ if contains 'pub(crate) async fn extract_image_text' "$ATTACHMENT_VISION" \
   && ! contains '非金融问题：直接礼貌拒绝' "$PROMPT_FILE" \
   && ! contains '本轮研究未能完成，暂未形成可供参考的标的结论' "$AGENT_CORE" \
   && ! contains 'AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR' "$FUNCTION_AGENT"; then
-  record success "43.interactive-no-generic-refusal-and-image-evidence" "Interactive image evidence is OCR-backed, every Web finance turn buffers the unchanged answer format until complete, blocked tools and recoverable model failures get a same-Agent answer, and ordinary non-finance questions are not domain-refused"
+  record success "43.interactive-no-generic-refusal-and-image-evidence" "Interactive image evidence carries trusted pixel bytes to a multimodal model with OCR fallback, every Web finance turn buffers the unchanged answer format until complete, blocked tools and recoverable model failures get a same-Agent answer, and ordinary non-finance questions are not domain-refused"
 else
   record fail "43.interactive-no-generic-refusal-and-image-evidence" "Interactive can again ignore image evidence, commit an irreversible header too early, domain-refuse an ordinary question, alter the finance format, or turn a recoverable failure into a generic refusal"
 fi

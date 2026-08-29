@@ -10,7 +10,7 @@ pub mod resolver;
 pub use openai_compatible::OpenAiCompatibleProvider;
 pub use openrouter::OpenRouterProvider;
 pub use provider::{
-    ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
-    ToolChoiceMode,
+    ChatResponse, ChatStreamEvent, FunctionCall, ImageInput, LlmProvider, LlmRequestOptions,
+    Message, ToolCall, ToolChoiceMode,
 };
 pub use resolver::{CreatedLlmProvider, LlmResolver};

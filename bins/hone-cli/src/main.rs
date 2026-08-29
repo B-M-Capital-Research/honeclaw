@@ -59,7 +59,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// 启动本地 chat REPL（默认子命令）。
-    Chat,
+    Chat(ChatArgs),
     /// 首次安装向导：写入 canonical config，可选运行 doctor / start。
     #[command(visible_alias = "setup")]
     Onboard(OnboardArgs),
@@ -100,6 +100,19 @@ enum Commands {
     },
     /// 启动渠道协议 probe，方便排查外部渠道连接问题。
     Probe(ProbeArgs),
+}
+
+#[derive(Args, Debug, Default)]
+struct ChatArgs {
+    /// 从标准输入读取一次完整问题，输出后退出；用于隔离回归和自动化探针。
+    #[arg(long)]
+    once: bool,
+    /// 单次模式输出一行机器可读 JSON。
+    #[arg(long, requires = "once")]
+    json: bool,
+    /// 单次模式使用独立 actor，防止不同回归样本共享会话上下文。
+    #[arg(long, requires = "once")]
+    actor_id: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -276,9 +289,18 @@ fn print_channel_targets_text(targets: &[ChannelTargetRecord]) {
 async fn run_cli() -> Result<(), String> {
     let cli = Cli::parse();
     match cli.command {
-        None | Some(Commands::Chat) => {
+        None => {
             let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
-            repl::run_chat(core, &paths.canonical_config_path.to_string_lossy()).await
+            repl::run_chat(
+                core,
+                &paths.canonical_config_path.to_string_lossy(),
+                ChatArgs::default(),
+            )
+            .await
+        }
+        Some(Commands::Chat(args)) => {
+            let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
+            repl::run_chat(core, &paths.canonical_config_path.to_string_lossy(), args).await
         }
         Some(Commands::Onboard(args)) => run_onboard(cli.config.as_deref(), args).await,
         Some(Commands::Cleanup(args)) => run_cleanup(args),
@@ -625,6 +647,32 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_parses_isolated_one_shot_chat() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "chat",
+            "--once",
+            "--json",
+            "--actor-id",
+            "target_sample_001",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Chat(args)) => {
+                assert!(args.once);
+                assert!(args.json);
+                assert_eq!(args.actor_id.as_deref(), Some("target_sample_001"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_rejects_machine_output_without_one_shot_mode() {
+        assert!(Cli::try_parse_from(["hone-cli", "chat", "--json"]).is_err());
+    }
 
     #[test]
     fn cli_parses_config_get_command() {
