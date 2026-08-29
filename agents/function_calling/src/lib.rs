@@ -1904,6 +1904,21 @@ impl FunctionCallingAgent {
         let mut done = false;
         let stream_started = std::time::Instant::now();
         let early_final_eligible = eligible_final_prefix.is_some();
+        // A canonical header the observer committed in an earlier round of this
+        // same turn is irreversible visible output, whether or not the caller
+        // has recorded it yet. Only the market-move correction branch recorded
+        // it, so a listing correction re-entered this stream with the prefix
+        // still marked uncommitted, forwarded those exact bytes a second time,
+        // and the reader saw `数据时间：…` twice before the body — the doubled
+        // first line audited on `rklb的估值`. Re-derive the committed state here
+        // so every retry path forwards only what is genuinely new.
+        let observed_committed_prefix = self
+            .stream_observer
+            .as_ref()
+            .and_then(|observer| observer.committed_visible_prefix())
+            .filter(|prefix| committed_prefix_matches_required(prefix, eligible_final_prefix));
+        let precommitted_service_prefix =
+            precommitted_service_prefix.or(observed_committed_prefix.as_deref());
         let mut forwarded_final_delta = false;
         let mut eligible_visible_candidate = String::new();
         let mut early_final_rejected = false;
@@ -5090,7 +5105,15 @@ fn listing_final_violations(
     let states = current_turn_listing_states(tool_calls_made);
     let mut symbols = explicit_security_symbols(runtime_input);
     symbols.extend(states.keys().cloned());
-    let mut violations = BTreeSet::new();
+    // A one-letter code matches as a substring of every uppercased line that
+    // contains that letter, so `SpaceX 未上市` reads as a denial about `X`.
+    // Nothing in the audited turn had resolved `X` either: it came from the
+    // `valuation-audit` skill hint's placeholders (`分析下X`, `X和Y更看好哪个`),
+    // which the turn builder places inside the same 【本轮用户输入】 section as
+    // the user's own words. Keep a single letter only when this turn's
+    // structured evidence actually resolved it as a security.
+    symbols.retain(|symbol| symbol.chars().count() > 1 || states.contains_key(symbol));
+    let mut violations = BTreeMap::<String, String>::new();
     for line in content.split(['\n', '。', '！', '？']) {
         if !listing_denial_line(line) {
             continue;
@@ -5100,26 +5123,40 @@ fn listing_final_violations(
             let state = states.get(symbol);
             // A denial may name the security by symbol or by provider company
             // name; `CoreWeave 尚未上市` and `CRWV 尚未上市` are the same claim.
-            let named = state
+            let Some(matched_label) = state
                 .map(|state| listing_entity_labels(symbol, state))
                 .unwrap_or_else(|| vec![symbol.to_ascii_uppercase()])
                 .into_iter()
-                .any(|label| upper.contains(&label));
-            if !named {
+                .find(|label| upper.contains(label.as_str()))
+            else {
                 continue;
-            }
+            };
             if state.is_some_and(|state| state.inactive && !state.active) {
                 continue;
             }
-            let reason = if state.is_some_and(|state| state.active) {
-                "本轮结构化证据已确认 active_listing，终稿却断言退市或未上市"
+            let (reason, origin) = if state.is_some_and(|state| state.active) {
+                (
+                    "本轮结构化证据已确认 active_listing，终稿却断言退市或未上市",
+                    "本轮同代码工具结果里的标的",
+                )
             } else {
-                "本轮没有 inactive_listing 结构化证据，终稿却用历史记忆断言退市或未上市"
+                (
+                    "本轮没有 inactive_listing 结构化证据，终稿却用历史记忆断言退市或未上市",
+                    "从本轮请求文本解析出的候选代码",
+                )
             };
-            violations.insert(format!("{symbol}: {reason}"));
+            // Name the span, not just the rule. The audited correction round was
+            // handed `X: …` with no `X` anywhere in the turn and no quote of the
+            // sentence that tripped it, and it never converged.
+            violations.entry(symbol.clone()).or_insert_with(|| {
+                format!(
+                    "{symbol}: {reason}（{symbol} 是{origin}，本次以「{matched_label}」命中终稿的「{}」）",
+                    violation_excerpt(line, 40)
+                )
+            });
         }
     }
-    violations.into_iter().collect()
+    violations.into_values().collect()
 }
 
 /// The service already requires an investment answer to open with the exact
@@ -5182,11 +5219,45 @@ fn listing_final_correction_prompt(
     )
 }
 
-fn deterministic_listing_gap_response(
+fn violated_listing_symbols(violations: &[String]) -> Vec<String> {
+    violations
+        .iter()
+        .filter_map(|violation| violation.split(':').next())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Replacing the whole answer costs everything the turn actually produced: on
+/// `rklb的估值` it turned 14 tool calls' worth of valuation work into a hundred
+/// characters, and the symbol it was defending (`X`) was a skill-hint
+/// placeholder. So the wholesale template now applies only to the case this
+/// turn can settle objectively — a symbol whose own current-turn structured
+/// evidence says `active_listing` while the draft says it is delisted. When the
+/// check fired on the *absence* of evidence, the corrective content was never
+/// more than a disclaimer anyway: append that disclaimer to the Agent's answer
+/// instead of publishing it in place of one.
+fn listing_gap_final_answer(
     required_prefix: Option<&str>,
+    draft: &str,
     tool_calls_made: &[ToolCallMade],
     violations: &[String],
 ) -> String {
+    let states = current_turn_listing_states(tool_calls_made);
+    let symbols = violated_listing_symbols(violations);
+    let contradicted = symbols
+        .iter()
+        .filter(|symbol| states.get(*symbol).is_some_and(|state| state.active))
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if contradicted.is_empty() && !draft.trim().is_empty() {
+        return format!(
+            "{}\n\n补充说明：{} 的当前上市状态这次没有取到可对照的交易行情或公司资料；上文中涉及其退市或未上市的说法，请以交易所与公司公告为准。",
+            draft.trim_end(),
+            symbols.join("、")
+        );
+    }
     let first_line = match required_prefix {
         Some(prefix) if prefix.ends_with("；行情口径：") => {
             format!("{prefix}本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露")
@@ -5194,27 +5265,15 @@ fn deterministic_listing_gap_response(
         Some(prefix) => prefix.to_string(),
         None => "本轮仅使用可核验资料。".to_string(),
     };
-    let states = current_turn_listing_states(tool_calls_made);
-    let active = states
-        .iter()
-        .filter(|(_, state)| state.active)
-        .map(|(symbol, _)| symbol.as_str())
-        .collect::<Vec<_>>();
-    if !active.is_empty() {
+    if !contradicted.is_empty() {
         return format!(
             "{first_line}\n\n{} 的本轮同代码结构化行情与公司资料已确认其当前上市交易；不能用历史收购或旧退市记录否认当前上市。财报前瞻的其它项目本轮未形成足够可靠的完整证据，因此不补写未经核验的数字。",
-            active.join("、")
+            contradicted.join("、")
         );
     }
-    let symbols = violations
-        .iter()
-        .filter_map(|violation| violation.split(':').next())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
-        .join("、");
     format!(
-        "{first_line}\n\n本轮没有取得足以判断 {symbols} 当前上市状态的结构化证据，因此不能用历史并购或旧代码记忆断言其已退市或未上市。财报前瞻的其它项目也暂不补写未经核验的数字。"
+        "{first_line}\n\n本轮没有取得足以判断 {} 当前上市状态的结构化证据，因此不能用历史并购或旧代码记忆断言其已退市或未上市。财报前瞻的其它项目也暂不补写未经核验的数字。",
+        symbols.join("、")
     )
 }
 
@@ -6649,8 +6708,9 @@ impl Agent for FunctionCallingAgent {
                                         ));
                                     continue;
                                 }
-                                response.content = deterministic_listing_gap_response(
+                                response.content = listing_gap_final_answer(
                                     required_final_answer_prefix.as_deref(),
+                                    &response.content,
                                     &tool_calls_made,
                                     &listing_violations,
                                 );
@@ -7939,8 +7999,9 @@ impl Agent for FunctionCallingAgent {
                     ));
                     continue;
                 }
-                let content = deterministic_listing_gap_response(
+                let content = listing_gap_final_answer(
                     required_final_answer_prefix.as_deref(),
+                    &result.content,
                     &tool_calls_made,
                     &listing_violations,
                 );
@@ -15872,6 +15933,17 @@ mod tests {
         let unsupported = listing_final_violations(runtime_input, denied, &[]);
         assert_eq!(unsupported.len(), 1);
         assert!(unsupported[0].contains("没有 inactive_listing"));
+        // Absence of evidence is not a contradiction this turn can settle, and
+        // the corrective content is only a disclaimer. Append it; do not
+        // publish it in place of whatever the Agent did manage to research.
+        let kept = listing_gap_final_answer(
+            Some("数据时间：北京时间 2026-08-03 12:52；行情口径："),
+            denied,
+            &[],
+            &unsupported,
+        );
+        assert!(kept.starts_with(denied), "{kept}");
+        assert!(kept.contains("补充说明：SNDK"), "{kept}");
 
         let active = vec![ToolCallMade {
             name: "data_fetch".to_string(),
@@ -15887,8 +15959,9 @@ mod tests {
         let contradicted = listing_final_violations(runtime_input, denied, &active);
         assert_eq!(contradicted.len(), 1);
         assert!(contradicted[0].contains("已确认 active_listing"));
-        let deterministic = deterministic_listing_gap_response(
+        let deterministic = listing_gap_final_answer(
             Some("数据时间：北京时间 2026-08-03 12:52；行情口径："),
+            denied,
             &active,
             &contradicted,
         );
@@ -16050,6 +16123,132 @@ mod tests {
             .expect("listing correction prompt");
         assert!(correction.contains("内部终稿上市状态纠正"));
         assert!(correction.contains("active_listing 标的：SNDK"));
+    }
+
+    /// The audited `rklb的估值` turn published its `数据时间：…` line twice. The
+    /// first direct final had already committed the canonical header through
+    /// the unique Web sink; the listing correction round then re-entered the
+    /// stream with that prefix still marked uncommitted, forwarded the same
+    /// bytes a second time, and the reader got the first line, the first line
+    /// again, and only then the body. Only the market-move correction branch
+    /// recorded the commit before continuing, so every other retry path
+    /// carried this.
+    #[tokio::test]
+    async fn a_listing_correction_round_never_republishes_the_committed_first_line() {
+        let prefix = "数据时间：北京时间 2026-08-03 13:19；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let denied = format!("{prefix}\n\nSNDK 已于 2016 年退市，无法提供财报前瞻，请改看 WDC。");
+        let still_denied = format!("{prefix}\n\nSNDK 已退市，本轮不做前瞻。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_sndk".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"SNDK","entity_route":"sndk","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_outlook_sndk".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"earnings_outlook","ticker":"SNDK","entity_route":"sndk"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(denied)],
+            vec![ChatStreamEvent::ContentDelta(still_denied)],
+        ]);
+        let data_calls = Arc::new(AtomicUsize::new(0));
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(SndkFinanceEvidenceTool {
+            calls: data_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("listing-gap-first-line".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】\nsndk财报前瞻\n\n【本轮最终回答契约：由主 Agent 一次完成】",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(
+            *stream_observer
+                .accumulated
+                .lock()
+                .expect("accumulated stream content"),
+            format!("{prefix}\n"),
+            "the canonical header crosses the Web sink exactly once per turn"
+        );
+        assert!(
+            response.content.starts_with(&prefix),
+            "{}",
+            response.content
+        );
+        assert_eq!(
+            response.content.matches(prefix.as_str()).count(),
+            1,
+            "{}",
+            response.content
+        );
+        assert!(
+            response.content.contains("当前上市交易"),
+            "{}",
+            response.content
+        );
+    }
+
+    /// The audited `rklb的估值` turn was corrected against symbol `X`, which is
+    /// not RKLB and is not any entity the turn resolved: the turn builder puts
+    /// the matched skill hints inside the same 【本轮用户输入】 section as the
+    /// user's words, so the `valuation-audit` hint's placeholders parse as
+    /// one-letter tickers, and a one-letter label matches as a substring of
+    /// every uppercased line containing that letter — here `SpaceX 未上市`, a
+    /// true statement about a private company. The violation also named no
+    /// span, so the one correction round had nothing to repair.
+    #[test]
+    fn listing_violations_drop_one_letter_placeholders_and_name_the_matched_span() {
+        let runtime_input = concat!(
+            "【本轮用户输入】\n【本轮相关技能提示】\n",
+            "- valuation-audit: 可复算的估值与买点方法 - 也适用于开放式单票研究",
+            "（分析下X、X怎么样、X如何）与偏好比较（X和Y更看好哪个）\n\n",
+            "rklb的估值\n\n【本轮最终回答契约：由主 Agent 一次完成】"
+        );
+        // The placeholders really do parse as candidate codes; the listing
+        // check is what must stop treating them as securities.
+        let parsed = explicit_security_symbols(runtime_input);
+        assert!(parsed.contains("X"), "{parsed:?}");
+        assert!(parsed.contains("RKLB"), "{parsed:?}");
+
+        let spacex_draft = concat!(
+            "数据时间：北京时间 2026-08-30 01:37；行情口径：可核验\n\n",
+            "对标的 SpaceX 目前仍未上市，只能用一级市场融资估值做参考。\n",
+            "RKLB 当前在 Nasdaq 交易，下面按现价给出区间。"
+        );
+        assert!(
+            listing_final_violations(runtime_input, spacex_draft, &[]).is_empty(),
+            "a one-letter placeholder no current-turn evidence resolved is not a security"
+        );
+
+        let denied = concat!(
+            "数据时间：北京时间 2026-08-30 01:37；行情口径：可核验\n\n",
+            "RKLB 早已退市，只能参考历史资料。"
+        );
+        let violations = listing_final_violations(runtime_input, denied, &[]);
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        let violation = &violations[0];
+        assert!(violation.starts_with("RKLB: "), "{violation}");
+        assert!(
+            violation.contains("从本轮请求文本解析出的候选代码"),
+            "the correction round has to know where the symbol came from: {violation}"
+        );
+        assert!(
+            violation.contains("RKLB 早已退市"),
+            "the correction round has to know which sentence tripped it: {violation}"
+        );
     }
 
     /// Each mechanical violation has to name the span it is about. Without that
