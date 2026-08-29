@@ -1447,6 +1447,45 @@ mod tests {
         assert!(error.contains("skill script"));
     }
 
+    /// Four production RKLB valuation answers (2026-08-29) each published a
+    /// reconciliation table whose 来源 column read "公司 2026 年二季报 10-Q" /
+    /// "SEC 官方披露文件" / "交易所官方收盘价" for numbers that came from the
+    /// aggregated market-data source, and two of them published an EV that did
+    /// not equal their own 市值 − 净现金 rows. The fix is skill text, not a
+    /// runtime gate (AGENTS.md 139-145), so the regression is the guidance
+    /// disappearing from the skill.
+    #[test]
+    fn valuation_audit_binds_reconciliation_rows_to_this_turn() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root");
+        let skill = std::fs::read_to_string(repo_root.join("skills/valuation-audit/SKILL.md"))
+            .expect("valuation-audit skill");
+
+        // Every published row traces to a fetched field or an in-table formula.
+        assert!(skill.contains("每一行都要能指回本轮某次取数"));
+        assert!(skill.contains("不要填一个看起来合理的数"));
+
+        // Rewriting a field name into human wording may not upgrade the tier.
+        assert!(skill.contains("换的是**说法**，不是**出处等级**"));
+        for upgraded in [
+            "公司 2026 年二季报 10-Q",
+            "SEC 官方披露文件",
+            "交易所官方收盘价",
+        ] {
+            assert!(
+                skill.contains(upgraded),
+                "source-tier rule stopped naming {upgraded}"
+            );
+        }
+        assert!(skill.contains("`sec_filings` / `press_releases` / `transcript`"));
+
+        // The table must add up against itself.
+        assert!(skill.contains("表内恒等式自洽"));
+        assert!(skill.contains("EV = 市值 − 净现金"));
+    }
+
     /// The per-turn skill hint list is what points the model at a scenario
     /// skill: `turn_builder` calls `search_for_stage` and shows the top five.
     /// A 2026-08-28 review of a week of production questions found the hint

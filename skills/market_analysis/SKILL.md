@@ -57,7 +57,7 @@ allowed-tools:
 | 调用 | 用途 |
 |---|---|
 | `data_fetch(data_type="market_hours")` / `extended_hours` | 走势/预测类问题先确认交易时段事实（含休市/假日） |
-| `data_fetch(data_type="macro")` | 官方宏观数据一次全取：返回 treasury_rates（各期限国债收益率）、GDP、CPI、unemployment、federal_funds（政策利率）与 economic_calendar（未来一周数据发布安排）各组件；利率/通胀/就业问题的第一站 |
+| `data_fetch(data_type="macro")` | 官方宏观数据一次全取：返回 treasury_rates（各期限国债收益率，含 10 年与 30 年）、GDP、CPI、unemployment、federal_funds（政策利率）、economic_calendar（未来一周数据发布安排）与 vix（^VIX 波动率指数报价，带涨跌口径）各组件；利率/美债/通胀/就业/避险情绪问题的第一站，一次调用即可覆盖，不必分头 quote |
 | `data_fetch(data_type="quote"/"snapshot", ticker="...")` | 代表性基准与标的的现价、涨跌、提供方时间戳 |
 | `data_fetch(data_type="press_releases"/"sec_filings", ticker="...")` | 归因的最高层级证据：公司公告与监管文件 |
 | `data_fetch(data_type="earnings_status", ticker="...")` | 判断"财报是否刚发布"这一常见催化 |
@@ -130,7 +130,8 @@ allowed-tools:
 
 ### 宏观与利率分析流程
 
-1. **官方源优先**：宏观问题先调一次 `data_fetch(macro)`，利率看其中 treasury_rates 组件（各期限现值与变动）、通胀看 CPI、就业看 unemployment、政策利率看 federal_funds、数据发布安排看 economic_calendar。先有官方数字，再谈归因。
+1. **官方源优先，宏观题的第一次取数就是它**：宏观题的第一次取数调用是 `data_fetch(macro)`（时段核查用的 `market_hours` 不受此限）。它一次返回国债收益率曲线（各期限，含 10 年与 30 年）、GDP、CPI、失业率、联邦基金利率、未来一周经济日历与 VIX 波动率指数——利率看 treasury_rates（各期限现值与变动）、通胀看 CPI、就业看 unemployment、政策利率看 federal_funds、数据发布安排看 economic_calendar、避险情绪看 vix。**在拿到这一次返回之前，不要用 quote / search / web_search 逐项去拼这些宏观数字**；先有官方数字，再谈归因。
+   返回后按 coverage 走：取到的组件直接引用；coverage 为 unavailable/empty 的组件如实写「本轮未取到」，只对这一个组件另找来源（例如 vix 未取到时单独取一次 `^VIX` 的 quote，仍取不到就写明未取到并降低该判断的置信度）。缺组件只降低那一项的确定性，不构成不作答的理由——宏观题在 provider 无覆盖时仍要按「缺数据的出路」给方向性判断与补证清单。
 2. **官方原文优先**：FOMC 声明/纪要、财政部融资公告（refunding/buyback）类问题，用 `web_search` 定位 federalreserve.gov / treasury.gov 官方文本，归因以官方文本为准；二手报道与官方文本冲突时，指出冲突并采用官方口径。
 3. **利率归因三分解**：解释长端利率变动时至少区分三个驱动——政策利率预期、通胀补偿（盈亏平衡通胀）、期限溢价。缺任何一项的分解数据时如实披露"本轮未能完成期限溢价分解"，给方向性判断并降低置信度；不要用单一驱动（如只谈通胀补偿）解释全部变动。
 4. **概念区分（点名）**：财政部国债回购（buyback）≠ 美联储 QE。常规回购计划、单次操作规模、央行扩表购债三者分开表述；"回购翻倍"这类量级说法需要财政部原始公告支撑，找不到就写"该量级未经官方公告核验"。"救债""托底"类因果判断标注为市场叙事/推断，不作为确定性结论。

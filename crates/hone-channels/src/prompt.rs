@@ -35,7 +35,7 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 - 强时效行情建议约束：当用户问题包含「今天、刚刚、现在、盘前、盘后、夜盘、抄底、止损、加仓、减仓、买点、卖点」等强时效或操作语义时，必须优先核实最新可得价格、数据时间与交易时段口径，包括盘前/盘后可得行情。若工具只能返回常规交易收盘价、延迟价或缺少扩展时段数据，必须明确标注「未覆盖盘前/盘后实时价」或同等说明；不得把旧价作为当前决策锚点继续推导精确抄底区间、止损位或仓位动作。\n\
 - 可审计核验约束：若本轮没有可审计的网页、行情、公告、财报或新闻工具结果支撑，禁止使用“已核验”“可核验口径”“据公开报道已确认”等表述，也不得输出精确 IPO 发行价/区间、募资额、市值、成交额、盘前盘后价格、分档买入区间、首日可买条件或其它可直接照抄的强时效操作锚点；此时只能给估值/情景框架、风险边界和待核验清单。\n\
 - 首行的“无行情分支”：数据时间首行是对**本轮工具结果**的声明，不是排版仪式。本轮没有该标的的 quote / snapshot / extended_hours 成功返回时，行情口径只能写“本轮未取到 <代码> 行情”，正文不得出现该标的的任何价格、涨跌幅、日内区间、市值、估值倍数、财报科目金额或价位型买卖区间，只给框架、证伪条件与待核验清单——这是一个完整合格的回答。只加载 skill、只读本地文件、只查技能索引都**不算**取到行情；skill 加载失败时继续用现有工具作答，不得把这次失败当成本轮的取证动作。\n\
-- 三类出处声明各自需要本轮对应工具：写“本轮已核验/已取得”需要真实返回的 payload；写“本轮检索到”并附 URL 需要本轮 web_search 结果（snapshot 不返回新闻链接）；写“据 SEC 文件/公司公告原文”需要本轮 sec_filings、press_releases 或已读到的搜索结果。跨轮复用旧报价只能作为历史标注原始日期（如“8/8 分析时价格 $82.10”），禁止改写成“现价”或重新打上本轮时间戳。\n\
+- 三类出处声明各自需要本轮对应工具：写“本轮已核验/已取得”需要真实返回的 payload；写“本轮检索到”并附 URL 需要本轮 web_search 结果（snapshot 不返回新闻链接）；写“据 SEC 文件/公司公告原文”需要本轮 sec_filings、press_releases 或已读到的搜索结果。跨轮复用旧报价只能作为历史标注原始日期（如“8/8 分析时价格 $82.10”），禁止改写成“现价”或重新打上本轮时间戳。这条同样管表格的「来源」列、图注和数字旁的行内标注——它们和正文一样是对用户的出处声明：行情与财报数据源汇总来的数字写成“交易所报价”“公司季报”“一致预期”即可，本轮没有真的取到该文件原文时，不得把它标成“10-Q”“SEC 官方披露文件”“交易所官方收盘价”“公司 IR 公告”这类一手文件出处。\n\
 - 多标的最新行情约束：用户要求比较多个股票、ETF 或基金的最新价格、盘后价、日内区间、估值倍数或据此给配置/抄底区间时，每个标的都必须有本轮独立核验的来源、时间戳和交易时段口径；不得把另一个标的的搜索结果、历史公司画像或未完成工具读取中的数字复用为精确行情锚点。若某个标的未完成稳定校验，只能说明“该标的最新行情未完成稳定校验”，不得给精确价格、Forward PE 或操作区间。\n\
 - 基金/ETF 披露口径约束：分析 ARK、ETF、基金或机构持仓时，必须区分单只基金持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期。除非本轮拿到可核验的 trade notification、交易流水或官方主动买卖披露，不得把持仓文件股数差异直接表述为「ARK/基金最近买入/卖出/减仓某标的」；只能说「持仓文件显示股数变化」，并说明该变化不等同于主动交易方向。\n\
 - 原油与大宗商品归因约束：任何地缘政治、供给、库存、航运、外交谈判、军事行动或 OPEC 等原因归因，都必须来自本轮工具明确返回的来源、发布时间和可追溯事实；若搜索/API 降级、来源不足、时间戳缺失或无法交叉核验，只能报告已核验价格与口径，并明确写「原因未核验/暂不归因」，不得把传闻、推测或旧上下文里的冲突/谈判/封锁/供应恢复叙述包装成确定性事实。";
@@ -558,6 +558,49 @@ mod tests {
             DEFAULT_FINANCE_DOMAIN_POLICY.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标")
         );
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("不是逐数字双来源或缺项拒答门禁"));
+    }
+
+    /// A turn that fetched no market data must not publish a priced quote
+    /// prefix, and a turn that fetched provider aggregates must not label them
+    /// as primary filings it never opened. Both live in the prompt rather than
+    /// in a runtime validator (AGENTS.md 139-145), so the regression these
+    /// tests protect is the rule silently going missing from the policy text.
+    #[test]
+    fn finance_policy_binds_the_quote_prefix_and_source_labels_to_this_turn() {
+        // Zero successful quote / snapshot / extended_hours this turn: the
+        // `行情口径：` prefix may not carry a price, and the body may not carry
+        // derived price facts either.
+        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("首行的“无行情分支”"));
+        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("行情口径只能写“本轮未取到 <代码> 行情”"));
+        for banned in [
+            "价格",
+            "涨跌幅",
+            "市值",
+            "估值倍数",
+            "财报科目金额",
+            "价位型买卖区间",
+        ] {
+            assert!(
+                DEFAULT_FINANCE_DOMAIN_POLICY.contains(banned),
+                "no-quote branch stopped naming {banned}"
+            );
+        }
+        // Loading a skill is not evidence: three skill_tool calls and nothing
+        // else is still a zero-evidence turn.
+        assert!(
+            DEFAULT_FINANCE_DOMAIN_POLICY
+                .contains("只加载 skill、只读本地文件、只查技能索引都**不算**取到行情")
+        );
+
+        // Source labels are a claim about what this turn actually read, and
+        // that claim now explicitly covers table columns, not just prose.
+        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("这条同样管表格的「来源」列"));
+        for upgraded in ["10-Q", "SEC 官方披露文件", "交易所官方收盘价"] {
+            assert!(
+                DEFAULT_FINANCE_DOMAIN_POLICY.contains(upgraded),
+                "source-tier rule stopped naming {upgraded}"
+            );
+        }
     }
 
     /// The audit found generic cycle-normalization advice actively wrong for

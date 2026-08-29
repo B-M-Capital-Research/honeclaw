@@ -179,7 +179,6 @@
 .daily-signal-scale__track {
   position: relative;
   height: 6px;
-  overflow: hidden;
   border-radius: var(--hone-radius-pill);
   background: var(--hone-paper-200);
 }
@@ -189,6 +188,18 @@
   height: 100%;
   border-radius: inherit;
   background: var(--signal-color);
+}
+
+/* The cut points the light is actually decided at. Hairlines, not labels: the
+   numbers are spelled out under the bar, and a tick per boundary is enough to
+   see which side of one the fill stops on. */
+.daily-signal-scale__mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--hone-ink-400);
+  opacity: 0.6;
 }
 
 .daily-signal-scale__ticks {
@@ -267,6 +278,154 @@
 .daily-signal-alerts p {
   margin: 5px 0 0;
   font-size: var(--hone-text-2xs);
+}
+/* The empty state is a statement, not an absence: "nothing fired" has to look
+   different from "the alert rules are red today", so the rail goes neutral. */
+.daily-signal-alerts.is-empty {
+  border-left-color: var(--hone-line);
+  color: var(--hone-ink-600);
+}
+.daily-signal-alerts.is-empty strong {
+  color: var(--hone-ink-500);
+}
+
+/* Market confirmation. Full width because the point is the gap between two
+   lines over time, which a 80px sparkline cannot show. */
+.daily-signal-market {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hone-line);
+  /* Solid vs dashed rather than two hues: the traffic-light palette is spoken
+     for by the score, a second color scheme beside it would read as a verdict
+     on the index, and dashes survive both themes and color blindness. */
+  --market-line-0: var(--hone-ink-950);
+  --market-line-1: var(--hone-ink-500);
+}
+.daily-signal-market > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.daily-signal-market h3 {
+  margin: 0;
+  color: var(--hone-ink-800);
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+}
+.daily-signal-market h3 small {
+  margin-left: 6px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+  font-weight: 400;
+}
+.daily-signal-market__windows {
+  display: flex;
+  gap: 2px;
+}
+.daily-signal-market__windows button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--hone-radius-pill);
+  background: transparent;
+  color: var(--hone-ink-500);
+  font: inherit;
+  font-size: var(--hone-text-2xs);
+  cursor: pointer;
+}
+.daily-signal-market__windows button.active {
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-950);
+}
+.daily-signal-market__chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 10px;
+}
+.daily-signal-market__baseline {
+  stroke: var(--hone-line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.daily-signal-market__line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.daily-signal-market__line.is-line-0 {
+  stroke: var(--market-line-0);
+}
+.daily-signal-market__line.is-line-1 {
+  stroke: var(--market-line-1);
+  stroke-dasharray: 4 3;
+}
+.daily-signal-market__axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+}
+.daily-signal-market__legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 24px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.daily-signal-market__legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+}
+.daily-signal-market__legend i {
+  width: 8px;
+  height: 2px;
+  transform: translateY(-3px);
+}
+.daily-signal-market__legend .is-line-0 i {
+  background: var(--market-line-0);
+}
+.daily-signal-market__legend .is-line-1 i {
+  /* Mirrors the dashed stroke so the swatch identifies the line, not just a color. */
+  background: repeating-linear-gradient(
+    90deg,
+    var(--market-line-1) 0 4px,
+    transparent 4px 7px
+  );
+}
+.daily-signal-market__legend span {
+  display: grid;
+  min-width: 0;
+}
+.daily-signal-market__legend strong {
+  color: var(--hone-ink-950);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+}
+.daily-signal-market__legend small {
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+}
+.daily-signal-market__legend b {
+  color: var(--hone-signal-green-ink);
+  font-size: var(--hone-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.daily-signal-market__legend b.is-down {
+  color: var(--hone-signal-red-ink);
+}
+.daily-signal-market__note,
+.daily-signal-market__empty {
+  margin: 10px 0 0;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+  line-height: 1.6;
 }
 /* Ten dimensions are ten rows of the same shape — a table, not ten cards.
    As cards they cost twenty borders, twenty 16px corners and a white fill
@@ -582,6 +741,12 @@
   .daily-company-grid {
     grid-template-columns: 1fr;
   }
+  /* The dimension rows carry a frequency and a cutoff date now, which is what
+     pushes the single column here; the legend stacks with them so the two
+     index names are not truncated into ambiguity on a phone. */
+  .daily-signal-market__legend {
+    grid-template-columns: 1fr;
+  }
   .daily-hardware-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -620,6 +785,15 @@
   }
   .daily-signal-hero dd {
     font-size: var(--hone-text-xs);
+  }
+  /* Sheet mode: the chart is below the fold anyway, so it trades height for
+     the hero rather than the other way round. */
+  .daily-signal-market {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  .daily-signal-market__chart {
+    margin-top: 8px;
   }
 }
 

@@ -20,7 +20,7 @@
     { "symbol": "CIEN", "aliases": ["Ciena"] },
     { "symbol": "CSCO", "aliases": ["Cisco", "思科"] },
     { "symbol": "LITE", "aliases": ["Lumentum", "鲁门特姆"] },
-    { "symbol": "SPCX", "aliases": ["SpaceX"] },
+    { "symbol": "SPCX", "aliases": ["SpaceX", "太空探索技术"] },
     { "symbol": "BWXT", "aliases": ["BWX Technologies"] },
     { "symbol": "GLW", "aliases": ["Corning", "康宁"] },
     { "symbol": "TER", "aliases": ["Teradyne", "泰瑞达"] },
@@ -35,7 +35,7 @@
     { "symbol": "BE", "aliases": ["Bloom Energy", "布鲁姆能源"] },
     { "symbol": "CRWV", "aliases": ["CoreWeave"] },
     { "symbol": "DELL", "aliases": ["Dell", "戴尔"] },
-    { "symbol": "RKLB", "aliases": ["Rocket Lab"] },
+    { "symbol": "RKLB", "aliases": ["Rocket Lab", "火箭实验室"] },
     { "symbol": "ALAB", "aliases": ["Astera Labs"] },
     { "symbol": "CRDO", "aliases": ["Credo"] },
     { "symbol": "STX", "aliases": ["Seagate", "希捷"] },
@@ -51,7 +51,7 @@
     { "symbol": "RDW", "aliases": ["Redwire"] },
     { "symbol": "RXRX", "aliases": ["Recursion", "Recursion Pharmaceuticals"] },
     { "symbol": "INTC", "aliases": ["Intel", "英特尔"] },
-    { "symbol": "AMPX", "aliases": ["Amprius"] },
+    { "symbol": "AMPX", "aliases": ["Amprius", "安普瑞斯"] },
     { "symbol": "SBET", "aliases": ["SharpLink"] }
   ]
 }

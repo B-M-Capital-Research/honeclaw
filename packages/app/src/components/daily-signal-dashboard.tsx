@@ -17,8 +17,10 @@ import {
 } from "@/components/research/research-panel";
 import { ResearchState } from "@/components/research/research-state";
 import type {
+  DailySignalDimension,
   DailySignalHistoryItem,
   DailySignalKind,
+  DailySignalMarketTrend,
   DailySignalReport,
   DailySignalTrendPoint,
 } from "@/lib/types";
@@ -75,6 +77,29 @@ function dimensionRoleLabel(role?: string) {
   return role ? labels[role] ?? role.replaceAll("_", " ") : "指标";
 }
 
+/**
+ * The 「频率 + 口径日」 suffix on a collapsed dimension row.
+ *
+ * `lag_days` is printed, never scored. The server computes it from the
+ * publication calendar, so an old reading means "this series reports
+ * quarterly", not "the economy is worse" — turning it into a penalty would
+ * quietly rate the BLS release schedule instead of the data.
+ *
+ * Older snapshots carry neither field, so both are optional and the suffix
+ * simply disappears rather than rendering a hole.
+ */
+function vintageLabel(dimension: DailySignalDimension) {
+  const parts = [dimension.frequency_label, dimension.period].filter(Boolean);
+  if (!parts.length) return "";
+  const lag = dimension.lag_days;
+  const stale =
+    lag != null &&
+    ((dimension.frequency_label === "日频" && lag > 5) ||
+      (dimension.frequency_label === "月频" && lag > 45) ||
+      (dimension.frequency_label === "季频" && lag > 120));
+  return ` · ${parts.join(" ")}${stale ? `（滞后 ${lag} 天）` : ""}`;
+}
+
 function signalLabel(signal?: string) {
   if (signal === "green") return "绿灯";
   if (signal === "yellow") return "黄灯";
@@ -124,6 +149,18 @@ function trailingDetail(summary: string) {
  * A field the snapshot did not carry is dropped rather than printed as a hole:
  * an absent timestamp is not the same claim as an unknown one.
  *
+ * The cutoff is a *range*, not a date. Sixteen series publish on three
+ * different calendars: on 2026-08-28 the daily rates were a day old while the
+ * quarterly rows were 149 days old and carried a quarter of the weight, and
+ * printing only the newest of those dates read as "this is what the economy
+ * looks like yesterday". So the line gives both ends and names the row at the
+ * old end, which is the one a reader would otherwise never find — it lives
+ * inside a collapsed card, in an evidence link.
+ *
+ * The old 「市场日」 segment is gone. Both sides of its condition were the same
+ * max over the same dimensions, so it could never render; the range's upper
+ * bound is that date, and says it once.
+ *
  * `model_version` is deliberately absent here. It read as a fifth metadata
  * segment (`hone-daily-signals-v2`) directly under the verdict, where it means
  * nothing to a reader and crowds out the dates that do — it now lives in
@@ -131,18 +168,33 @@ function trailingDetail(summary: string) {
  */
 function provenanceLine(report: DailySignalReport) {
   const generated = [report.generated_at_local, report.timezone].filter(Boolean).join(" ");
+  const latest = report.data_cutoff;
+  const oldest = report.data_cutoff_oldest;
+  const span =
+    latest && oldest && oldest !== latest ? `${oldest} ~ ${latest}` : (latest ?? oldest ?? "—");
+  const oldestRow = report.oldest_dimension;
   return [
-    // 数据截止排在最前：它决定结论的时效，其余是它的注脚。
-    `数据截止 ${report.data_cutoff ?? "—"}`,
-    // 市场日通常就是数据截止那天，一样就不再说第二遍。
-    report.market_date && report.market_date !== report.data_cutoff
-      ? `市场日 ${report.market_date}`
-      : "",
+    // 数据口径排在最前：它决定结论的时效，其余是它的注脚。
+    `数据口径 ${span}`,
+    oldestRow && oldestRow.period !== latest ? `最旧 ${oldestRow.label}` : "",
     generated ? `报告 ${generated}` : `报告日 ${report.report_date}`,
+    // next_refresh_at 一直在 payload 里却从没渲染过；读者看不到节奏就会怀疑面板停更。
+    nextRefreshLabel(report),
     report.stale ? "数据已过期" : "",
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function nextRefreshLabel(report: DailySignalReport) {
+  const at = new Date(report.next_refresh_at);
+  if (Number.isNaN(at.getTime())) return "";
+  return `下次 ${at.toLocaleString(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })} 更新`;
 }
 
 /**
@@ -217,23 +269,234 @@ function Sparkline(props: { points: DailySignalTrendPoint[]; label: string }) {
  * left. A bar carries the one thing the number alone cannot (position on the
  * scale) in a fraction of the height, and the hero gets its full width back.
  */
+/**
+ * The cut points the light is decided at, drawn on the bar itself.
+ *
+ * They mirror the server's own thresholds exactly — macro `signal_for_health`
+ * (75 green / 55 yellow / 40 orange) and AI `signal_for_ai` (80 / 60) — and are
+ * the reason a 61.5 is yellow rather than green. Printing them makes the colour
+ * checkable instead of asserted; it also means changing a threshold server-side
+ * is now a two-file edit, which is the correct cost for a published boundary.
+ */
+const SCORE_MARKS: Record<DailySignalKind, { at: number; light: string }[]> = {
+  macro: [
+    { at: 40, light: "orange" },
+    { at: 55, light: "yellow" },
+    { at: 75, light: "green" },
+  ],
+  ai: [
+    { at: 60, light: "yellow" },
+    { at: 80, light: "green" },
+  ],
+};
+
 function ScoreScale(props: { report: DailySignalReport }) {
   const value = () => Math.max(0, Math.min(100, props.report.score ?? 0));
+  const marks = () => SCORE_MARKS[props.report.kind] ?? SCORE_MARKS.macro;
   return (
     <div class="daily-signal-scale">
       <div
         class="daily-signal-scale__track"
         role="img"
-        aria-label={`健康分 ${scoreLabel(props.report.score)} / 100，越高越健康`}
+        aria-label={`健康分 ${scoreLabel(props.report.score)} / 100，越高越健康；${marks()
+          .map((mark) => `${mark.at} 以上为${signalLabel(mark.light)}`)
+          .join("，")}`}
       >
         <i class="daily-signal-scale__fill" style={{ width: `${value()}%` }} />
+        <For each={marks()}>
+          {(mark) => (
+            <i
+              class={`daily-signal-scale__mark is-${mark.light}`}
+              style={{ left: `${mark.at}%` }}
+              data-at={mark.at}
+            />
+          )}
+        </For>
       </div>
       <div class="daily-signal-scale__ticks" aria-hidden="true">
         <span>0</span>
-        <span>健康分 / 100 · 越高越健康</span>
+        <span>
+          健康分 / 100 · 分界{" "}
+          {marks()
+            .map((mark) => `${mark.at} ${signalLabel(mark.light)}`)
+            .join(" · ")}
+        </span>
         <span>100</span>
       </div>
     </div>
+  );
+}
+
+const TREND_WINDOWS = [
+  ["1y", "1 年", 1],
+  ["3y", "3 年", 3],
+  ["10y", "10 年", 10],
+] as const;
+
+type TrendWindow = (typeof TREND_WINDOWS)[number][0];
+
+/**
+ * Market confirmation: two index lines, rebased, side by side.
+ *
+ * Deliberately not a `Sparkline`. That component normalises each line to its
+ * own min/max and draws no axis, which its own comment admits makes slopes
+ * incomparable across cards — the one thing this chart exists to make
+ * comparable. Here both lines share a date axis (the server intersects the two
+ * series before sampling, so they land on identical trading days) and a single
+ * rebased domain, so the gap between them is the actual relative performance.
+ *
+ * Two labelling rules are load-bearing:
+ *
+ * 1. These are **indices**, not the ETFs. FRED publishes NASDAQ100 and SP500;
+ *    it does not carry QQQ or SPY, whose prices differ by an order of magnitude
+ *    and by fees and dividend treatment. The heading says index, the legend
+ *    says which fund tracks it, and no number here may be called a QQQ or SPY
+ *    price.
+ * 2. This is **display-only**. It carries no weight in the health score, and
+ *    the section says so where a reader will look first — otherwise the obvious
+ *    next question ("the Nasdaq rallied, why is the score flat?") reads as a
+ *    bug. SP500 already contributes 0.06 to the score as a confirmation
+ *    dimension; counting the same factor twice here would inflate it.
+ */
+function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
+  const [window, setWindow] = createSignal<TrendWindow>("1y");
+
+  const years = () => TREND_WINDOWS.find(([key]) => key === window())?.[2] ?? 1;
+
+  /** Both lines cut to the window and rebased to 100 at its first shared date. */
+  const lines = createMemo(() => {
+    const axis = props.series[0]?.points ?? [];
+    if (axis.length < 2) return undefined;
+    const end = new Date(`${axis[axis.length - 1].period}T00:00:00Z`);
+    const from = new Date(end);
+    from.setUTCFullYear(from.getUTCFullYear() - years());
+    const cutoff = from.toISOString().slice(0, 10);
+    const rebased = props.series.map((item) => {
+      const points = item.points.filter((point) => point.period >= cutoff);
+      const base = points[0]?.value;
+      return {
+        ...item,
+        points:
+          base && base !== 0
+            ? points.map((point) => ({ ...point, value: (point.value / base) * 100 }))
+            : [],
+      };
+    });
+    if (rebased.some((item) => item.points.length < 2)) return undefined;
+    const values = rebased.flatMap((item) => item.points.map((point) => point.value));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const width = 640;
+    const height = 180;
+    return {
+      min,
+      max,
+      from: rebased[0].points[0].period,
+      to: rebased[0].points[rebased[0].points.length - 1].period,
+      // Where 100 — the rebase baseline — sits, so the reader can see which
+      // line is above water without reading the numbers.
+      baseline: 100 >= min && 100 <= max ? 8 + (1 - (100 - min) / span) * (height - 16) : undefined,
+      series: rebased.map((item) => ({
+        ...item,
+        change: item.points[item.points.length - 1].value - 100,
+        path: item.points
+          .map((point, index) => {
+            const x = 4 + (index / (item.points.length - 1)) * (width - 8);
+            const y = 8 + (1 - (point.value - min) / span) * (height - 16);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          })
+          .join(" "),
+      })),
+    };
+  });
+
+  const asOf = () => props.series.find((item) => item.as_of)?.as_of;
+
+  return (
+    <section class="daily-signal-market">
+      <header>
+        <h3>
+          市场确认 <small>仅展示，不参与健康分</small>
+        </h3>
+        <div class="daily-signal-market__windows" role="group" aria-label="时间窗口">
+          <For each={TREND_WINDOWS}>
+            {([key, label]) => (
+              <button
+                type="button"
+                classList={{ active: window() === key }}
+                onClick={() => setWindow(key)}
+              >
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+      </header>
+      <Show
+        when={lines()}
+        fallback={<p class="daily-signal-market__empty">本次快照没有可对照的指数序列。</p>}
+      >
+        {(chart) => (
+          <>
+            <svg
+              class="daily-signal-market__chart"
+              viewBox="0 0 640 180"
+              role="img"
+              aria-label={`${chart().from} 至 ${chart().to}，以起点为 100 归一化：${chart()
+                .series.map(
+                  (item) => `${item.label} ${item.change >= 0 ? "+" : ""}${item.change.toFixed(1)}%`,
+                )
+                .join("；")}`}
+            >
+              <Show when={chart().baseline}>
+                {(y) => (
+                  <line
+                    class="daily-signal-market__baseline"
+                    x1="0"
+                    x2="640"
+                    y1={y()}
+                    y2={y()}
+                  />
+                )}
+              </Show>
+              <For each={chart().series}>
+                {(item, index) => (
+                  <polyline class={`daily-signal-market__line is-line-${index()}`} points={item.path} />
+                )}
+              </For>
+            </svg>
+            <div class="daily-signal-market__axis" aria-hidden="true">
+              <span>{chart().from}</span>
+              <span>起点 = 100</span>
+              <span>{chart().to}</span>
+            </div>
+            <ul class="daily-signal-market__legend">
+              <For each={chart().series}>
+                {(item, index) => (
+                  <li class={`is-line-${index()}`}>
+                    <i />
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.tracker} 跟踪该指数</small>
+                    </span>
+                    <b classList={{ "is-down": item.change < 0 }}>
+                      {item.change >= 0 ? "+" : ""}
+                      {item.change.toFixed(1)}%
+                    </b>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </>
+        )}
+      </Show>
+      <p class="daily-signal-market__note">
+        FRED 日频收盘价，截至 {asOf() ?? "—"}（T+1，非实时报价）。图上是指数点位归一化后的相对走势，
+        不是 QQQ / SPY 基金的价格或净值。两条线取共同交易日与共同起点，因此斜率可以直接对比；
+        标普 500 在 FRED 只授权滚动 10 年，10 年窗口以此为准。
+      </p>
+    </section>
   );
 }
 
@@ -339,8 +602,17 @@ export function DailySignalPanel(props: Props) {
                             </div>
                           </section>
 
-                          <Show when={current().alerts.length}>
-                            <section class="daily-signal-alerts"><strong>触发提醒</strong><For each={current().alerts}>{(alert) => <p>{alert}</p>}</For></section>
+                          {/* 空态必须画出来：概览里同时出现「2 个领先维度处于收缩区」和一张红卡时，
+                              提醒区整段消失会被读成 UI 坏了，而不是「本次确实没有触发」。 */}
+                          <section class="daily-signal-alerts" classList={{ "is-empty": !current().alerts.length }}>
+                            <strong>触发提醒</strong>
+                            <For each={current().alerts} fallback={<p>本次无触发：没有维度进入红灯区，也未达到扩散或通胀阈值。</p>}>
+                              {(alert) => <p>{alert}</p>}
+                            </For>
+                          </section>
+
+                          <Show when={current().market_trend?.length}>
+                            <MarketTrend series={current().market_trend!} />
                           </Show>
 
                           <section class="daily-signal-grid">
@@ -349,7 +621,9 @@ export function DailySignalPanel(props: Props) {
                                 <details class={`daily-signal-card is-${dimension.signal}`}>
                                   <summary>
                                     <i />
-                                    <span><strong>{dimension.label}</strong><small>{dimension.trend_label} · {dimensionRoleLabel(dimension.role)}</small></span>
+                                    {/* 口径日期必须在折叠态就可见：季频维度和日频维度在网格里长得一模一样，
+                                        而顶行只有一个日期，读者会把四个月前的季度数当成昨天的状态。 */}
+                                    <span><strong>{dimension.label}</strong><small>{dimension.trend_label} · {dimensionRoleLabel(dimension.role)}{vintageLabel(dimension)}</small></span>
                                     <Sparkline points={dimension.trend} label={dimension.label} />
                                     <b>{scoreLabel(dimension.score)}</b>
                                   </summary>

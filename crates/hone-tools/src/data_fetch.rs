@@ -21,6 +21,13 @@ const FMP_TTL_NEWS: StdDuration = StdDuration::from_secs(15 * 60);
 const FMP_TTL_PROFILE: StdDuration = StdDuration::from_secs(24 * 60 * 60);
 const FMP_TTL_FINANCIALS: StdDuration = StdDuration::from_secs(6 * 60 * 60);
 const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
+
+/// The provider ticker for the CBOE volatility index. It rides inside the
+/// macro bundle because a macro read without the market's own forward risk
+/// price is incomplete, but it is a live quote rather than a released
+/// statistic, so it keeps the quote cache policy and the quote evidence
+/// metadata instead of the bundle's.
+const MACRO_VIX_SYMBOL: &str = "^VIX";
 const MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512;
 
 /// Resolve the request exactly as `DataFetchTool::execute` does. Callers that
@@ -582,7 +589,7 @@ impl DataFetchTool {
             "macro" => {
                 let today = chrono::Utc::now().date_naive();
                 let to = today + Duration::days(7);
-                vec![
+                let mut components = vec![
                     ("treasury_rates", s("treasury-rates")),
                     ("gdp", s("economic-indicators?name=GDP")),
                     ("cpi", s("economic-indicators?name=CPI")),
@@ -600,7 +607,20 @@ impl DataFetchTool {
                             to.format("%Y-%m-%d")
                         ),
                     ),
-                ]
+                ];
+                // Every other component is a backward-looking release. Three
+                // graded runs of "judge the macro environment for the next two
+                // weeks" called this bundle zero times and took the question
+                // apart into per-indicator quotes and web searches instead,
+                // because the one number the question named that the bundle
+                // could not supply was the volatility index. `^` has to reach
+                // the provider percent-encoded, so the URL is built by the
+                // same encoder every other quote goes through rather than by
+                // hand here.
+                if let Ok(url) = self.build_url("quote", MACRO_VIX_SYMBOL) {
+                    components.push(("vix", url));
+                }
+                components
             }
             "market_hours" => vec![("all_exchange_market_hours", s("all-exchange-market-hours"))],
             _ => return None,
@@ -637,12 +657,10 @@ impl DataFetchTool {
         data_type: &str,
         components: Vec<(&'static str, String)>,
     ) -> (Value, Value, Option<Value>) {
-        let ttl = ttl_for_data_type(data_type);
-        let results = futures::future::join_all(
-            components
-                .iter()
-                .map(|(_, url)| self.fetch_from_url_cached(url, ttl, data_type)),
-        )
+        let results = futures::future::join_all(components.iter().map(|(key, url)| {
+            let cache_type = bundle_component_cache_type(data_type, key);
+            self.fetch_from_url_cached(url, ttl_for_data_type(cache_type), cache_type)
+        }))
         .await;
 
         let mut data = serde_json::Map::new();
@@ -652,6 +670,11 @@ impl DataFetchTool {
             match result {
                 Ok(value) if has_meaningful_fmp_value(&value) => {
                     coverage.insert((*key).to_string(), Value::String("available".to_string()));
+                    let value = if bundle_component_is_quote(data_type, key) {
+                        normalize_quote_timestamp_metadata(value)
+                    } else {
+                        value
+                    };
                     data.insert((*key).to_string(), value);
                 }
                 Ok(_) => {
@@ -1054,6 +1077,27 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
         "press_releases" | "transcript" | "sec_filings" | "analyst_actions" => Some(FMP_TTL_NEWS),
         "earnings_calendar" | "earnings_outlook" | "earnings_status" => Some(FMP_TTL_EARNINGS),
         _ => None,
+    }
+}
+
+/// A bundle component normally inherits its bundle's cache and evidence
+/// policy. The volatility index inside `macro` is the exception: `macro` is
+/// memoized for a day because treasury curves and monthly indicators move on
+/// that scale, a day-old VIX level is not a VIX level, and since the cache is
+/// keyed by URL a stale macro entry would also be served to a plain `quote`
+/// call for the same symbol.
+fn bundle_component_is_quote(data_type: &str, component: &str) -> bool {
+    matches!((data_type, component), ("macro", "vix"))
+}
+
+/// Quote-shaped components are fetched and cached under the `quote` policy,
+/// and are normalized like any other quote so a published change figure can
+/// cite `hone_change_basis` rather than the provider's own percentage.
+fn bundle_component_cache_type<'a>(data_type: &'a str, component: &str) -> &'a str {
+    if bundle_component_is_quote(data_type, component) {
+        "quote"
+    } else {
+        data_type
     }
 }
 
@@ -2443,7 +2487,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（国债收益率曲线 + GDP/CPI/失业率/联邦基金利率）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）、earnings_status（财报发布状态：服务端按 provider 日历算好某证券最新已发布财报日与下一次财报日，hone_reporting_status_note 给出“该季度是否已发布”结论；引用任何季度财报数字前、或做财报前瞻/分析前，先用它对齐发布状态，未发布季度的数字只能标注为指引/预期/假设）。\n\n**本工具的输出怎么写给用户看**：\n1. 工具名、data_type、字段名一律不出现在回答里——`data_fetch`/`DataFetch`、provider、FMP、quote、snapshot、profile、extended_hours、financials、entity_route、`hone_*` 都是内部词。说数据缺口只用业务语言：「这只港股的实时报价本轮没取到」，不要说「行情接口未稳定返回」，也不要向用户解释本轮调没调工具、为什么不调。\n2. 时段标签要有 bar 撑着：写「盘前」「盘后」价格或涨跌幅，本轮必须有该 symbol 的 extended_hours 返回；只有 quote/snapshot 时写成「最新可得的提供方报价（非逐笔）」，不要写成「现价」或配盘后涨跌，也不要把它称作「收盘价」或用「收于 / 收报」直接接价格数字——普通 quote 的时间字段不证明该时段已经收盘；要报某个时段的收盘水平就取 extended_hours 的 session 汇总并写明是哪个窗口。涨跌幅逐字采用该 quote 的 `hone_change_basis.label`，同一行里的价格必须与该 label 同一时段。\n3. 倍数要写清分子分母：报任何 PE/PS/EV 倍数都要同时给出分母口径（TTM GAAP 稀释 / 调整后 / FY1E）与数值，并满足 市值 ÷ 分母 = 所报倍数；snapshot/profile 的 `pe` 与 valuation 的 `peRatioTTM` 口径不同，不得互相替代。引用 `hone_forward` / `hone_ttm` / `hone_latest_quarter` 时保留该字段本来的科目名（营收就是营收，不要写成净利润），并写出预期窗口的起止财季——窗口不是未来 12 个月就不能叫「未来一年」。\n4. 不要用关联公司顶替：用户点名的标的必须由本轮 search 解析出唯一 symbol 并取到同代码 quote 才能报它的行情。只取到母公司、被分拆方或同集团公司的行情时，写「本轮未取到 <用户所问标的> 的行情」，不得用关联公司的价格代答，也不得断言该标的没有独立行情。\n\n**分析师评级与目标价家族**（这些类型一直可用，只是过去没写出来）：\n\
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。明确公司或证券的研究中，本工具是开放 Web 搜索之前的优先事实来源：完成 search 并取得标准 symbol 后，优先调用 snapshot，一次读取 quote、profile、报价源时间、服务端涨跌口径、相关新闻与可得盘后字段；snapshot 不适用时组合 quote/profile，盘前、盘后或常规盘对比再补 extended_hours。这个顺序只是给 Agent 的工具选择提示，不是缺行情即拒答的门禁；provider 无覆盖或调用失败时应继续使用其它可得来源，不要反复补取。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.local` 是 Hone 从 provider Unix timestamp 按当前运行时时区规范化得到的用户可见时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段。quote 里的 `hone_change_basis` 是服务端按该 quote 自己的 previousClose 与 price 算好的涨跌幅，并按采样时段给出正确名称（盘中是当日涨跌，盘前/盘后只是最新价较上一常规收盘）；发布涨跌幅必须引用它的 `pct` 与 `label`，不要自己相除，也不要抄 provider 的 changesPercentage。出现 `cannot_prove` 时，常规时段涨跌必须另取 extended_hours 的 session=regular 窗口，不能用本块数字改名充当。snapshot 与 earnings_outlook 返回的 `hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得被模型关于旧收购或退市的记忆覆盖。涨跌归因或目标交易日问题必须使用 quote；quote_short 只是低带宽简版批量行情，可能缺少 changesPercentage、exchange 或 timestamp，不能用来证明涨跌幅、目标日期、交易所或交易时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（盘前/盘后/隔夜行情：返回最新分钟 bar 与 hone_session_summaries——按纽约日期+时段汇总开盘/收盘/高低及相对上一时段收盘的涨跌幅，用于回答盘后/盘前具体涨跌）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、earnings_outlook（证券级财报前瞻：quote + profile + 财报/预期/目标价/评级/财务）、financials（完整财务证据：年度利润表 + hone_quarterly_income_statement/hone_quarterly_balance_sheet/hone_quarterly_cash_flow 季度三表，并附 hone_ttm 最近四季合计（含毛利率/营业利润率）、hone_latest_quarter 的环比/同比/毛利率/经营现金流、hone_forward 未来四季一致预期与 hone_financial_growth 增长率；hone_statement_coverage 标出哪张表没取到）、valuation（估值与财务健康：官方 key-metrics-ttm 与 ratios-ttm 的 PE/PS/PB/EV-EBITDA/ROE/ROIC/流动比率/负债率、enterprise-values 企业价值、financial-scores 的 Altman Z 与 Piotroski 分数（hone_score_semantics 给出区间与适用性限制）、shares-float 流通股与 DCF 估值。需要倍数、回报率、偿债能力或财务健康时用它，不要自己用报表硬算）、segments（分部收入：按产品线与按地区，回答“钱从哪来”）、peers（provider 同业列表 + 同业批量报价 + 行业 PE 快照，回答“跟谁比、相对贵不贵”；同业来自 provider 分类，不是模型记忆）、ownership（机构持仓汇总 + 内部人交易统计与明细）、corporate_actions（分红与拆股历史）、press_releases（公司官方新闻稿，权威性高于第三方转述）、sec_filings（最近 90 天 SEC 官方申报索引：8-K/6-K/10-Q 等 formType 与原文链接；融资、并购、重大事项的一手确认必须引用它而不是二手转述，“最新进展”类问题应默认调用）、analyst_actions（带日期的分析师动作流：grades 逐条评级动作 + 评级新闻 + 目标价新闻；回答“最近谁调了评级/目标价”用它，earnings_outlook 只有当前共识快照没有动作日期）、transcript（财报电话会实录可用日期列表）、macro（宏观环境一次全取，一次调用即可覆盖整道宏观题，不必分头 quote 或 search 逐项拼：treasury_rates 国债收益率曲线（各期限一次返回，含 10 年与 30 年）、GDP、CPI、失业率（unemployment）、联邦基金利率（federal_funds）、未来一周经济日历（economic_calendar，含发布日期与预期值），以及 vix（^VIX 波动率指数的实时 quote，按 quote 的时效缓存，带 hone_quote_time 与 hone_change_basis）。利率、美债、通胀、就业、避险情绪与宏观展望类问题的第一次取数就用它；coverage 会标出哪个组件本轮没取到，只对没取到的那个组件另找来源，不要因为其中一项缺失就整题退回逐项 quote）、market_hours（各交易所官方交易时段与休市安排）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）、earnings_status（财报发布状态：服务端按 provider 日历算好某证券最新已发布财报日与下一次财报日，hone_reporting_status_note 给出“该季度是否已发布”结论；引用任何季度财报数字前、或做财报前瞻/分析前，先用它对齐发布状态，未发布季度的数字只能标注为指引/预期/假设）。\n\n**本工具的输出怎么写给用户看**：\n1. 工具名、data_type、字段名一律不出现在回答里——`data_fetch`/`DataFetch`、provider、FMP、quote、snapshot、profile、extended_hours、financials、entity_route、`hone_*` 都是内部词。说数据缺口只用业务语言：「这只港股的实时报价本轮没取到」，不要说「行情接口未稳定返回」，也不要向用户解释本轮调没调工具、为什么不调。\n2. 时段标签要有 bar 撑着：写「盘前」「盘后」价格或涨跌幅，本轮必须有该 symbol 的 extended_hours 返回；只有 quote/snapshot 时写成「最新可得的提供方报价（非逐笔）」，不要写成「现价」或配盘后涨跌，也不要把它称作「收盘价」或用「收于 / 收报」直接接价格数字——普通 quote 的时间字段不证明该时段已经收盘；要报某个时段的收盘水平就取 extended_hours 的 session 汇总并写明是哪个窗口。涨跌幅逐字采用该 quote 的 `hone_change_basis.label`，同一行里的价格必须与该 label 同一时段。\n3. 倍数要写清分子分母：报任何 PE/PS/EV 倍数都要同时给出分母口径（TTM GAAP 稀释 / 调整后 / FY1E）与数值，并满足 市值 ÷ 分母 = 所报倍数；snapshot/profile 的 `pe` 与 valuation 的 `peRatioTTM` 口径不同，不得互相替代。引用 `hone_forward` / `hone_ttm` / `hone_latest_quarter` 时保留该字段本来的科目名（营收就是营收，不要写成净利润），并写出预期窗口的起止财季——窗口不是未来 12 个月就不能叫「未来一年」。\n4. 不要用关联公司顶替：用户点名的标的必须由本轮 search 解析出唯一 symbol 并取到同代码 quote 才能报它的行情。只取到母公司、被分拆方或同集团公司的行情时，写「本轮未取到 <用户所问标的> 的行情」，不得用关联公司的价格代答，也不得断言该标的没有独立行情。\n\n**分析师评级与目标价家族**（这些类型一直可用，只是过去没写出来）：\n\
 - `ratings_snapshot`：provider 打分卡，字段 `rating`（A+~F 字母级）、`overallScore` 与 `discountedCashFlowScore` / `returnOnEquityScore` / `returnOnAssetsScore` / `debtToEquityScore` / `priceToEarningsScore` / `priceToBookScore`（各 1-5）。它是量化打分不是投行观点，引用时要说清这一点，别写成「机构评级」。\n\
 - `grades_consensus`：`strongBuy` / `buy` / `hold` / `sell` / `strongSell` 家数与 `consensus` 结论，用来讲卖方分布，而不是只说「一致看多」。\n\
 - `price_target_consensus`：`targetHigh` / `targetLow` / `targetConsensus` / `targetMedian`。给目标价必须带这四个中的区间，只报一个中枢等于丢掉分歧。\n\
@@ -2921,7 +2965,8 @@ mod tests {
         });
     }
     use super::{
-        DataFetchTool, build_earnings_status_response, chinese_scaled_money,
+        DataFetchTool, FMP_TTL_FAST, FMP_TTL_PROFILE, build_earnings_status_response,
+        bundle_component_cache_type, bundle_component_is_quote, chinese_scaled_money,
         data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
         financial_score_semantics, fmp_base_url_is_loopback, forward_twelve_month_summary,
@@ -4769,6 +4814,114 @@ mod tests {
             .is_none()
         );
         assert!(data_fetch_data_type_uses_security_target("price_history"));
+    }
+
+    /// The graded question named 利率、10 年与 30 年美债、就业、通胀 and VIX. Four
+    /// of those five live in this bundle; VIX did not, and three production
+    /// runs answered the whole question with per-indicator quotes and web
+    /// searches rather than calling `macro` once. The component list is the
+    /// contract the tool description promises, so it is pinned here.
+    #[test]
+    fn macro_bundle_carries_the_volatility_index_as_a_quote() {
+        let tool = tool_with_test_key();
+        let components = tool
+            .stable_bundle_components("macro", "", &json!({}))
+            .expect("macro bundle components");
+
+        let keys: Vec<&str> = components.iter().map(|(key, _)| *key).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "treasury_rates",
+                "gdp",
+                "cpi",
+                "unemployment",
+                "federal_funds",
+                "economic_calendar",
+                "vix",
+            ]
+        );
+
+        // `^` must reach the provider percent-encoded, exactly as it does for
+        // any other index quote.
+        let vix_url = components
+            .iter()
+            .find_map(|(key, url)| (*key == "vix").then_some(url))
+            .expect("vix component");
+        assert_eq!(vix_url, "https://example.com/api/v3/quote/%5EVIX");
+        assert_eq!(
+            vix_url,
+            &tool.build_url("quote", "^VIX").expect("vix quote url")
+        );
+
+        // A day-old volatility level is not a volatility level, and the cache
+        // is keyed by URL, so inheriting the macro TTL here would also poison
+        // a plain `quote` call for the same symbol.
+        assert_eq!(bundle_component_cache_type("macro", "vix"), "quote");
+        assert_eq!(
+            ttl_for_data_type(bundle_component_cache_type("macro", "vix")),
+            Some(FMP_TTL_FAST)
+        );
+        assert_eq!(
+            bundle_component_cache_type("macro", "treasury_rates"),
+            "macro"
+        );
+        assert_eq!(
+            ttl_for_data_type(bundle_component_cache_type("macro", "treasury_rates")),
+            Some(FMP_TTL_PROFILE)
+        );
+        assert!(!bundle_component_is_quote("valuation", "key_metrics_ttm"));
+    }
+
+    /// The volatility component is a quote, so it has to carry the same
+    /// evidence metadata every other quote does — publishing a change figure
+    /// without `hone_change_basis` is forbidden everywhere else in Hone. A
+    /// component that returns nothing stays a disclosed gap and must not take
+    /// the rest of the bundle down with it.
+    #[tokio::test]
+    async fn the_macro_volatility_component_is_normalized_and_fails_alone() {
+        let (addr, _requests) = spawn_path_scripted_http_server(vec![
+            (
+                "treasury-rates",
+                vec![r#"[{"date":"2026-08-06","month3":4.1,"year10":4.35,"year30":4.92}]"#],
+            ),
+            (
+                "quote/%5EVIX",
+                vec![
+                    r#"[{"symbol":"^VIX","price":17.5,"previousClose":16.0,"change":1.5,"changesPercentage":9.375,"timestamp":1756400000}]"#,
+                ],
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "macro"}))
+            .await
+            .expect("macro payload");
+
+        assert_eq!(payload["coverage"]["vix"], "available");
+        assert_eq!(payload["data"]["vix"][0]["symbol"], "^VIX");
+        // Recomputed by Hone from this quote's own two legs, not copied from
+        // the provider's changesPercentage.
+        assert_eq!(payload["data"]["vix"][0]["hone_change_basis"]["pct"], 9.38);
+        assert!(
+            payload["data"]["vix"][0]["hone_quote_time"]["local"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
+        );
+
+        // The indicators the bundle already had are unaffected, and the
+        // components this scripted provider does not serve stay disclosed
+        // gaps rather than nulling the bundle.
+        assert_eq!(payload["data"]["treasury_rates"][0]["year10"], 4.35);
+        assert_eq!(payload["coverage"]["treasury_rates"], "available");
+        assert_eq!(payload["coverage"]["cpi"], "empty");
+        assert_eq!(payload["coverage"]["economic_calendar"], "empty");
     }
 
     #[test]

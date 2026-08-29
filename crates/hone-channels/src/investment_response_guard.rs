@@ -18063,6 +18063,69 @@ mod tests {
         assert!(!strong.contains("本轮候选种子均为低置信"));
     }
 
+    /// A production report claimed the short `RKLB的估值` phrasing skipped
+    /// entity discovery while the long `rklb 现在的估值合理吗` phrasing did not.
+    /// It does not: Interactive always routes to Agent discovery, `估值` binds
+    /// the ticker for both, and the injected block is the same text. Locking
+    /// this down keeps a future "fix for short questions" from forking the two
+    /// phrasings onto different routes.
+    #[test]
+    fn short_and_long_valuation_questions_share_one_discovery_route() {
+        let short = "RKLB的估值";
+        let long = "rklb 现在的估值合理吗";
+        let answer_time = "2026-08-30 00:10";
+
+        let mut blocks = Vec::new();
+        let mut confidence = Vec::new();
+        for input in [short, long] {
+            let seeds = super::plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(seeds.len(), 1, "{input} should seed exactly one candidate");
+            confidence.push(seeds[0].tentative_symbol);
+            assert_eq!(
+                seeds[0].explicit_symbol.as_deref(),
+                Some("RKLB"),
+                "{input} should normalize its ticker to RKLB"
+            );
+            assert!(
+                matches!(
+                    super::extract_entity_scope(input, AgentTurnOrigin::Interactive),
+                    EntityResolutionScope::AgentToolDiscovery(_)
+                ),
+                "{input} must stay on the Agent discovery route"
+            );
+
+            let mut block = String::new();
+            append_agent_entity_discovery_context(&mut block, input, &seeds, answer_time);
+            assert!(
+                block.contains("【本轮证券实体发现：主 Agent 工具循环】"),
+                "{input} did not receive the discovery block"
+            );
+            assert!(
+                block.contains("`行情口径：` 后的报价事实必须来自本轮 quote 字段"),
+                "{input} lost the quote-provenance clause"
+            );
+            blocks.push(block);
+        }
+
+        // Everything after the seed snapshot is byte-identical, so no rule
+        // reaches one phrasing without reaching the other.
+        let body = |block: &String| {
+            let start = block
+                .find("先完整阅读当前用户请求")
+                .expect("discovery block body");
+            block[start..].to_string()
+        };
+        assert_eq!(
+            confidence[0], confidence[1],
+            "short and long phrasings must seed RKLB at the same confidence"
+        );
+        assert_eq!(
+            body(&blocks[0]),
+            body(&blocks[1]),
+            "short and long phrasings must receive the same discovery contract"
+        );
+    }
+
     /// "tem为什么涨这么多" scans as one tentative lowercase seed. A price-move
     /// question must instruct confirm-first, not talk the Agent out of
     /// treating the token as a security.

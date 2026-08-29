@@ -1594,10 +1594,33 @@ export type DailySignalDimension = {
   score?: number | null;
   signal: DailySignalLight;
   trend_label: string;
+  /** Observation date behind the score. Absent on snapshots written before it existed. */
+  period?: string | null;
+  /** 日频 / 月频 / 季频. Empty string on older snapshots. */
+  frequency_label?: string;
+  /** Days from `period` to the report date. Display metadata — never a penalty. */
+  lag_days?: number | null;
   reason: string;
   threshold: string;
   trend: DailySignalTrendPoint[];
   evidence: DailySignalEvidence[];
+};
+
+/**
+ * One index line on the market-confirmation chart.
+ *
+ * FRED carries indices, not ETFs, so this is the index QQQ or SPY tracks and
+ * never the ETF's own price — `tracker` names the fund, `label` says so, and
+ * neither may be rendered as a quote.
+ */
+export type DailySignalMarketTrend = {
+  id: string;
+  label: string;
+  tracker: string;
+  as_of?: string | null;
+  base_period?: string | null;
+  latest_value?: number | null;
+  points: DailySignalTrendPoint[];
 };
 
 export type DailySignalMetric = {
@@ -1636,7 +1659,13 @@ export type DailySignalReport = {
   title: string;
   report_date: string;
   market_date?: string | null;
+  /** Newest observation behind the score. */
   data_cutoff?: string | null;
+  /** Oldest observation behind the score; with `data_cutoff` this is the real range. */
+  data_cutoff_oldest?: string | null;
+  /** The date at which half the scoring weight is at least that new. */
+  data_cutoff_weighted?: string | null;
+  oldest_dimension?: { id: string; label: string; period: string } | null;
   generated_at: string;
   generated_at_local: string;
   timezone: string;
@@ -1654,6 +1683,8 @@ export type DailySignalReport = {
   dimensions: DailySignalDimension[];
   company_scores: DailySignalCompanyScore[];
   hardware_signals: DailyHardwareSignal[];
+  /** Display-only index lines. Absent on snapshots written before this field. */
+  market_trend?: DailySignalMarketTrend[];
   alerts: string[];
   evidence: DailySignalEvidence[];
   sources: { label: string; url: string; source_type: string }[];
