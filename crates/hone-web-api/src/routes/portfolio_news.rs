@@ -268,7 +268,7 @@ async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
             .map(|item| (item.symbol.to_ascii_uppercase(), item.name))
             .collect::<HashMap<_, _>>();
         let (fallback_events, fallback_status) =
-            fetch_tavily_portfolio_news(state, &union_symbols, &company_names).await;
+            fetch_web_search_portfolio_news(state, &union_symbols, &company_names).await;
         events.extend(fallback_events);
         source_status = fallback_status;
     }
@@ -461,7 +461,7 @@ async fn fetch_portfolio_news(
     Ok(filter_news_events(events, Utc::now(), symbols))
 }
 
-async fn fetch_tavily_portfolio_news(
+async fn fetch_web_search_portfolio_news(
     state: &AppState,
     symbols: &[String],
     company_names: &HashMap<String, String>,
@@ -502,13 +502,21 @@ async fn fetch_tavily_portfolio_news(
                 value
             }
             Ok(Err(error)) => {
-                warn!(%symbol, %error, "portfolio Tavily fallback failed");
+                warn!(%symbol, %error, "portfolio web-search fallback failed");
                 continue;
             }
             Err(_) => {
-                warn!(%symbol, "portfolio Tavily fallback timed out");
+                warn!(%symbol, "portfolio web-search fallback timed out");
                 continue;
             }
+        };
+        let provider = value
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("tavily");
+        let source_label = match provider {
+            "duckduckgo_html" => "DuckDuckGo 搜索摘要",
+            _ => "Tavily 搜索摘要",
         };
         for (index, result) in value
             .get("results")
@@ -536,18 +544,18 @@ async fn fetch_tavily_portfolio_news(
                 || summary.is_empty()
                 || !url.starts_with("http")
                 || !seen_urls.insert(url.to_string())
-                || !tavily_result_matches_company(title, summary, &symbol, &company_name)
-                || !tavily_result_is_material(title)
+                || !search_result_matches_company(title, summary, &symbol, &company_name)
+                || !search_result_is_material(title)
             {
                 continue;
             }
             let occurred_at = result
                 .get("published_date")
                 .and_then(serde_json::Value::as_str)
-                .and_then(parse_tavily_published_at)
+                .and_then(parse_search_published_at)
                 .unwrap_or_else(Utc::now);
             events.push(MarketEvent {
-                id: format!("tavily:{symbol}:{index}:{}", occurred_at.timestamp()),
+                id: format!("web-search:{symbol}:{index}:{}", occurred_at.timestamp()),
                 kind: EventKind::NewsCritical,
                 severity: Severity::Medium,
                 symbols: vec![symbol.clone()],
@@ -555,10 +563,10 @@ async fn fetch_tavily_portfolio_news(
                 title: title.to_string(),
                 summary: summary.to_string(),
                 url: Some(url.to_string()),
-                source: "Tavily 搜索摘要".to_string(),
+                source: source_label.to_string(),
                 payload: serde_json::json!({
                     "source_class": "search_snippet",
-                    "provider": "tavily",
+                    "provider": provider,
                     "provider_time_range": "day",
                     "full_page_content": false,
                 }),
@@ -577,12 +585,12 @@ async fn fetch_tavily_portfolio_news(
         completed,
         events = events.len(),
         status,
-        "portfolio Tavily fallback completed"
+        "portfolio web-search fallback completed"
     );
     (events, status.to_string())
 }
 
-fn tavily_result_is_material(title: &str) -> bool {
+fn search_result_is_material(title: &str) -> bool {
     let lower = title.to_ascii_lowercase();
     let routine_or_promotional = [
         "stock price, news, quote",
@@ -629,7 +637,7 @@ fn tavily_result_is_material(title: &str) -> bool {
     .any(|keyword| lower.contains(keyword))
 }
 
-fn tavily_result_matches_company(
+fn search_result_matches_company(
     title: &str,
     _summary: &str,
     symbol: &str,
@@ -645,7 +653,7 @@ fn tavily_result_matches_company(
         .any(|token| token.eq_ignore_ascii_case(symbol))
 }
 
-fn parse_tavily_published_at(raw: &str) -> Option<DateTime<Utc>> {
+fn parse_search_published_at(raw: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(raw)
         .map(|value| value.with_timezone(&Utc))
         .ok()
@@ -1404,20 +1412,20 @@ mod tests {
     }
 
     #[test]
-    fn tavily_fallback_requires_an_explicit_company_identity_match() {
-        assert!(tavily_result_matches_company(
+    fn web_search_fallback_requires_an_explicit_company_identity_match() {
+        assert!(search_result_matches_company(
             "AMD announces new AI accelerator",
             "Advanced Micro Devices updated guidance.",
             "AMD",
             "AMD"
         ));
-        assert!(!tavily_result_matches_company(
+        assert!(!search_result_matches_company(
             "AI chip market expands",
             "Several vendors reported demand.",
             "AMD",
             "AMD"
         ));
-        assert!(!tavily_result_matches_company(
+        assert!(!search_result_matches_company(
             "Micron take-or-pay deals improve visibility",
             "This page is filed under Sandisk (SNDK).",
             "SNDK",
@@ -1426,29 +1434,29 @@ mod tests {
     }
 
     #[test]
-    fn tavily_fallback_parses_only_explicit_dates() {
+    fn web_search_fallback_parses_only_explicit_dates() {
         assert_eq!(
-            parse_tavily_published_at("2026-08-12")
+            parse_search_published_at("2026-08-12")
                 .expect("date")
                 .format("%Y-%m-%d")
                 .to_string(),
             "2026-08-12"
         );
-        assert!(parse_tavily_published_at("yesterday").is_none());
+        assert!(parse_search_published_at("yesterday").is_none());
     }
 
     #[test]
-    fn tavily_fallback_removes_routine_holdings_and_keeps_material_events() {
-        assert!(!tavily_result_is_material(
+    fn web_search_fallback_removes_routine_holdings_and_keeps_material_events() {
+        assert!(!search_result_is_material(
             "Fund Has $3 Million Stake in Sandisk"
         ));
-        assert!(!tavily_result_is_material(
+        assert!(!search_result_is_material(
             "AMD executive reports RSU vesting and tax share withholding"
         ));
-        assert!(tavily_result_is_material(
+        assert!(search_result_is_material(
             "Rocket Lab earnings miss and margin outlook raises concerns"
         ));
-        assert!(tavily_result_is_material(
+        assert!(search_result_is_material(
             "Bloom Energy class action investigation announced"
         ));
     }

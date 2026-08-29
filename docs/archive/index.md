@@ -2598,3 +2598,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: Web API 304/2 ignored; portfolio news 10/10; position management 8/8; company ratings 19/19; focused Web 8/8; TypeScript; public production build; changed-file rustfmt and diff checks
 - Current conclusion: company ratings use FMP first and an exact-symbol Nasdaq official quote fallback, portfolio news persists source facts before bounded model enrichment and uses title-matched material Tavily fallback when FMP is absent, and position management emits low-confidence non-add actions from current quotes plus the dated research baseline. Local acceptance covered 51/52 company quotes and produced news coverage for all eight holdings plus quote-backed actions for seven; invalid `APPL` stayed explicit.
 - Next entry point: confirm whether `APPL` should be corrected to `AAPL`, then configure a structured financial/estimate provider or an audited SEC/IR ingestion path before expecting nonzero daily financial and valuation coverage.
+
+### Public Search Fallback
+
+- Status: done locally; no push or production deployment
+- Date: 2026-08-29
+- Plan: `docs/archive/plans/public-search-fallback.md`
+- Handoff: `docs/handoffs/2026-08-29-public-search-fallback.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-29-198-keep-web-search-available-without-weakening-evidence-authority`
+- Related PRs / commits: local branch `codex/unified-hone-sndk`; not committed in this task
+- Related runbooks / regressions: HONE Tools 193/1 ignored; Portfolio News 12/12; finance automation contracts 49/49; Channels/Web API compile; real exhausted-Tavily runtime and Browser chat acceptance
+- Current conclusion: Tavily is no longer a single point of failure. `web_search` automatically degrades to DuckDuckGo's official non-JavaScript HTML search with no second key, a 15-second request bound, five-minute failure cooldown, three-result cap and the unchanged snippet-only evidence contract. Actual provider provenance reaches portfolio news.
+- Next entry point: if public volume outgrows the HTML route, configure a contracted secondary search API ahead of it while retaining SEC/Nasdaq/company IR as the current financial truth sources.

@@ -782,11 +782,12 @@ agent:
     # OpenAI-compatible model id placeholder used by the client request.
     model: "hone-cloud"
 search:
-  # Tavily is the only runtime search provider today. search.provider /
-  # search.search_depth / search.topic stay in the config schema for compatibility
-  # but are not wired into requests yet; the current web_search tool reads
-  # search.api_keys and search.max_results only. Runtime caps max_results to 3
-  # to keep Tavily response size and credits predictable for heartbeat workloads.
+  # web_search prefers Tavily, then automatically falls back to DuckDuckGo's
+  # official non-JavaScript HTML search when Tavily is missing, out of quota,
+  # or temporarily unavailable. The public fallback requires no API key and
+  # enters a short cooldown after transport/challenge failures. search.provider /
+  # search.search_depth / search.topic stay in the schema for compatibility;
+  # runtime reads search.api_keys and search.max_results, and caps results to 3.
   provider: tavily
   # Tavily API key pool with failover support
   api_keys:

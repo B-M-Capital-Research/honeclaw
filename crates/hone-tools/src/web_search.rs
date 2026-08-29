@@ -1,11 +1,13 @@
 //! WebSearchTool — 网络搜索工具
 //!
-//! 通过 Tavily API 进行网络搜索，支持多 Key 自动 fallback：
+//! 优先通过 Tavily API 进行网络搜索，支持多 Key 自动 fallback：
 //! - 依次尝试 `search.api_keys` 中的每个 Key
 //! - 若 Key 无效（401/403/exceeded）则切换到下一个
-//! - 所有 Key 均失败时返回最后一次的错误信息
+//! - Tavily 未配置、额度耗尽或暂时失败时，自动降级到 DuckDuckGo
+//!   官方无 JavaScript HTML 搜索；两层都失败才返回错误
 
 use async_trait::async_trait;
+use scraper::{Html, Selector};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -14,10 +16,13 @@ use std::time::{Duration, Instant};
 use crate::base::{Tool, ToolParameter};
 
 const DEFAULT_TAVILY_SEARCH_ENDPOINT: &str = "https://api.tavily.com/search";
+const DEFAULT_DUCKDUCKGO_SEARCH_ENDPOINT: &str = "https://html.duckduckgo.com/html/";
 const MAX_TAVILY_ERROR_CHARS: usize = 300;
 const MAX_LOW_BANDWIDTH_RESULTS: u32 = 3;
 const TAVILY_AUTH_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 const TAVILY_QUOTA_COOLDOWN: Duration = Duration::from_secs(6 * 60 * 60);
+const PUBLIC_SEARCH_FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+const PUBLIC_SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TavilyErrorKind {
@@ -37,8 +42,10 @@ pub struct WebSearchTool {
     keys: Vec<String>,
     max_results: u32,
     endpoint: String,
+    public_fallback_endpoint: String,
     http: reqwest::Client,
     disabled_until: Arc<Mutex<HashMap<usize, Instant>>>,
+    public_fallback_disabled_until: Arc<Mutex<Option<Instant>>>,
 }
 
 impl WebSearchTool {
@@ -48,8 +55,10 @@ impl WebSearchTool {
             keys: pool.keys().to_vec(),
             max_results: low_bandwidth_max_results(max_results),
             endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
-            http: reqwest::Client::new(),
+            public_fallback_endpoint: DEFAULT_DUCKDUCKGO_SEARCH_ENDPOINT.to_string(),
+            http: default_search_client(),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
+            public_fallback_disabled_until: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -59,9 +68,74 @@ impl WebSearchTool {
             keys: pool.keys().to_vec(),
             max_results: low_bandwidth_max_results(config.search.max_results),
             endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
-            http: reqwest::Client::new(),
+            public_fallback_endpoint: DEFAULT_DUCKDUCKGO_SEARCH_ENDPOINT.to_string(),
+            http: default_search_client(),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
+            public_fallback_disabled_until: Arc::new(Mutex::new(None)),
         }
+    }
+
+    fn public_fallback_disabled(&self) -> bool {
+        let Ok(mut disabled_until) = self.public_fallback_disabled_until.lock() else {
+            return false;
+        };
+        match *disabled_until {
+            Some(until) if until > Instant::now() => true,
+            Some(_) => {
+                *disabled_until = None;
+                false
+            }
+            None => false,
+        }
+    }
+
+    fn mark_public_fallback_disabled(&self) {
+        if let Ok(mut disabled_until) = self.public_fallback_disabled_until.lock() {
+            *disabled_until = Some(Instant::now() + PUBLIC_SEARCH_FAILURE_COOLDOWN);
+        }
+    }
+
+    async fn search_public_fallback(
+        &self,
+        query: &str,
+        time_range: Option<&str>,
+    ) -> Result<Value, String> {
+        if self.public_fallback_disabled() {
+            return Err("公开搜索兜底处于短暂冷却期".to_string());
+        }
+
+        let mut request = self.http.get(&self.public_fallback_endpoint).query(&[
+            ("q", query),
+            ("kl", "us-en"),
+            ("kp", "-1"),
+        ]);
+        if let Some(date_filter) = duckduckgo_date_filter(time_range) {
+            request = request.query(&[("df", date_filter)]);
+        }
+
+        let response = request
+            .timeout(PUBLIC_SEARCH_TIMEOUT)
+            .send()
+            .await
+            .map_err(|error| format!("DuckDuckGo 网络请求失败: {error}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            self.mark_public_fallback_disabled();
+            return Err(format!("DuckDuckGo 请求失败（HTTP {status}）"));
+        }
+        let html = response
+            .text()
+            .await
+            .map_err(|error| format!("DuckDuckGo 响应读取失败: {error}"))?;
+        let data = parse_duckduckgo_html(query, &html, self.max_results)?;
+        if data["results"]
+            .as_array()
+            .is_none_or(|results| results.is_empty())
+        {
+            self.mark_public_fallback_disabled();
+            return Err("DuckDuckGo 未返回可用搜索结果".to_string());
+        }
+        Ok(data)
     }
 
     fn extract_error_text(value: &Value) -> Option<String> {
@@ -240,6 +314,9 @@ impl WebSearchTool {
         key_rejected_count: usize,
         temporary_failures: usize,
     ) -> String {
+        if self.keys.is_empty() {
+            return "Tavily 未配置可用 API Key".to_string();
+        }
         if key_rejected_count > 0 && temporary_failures == 0 {
             format!(
                 "Tavily 搜索当前不可用：已尝试 {} 个 API Key，但都因额度或鉴权被拒绝。请更新可用的 Tavily Key 后重试。",
@@ -254,6 +331,92 @@ impl WebSearchTool {
             )
         }
     }
+}
+
+fn default_search_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("HONE/0.15 research-search-fallback")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
+fn duckduckgo_date_filter(time_range: Option<&str>) -> Option<&'static str> {
+    match time_range {
+        Some("day") => Some("d"),
+        Some("week") => Some("w"),
+        Some("month") => Some("m"),
+        Some("year") => Some("y"),
+        _ => None,
+    }
+}
+
+fn normalize_search_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn duckduckgo_original_url(href: &str) -> Option<String> {
+    let absolute = if href.starts_with("//") {
+        format!("https:{href}")
+    } else if href.starts_with('/') {
+        format!("https://duckduckgo.com{href}")
+    } else {
+        href.to_string()
+    };
+    let parsed = url::Url::parse(&absolute).ok()?;
+    if parsed
+        .domain()
+        .is_some_and(|domain| domain.ends_with("duckduckgo.com"))
+        && let Some((_, target)) = parsed.query_pairs().find(|(key, _)| key == "uddg")
+    {
+        let target = target.into_owned();
+        return url::Url::parse(&target).ok().map(|url| url.to_string());
+    }
+    matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
+}
+
+fn parse_duckduckgo_html(query: &str, html: &str, max_results: u32) -> Result<Value, String> {
+    if html.contains("Unfortunately, bots use DuckDuckGo too") || html.contains("anomaly-modal") {
+        return Err("DuckDuckGo 返回了自动化访问验证页".to_string());
+    }
+
+    let document = Html::parse_document(html);
+    let result_selector = Selector::parse(".result")
+        .map_err(|error| format!("DuckDuckGo 结果选择器无效: {error}"))?;
+    let title_selector = Selector::parse(".result__a")
+        .map_err(|error| format!("DuckDuckGo 标题选择器无效: {error}"))?;
+    let snippet_selector = Selector::parse(".result__snippet")
+        .map_err(|error| format!("DuckDuckGo 摘要选择器无效: {error}"))?;
+
+    let results = document
+        .select(&result_selector)
+        .filter_map(|result| {
+            let title_link = result.select(&title_selector).next()?;
+            let title = normalize_search_text(&title_link.text().collect::<String>());
+            let href = title_link.value().attr("href")?;
+            let url = duckduckgo_original_url(href)?;
+            if title.is_empty() || url.is_empty() {
+                return None;
+            }
+            let content = result
+                .select(&snippet_selector)
+                .next()
+                .map(|node| normalize_search_text(&node.text().collect::<String>()))
+                .unwrap_or_default();
+            Some(serde_json::json!({
+                "title": title,
+                "url": url,
+                "content": content,
+            }))
+        })
+        .take(max_results as usize)
+        .collect::<Vec<_>>();
+
+    Ok(serde_json::json!({
+        "query": query,
+        "provider": "duckduckgo_html",
+        "results": results,
+        "usage": {"credits": 0}
+    }))
 }
 
 fn low_bandwidth_max_results(max_results: u32) -> u32 {
@@ -288,9 +451,15 @@ fn annotate_basic_search_evidence(mut data: Value, max_results: u32) -> Value {
             0
         };
 
+    let provider = root
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("tavily")
+        .to_string();
     root.insert(
         "hone_search_contract".to_string(),
         serde_json::json!({
+            "provider": provider,
             "evidence_scope": {
                 "kind": "search_snippets",
                 "search_depth": "basic",
@@ -479,7 +648,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/持股/合同/技术合作关系，或任何需要当前来源的问题时使用。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
+        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/持股/合同/技术合作关系，或任何需要当前来源的问题时使用。当前工具优先 Tavily，失败时自动使用 DuckDuckGo 公开搜索兜底；两种路线都只提供 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -517,14 +686,6 @@ impl Tool for WebSearchTool {
             .and_then(|value| value.as_str())
             .map(str::trim)
             .filter(|value| matches!(*value, "day" | "week" | "month" | "year"));
-
-        if self.keys.is_empty() {
-            tracing::warn!(tool = "web_search", "tavily keys are empty");
-            return Err(hone_core::HoneError::Tool(
-                "Tavily 搜索当前不可用：未配置可用的 Tavily API Key。请更新可用的 Tavily Key 后重试。"
-                    .to_string(),
-            ));
-        }
 
         let mut key_rejected_count = 0usize;
         let mut temporary_failures = 0usize;
@@ -576,7 +737,25 @@ impl Tool for WebSearchTool {
             }
         }
 
-        // 所有 key 均失败
+        match self.search_public_fallback(query, time_range).await {
+            Ok(data) => {
+                tracing::info!(
+                    tool = "web_search",
+                    provider = "duckduckgo_html",
+                    max_results = self.max_results,
+                    "public search fallback succeeded"
+                );
+                return Ok(annotate_basic_search_evidence(data, self.max_results));
+            }
+            Err(error) => tracing::warn!(
+                tool = "web_search",
+                provider = "duckduckgo_html",
+                "public search fallback failed: {}",
+                error
+            ),
+        }
+
+        // 所有 Tavily key 与公开搜索兜底均失败。
         tracing::warn!(
             tool = "web_search",
             key_count = self.keys.len(),
@@ -587,9 +766,9 @@ impl Tool for WebSearchTool {
             "{}",
             self.final_user_error_message(key_rejected_count, temporary_failures)
         );
-        Err(hone_core::HoneError::Tool(self.final_user_error_message(
-            key_rejected_count,
-            temporary_failures,
+        Err(hone_core::HoneError::Tool(format!(
+            "{}；DuckDuckGo 公开搜索兜底也暂时不可用。",
+            self.final_user_error_message(key_rejected_count, temporary_failures)
         )))
     }
 }
@@ -875,16 +1054,82 @@ mod tests {
         assert_message_hides_raw_tavily_upgrade_copy(&message);
     }
 
+    #[test]
+    fn duckduckgo_html_parser_recovers_original_urls_and_snippets() {
+        let html = r#"
+            <div class="result">
+              <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.sec.gov%2FArchives%2Fsndk.htm">Sandisk filing</a>
+              <a class="result__snippet">Latest official filing for SNDK.</a>
+            </div>
+            <div class="result">
+              <a class="result__a" href="https://investor.sandisk.com/news">Sandisk IR</a>
+              <a class="result__snippet">Investor relations news.</a>
+            </div>
+        "#;
+
+        let data = parse_duckduckgo_html("SNDK filing", html, 3).expect("parse fallback HTML");
+        assert_eq!(data["provider"], "duckduckgo_html");
+        assert_eq!(data["results"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            data["results"][0]["url"],
+            "https://www.sec.gov/Archives/sndk.htm"
+        );
+        assert_eq!(
+            data["results"][0]["content"],
+            "Latest official filing for SNDK."
+        );
+        assert_eq!(duckduckgo_date_filter(Some("week")), Some("w"));
+        assert_eq!(duckduckgo_date_filter(None), None);
+    }
+
     #[tokio::test]
-    async fn execute_with_empty_keys_returns_sanitized_error() {
-        let tool = WebSearchTool::new(vec![], 5);
-        let error = tool
-            .execute(serde_json::json!({"query": "oil"}))
+    async fn execute_with_empty_keys_uses_public_search_fallback() {
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
             .await
-            .expect_err("missing keys should be a tool error");
-        let message = error.to_string();
-        assert_text_contains_all(&message, &["Tavily 搜索当前不可用"]);
-        assert_message_hides_raw_tavily_upgrade_copy(&message);
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let body = r#"<div class="result"><a class="result__a" href="https://www.sec.gov/test">SEC result</a><a class="result__snippet">Official evidence.</a></div>"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let tool = WebSearchTool {
+            keys: vec![],
+            max_results: 3,
+            endpoint: "http://127.0.0.1:1".to_string(),
+            public_fallback_endpoint: format!("http://{addr}"),
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("build loopback test client"),
+            disabled_until: Arc::new(Mutex::new(HashMap::new())),
+            public_fallback_disabled_until: Arc::new(Mutex::new(None)),
+        };
+        let result = tool
+            .execute(serde_json::json!({"query": "SNDK filing", "time_range": "week"}))
+            .await
+            .expect("public fallback should make missing Tavily keys non-fatal");
+        assert_eq!(result["provider"], "duckduckgo_html");
+        assert_eq!(result["results"][0]["title"], "SEC result");
+        assert_eq!(
+            result["hone_search_contract"]["provider"],
+            "duckduckgo_html"
+        );
     }
 
     #[tokio::test]
@@ -927,11 +1172,13 @@ mod tests {
             keys: vec!["key1".to_string(), "key2".to_string()],
             max_results: 3,
             endpoint: format!("http://{addr}"),
+            public_fallback_endpoint: format!("http://{addr}"),
             http: reqwest::Client::builder()
                 .no_proxy()
                 .build()
                 .expect("build loopback test client"),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
+            public_fallback_disabled_until: Arc::new(Mutex::new(None)),
         };
 
         let error = tool
@@ -941,7 +1188,7 @@ mod tests {
         let message = error.to_string();
         assert_text_contains_all(&message, &["Tavily 搜索当前"]);
         assert_message_hides_raw_tavily_upgrade_copy(&message);
-        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+        assert_eq!(request_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -978,11 +1225,13 @@ mod tests {
             keys: vec!["key1".to_string()],
             max_results: 3,
             endpoint: format!("http://{addr}"),
+            public_fallback_endpoint: "http://127.0.0.1:1".to_string(),
             http: reqwest::Client::builder()
                 .no_proxy()
                 .build()
                 .expect("build loopback test client"),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
+            public_fallback_disabled_until: Arc::new(Mutex::new(None)),
         };
 
         let result = tool

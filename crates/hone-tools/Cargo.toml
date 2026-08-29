@@ -19,6 +19,7 @@ hone-event-engine = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 url = { workspace = true }
+scraper = { workspace = true }
 glob = "0.3"
 walkdir = "2"
 
