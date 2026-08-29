@@ -8152,6 +8152,7 @@ mod tests {
         seen_messages: Arc<Mutex<Vec<Vec<Message>>>>,
         delivered_events: Arc<AtomicUsize>,
         stream_calls: Arc<AtomicUsize>,
+        terminal_chat_response: Arc<Mutex<Option<String>>>,
         failed_stream_calls: Arc<Mutex<Vec<usize>>>,
         failed_stream_errors: Arc<Mutex<HashMap<usize, String>>>,
         pending_stream_calls: Arc<Mutex<Vec<usize>>>,
@@ -8168,6 +8169,7 @@ mod tests {
                 seen_messages: Arc::new(Mutex::new(Vec::new())),
                 delivered_events: Arc::new(AtomicUsize::new(0)),
                 stream_calls: Arc::new(AtomicUsize::new(0)),
+                terminal_chat_response: Arc::new(Mutex::new(None)),
                 failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
                 failed_stream_errors: Arc::new(Mutex::new(HashMap::new())),
                 pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
@@ -8198,6 +8200,14 @@ mod tests {
                 .extend_from_slice(calls);
             self
         }
+
+        fn with_terminal_chat_response(self, response: impl Into<String>) -> Self {
+            *self
+                .terminal_chat_response
+                .lock()
+                .expect("terminal chat response lock") = Some(response.into());
+            self
+        }
     }
 
     #[async_trait]
@@ -8207,7 +8217,16 @@ mod tests {
             _messages: &[Message],
             _model: Option<&str>,
         ) -> hone_core::HoneResult<hone_llm::provider::ChatResult> {
-            unreachable!("streaming test uses tools")
+            let content = self
+                .terminal_chat_response
+                .lock()
+                .expect("terminal chat response lock")
+                .clone()
+                .unwrap_or_else(|| unreachable!("streaming test uses tools"));
+            Ok(hone_llm::provider::ChatResult {
+                content,
+                usage: None,
+            })
         }
 
         async fn chat_with_tools(
@@ -13074,6 +13093,7 @@ mod tests {
             seen_messages: Arc::new(Mutex::new(Vec::new())),
             delivered_events: Arc::new(AtomicUsize::new(0)),
             stream_calls: Arc::new(AtomicUsize::new(0)),
+            terminal_chat_response: Arc::new(Mutex::new(None)),
             failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
             failed_stream_errors: Arc::new(Mutex::new(HashMap::new())),
             pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
@@ -15054,13 +15074,15 @@ mod tests {
         ] {
             let prefix =
                 format!("数据时间：北京时间 2026-07-19 09:31；行情口径：{case} 仅使用可核验资料");
+            let answer = format!("{prefix}\n\n该请求结构无效；仅基于本轮已取得的只读结果收口。");
             let llm =
                 StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
                     index: 0,
                     id: Some(format!("tc_{case}")),
                     name: Some("data_fetch".to_string()),
                     arguments: arguments.to_string(),
-                }]]);
+                }]])
+                .with_terminal_chat_response(answer.clone());
             let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
             let audit = Arc::new(RecordingAuditSink::default());
             let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
@@ -15083,12 +15105,9 @@ mod tests {
 
             let response = agent.run("分析 CRWV", &mut context).await;
 
-            assert!(!response.success, "{case}");
-            assert_eq!(
-                response.error.as_deref(),
-                Some("max_iterations_exceeded:1"),
-                "{case}"
-            );
+            assert!(response.success, "{case}: {:?}", response.error);
+            assert_eq!(response.content, answer, "{case}");
+            assert_eq!(response.iterations, 2, "{case}");
             assert_eq!(calls.load(Ordering::SeqCst), 1, "{case}");
             assert_eq!(
                 seen_tool_choice_modes
@@ -15111,7 +15130,10 @@ mod tests {
                 "{case}"
             );
             let records = audit.records.lock().expect("audit records");
-            let attempt = records.last().expect("DataFetch attempt audit");
+            let attempt = records
+                .iter()
+                .find(|record| record.operation == "chat_with_tools")
+                .expect("DataFetch attempt audit");
             assert_eq!(attempt.metadata["finance_tool_rounds"], 0, "{case}");
             assert_eq!(attempt.metadata["force_finance_final"], false, "{case}");
             assert_eq!(
@@ -15138,7 +15160,9 @@ mod tests {
                 .to_string(),
             })
             .collect::<Vec<_>>();
-        let llm = StreamingMockLlmProvider::with_rounds(vec![identity_calls]);
+        let answer = "基于已执行的六个只读身份查询收口；第七个候选因本轮实体上限未执行。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![identity_calls])
+            .with_terminal_chat_response(answer);
         let registry_calls = Arc::new(AtomicUsize::new(0));
         let tool_observer = Arc::new(MockToolObserver::default());
         let mut registry = ToolRegistry::new();
@@ -15153,8 +15177,9 @@ mod tests {
 
         let response = agent.run("筛选七个合法候选", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(response.error.as_deref(), Some("max_iterations_exceeded:1"));
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
         assert_eq!(
             registry_calls.load(Ordering::SeqCst),
             MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES
