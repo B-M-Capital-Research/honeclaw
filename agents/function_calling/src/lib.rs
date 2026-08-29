@@ -5283,6 +5283,10 @@ fn bounded_market_move_draft(content: &str) -> String {
         .collect()
 }
 
+/// The mechanical round repairs the named facts, not the answer's depth. An
+/// earlier version also capped the body at ~350 characters, capped causes at
+/// two, and banned scenarios and recommendations, so one wrong percentage
+/// permanently flattened every move answer; do not restore any of those.
 fn market_move_final_correction_prompt_with_sources(
     violations: &[String],
     draft: &str,
@@ -5305,7 +5309,7 @@ fn market_move_final_correction_prompt_with_sources(
         eligible_source_urls.join("、")
     };
     format!(
-        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据已有真实工具结果重写一份简短终稿，不要向用户提及本检查。逐项修正：{}。机械目标日期：{target}。当前工具结果中记录本身覆盖该日期的可用原始 URL 仅限：{sources}。正文控制在首行后约 350 个汉字：先列已核验 quote 的对象、涨跌幅和 provider 时间，明确宽基/风格/个股范围；再只用上述可用 URL 写 1—2 条同日确定性因素，每条都在同一段写出目标绝对日期和 URL。不得写其它日期的原因、无来源数字、收盘断言、Bull/Bear/Base Case、点位预测或交易建议。若可用 URL 为“无”或不足以支持原因，就保留行情范围并明确写“原因本轮未完全核验”。修订稿仍须从精确数据时间首行开始。\n<unpublished_draft>\n{}\n</unpublished_draft>",
+        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据本轮已有真实工具结果，对本条消息末尾附上的那份原稿做定点修正，整篇输出完整终稿，不要只回复改动处或修改说明，也不要向用户提及本检查。逐项修正：{}。机械目标日期：{target}。当前工具结果中记录本身覆盖该日期的可用原始 URL 仅限：{sources}。除被点名的这几处及依赖它们的句子外，原稿其余部分保留原意与篇幅，不因这次修正而删减或压缩。原稿若还没走完 `market_analysis`「归因之后的三段」（事件换算成数字、长期公式动没动、落到条件化应对），这一轮按该 skill 的口径补上；全篇数值一律取自本轮工具结果或由其推导，推导值在同句交代输入项或算式，第三段照旧按 `market_analysis` 第 10 条处理买卖点。这三段属于推断，按该 skill 的「事实/推断分离」与已核验事实分段写；确定性归因措辞只出现在同段内已给出目标绝对日期和上述可用 URL 的那几段里，不写其它日期的原因。百分比命名与区间涨跌幅的写法按 `market_analysis` 那条。若可用 URL 为“无”或不足以支持原因，只把原因那一段降级为“原因本轮未完全核验”，已核验行情与上述三段照常保留。修订稿仍须从同一条精确数据时间首行开始；草稿若在句中断开，说明后面被截去，按同一结构写完整，不要停在断开处。\n<unpublished_draft>\n{}\n</unpublished_draft>",
         violations.join("；"),
         bounded_market_move_draft(draft)
     )
@@ -16578,7 +16582,16 @@ mod tests {
         assert!(correction_prompt.contains("内部终稿机械一致性纠正"));
         assert!(correction_prompt.contains("2026-07-24 的星期应为周五"));
         assert!(correction_prompt.contains("https://example.test/capacity"));
-        assert!(correction_prompt.contains("约 350 个汉字"));
+        let correction_template = correction_prompt
+            .split("<unpublished_draft>")
+            .next()
+            .expect("correction template");
+        assert!(correction_template.contains("整篇输出完整终稿"));
+        assert!(correction_template.contains("归因之后的三段"));
+        assert!(
+            !correction_template.contains("个汉字") && !correction_template.contains("Bull/Bear"),
+            "the mechanical correction round must not cap length or ban the answer's own analysis"
+        );
         assert!(
             context
                 .messages

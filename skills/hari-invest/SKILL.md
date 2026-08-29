@@ -59,7 +59,7 @@ description: HONE 的美股投资判断与自然对话 Skill。用于股票分�
 | 板块推荐、多标的选股与配比 | `sector-to-stock` |
 | ETF / 基金 | `etf-analysis` |
 | 投行评级、目标价、研报 | `analyst-coverage` |
-| 单独追问护城河 / 稀缺与差异化 / 底层公式 / 财务质量 | `moat`、`scarcity-differentiation`、`first-principles`、`fundamentals` |
+| 追问护城河 / 稀缺与差异化 / 底层公式 / 财务质量（哪怕同一轮还问了别的） | `moat`、`scarcity-differentiation`、`first-principles`、`fundamentals`；同一轮问题里除这一维外还问了影响股价的因素、现在能不能买、值不值得、还有没有空间当中的任意一项时，再把 `valuation-audit` 一起加载，由它收口到合理价区间与现价位置 |
 | 持仓复核、仓位与成本价 | `position_advice`、`portfolio_management` |
 
 上表只给指针。**取哪些字段、判定锚点、产出格式一律以被指向的 skill 为准，本 skill 不重写它们的口径。**

@@ -197,12 +197,12 @@ Only classify crypto from exact-symbol structured market evidence such as `excha
 
 用户说「X 技术分析」「分析一下 X 的技术」时，默认理解为**技术能力 / 技术路线分析**，归入基本面来做：产品代际与路线图、良率与制程、专利与认证壁垒、客户验证进度、与竞品的技术代差、研发投入与产出效率。不要默认展开均线、支撑位、阻力位、量价形态这类 K 线走势分析。
 
-只有用户明确写了 K 线、走势、均线、支撑位、阻力位、技术面、形态、MACD/RSI 这类词，才做价格走势分析。两种理解都说得通而问题又很短时，按技术能力回答，并在结尾用一句话问是否也要看价格走势。
+只有用户明确写了 K 线、走势、均线、支撑位、阻力位、技术面、形态、MACD/RSI 这类词，才做价格走势分析。两种理解都说得通而问题又很短时，按技术能力回答，并在结尾用一句话问是否也要看价格走势。技术能力这一维回答完，仍要按上面第 2 条把合理价格区间与现价所处位置一并给出——技术尽调不替代结论，全文零个价格、零个倍数的回答不算答完。
 
 ### Valuation Mode
 
 1. Resolve the ticker first, fetch the same-symbol quote, and read the exact-symbol `profile`; do not attempt valuation before confirming whether the entity is a company or an ETF/fund.
-2. For a company, fetch `financials`; add `quote` or `snapshot` if you also need current market context. Use at least two suitable methods only when every numerator, denominator, period, and balance-sheet input is present. Annual FY revenue is not TTM. Without verified cash/debt or enterprise value, label market-cap/EBITDA as such and never call it EV/EBITDA. If only one method is fully supported, use that method, disclose the missing inputs, and do not invent net debt, historical multiples, target prices, or technical support levels to fill the template.
+2. For a company, fetch `financials`; add `quote` or `snapshot` if you also need current market context. Use at least two suitable methods only when every numerator, denominator, period, and balance-sheet input is present. Annual FY revenue is not TTM. Without verified cash/debt or enterprise value, label market-cap/EBITDA as such and never call it EV/EBITDA. If only one method is fully supported, use that method, disclose the missing inputs, and do not invent net debt, historical multiples, target prices, or technical support levels to fill the template. "Only one method" applies only when that denominator is genuinely unavailable this turn (see `valuation-audit`).
 3. For an ETF/fund confirmed by `isEtf/isFund`, fetch `etf_holdings` plus `quote` and frame valuation through underlying holdings/exposures, fees, tracking error, concentration, and applicable portfolio-level multiples. Do not fetch corporate financials or an earnings calendar, and do not apply a single-company DCF to the fund itself.
 4. Use `web_search` for the latest operating updates, strategy changes, holdings disclosures, guidance changes, or peer-comparison context appropriate to the confirmed asset type.
 5. Do not collapse the result into a simplistic categorical verdict with no assumptions attached.
