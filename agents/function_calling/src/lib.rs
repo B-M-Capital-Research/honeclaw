@@ -4738,13 +4738,14 @@ fn append_market_move_quote_fact_violations(
         r"(?i)(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?|closing price(?:\s+(?:of|was|is))?|closed at|close price(?:\s+(?:of|was|is))?)\s*[:：]?\s*[$¥€£]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:%|％)?",
     )
     .expect("market-move close value regex");
-    if close_value_claim
+    if let Some(hit) = close_value_claim
         .find_iter(content)
-        .any(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
+        .find(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
     {
-        violations.push(
-            "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价".to_string(),
-        );
+        violations.push(format!(
+            "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价（本稿写的是「{}」，改成报价并注明时间字段，或改用 extended_hours 的 session 汇总）",
+            violation_excerpt(hit.as_str(), 24)
+        ));
     }
 
     for quote in &quotes {
@@ -4793,8 +4794,11 @@ fn append_market_move_quote_fact_violations(
                     }
                     if (displayed - quote.change_percentage).abs() > 0.015 {
                         violations.push(format!(
-                            "{} 的涨跌幅应来自服务端 hone_change_basis.pct（约 {:+.2}%），不能使用 provider changesPercentage 或把 change 等其它字段写成百分比",
-                            quote.symbol, quote.change_percentage
+                            "{} 的涨跌幅应来自服务端 hone_change_basis.pct（约 {:+.2}%），不能使用 provider changesPercentage 或把 change 等其它字段写成百分比（本稿这一处写的是 {:+.2}%，出现在「{}」）",
+                            quote.symbol,
+                            quote.change_percentage,
+                            displayed,
+                            violation_excerpt(line, 40)
                         ));
                     }
                 }
@@ -5275,10 +5279,20 @@ fn market_move_final_violations(
                 .any(|(_, evidence)| content_contains_date(evidence, date))
         });
         if !has_current_url || !has_target_date || !source_record_has_target_date {
-            violations.push(
-                "每个确定性原因段落都必须在同一段内给出目标日期和本轮工具实际返回的原始 URL，且该 URL 的本轮结果记录本身也须覆盖目标日期；否则降级为“原因本轮未完全核验”"
-                    .to_string(),
-            );
+            let mut missing = Vec::new();
+            if !has_target_date {
+                missing.push("同段没有写出目标绝对日期");
+            }
+            if !has_current_url {
+                missing.push("同段没有引用本轮工具实际返回的原始 URL");
+            } else if !source_record_has_target_date {
+                missing.push("引用的 URL 本轮结果记录里没有该目标日期");
+            }
+            violations.push(format!(
+                "每个确定性原因段落都必须在同一段内给出目标日期和本轮工具实际返回的原始 URL，且该 URL 的本轮结果记录本身也须覆盖目标日期；否则降级为“原因本轮未完全核验”（这一段缺的是：{}；段落开头是「{}」）",
+                missing.join("、"),
+                violation_excerpt(paragraph, 32)
+            ));
         }
     }
 
@@ -5298,6 +5312,21 @@ fn bounded_market_move_draft(content: &str) -> String {
 /// earlier version also capped the body at ~350 characters, capped causes at
 /// two, and banned scenarios and recommendations, so one wrong percentage
 /// permanently flattened every move answer; do not restore any of those.
+/// A bounded, char-safe excerpt of the offending text, so a mechanical
+/// violation can point at the sentence it is about. The correction round is
+/// asked to repair a specific span; naming only the rule made the model guess
+/// which of a multi-thousand-character draft to touch, and it guessed wrong
+/// three rounds running on the same answer.
+fn violation_excerpt(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    let taken: String = trimmed.chars().take(limit).collect();
+    if trimmed.chars().count() > limit {
+        format!("{taken}…")
+    } else {
+        taken
+    }
+}
+
 fn market_move_final_correction_prompt_with_sources(
     violations: &[String],
     draft: &str,
@@ -16023,6 +16052,20 @@ mod tests {
         assert!(correction.contains("active_listing 标的：SNDK"));
     }
 
+    /// Each mechanical violation has to name the span it is about. Without that
+    /// the correction round is told a rule and left to guess which of a
+    /// multi-thousand-character draft breaks it — on the production answer for
+    /// "aaoi为什么突然大跌" the same three violations came back unchanged for all
+    /// three correction rounds before the loop gave up and shipped the template.
+    #[test]
+    fn violation_excerpt_is_bounded_and_char_safe() {
+        assert_eq!(violation_excerpt("  abc  ", 10), "abc");
+        assert_eq!(violation_excerpt("收盘价为 $106.23 元", 6), "收盘价为 $…");
+        // A byte slice at 3 would split the first character.
+        assert_eq!(violation_excerpt("每股收益", 3), "每股收…");
+        assert_eq!(violation_excerpt("", 5), "");
+    }
+
     #[test]
     fn market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause() {
         let runtime_input = "美股周五为什么暴跌\n\n\
@@ -16374,6 +16417,8 @@ mod tests {
 
         assert!(violations.iter().any(|violation| {
             violation.contains("SPY 的涨跌幅应来自服务端 hone_change_basis.pct（约 +0.10%）")
+                // the correction round needs the offending span, not just the rule
+                && violation.contains("+0.75%")
         }));
         assert!(violations.iter().any(|violation| {
             violation.contains("普通 quote 的时间字段不证明交易时段或收盘")
