@@ -4717,21 +4717,19 @@ fn append_market_move_quote_fact_violations(
         return;
     }
 
-    let normalized_content = content.to_ascii_lowercase();
-    // The bare `收` alternative used to match 营收 / 回收 / 吸收 followed by a
-    // number, so any draft that quantified revenue was rejected as if it had
-    // claimed a closing price. Require an actual close verb.
-    let close_value_claim =
-        Regex::new(r"(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?)\s*[$¥€£]?\s*[0-9]")
-            .expect("market-move close value regex")
-            .is_match(content);
-    if ["收盘", "收市", "常规交易收盘"]
-        .iter()
-        .any(|marker| content.contains(marker))
-        || ["closing price", "closed at", "close price"]
-            .iter()
-            .any(|marker| normalized_content.contains(marker))
-        || close_value_claim
+    // What this has to catch is a draft presenting the plain quote price as a
+    // closing price. It used to fire on the bare words 收盘 / 收市 anywhere in
+    // the answer, which also hit the comparison the change-basis rules require
+    // ("较上一常规交易日收盘价下跌 6.22%"), and on `收` + digit, which hit
+    // 营收 6.5 亿 / 回收 3 亿. Require a close word attached to a price-shaped
+    // number — a percentage after it means it is a change, not a price.
+    let close_value_claim = Regex::new(
+        r"(?i)(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?|closing price(?:\s+(?:of|was|is))?|closed at|close price(?:\s+(?:of|was|is))?)\s*[:：]?\s*[$¥€£]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:%|％)?",
+    )
+    .expect("market-move close value regex");
+    if close_value_claim
+        .find_iter(content)
+        .any(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
     {
         violations.push(
             "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价".to_string(),
@@ -16085,18 +16083,24 @@ mod tests {
     }
 
     #[test]
-    fn close_price_claim_does_not_fire_on_revenue_or_buyback_wording() {
-        // `收` used to be its own alternative, so 营收 / 回收 / 吸收 followed by a
-        // number was read as "this quote's price is a close".
+    fn close_price_claim_does_not_fire_on_revenue_or_change_wording() {
+        // `收` used to be its own alternative (hitting 营收 / 回收 / 吸收) and the
+        // bare words 收盘 / 收市 fired anywhere, including the comparison the
+        // change-basis rules themselves require.
         let close_claim = |content: &str| {
-            regex::Regex::new(r"(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?)\s*[$¥€£]?\s*[0-9]")
-                .expect("close value regex")
-                .is_match(content)
+            regex::Regex::new(
+                r"(?i)(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?|closing price(?:\s+(?:of|was|is))?|closed at|close price(?:\s+(?:of|was|is))?)\s*[:：]?\s*[$¥€£]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:%|％)?",
+            )
+            .expect("close value regex")
+            .find_iter(content)
+            .any(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
         };
         for benign in [
             "AAOI 单季营收 6.5 亿美元，同比下滑。",
             "本季度净营收 8000 万美元。",
             "公司回收 3 亿美元现金用于偿债。",
+            "AAOI 较上一常规交易日收盘价下跌 6.22%。",
+            "常规日涨跌用 regular 窗口的 close-to-close 口径，收盘价对比为 -5.57%。",
         ] {
             assert!(!close_claim(benign), "should not fire: {benign}");
         }
@@ -16104,6 +16108,7 @@ mod tests {
             "AAOI 收于 $18.20。",
             "股价收报 18.20 美元。",
             "常规时段收盘价 18.20 美元。",
+            "NVDA closed at 217.55 on Friday.",
         ] {
             assert!(close_claim(claim), "should fire: {claim}");
         }
