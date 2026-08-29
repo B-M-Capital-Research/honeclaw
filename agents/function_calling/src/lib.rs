@@ -4375,6 +4375,13 @@ fn content_contains_date(content: &str, date: NaiveDate) -> bool {
         "november",
         "december",
     ][date.month0() as usize];
+    // The first three letters are the standard English abbreviation for all
+    // twelve months, so this needs no second table. It matters because the
+    // `published_date` a Tavily result carries is RFC 2822
+    // (`Fri, 28 Aug 2026 20:48:00 GMT`), whose day is zero-padded — without the
+    // abbreviated spellings a search result could never be shown to cover the
+    // target date it actually reports.
+    let month_abbr = &month_name[..3];
     [
         date.format("%Y-%m-%d").to_string(),
         date.format("%Y/%m/%d").to_string(),
@@ -4383,6 +4390,10 @@ fn content_contains_date(content: &str, date: NaiveDate) -> bool {
         format!("{month_name} {}, {}", date.day(), date.year()),
         format!("{month_name} {} {}", date.day(), date.year()),
         format!("{} {month_name} {}", date.day(), date.year()),
+        format!("{month_abbr} {}, {}", date.day(), date.year()),
+        format!("{month_abbr} {} {}", date.day(), date.year()),
+        format!("{} {month_abbr} {}", date.day(), date.year()),
+        format!("{:02} {month_abbr} {}", date.day(), date.year()),
     ]
     .iter()
     .any(|candidate| normalized.contains(candidate))
@@ -4606,6 +4617,18 @@ fn collect_tool_result_urls(value: &Value, urls: &mut BTreeMap<String, String>) 
     }
 }
 
+/// Every tool result of the current turn contributes its URLs, `web_search`
+/// included. An earlier version dropped whole `web_search` messages whose
+/// `hone_search_contract.evidence_scope` was snippet-scoped, but
+/// `annotate_basic_search_evidence` stamps `full_page_content = false` and
+/// `kind = "search_snippets"` onto *every* successful Tavily search, so that
+/// skip removed every searched URL from the turn. The cause-paragraph rule then
+/// asked for "本轮工具实际返回的原始 URL" on the very retrieval path the
+/// date-anchor block tells the agent to use, and could never be satisfied — the
+/// answer was replaced by the gap template no matter how well it was sourced.
+/// Evidence strength is still gated, one level down, by requiring the cited
+/// URL's own result record to cover the target date; do not re-add a
+/// scope-based skip here.
 fn current_turn_tool_result_urls(
     context: &AgentContext,
     turn_message_start: usize,
@@ -4619,18 +4642,6 @@ fn current_turn_tool_result_urls(
             continue;
         };
         if let Ok(value) = serde_json::from_str::<Value>(content) {
-            let snippet_only = message.name.as_deref() == Some("web_search")
-                && (value
-                    .pointer("/hone_search_contract/evidence_scope/full_page_content")
-                    .and_then(Value::as_bool)
-                    == Some(false)
-                    || value
-                        .pointer("/hone_search_contract/evidence_scope/kind")
-                        .and_then(Value::as_str)
-                        == Some("search_snippets"));
-            if snippet_only {
-                continue;
-            }
             collect_tool_result_urls(&value, &mut urls);
         }
     }
@@ -8878,16 +8889,20 @@ mod tests {
         }
     }
 
-    struct SnippetOnlyMarketMoveWebTool;
+    /// Snippet scope is no longer what disqualifies a cause source — Tavily
+    /// marks every successful search snippet-scoped — so this fixture now
+    /// models the condition that still does: a result whose own record reports
+    /// some other day than the target date.
+    struct UndatedMarketMoveWebTool;
 
     #[async_trait]
-    impl Tool for SnippetOnlyMarketMoveWebTool {
+    impl Tool for UndatedMarketMoveWebTool {
         fn name(&self) -> &str {
             "web_search"
         }
 
         fn description(&self) -> &str {
-            "snippet-only market news"
+            "market news dated to another day"
         }
 
         fn parameters(&self) -> Vec<ToolParameter> {
@@ -8903,8 +8918,9 @@ mod tests {
                     }
                 },
                 "results": [{
-                    "title": "Why Is Stock Market Down Today, July 24, 2026?",
-                    "url": "https://example.test/july-24-snippet",
+                    "title": "Why Is Stock Market Down Today?",
+                    "url": "https://example.test/market-down-snippet",
+                    "published_date": "Wed, 22 Jul 2026 11:05:00 GMT",
                     "content": "renewed geopolitical tensions and a spike in oil"
                 }]
             }))
@@ -12765,7 +12781,7 @@ mod tests {
         let audit = Arc::new(RecordingAuditSink::default());
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(MarketMoveCanaryFinanceTool));
-        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        registry.register(Box::new(UndatedMarketMoveWebTool));
         let agent = FunctionCallingAgent::new(
             Arc::new(llm),
             Arc::new(registry),
@@ -16283,8 +16299,17 @@ mod tests {
         assert!(!gap.contains("目标时段：2026-07-26"));
     }
 
+    /// Renamed from `..._and_snippet_only_causes`, and the two snippet
+    /// assertions inverted, because the policy changed: a snippet-scoped
+    /// `web_search` result whose own record covers the target date now *does*
+    /// satisfy the cause-paragraph source rule. Refusing it was unreachable
+    /// rigor — `annotate_basic_search_evidence` marks every Tavily search
+    /// snippet-scoped, so the rule rejected 100% of the retrieval path both the
+    /// date-anchor block and the `web_search` contract
+    /// (`cite_same_result_url_inline`, `hone_evidence.citable`) tell the agent
+    /// to cite. The quote-field half of this test is unchanged.
     #[test]
-    fn market_move_final_rejects_quote_field_confusion_and_snippet_only_causes() {
+    fn market_move_final_rejects_quote_field_confusion_and_accepts_dated_snippet_cause_source() {
         let runtime_input = "周五美股大跌是不是因为一个没有来源的市场传言？只说本轮能核验的\n\n\
             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
             当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
@@ -16359,17 +16384,24 @@ mod tests {
                 .any(|violation| violation.contains("SPY 的交易所声明")
                     && violation.contains("exchange=AMEX"))
         );
-        assert!(violations.iter().any(|violation| {
-            violation.contains("目标日期和本轮工具实际返回的原始 URL")
-        }));
         assert!(
+            !violations.iter().any(|violation| {
+                violation.contains("目标日期和本轮工具实际返回的原始 URL")
+            }),
+            "the cause paragraph names the target date and cites a searched URL whose own \
+             result record reports that same date, so the source rule is satisfied even \
+             though the search was snippet-scoped: {violations:?}"
+        );
+        assert_eq!(
             current_turn_source_urls_for_date(
                 &context,
                 0,
                 NaiveDate::from_ymd_opt(2026, 7, 24).expect("valid date")
-            )
-            .is_empty(),
-            "snippet-only search results must not satisfy original-source cause evidence"
+            ),
+            vec!["https://example.test/july-24-snippet".to_string()],
+            "a snippet-scoped search result whose record covers the target date is eligible \
+             cause evidence; the old policy excluded it and thereby excluded every web_search \
+             result there is"
         );
 
         let gap = deterministic_market_move_gap_response(
@@ -16399,8 +16431,101 @@ mod tests {
         );
     }
 
+    /// The production shape of a Tavily hit: `annotate_basic_search_evidence`
+    /// stamps `evidence_scope.full_page_content = false` /
+    /// `kind = "search_snippets"` on every successful search, and the result's
+    /// own `published_date` is RFC 2822. Both halves of the old implementation
+    /// had to change before such a URL could ever satisfy the cause-paragraph
+    /// rule — the message-level `web_search` skip dropped it from the turn, and
+    /// `content_contains_date` knew no abbreviated month, so even a correctly
+    /// dated record read as undated. The rule that measures evidence is kept:
+    /// the cited URL's own record still has to report the target date.
+    #[test]
+    fn tavily_snippet_cause_url_passes_only_when_its_own_record_reports_the_target_date() {
+        let runtime_input = "aaoi为什么突然大跌\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-08-28 周五。\n\n\
+            【本轮最终回答契约：由主 Agent 一次完成】";
+        let target_date = NaiveDate::from_ymd_opt(2026, 8, 28).expect("valid date");
+        // The URL carries no date of its own, so only `published_date` can make
+        // the record cover the target day.
+        let cause_url = "https://example.test/aaoi-offering";
+        let content = format!(
+            "数据时间：北京时间 2026-08-29 06:00；行情口径：本轮仅使用可核验资料\n\n\
+             目标时段：2026-08-28（周五）。AAOI 当日显著走弱。\n\n\
+             **2026-08-28 的下跌原因**：公司宣布的增发定价直接压制了估值。{cause_url}"
+        );
+        let tavily_result = |published_date: &str| {
+            json!({
+                "hone_search_contract": {
+                    "evidence_scope": {
+                        "kind": "search_snippets",
+                        "search_depth": "basic",
+                        "full_page_content": false
+                    },
+                    "claim_policy": { "cite_same_result_url_inline": true }
+                },
+                "results": [{
+                    "title": "AAOI shares slide after equity offering",
+                    "url": cause_url,
+                    "published_date": published_date,
+                    "content": "Applied Optoelectronics fell after pricing an offering",
+                    "hone_evidence": {
+                        "kind": "search_snippet",
+                        "citation_field": "url",
+                        "citable": true
+                    }
+                }]
+            })
+            .to_string()
+        };
+
+        let mut on_target = AgentContext::new("aaoi-dated-snippet".to_string());
+        on_target.add_tool_result(
+            "tc_web",
+            "web_search",
+            &tavily_result("Fri, 28 Aug 2026 20:48:00 GMT"),
+        );
+        assert_eq!(
+            current_turn_source_urls_for_date(&on_target, 0, target_date),
+            vec![cause_url.to_string()],
+            "an RFC 2822 published_date on a snippet-scoped Tavily result is real date coverage"
+        );
+        let violations = market_move_final_violations(runtime_input, &content, &on_target, 0);
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "the cause paragraph names the target date and cites a URL this turn's search \
+             actually returned, dated to that same day: {violations:?}"
+        );
+
+        let mut off_target = AgentContext::new("aaoi-other-day-snippet".to_string());
+        off_target.add_tool_result(
+            "tc_web",
+            "web_search",
+            &tavily_result("Wed, 26 Aug 2026 11:05:00 GMT"),
+        );
+        assert!(
+            current_turn_source_urls_for_date(&off_target, 0, target_date).is_empty(),
+            "a result dated to another day is not evidence for the target day"
+        );
+        assert!(
+            market_move_final_violations(runtime_input, &content, &off_target, 0)
+                .iter()
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "citing a URL whose own record reports another day must still be rejected"
+        );
+    }
+
+    /// Renamed from `snippet_only_...`: the turn falls back to the
+    /// deterministic quote gap because the cited search result reports another
+    /// day, not because the search was snippet-scoped. Snippet scope stopped
+    /// being disqualifying — it describes every Tavily search — while "the
+    /// URL's own result record must cover the target date" is the check that
+    /// still has to hold.
     #[tokio::test]
-    async fn snippet_only_market_cause_uses_verified_quote_gap_without_another_generation() {
+    async fn undated_market_cause_source_uses_verified_quote_gap_without_another_generation() {
         let prefix = "数据时间：北京时间 2026-07-26 17:56；行情口径：";
         let invalid = format!(
             "{prefix}本轮仅使用可核验资料\n\n\
@@ -16410,7 +16535,7 @@ mod tests {
              | QQQ | $684.23 | -1.12% |\n\n\
              DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
              **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
-             https://example.test/july-24-snippet"
+             https://example.test/market-down-snippet"
         );
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
@@ -16439,7 +16564,7 @@ mod tests {
         let calls = llm.seen_messages.clone();
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(MarketMoveCanaryFinanceTool));
-        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        registry.register(Box::new(UndatedMarketMoveWebTool));
         let agent =
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
                 .with_agent_owned_finance_loop(true);
@@ -16470,7 +16595,7 @@ mod tests {
         assert!(!response.content.contains("+0.75%"));
         assert!(!response.content.contains("收盘价"));
         assert!(!response.content.contains("纽交所"));
-        assert!(!response.content.contains("july-24-snippet"));
+        assert!(!response.content.contains("market-down-snippet"));
     }
 
     #[tokio::test]
