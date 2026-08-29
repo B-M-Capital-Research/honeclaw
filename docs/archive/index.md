@@ -2613,7 +2613,7 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ### oldwang Default Investment Kernel Integration
 
-- Status: done locally; repository push authorized, no production deployment
+- Status: done and pushed to `origin/oldwang`; no production deployment
 - Date: 2026-08-29
 - Active parent plan: `docs/current-plans/hone-investment-decision-brain.md`
 - Handoff: `docs/handoffs/2026-08-29-oldwang-investment-kernel-integration.md`
